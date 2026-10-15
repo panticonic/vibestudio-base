@@ -10,8 +10,17 @@ import {
   type PtyStreamEvent,
 } from "@workspace/pty-stream";
 import { nodeSetInterval, nodeSetTimeout } from "./nodeTimers.js";
-import { createDetectionState, scanChunk, type DetectionState } from "./portDetector.js";
-import type { OpenRequest, ScrollCursor, SessionInfo, SessionInfoEvent } from "./types.js";
+import {
+  createDetectionState,
+  scanChunk,
+  type DetectionState,
+} from "./portDetector.js";
+import type {
+  OpenRequest,
+  ScrollCursor,
+  SessionInfo,
+  SessionInfoEvent,
+} from "./types.js";
 
 type PtyProcess = {
   pid: number;
@@ -69,7 +78,9 @@ interface Session {
   detection: DetectionState;
   meta: Record<string, unknown>;
   attachments: Map<string, Attachment>;
-  exitWaiters: Array<(value: { exitCode: number | null; signal?: string }) => void>;
+  exitWaiters: Array<
+    (value: { exitCode: number | null; signal?: string }) => void
+  >;
   flowPaused: boolean;
 }
 
@@ -86,7 +97,9 @@ export interface SessionManagerOptions {
    * Resolve display-only `detectedAgent` metadata from structured argv.
    * Omitted ⇒ no agent tagging.
    */
-  detectAgent?: (argv: string[]) => { kind: string; title?: string } | undefined;
+  detectAgent?: (
+    argv: string[],
+  ) => { kind: string; title?: string } | undefined;
   /** Resolve a context's exact semantic-state label. Non-context sessions
    * retain a best-effort local Git branch label. */
   resolveContextRevision?: (contextId: string) => Promise<string | undefined>;
@@ -113,12 +126,18 @@ type PendingSnapshot = {
 /** Skip UTF-8 continuation bytes so a trimmed window starts on a character. */
 function characterStart(bytes: Uint8Array): number {
   let offset = 0;
-  while (offset < bytes.byteLength && offset < 3 && (bytes[offset]! & 0xc0) === 0x80) offset += 1;
+  while (
+    offset < bytes.byteLength &&
+    offset < 3 &&
+    (bytes[offset]! & 0xc0) === 0x80
+  )
+    offset += 1;
   return offset;
 }
 
 export class SessionManager {
   private sessions = new Map<string, Session>();
+  private readonly disposals = new Map<string, Promise<void>>();
   private allWatchers = new Set<Watcher>();
   private lastSnapshotAt = new Map<string, number>();
   private pendingSnapshots = new Map<string, PendingSnapshot>();
@@ -128,20 +147,25 @@ export class SessionManager {
   private janitor: NodeJS.Timeout;
   private exitedSessionTtlMs: number;
   private watchAllHeartbeatMs: number;
-  private readonly detectAgent?: (argv: string[]) => { kind: string; title?: string } | undefined;
-  private readonly resolveContextRevision?: (contextId: string) => Promise<string | undefined>;
+  private readonly detectAgent?: (
+    argv: string[],
+  ) => { kind: string; title?: string } | undefined;
+  private readonly resolveContextRevision?: (
+    contextId: string,
+  ) => Promise<string | undefined>;
 
   constructor(
     private readonly hooks: SessionManagerHooks = {},
-    opts: SessionManagerOptions = {}
+    opts: SessionManagerOptions = {},
   ) {
     this.exitedSessionTtlMs = opts.exitedSessionTtlMs ?? EXITED_SESSION_TTL_MS;
-    this.watchAllHeartbeatMs = opts.watchAllHeartbeatMs ?? WATCH_ALL_HEARTBEAT_MS;
+    this.watchAllHeartbeatMs =
+      opts.watchAllHeartbeatMs ?? WATCH_ALL_HEARTBEAT_MS;
     this.detectAgent = opts.detectAgent;
     this.resolveContextRevision = opts.resolveContextRevision;
     this.janitor = nodeSetInterval(
       () => this.sweepExitedSessions(),
-      opts.janitorIntervalMs ?? JANITOR_INTERVAL_MS
+      opts.janitorIntervalMs ?? JANITOR_INTERVAL_MS,
     );
     this.janitor.unref?.();
   }
@@ -156,7 +180,7 @@ export class SessionManager {
       env: NodeJS.ProcessEnv;
       contextId?: string;
     },
-    owner: SessionOwner
+    owner: SessionOwner,
   ): { sessionId: string } {
     const id = randomUUID();
     const command = req.command ?? process.env["SHELL"] ?? "/bin/bash";
@@ -196,9 +220,15 @@ export class SessionManager {
     });
     session.pid = pty.pid;
     session.pty = pty;
-    pty.onData((data) => this.record(session, typeof data === "string" ? Buffer.from(data) : data));
+    pty.onData((data) =>
+      this.record(session, typeof data === "string" ? Buffer.from(data) : data),
+    );
     pty.onExit((event) =>
-      this.markExit(session, event.exitCode, event.signal ? `SIG${event.signal}` : undefined)
+      this.markExit(
+        session,
+        event.exitCode,
+        event.signal ? `SIG${event.signal}` : undefined,
+      ),
     );
     this.sessions.set(id, session);
     this.emitToOwner(session.owner.key, {
@@ -212,9 +242,12 @@ export class SessionManager {
 
   requireOwner(sessionId: string, owner: string): Session {
     const session = this.sessions.get(sessionId);
-    if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
+    if (!session)
+      throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
     if (session.owner.key !== owner) {
-      throw Object.assign(new Error("Not the session owner"), { code: "EACCES" });
+      throw Object.assign(new Error("Not the session owner"), {
+        code: "EACCES",
+      });
     }
     return session;
   }
@@ -234,7 +267,9 @@ export class SessionManager {
       label: session.label,
       command: session.command,
       ...(session.contextId ? { contextId: session.contextId } : {}),
-      ...(session.revisionLabel ? { revisionLabel: session.revisionLabel } : {}),
+      ...(session.revisionLabel
+        ? { revisionLabel: session.revisionLabel }
+        : {}),
       pid: session.pid,
       pgid: session.pid,
       cols: session.cols,
@@ -253,17 +288,45 @@ export class SessionManager {
     };
   }
 
-  dispose(session: Session): void {
-    this.clearPendingSnapshot(session.id);
-    session.pty?.kill("SIGTERM");
-    this.closeAttachments(session);
-    for (const waiter of session.exitWaiters.splice(0)) {
-      waiter({ exitCode: session.exit?.code ?? null, signal: session.exit?.signal });
+  /** Disposal settles only on the PTY's actual exit. Keep its identity and
+   * attachments while stopping, so an unsuccessful signal never loses ownership. */
+  dispose(session: Session): Promise<void> {
+    const existing = this.disposals.get(session.id);
+    if (existing) return existing;
+    const disposal = this.disposeOnce(session);
+    this.disposals.set(session.id, disposal);
+    void disposal.then(
+      () => this.disposals.delete(session.id),
+      () => this.disposals.delete(session.id),
+    );
+    return disposal;
+  }
+
+  private async disposeOnce(session: Session): Promise<void> {
+    if (session.alive) {
+      const observation = new AbortController();
+      const exited = this.awaitExit(session, observation.signal);
+      try {
+        // Closing a terminal is a hang-up. Interactive login shells ignore
+        // SIGTERM by design; SIGHUP asks the foreground terminal program to
+        // end its session rather than pretending termination already happened.
+        session.pty?.kill("SIGHUP");
+      } catch (error) {
+        observation.abort(error);
+        await exited.catch(() => undefined);
+        throw error;
+      }
+      await exited;
     }
+    this.clearPendingSnapshot(session.id);
+    this.closeAttachments(session);
     this.sessions.delete(session.id);
     this.lastSnapshotAt.delete(session.id);
     this.hooks.onDispose?.(session.id);
-    this.emitToOwner(session.owner.key, { type: "disposed", sessionId: session.id });
+    this.emitToOwner(session.owner.key, {
+      type: "disposed",
+      sessionId: session.id,
+    });
   }
 
   ownerOf(sessionId: string): string | undefined {
@@ -289,7 +352,13 @@ export class SessionManager {
 
   restart(
     session: Session,
-    req: { env: NodeJS.ProcessEnv; cols?: number; rows?: number; command?: string; args?: string[] }
+    req: {
+      env: NodeJS.ProcessEnv;
+      cols?: number;
+      rows?: number;
+      command?: string;
+      args?: string[];
+    },
   ): { sessionId: string } {
     const [originalCommand, ...originalArgs] = session.command.argv;
     const command = req.command ?? originalCommand;
@@ -305,7 +374,7 @@ export class SessionManager {
         label: session.label,
         ...(session.contextId ? { contextId: session.contextId } : {}),
       },
-      session.owner
+      session.owner,
     );
   }
 
@@ -347,19 +416,32 @@ export class SessionManager {
 
   getScrollback(
     session: Session,
-    maxBytes = session.scrollbackLimit
+    maxBytes = session.scrollbackLimit,
   ): { text: string; cursor: ScrollCursor } {
-    const boundedMaxBytes = Math.min(MAX_SCROLLBACK_BYTES, Math.max(1024, maxBytes));
-    const bytes = this.window(session, Math.max(0, session.cursor - boundedMaxBytes));
+    const boundedMaxBytes = Math.min(
+      MAX_SCROLLBACK_BYTES,
+      Math.max(1024, maxBytes),
+    );
+    const bytes = this.window(
+      session,
+      Math.max(0, session.cursor - boundedMaxBytes),
+    );
     const aligned = bytes.subarray(characterStart(bytes));
     return {
-      text: Buffer.from(aligned.buffer, aligned.byteOffset, aligned.byteLength).toString("utf8"),
+      text: Buffer.from(
+        aligned.buffer,
+        aligned.byteOffset,
+        aligned.byteLength,
+      ).toString("utf8"),
       cursor: String(session.cursor),
     };
   }
 
   setScrollbackLimit(session: Session, maxBytes: number): void {
-    session.scrollbackLimit = Math.min(MAX_SCROLLBACK_BYTES, Math.max(1024, Math.floor(maxBytes)));
+    session.scrollbackLimit = Math.min(
+      MAX_SCROLLBACK_BYTES,
+      Math.max(1024, Math.floor(maxBytes)),
+    );
     this.trimScrollback(session);
     this.emitSnapshot(session);
   }
@@ -369,7 +451,11 @@ export class SessionManager {
     session.chunks = [];
     session.epoch += 1;
     for (const attachment of session.attachments.values()) {
-      this.send(attachment, { kind: "reset", epoch: session.epoch, cursor: session.cursor });
+      this.send(attachment, {
+        kind: "reset",
+        epoch: session.epoch,
+        cursor: session.cursor,
+      });
     }
     this.emitSnapshot(session);
   }
@@ -384,7 +470,8 @@ export class SessionManager {
   attach(session: Session, opts: PtyAttachOptions = {}): Response {
     const attachment: Attachment = {
       id: randomUUID(),
-      controller: undefined as unknown as ReadableStreamDefaultController<Uint8Array>,
+      controller:
+        undefined as unknown as ReadableStreamDefaultController<Uint8Array>,
       unacknowledgedBytes: 0,
     };
     const stream = new ReadableStream<Uint8Array>({
@@ -403,16 +490,28 @@ export class SessionManager {
         });
         let from = start;
         const after = opts.after;
-        if (after && after.epoch === session.epoch && after.cursor <= session.cursor) {
+        if (
+          after &&
+          after.epoch === session.epoch &&
+          after.cursor <= session.cursor
+        ) {
           if (after.cursor < start) {
-            this.send(attachment, { kind: "gap", from: after.cursor, to: start });
+            this.send(attachment, {
+              kind: "gap",
+              from: after.cursor,
+              to: start,
+            });
           } else {
             from = after.cursor;
           }
         } else if (after) {
           // A position from an earlier epoch (or past the end) cannot be
           // continued: the client starts over from the retained window.
-          this.send(attachment, { kind: "reset", epoch: session.epoch, cursor: start });
+          this.send(attachment, {
+            kind: "reset",
+            epoch: session.epoch,
+            cursor: start,
+          });
         }
         const replay = this.window(session, from);
         if (replay.byteLength > 0) {
@@ -449,7 +548,7 @@ export class SessionManager {
     if (!Number.isFinite(bytes) || bytes <= 0) return;
     attachment.unacknowledgedBytes = Math.max(
       0,
-      attachment.unacknowledgedBytes - Math.floor(bytes)
+      attachment.unacknowledgedBytes - Math.floor(bytes),
     );
     this.updateFlowControl(session);
   }
@@ -461,7 +560,7 @@ export class SessionManager {
    */
   awaitExit(
     session: Session,
-    signal?: AbortSignal | null
+    signal?: AbortSignal | null,
   ): Promise<{ exitCode: number | null; signal?: string }> {
     if (!session.alive)
       return Promise.resolve({
@@ -493,7 +592,9 @@ export class SessionManager {
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
         const send = () =>
-          controller.enqueue(encoder.encode(`${JSON.stringify(this.info(session))}\n`));
+          controller.enqueue(
+            encoder.encode(`${JSON.stringify(this.info(session))}\n`),
+          );
         send();
         timer = nodeSetInterval(send, 1000);
       },
@@ -501,7 +602,9 @@ export class SessionManager {
         if (timer) clearInterval(timer);
       },
     });
-    return new Response(stream, { headers: { "content-type": "application/x-ndjson" } });
+    return new Response(stream, {
+      headers: { "content-type": "application/x-ndjson" },
+    });
   }
 
   watchAllInfo(owner: string): Response {
@@ -513,7 +616,10 @@ export class SessionManager {
           controller,
         };
         this.allWatchers.add(watcher);
-        this.sendToWatcher(watcher, { type: "snapshot-batch", sessions: this.list(owner) });
+        this.sendToWatcher(watcher, {
+          type: "snapshot-batch",
+          sessions: this.list(owner),
+        });
       },
       cancel: () => {
         if (!watcher) return;
@@ -521,7 +627,9 @@ export class SessionManager {
         this.allWatchers.delete(watcher);
       },
     });
-    return new Response(stream, { headers: { "content-type": "application/x-ndjson" } });
+    return new Response(stream, {
+      headers: { "content-type": "application/x-ndjson" },
+    });
   }
 
   setMeta(session: Session, key: string, value: unknown): void {
@@ -545,31 +653,36 @@ export class SessionManager {
 
   setMetaById(sessionId: string, key: string, value: unknown): void {
     const session = this.sessions.get(sessionId);
-    if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
+    if (!session)
+      throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
     this.setMeta(session, key, value);
   }
 
   getMetaById(sessionId: string, key?: string): unknown {
     const session = this.sessions.get(sessionId);
-    if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
+    if (!session)
+      throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
     return this.getMeta(session, key);
   }
 
   deleteMetaById(sessionId: string, key: string): void {
     const session = this.sessions.get(sessionId);
-    if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
+    if (!session)
+      throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
     this.deleteMeta(session, key);
   }
 
   setLabelById(sessionId: string, label: string): void {
     const session = this.sessions.get(sessionId);
-    if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
+    if (!session)
+      throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
     this.setLabel(session, label);
   }
 
   writeById(sessionId: string, text: string): void {
     const session = this.sessions.get(sessionId);
-    if (!session) throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
+    if (!session)
+      throw Object.assign(new Error("Unknown session"), { code: "ENOENT" });
     this.write(session, text);
   }
 
@@ -629,7 +742,8 @@ export class SessionManager {
   }
 
   private send(attachment: Attachment, event: PtyStreamEvent): void {
-    for (const frame of encodePtyStreamEvent(event)) attachment.controller.enqueue(frame);
+    for (const frame of encodePtyStreamEvent(event))
+      attachment.controller.enqueue(frame);
   }
 
   private closeAttachments(session: Session): void {
@@ -652,17 +766,32 @@ export class SessionManager {
   private window(session: Session, from: number): Uint8Array {
     const parts = session.chunks
       .filter((chunk) => chunk.end > from)
-      .map((chunk) => (chunk.start < from ? chunk.bytes.subarray(from - chunk.start) : chunk.bytes));
-    return parts.length === 1 ? parts[0]! : new Uint8Array(Buffer.concat(parts));
+      .map((chunk) =>
+        chunk.start < from
+          ? chunk.bytes.subarray(from - chunk.start)
+          : chunk.bytes,
+      );
+    return parts.length === 1
+      ? parts[0]!
+      : new Uint8Array(Buffer.concat(parts));
   }
 
-  private markExit(session: Session, code: number | null, signal?: string): void {
+  private markExit(
+    session: Session,
+    code: number | null,
+    signal?: string,
+  ): void {
     this.clearPendingSnapshot(session.id);
     session.alive = false;
     session.exit = { code, ...(signal ? { signal } : {}), at: Date.now() };
-    for (const waiter of session.exitWaiters.splice(0)) waiter({ exitCode: code, signal });
+    for (const waiter of session.exitWaiters.splice(0))
+      waiter({ exitCode: code, signal });
     for (const attachment of session.attachments.values()) {
-      this.send(attachment, { kind: "exit", code, ...(signal ? { signal } : {}) });
+      this.send(attachment, {
+        kind: "exit",
+        code,
+        ...(signal ? { signal } : {}),
+      });
     }
     this.closeAttachments(session);
     this.hooks.onExit?.(session.id);
@@ -740,7 +869,9 @@ export class SessionManager {
   }
 
   private sendToWatcher(watcher: Watcher, event: SessionInfoEvent): void {
-    watcher.controller.enqueue(new TextEncoder().encode(`${JSON.stringify(event)}\n`));
+    watcher.controller.enqueue(
+      new TextEncoder().encode(`${JSON.stringify(event)}\n`),
+    );
     if (watcher.heartbeat) clearTimeout(watcher.heartbeat);
     watcher.heartbeat = nodeSetTimeout(() => {
       try {
@@ -756,8 +887,14 @@ export class SessionManager {
   private sweepExitedSessions(): void {
     const cutoff = Date.now() - this.exitedSessionTtlMs;
     for (const session of this.sessions.values()) {
-      if (!session.alive && session.lastActivityAt < cutoff && session.attachments.size === 0) {
-        this.dispose(session);
+      if (
+        !session.alive &&
+        session.lastActivityAt < cutoff &&
+        session.attachments.size === 0
+      ) {
+        void this.dispose(session).catch((error) =>
+          console.error("Could not retire exited terminal session", error),
+        );
       }
     }
   }
@@ -765,7 +902,9 @@ export class SessionManager {
   private assertMetaSize(meta: Record<string, unknown>): void {
     const bytes = Buffer.byteLength(JSON.stringify(meta), "utf8");
     if (bytes > META_BYTES) {
-      throw Object.assign(new Error("Session metadata exceeds 16KB"), { code: "E2BIG" });
+      throw Object.assign(new Error("Session metadata exceeds 16KB"), {
+        code: "E2BIG",
+      });
     }
   }
 }
@@ -821,7 +960,10 @@ async function foregroundProcessGroup(pid: number): Promise<number> {
     const child = spawn("ps", ["-o", "tpgid=", "-p", String(pid)], {
       stdio: ["ignore", "pipe", "ignore"],
     });
-    child.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
+    child.stdout?.on(
+      "data",
+      (chunk: Buffer) => (out += chunk.toString("utf8")),
+    );
     child.on("error", () => resolve(pid));
     child.on("close", () => {
       const tpgid = Number(out.trim());

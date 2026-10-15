@@ -7,7 +7,7 @@
 import type { RpcClient } from "@vibestudio/rpc";
 
 /** The RPC surface the chat uses: an authenticated client of the workspace gateway. */
-export type ChatRpc = Pick<RpcClient, "call" | "stream" | "on" | "selfId" | "status" | "onStatusChange" | "onRecovery">;
+export type ChatRpc = RpcClient;
 
 /**
  * Durable per-session state held server-side for this terminal session.
@@ -23,9 +23,16 @@ export interface SessionStateStore {
 /** Files on the machine the program runs on (the workspace runtime). */
 export interface ChatFiles {
   /** Read a file for an attachment; the path is as the person typed it. */
-  read(path: string): Promise<{ name: string; mimeType: string; bytes: Uint8Array }>;
-  /** Write an export; returns the absolute path written. */
-  writeExport(fileName: string, contents: string): Promise<string>;
+  read(
+    path: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<{ name: string; mimeType: string; bytes: Uint8Array }>;
+  /** Write an export; returns its portable workspace-relative path for trusted-browser Download. */
+  writeExport(
+    fileName: string,
+    contents: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<string>;
 }
 
 export interface TerminalChatBootstrap {

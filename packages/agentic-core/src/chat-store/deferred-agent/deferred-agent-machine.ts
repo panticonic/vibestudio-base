@@ -46,6 +46,7 @@ import { isAgentParticipantType, type AttachmentInput } from "@workspace/pubsub"
 import { isModelAgentLaunchable } from "@workspace/model-catalog/catalog";
 import type { AgentSubscriptionConfig } from "../../agent-subscription-config.js";
 import type { AvailableAgent } from "../../types.js";
+import { isRpcAbortedBy } from "@vibestudio/rpc";
 import {
   RetainCount,
   StateCell,
@@ -85,7 +86,21 @@ export function launchStageLabel(stage: LaunchStage): string {
   }
 }
 
+function cleanupOnly(item: PendingDelivery): boolean {
+  return item.publication === "accepted" || item.retirement !== undefined;
+}
+
 function deliveryFailure(item: PendingDelivery, cause: unknown): UserFacingError {
+  if (cleanupOnly(item))
+    return userFacingError(
+      item.publication === "accepted"
+        ? "Message accepted — attachment cleanup pending"
+        : item.publication === "attempted"
+          ? "Delivery outcome uncertain — attachment cleanup pending"
+          : "Unsent attachment cleanup pending",
+      "Retry finishes retained-file cleanup only; it never sends or recalls this message.",
+      cause
+    );
   return item.kind === "opening-request"
     ? userFacingError(
         "Couldn't deliver the opening request",
@@ -124,13 +139,20 @@ interface Derived {
 }
 
 export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot> {
-  readonly #cell = new StateCell<DeferredAgentSnapshot>({ deferredAgent: undefined });
+  readonly #cell = new StateCell<DeferredAgentSnapshot>({
+    deferredAgent: undefined,
+  });
   readonly #retain: RetainCount;
   readonly #lifetime = new AbortController();
   #inputs: DeferredAgentInputs;
 
   // --- Flow state -----------------------------------------------------------
   #queued: PendingDelivery[] = [];
+  #restoration: Promise<void> | null = null;
+  #ready: Promise<void> = Promise.resolve();
+  #mutation: Promise<unknown> | null = null;
+  #flushTask: Promise<void> | null = null;
+  #leaseRetirement: Promise<void> | null = null;
   #agentId: string | undefined;
   #draft: AgentConfigDraft = { model: "" };
   /** Committed to spawning OUR first agent. */
@@ -158,7 +180,10 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
   #modelTouched = false;
   #agentTypeTouched = false;
   /** Type + config captured when the spawn was armed; retries reuse it. */
-  #spawnIntent: { agentId: string | undefined; config: AgentSubscriptionConfig } | null = null;
+  #spawnIntent: {
+    agentId: string | undefined;
+    config: AgentSubscriptionConfig;
+  } | null = null;
   #issued = false;
   #spawnInFlight = false;
   #everHadAgent = false;
@@ -174,7 +199,45 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
   constructor(inputs: DeferredAgentInputs) {
     this.#inputs = { ...inputs };
     this.#explicitModelChoiceActive = inputs.firstAgentModelPreflight === "selection-required";
-    this.#retain = new RetainCount({ start: () => undefined, dispose: () => this.#dispose() });
+    this.#retain = new RetainCount({
+      start: () => undefined,
+      dispose: () => this.#dispose(),
+    });
+    if (inputs.queueStore) {
+      const restoration = inputs.queueStore.load(this.#lifetime.signal).then((items) => {
+        this.#lifetime.signal.throwIfAborted();
+        this.#queued = items;
+        this.#waitingForModelDiscovery =
+          inputs.firstAgentPending &&
+          items.some((item) => item.kind === "message" && !cleanupOnly(item));
+      });
+      this.#restoration = restoration;
+      this.#ready = restoration.finally(() => {
+        this.#restoration = null;
+        this.reconcile();
+      });
+    }
+  }
+
+  ready(): Promise<void> {
+    return this.#ready;
+  }
+
+  #mutate<T>(work: () => Promise<T>): Promise<T> {
+    const preceding = this.#mutation;
+    const operation = preceding ? preceding.then(work, work) : work();
+    this.#mutation = operation;
+    void operation.then(
+      () => {
+        if (this.#mutation === operation) this.#mutation = null;
+        this.reconcile();
+      },
+      () => {
+        if (this.#mutation === operation) this.#mutation = null;
+        this.reconcile();
+      }
+    );
+    return operation;
   }
 
   readonly getSnapshot = (): DeferredAgentSnapshot => this.#cell.getSnapshot();
@@ -188,6 +251,21 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
   /** Dispose now: stop owned async work and retire a prepared provisional lease. */
   dispose(): void {
     this.#retain.disposeNow();
+  }
+
+  /** Retire and join every admitted queue/storage/lease operation. */
+  async close(): Promise<void> {
+    this.dispose();
+    const tasks = [this.#ready, this.#mutation, this.#flushTask, this.#leaseRetirement].filter(
+      (task): task is Promise<unknown> => task !== null
+    );
+    const results = await Promise.allSettled(tasks);
+    const errors = results.flatMap((result) =>
+      result.status === "rejected" && !isRpcAbortedBy(result.reason, this.#lifetime.signal.reason)
+        ? [result.reason]
+        : []
+    );
+    if (errors.length) throw new AggregateError(errors, "Deferred queue cleanup failed");
   }
 
   /**
@@ -211,7 +289,7 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
 
   /** Run the pipeline to a fixed point and publish one snapshot. */
   reconcile(): void {
-    if (this.#lifetime.signal.aborted) return;
+    if (this.#lifetime.signal.aborted || this.#restoration) return;
     if (this.#reconciling) {
       this.#reconcileAgain = true;
       return;
@@ -246,35 +324,51 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
     options?: DeferredSendOptions
   ): Promise<void> => {
     const inputs = this.#inputs;
+    if (inputs.queueStore) await this.#ready;
     const derived = this.#derive();
     // Agent present and no flush in progress → straight to the normal send.
     // (During an in-flight flush even live sends queue, so a fresh message
     // can't leapfrog still-queued first messages.)
-    if (derived.agentPresent && this.#queued.length === 0 && !this.#flushing) {
+    if (
+      !inputs.queueStore &&
+      derived.agentPresent &&
+      this.#queued.length === 0 &&
+      !this.#flushing
+    ) {
       return inputs.coreSendMessage(attachments, options);
     }
     // No agent and not our deferred flow → the normal send still goes out.
-    if (!derived.agentPresent && !derived.active && this.#queued.length === 0) {
+    if (
+      !inputs.queueStore &&
+      !derived.agentPresent &&
+      !derived.active &&
+      this.#queued.length === 0
+    ) {
       return inputs.coreSendMessage(attachments, options);
     }
-    const text = inputs.input.trim();
+    const text = (options?.text ?? inputs.input).trim();
     const hasAttachments = !!attachments?.length;
     if (!text && !hasAttachments) return;
     const deliveryId = crypto.randomUUID();
-    this.#queued = [
-      ...this.#queued,
-      {
-        kind: "message",
-        id: deliveryId,
-        idempotencyKey: deliveryId,
-        text,
-        ...(hasAttachments ? { attachments } : {}),
-        ...(options?.mentions && options.mentions.length > 0 ? { mentions: options.mentions } : {}),
-        ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
-        ...(options?.metadata ? { metadata: options.metadata } : {}),
-      },
-    ];
-    inputs.clearComposer();
+    const item: PendingDelivery = {
+      kind: "message",
+      id: deliveryId,
+      idempotencyKey: deliveryId,
+      text,
+      ...(hasAttachments ? { attachments } : {}),
+      ...(options?.mentions && options.mentions.length > 0 ? { mentions: options.mentions } : {}),
+      ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+      ...(options?.metadata ? { metadata: options.metadata } : {}),
+    };
+    const store = inputs.queueStore;
+    if (store)
+      await this.#mutate(async () => {
+        const retained = await store.put(item, this.#lifetime.signal);
+        this.#lifetime.signal.throwIfAborted();
+        this.#queued = [...this.#queued, retained ?? item];
+      });
+    else this.#queued = [...this.#queued, item];
+    if (this.#inputs.input.trim() === text) inputs.clearComposer();
     // Commit to spawning our first agent, snapshotting its type + config now.
     // An in-flight-flush enqueue needs no new agent.
     if (
@@ -314,42 +408,94 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
     this.#agentId = id;
     const seeded = this.#seed(inputs.availableAgents.find((agent) => agent.id === id));
     // Switching type reseeds behavior defaults but keeps a model the user chose.
-    this.#draft = { ...seeded, model: this.#modelTouched ? this.#draft.model : seeded.model };
+    this.#draft = {
+      ...seeded,
+      model: this.#modelTouched ? this.#draft.model : seeded.model,
+    };
     this.reconcile();
   };
 
-  readonly cancelQueued = (id: string): void => {
+  readonly cancelQueued = async (id: string): Promise<void> => {
     // Publication has begun; removal can no longer promise an unsent message.
     if (this.#flushing?.itemId === id) return;
     if (this.#queued.find((item) => item.id === id)?.kind === "opening-request") {
       const signal = this.#lifetime.signal;
-      void this.#inputs.resolveOpeningRequest("cancel").then(
-        () => {
-          if (signal.aborted) return;
+      return this.#mutate(async () => {
+        try {
+          await this.#inputs.resolveOpeningRequest("cancel");
+          signal.throwIfAborted();
           this.#removeQueued(id);
           this.reconcile();
-        },
-        (error: unknown) => {
-          if (signal.aborted) return;
-          this.#setFailure(
+        } catch (error) {
+          if (!signal.aborted)
+            this.#setFailure(
+              id,
+              userFacingError(
+                "Couldn't discard the opening request",
+                "The conversation didn't accept the change. Try discarding it again.",
+                error
+              )
+            );
+          this.reconcile();
+          throw error;
+        }
+      });
+    }
+    const store = this.#inputs.queueStore;
+    if (store)
+      await this.#mutate(async () => {
+        this.#queued = this.#queued.map((item) =>
+          item.id === id ? { ...item, retirement: "releasing" } : item
+        );
+        try {
+          await store.remove(
             id,
-            userFacingError(
-              "Couldn't discard the opening request",
-              "The conversation didn't accept the change. Try discarding it again.",
-              error
-            )
+            this.#queued.find((item) => item.id === id)?.publication === "accepted"
+              ? "accepted"
+              : undefined
           );
+          this.#removeQueued(id);
+        } catch (error) {
+          const item = this.#queued.find((item) => item.id === id);
+          if (item) this.#setFailure(id, deliveryFailure(item, error));
+          throw error;
+        } finally {
           this.reconcile();
         }
-      );
-      return;
-    }
-    this.#removeQueued(id);
+      });
+    else this.#removeQueued(id);
     this.reconcile();
   };
 
   /** Remove a held or failed item without sending it (same as `cancelQueued`). */
-  readonly discardQueued = (id: string): void => this.cancelQueued(id);
+  readonly discardQueued = (id: string): Promise<void> => this.cancelQueued(id);
+
+  readonly editQueued = async (id: string, text: string): Promise<void> => {
+    if (this.#inputs.queueStore) await this.#ready;
+    const item = this.#queued.find((queued) => queued.id === id);
+    if (!item) throw new Error("This message is no longer queued.");
+    if (this.#flushing?.itemId === id) throw new Error("This message is already being delivered.");
+    if (item.kind === "opening-request")
+      throw new Error(
+        "The retained opening request cannot be edited. Cancel it, then compose a replacement."
+      );
+    if (cleanupOnly(item))
+      throw new Error(
+        "This entry only owns retained-file cleanup. Retry cleanup or discard it; it cannot be edited or sent."
+      );
+    if (item.publication === "attempted")
+      throw new Error(
+        "Delivery has already been attempted and may have been accepted. Retry the unchanged message, or discard it to stop retrying; discarding does not recall it."
+      );
+    const next = { ...item, text };
+    const apply = async () => {
+      const retained = await this.#inputs.queueStore?.put(next, this.#lifetime.signal);
+      this.#lifetime.signal.throwIfAborted();
+      this.#queued = this.#queued.map((queued) => (queued.id === id ? (retained ?? next) : queued));
+    };
+    await this.#mutate(apply);
+    this.reconcile();
+  };
 
   readonly startQueued = (): void => {
     const derived = this.#derive();
@@ -455,7 +601,9 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       inputs.firstAgentPending &&
       !everHadAgent;
     const launching = !agentPresent && this.#armed;
-    const firstFailure = this.#queued.find((item) => this.#failures.has(item.id));
+    const firstFailure = this.#queued.find(
+      (item) => this.#failures.has(item.id) && !cleanupOnly(item)
+    );
     return {
       agentPresent,
       canDefer,
@@ -619,7 +767,9 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       inputs.availableAgents.find((agent) => agent.id === this.#agentId) ??
       inputs.availableAgents[0];
     const latestDraft = this.#draftTouched ? this.#draft : this.#seed(selectedAgent);
-    const selectedModel = inputs.modelCatalog?.models.find((model) => model.ref === latestDraft.model);
+    const selectedModel = inputs.modelCatalog?.models.find(
+      (model) => model.ref === latestDraft.model
+    );
     const modelChoiceAllowsPrewarm =
       preflight === "ready" || (preflight === "selection-required" && this.#modelTouched);
     const shouldPrepare =
@@ -634,7 +784,11 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
     const explicitAgentId = this.#agentTypeTouched ? this.#agentId : undefined;
     const config = shouldPrepare ? spawnConfigFromDraft(latestDraft) : null;
     const fingerprint = config
-      ? canonicalJson({ channelName: inputs.channelName, agentId: explicitAgentId, config })
+      ? canonicalJson({
+          channelName: inputs.channelName,
+          agentId: explicitAgentId,
+          config,
+        })
       : "none";
     if (this.#preparedFingerprint === fingerprint) return;
     this.#preparedFingerprint = fingerprint;
@@ -651,8 +805,7 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
   #armAfterModelDiscovery(): boolean {
     if (this.#derive().preflight !== "ready" || !this.#waitingForModelDiscovery) return false;
     this.#waitingForModelDiscovery = false;
-    if (!this.#derive().agentPresent && !this.#armed && this.#queued.length > 0)
-      this.#armed = true;
+    if (!this.#derive().agentPresent && !this.#armed && this.#queued.length > 0) this.#armed = true;
     return true;
   }
 
@@ -742,38 +895,83 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
    * visible until the user explicitly retries (or removes that item).
    */
   #flushQueueOnJoin(): boolean {
-    const { agentPresent, deliveryError } = this.#derive();
-    if (!agentPresent || this.#queued.length === 0 || this.#flushing || deliveryError) return false;
+    const { agentPresent, canDefer, deliveryError } = this.#derive();
+    const ready =
+      agentPresent ||
+      (this.#inputs.queueStore &&
+        this.#inputs.replaySettled &&
+        !this.#inputs.openingRequest &&
+        (!this.#inputs.firstAgentPending || !canDefer) &&
+        this.#inputs.pendingAgents.size === 0 &&
+        !this.#armed);
+    const batch = this.#queued.filter((item) =>
+      cleanupOnly(item) ? !this.#failures.has(item.id) : !deliveryError
+    );
+    if (
+      (!ready && !batch.some(cleanupOnly)) ||
+      batch.length === 0 ||
+      this.#flushing ||
+      this.#mutation
+    )
+      return false;
     const flushing: { itemId?: string } = {};
     this.#flushing = flushing;
-    const batch = [...this.#queued];
     const { publishText, maybeSetDefaultTitle, resolveOpeningRequest } = this.#inputs;
     const signal = this.#lifetime.signal;
-    void (async () => {
+    const task = (async () => {
       let deliveryId: string | undefined;
       try {
         let titled = false;
-        for (const item of batch) {
+        for (const queued of batch) {
+          if (this.#mutation) await this.#mutation;
           if (signal.aborted) return;
           // The user may remove later items while an earlier one flushes:
           // cancel still means "do not send" until that item's delivery begins.
-          if (!this.#queued.some((queued) => queued.id === item.id)) continue;
+          const item = this.#queued.find((item) => item.id === queued.id);
+          if (!item) continue;
+          if (!ready && !cleanupOnly(item)) continue;
           deliveryId = item.id;
           flushing.itemId = item.id;
           this.reconcile();
-          if (item.kind === "opening-request") await resolveOpeningRequest("deliver");
-          else
-            await publishText(item.text, {
-              attachments: item.attachments,
-              mentions: item.mentions,
-              replyTo: item.replyTo,
-              metadata: item.metadata,
-              tier: item.tier,
-              idempotencyKey: item.idempotencyKey,
-            });
+          if (!cleanupOnly(item)) {
+            const publication =
+              item.kind === "message" && this.#inputs.queueStore?.materialize
+                ? await this.#inputs.queueStore.materialize(item, signal)
+                : item;
+            signal.throwIfAborted();
+            if (item.kind === "message" && item.publication !== "attempted") {
+              const attempted: PendingDelivery = {
+                ...item,
+                publication: "attempted",
+              };
+              await this.#inputs.queueStore?.put(attempted, signal);
+              signal.throwIfAborted();
+              this.#queued = this.#queued.map((entry) =>
+                entry.id === item.id ? attempted : entry
+              );
+            }
+            if (item.kind === "opening-request") await resolveOpeningRequest("deliver");
+            else
+              await publishText(publication.text, {
+                attachments: publication.attachments,
+                mentions: publication.mentions,
+                replyTo: publication.replyTo,
+                metadata: publication.metadata,
+                tier: publication.tier,
+                idempotencyKey: publication.idempotencyKey,
+              });
+            this.#queued = this.#queued.map((entry) =>
+              entry.id === item.id ? { ...entry, publication: "accepted" } : entry
+            );
+            this.reconcile();
+          }
+          await this.#inputs.queueStore?.remove(
+            item.id,
+            item.publication === "accepted" || !cleanupOnly(item) ? "accepted" : undefined
+          );
           if (signal.aborted) return;
           // Title from the first delivered queued message (brand-new chat).
-          if (!titled && item.text) {
+          if (!titled && item.text && (!cleanupOnly(item) || item.publication === "accepted")) {
             maybeSetDefaultTitle(item.text);
             titled = true;
           }
@@ -781,8 +979,10 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
           this.reconcile();
         }
       } catch (error) {
-        const failedItem = batch.find((item) => item.id === deliveryId);
-        if (failedItem && !signal.aborted) this.#setFailure(failedItem.id, deliveryFailure(failedItem, error));
+        const failedItem = this.#queued.find((item) => item.id === deliveryId);
+        if (failedItem && !signal.aborted)
+          this.#setFailure(failedItem.id, deliveryFailure(failedItem, error));
+        if (signal.aborted) throw error;
       } finally {
         if (this.#flushing === flushing) this.#flushing = null;
         // Completion of the owned batch makes later input eligible; this also
@@ -790,6 +990,11 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
         if (!signal.aborted) this.reconcile();
       }
     })();
+    this.#flushTask = task;
+    void task.catch((error) => {
+      if (!isRpcAbortedBy(error, signal.reason))
+        console.error("[DeferredAgentMachine] Queue retirement failed:", error);
+    });
     return true;
   }
 
@@ -857,6 +1062,7 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
       deliveringId: this.#flushing?.itemId,
       retryDelivery: this.retryDelivery,
       discardQueued: this.discardQueued,
+      editQueued: this.editQueued,
       modelSelectionRequired: derived.modelSelectionRequired,
       modelDiscoveryPending: derived.modelDiscoveryPending,
       startQueued: this.startQueued,
@@ -889,14 +1095,19 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
     const view = this.#queued.map((item): PendingDelivery => {
       const failure = this.#failures.get(item.id);
       if (failure) {
-        blockedBy ??= item.id;
+        if (!cleanupOnly(item)) blockedBy ??= item.id;
         return { ...item, status: "failed", failure };
       }
       if (item.id === deliveringId) return { ...item, status: "delivering" };
       if (blockedBy) return { ...item, status: "waiting", waitingOn: blockedBy };
       return { ...item, status: "queued" };
     });
-    this.#queueView = { queued: this.#queued, failures: this.#failures, deliveringId, view };
+    this.#queueView = {
+      queued: this.#queued,
+      failures: this.#failures,
+      deliveringId,
+      view,
+    };
     return view;
   }
 
@@ -905,7 +1116,8 @@ export class DeferredAgentMachine implements ReadableStore<DeferredAgentSnapshot
     // If this chat surface disappears before claim, release the host lease.
     if (this.#preparedFingerprint === "none") return;
     this.#preparedFingerprint = "none";
-    void this.#inputs.onPrepareAgent?.(undefined, null).catch((error: unknown) => {
+    this.#leaseRetirement = this.#inputs.onPrepareAgent?.(undefined, null) ?? Promise.resolve();
+    void this.#leaseRetirement.catch((error: unknown) => {
       console.warn("[DeferredAgentMachine] Failed to retire provisional agent:", error);
     });
   }

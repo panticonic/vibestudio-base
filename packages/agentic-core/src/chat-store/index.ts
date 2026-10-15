@@ -19,7 +19,6 @@ export type { ReadableStore, StoreListener, UserFacingError } from "./store.js";
 export {
   ChannelViewFeed,
   DELTA_COALESCE_MS,
-  TRANSCRIPT_MAX_VISIBLE,
   TRANSCRIPT_PAGE_SIZE,
   sameChatMessage,
 } from "./channel-view-feed.js";
@@ -30,16 +29,10 @@ export type {
   FollowableChannelClient,
 } from "./channel-view-feed.js";
 
-export {
-  ChatMethodRegistry,
-  composeChatMethods,
-} from "./methods.js";
+export { ChatMethodRegistry, composeChatMethods } from "./methods.js";
 export type { ChatMethodProvider, ChatMethods } from "./methods.js";
 
-export {
-  connectionRetryDelayMs,
-  isTransientConnectionFailure,
-} from "./connection-retry.js";
+export { connectionRetryDelayMs, isTransientConnectionFailure } from "./connection-retry.js";
 
 export {
   ChatSession,

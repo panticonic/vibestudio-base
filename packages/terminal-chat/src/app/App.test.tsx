@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Instance } from "ink";
 import type { ChatMessage } from "@workspace/agentic-core";
+import { DeferredAgentMachine } from "@workspace/agentic-core/chat-store";
 import { TerminalChatApp } from "./App.js";
 import { FrameStdout, TypedInput, createFakeChat } from "../testing/fakes.js";
 
@@ -16,12 +17,15 @@ async function mount(initial: Parameters<typeof createFakeChat>[0] = {}, columns
   const stdout = new FrameStdout(columns, rows);
   const input = new TypedInput();
   const control: string[] = [];
-  instance = render(<TerminalChatApp runtime={chat.runtime} input={input} control={(s) => control.push(s)} />, {
-    stdout: stdout as never,
-    debug: true,
-    patchConsole: false,
-    exitOnCtrlC: false,
-  });
+  instance = render(
+    <TerminalChatApp runtime={chat.runtime} input={input} control={(s) => control.push(s)} />,
+    {
+      stdout: stdout as never,
+      debug: true,
+      patchConsole: false,
+      exitOnCtrlC: false,
+    }
+  );
   await settle();
   return {
     chat,
@@ -38,9 +42,51 @@ async function mount(initial: Parameters<typeof createFakeChat>[0] = {}, columns
   };
 }
 
-const agentReply = (id: string, content: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id, senderId: "ai", content, ...extra });
+const agentReply = (
+  id: string,
+  content: string,
+  extra: Partial<ChatMessage> = {}
+): ChatMessage => ({ id, senderId: "ai", content, ...extra });
 
 describe("TerminalChatApp", () => {
+  it("explains attempted delivery immutability before opening an edit prompt", async () => {
+    const app = await mount();
+    const machine = new DeferredAgentMachine({
+      participants: {},
+      pendingAgents: new Map(),
+      input: "",
+      clearComposer: () => {},
+      publishText: async () => {},
+      maybeSetDefaultTitle: () => {},
+      coreSendMessage: async () => {},
+      onAddAgent: async () => {},
+      availableAgents: [],
+      modelCatalog: null,
+      firstAgentPending: true,
+      resolveOpeningRequest: async () => {},
+      channelName: "chat",
+      replaySettled: true,
+      queueStore: {
+        load: async () => [
+          { kind: "message", id: "attempted", text: "possibly accepted", publication: "attempted" },
+        ],
+        put: async () => {},
+        remove: async () => {},
+      },
+    });
+    await machine.ready();
+    app.chat.updateDeferred(machine.getSnapshot().deferredAgent);
+    await app.type("/queue", "\r", "e");
+    expect(app.chat.notices()).toContainEqual(
+      expect.objectContaining({
+        title: "This delivery is not editable",
+        message: expect.stringContaining("Discarding does not recall it"),
+      })
+    );
+    expect(app.text()).not.toContain("Edit the queued message");
+    await machine.close();
+  });
+
   it("marks the true start of history only after replay and older paging settle", async () => {
     const app = await mount({ messages: [agentReply("a1", "First reply")], replaySettled: false });
     expect(app.text()).not.toContain("↑ start of conversation");
@@ -78,7 +124,10 @@ describe("TerminalChatApp", () => {
 
   it("streams agent replies into the transcript and renders markdown", async () => {
     const app = await mount();
-    app.chat.update({ messages: [agentReply("a1", "# Plan\n\n- step **one**", { complete: false })], agentBusy: true });
+    app.chat.update({
+      messages: [agentReply("a1", "# Plan\n\n- step **one**", { complete: false })],
+      agentBusy: true,
+    });
     await settle();
     expect(app.text()).toContain("● Assistant");
     expect(app.text()).toContain("Plan");
@@ -113,7 +162,10 @@ describe("TerminalChatApp", () => {
   });
 
   it("interrupts with Esc and flushes with Esc Esc while the agent works", async () => {
-    const app = await mount({ messages: [{ id: "turn:1", senderId: "ai", content: "", contentType: "typing" }], agentBusy: true });
+    const app = await mount({
+      messages: [{ id: "turn:1", senderId: "ai", content: "", contentType: "typing" }],
+      agentBusy: true,
+    });
     await app.type("\x1b");
     expect(app.chat.calls.interrupted).toEqual(["ai"]);
     await app.type("\x1b");
@@ -126,7 +178,16 @@ describe("TerminalChatApp", () => {
       senderId: "ai",
       content: "",
       contentType: "invocation",
-      invocation: { id: "1", name: "eval", arguments: { code: "1+1" }, execution: { status: "complete", description: "Adds", result: { details: { success: true, returnValue: 2 } } } },
+      invocation: {
+        id: "1",
+        name: "eval",
+        arguments: { code: "1+1" },
+        execution: {
+          status: "complete",
+          description: "Adds",
+          result: { details: { success: true, returnValue: 2 } },
+        },
+      },
     };
     const app = await mount({ messages: [agentReply("a1", "Let me compute", { seq: 1 }), tool] });
     expect(app.text()).toContain("→ 2");
@@ -141,14 +202,41 @@ describe("TerminalChatApp", () => {
   });
 
   it("shows inline approval cards as display-only, pointing at the overlay key", async () => {
-    const app = await mount({ messages: [{ id: "approval:1", senderId: "ai", content: "", contentType: "approval", approval: { id: "1", status: "requested", question: "Run rm -rf build?" } }] });
+    const app = await mount({
+      messages: [
+        {
+          id: "approval:1",
+          senderId: "ai",
+          content: "",
+          contentType: "approval",
+          approval: { id: "1", status: "requested", question: "Run rm -rf build?" },
+        },
+      ],
+    });
     expect(app.text()).toContain("Approval needed: Run rm -rf build?");
     expect(app.text()).toContain("press Ctrl-Space a");
   });
 
   it("answers an agent's feedback_form as a terminal form", async () => {
     const app = await mount();
-    const answer = app.chat.addForm({ id: "call-1", from: "ai", args: { title: "Which color?", fields: [{ key: "color", type: "select", required: true, options: [{ value: "red", label: "Red" }, { value: "blue", label: "Blue" }] }] } });
+    const answer = app.chat.addForm({
+      id: "call-1",
+      from: "ai",
+      args: {
+        title: "Which color?",
+        fields: [
+          {
+            key: "color",
+            type: "select",
+            required: true,
+            options: [
+              { value: "red", label: "Red" },
+              { value: "blue", label: "Blue" },
+            ],
+          },
+        ],
+      },
+    });
     await settle();
     expect(app.text()).toContain("An agent is asking");
     expect(app.text()).toContain("Which color?");
@@ -160,15 +248,22 @@ describe("TerminalChatApp", () => {
 
   it("guides first-time setup when no model is usable", async () => {
     const app = await mount();
-    (app.chat.runtime.getSnapshot().host!.modelCatalog!.models[0] as { availability: unknown }).availability = { state: "needs-setup", detail: "no-credential" };
-    app.chat.update({ participants: { me: { id: "me", metadata: { name: "Me", type: "panel" } } } as never, channelTitle: null });
+    (
+      app.chat.runtime.getSnapshot().host!.modelCatalog!.models[0] as { availability: unknown }
+    ).availability = { state: "needs-setup", detail: "no-credential" };
+    app.chat.update({
+      participants: { me: { id: "me", metadata: { name: "Me", type: "panel" } } } as never,
+      channelTitle: null,
+    });
     await settle();
     expect(app.text()).toContain("No model is ready yet");
     expect(app.text()).toContain("/connect");
   });
 
   it("stays readable at 80x24 with a long transcript and adapts to resizes", async () => {
-    const messages = Array.from({ length: 200 }, (_, i) => agentReply(`m${i}`, `message number ${i} ${"lorem ipsum ".repeat(i % 7)}`));
+    const messages = Array.from({ length: 200 }, (_, i) =>
+      agentReply(`m${i}`, `message number ${i} ${"lorem ipsum ".repeat(i % 7)}`)
+    );
     const app = await mount({ messages });
     expect(app.text()).toContain("message number 199");
     expect(app.text()).not.toContain("message number 150 ");

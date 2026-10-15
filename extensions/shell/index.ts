@@ -159,7 +159,9 @@ async function contextRevisionDisplay(
   contextId: string,
 ): Promise<string | undefined> {
   try {
-    const status = await ctx.rpc.call("main", mainRpcMethods["vcs.status"], [{ contextId }]);
+    const status = await ctx.rpc.call("main", mainRpcMethods["vcs.status"], [
+      { contextId },
+    ]);
     const short =
       contextId.length > 12 ? `${contextId.slice(0, 8)}…` : contextId;
     const head =
@@ -307,12 +309,14 @@ export async function activate(ctx: ExtensionContext) {
       const handle = await ctx.rpc.call(
         "main",
         mainRpcMethods["runtime.createEntity"],
-        [{
-          kind: "session",
-          execution: { surface: "inert" },
-          source: "terminal",
-          title: parsed?.title ?? "Terminal context",
-        }],
+        [
+          {
+            kind: "session",
+            execution: { surface: "inert" },
+            source: "terminal",
+            title: parsed?.title ?? "Terminal context",
+          },
+        ],
       );
       const entityId = typeof handle?.id === "string" ? handle.id : undefined;
       const contextId =
@@ -337,12 +341,7 @@ export async function activate(ctx: ExtensionContext) {
       const root = await confinementRoot(contextId);
       const cwd = resolveWithin(root, parsed.cwd);
       const environment = cleanEnv(parsed.env);
-      const {
-        env: _env,
-        cwd: _cwd,
-        contextId: _ctxId,
-        ...execReq
-      } = parsed;
+      const { env: _env, cwd: _cwd, contextId: _ctxId, ...execReq } = parsed;
       return runExec({
         intent: parsed.intent,
         cwd,
@@ -412,14 +411,11 @@ export async function activate(ctx: ExtensionContext) {
         throw err;
       }
       await snug.unregister(sessionId);
-      sessions.dispose(session);
+      await sessions.dispose(session);
     },
 
     async restart(sessionId: string, opts?: { cols?: number; rows?: number }) {
-      const session = sessions.requireOwner(
-        sessionId,
-        currentOwner(ctx).key,
-      );
+      const session = sessions.requireOwner(sessionId, currentOwner(ctx).key);
       const snugEnv = await snug.envForSession(cleanEnv({}).effective);
       try {
         const [command, ...args] = session.command.argv;

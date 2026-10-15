@@ -7,6 +7,7 @@ import {
   PtyStreamCursor,
   PtyStreamDecoder,
   PtyStreamProtocolError,
+  readPtyStream,
   type PtyStreamEvent,
 } from "./index.js";
 
@@ -20,6 +21,57 @@ const hello: PtyStreamEvent = {
   cols: 80,
   rows: 24,
 };
+
+describe("readPtyStream ownership", () => {
+  it("joins held cancellation before settling an aborted reader and releases its lock", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const cancel = vi.fn(() => held);
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const owner = new AbortController();
+    const stream = readPtyStream(body, owner.signal);
+    let settled = false;
+    const next = stream.next().then((value) => { settled = true; return value; });
+    const reason = new Error("detached");
+    owner.abort(reason);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cancel).toHaveBeenCalledWith(reason);
+    expect(settled).toBe(false);
+    expect(body.locked).toBe(true);
+    release();
+    expect(await next).toEqual({ done: true, value: undefined });
+    expect(body.locked).toBe(false);
+  });
+
+  it("preserves cancellation failures and releases the reader", async () => {
+    const failure = new Error("source disposal failed");
+    const body = new ReadableStream<Uint8Array>({ cancel: () => Promise.reject(failure) });
+    const owner = new AbortController();
+    const stream = readPtyStream(body, owner.signal);
+    const next = stream.next();
+    owner.abort(new Error("detach"));
+    await expect(next).rejects.toBe(failure);
+    expect(body.locked).toBe(false);
+  });
+
+  it("cancels early iterator return and retains the original source error exactly once", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => controller.enqueue(encodePtyStreamEvent(hello)[0]!),
+      cancel,
+    });
+    const stream = readPtyStream(body);
+    expect((await stream.next()).value).toEqual(hello);
+    await stream.return();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
+    const sourceFailure = new Error("source broke");
+    const errored = new ReadableStream<Uint8Array>({ start: (controller) => controller.error(sourceFailure) });
+    await expect(readPtyStream(errored).next()).rejects.toBe(sourceFailure);
+    expect(errored.locked).toBe(false);
+  });
+});
 
 function concat(frames: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(frames.reduce((n, f) => n + f.byteLength, 0));

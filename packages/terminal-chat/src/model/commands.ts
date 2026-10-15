@@ -21,6 +21,8 @@ export type CommandName =
   | "retry"
   | "export"
   | "attach"
+  | "attachments"
+  | "search"
   | "queue"
   | "help";
 
@@ -32,23 +34,70 @@ export interface CommandSpec {
 }
 
 export const COMMANDS: readonly CommandSpec[] = [
-  { name: "model", args: "[model]", summary: "Switch the agent's model (opens a picker without an argument)" },
-  { name: "thinking", args: "[level]", summary: "Set how much the agent thinks before answering" },
-  { name: "fast", args: "[on|off]", summary: "Toggle fast mode for the agent's model" },
-  { name: "approval", args: "[ask|safe|auto]", summary: "How much the agents may do without asking you" },
-  { name: "respond", args: "[policy]", summary: "When the agent answers: every message, or only when mentioned" },
-  { name: "connect", args: "<provider>", summary: "Connect a model provider account" },
-  { name: "agents", args: "[add|replace|remove]", summary: "See, add, replace or remove agents in this chat" },
+  {
+    name: "model",
+    args: "[model]",
+    summary: "Switch the agent's model (opens a picker without an argument)",
+  },
+  {
+    name: "thinking",
+    args: "[level]",
+    summary: "Set how much the agent thinks before answering",
+  },
+  {
+    name: "fast",
+    args: "[on|off]",
+    summary: "Toggle fast mode for the agent's model",
+  },
+  {
+    name: "approval",
+    args: "[ask|safe|auto]",
+    summary: "How much the agents may do without asking you",
+  },
+  {
+    name: "respond",
+    args: "[policy]",
+    summary: "When the agent answers: every message, or only when mentioned",
+  },
+  {
+    name: "connect",
+    args: "<provider>",
+    summary: "Connect a model provider account",
+  },
+  {
+    name: "agents",
+    args: "[add|replace|remove]",
+    summary: "See, add, replace or remove agents in this chat",
+  },
   { name: "new", summary: "Start a new conversation" },
-  { name: "resume", summary: "Resume another conversation in this workspace context" },
+  {
+    name: "resume",
+    summary: "Find and resume an authorized conversation in this workspace",
+  },
   { name: "fork", summary: "Fork the conversation at its latest message" },
   { name: "forks", summary: "Show the fork tree and switch between forks" },
   { name: "title", args: "<title>", summary: "Rename this conversation" },
-  { name: "missions", args: "[run|pause|resume <name>]", summary: "List and control automations" },
+  {
+    name: "missions",
+    args: "[run|pause|resume <name>]",
+    summary: "List and control automations",
+  },
   { name: "retry", summary: "Retry or resume the agent's last failed turn" },
   { name: "export", summary: "Export this conversation as Markdown" },
-  { name: "attach", summary: "Attach a file from your computer to the next message" },
-  { name: "queue", summary: "Show queued messages: edit, undo or discard them" },
+  { name: "attach", summary: "Attach a workspace file to the next message" },
+  {
+    name: "attachments",
+    summary: "Inspect or remove pending draft attachments",
+  },
+  {
+    name: "search",
+    args: "[query]",
+    summary: "Search the complete conversation and jump to a message",
+  },
+  {
+    name: "queue",
+    summary: "Show queued messages: edit, undo or discard them",
+  },
   { name: "help", summary: "Keys and commands" },
 ];
 
@@ -157,7 +206,8 @@ export function completeCommand(draft: string, data: CompletionData): Completion
   // Match the value (what gets inserted); fall back to labels ("claude" finds a model by name).
   const query = arg.trim();
   const byValue = rankByFuzzy(options, query, (option) => option.value);
-  const matches = byValue.length > 0 ? byValue : rankByFuzzy(options, query, (option) => option.label);
+  const matches =
+    byValue.length > 0 ? byValue : rankByFuzzy(options, query, (option) => option.label);
   return matches.map((option) => ({
     insert: `/${command.name} ${option.value}`,
     label: option.value,
@@ -166,23 +216,42 @@ export function completeCommand(draft: string, data: CompletionData): Completion
   }));
 }
 
-function argumentOptions(name: CommandName, arg: string, data: CompletionData): Array<{ value: string; label: string }> {
+function argumentOptions(
+  name: CommandName,
+  arg: string,
+  data: CompletionData
+): Array<{ value: string; label: string }> {
   switch (name) {
     case "model":
-      return data.models.map((model) => ({ value: model.ref, label: model.detail ? `${model.label} · ${model.detail}` : model.label }));
+      return data.models.map((model) => ({
+        value: model.ref,
+        label: model.detail ? `${model.label} · ${model.detail}` : model.label,
+      }));
     case "connect":
-      return data.providers.map((provider) => ({ value: provider.id, label: provider.label }));
+      return data.providers.map((provider) => ({
+        value: provider.id,
+        label: provider.label,
+      }));
     case "thinking":
-      return data.thinkingLevels.map((level) => ({ value: level, label: `thinking ${level}` }));
+      return data.thinkingLevels.map((level) => ({
+        value: level,
+        label: `thinking ${level}`,
+      }));
     case "fast":
       return [
         { value: "on", label: "Fast mode on" },
         { value: "off", label: "Fast mode off" },
       ];
     case "approval":
-      return APPROVAL_CHOICES.map((choice) => ({ value: choice.word, label: choice.label }));
+      return APPROVAL_CHOICES.map((choice) => ({
+        value: choice.word,
+        label: choice.label,
+      }));
     case "respond":
-      return data.respondPolicies.map((policy) => ({ value: policy, label: respondPolicyLabel(policy) }));
+      return data.respondPolicies.map((policy) => ({
+        value: policy,
+        label: respondPolicyLabel(policy),
+      }));
     case "agents":
       return [
         { value: "add", label: "Add another agent" },
@@ -192,7 +261,10 @@ function argumentOptions(name: CommandName, arg: string, data: CompletionData): 
     case "missions": {
       const [verb] = arg.trimStart().split(/\s+/);
       if (verb && ["run", "pause", "resume"].includes(verb) && arg.includes(" ")) {
-        return data.missions.map((mission) => ({ value: `${verb} ${mission.name}`, label: mission.status }));
+        return data.missions.map((mission) => ({
+          value: `${verb} ${mission.name}`,
+          label: mission.status,
+        }));
       }
       return [
         { value: "run", label: "Run an automation now" },

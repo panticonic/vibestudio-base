@@ -123,7 +123,11 @@ export function messageActions(msg: ChatMessage, selfId: string | null): Message
     if (RETRYABLE_CODES.has(code) || USAGE_LIMIT_CODES.has(code) || msg.diagnostic.recoverable)
       actions.push({ id: "retry", key: "r", label: "retry now" });
     if (msg.diagnostic.resetAt && msg.diagnostic.messageId)
-      actions.push({ id: "schedule-resume", key: "s", label: "resume when the limit resets" });
+      actions.push({
+        id: "schedule-resume",
+        key: "s",
+        label: "resume when the limit resets",
+      });
   }
   if (kind === "lifecycle" && msg.lifecycle?.status === "interrupted")
     actions.push({ id: "retry", key: "r", label: "resume" });
@@ -271,7 +275,14 @@ function messageRow(
     );
   }
   if (msg.error) {
-    lines.push(...indentWrap(`Not delivered: ${msg.error}`, cols, style.red(`  ${symbols.cross} `), "    ").map((l) => style.red(l)));
+    lines.push(
+      ...indentWrap(
+        `Not delivered: ${msg.error}`,
+        cols,
+        style.red(`  ${symbols.cross} `),
+        "    "
+      ).map((l) => style.red(l))
+    );
   }
   return lines;
 }
@@ -283,7 +294,12 @@ function thinkingRow(msg: ChatMessage, cols: number, expanded: boolean): string[
   const head = `${expanded ? symbols.expanded : symbols.collapsed} ${live ? "Thinking" : "Thought"}${live ? symbols.ellipsis : ""}`;
   if (!expanded) {
     const preview = text.split("\n").filter(Boolean).at(-1) ?? "";
-    const summary = live && preview ? ` ${preview}` : lineCount ? ` (${lineCount} line${lineCount === 1 ? "" : "s"})` : "";
+    const summary =
+      live && preview
+        ? ` ${preview}`
+        : lineCount
+          ? ` (${lineCount} line${lineCount === 1 ? "" : "s"})`
+          : "";
     return [style.gray(truncate(`${head}${summary}`, cols))];
   }
   return [
@@ -309,7 +325,11 @@ function toolRow(msg: ChatMessage, cols: number, expanded: boolean): string[] {
   const statusText = executionStatusLabel(payload.execution.status);
   const status = paint(statusText, STATUS_STYLES[statusKey]);
   const chevron = expanded ? symbols.expanded : symbols.collapsed;
-  const nameStyled = paint(displayName, "bold", color === "red" ? "red" : color === "amber" ? "yellow" : undefined);
+  const nameStyled = paint(
+    displayName,
+    "bold",
+    color === "red" ? "red" : color === "amber" ? "yellow" : undefined
+  );
   const headLeft = `${style.gray(chevron)} ${nameStyled} ${style.gray(preview)}`;
   const room = cols - width(status) - 1;
   const header = `${truncate(headLeft, room)}${" ".repeat(Math.max(1, room - width(truncate(headLeft, room)) + 1))}${status}`;
@@ -322,13 +342,21 @@ function toolRow(msg: ChatMessage, cols: number, expanded: boolean): string[] {
   const execution = payload.execution;
   const pad = (text: string) => `  ${text}`;
   if (execution.description) {
-    for (const line of wrap(style.italic(sanitize(execution.description)), cols - 2)) lines.push(pad(line));
+    for (const line of wrap(style.italic(sanitize(execution.description)), cols - 2))
+      lines.push(pad(line));
   }
   if (execution.consoleOutput) {
     lines.push(pad(style.gray("Console")));
-    for (const line of sanitize(execution.consoleOutput).split("\n").slice(-400)) {
+    for (const line of sanitize(execution.consoleOutput).split("\n")) {
       const level = /^\[(DEBUG|INFO|WARN|ERROR)\]/.exec(line)?.[1];
-      const styled = level === "ERROR" ? style.red(line) : level === "WARN" ? style.yellow(line) : level === "DEBUG" ? style.gray(line) : line;
+      const styled =
+        level === "ERROR"
+          ? style.red(line)
+          : level === "WARN"
+            ? style.yellow(line)
+            : level === "DEBUG"
+              ? style.gray(line)
+              : line;
       for (const piece of wrap(styled, cols - 4)) lines.push(pad(`${style.gray("│")} ${piece}`));
     }
   }
@@ -344,15 +372,23 @@ function toolRow(msg: ChatMessage, cols: number, expanded: boolean): string[] {
     lines.push(pad(style.gray(isError ? "Error" : "Result")));
     const text = resultText(execution.result);
     if (text !== null) {
-      for (const line of renderMarkdown(text, cols - 2)) lines.push(pad(isError ? style.red(line) : line));
+      for (const line of renderMarkdown(text, cols - 2))
+        lines.push(pad(isError ? style.red(line) : line));
     } else {
       lines.push(...jsonBlock(execution.result, cols - 2).map(pad));
     }
   }
   for (const [index, image] of (execution.resultImages ?? []).entries()) {
-    lines.push(pad(style.magenta(`[image ${index + 1}: ${image.mimeType}, ${formatBytes(base64ByteLength(image.data))}]`)) + style.gray(" (shown in the desktop app)"));
+    lines.push(
+      pad(
+        style.magenta(
+          `[image ${index + 1}: ${image.mimeType}, ${formatBytes(base64ByteLength(image.data))}]`
+        )
+      ) + style.gray(" (shown in the desktop app)")
+    );
   }
-  if (execution.resultTruncated) lines.push(pad(style.gray("The result was truncated before it reached the chat.")));
+  if (execution.resultTruncated)
+    lines.push(pad(style.gray("The result was truncated before it reached the chat.")));
   return lines;
 }
 
@@ -372,16 +408,27 @@ export function toolSummary(payload: NonNullable<ChatMessage["invocation"]>): st
     if (evalResult.success === false)
       return style.red(firstLine(evalResult.error ?? "failed")) + imageNote;
     const value = evalResult.returnValue;
-    const shown = value === undefined ? (evalResult.console ? firstLine(evalResult.console) : "done") : firstLine(typeof value === "string" ? value : safeJson(value));
+    const shown =
+      value === undefined
+        ? evalResult.console
+          ? firstLine(evalResult.console)
+          : "done"
+        : firstLine(typeof value === "string" ? value : safeJson(value));
     return style.gray(`→ ${shown}`) + imageNote;
   }
-  if (getStatusKey(payload) === "error") return style.red(firstLine(resultText(execution.result) ?? "failed")) + imageNote;
+  if (getStatusKey(payload) === "error")
+    return style.red(firstLine(resultText(execution.result) ?? "failed")) + imageNote;
   const text = resultText(execution.result);
   if (text) return style.gray(`→ ${firstLine(text)}`) + imageNote;
   return imageNote.trim();
 }
 
-function evalDetails(result: unknown): { success?: boolean; console?: string; returnValue?: unknown; error?: string } | null {
+function evalDetails(result: unknown): {
+  success?: boolean;
+  console?: string;
+  returnValue?: unknown;
+  error?: string;
+} | null {
   const record = asRecord(result);
   const details = asRecord(record?.["details"]) ?? record;
   if (!details || typeof details["success"] !== "boolean") return null;
@@ -402,7 +449,9 @@ function resultText(result: unknown): string | null {
   const content = record["content"];
   if (Array.isArray(content)) {
     const text = content
-      .map((block) => (asRecord(block)?.["type"] === "text" ? String(asRecord(block)?.["text"] ?? "") : ""))
+      .map((block) =>
+        asRecord(block)?.["type"] === "text" ? String(asRecord(block)?.["text"] ?? "") : ""
+      )
       .filter(Boolean)
       .join("\n");
     if (text) return sanitize(text);
@@ -417,13 +466,17 @@ function mutationSummary(mutation: FileMutationDetails): string {
   }
   const parts = mutation.operations.map((op) => {
     const { added, removed } = diffCounts(op.diff);
-    const counts = added || removed ? ` ${style.green(`+${added}`)} ${style.red(`−${removed}`)}` : "";
+    const counts =
+      added || removed ? ` ${style.green(`+${added}`)} ${style.red(`−${removed}`)}` : "";
     return `${op.status} ${op.path}${counts}`;
   });
   return parts.join(style.gray(" · "));
 }
 
-function diffCounts(diff: string | undefined): { added: number; removed: number } {
+function diffCounts(diff: string | undefined): {
+  added: number;
+  removed: number;
+} {
   let added = 0;
   let removed = 0;
   for (const line of diff?.split("\n") ?? []) {
@@ -439,21 +492,30 @@ function mutationLines(mutation: FileMutationDetails, cols: number): string[] {
     out.push(`${style.bold(op.path)} ${style.gray(op.status)}`);
     if (op.diff) {
       for (const line of sanitize(op.diff).split("\n")) {
-        const styled = line.startsWith("+") && !line.startsWith("+++")
-          ? style.green(line)
-          : line.startsWith("-") && !line.startsWith("---")
-            ? style.red(line)
-            : line.startsWith("@@")
-              ? style.cyan(line)
-              : style.gray(line);
+        const styled =
+          line.startsWith("+") && !line.startsWith("+++")
+            ? style.green(line)
+            : line.startsWith("-") && !line.startsWith("---")
+              ? style.red(line)
+              : line.startsWith("@@")
+                ? style.cyan(line)
+                : style.gray(line);
         out.push(...wrap(styled, cols));
       }
       if (op.diffTruncated) out.push(style.gray("(diff truncated)"));
     }
   }
   for (const conflict of mutation.conflicts) {
-    out.push(...indentWrap(`${conflict.path}: ${conflict.message}`, cols, style.yellow(`${symbols.warning} `), "  "));
-    if (conflict.recovery?.instruction) out.push(...indentWrap(conflict.recovery.instruction, cols, "  ").map((l) => style.gray(l)));
+    out.push(
+      ...indentWrap(
+        `${conflict.path}: ${conflict.message}`,
+        cols,
+        style.yellow(`${symbols.warning} `),
+        "  "
+      )
+    );
+    if (conflict.recovery?.instruction)
+      out.push(...indentWrap(conflict.recovery.instruction, cols, "  ").map((l) => style.gray(l)));
   }
   return out;
 }
@@ -461,19 +523,34 @@ function mutationLines(mutation: FileMutationDetails, cols: number): string[] {
 function jsonBlock(value: unknown, cols: number): string[] {
   const text = safeJson(value, 2);
   const lines = text.split("\n");
-  const shown = lines.slice(0, 200);
-  const out = highlightLines(shown.join("\n"), "json").flatMap((line) => wrap(line, cols));
-  if (lines.length > shown.length) out.push(style.gray(`… ${lines.length - shown.length} more lines`));
-  return out;
+  return highlightLines(lines.join("\n"), "json").flatMap((line) => wrap(line, cols));
 }
 
 // ── tasks ────────────────────────────────────────────────────────────────────
 
-function taskRow(msg: ChatMessage, cols: number, expanded: boolean, childLines?: readonly string[]): string[] {
+function taskRow(
+  msg: ChatMessage,
+  cols: number,
+  expanded: boolean,
+  childLines?: readonly string[]
+): string[] {
   const task = msg.task!;
   const label = task.subagent?.label || task.title || "Background task";
-  const statusKey = task.execution.isError ? "error" : task.execution.status === "running" ? "pending" : task.execution.status === "error" ? "error" : task.execution.status === "complete" ? "complete" : task.execution.status === "pending" ? "pending" : task.execution.status;
-  const status = paint(executionStatusLabel(task.execution.status), STATUS_STYLES[statusKey as keyof typeof STATUS_STYLES] ?? "gray");
+  const statusKey = task.execution.isError
+    ? "error"
+    : task.execution.status === "running"
+      ? "pending"
+      : task.execution.status === "error"
+        ? "error"
+        : task.execution.status === "complete"
+          ? "complete"
+          : task.execution.status === "pending"
+            ? "pending"
+            : task.execution.status;
+  const status = paint(
+    executionStatusLabel(task.execution.status),
+    STATUS_STYLES[statusKey as keyof typeof STATUS_STYLES] ?? "gray"
+  );
   const kind = task.subagent ? "Subagent" : "Task";
   const head = `${style.gray(expanded ? symbols.expanded : symbols.collapsed)} ${style.bold(kind)} ${label}`;
   const room = cols - width(status) - 1;
@@ -508,36 +585,62 @@ function taskRow(msg: ChatMessage, cols: number, expanded: boolean, childLines?:
 
 function approvalRow(msg: ChatMessage, ctx: RowContext, cols: number): string[] {
   const approval = msg.approval!;
-  const question = approval.question ? sanitize(approval.question) : "An agent asked for permission.";
+  const question = approval.question
+    ? sanitize(approval.question)
+    : "An agent asked for permission.";
   if (approval.status === "requested") {
     return [
-      ...indentWrap(`Approval needed: ${question}`, cols, style.yellow(`${symbols.warning} `), "  ").map((l) => style.yellow(l)),
+      ...indentWrap(
+        `Approval needed: ${question}`,
+        cols,
+        style.yellow(`${symbols.warning} `),
+        "  "
+      ).map((l) => style.yellow(l)),
       style.gray(`  Answer it in the approvals overlay: press ${ctx.approvalsKey}.`),
     ];
   }
   const granted = approval.status === "granted";
   const text = `${granted ? "Approved" : "Denied"}: ${question}${approval.reason ? ` (${sanitize(approval.reason)})` : ""}`;
-  return indentWrap(text, cols, granted ? style.green(`${symbols.check} `) : style.red(`${symbols.cross} `), "  ").map((l) => style.gray(l));
+  return indentWrap(
+    text,
+    cols,
+    granted ? style.green(`${symbols.check} `) : style.red(`${symbols.cross} `),
+    "  "
+  ).map((l) => style.gray(l));
 }
 
 function credentialRow(msg: ChatMessage, cols: number): string[] {
   const request = msg.credentialRequest!;
   const provider = request.providerId;
-  const reason = request.reason ? sanitize(request.reason) : `The agent needs a ${provider} account to continue.`;
+  const reason = request.reason
+    ? sanitize(request.reason)
+    : `The agent needs a ${provider} account to continue.`;
   return [
-    ...indentWrap(`Connect ${provider}: ${reason}`, cols, style.yellow("⚿ "), "  ").map((l) => style.yellow(l)),
-    style.gray(`  Select this row and press c, or type /connect ${provider}. The agent resumes once connected.`),
+    ...indentWrap(`Connect ${provider}: ${reason}`, cols, style.yellow("⚿ "), "  ").map((l) =>
+      style.yellow(l)
+    ),
+    style.gray(
+      `  Select this row and press c, or type /connect ${provider}. The agent resumes once connected.`
+    ),
   ];
 }
 
 function diagnosticRow(msg: ChatMessage, cols: number): string[] {
   const diagnostic = msg.diagnostic!;
-  const tone = diagnostic.severity === "error" ? "red" : diagnostic.severity === "warning" ? "yellow" : "gray";
-  const lines = indentWrap(sanitize(diagnostic.title), cols, paint(`${symbols.warning} `, tone), "  ").map((l) => paint(l, tone, "bold"));
+  const tone =
+    diagnostic.severity === "error" ? "red" : diagnostic.severity === "warning" ? "yellow" : "gray";
+  const lines = indentWrap(
+    sanitize(diagnostic.title),
+    cols,
+    paint(`${symbols.warning} `, tone),
+    "  "
+  ).map((l) => paint(l, tone, "bold"));
   const detail = diagnostic.detail ?? diagnostic.reason;
   if (detail) lines.push(...indentWrap(sanitize(detail), cols, "  ").map((l) => style.gray(l)));
   if (isUsageLimit(msg)) {
-    const reset = diagnostic.resetAt ? ` The limit resets at ${formatTime(diagnostic.resetAt)}.` : "";
+    const reset = diagnostic.resetAt
+      ? ` The limit resets at ${formatTime(diagnostic.resetAt)}.`
+      : "";
     lines.push(
       ...indentWrap(
         `Usage limit reached.${reset} Select this row: r retries now${diagnostic.resetAt && diagnostic.messageId ? ", s resumes automatically when it resets" : ""}; /model switches to another model.`,
@@ -546,7 +649,9 @@ function diagnosticRow(msg: ChatMessage, cols: number): string[] {
       ).map((l) => style.yellow(l))
     );
   } else if (diagnostic.failureCode === "auth_or_credentials") {
-    lines.push(style.gray("  Reconnect the provider with /connect, then select this row and press r."));
+    lines.push(
+      style.gray("  Reconnect the provider with /connect, then select this row and press r.")
+    );
   } else if (diagnostic.failureCode && RETRYABLE_CODES.has(diagnostic.failureCode)) {
     lines.push(style.gray("  Select this row and press r to retry."));
   }
@@ -555,32 +660,62 @@ function diagnosticRow(msg: ChatMessage, cols: number): string[] {
 
 function lifecycleRow(msg: ChatMessage, cols: number): string[] {
   const lifecycle = msg.lifecycle!;
-  const badge = { recovered: "Recovered", interrupted: "Interrupted", failed: "Recovery failed", waiting: "Waiting" }[lifecycle.status] ?? lifecycle.status;
-  const tone = lifecycle.status === "failed" ? "red" : lifecycle.status === "recovered" ? "green" : "yellow";
+  const badge =
+    {
+      recovered: "Recovered",
+      interrupted: "Interrupted",
+      failed: "Recovery failed",
+      waiting: "Waiting",
+    }[lifecycle.status] ?? lifecycle.status;
+  const tone =
+    lifecycle.status === "failed" ? "red" : lifecycle.status === "recovered" ? "green" : "yellow";
   const lines = indentWrap(`${badge}: ${sanitize(lifecycle.title)}`, cols, paint("◆ ", tone), "  ");
   const detail = lifecycle.detail ?? msg.content;
   if (detail) lines.push(...indentWrap(sanitize(detail), cols, "  ").map((l) => style.gray(l)));
-  if (lifecycle.status === "interrupted") lines.push(style.gray("  Select this row and press r to resume."));
+  if (lifecycle.status === "interrupted")
+    lines.push(style.gray("  Select this row and press r to resume."));
   return lines;
 }
 
 function forkRow(msg: ChatMessage, cols: number): string[] {
   if (msg.fork) {
-    return indentWrap(`Forked "${sanitize(msg.fork.label)}"${msg.fork.actor.displayName ? ` by ${msg.fork.actor.displayName}` : ""} from here. /forks lists forks and switches to them.`, cols, style.cyan("⑂ "), "  ").map((l) => style.gray(l));
+    return indentWrap(
+      `Forked "${sanitize(msg.fork.label)}"${msg.fork.actor.displayName ? ` by ${msg.fork.actor.displayName}` : ""} from here. /forks lists forks and switches to them.`,
+      cols,
+      style.cyan("⑂ "),
+      "  "
+    ).map((l) => style.gray(l));
   }
   if (msg.crossChannel) {
-    return indentWrap(`Sent to another conversation: ${sanitize(msg.crossChannel.summary ?? msg.crossChannel.channelId)}`, cols, style.cyan("↗ "), "  ").map((l) => style.gray(l));
+    return indentWrap(
+      `Sent to another conversation: ${sanitize(msg.crossChannel.summary ?? msg.crossChannel.channelId)}`,
+      cols,
+      style.cyan("↗ "),
+      "  "
+    ).map((l) => style.gray(l));
   }
   return noticeRow(msg, cols);
 }
 
 function noticeRow(msg: ChatMessage, cols: number): string[] {
   if (msg.contentType === "inline_ui" || msg.contentType === "custom") {
-    return [style.gray(truncate(`▣ An interactive card is here; open this chat in the desktop app to use it.`, cols))];
+    return [
+      style.gray(
+        truncate(
+          `▣ An interactive card is here; open this chat in the desktop app to use it.`,
+          cols
+        )
+      ),
+    ];
   }
   if (msg.automation) {
     const automation = msg.automation;
-    return indentWrap(`Automation "${sanitize(automation.snapshot.name)}" ${automation.status}${automation.summary ? `: ${sanitize(automation.summary)}` : ""}`, cols, style.cyan("⏲ "), "  ").map((l) => style.gray(l));
+    return indentWrap(
+      `Automation "${sanitize(automation.snapshot.name)}" ${automation.status}${automation.summary ? `: ${sanitize(automation.summary)}` : ""}`,
+      cols,
+      style.cyan("⏲ "),
+      "  "
+    ).map((l) => style.gray(l));
   }
   const text = sanitize(msg.content || msg.contentType || "").trim();
   if (!text) return [];
@@ -590,7 +725,9 @@ function noticeRow(msg: ChatMessage, cols: number): string[] {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function firstLine(text: string): string {

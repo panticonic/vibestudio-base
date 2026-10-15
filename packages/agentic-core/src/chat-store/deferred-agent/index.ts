@@ -12,6 +12,7 @@ export type {
   DeferredAgentSnapshot,
   DeferredAgentState,
   DeferredComposerSend,
+  DeferredQueueStore,
   DeferredPublishOptions,
   DeferredSendOptions,
   FirstAgentSetupRequired,

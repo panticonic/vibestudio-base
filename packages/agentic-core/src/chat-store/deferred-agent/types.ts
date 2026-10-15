@@ -23,12 +23,7 @@ export type PendingDeliveryStatus =
  * guess: model discovery/choice, the host's create call in flight, the created
  * agent not yet in the roster, and the agent present.
  */
-export type LaunchStage =
-  | "preparing-model"
-  | "creating-agent"
-  | "joining"
-  | "ready"
-  | "failed";
+export type LaunchStage = "preparing-model" | "creating-agent" | "joining" | "ready" | "failed";
 
 /** Why "Start agent" could not start the queued message's agent. */
 export interface FirstAgentSetupRequired extends UserFacingError {
@@ -45,12 +40,18 @@ export interface PendingDelivery {
   id: string;
   text: string;
   attachments?: AttachmentInput[];
+  /** Metadata for durably retained attachments not currently borrowed for publication. */
+  attachmentSummaries?: Array<{ name: string; mimeType: string; size: number }>;
   mentions?: string[];
   replyTo?: string;
   metadata?: Record<string, unknown>;
   tier?: MessageTier;
   /** Stable key for idempotent (re)delivery — for a queued message. */
   idempotencyKey?: string;
+  /** Once attempted, the payload is immutable even when its receipt is lost. */
+  publication?: "attempted" | "accepted";
+  /** Non-publishable retained ownership awaiting cleanup. */
+  retirement?: "staging" | "releasing";
   /** Delivery status (always set on published queue items). */
   status?: PendingDeliveryStatus;
   /** Why this item failed (status `failed`). */
@@ -89,7 +90,8 @@ export interface DeferredAgentState {
   retryDelivery: (id?: string) => void;
   /** Remove a held or failed item without sending it (an opening request is
    *  cancelled on the channel). Not possible while it is being delivered. */
-  discardQueued: (id: string) => void;
+  discardQueued: (id: string) => Promise<void>;
+  editQueued: (id: string, text: string) => Promise<void>;
   /** The host found no configured model for the first agent. Its queued first
    *  message must wait for an explicit model/provider choice. */
   modelSelectionRequired: boolean;
@@ -112,11 +114,22 @@ export interface DeferredAgentState {
   /** Messages queued (unsent) until the agent joins; rendered in the pre-send queue. */
   queued: PendingDelivery[];
   /** Drop a queued message before it is delivered. */
-  cancelQueued: (id: string) => void;
+  cancelQueued: (id: string) => Promise<void>;
+}
+
+/** The machine owns this one queue; hosts supply its durable serialization and attachment storage. */
+export interface DeferredQueueStore {
+  load(signal: AbortSignal): Promise<PendingDelivery[]>;
+  put(item: PendingDelivery, signal: AbortSignal): Promise<PendingDelivery | void>;
+  /** Borrow only the active item's publication inputs; load/put may return metadata-only items. */
+  materialize?(item: PendingDelivery, signal: AbortSignal): Promise<PendingDelivery>;
+  remove(id: string, outcome?: "accepted"): Promise<void>;
 }
 
 /** Options a composer send carries (mentions, reply, payload metadata). */
 export interface DeferredSendOptions {
+  /** The submitted draft snapshot, when asynchronous preparation precedes admission. */
+  text?: string;
   mentions?: string[];
   replyTo?: string;
   /** Written into the published message payload (e.g. deliverAfterTurn). */
@@ -146,6 +159,7 @@ export interface DeferredPublishOptions {
  * catalog, defaults, preflight) arrive through the same `setHostInputs`.
  */
 export interface DeferredAgentInputs {
+  queueStore?: DeferredQueueStore;
   participants: Record<string, Participant<ChatParticipantMetadata>>;
   pendingAgents: Map<string, PendingAgent>;
   /** Current composer text (read at send time to capture the queued message). */

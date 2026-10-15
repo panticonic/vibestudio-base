@@ -11,7 +11,10 @@ import {
 } from "./composer.js";
 
 const run = (state: EditorState, ...commands: EditCommand[]) => commands.reduce(applyEdit, state);
-const at = (text: string, cursor = text.length): EditorState => ({ ...editorFor(text), cursor });
+const at = (text: string, cursor = text.length): EditorState => ({
+  ...editorFor(text),
+  cursor,
+});
 
 describe("composer editing", () => {
   it("inserts, deletes and moves by character and word", () => {
@@ -31,8 +34,29 @@ describe("composer editing", () => {
     expect(run(at("a😀", 1), { kind: "right" }).cursor).toBe(3);
   });
 
+  it("moves, deletes and wraps whole combining and joined graphemes", () => {
+    for (const cluster of ["e\u0301", "👩‍💻", "🇩🇪", "👍🏽"]) {
+      const text = `a${cluster}b`;
+      expect(run(at(text, 1), { kind: "right" }).cursor).toBe(1 + cluster.length);
+      expect(run(at(text, 1 + cluster.length), { kind: "left" }).cursor).toBe(1);
+      expect(run(at(text, 1 + cluster.length), { kind: "backspace" }).text).toBe("ab");
+      expect(run(at(text, 1), { kind: "delete" }).text).toBe("ab");
+    }
+    expect(layoutComposer("👩‍💻a", "👩‍💻".length, 4)).toMatchObject({
+      lines: ["👩‍💻a"],
+      cursorRow: 0,
+      cursorColumn: 2,
+    });
+    expect(run(at("界x\nab", 1), { kind: "down", history: [] }).cursor).toBe(5);
+  });
+
   it("edits lines: newline, line start/end, kill line", () => {
-    let s = run(emptyEditor, { kind: "insert", text: "one" }, { kind: "newline" }, { kind: "insert", text: "two" });
+    let s = run(
+      emptyEditor,
+      { kind: "insert", text: "one" },
+      { kind: "newline" },
+      { kind: "insert", text: "two" }
+    );
     expect(s.text).toBe("one\ntwo");
     s = run(s, { kind: "line-start" });
     expect(s.cursor).toBe(4);
@@ -48,7 +72,11 @@ describe("composer editing", () => {
     s = run(s, { kind: "up", history });
     expect(s).toMatchObject({ text: "first\nsecond", cursor: 5 });
     s = run(s, { kind: "up", history });
-    expect(s).toMatchObject({ text: "newest", historyIndex: 0, stash: "first\nsecond" });
+    expect(s).toMatchObject({
+      text: "newest",
+      historyIndex: 0,
+      stash: "first\nsecond",
+    });
     s = run(s, { kind: "up", history }, { kind: "up", history });
     expect(s).toMatchObject({ text: "older", historyIndex: 1 });
     s = run(s, { kind: "down", history }, { kind: "down", history });
@@ -62,8 +90,16 @@ describe("composer editing", () => {
   });
 
   it("soft-wraps by cell width and places the cursor", () => {
-    expect(layoutComposer("abcdef", 6, 4)).toEqual({ lines: ["abc", "def"], cursorRow: 1, cursorColumn: 3 });
-    expect(layoutComposer("ab\ncd", 3, 10)).toEqual({ lines: ["ab", "cd"], cursorRow: 1, cursorColumn: 0 });
+    expect(layoutComposer("abcdef", 6, 4)).toEqual({
+      lines: ["abc", "def"],
+      cursorRow: 1,
+      cursorColumn: 3,
+    });
+    expect(layoutComposer("ab\ncd", 3, 10)).toEqual({
+      lines: ["ab", "cd"],
+      cursorRow: 1,
+      cursorColumn: 0,
+    });
     expect(layoutComposer("界界", 2, 4).cursorColumn).toBe(2);
   });
 

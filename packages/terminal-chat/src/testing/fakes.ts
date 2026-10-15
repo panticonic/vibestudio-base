@@ -4,9 +4,18 @@
  */
 import { EventEmitter } from "node:events";
 import type { ChatMessage } from "@workspace/agentic-core";
-import type { ChatHostSnapshot, ChatSessionSnapshot } from "@workspace/agentic-core/chat-store";
+import type {
+  ChatHostSnapshot,
+  ChatSessionSnapshot,
+  DeferredAgentState,
+} from "@workspace/agentic-core/chat-store";
 import { stripAnsi } from "../model/ansi.js";
-import type { ChatRuntime, ChatRuntimeSnapshot, Notice, PendingForm } from "../runtime/chatRuntime.js";
+import type {
+  ChatRuntime,
+  ChatRuntimeSnapshot,
+  Notice,
+  PendingForm,
+} from "../runtime/chatRuntime.js";
 import type { SignInState } from "../runtime/providerSignIn.js";
 import { ValueStore } from "../runtime/valueStore.js";
 import type { InputSource } from "../ui/hooks.js";
@@ -58,9 +67,24 @@ const HOST: ChatHostSnapshot = {
   channelName: "chat-1",
   availableAgents: [],
   modelCatalog: {
-    providers: [{ id: "openai", label: "OpenAI", baseUrls: [], recommendedModelRef: null, connectable: true }],
+    providers: [
+      {
+        id: "openai",
+        label: "OpenAI",
+        baseUrls: [],
+        recommendedModelRef: null,
+        connectable: true,
+      },
+    ],
     models: [
-      { ref: "openai:gpt-5", id: "gpt-5", name: "GPT-5", provider: "openai", availability: { state: "ready" }, recommended: true } as never,
+      {
+        ref: "openai:gpt-5",
+        id: "gpt-5",
+        name: "GPT-5",
+        provider: "openai",
+        availability: { state: "ready" },
+        recommended: true,
+      } as never,
     ],
   },
   workspaceDefaultModelRef: "openai:gpt-5",
@@ -85,11 +109,23 @@ export function fakeSessionSnapshot(patch: Partial<ChatSessionSnapshot> = {}): C
     channelTitle: "Planning",
     participants: {
       me: { id: "me", metadata: { name: "Me", type: "panel" } },
-      ai: { id: "ai", metadata: { name: "Assistant", type: "agent", handle: "ai-chat", activeModel: "GPT-5", contextUsage: { usagePercent: 12 } } },
+      ai: {
+        id: "ai",
+        metadata: {
+          name: "Assistant",
+          type: "agent",
+          handle: "ai-chat",
+          activeModel: "GPT-5",
+          contextUsage: { usagePercent: 12 },
+        },
+      },
     } as never,
     allParticipants: {
       me: { id: "me", metadata: { name: "Me", type: "panel" } },
-      ai: { id: "ai", metadata: { name: "Assistant", type: "agent", handle: "ai-chat" } },
+      ai: {
+        id: "ai",
+        metadata: { name: "Assistant", type: "agent", handle: "ai-chat" },
+      },
     } as never,
     messages: [],
     view: {} as never,
@@ -116,9 +152,17 @@ export function fakeSessionSnapshot(patch: Partial<ChatSessionSnapshot> = {}): C
 }
 
 export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
-  const calls: FakeCalls = { submitted: [], interrupted: [], flushed: 0, agentCalls: [], loadEarlier: 0 };
+  const calls: FakeCalls = {
+    submitted: [],
+    interrupted: [],
+    flushed: 0,
+    agentCalls: [],
+    loadEarlier: 0,
+  };
   const sessionStore = new ValueStore<ChatSessionSnapshot>(fakeSessionSnapshot(initial));
-  const deferredStore = new ValueStore({ deferredAgent: undefined });
+  const deferredStore = new ValueStore<{ deferredAgent: DeferredAgentState | undefined }>({
+    deferredAgent: undefined,
+  });
   const session = {
     getSnapshot: sessionStore.getSnapshot,
     subscribe: sessionStore.subscribe,
@@ -130,8 +174,18 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
     submit: async (_attachments: unknown, options: unknown) => {
       const snapshot = sessionStore.getSnapshot();
       calls.submitted.push({ text: snapshot.input, options });
-      const sent: ChatMessage = { id: `sent-${calls.submitted.length}`, senderId: "me", content: snapshot.input, seq: 100 + calls.submitted.length, receipts: { byParticipant: { ai: "read" }, aggregate: "read" } };
-      sessionStore.set({ ...snapshot, input: "", messages: [...snapshot.messages, sent] });
+      const sent: ChatMessage = {
+        id: `sent-${calls.submitted.length}`,
+        senderId: "me",
+        content: snapshot.input,
+        seq: 100 + calls.submitted.length,
+        receipts: { byParticipant: { ai: "read" }, aggregate: "read" },
+      };
+      sessionStore.set({
+        ...snapshot,
+        input: "",
+        messages: [...snapshot.messages, sent],
+      });
     },
     interruptAgent: async (id: string) => {
       calls.interrupted.push(id);
@@ -153,29 +207,69 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
     notices: [],
     connection: "connected",
     generation: 1,
+    composer: { revision: 0, text: "", attachments: [] },
   });
   const signIn = new ValueStore<SignInState>({ phase: "idle" });
   let noticeId = 0;
   const runtime = {
     getSnapshot: runtimeStore.getSnapshot,
     subscribe: runtimeStore.subscribe,
-    signIn: Object.assign(signIn, { dismiss() {}, cancel() {}, paste: async () => {}, connect: async () => true }),
+    signIn: Object.assign(signIn, {
+      dismiss() {},
+      cancel() {},
+      paste: async () => {},
+      connect: async () => true,
+    }),
     controller: null,
     diagnostics: new ValueStore([]),
-    files: { read: async () => ({ name: "a.txt", mimeType: "text/plain", bytes: new Uint8Array(1) }), writeExport: async (name: string) => `/ws/chat-exports/${name}` },
+    files: {
+      read: async () => ({
+        name: "a.txt",
+        mimeType: "text/plain",
+        bytes: new Uint8Array(1),
+      }),
+      writeExport: async (name: string) => `/ws/chat-exports/${name}`,
+    },
     rpc: {},
+    operationSignal: new AbortController().signal,
+    actionSession: session,
+    assertConversationActive() {},
+    runInConversation: async <T>(work: () => T | Promise<T>): Promise<T> => work(),
+    bindConversationCallback:
+      <Args extends unknown[]>(callback: (...args: Args) => void | Promise<void>) =>
+      async (...args: Args) =>
+        callback(...args),
+    readHistory: async () => sessionStore.getSnapshot().messages,
+    exportConversation: async () => "chat-exports/conversation.md",
+    submit: async (text: string, options: unknown) => {
+      session.setInput(text);
+      await session.submit(undefined, options);
+    },
+    attachFile: async () => {},
+    removeAttachment: async () => {},
     notify(notice: Omit<Notice, "id">) {
-      runtimeStore.set({ ...runtimeStore.getSnapshot(), notices: [...runtimeStore.getSnapshot().notices, { ...notice, id: ++noticeId }] });
+      runtimeStore.set({
+        ...runtimeStore.getSnapshot(),
+        notices: [...runtimeStore.getSnapshot().notices, { ...notice, id: ++noticeId }],
+      });
     },
     fail(title: string, error: unknown) {
       this.notify({ tone: "error", title, message: String(error) });
     },
     dismissNotice() {
-      runtimeStore.set({ ...runtimeStore.getSnapshot(), notices: runtimeStore.getSnapshot().notices.slice(0, -1) });
+      runtimeStore.set({
+        ...runtimeStore.getSnapshot(),
+        notices: runtimeStore.getSnapshot().notices.slice(0, -1),
+      });
     },
     async callAgent(id: string, method: string, args: unknown) {
       calls.agentCalls.push({ id, method, args });
-      if (method === "getAgentSettings") return { model: "openai:gpt-5", thinkingLevel: "medium", fastMode: false };
+      if (method === "getAgentSettings")
+        return {
+          model: "openai:gpt-5",
+          thinkingLevel: "medium",
+          fastMode: false,
+        };
       return {};
     },
     async listConversations() {
@@ -183,6 +277,8 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
     },
   };
   return {
+    updateDeferred: (deferredAgent: DeferredAgentState | undefined) =>
+      deferredStore.set({ deferredAgent }),
     runtime: runtime as unknown as ChatRuntime,
     calls,
     update(patch: Partial<ChatSessionSnapshot>) {
@@ -194,11 +290,17 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
         const pending: PendingForm = {
           ...form,
           answer: (result) => {
-            runtimeStore.set({ ...runtimeStore.getSnapshot(), forms: runtimeStore.getSnapshot().forms.filter((f) => f !== pending) });
+            runtimeStore.set({
+              ...runtimeStore.getSnapshot(),
+              forms: runtimeStore.getSnapshot().forms.filter((f) => f !== pending),
+            });
             resolve(result);
           },
         };
-        runtimeStore.set({ ...runtimeStore.getSnapshot(), forms: [...runtimeStore.getSnapshot().forms, pending] });
+        runtimeStore.set({
+          ...runtimeStore.getSnapshot(),
+          forms: [...runtimeStore.getSnapshot().forms, pending],
+        });
       });
     },
     notices: () => runtimeStore.getSnapshot().notices,

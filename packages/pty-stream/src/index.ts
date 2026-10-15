@@ -234,7 +234,27 @@ export async function* readPtyStream(
 ): AsyncGenerator<PtyStreamEvent, void, undefined> {
   const reader = body.getReader();
   const decoder = new PtyStreamDecoder();
-  const cancel = () => void reader.cancel(signal?.reason).catch(() => {});
+  let ended = false;
+  let failed = false;
+  let failure: unknown;
+  let sourceFailed = false;
+  let sourceFailure: unknown;
+  let cancellation: Promise<void> | undefined;
+  let cancellationFailed = false;
+  let cancellationFailure: unknown;
+  // reader.cancel on an already errored source rejects with that same source
+  // failure. It is not an independent retirement failure.
+  void reader.closed.catch((error: unknown) => {
+    sourceFailed = true;
+    sourceFailure = error;
+  });
+  const cancel = () => {
+    cancellation ??= reader.cancel(signal?.reason).catch((error: unknown) => {
+      if (sourceFailed && error === sourceFailure) return;
+      cancellationFailed = true;
+      cancellationFailure = error;
+    });
+  };
   signal?.addEventListener("abort", cancel, { once: true });
   try {
     if (signal?.aborted) {
@@ -243,18 +263,30 @@ export async function* readPtyStream(
     }
     for (;;) {
       const { value, done } = await reader.read();
-      if (done || signal?.aborted) return;
-      for (const event of decoder.push(value)) yield event;
+      if (signal?.aborted) return;
+      if (done) {
+        ended = true;
+        decoder.end();
+        return;
+      }
+      for (const event of decoder.push(value)) {
+        if (signal?.aborted) return;
+        yield event;
+      }
+    }
+  } catch (error) {
+    if (!signal?.aborted || error !== signal.reason) {
+      failed = true;
+      failure = error;
     }
   } finally {
     signal?.removeEventListener("abort", cancel);
-    if (!signal?.aborted) {
-      try {
-        decoder.end();
-      } finally {
-        reader.releaseLock();
-      }
-    }
+    if (!ended) cancel();
+    await cancellation;
+    reader.releaseLock();
+    const failures = [...(failed ? [failure] : []), ...(cancellationFailed ? [cancellationFailure] : [])];
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, "Terminal stream and retirement failed", { cause: failures[0] });
   }
 }
 

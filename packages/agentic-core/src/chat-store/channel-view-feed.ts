@@ -45,8 +45,6 @@ import {
 import type { ActionBarPayload, ChatMessage, MessageTypeDefinition } from "../derived-types.js";
 import { StateCell, errorMessage, type ReadableStore } from "./store.js";
 
-/** Maximum messages in the visible window. New messages push the oldest out. */
-export const TRANSCRIPT_MAX_VISIBLE = 2000;
 /** Envelopes requested per history page. */
 export const TRANSCRIPT_PAGE_SIZE = 500;
 /** Streaming deltas are projected at most once per this window (~30 Hz). */
@@ -55,11 +53,11 @@ export const DELTA_COALESCE_MS = 33;
 export interface ChannelViewFeedSnapshot {
   /** The reduced channel view (turns, invocations, forks, credential requests, …). */
   view: ChannelViewState;
-  /** Visible transcript window derived from `view`. */
+  /** The complete retained transcript projection; surfaces virtualize its viewport. */
   messages: ChatMessage[];
   actionBar: ActionBarPayload | null;
   messageTypes: MessageTypeDefinition[];
-  /** Earlier durable history exists (server continuation or a trimmed window). */
+  /** Earlier durable history exists according to the server's continuation cursor. */
   hasMoreHistory: boolean;
   loadingMore: boolean;
   /** An agent turn is open or waiting (blocked work that can be steered). */
@@ -139,17 +137,17 @@ interface ReplayLogEvent {
 interface Generation {
   readonly lifetime: AbortController;
   client: ChannelFeedClient | null;
+  paging: Promise<void> | null;
+  failure: unknown;
 }
 
 export interface ChannelViewFeedOptions {
   /** Channel id stamped on reduced envelopes until a client is attached. */
   channelId?: string;
-  maxVisible?: number;
 }
 
 export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
   readonly #cell = new StateCell<ChannelViewFeedSnapshot>(initialSnapshot());
-  readonly #maxVisible: number;
   #channelId: string;
   #generation: Generation;
   /** Latest reduced view. The snapshot's `view` advances with each projection. */
@@ -165,8 +163,12 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
 
   constructor(options: ChannelViewFeedOptions = {}) {
     this.#channelId = options.channelId ?? "";
-    this.#maxVisible = options.maxVisible ?? TRANSCRIPT_MAX_VISIBLE;
-    this.#generation = { lifetime: new AbortController(), client: null };
+    this.#generation = {
+      lifetime: new AbortController(),
+      client: null,
+      paging: null,
+      failure: null,
+    };
   }
 
   readonly getSnapshot = (): ChannelViewFeedSnapshot => this.#cell.getSnapshot();
@@ -213,7 +215,11 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     this.attach(client);
     const generation = this.#generation;
     const signal = generation.lifetime.signal;
-    const stream = client.events({ includeReplay: true, includeSignals: true, signal });
+    const stream = client.events({
+      includeReplay: true,
+      includeSignals: true,
+      signal,
+    });
     void (async () => {
       try {
         for await (const event of stream) {
@@ -223,13 +229,18 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
         if (!signal.aborted && this.#generation === generation) {
           this.#cell.transaction(() => {
             this.#flushReplay();
-            if (!this.getSnapshot().replaySettled)
-              this.#cell.update({ error: "Channel event stream ended before replay delivery completed" });
+            if (!this.getSnapshot().replaySettled) {
+              generation.failure = new Error(
+                "Channel event stream ended before replay delivery completed"
+              );
+              this.#cell.update({ error: errorMessage(generation.failure) });
+            }
           });
         }
       } catch (error) {
         if (!signal.aborted && this.#generation === generation) {
           console.error("[ChannelViewFeed]", error);
+          generation.failure = error;
           this.#cell.update({ error: errorMessage(error) });
         }
       }
@@ -237,9 +248,9 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     signal.addEventListener(
       "abort",
       () => {
-        void stream.return?.(undefined)?.catch((error: unknown) =>
-          console.error("[ChannelViewFeed] retirement", error)
-        );
+        void stream
+          .return?.(undefined)
+          ?.catch((error: unknown) => console.error("[ChannelViewFeed] retirement", error));
       },
       { once: true }
     );
@@ -256,7 +267,10 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
         this.#oldestSeq = Math.min(this.#oldestSeq ?? Infinity, event.firstEnvelopeSeq);
       this.#cell.transaction(() => {
         this.#flushReplay();
-        this.#cell.update({ hasMoreHistory: event.hasMoreBefore, replaySettled: true });
+        this.#cell.update({
+          hasMoreHistory: event.hasMoreBefore,
+          replaySettled: true,
+        });
       });
       return;
     }
@@ -316,24 +330,58 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
   }
 
   /** Page backward through durable history before the oldest seen envelope. */
-  async loadEarlierMessages(pageSize = TRANSCRIPT_PAGE_SIZE): Promise<void> {
+  loadEarlierMessages(pageSize = TRANSCRIPT_PAGE_SIZE): Promise<void> {
+    const generation = this.#generation;
+    if (generation.paging) return generation.paging;
+    const operation = this.#loadEarlierMessages(pageSize);
+    generation.paging = operation;
+    void operation.then(
+      () => {
+        if (generation.paging === operation) generation.paging = null;
+      },
+      () => {
+        if (generation.paging === operation) generation.paging = null;
+      }
+    );
+    return operation;
+  }
+
+  async #loadEarlierMessages(pageSize: number): Promise<void> {
     const generation = this.#generation;
     const client = generation.client;
-    if (!client || generation.lifetime.signal.aborted || this.getSnapshot().loadingMore) return;
+    if (generation.lifetime.signal.aborted || this.getSnapshot().loadingMore) return;
+    if (!client) {
+      if (this.getSnapshot().replaySettled && this.getSnapshot().hasMoreHistory) {
+        generation.failure = new Error("The history projection has no attached paging client");
+        this.#cell.update({ error: errorMessage(generation.failure) });
+      }
+      return;
+    }
     const anchor = this.#oldestSeq;
     // Ready metadata can arrive before the replay consumer establishes its
     // cursor. An early request must not erase the server's continuation flag.
-    if (anchor === null) return;
+    if (anchor === null) {
+      if (this.getSnapshot().replaySettled && this.getSnapshot().hasMoreHistory) {
+        generation.failure = new Error(
+          "Completed replay advertises older history without a durable cursor"
+        );
+        this.#cell.update({ error: errorMessage(generation.failure) });
+      }
+      return;
+    }
     if (anchor <= 1) {
       this.#cell.update({ hasMoreHistory: false });
       return;
     }
     this.#cell.update({ loadingMore: true, error: null });
+    generation.failure = null;
     try {
       const result = await client.getReplayBefore(anchor, pageSize);
       if (generation.lifetime.signal.aborted) return;
       this.#cell.transaction(() => {
-        this.#cell.update({ hasMoreHistory: Boolean(result.ready.hasMoreBefore) });
+        this.#cell.update({
+          hasMoreHistory: Boolean(result.ready.hasMoreBefore),
+        });
         const before = this.#oldestSeq;
         for (const raw of result.logEvents as ReplayLogEvent[]) {
           // Advance the cursor for EVERY event in the page: a page of only
@@ -346,15 +394,49 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
         // A page that claims more history must move the anchor, or the next
         // request would ask for the same page forever.
         if (result.ready.hasMoreBefore && (this.#oldestSeq ?? Infinity) >= (before ?? Infinity)) {
-          this.#cell.update({ error: "Channel history page did not advance its cursor" });
+          generation.failure = new Error("Channel history page did not advance its cursor");
+          this.#cell.update({ error: errorMessage(generation.failure) });
         }
       });
     } catch (error) {
       console.error("[ChannelViewFeed] loadEarlierMessages failed:", error);
+      generation.failure = error;
       if (!generation.lifetime.signal.aborted) this.#cell.update({ error: errorMessage(error) });
     } finally {
       if (this.#generation === generation) this.#cell.update({ loadingMore: false });
     }
+  }
+
+  /** Read all durable history through the existing generation-owned pager and projection. */
+  async readCompleteHistory(signal?: AbortSignal): Promise<readonly ChatMessage[]> {
+    const generation = this.#generation;
+    const lifetime = signal
+      ? AbortSignal.any([signal, generation.lifetime.signal])
+      : generation.lifetime.signal;
+    await new Promise<void>((resolve, reject) => {
+      let off = () => {};
+      const settle = () => {
+        const snapshot = this.getSnapshot();
+        if (lifetime.aborted || snapshot.error || snapshot.replaySettled) {
+          off();
+          lifetime.removeEventListener("abort", settle);
+          if (lifetime.aborted) reject(lifetime.reason);
+          else if (snapshot.error) reject(generation.failure ?? new Error(snapshot.error));
+          else resolve();
+        }
+      };
+      off = this.subscribe(settle);
+      lifetime.addEventListener("abort", settle, { once: true });
+      settle();
+    });
+    while (this.getSnapshot().hasMoreHistory || generation.paging) {
+      lifetime.throwIfAborted();
+      await this.loadEarlierMessages();
+      lifetime.throwIfAborted();
+      const error = this.getSnapshot().error;
+      if (error) throw generation.failure ?? new Error(error);
+    }
+    return this.getSnapshot().messages;
   }
 
   /**
@@ -368,10 +450,13 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     if (!client || generation.lifetime.signal.aborted || pubsubId === undefined) return;
     const cursor = this.#newestSeq ?? 0;
     if (cursor >= pubsubId) return;
-    for await (const page of iterateChannelReplayAfterPages((request) => client.getReplayAfter(request), {
-      after: cursor,
-      throughSeq: pubsubId,
-    })) {
+    for await (const page of iterateChannelReplayAfterPages(
+      (request) => client.getReplayAfter(request),
+      {
+        after: cursor,
+        throughSeq: pubsubId,
+      }
+    )) {
       if (generation.lifetime.signal.aborted) return;
       for (const raw of page.logEvents as ReplayLogEvent[]) {
         this.#view = this.#reduceReplayed(this.#view, raw);
@@ -396,7 +481,12 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
   #retireGeneration(reason: Error): void {
     const previous = this.#generation;
     previous.lifetime.abort(reason);
-    this.#generation = { lifetime: new AbortController(), client: null };
+    this.#generation = {
+      lifetime: new AbortController(),
+      client: null,
+      paging: null,
+      failure: null,
+    };
     if (this.#replayTimer !== null) clearTimeout(this.#replayTimer);
     if (this.#deltaTimer !== null) clearTimeout(this.#deltaTimer);
     this.#replayTimer = null;
@@ -503,13 +593,11 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
    * Derive the visible window. `head` keeps the oldest messages (history was
    * just prepended); `tail` keeps the newest.
    */
-  #project(keep: "head" | "tail"): void {
+  #project(_keep: "head" | "tail"): void {
     const snapshot = this.#cell.getSnapshot();
     const view = this.#view;
     const projected = chatMessagesFromChannelView(view);
-    const visible =
-      keep === "head" ? projected.slice(0, this.#maxVisible) : projected.slice(-this.#maxVisible);
-    // Only the rendered window owns ChatMessage objects and attachment copies.
+    const visible = projected;
     const previousById = new Map(snapshot.messages.map((message) => [message.id, message]));
     let changed = visible.length !== snapshot.messages.length;
     const messages = visible.map((message, index) => {
@@ -532,7 +620,6 @@ export class ChannelViewFeed implements ReadableStore<ChannelViewFeedSnapshot> {
     this.#cell.update({
       view,
       ...(changed ? { messages } : {}),
-      ...(projected.length > this.#maxVisible ? { hasMoreHistory: true } : {}),
       hasOpenTurn,
       actionBar: sameActionBar(snapshot.actionBar, actionBarPayloadFromChannelView(view)),
       ...(messageTypesChanged ? { messageTypes: nextMessageTypes } : {}),
@@ -627,7 +714,10 @@ export function sameChatMessage(a: ChatMessage, b: ChatMessage): boolean {
     JSON.stringify(attachmentSignatures(b.attachments))
   )
     return false;
-  if (a.invocation !== b.invocation && JSON.stringify(a.invocation) !== JSON.stringify(b.invocation))
+  if (
+    a.invocation !== b.invocation &&
+    JSON.stringify(a.invocation) !== JSON.stringify(b.invocation)
+  )
     return false;
   if (a.approval !== b.approval && JSON.stringify(a.approval) !== JSON.stringify(b.approval))
     return false;

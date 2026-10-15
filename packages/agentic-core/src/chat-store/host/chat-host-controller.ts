@@ -154,7 +154,11 @@ export function chatHostActionData(
   snapshot: ChatHostSnapshot
 ): Pick<
   AgenticChatActions,
-  "availableAgents" | "modelCatalog" | "defaultModelRef" | "defaultAgentConfig" | "firstAgentModelPreflight"
+  | "availableAgents"
+  | "modelCatalog"
+  | "defaultModelRef"
+  | "defaultAgentConfig"
+  | "firstAgentModelPreflight"
 > {
   return {
     availableAgents: snapshot.availableAgents,
@@ -183,7 +187,8 @@ function effectiveDefaultAgentConfig(
     typeof globalConfig["thinkingLevel"] === "string"
       ? (globalConfig["thinkingLevel"] as DefaultAgentConfig["thinkingLevel"])
       : undefined;
-  const fastMode = typeof globalConfig["fastMode"] === "boolean" ? globalConfig["fastMode"] : undefined;
+  const fastMode =
+    typeof globalConfig["fastMode"] === "boolean" ? globalConfig["fastMode"] : undefined;
   const approvalLevel =
     globalConfig["approvalLevel"] === 0 ||
     globalConfig["approvalLevel"] === 1 ||
@@ -237,6 +242,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   /** A review change may have unblocked the connection; retry it after settings. */
   #approvalNeedsConnectionRetry = false;
   #closeModelSettingsConnection: (() => Promise<void>) | null = null;
+  #shutdown: Promise<void> | null = null;
   #localModelRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   // --- agent catalog ---
@@ -265,7 +271,10 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     const persisted = ports.state.get().channelName;
     this.#persistedChannelName = persisted;
     this.#cell = new StateCell(initialSnapshot(persisted ?? null));
-    this.#retain = new RetainCount({ start: () => this.#start(), dispose: () => this.#dispose() });
+    this.#retain = new RetainCount({
+      start: () => this.#start(),
+      dispose: () => this.#dispose(),
+    });
     // A recovery failure is snapshot state (`recovery.error`) that hosts render
     // with its Retry; it is deliberately not also sent through `notify`.
     this.#recovery = new AgentRecoveryRunner((recovery) => this.#cell.update({ recovery }));
@@ -302,6 +311,11 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     this.#retain.disposeNow();
   }
 
+  async close(): Promise<void> {
+    this.dispose();
+    await this.#shutdown;
+  }
+
   // ===========================================================================
   // Lifecycle
   // ===========================================================================
@@ -323,7 +337,10 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
             this.#discoverAgents();
             this.#recovery.trigger();
           }),
-        failure: (error) => this.#cell.update({ modelSettingsError: modelSettingsFailure(error) }),
+        failure: (error) =>
+          this.#cell.update({
+            modelSettingsError: modelSettingsFailure(error),
+          }),
       });
     }
     if (ports.onWorkspaceEvent) {
@@ -403,12 +420,18 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     this.#provisionalIntentRevision += 1;
     const lifecycle = this.#provisional;
     this.#provisional = null;
-    void lifecycle?.dispose().catch((error) => {
-      console.warn("[ChatHost] Failed to dispose provisional agent:", error);
-    });
     const close = this.#closeModelSettingsConnection;
     this.#closeModelSettingsConnection = null;
-    void close?.().catch((error) => console.error("[ChatHost] Model discovery closure failed:", error));
+    this.#shutdown = Promise.allSettled([
+      lifecycle?.dispose() ?? Promise.resolve(),
+      close?.() ?? Promise.resolve(),
+    ]).then((results) => {
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : []
+      );
+      if (errors.length) throw new AggregateError(errors, "Chat host cleanup failed");
+    });
+    void this.#shutdown.catch((error) => console.error("[ChatHost] Cleanup failed:", error));
   }
 
   // ===========================================================================
@@ -428,10 +451,15 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
       this.#persistedChannelName = state.channelName;
       this.#ensureChannel();
     }
-    this.#cell.update({ channelName: state.channelName ?? this.#bootstrapChannel });
+    this.#cell.update({
+      channelName: state.channelName ?? this.#bootstrapChannel,
+    });
     // Effective default agent config.
     const workspaceDefault = this.getSnapshot().workspaceDefaultAgentConfig;
-    const effectiveKey = canonicalJson({ agentConfig: state.agentConfig ?? {}, workspaceDefault });
+    const effectiveKey = canonicalJson({
+      agentConfig: state.agentConfig ?? {},
+      workspaceDefault,
+    });
     if (effectiveKey !== this.#effectiveConfigKey) {
       this.#effectiveConfigKey = effectiveKey;
       this.#cell.update({
@@ -488,7 +516,9 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
         const timer = setTimeout(() => {
           if (!generation.signal.aborted) this.#ensureChannel();
         }, BOOTSTRAP_REVIEW_REPERSIST_MS);
-        generation.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+        generation.signal.addEventListener("abort", () => clearTimeout(timer), {
+          once: true,
+        });
         return;
       }
       console.warn("[ChatHost] Failed to persist the bootstrap channel:", errorMessage(error));
@@ -510,7 +540,9 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
 
   #applyModelSettings(settings: ModelSettingsSnapshot): void {
     this.#modelSettings = settings;
-    const defaultEntry = settings.catalog.models.find((model) => model.ref === settings.defaultModel);
+    const defaultEntry = settings.catalog.models.find(
+      (model) => model.ref === settings.defaultModel
+    );
     const defaultIsUsable = isModelUsable(defaultEntry);
     this.#cell.transaction(() => {
       // An unusable fallback needs setup. An installed local fallback is still
@@ -522,7 +554,8 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
         workspaceDefaultAgentConfig: settings.defaultAgentConfig,
         firstAgentModelPreflight:
           !defaultIsUsable ||
-          (settings.defaultModelSource === "fallback" && defaultEntry?.provider === LOCAL_PROVIDER_ID)
+          (settings.defaultModelSource === "fallback" &&
+            defaultEntry?.provider === LOCAL_PROVIDER_ID)
             ? "selection-required"
             : "ready",
       });
@@ -544,7 +577,10 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     if (this.#modelSettingsRequest) return this.#modelSettingsRequest.promise;
     if (!refresh && this.#modelSettings) return Promise.resolve(this.#modelSettings);
     this.#modelSettings = null;
-    this.#cell.update({ firstAgentModelPreflight: "checking", modelSettingsError: null });
+    this.#cell.update({
+      firstAgentModelPreflight: "checking",
+      modelSettingsError: null,
+    });
     const request = ownModelSettingsRequest(async (signal) => {
       const settings = await this.#modelSettingsClient().callWithOptions("getSettings", [], {
         signal,
@@ -645,7 +681,10 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
           }
         }
         this.#cell.transaction(() => {
-          this.#cell.update({ availableAgents: agents, agentCatalogError: null });
+          this.#cell.update({
+            availableAgents: agents,
+            agentCatalogError: null,
+          });
           this.#prepareInitialAgentRuntimeIfReady();
         });
         console.info("[ChatHost] agent source catalog read", {
@@ -744,8 +783,10 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
    * clones with their own keys, and recovering the source's keys into the
    * fork's context collides with the originals.
    */
-  async rosterAgents(channelId: string): Promise<InstalledAgentRecord[]> {
-    const signal = new AbortController().signal;
+  async rosterAgents(
+    channelId: string,
+    signal: AbortSignal = this.#lifetime.signal
+  ): Promise<InstalledAgentRecord[]> {
     const service = await resolveDurableObjectService(
       this.#ports.rpc,
       CHANNEL_SERVICE_PROTOCOL,
@@ -785,12 +826,18 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
    * on that channel's own roster. Every surface that switches conversation
    * applies this patch instead of carrying its current state over.
    */
-  async conversationState(channelId: string): Promise<{
+  async conversationState(
+    channelId: string,
+    signal: AbortSignal = this.#lifetime.signal
+  ): Promise<{
     channelName: string;
     installedAgents: InstalledAgentRecord[] | null;
   }> {
-    const agents = await this.rosterAgents(channelId);
-    return { channelName: channelId, installedAgents: agents.length > 0 ? agents : null };
+    const agents = await this.rosterAgents(channelId, signal);
+    return {
+      channelName: channelId,
+      installedAgents: agents.length > 0 ? agents : null,
+    };
   }
 
   async #channelDurableObjects(channelId: string, signal: AbortSignal): Promise<ChannelDORef[]> {
@@ -874,10 +921,7 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   }
 
   /** Launch configuration is one coherent read of the latest durable state. */
-  #buildSubscribeConfig(
-    handle: string,
-    config: AgentSubscriptionConfig | undefined
-  ) {
+  #buildSubscribeConfig(handle: string, config: AgentSubscriptionConfig | undefined) {
     const current = this.#ports.state.get();
     return buildAgentSubscriptionConfig({
       handle,
@@ -901,7 +945,8 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
         )
       : undefined;
     const pinned = this.#ports.state.get();
-    const source = matched?.id ?? (!agentId ? pinned.agentSource : undefined) ?? DEFAULT_AGENT_WORKER_SOURCE;
+    const source =
+      matched?.id ?? (!agentId ? pinned.agentSource : undefined) ?? DEFAULT_AGENT_WORKER_SOURCE;
     const className =
       matched?.className ?? (!agentId ? pinned.agentClass : undefined) ?? DEFAULT_AGENT_CLASS_NAME;
     const handleFromClass =
@@ -1054,7 +1099,11 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
   }
 
   /** Persist an agent's model choice so recovery recreates it on that model. */
-  async persistAgentModel(_channelName: string, participantId: string, model: string): Promise<void> {
+  async persistAgentModel(
+    _channelName: string,
+    participantId: string,
+    model: string
+  ): Promise<void> {
     const target = parseDoTargetId(participantId);
     if (!target) throw new Error(`Cannot resolve agent participant: ${participantId}`);
     const existing = this.#ports.state.get().installedAgents ?? [];
@@ -1119,9 +1168,15 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
     const model = this.getSnapshot().modelCatalog?.models.find((entry) => entry.ref === modelRef);
     if (!model || !model.connectable)
       throw new Error("This model requires provider configuration before connecting.");
-    const request = toCredentialConnectRequest(model.provider, { method, browser, configuration });
+    const request = toCredentialConnectRequest(model.provider, {
+      method,
+      browser,
+      configuration,
+    });
     if (!request) throw new Error("This sign-in method is unavailable. Choose another method.");
-    await this.#ports.rpc.call("main", mainRpcMethods["credentials.connect"], [request], { signal });
+    await this.#ports.rpc.call("main", mainRpcMethods["credentials.connect"], [request], {
+      signal,
+    });
     await this.loadModelSettings(true);
   }
 
@@ -1178,7 +1233,10 @@ export class ChatHostController implements ReadableStore<ChatHostSnapshot> {
       const prior = current.forkCursors?.[forkChannelId] ?? 0;
       if (prior >= headSeq) return;
       await this.#ports.state.patch({
-        forkCursors: { ...(current.forkCursors ?? {}), [forkChannelId]: headSeq },
+        forkCursors: {
+          ...(current.forkCursors ?? {}),
+          [forkChannelId]: headSeq,
+        },
       });
     });
     this.#forkCursorWrites = write.then(

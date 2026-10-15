@@ -47,7 +47,7 @@ import type { InvocationCardPayload } from "../invocation-card-payload.js";
 import type { ChannelViewState } from "@workspace/agentic-protocol";
 import { ChannelViewFeed } from "./channel-view-feed.js";
 import { DeferredAgentMachine } from "./deferred-agent/deferred-agent-machine.js";
-import type { DeferredAgentInputs } from "./deferred-agent/types.js";
+import type { DeferredAgentInputs, DeferredQueueStore } from "./deferred-agent/types.js";
 import { ForkLineageStore } from "./lineage/fork-lineage-store.js";
 import type { ForkNavHandlers } from "./lineage/types.js";
 import type { AgentSubscriptionConfig } from "../agent-subscription-config.js";
@@ -110,6 +110,8 @@ export interface ConnectionErrorInfo {
 }
 
 export interface SendOptions {
+  /** Captured composer text, preserved while an attachment is being prepared. */
+  text?: string;
   mentions?: string[];
   replyTo?: string;
   /** Written into the published message payload (e.g. `deliverAfterTurn`). */
@@ -169,6 +171,8 @@ export interface ChatSessionOptions {
   /** Fork navigation. When present the session owns a `ForkLineageStore`
    *  (`session.forks`); requires `channelName`. */
   forkNav?: ForkNavHandlers;
+  /** Optional durable backing of the canonical first-agent delivery queue. */
+  deferredQueue?: DeferredQueueStore;
 }
 
 /**
@@ -358,6 +362,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
   #undoTimer: ReturnType<typeof setTimeout> | null = null;
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
   #disposed = false;
+  #shutdown: Promise<void> | null = null;
   #agentHost: ChatAgentHost;
   #forkNav: ForkNavHandlers | undefined;
   /** Advances each time the host reports something unblocked (fork read cursors retry). */
@@ -367,7 +372,10 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
 
   constructor(options: ChatSessionOptions) {
     this.options = options;
-    this.metadata = options.metadata ?? { name: options.channelName ?? "Channel", type: "panel" };
+    this.metadata = options.metadata ?? {
+      name: options.channelName ?? "Channel",
+      type: "panel",
+    };
     this.#ports = options.ports ?? {};
     this.#channelConfig = options.channelConfig;
     this.#defaultTitleSet = Boolean(options.channelConfig?.title);
@@ -489,6 +497,11 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     this.#retain.disposeNow();
   }
 
+  async close(): Promise<void> {
+    this.dispose();
+    await this.#shutdown;
+  }
+
   /** Advertise a method group on the next join. */
   registerMethods(key: string, provider: ChatMethodProvider): () => void {
     return this.methods.register(key, provider);
@@ -577,7 +590,10 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
           return;
         }
         const delayMs = connectionRetryDelayMs(transientAttempt++);
-        console.debug(`[ChatSession] Transient connection failure; retrying in ${delayMs}ms`, error);
+        console.debug(
+          `[ChatSession] Transient connection failure; retrying in ${delayMs}ms`,
+          error
+        );
         await abortableDelay(delayMs, loop.signal);
         if (loop.signal.aborted) return;
       }
@@ -616,7 +632,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
   #attachClient(client: PubSubClient<ChatParticipantMetadata>): void {
     this.#cell.transaction(() => {
       const selfId = client.clientId ?? this.options.config.clientId;
-      this.#cell.update({ client, connected: true, status: "Connected", selfId });
+      this.#cell.update({
+        client,
+        connected: true,
+        status: "Connected",
+        selfId,
+      });
       this.#resetFeedForNewGeneration();
       this.feed.attach(client);
       const applyChannelConfig = (config: ChannelConfig) => this.#applyChannelConfig(config);
@@ -690,7 +711,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       const debugEvents = [...current.debugEvents, { ...payload, ts }];
       return {
         debugEvents:
-          debugEvents.length > MAX_DEBUG_EVENTS ? debugEvents.slice(-MAX_DEBUG_EVENTS) : debugEvents,
+          debugEvents.length > MAX_DEBUG_EVENTS
+            ? debugEvents.slice(-MAX_DEBUG_EVENTS)
+            : debugEvents,
       };
     });
     if (
@@ -708,7 +731,11 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       }
     }
     // An expected idle stop must not render as a disconnect.
-    if (payload.debugType === "lifecycle" && payload.event === "stopped" && payload.reason === "idle") {
+    if (
+      payload.debugType === "lifecycle" &&
+      payload.event === "stopped" &&
+      payload.reason === "idle"
+    ) {
       this.#expectedStops.add(payload.handle);
     }
     if (payload.debugType === "spawn-error") {
@@ -762,9 +789,11 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
           .map((participant) => participant.metadata.handle)
       );
       const remaining = this.#disconnectMessages.filter(
-        (message) => !message.disconnectedAgent || !agentHandles.has(message.disconnectedAgent.handle)
+        (message) =>
+          !message.disconnectedAgent || !agentHandles.has(message.disconnectedAgent.handle)
       );
-      if (remaining.length !== this.#disconnectMessages.length) this.#disconnectMessages = remaining;
+      if (remaining.length !== this.#disconnectMessages.length)
+        this.#disconnectMessages = remaining;
       // A pending badge clears once its handle is in the roster.
       this.#cell.update((current) => ({
         pendingAgents: withoutJoinedPendingAgents(current.pendingAgents, next),
@@ -805,7 +834,11 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
           kind: "system",
           complete: true,
           disconnectedAgent: info,
-          senderMetadata: { name: info.name, type: info.type, handle: info.handle },
+          senderMetadata: {
+            name: info.name,
+            type: info.type,
+            handle: info.handle,
+          },
         },
       ];
     }
@@ -915,6 +948,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     const snapshot = this.#cell.getSnapshot();
     const host = this.#agentHost;
     return {
+      queueStore: this.options.deferredQueue,
       participants: snapshot.participants,
       pendingAgents: snapshot.pendingAgents,
       input: snapshot.input,
@@ -1011,7 +1045,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
 
   /** Clear the draft and tell attachment owners (e.g. a browser image tray). */
   readonly clearComposer = (): void => {
-    this.#cell.update({ input: "" });
+    this.#cell.update({ input: "", replyTo: null });
     for (const listener of [...this.#composerClearedListeners]) listener();
   };
 
@@ -1036,38 +1070,26 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
    * submission restores it (beside any newer draft) and rethrows. An accepted
    * send is never retried: a failure to read it back is reported separately.
    */
-  readonly sendMessage = async (attachments?: AttachmentInput[], options?: SendOptions): Promise<void> => {
+  readonly sendMessage = async (
+    attachments?: AttachmentInput[],
+    options?: SendOptions
+  ): Promise<void> => {
     const snapshot = this.#cell.getSnapshot();
-    const client = snapshot.client;
-    const text = snapshot.input.trim();
+    const text = (options?.text ?? snapshot.input).trim();
     const hasAttachments = Boolean(attachments && attachments.length > 0);
-    if ((!text && !hasAttachments) || !client) return;
+    if (!text && !hasAttachments) return;
+    if (!snapshot.client)
+      throw new Error("The conversation is not connected. Your draft has not been sent.");
     const previousReplyTo = options?.replyTo ?? null;
-    const isAfterTurn = options?.metadata?.["deliverAfterTurn"] === true;
-    const hadPriorTranscriptMessages = this.#hasTranscriptMessages;
     this.#cell.update((current) => ({
-      input: "",
+      input: current.input.trim() === text ? "" : current.input,
       replyTo: null,
-      pendingSendCount: current.pendingSendCount + 1,
     }));
-    let settled = false;
-    const settleGhost = () => {
-      if (settled) return;
-      settled = true;
-      this.#cell.update((current) => ({ pendingSendCount: Math.max(0, current.pendingSendCount - 1) }));
-    };
-    let receipt: { messageId: string; pubsubId: number | undefined };
     try {
-      receipt = await client.send(text || "", {
-        attachments: hasAttachments ? attachments : undefined,
-        mentions: options?.mentions && options.mentions.length > 0 ? options.mentions : undefined,
-        replyTo: options?.replyTo,
-        metadata: options?.metadata,
-      });
+      await this.publishText(text, { ...options, attachments });
     } catch (error) {
       // Never clobber a newer draft typed while this request was in flight.
       this.#cell.transaction(() => {
-        settleGhost();
         const currentDraft = this.#cell.getSnapshot().input;
         this.#cell.update({
           input: currentDraft.trim() ? `${currentDraft}\n\n${text}` : text,
@@ -1077,18 +1099,6 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       console.error("[Chat] Send failed:", error);
       throw error;
     }
-    this.#cell.transaction(() => {
-      if (receipt.messageId && isAfterTurn) {
-        this.#cell.update((current) => {
-          const next = new Set(current.afterTurnMessageIds);
-          next.add(receipt.messageId);
-          return { afterTurnMessageIds: next };
-        });
-      }
-      settleGhost();
-    });
-    await this.#backfill(receipt.pubsubId);
-    if (!this.#defaultTitleSet && !hadPriorTranscriptMessages) this.#applyDefaultTitle(text);
   };
 
   /**
@@ -1100,15 +1110,31 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     if (!client) throw new Error("Agentic chat is not connected");
     const hasAttachments = Boolean(options?.attachments?.length);
     if (!text.trim() && !hasAttachments) return;
-    const { pubsubId } = await client.send(text, {
-      attachments: hasAttachments ? options?.attachments : undefined,
-      mentions: options?.mentions && options.mentions.length > 0 ? options.mentions : undefined,
-      replyTo: options?.replyTo,
-      metadata: options?.metadata,
-      ...(options?.tier ? { tier: options.tier } : {}),
-      ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
-    });
-    await this.#backfill(pubsubId);
+    const hadPriorTranscriptMessages = this.#hasTranscriptMessages;
+    this.#cell.update((current) => ({
+      pendingSendCount: current.pendingSendCount + 1,
+    }));
+    let receipt: { messageId: string; pubsubId: number | undefined };
+    try {
+      receipt = await client.send(text, {
+        attachments: hasAttachments ? options?.attachments : undefined,
+        mentions: options?.mentions && options.mentions.length > 0 ? options.mentions : undefined,
+        replyTo: options?.replyTo,
+        metadata: options?.metadata,
+        ...(options?.tier ? { tier: options.tier } : {}),
+        ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      });
+    } finally {
+      this.#cell.update((current) => ({
+        pendingSendCount: Math.max(0, current.pendingSendCount - 1),
+      }));
+    }
+    if (receipt.messageId && options?.metadata?.["deliverAfterTurn"] === true)
+      this.#cell.update((current) => ({
+        afterTurnMessageIds: new Set([...current.afterTurnMessageIds, receipt.messageId]),
+      }));
+    await this.#backfill(receipt.pubsubId);
+    if (!this.#defaultTitleSet && !hadPriorTranscriptMessages) this.#applyDefaultTitle(text);
   };
 
   /**
@@ -1116,7 +1142,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
    * prior history" (the deferred first-message path bypasses `sendMessage`).
    */
   readonly maybeSetDefaultTitle = (text: string): void => {
-    if (this.#defaultTitleSet) return;
+    if (this.#defaultTitleSet || this.#hasTranscriptMessages) return;
     this.#applyDefaultTitle(text);
   };
 
@@ -1173,7 +1199,11 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     if (!client) return;
     const message = this.#cell.getSnapshot().messages.find((item) => item.id === messageId);
     const blocks: MessageBlockInput[] = [
-      { blockId: `${messageId}:block:0` as never, type: "text", content: newText },
+      {
+        blockId: `${messageId}:block:0` as never,
+        type: "text",
+        content: newText,
+      },
       ...(message?.attachments ?? []).map((attachment, index) => ({
         blockId: `${messageId}:block:${index + 1}` as never,
         type: "attachment" as const,
@@ -1181,7 +1211,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       })),
     ];
     try {
-      const { pubsubId } = await client.editMessage(messageId, blocks, { revision: message?.revision });
+      const { pubsubId } = await client.editMessage(messageId, blocks, {
+        revision: message?.revision,
+      });
       await this.#backfill(pubsubId);
     } catch (error) {
       console.warn("[Chat] Edit message failed:", error);
@@ -1204,7 +1236,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       (message?.mentions?.length ?? 0) > 0 ||
       snapshot.afterTurnMessageIds.has(messageId);
     try {
-      const { pubsubId } = await client.retractMessage(messageId, { reason: "Canceled by author" });
+      const { pubsubId } = await client.retractMessage(messageId, {
+        reason: "Canceled by author",
+      });
       await this.#backfill(pubsubId);
     } catch (error) {
       console.warn("[Chat] Retract message failed:", error);
@@ -1222,7 +1256,12 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
               expiresAt,
               textOnlyRestore: current.undoableAction.textOnlyRestore || textOnlyRestore,
             }
-          : { kind: "cancel", messageIds: [messageId], expiresAt, textOnlyRestore },
+          : {
+              kind: "cancel",
+              messageIds: [messageId],
+              expiresAt,
+              textOnlyRestore,
+            },
     }));
     this.#undoTimer = setTimeout(() => {
       this.#undoTimer = null;
@@ -1302,7 +1341,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
           console.warn("[Chat] Pause agent failed:", error);
           this.#setConnectionError(
             userFacingError(
-              flushDeferred ? "Couldn't send your queued message now" : "Couldn't interrupt the agent",
+              flushDeferred
+                ? "Couldn't send your queued message now"
+                : "Couldn't interrupt the agent",
               flushDeferred
                 ? "The agent didn't respond to the interrupt. Your message stays queued and is delivered when the agent's turn ends; try again to interrupt now."
                 : "The agent didn't respond and may still be working. Try again.",
@@ -1334,7 +1375,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
       if (match) targetId = match[0];
     }
     try {
-      await client.callMethod(targetId, "pause", { reason: "User interrupted execution" }).result;
+      await client.callMethod(targetId, "pause", {
+        reason: "User interrupted execution",
+      }).result;
     } catch (error) {
       console.warn("[Chat] Interrupt failed:", error);
       this.#setConnectionError(
@@ -1366,7 +1409,9 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     // the namespaced eval coordinate itself.
     if (invocation.name === "eval") {
       try {
-        await client.callMethod(senderId, "cancelEval", { invocationId: invocation.id }).result;
+        await client.callMethod(senderId, "cancelEval", {
+          invocationId: invocation.id,
+        }).result;
       } catch (error) {
         console.warn("[Chat] Cancel eval failed:", error);
         cancelFailed(error);
@@ -1466,9 +1511,16 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
     this.#flushTimer = null;
     this.#detachClient();
     this.feed.dispose();
-    void this.#connection.disconnect().catch(() => {
-      /* connection errors are surfaced through ConnectionManager */
+    this.#shutdown = Promise.allSettled([
+      this.#connection.disconnect(),
+      this.deferredAgent.close(),
+    ]).then((results) => {
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : []
+      );
+      if (errors.length) throw new AggregateError(errors, "Chat session cleanup failed");
     });
+    void this.#shutdown.catch((error) => console.error("[ChatSession] Cleanup failed:", error));
   }
 }
 
@@ -1496,11 +1548,13 @@ function mergeParticipants(
 ): ChatParticipants {
   const merged = { ...departed, ...participants };
   const keys = Object.keys(merged);
-  if (keys.length === Object.keys(previous).length && keys.every((key) => previous[key] === merged[key]))
+  if (
+    keys.length === Object.keys(previous).length &&
+    keys.every((key) => previous[key] === merged[key])
+  )
     return previous;
   return merged;
 }
-
 
 /** A join failure in the user's terms; the raw text stays in `detail`. */
 function joinFailure(error: Error): UserFacingError {

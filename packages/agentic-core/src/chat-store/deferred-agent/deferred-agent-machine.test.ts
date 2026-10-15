@@ -4,7 +4,7 @@ import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import type { ModelCatalog } from "@workspace/model-catalog/catalog";
 import type { AvailableAgent, ChatParticipantMetadata } from "../../types.js";
 import { DeferredAgentMachine } from "./deferred-agent-machine.js";
-import type { DeferredAgentInputs } from "./types.js";
+import type { DeferredAgentInputs, PendingDelivery, DeferredQueueStore } from "./types.js";
 
 const MODEL = "openai-codex:gpt-6.1-sol";
 const AGENT: AvailableAgent = {
@@ -66,6 +66,311 @@ async function settle(): Promise<void> {
 }
 
 describe("DeferredAgentMachine", () => {
+  it("keeps a failed discard in cleanup-only state so retry cannot send it", async () => {
+    const failure = new Error("discard retention cleanup failed");
+    const remove = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(undefined);
+    const materialize = vi.fn(async (item: PendingDelivery) => item);
+    const { machine, host } = machineWith({
+      queueStore: {
+        load: async () => [{ kind: "message", id: "discard", text: "never send" }],
+        put: vi.fn(),
+        remove,
+        materialize,
+      },
+    });
+    await machine.ready();
+    await expect(machine.discardQueued("discard")).rejects.toBe(failure);
+    expect(machine.getSnapshot().deferredAgent?.queued[0]).toMatchObject({
+      retirement: "releasing",
+      status: "failed",
+    });
+    machine.retryDelivery("discard");
+    await vi.waitFor(() => expect(machine.getSnapshot().deferredAgent?.queued ?? []).toEqual([]));
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(materialize).not.toHaveBeenCalled();
+    expect(host.publishText).not.toHaveBeenCalled();
+    await machine.close();
+  });
+
+  it("cancels and joins the active attachment borrow without hydrating or publishing later items", async () => {
+    const logged = vi.spyOn(console, "error");
+    let release!: () => void;
+    let borrowingSignal: AbortSignal | undefined;
+    let joined = false;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const store: DeferredQueueStore = {
+      load: async () =>
+        ["first", "later"].map((id) => ({
+          kind: "message",
+          id,
+          text: id,
+          attachmentSummaries: [{ name: "file", mimeType: "text/plain", size: 1 }],
+        })),
+      put: vi.fn(),
+      remove: vi.fn(),
+      materialize: vi.fn(async (item, signal) => {
+        borrowingSignal = signal;
+        try {
+          await held;
+          signal.throwIfAborted();
+          return item;
+        } finally {
+          joined = true;
+        }
+      }),
+    };
+    const { machine, host } = machineWith({ queueStore: store, participants: AGENT_ROSTER });
+    await machine.ready();
+    await vi.waitFor(() => expect(store.materialize).toHaveBeenCalledTimes(1));
+    let retired = false;
+    const closing = machine.close().then(() => {
+      retired = true;
+    });
+    expect(borrowingSignal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(retired).toBe(false);
+    release();
+    await closing;
+    expect(joined).toBe(true);
+    expect(host.publishText).not.toHaveBeenCalled();
+    expect(store.materialize).toHaveBeenCalledTimes(1);
+    expect(store.remove).not.toHaveBeenCalled();
+    expect(logged).not.toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("retains an independent hydration failure concurrent with owner cancellation", async () => {
+    const logged = vi.spyOn(console, "error");
+    const failure = new Error("retained storage disconnected");
+    let reject!: (error: unknown) => void;
+    const borrow = vi.fn(
+      () =>
+        new Promise<PendingDelivery>((_resolve, fail) => {
+          reject = fail;
+        })
+    );
+    const { machine } = machineWith({
+      participants: AGENT_ROSTER,
+      queueStore: {
+        load: async () => [{ kind: "message", id: "held", text: "held" }],
+        put: vi.fn(),
+        remove: vi.fn(),
+        materialize: borrow,
+      },
+    });
+    await machine.ready();
+    await vi.waitFor(() => expect(borrow).toHaveBeenCalledTimes(1));
+    const closing = machine.close();
+    const rejected = expect(closing).rejects.toMatchObject({ errors: [failure] });
+    reject(failure);
+    await rejected;
+    expect(logged).toHaveBeenCalledWith("[DeferredAgentMachine] Queue retirement failed:", failure);
+    logged.mockRestore();
+  });
+
+  it("keeps attempted payload immutable across ambiguous receipt loss and restart", async () => {
+    let durable: PendingDelivery[] = [];
+    const store: DeferredQueueStore = {
+      load: async () => durable,
+      put: async (item) => {
+        durable = [item];
+      },
+      remove: async () => {
+        durable = [];
+      },
+    };
+    const failure = new Error("receipt transport lost");
+    const { machine, host } = machineWith({
+      participants: AGENT_ROSTER,
+      queueStore: store,
+      input: "possibly accepted",
+      publishText: vi.fn().mockRejectedValue(failure),
+    });
+    await machine.ready();
+    await machine.send();
+    await vi.waitFor(() =>
+      expect(machine.getSnapshot().deferredAgent?.queued[0]?.status).toBe("failed")
+    );
+    expect(durable[0]?.publication).toBe("attempted");
+    await expect(machine.editQueued(durable[0]!.id, "different payload")).rejects.toThrow(
+      "may have been accepted"
+    );
+    const originalKey = durable[0]!.idempotencyKey;
+    await machine.close();
+    const restored = machineWith({ queueStore: store }).machine;
+    await restored.ready();
+    await expect(restored.editQueued(durable[0]!.id, "different again")).rejects.toThrow(
+      "may have been accepted"
+    );
+    expect(durable[0]?.idempotencyKey).toBe(originalKey);
+    expect(host.publishText).toHaveBeenCalledTimes(1);
+    await restored.close();
+  });
+
+  it("publishes durable user messages without spawning an agent when first-agent setup is not pending", async () => {
+    const store: DeferredQueueStore = {
+      load: async () => [],
+      put: vi.fn(),
+      remove: vi.fn(),
+    };
+    const { machine, host } = machineWith({
+      firstAgentPending: false,
+      input: "no agent requested",
+      queueStore: store,
+    });
+    await machine.ready();
+    await machine.send();
+    await vi.waitFor(() => expect(store.remove).toHaveBeenCalledTimes(1));
+    expect(host.publishText).toHaveBeenCalledWith(
+      "no agent requested",
+      expect.objectContaining({ idempotencyKey: expect.any(String) })
+    );
+    expect(host.onAddAgent).not.toHaveBeenCalled();
+    await machine.close();
+  });
+
+  it("uses the same durable admission and idempotent publication for an already present agent", async () => {
+    let durable: PendingDelivery[] = [];
+    let finish!: () => void;
+    const store: DeferredQueueStore = {
+      load: async () => durable,
+      put: async (item) => {
+        durable = [...durable.filter((entry) => entry.id !== item.id), item];
+      },
+      remove: vi.fn(async (id) => {
+        durable = durable.filter((item) => item.id !== id);
+      }),
+    };
+    const { machine, host } = machineWith({
+      participants: AGENT_ROSTER,
+      queueStore: store,
+      input: "normal message",
+      publishText: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          })
+      ),
+    });
+    await machine.ready();
+    await machine.send(undefined, {
+      mentions: ["ai"],
+      replyTo: "reply",
+      metadata: { deliverAfterTurn: true },
+    });
+    await vi.waitFor(() => expect(host.publishText).toHaveBeenCalledTimes(1));
+    expect(host.coreSendMessage).not.toHaveBeenCalled();
+    expect(durable).toHaveLength(1);
+    const item = durable[0]!;
+    expect(host.publishText).toHaveBeenCalledWith(
+      "normal message",
+      expect.objectContaining({
+        idempotencyKey: item.idempotencyKey,
+        mentions: ["ai"],
+        replyTo: "reply",
+        metadata: { deliverAfterTurn: true },
+      })
+    );
+    finish();
+    await vi.waitFor(() => expect(durable).toEqual([]));
+    await machine.close();
+  });
+
+  it("commits queue admission before clearing the draft and restores the same delivery after restart", async () => {
+    let durable: PendingDelivery[] = [];
+    let commit!: () => void;
+    const store: DeferredQueueStore = {
+      load: async () => durable,
+      put: vi.fn(
+        (item) =>
+          new Promise<void>((resolve) => {
+            commit = () => {
+              durable = [item];
+              resolve();
+            };
+          })
+      ),
+      remove: async (id) => {
+        durable = durable.filter((item) => item.id !== id);
+      },
+    };
+    const { machine, host } = machineWith({
+      input: "durable draft",
+      queueStore: store,
+    });
+    await machine.ready();
+    const sending = machine.send();
+    await vi.waitFor(() => expect(store.put).toHaveBeenCalledTimes(1));
+    expect(host.clearComposer).not.toHaveBeenCalled();
+    expect(machine.getSnapshot().deferredAgent?.queued).toEqual([]);
+    commit();
+    await sending;
+    expect(host.clearComposer).toHaveBeenCalledTimes(1);
+    const admitted = machine.getSnapshot().deferredAgent!.queued[0]!;
+    expect(admitted).toMatchObject(durable[0]!);
+    await machine.close();
+    const restored = machineWith({ queueStore: store }).machine;
+    await restored.ready();
+    expect(restored.getSnapshot().deferredAgent!.queued[0]).toEqual(admitted);
+    await restored.close();
+  });
+
+  it("keeps the draft and queue unchanged when persistence rejects admission", async () => {
+    const failure = new Error("durable queue write failed");
+    const { machine, host } = machineWith({
+      input: "keep me",
+      queueStore: {
+        load: async () => [],
+        put: async () => {
+          throw failure;
+        },
+        remove: vi.fn(),
+      },
+    });
+    await machine.ready();
+    await expect(machine.send()).rejects.toBe(failure);
+    expect(host.clearComposer).not.toHaveBeenCalled();
+    expect(machine.getSnapshot().deferredAgent?.queued).toEqual([]);
+    await machine.close();
+  });
+
+  it("publishes a restored edited delivery once with its original idempotency key, then retires it", async () => {
+    const item: PendingDelivery = {
+      kind: "message",
+      id: "saved",
+      idempotencyKey: "original-key",
+      text: "before edit",
+    };
+    let durable = [item];
+    const store: DeferredQueueStore = {
+      load: async () => durable,
+      put: async (next) => {
+        durable = [next];
+      },
+      remove: vi.fn(async () => {
+        durable = [];
+      }),
+    };
+    const { machine, host } = machineWith({ queueStore: store });
+    await machine.ready();
+    await machine.editQueued(item.id, "after edit");
+    expect(durable[0]).toMatchObject({
+      text: "after edit",
+      idempotencyKey: "original-key",
+    });
+    machine.setHostInputs({ participants: AGENT_ROSTER, input: "" });
+    machine.reconcile();
+    await vi.waitFor(() => expect(store.remove).toHaveBeenCalledWith(item.id, "accepted"));
+    expect(host.publishText).toHaveBeenCalledWith(
+      "after edit",
+      expect.objectContaining({ idempotencyKey: "original-key" })
+    );
+    expect(durable).toEqual([]);
+    await machine.close();
+  });
+
   it("arms on the first send and spawns exactly once", async () => {
     const { machine, host } = machineWith({ input: "hello" });
     expect(machine.getSnapshot().deferredAgent?.setupActive).toBe(true);
@@ -74,8 +379,14 @@ describe("DeferredAgentMachine", () => {
     expect(host.clearComposer).toHaveBeenCalledTimes(1);
     expect(host.coreSendMessage).not.toHaveBeenCalled();
     expect(host.onAddAgent).toHaveBeenCalledTimes(1);
-    expect(host.onAddAgent).toHaveBeenCalledWith(undefined, expect.not.objectContaining({ handle: expect.anything() }));
-    expect(machine.getSnapshot().deferredAgent).toMatchObject({ launching: true, setupActive: false });
+    expect(host.onAddAgent).toHaveBeenCalledWith(
+      undefined,
+      expect.not.objectContaining({ handle: expect.anything() })
+    );
+    expect(machine.getSnapshot().deferredAgent).toMatchObject({
+      launching: true,
+      setupActive: false,
+    });
 
     await machine.send();
     machine.reconcile();
@@ -115,7 +426,10 @@ describe("DeferredAgentMachine", () => {
 
   it("un-arms when every held message is cancelled before the spawn is issued", async () => {
     // No gallery yet: the send is held but cannot be issued.
-    const { machine, host } = machineWith({ input: "hello", availableAgents: [] });
+    const { machine, host } = machineWith({
+      input: "hello",
+      availableAgents: [],
+    });
     await machine.send();
     await settle();
     const state = machine.getSnapshot().deferredAgent!;
@@ -135,7 +449,10 @@ describe("DeferredAgentMachine", () => {
       firstAgentModelPreflight: "selection-required",
     });
     expect(machine.getSnapshot().deferredAgent?.queued).toEqual([
-      expect.objectContaining({ kind: "opening-request", text: "do the thing" }),
+      expect.objectContaining({
+        kind: "opening-request",
+        text: "do the thing",
+      }),
     ]);
     machine.reconcile();
     expect(machine.getSnapshot().deferredAgent?.queued).toHaveLength(1);
@@ -146,7 +463,10 @@ describe("DeferredAgentMachine", () => {
   });
 
   it("delivers an opening request through resolveOpeningRequest when an agent joins", async () => {
-    const { machine, host } = machineWith({ openingRequest: "do the thing", onAddAgent: undefined });
+    const { machine, host } = machineWith({
+      openingRequest: "do the thing",
+      onAddAgent: undefined,
+    });
     machine.setHostInputs({ participants: AGENT_ROSTER });
     machine.reconcile();
     await settle();
@@ -165,7 +485,10 @@ describe("DeferredAgentMachine", () => {
     });
     const release = machine.retain();
     expect(onPrepareAgent).toHaveBeenCalledTimes(1);
-    expect(onPrepareAgent).toHaveBeenCalledWith(undefined, expect.objectContaining({ model: MODEL }));
+    expect(onPrepareAgent).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ model: MODEL })
+    );
     // Equal inputs (even new objects) do not re-prepare.
     machine.setHostInputs({ defaultAgentConfig: { model: MODEL } });
     machine.reconcile();
@@ -224,7 +547,9 @@ describe("DeferredAgentMachine", () => {
     state.retryDelivery(failed!.id);
     await settle();
     expect(publishText).toHaveBeenCalledTimes(3);
-    expect(publishText.mock.calls[1]![1]).toMatchObject({ idempotencyKey: failed!.idempotencyKey });
+    expect(publishText.mock.calls[1]![1]).toMatchObject({
+      idempotencyKey: failed!.idempotencyKey,
+    });
     expect(machine.getSnapshot().deferredAgent).toBeUndefined();
   });
 
@@ -257,7 +582,11 @@ describe("DeferredAgentMachine", () => {
           failAdd = reject;
         })
     );
-    const { machine } = machineWith({ input: "hello", onAddAgent, firstAgentModelPreflight: "checking" });
+    const { machine } = machineWith({
+      input: "hello",
+      onAddAgent,
+      firstAgentModelPreflight: "checking",
+    });
     await machine.send();
     expect(machine.getSnapshot().deferredAgent?.launchStage).toBe("preparing-model");
     machine.setHostInputs({ firstAgentModelPreflight: "ready" });
@@ -269,7 +598,14 @@ describe("DeferredAgentMachine", () => {
     expect(machine.getSnapshot().deferredAgent?.launchStage).toBe("joining");
     machine.setHostInputs({
       pendingAgents: new Map([
-        ["ai-chat", { agentId: "x", status: "error", error: { message: "Build failed", details: "tsc: 2 errors" } }],
+        [
+          "ai-chat",
+          {
+            agentId: "x",
+            status: "error",
+            error: { message: "Build failed", details: "tsc: 2 errors" },
+          },
+        ],
       ]),
     });
     machine.reconcile();

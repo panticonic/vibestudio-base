@@ -7,23 +7,60 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useCursor } from "ink";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { deriveActiveOutbox } from "@workspace/agentic-core/chat-presentation";
-import { ChildTranscriptStore, type ChildTranscriptSnapshot } from "@workspace/agentic-core/chat-store";
+import {
+  ChildTranscriptStore,
+  type ChildTranscriptSnapshot,
+} from "@workspace/agentic-core/chat-store";
 import { isModelUsable } from "@workspace/model-catalog/catalog";
-import type { AttachmentInput } from "@workspace/pubsub";
-import { applyEdit, completeMention, editorFor, emptyEditor, mentionAt, type EditCommand, type EditorState } from "../model/composer.js";
+import {
+  applyEdit,
+  completeMention,
+  editorFor,
+  emptyEditor,
+  mentionAt,
+  type EditCommand,
+  type EditorState,
+} from "../model/composer.js";
 import { completeCommand, parseInput, type Completion } from "../model/commands.js";
-import { agentsIn, busyAgentIds, mentionCandidates, mentionIds, parseAgentSettings, type AgentSettings } from "../model/agents.js";
-import { createForm, formReduce, type FormState } from "../model/forms.js";
+import {
+  agentsIn,
+  busyAgentIds,
+  mentionCandidates,
+  mentionIds,
+  parseAgentSettings,
+  type AgentSettings,
+} from "../model/agents.js";
+import { createForm, formReduce, renderForm, type FormState } from "../model/forms.js";
 import { resolveBinding, type Mode } from "../model/keymap.js";
 import type { InputEvent, KeyEvent } from "../model/keys.js";
-import { movePicker, pickerVisibleItems, type PickerItem, type PickerState, type QueueItem } from "../model/overlays.js";
-import { isExpandable, messageActions, renderRow, rowKind, type RowContext } from "../model/transcript.js";
-import { FOLLOW, computeWindow, revealRow, rowSource, scrollBy, type ScrollState } from "../model/viewport.js";
+import {
+  movePicker,
+  pickerVisibleItems,
+  type PickerItem,
+  type PickerState,
+  type QueueItem,
+} from "../model/overlays.js";
+import {
+  isExpandable,
+  messageActions,
+  renderRow,
+  rowKind,
+  type RowContext,
+} from "../model/transcript.js";
+import {
+  FOLLOW,
+  computeWindow,
+  revealRow,
+  rowSource,
+  scrollBy,
+  type ScrollState,
+} from "../model/viewport.js";
 import type { ChatRuntime } from "../runtime/chatRuntime.js";
 import { attentionSequence, copySequence, hyperlink, titleSequence } from "../terminal/escapes.js";
 import { useInputEvents, useStore, useTerminalSize, type InputSource } from "../ui/hooks.js";
 import { ChatActions, type PromptSpec } from "./actions.js";
 import { layoutScreen, type ScreenModel } from "./screen.js";
+import { sanitize, wrap } from "../model/ansi.js";
 
 export interface TerminalChatProps {
   runtime: ChatRuntime;
@@ -38,16 +75,24 @@ type Overlay =
   | { kind: "picker"; picker: PickerState; onPick: (item: PickerItem) => void }
   | { kind: "prompt"; prompt: PromptSpec; editor: EditorState }
   | { kind: "help"; scroll: number }
+  | {
+      kind: "detail";
+      title: string;
+      lines: (columns: number) => readonly string[];
+      copyText: string;
+      scroll: number;
+    }
   | { kind: "queue"; index: number };
-
-interface PendingAttachment extends AttachmentInput {
-  name: string;
-}
 
 const EMPTY_SESSION = null;
 const IDLE_DEFERRED = { deferredAgent: undefined };
 
-export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-Space a" }: TerminalChatProps) {
+export function TerminalChatApp({
+  runtime,
+  input,
+  control,
+  approvalsKey = "Ctrl-Space a",
+}: TerminalChatProps) {
   const size = useTerminalSize();
   const rt = useStore(runtime, runtime.getSnapshot());
   const session = rt.session;
@@ -67,10 +112,17 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scroll, setScroll] = useState<ScrollState>(FOLLOW);
   const [escArmed, setEscArmed] = useState(false);
-  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const attachments = rt.composer.attachments;
   const [focused, setFocused] = useState(true);
-  const [form, setForm] = useState<{ id: string; state: FormState } | null>(null);
-  const [settings, setSettings] = useState<{ agentId: string; settings: AgentSettings } | null>(null);
+  const [form, setForm] = useState<{
+    id: string;
+    state: FormState;
+    scroll: number | null;
+  } | null>(null);
+  const [settings, setSettings] = useState<{
+    agentId: string;
+    settings: AgentSettings;
+  } | null>(null);
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [approvalLevel, setApprovalLevel] = useState<0 | 1 | 2 | null>(null);
   const [childVersion, setChildVersion] = useState(0);
@@ -82,7 +134,6 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     setExpanded(new Set());
     setSelectedId(null);
     setScroll(FOLLOW);
-    setAttachments([]);
     setSettings(null);
   }, [rt.generation]);
 
@@ -98,8 +149,22 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     () =>
       new ChatActions(runtime, {
         openPicker: (picker, onPick) =>
-          setOverlay({ kind: "picker", picker: { query: "", index: picker.index ?? 0, filterable: picker.filterable ?? false, ...picker }, onPick }),
-        openPrompt: (prompt) => setOverlay({ kind: "prompt", prompt, editor: editorFor(prompt.initial) }),
+          setOverlay({
+            kind: "picker",
+            picker: {
+              query: "",
+              index: picker.index ?? 0,
+              filterable: picker.filterable ?? false,
+              ...picker,
+            },
+            onPick,
+          }),
+        openPrompt: (prompt) =>
+          setOverlay({
+            kind: "prompt",
+            prompt,
+            editor: editorFor(prompt.initial),
+          }),
         openHelp: () => setOverlay({ kind: "help", scroll: 0 }),
         openQueue: () => setOverlay({ kind: "queue", index: 0 }),
         closeOverlay: () => setOverlay(null),
@@ -107,33 +172,68 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
           setEditor(editorFor(text));
           runtime.getSnapshot().session?.setInput(text);
         },
-        addAttachment: (attachment) => setAttachments((list) => [...list, attachment]),
         copy: (text, what) => copy(text, what),
         settingsChanged: () => setSettingsVersion((v) => v + 1),
+        selectMessage: (id) => {
+          setMode("select");
+          setSelectedId(id);
+          setScroll({ mode: "anchored", id, line: 0 });
+        },
       }),
     [runtime]
   );
 
   function copy(text: string, what: string) {
     control(copySequence(text));
-    runtime.notify({ tone: "success", title: `Copied ${what}`, message: "Sent to your terminal's clipboard (OSC 52); terminals that block clipboard access ignore it." });
+    runtime.notify({
+      tone: "success",
+      title: `Copied ${what}`,
+      message:
+        "Sent to your terminal's clipboard (OSC 52); terminals that block clipboard access ignore it.",
+    });
   }
 
   // ── derived data ───────────────────────────────────────────────────────────
   const selfId = chat?.selfId ?? null;
   const participants = chat?.allParticipants ?? {};
-  const agents = useMemo(() => (chat ? agentsIn(chat.participants, chat.selfId) : []), [chat?.participants, chat?.selfId]);
-  const outbox = useMemo(() => (chat ? deriveActiveOutbox(chat.messages, chat.selfId, chat.participants) : []), [chat?.messages, chat?.selfId, chat?.participants]);
+  const agents = useMemo(
+    () => (chat ? agentsIn(chat.participants, chat.selfId) : []),
+    [chat?.participants, chat?.selfId]
+  );
+  const outbox = useMemo(
+    () => (chat ? deriveActiveOutbox(chat.messages, chat.selfId, chat.participants) : []),
+    [chat?.messages, chat?.selfId, chat?.participants]
+  );
   const outboxIds = useMemo(() => new Set(outbox.map((m) => m.id)), [outbox]);
   const transcript = useMemo(
-    () => (chat?.messages ?? []).filter((m) => !outboxIds.has(m.id) && !(rowKind(m, chat?.selfId ?? null) === "notice" && !m.content && !m.automation && m.contentType !== "inline_ui" && m.contentType !== "custom")),
+    () =>
+      (chat?.messages ?? []).filter(
+        (m) =>
+          !outboxIds.has(m.id) &&
+          !(
+            rowKind(m, chat?.selfId ?? null) === "notice" &&
+            !m.content &&
+            !m.automation &&
+            m.contentType !== "inline_ui" &&
+            m.contentType !== "custom"
+          )
+      ),
     [chat?.messages, outboxIds, chat?.selfId]
   );
   const history = useMemo(
-    () => (chat?.messages ?? []).filter((m) => m.senderId === selfId && !m.contentType && m.kind !== "system" && m.content.trim()).map((m) => m.content).reverse(),
+    () =>
+      (chat?.messages ?? [])
+        .filter(
+          (m) => m.senderId === selfId && !m.contentType && m.kind !== "system" && m.content.trim()
+        )
+        .map((m) => m.content)
+        .reverse(),
     [chat?.messages, selfId]
   );
-  const busyIds = useMemo(() => busyAgentIds(chat?.messages ?? [], agents), [chat?.messages, agents]);
+  const busyIds = useMemo(
+    () => busyAgentIds(chat?.messages ?? [], agents),
+    [chat?.messages, agents]
+  );
   const primaryAgent = agents[0] ?? null;
 
   // Agent settings for the status line: re-read when the agent changes or after we change them.
@@ -143,7 +243,11 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     runtime
       .callAgent(primaryAgent.id, "getAgentSettings", {})
       .then((raw) => {
-        if (!cancelled) setSettings({ agentId: primaryAgent.id, settings: parseAgentSettings(raw) });
+        if (!cancelled)
+          setSettings({
+            agentId: primaryAgent.id,
+            settings: parseAgentSettings(raw),
+          });
       })
       .catch(() => {
         if (!cancelled) setSettings(null);
@@ -167,12 +271,21 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   const pendingForm = rt.forms[0] ?? null;
   useEffect(() => {
     if (!pendingForm) setForm(null);
-    else if (form?.id !== pendingForm.id) setForm({ id: pendingForm.id, state: createForm(pendingForm.args) });
+    else if (form?.id !== pendingForm.id)
+      setForm({
+        id: pendingForm.id,
+        state: createForm(pendingForm.args),
+        scroll: null,
+      });
   }, [pendingForm?.id]);
 
   // Child transcripts of expanded subagent cards.
-  const children = useRef(new Map<string, { store: ChildTranscriptStore; release: () => void; off: () => void }>());
-  const expandedTasks = transcript.filter((m) => m.task?.subagent?.taskChannelId && (expandAll || expanded.has(m.id)));
+  const children = useRef(
+    new Map<string, { store: ChildTranscriptStore; release: () => void; off: () => void }>()
+  );
+  const expandedTasks = transcript.filter(
+    (m) => m.task?.subagent?.taskChannelId && (expandAll || expanded.has(m.id))
+  );
   const expandedTaskKey = expandedTasks.map((m) => m.id).join("|");
   useEffect(() => {
     const live = children.current;
@@ -188,7 +301,10 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     for (const msg of expandedTasks) {
       if (live.has(msg.id)) continue;
       const store = new ChildTranscriptStore({
-        connection: { config: session.options.config, metadata: session.metadata },
+        connection: {
+          config: session.options.config,
+          metadata: session.metadata,
+        },
         channelId: msg.task!.subagent!.taskChannelId!,
         contextId: msg.task!.subagent!.contextId ?? null,
       });
@@ -224,20 +340,35 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     if (focused) return;
     if (forms! > pForms!) control(attentionSequence("An agent is asking you a question"));
     else if (approvals! > pApprovals!) control(attentionSequence("An agent needs your approval"));
-    else if (credentials! > pCredentials!) control(attentionSequence("An agent needs a provider connected"));
+    else if (credentials! > pCredentials!)
+      control(attentionSequence("An agent needs a provider connected"));
   }, [attentionKey, focused]);
 
   // ── transcript rows ────────────────────────────────────────────────────────
   const gutter = 2;
-  const rowCtx: RowContext = { selfId, participants, columns: size.columns - gutter, approvalsKey };
-  const isRowExpanded = (msg: ChatMessage) => isExpandable(msg, selfId) && expandAll !== expanded.has(msg.id);
+  const rowCtx: RowContext = {
+    selfId,
+    participants,
+    columns: size.columns - gutter,
+    approvalsKey,
+  };
+  const isRowExpanded = (msg: ChatMessage) =>
+    isExpandable(msg, selfId) && expandAll !== expanded.has(msg.id);
   const childLinesFor = (msg: ChatMessage): string[] | undefined => {
     const entry = children.current.get(msg.id);
     if (!entry) return undefined;
     const snapshot: ChildTranscriptSnapshot = entry.store.getSnapshot();
-    if (snapshot.failure || snapshot.error) return [`! ${snapshot.failure?.title ?? snapshot.error}`];
-    const ctx: RowContext = { ...rowCtx, columns: rowCtx.columns - 4, selfId: snapshot.selfId, participants: snapshot.participants };
-    return snapshot.messages.filter((m) => m.contentType !== "typing").flatMap((m) => renderRow(m, ctx, false));
+    if (snapshot.failure || snapshot.error)
+      return [`! ${snapshot.failure?.title ?? snapshot.error}`];
+    const ctx: RowContext = {
+      ...rowCtx,
+      columns: rowCtx.columns - 4,
+      selfId: snapshot.selfId,
+      participants: snapshot.participants,
+    };
+    return snapshot.messages
+      .filter((m) => m.contentType !== "typing")
+      .flatMap((m) => renderRow(m, ctx, false));
   };
   void childVersion;
   const source = rowSource(
@@ -245,7 +376,12 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     (m) => m.id,
     (m, index) => {
       const kind = rowKind(m, selfId);
-      const lines = renderRow(m, rowCtx, isRowExpanded(m), m.task && isRowExpanded(m) ? childLinesFor(m) : undefined);
+      const lines = renderRow(
+        m,
+        rowCtx,
+        isRowExpanded(m),
+        m.task && isRowExpanded(m) ? childLinesFor(m) : undefined
+      );
       return index > 0 && (kind === "user" || kind === "agent") ? ["", ...lines] : lines;
     }
   );
@@ -258,8 +394,15 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     if (editor.text.startsWith("/") && editor.cursor === editor.text.length) {
       const catalog = rt.host?.modelCatalog;
       return completeCommand(editor.text, {
-        models: (catalog?.models ?? []).filter(isModelUsable).map((m) => ({ ref: m.ref, label: m.name, detail: catalog?.providers.find((p) => p.id === m.provider)?.label })),
-        providers: catalog?.providers.filter((p) => p.connectable).map((p) => ({ id: p.id, label: p.label })) ?? [],
+        models: (catalog?.models ?? []).filter(isModelUsable).map((m) => ({
+          ref: m.ref,
+          label: m.name,
+          detail: catalog?.providers.find((p) => p.id === m.provider)?.label,
+        })),
+        providers:
+          catalog?.providers
+            .filter((p) => p.connectable)
+            .map((p) => ({ id: p.id, label: p.label })) ?? [],
         thinkingLevels: ["minimal", "low", "medium", "high", "xhigh", "max"],
         respondPolicies: ["all", "mentioned", "mentioned-strict", "mentioned-or-followup"],
         missions: [],
@@ -267,7 +410,11 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     }
     const mention = mentionAt(editor);
     if (mention) {
-      return mentionCandidates(mention.query, participants, selfId).map((c) => ({ insert: c.handle, label: `@${c.handle}`, detail: c.name }));
+      return mentionCandidates(mention.query, participants, selfId).map((c) => ({
+        insert: c.handle,
+        label: `@${c.handle}`,
+        detail: c.name,
+      }));
     }
     return [];
   }, [editor, mode, overlay, menuDismissedFor, rt.host?.modelCatalog, participants, selfId]);
@@ -275,6 +422,7 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   useEffect(() => setMenuIndex(0), [completions.length, editor.text.split(" ")[0]]);
 
   const viewportRows = useRef(10);
+  const overlayRows = useRef(10);
   const page = Math.max(1, viewportRows.current - 2);
 
   function moveSelection(delta: number) {
@@ -283,13 +431,19 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     const next = Math.max(0, Math.min(transcript.length - 1, current + delta));
     setSelectedId(transcript[next]!.id);
     setScroll((s) => revealRow(source, viewportRows.current, s, next));
-    if (next === 0 && chat?.hasMoreHistory && !chat.loadingMore) void session?.loadEarlierMessages();
+    if (next === 0 && chat?.hasMoreHistory && !chat.loadingMore)
+      void session?.loadEarlierMessages();
   }
 
   function scrollPage(delta: number) {
     setScroll((s) => {
       const next = scrollBy(source, viewportRows.current, s, delta);
-      if (computeWindow(source, viewportRows.current, next).atTop && chat?.hasMoreHistory && !chat.loadingMore) void session?.loadEarlierMessages();
+      if (
+        computeWindow(source, viewportRows.current, next).atTop &&
+        chat?.hasMoreHistory &&
+        !chat.loadingMore
+      )
+        void session?.loadEarlierMessages();
       return next;
     });
   }
@@ -298,7 +452,12 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     const text = editor.text;
     const parsed = parseInput(text);
     if (parsed.kind === "unknown-command") {
-      runtime.notify({ tone: "error", title: `There is no /${parsed.name} command`, message: "Type / to see the commands, or start with // to send a message that begins with a slash." });
+      runtime.notify({
+        tone: "error",
+        title: `There is no /${parsed.name} command`,
+        message:
+          "Type / to see the commands, or start with // to send a message that begins with a slash.",
+      });
       return;
     }
     if (parsed.kind === "command") {
@@ -309,28 +468,35 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     if (!session) return;
     if (!parsed.text.trim() && attachments.length === 0) return;
     if (parsed.text !== text) session.setInput(parsed.text);
-    const sending = attachments;
-    setAttachments([]);
     setScroll(FOLLOW);
     try {
-      await session.submit(sending.length ? sending : undefined, {
+      await runtime.submit(parsed.text, {
         mentions: mentionIds(parsed.text, chat?.participants ?? {}, selfId),
         ...(afterTurn ? { metadata: { deliverAfterTurn: true } } : {}),
       });
     } catch (error) {
-      setAttachments((current) => [...sending, ...current]);
-      runtime.fail("Your message wasn't sent", error, "It is back in the composer. Check the connection and press Enter to try again.");
+      runtime.fail(
+        "Your message wasn't sent",
+        error,
+        "It is back in the composer. Check the connection and press Enter to try again."
+      );
     }
   }
 
   function interrupt() {
     if (busyIds.length === 0) {
-      runtime.notify({ tone: "info", title: "Nothing to stop", message: "No agent is working right now." });
+      runtime.notify({
+        tone: "info",
+        title: "Nothing to stop",
+        message: "No agent is working right now.",
+      });
       return;
     }
     for (const id of busyIds) {
       const agent = agents.find((a) => a.id === id);
-      void session?.interruptAgent(id, undefined, agent?.handle ?? undefined).catch((error) => runtime.fail("Couldn't stop the agent", error));
+      void session
+        ?.interruptAgent(id, undefined, agent?.handle ?? undefined)
+        .catch((error) => runtime.fail("Couldn't stop the agent", error));
     }
   }
 
@@ -345,12 +511,42 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
 
   function paletteExtras() {
     return [
-      { id: "interrupt", label: "Stop the agent", detail: "Esc", run: interrupt },
-      { id: "flush", label: "Send queued messages now and stop the agent", detail: "Esc Esc", run: () => void session?.flushOutboxAndInterrupt() },
-      { id: "undo", label: "Undo cancelling queued messages", detail: chat?.undoableAction ? "available" : "nothing to undo", run: () => session?.undoLastAction() },
-      { id: "select", label: "Select messages in the transcript", detail: "Ctrl-↑", run: () => enterSelect() },
-      { id: "expand", label: expandAll ? "Collapse tool calls and thinking" : "Expand tool calls and thinking", detail: "Ctrl-O", run: () => setExpandAll((v) => !v) },
-      { id: "retry-connection", label: "Reconnect the conversation", detail: chat?.connected ? "connected" : "offline", run: () => session?.reconnect("user-retry") },
+      {
+        id: "interrupt",
+        label: "Stop the agent",
+        detail: "Esc",
+        run: interrupt,
+      },
+      {
+        id: "flush",
+        label: "Send queued messages now and stop the agent",
+        detail: "Esc Esc",
+        run: () => void session?.flushOutboxAndInterrupt(),
+      },
+      {
+        id: "undo",
+        label: "Undo cancelling queued messages",
+        detail: chat?.undoableAction ? "available" : "nothing to undo",
+        run: () => session?.undoLastAction(),
+      },
+      {
+        id: "select",
+        label: "Select messages in the transcript",
+        detail: "Ctrl-↑",
+        run: () => enterSelect(),
+      },
+      {
+        id: "expand",
+        label: expandAll ? "Collapse tool calls and thinking" : "Expand tool calls and thinking",
+        detail: "Ctrl-O",
+        run: () => setExpandAll((v) => !v),
+      },
+      {
+        id: "retry-connection",
+        label: "Reconnect the conversation",
+        detail: chat?.connected ? "connected" : "offline",
+        run: () => session?.reconnect("user-retry"),
+      },
       {
         id: "diagnostics",
         label: "Show diagnostics",
@@ -374,7 +570,16 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
           });
         },
       },
-      { id: "retry-models", label: "Reload models and agents", detail: "", run: () => { runtime.controller?.retryModelSettings(); runtime.controller?.retryAgentCatalog(); runtime.controller?.retryAgentRecovery(); } },
+      {
+        id: "retry-models",
+        label: "Reload models and agents",
+        detail: "",
+        run: () => {
+          runtime.controller?.retryModelSettings();
+          runtime.controller?.retryAgentCatalog();
+          runtime.controller?.retryAgentRecovery();
+        },
+      },
     ];
   }
 
@@ -389,7 +594,8 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   function handleComposeKey(event: KeyEvent) {
     if (menuOpen) {
       if (event.name === "up") return setMenuIndex((i) => Math.max(0, i - 1));
-      if (event.name === "down") return setMenuIndex((i) => Math.min(completions.length - 1, i + 1));
+      if (event.name === "down")
+        return setMenuIndex((i) => Math.min(completions.length - 1, i + 1));
       if (event.name === "escape") return setMenuDismissedFor(editor.text);
       if (event.name === "tab" || (event.name === "enter" && !event.meta && !event.shift)) {
         const item = completions[Math.min(menuIndex, completions.length - 1)]!;
@@ -455,6 +661,16 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     const action = resolveBinding("select", event);
     const msg = selectedMessage;
     switch (action) {
+      case "inspect":
+        if (msg)
+          setOverlay({
+            kind: "detail",
+            title: "Message details",
+            lines: (columns) => renderRow(msg, { ...rowCtx, columns }, true),
+            copyText: msg.content || JSON.stringify(msg.invocation ?? msg.task ?? msg, null, 2),
+            scroll: 0,
+          });
+        return;
       case "select-up":
         return moveSelection(-1);
       case "select-down":
@@ -483,7 +699,12 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     }
     if (!msg) return;
     const available = new Set(messageActions(msg, selfId).map((a) => a.id));
-    const unavailable = (what: string) => runtime.notify({ tone: "info", title: `Can't ${what} on this message`, message: hintFor(msg) });
+    const unavailable = (what: string) =>
+      runtime.notify({
+        tone: "info",
+        title: `Can't ${what} on this message`,
+        message: hintFor(msg),
+      });
     switch (action) {
       case "toggle":
         return available.has("toggle") ? toggleRow(msg) : unavailable("expand");
@@ -494,7 +715,9 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
       case "retry":
         return available.has("retry") ? actions.retry(msg) : unavailable("retry");
       case "schedule-resume":
-        return available.has("schedule-resume") ? actions.scheduleResume(msg) : unavailable("schedule a resume");
+        return available.has("schedule-resume")
+          ? actions.scheduleResume(msg)
+          : unavailable("schedule a resume");
       case "connect":
         return available.has("connect") ? actions.connectFor(msg) : unavailable("connect");
       case "copy":
@@ -504,17 +727,52 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
 
   function handleOverlayKey(current: Overlay, event: InputEvent) {
     if (event.type === "focus") return;
+    if (current.kind === "detail") {
+      if (event.type !== "key") return;
+      if (event.name === "escape" || event.text === "q") return setOverlay(null);
+      if (event.text === "y") return copy(current.copyText, "the details");
+      const room = Math.max(1, overlayRows.current - 3);
+      const last = Math.max(0, current.lines(size.columns).length - room);
+      const delta =
+        event.name === "up"
+          ? -1
+          : event.name === "down"
+            ? 1
+            : event.name === "pageup"
+              ? -room
+              : event.name === "pagedown"
+                ? room
+                : 0;
+      const next =
+        event.name === "home"
+          ? 0
+          : event.name === "end"
+            ? last
+            : Math.max(0, Math.min(last, current.scroll + delta));
+      setOverlay({ ...current, scroll: next });
+      return;
+    }
     if (current.kind === "picker") {
       const picker = current.picker;
       if (event.type === "paste") {
-        if (picker.filterable) setOverlay({ ...current, picker: { ...picker, query: picker.query + event.text.replace(/\s+/g, " "), index: 0 } });
+        if (picker.filterable)
+          setOverlay({
+            ...current,
+            picker: {
+              ...picker,
+              query: picker.query + event.text.replace(/\s+/g, " "),
+              index: 0,
+            },
+          });
         return;
       }
       if (event.name === "escape") return setOverlay(null);
       if (event.name === "up") return setOverlay({ ...current, picker: movePicker(picker, -1) });
       if (event.name === "down") return setOverlay({ ...current, picker: movePicker(picker, 1) });
-      if (event.name === "pageup") return setOverlay({ ...current, picker: movePicker(picker, -10) });
-      if (event.name === "pagedown") return setOverlay({ ...current, picker: movePicker(picker, 10) });
+      if (event.name === "pageup")
+        return setOverlay({ ...current, picker: movePicker(picker, -10) });
+      if (event.name === "pagedown")
+        return setOverlay({ ...current, picker: movePicker(picker, 10) });
       if (event.name === "enter") {
         const item = pickerVisibleItems(picker)[picker.index];
         if (!item) return;
@@ -522,13 +780,25 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
         current.onPick(item);
         return;
       }
-      if (picker.filterable && event.name === "backspace") return setOverlay({ ...current, picker: { ...picker, query: picker.query.slice(0, -1), index: 0 } });
-      if (picker.filterable && event.name === "char" && !event.ctrl && !event.meta) return setOverlay({ ...current, picker: { ...picker, query: picker.query + event.text, index: 0 } });
+      if (picker.filterable && event.name === "backspace")
+        return setOverlay({
+          ...current,
+          picker: { ...picker, query: picker.query.slice(0, -1), index: 0 },
+        });
+      if (picker.filterable && event.name === "char" && !event.ctrl && !event.meta)
+        return setOverlay({
+          ...current,
+          picker: { ...picker, query: picker.query + event.text, index: 0 },
+        });
       return;
     }
     if (current.kind === "prompt") {
       if (event.type === "key" && event.name === "escape") return setOverlay(null);
-      if (event.type === "key" && event.name === "enter" && !(current.prompt.multiline && (event.meta || event.shift))) {
+      if (
+        event.type === "key" &&
+        event.name === "enter" &&
+        !(current.prompt.multiline && (event.meta || event.shift))
+      ) {
         setOverlay(null);
         void current.prompt.onSubmit(current.editor.text);
         return;
@@ -546,8 +816,18 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     }
     if (event.type !== "key") return;
     if (current.kind === "help") {
-      if (event.name === "escape" || event.text === "q" || event.name === "f1") return setOverlay(null);
-      const delta = event.name === "up" ? -1 : event.name === "down" ? 1 : event.name === "pageup" ? -10 : event.name === "pagedown" ? 10 : 0;
+      if (event.name === "escape" || event.text === "q" || event.name === "f1")
+        return setOverlay(null);
+      const delta =
+        event.name === "up"
+          ? -1
+          : event.name === "down"
+            ? 1
+            : event.name === "pageup"
+              ? -10
+              : event.name === "pagedown"
+                ? 10
+                : 0;
       setOverlay({ kind: "help", scroll: Math.max(0, current.scroll + delta) });
       return;
     }
@@ -555,17 +835,85 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
       const items = queueItems();
       const item = items[current.index];
       if (event.name === "escape" || event.text === "q") return setOverlay(null);
-      if (event.name === "up") return setOverlay({ kind: "queue", index: Math.max(0, current.index - 1) });
-      if (event.name === "down") return setOverlay({ kind: "queue", index: Math.min(items.length - 1, current.index + 1) });
+      if (event.name === "up")
+        return setOverlay({
+          kind: "queue",
+          index: Math.max(0, current.index - 1),
+        });
+      if (event.name === "down")
+        return setOverlay({
+          kind: "queue",
+          index: Math.min(items.length - 1, current.index + 1),
+        });
       if (event.text === "u") return session?.undoLastAction();
       if (!item) return;
-      if (event.text === "d") {
-        if (deferred?.queued.some((q) => q.id === item.id)) deferred.discardQueued(item.id);
-        else void session?.cancelPendingMessage(item.id).catch((error) => runtime.fail("Couldn't discard the message", error));
+      if (event.name === "enter") {
+        setOverlay({
+          kind: "detail",
+          title: "Queued message",
+          lines: (columns) =>
+            wrap(sanitize([item.text, ...(item.attachments ?? [])].join("\n")), columns),
+          copyText: item.text,
+          scroll: 0,
+        });
         return;
       }
-      if (event.text === "r" && item.failed) return deferred?.retryDelivery(item.id);
-      if (event.text === "e" && !deferred?.queued.some((q) => q.id === item.id)) {
+      if (event.text === "d") {
+        void runtime.bindConversationCallback(async () => {
+          if (deferred?.queued.some((q) => q.id === item.id)) await deferred.discardQueued(item.id);
+          else await session?.cancelPendingMessage(item.id);
+        })();
+        return;
+      }
+      if (event.text === "r" && item.failed) {
+        void runtime.bindConversationCallback(() => deferred?.retryDelivery(item.id))();
+        return;
+      }
+      if (
+        event.text === "c" &&
+        deferred?.queued.find((q) => q.id === item.id)?.kind === "opening-request"
+      ) {
+        void runtime.bindConversationCallback(async () => {
+          await deferred.discardQueued(item.id);
+          runtime.assertConversationActive();
+          session?.setInput(item.text);
+          setOverlay(null);
+        })();
+        return;
+      }
+      if (event.text === "e") {
+        const held = deferred?.queued.find((q) => q.id === item.id);
+        if (held?.kind === "opening-request") {
+          runtime.notify({
+            tone: "info",
+            title: "The retained opening request is not editable",
+            message:
+              "Press c to cancel the retained request and compose a replacement, or d to discard it.",
+          });
+          return;
+        }
+        if (held?.publication === "accepted" || held?.retirement !== undefined) {
+          runtime.notify({
+            tone: "info",
+            title: "This entry only needs attachment cleanup",
+            message:
+              held.publication === "accepted"
+                ? "The message was accepted. Press r to finish cleanup; it will not be sent again. Discarding does not recall it."
+                : held.publication === "attempted"
+                  ? "Delivery was attempted and may have been accepted. Press r or d to finish cleanup only; cleanup does not recall it."
+                  : "This message was not sent. Press r or d to finish cleaning up its retained files.",
+          });
+          return;
+        }
+        if (held?.publication === "attempted") {
+          runtime.notify({
+            tone: "info",
+            title: "This delivery is not editable",
+            message:
+              "It may already have been accepted. Press r to retry it unchanged, or d to stop retrying. Discarding does not recall it.",
+          });
+          return;
+        }
         setOverlay({
           kind: "prompt",
           editor: editorFor(item.text),
@@ -573,7 +921,10 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
             title: "Edit the queued message",
             initial: item.text,
             multiline: true,
-            onSubmit: (text) => session?.editPendingMessage(item.id, text).catch((error) => runtime.fail("Couldn't edit the message", error, "The agent may have read it already.")),
+            onSubmit: runtime.bindConversationCallback(async (text) => {
+              if (held && deferred) await deferred.editQueued(item.id, text);
+              else await session?.editPendingMessage(item.id, text);
+            }),
           },
         });
       }
@@ -587,11 +938,30 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
         id: q.id,
         text: q.text,
         failed: q.status === "failed",
-        state: q.status === "failed" ? `failed: ${q.failure?.title ?? deferred?.deliveryError ?? "not delivered"}` : q.status === "delivering" ? "sending" : q.status === "waiting" ? "waiting behind a failed message" : "waiting for the first agent",
+        attachments: q.attachmentSummaries?.map(
+          (file) => `${file.name} · ${file.mimeType} · ${file.size} bytes`
+        ),
+        state:
+          q.publication === "accepted" || q.retirement !== undefined
+            ? `${q.publication === "accepted" ? "accepted" : q.publication === "attempted" ? "delivery uncertain" : "unsent"} · attachment cleanup ${q.status === "failed" ? "pending — r retries cleanup" : "in progress"}`
+            : q.status === "failed"
+              ? `failed: ${q.failure?.title ?? deferred?.deliveryError ?? "not delivered"}`
+              : q.status === "delivering"
+                ? "sending"
+                : q.status === "waiting"
+                  ? "waiting behind a failed message"
+                  : "waiting for the first agent",
       });
     }
     for (const m of outbox) {
-      items.push({ id: m.id, text: m.content, failed: false, state: chat?.afterTurnMessageIds.has(m.id) ? "sends after the agent's turn" : "queued for the agent" });
+      items.push({
+        id: m.id,
+        text: m.content,
+        failed: false,
+        state: chat?.afterTurnMessageIds.has(m.id)
+          ? "sends after the agent's turn"
+          : "queued for the agent",
+      });
     }
     return items;
   }
@@ -603,8 +973,20 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
     }
     // A pending agent question takes the keyboard.
     if (form && pendingForm) {
+      if (event.type === "key" && (event.name === "pageup" || event.name === "pagedown")) {
+        const rendered = renderForm(form.state, pendingForm.args, size.columns - 2);
+        const room = Math.max(1, size.rows - 3);
+        const last = Math.max(0, rendered.lines.length - room);
+        const current =
+          form.scroll ?? Math.max(0, Math.min(rendered.focusLine - Math.floor(room / 2), last));
+        setForm({
+          ...form,
+          scroll: Math.max(0, Math.min(last, current + (event.name === "pageup" ? -room : room))),
+        });
+        return;
+      }
       const next = formReduce(form.state, pendingForm.args, event);
-      setForm({ id: form.id, state: next.state });
+      setForm({ id: form.id, state: next.state, scroll: null });
       if (next.result) pendingForm.answer(next.result);
       return;
     }
@@ -613,9 +995,14 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
         runtime.signIn.dismiss();
         return;
       }
-      if (event.type === "paste" && signIn.phase === "waiting") return void runtime.signIn.paste(event.text);
-      if (event.type === "key" && event.name === "escape") return runtime.signIn.cancel();
-      if (event.type === "key" && event.text === "y" && signIn.phase === "waiting") return copy(signIn.url, "the sign-in link");
+      if (event.type === "paste" && signIn.phase === "waiting")
+        return void runtime.signIn.paste(event.text);
+      if (event.type === "key" && event.name === "escape")
+        return void runtime.signIn
+          .cancel()
+          .catch((error) => runtime.fail("Provider sign-in cleanup failed", error));
+      if (event.type === "key" && event.text === "y" && signIn.phase === "waiting")
+        return copy(signIn.url, "the sign-in link");
       return;
     }
     if (overlay) return handleOverlayKey(overlay, event);
@@ -625,7 +1012,14 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
       setDraft(applyEdit(editor, { kind: "insert", text: event.text }));
       return;
     }
-    if (rt.notices.length > 0 && event.name === "escape" && mode === "compose" && !menuOpen && busyIds.length === 0 && !escArmed) {
+    if (
+      rt.notices.length > 0 &&
+      event.name === "escape" &&
+      mode === "compose" &&
+      !menuOpen &&
+      busyIds.length === 0 &&
+      !escArmed
+    ) {
       runtime.dismissNotice();
       return;
     }
@@ -642,27 +1036,61 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   const host = rt.host;
   const model: ScreenModel = {
     size,
-    transcript: { source, scroll, selectedIndex: mode === "select" ? selectedIndex : -1, loadingOlder: !!chat?.loadingMore, replaySettled: !!chat?.replaySettled, hasMore: !!chat?.hasMoreHistory, historyError: chat?.historyError ?? null },
+    transcript: {
+      source,
+      scroll,
+      selectedIndex: mode === "select" ? selectedIndex : -1,
+      loadingOlder: !!chat?.loadingMore,
+      replaySettled: !!chat?.replaySettled,
+      hasMore: !!chat?.hasMoreHistory,
+      historyError: chat?.historyError ?? null,
+    },
     empty: transcript.length === 0 ? emptyState() : null,
-    overlay: overlay ? { overlay, queue: overlay.kind === "queue" ? queueItems() : [], undo: chat?.undoableAction ? "u undoes the last discard" : null } : null,
-    form: form && pendingForm ? { state: form.state, args: pendingForm.args } : null,
+    overlay: overlay
+      ? {
+          overlay,
+          queue: overlay.kind === "queue" ? queueItems() : [],
+          undo: chat?.undoableAction ? "u undoes the last discard" : null,
+        }
+      : null,
+    form:
+      form && pendingForm
+        ? { state: form.state, args: pendingForm.args, scroll: form.scroll }
+        : null,
     signIn,
     notices: rt.notices,
     banners: banners(),
     outbox: queueItems(),
-    menu: menuOpen ? { items: completions, index: Math.min(menuIndex, completions.length - 1) } : null,
-    composer: { editor, attachments: attachments.map((a) => a.name), placeholder: placeholder(), mode, selectedHint: selectedMessage ? hintFor(selectedMessage) : null },
+    menu: menuOpen
+      ? {
+          items: completions,
+          index: Math.min(menuIndex, completions.length - 1),
+        }
+      : null,
+    composer: {
+      editor,
+      attachments: attachments.map(
+        (a) => a.name + (a.status === "releasing" ? " (cleanup pending)" : "")
+      ),
+      placeholder: placeholder(),
+      mode,
+      selectedHint: selectedMessage ? hintFor(selectedMessage) : null,
+    },
     status: {
       connection: rt.connection,
       joined: !!chat?.connected,
-      model: primaryAgent?.activeModel ?? modelNameFor(settings?.settings.model ?? deferred?.draft.model ?? null),
+      model:
+        primaryAgent?.activeModel ??
+        modelNameFor(settings?.settings.model ?? deferred?.draft.model ?? null),
       thinkingLevel: settings?.settings.thinkingLevel ?? deferred?.draft.thinkingLevel ?? null,
       fastMode: settings?.settings.fastMode ?? null,
       contextPercent: primaryAgent?.contextPercent ?? null,
       approvalLevel,
       agentCount: agents.length,
       busy,
-      unreadForks: forks ? [...forks.children, ...forks.siblings].filter((f) => f.unread).length : 0,
+      unreadForks: forks
+        ? [...forks.children, ...forks.siblings].filter((f) => f.unread).length
+        : 0,
       queued: outbox.length + (deferred?.queued.length ?? 0),
       title: chat?.channelTitle ?? null,
     },
@@ -671,6 +1099,7 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   };
   const screen = layoutScreen(model);
   viewportRows.current = screen.transcriptRows;
+  overlayRows.current = screen.overlayRows;
 
   // Ink applies the cursor position given during render to the frame it commits.
   setCursorPosition(screen.cursor ?? undefined);
@@ -683,7 +1112,8 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   function placeholder(): string {
     if (!chat?.connected) return "Connecting…";
     if (agents.length === 0) return "Write your first message — an agent starts when you send it";
-    if (busy) return "The agent is working — Enter steers it, Ctrl-S sends after its turn, Esc stops it";
+    if (busy)
+      return "The agent is working — Enter steers it, Ctrl-S sends after its turn, Esc stops it";
     return "Message the agent · / for commands · @ to mention · F1 for help";
   }
 
@@ -702,7 +1132,13 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
       };
     }
     if (host?.firstAgentModelPreflight === "selection-required") {
-      return { title: "Choose a model to start", lines: ["There is no default model in this workspace yet. /model picks one;", "/connect adds a provider account."] };
+      return {
+        title: "Choose a model to start",
+        lines: [
+          "There is no default model in this workspace yet. /model picks one;",
+          "/connect adds a provider account.",
+        ],
+      };
     }
     return {
       title: chat?.replaySettled === false ? "Loading the conversation…" : "New conversation",
@@ -719,20 +1155,71 @@ export function TerminalChatApp({ runtime, input, control, approvalsKey = "Ctrl-
   function banners(): ScreenModel["banners"] {
     const out: ScreenModel["banners"] = [];
     const error = chat?.connectionError;
-    if (error) out.push({ tone: "error", title: error.title, message: `${error.message}${error.retryable ? " Ctrl-K → Reconnect, or wait: it retries by itself." : ""}` });
-    if (host?.modelSettingsError) out.push({ tone: "error", title: host.modelSettingsError.title, message: host.modelSettingsError.message });
-    if (host?.agentCatalogError) out.push({ tone: "warning", title: host.agentCatalogError.title, message: host.agentCatalogError.message });
-    if (host?.recovery.status === "recovering") out.push({ tone: "info", title: "Bringing your agents back…", message: "They rejoin the conversation in a moment." });
-    if (host?.recovery.status === "failed" && host.recovery.error) out.push({ tone: "error", title: host.recovery.error.title, message: `${host.recovery.error.message} Ctrl-K → Reload models and agents, or Show diagnostics for the cause.` });
+    if (error)
+      out.push({
+        tone: "error",
+        title: error.title,
+        message: `${error.message}${error.retryable ? " Ctrl-K → Reconnect, or wait: it retries by itself." : ""}`,
+      });
+    if (host?.modelSettingsError)
+      out.push({
+        tone: "error",
+        title: host.modelSettingsError.title,
+        message: host.modelSettingsError.message,
+      });
+    if (host?.agentCatalogError)
+      out.push({
+        tone: "warning",
+        title: host.agentCatalogError.title,
+        message: host.agentCatalogError.message,
+      });
+    if (host?.recovery.status === "recovering")
+      out.push({
+        tone: "info",
+        title: "Bringing your agents back…",
+        message: "They rejoin the conversation in a moment.",
+      });
+    if (host?.recovery.status === "failed" && host.recovery.error)
+      out.push({
+        tone: "error",
+        title: host.recovery.error.title,
+        message: `${host.recovery.error.message} Ctrl-K → Reload models and agents, or Show diagnostics for the cause.`,
+      });
     if (deferred?.launchStage && deferred.launchStage !== "ready") {
-      const label = deferred.launchStage === "failed" ? deferred.launchError?.title ?? "Your agent couldn't start" : stageLabel(deferred.launchStage);
-      out.push({ tone: deferred.launchStage === "failed" ? "error" : "info", title: label, message: deferred.launchStage === "failed" ? `${deferred.launchError?.message ?? ""} /retry tries again.` : "" });
+      const label =
+        deferred.launchStage === "failed"
+          ? (deferred.launchError?.title ?? "Your agent couldn't start")
+          : stageLabel(deferred.launchStage);
+      out.push({
+        tone: deferred.launchStage === "failed" ? "error" : "info",
+        title: label,
+        message:
+          deferred.launchStage === "failed"
+            ? `${deferred.launchError?.message ?? ""} /retry tries again.`
+            : "",
+      });
     }
-    if (deferred?.setupRequired) out.push({ tone: "warning", title: deferred.setupRequired.title, message: `${deferred.setupRequired.message} /model chooses a model; /connect adds a provider.` });
-    else if (deferred?.modelSelectionRequired && deferred.queued.length > 0) out.push({ tone: "warning", title: "Choose a model for your agent", message: "Your message is waiting. /model picks one." });
+    if (deferred?.setupRequired)
+      out.push({
+        tone: "warning",
+        title: deferred.setupRequired.title,
+        message: `${deferred.setupRequired.message} /model chooses a model; /connect adds a provider.`,
+      });
+    else if (deferred?.modelSelectionRequired && deferred.queued.length > 0)
+      out.push({
+        tone: "warning",
+        title: "Choose a model for your agent",
+        message: "Your message is waiting. /model picks one.",
+      });
     if (forks?.error) out.push({ tone: "error", title: "Fork failed", message: forks.error });
-    if (chat?.flushNarration) out.push({ tone: "info", title: chat.flushNarration.text, message: "" });
-    if (chat?.undoableAction) out.push({ tone: "info", title: "Queued message cancelled", message: "Ctrl-K → Undo brings it back." });
+    if (chat?.flushNarration)
+      out.push({ tone: "info", title: chat.flushNarration.text, message: "" });
+    if (chat?.undoableAction)
+      out.push({
+        tone: "info",
+        title: "Queued message cancelled",
+        message: "Ctrl-K → Undo brings it back.",
+      });
     return out;
   }
 
@@ -763,12 +1250,15 @@ function stageLabel(stage: string): string {
 /** What the person can do on the selected row, for the hint line. */
 function hintFor(msg: ChatMessage): string {
   const actions = messageActions(msg, null);
-  return actions.length ? actions.map((a) => `${a.key} ${a.label}`).join(" · ") : "Nothing to do on this message";
+  return actions.length
+    ? actions.map((a) => `${a.key} ${a.label}`).join(" · ")
+    : "Nothing to do on this message";
 }
 
 /** Editing keys of the composer (and of prompt fields). */
 export function editCommandFor(event: KeyEvent, history: readonly string[]): EditCommand | null {
-  if (event.name === "char" && !event.ctrl && !event.meta) return { kind: "insert", text: event.text };
+  if (event.name === "char" && !event.ctrl && !event.meta)
+    return { kind: "insert", text: event.text };
   if (event.name === "char" && event.ctrl) {
     switch (event.text) {
       case "a":

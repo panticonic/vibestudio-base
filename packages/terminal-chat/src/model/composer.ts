@@ -16,7 +16,12 @@ export interface EditorState {
   stash: string | null;
 }
 
-export const emptyEditor: EditorState = { text: "", cursor: 0, historyIndex: null, stash: null };
+export const emptyEditor: EditorState = {
+  text: "",
+  cursor: 0,
+  historyIndex: null,
+  stash: null,
+};
 
 export function editorFor(text: string, previous?: EditorState): EditorState {
   if (previous && previous.text === text) return previous;
@@ -48,7 +53,11 @@ export type EditCommand =
   | { kind: "clear" };
 
 /** Whether the cursor is on the first / last line, where Up/Down browse history. */
-export function cursorLine(state: EditorState): { line: number; lines: number; column: number } {
+export function cursorLine(state: EditorState): {
+  line: number;
+  lines: number;
+  column: number;
+} {
   const before = state.text.slice(0, state.cursor);
   const line = before.split("\n").length - 1;
   const column = state.cursor - (before.lastIndexOf("\n") + 1);
@@ -57,36 +66,52 @@ export function cursorLine(state: EditorState): { line: number; lines: number; c
 
 const isWordChar = (char: string | undefined) => !!char && /[\p{L}\p{N}_]/u.test(char);
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 function wordLeft(text: string, cursor: number): number {
   let index = cursor;
-  while (index > 0 && !isWordChar(text[index - 1])) index--;
-  while (index > 0 && isWordChar(text[index - 1])) index--;
+  while (index > 0 && !isWordChar(text.slice(prevIndex(text, index), index)))
+    index = prevIndex(text, index);
+  while (index > 0 && isWordChar(text.slice(prevIndex(text, index), index)))
+    index = prevIndex(text, index);
   return index;
 }
 
 function wordRight(text: string, cursor: number): number {
   let index = cursor;
-  while (index < text.length && !isWordChar(text[index])) index++;
-  while (index < text.length && isWordChar(text[index])) index++;
+  while (index < text.length && !isWordChar(text.slice(index, nextIndex(text, index))))
+    index = nextIndex(text, index);
+  while (index < text.length && isWordChar(text.slice(index, nextIndex(text, index))))
+    index = nextIndex(text, index);
   return index;
 }
 
-/** Step over a whole surrogate pair so the cursor never splits an emoji. */
+/** Cursor movement and deletion use whole displayed graphemes, including ZWJ emoji. */
 function prevIndex(text: string, cursor: number): number {
-  if (cursor <= 0) return 0;
-  const code = text.charCodeAt(cursor - 1);
-  return code >= 0xdc00 && code <= 0xdfff && cursor >= 2 ? cursor - 2 : cursor - 1;
+  let previous = 0;
+  for (const part of graphemes.segment(text)) {
+    if (part.index >= cursor) break;
+    previous = part.index;
+  }
+  return previous;
 }
 
 function nextIndex(text: string, cursor: number): number {
-  if (cursor >= text.length) return text.length;
-  const code = text.charCodeAt(cursor);
-  return code >= 0xd800 && code <= 0xdbff && cursor + 1 < text.length ? cursor + 2 : cursor + 1;
+  for (const part of graphemes.segment(text)) {
+    const end = part.index + part.segment.length;
+    if (end > cursor) return end;
+  }
+  return text.length;
 }
 
 function splice(state: EditorState, from: number, to: number, insert = ""): EditorState {
   const text = state.text.slice(0, from) + insert + state.text.slice(to);
-  return { text, cursor: from + insert.length, historyIndex: null, stash: null };
+  return {
+    text,
+    cursor: from + insert.length,
+    historyIndex: null,
+    stash: null,
+  };
 }
 
 function moveTo(state: EditorState, cursor: number): EditorState {
@@ -106,7 +131,16 @@ function verticalMove(state: EditorState, direction: -1 | 1): EditorState | null
   const all = state.text.split("\n");
   let offset = 0;
   for (let i = 0; i < target; i++) offset += all[i]!.length + 1;
-  return moveTo(state, offset + Math.min(column, all[target]!.length));
+  const desiredCells = width(all[line]!.slice(0, column));
+  let targetOffset = 0;
+  let cells = 0;
+  for (const part of graphemes.segment(all[target]!)) {
+    const nextCells = cells + width(part.segment);
+    if (nextCells > desiredCells) break;
+    cells = nextCells;
+    targetOffset = part.index + part.segment.length;
+  }
+  return moveTo(state, offset + targetOffset);
 }
 
 function browseHistory(
@@ -132,7 +166,12 @@ function browseHistory(
     return { text, cursor: text.length, historyIndex: null, stash: null };
   }
   const text = history[state.historyIndex - 1]!;
-  return { ...state, text, cursor: text.length, historyIndex: state.historyIndex - 1 };
+  return {
+    ...state,
+    text,
+    cursor: text.length,
+    historyIndex: state.historyIndex - 1,
+  };
 }
 
 export function applyEdit(state: EditorState, command: EditCommand): EditorState {
@@ -199,7 +238,7 @@ export function layoutComposer(text: string, cursor: number, columns: number): C
   for (const logical of text.split("\n")) {
     let row = "";
     let rowWidth = 0;
-    const chars = Array.from(logical);
+    const chars = Array.from(graphemes.segment(logical), (part) => part.segment);
     let index = offset;
     if (cursor === index) {
       cursorRow = lines.length;

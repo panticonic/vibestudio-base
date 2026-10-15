@@ -334,6 +334,10 @@ describe("@workspace-extensions/shell", () => {
     expect(firstSnapshot).toMatchObject({ type: "snapshot", sessionId });
 
     await api.dispose(sessionId);
+    const exited = await readEvent(reader, 500);
+    expect(exited).toMatchObject({ type: "exit", sessionId });
+    const finalSnapshot = await readEvent(reader, 500);
+    expect(finalSnapshot).toMatchObject({ type: "snapshot", sessionId, info: { alive: false } });
     const disposed = await readEvent(reader, 500);
     expect(disposed).toMatchObject({ type: "disposed", sessionId });
     await reader.cancel();

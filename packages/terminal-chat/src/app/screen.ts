@@ -11,7 +11,15 @@ import { layoutComposer, type EditorState } from "../model/composer.js";
 import type { Completion } from "../model/commands.js";
 import { renderForm, type FormState } from "../model/forms.js";
 import type { Mode } from "../model/keymap.js";
-import { renderHelp, renderMenu, renderPicker, renderQueue, renderSignIn, type PickerState, type QueueItem } from "../model/overlays.js";
+import {
+  renderHelp,
+  renderMenu,
+  renderPicker,
+  renderQueue,
+  renderSignIn,
+  type PickerState,
+  type QueueItem,
+} from "../model/overlays.js";
 import { statusLine, type StatusInfo } from "../model/status.js";
 import { computeWindow, type RowSource, type ScrollState } from "../model/viewport.js";
 import type { Notice } from "../runtime/chatRuntime.js";
@@ -22,6 +30,13 @@ export type ScreenOverlay =
   | { kind: "picker"; picker: PickerState }
   | { kind: "prompt"; prompt: PromptSpec; editor: EditorState }
   | { kind: "help"; scroll: number }
+  | {
+      kind: "detail";
+      title: string;
+      lines: (columns: number) => readonly string[];
+      copyText: string;
+      scroll: number;
+    }
   | { kind: "queue"; index: number };
 
 export interface Banner {
@@ -42,8 +57,16 @@ export interface ScreenModel {
     historyError: string | null;
   };
   empty: { title: string; lines: string[] } | null;
-  overlay: { overlay: ScreenOverlay; queue: QueueItem[]; undo: string | null } | null;
-  form: { state: FormState; args: FeedbackFormArgs } | null;
+  overlay: {
+    overlay: ScreenOverlay;
+    queue: QueueItem[];
+    undo: string | null;
+  } | null;
+  form: {
+    state: FormState;
+    args: FeedbackFormArgs;
+    scroll?: number | null;
+  } | null;
   signIn: SignInState;
   notices: readonly Notice[];
   banners: Banner[];
@@ -66,9 +89,15 @@ export interface Screen {
   cursor: { x: number; y: number } | null;
   /** Rows the transcript got this frame (for paging). */
   transcriptRows: number;
+  overlayRows: number;
 }
 
-const TONES = { info: "cyan", success: "green", warning: "yellow", error: "red" } as const;
+const TONES = {
+  info: "cyan",
+  success: "green",
+  warning: "yellow",
+  error: "red",
+} as const;
 
 export function layoutScreen(model: ScreenModel): Screen {
   const columns = Math.max(20, model.size.columns);
@@ -83,15 +112,31 @@ export function layoutScreen(model: ScreenModel): Screen {
   if (model.form) {
     const rendered = renderForm(model.form.state, model.form.args, columns - 2);
     const room = total - 2;
-    const start = Math.max(0, Math.min(rendered.focusLine - Math.floor(room / 2), rendered.lines.length - room));
-    const lines = [style.gray(padEnd(`${symbols.rule.repeat(2)} An agent is asking ${symbols.rule.repeat(columns)}`, columns))];
+    const start = Math.max(
+      0,
+      Math.min(
+        model.form.scroll ?? rendered.focusLine - Math.floor(room / 2),
+        rendered.lines.length - room
+      )
+    );
+    const lines = [
+      style.gray(
+        padEnd(
+          `${symbols.rule.repeat(2)} An agent is asking ${symbols.rule.repeat(columns)}`,
+          columns
+        )
+      ),
+    ];
     for (const line of rendered.lines.slice(start, start + room)) lines.push(` ${line}`);
     while (lines.length < total - 1) lines.push("");
     lines.push(status);
     if (rendered.cursor && rendered.cursor.line >= start && rendered.cursor.line < start + room) {
-      cursor = { x: rendered.cursor.column + 1, y: rendered.cursor.line - start + 1 };
+      cursor = {
+        x: rendered.cursor.column + 1,
+        y: rendered.cursor.line - start + 1,
+      };
     }
-    return { lines, cursor, transcriptRows: 0 };
+    return { lines, cursor, transcriptRows: 0, overlayRows: 0 };
   }
 
   // Bottom area, built upwards.
@@ -116,12 +161,27 @@ export function layoutScreen(model: ScreenModel): Screen {
       if (model.composer.mode === "compose") cursor = { x: 2, y: 0 };
     } else {
       const layout = layoutComposer(editor.text, editor.cursor, width);
-      const start = Math.max(0, Math.min(layout.cursorRow - maxRows + 1, layout.lines.length - maxRows));
-      layout.lines.slice(start, start + maxRows).forEach((line, index) => composerLines.push((index === 0 && start === 0 ? prompt : "  ") + line));
-      if (model.composer.mode === "compose") cursor = { x: 2 + layout.cursorColumn, y: layout.cursorRow - start };
+      const start = Math.max(
+        0,
+        Math.min(layout.cursorRow - maxRows + 1, layout.lines.length - maxRows)
+      );
+      layout.lines
+        .slice(start, start + maxRows)
+        .forEach((line, index) =>
+          composerLines.push((index === 0 && start === 0 ? prompt : "  ") + line)
+        );
+      if (model.composer.mode === "compose")
+        cursor = { x: 2 + layout.cursorColumn, y: layout.cursorRow - start };
     }
     if (model.composer.attachments.length) {
-      composerLines.push(style.magenta(truncate(`  attached: ${model.composer.attachments.join(", ")} (sent with your next message)`, columns)));
+      composerLines.push(
+        style.magenta(
+          truncate(
+            `  attached: ${model.composer.attachments.join(", ")} (sent with your next message)`,
+            columns
+          )
+        )
+      );
     }
     bottom.unshift(...composerLines);
     bottom.unshift(style.gray(symbols.rule.repeat(columns)));
@@ -133,22 +193,51 @@ export function layoutScreen(model: ScreenModel): Screen {
   }
 
   // Sign-in card (modal for keys, but the transcript stays visible above it).
-  const signIn = renderSignIn(model.signIn, columns, model.linkify);
+  const signIn = renderSignIn(model.signIn, columns, model.linkify, model.approvalsKey);
 
   // Queued messages, notices and banners sit between transcript and composer.
   const middle: string[] = [];
   for (const banner of model.banners.slice(-3)) {
     const text = banner.message ? `${banner.title} — ${banner.message}` : banner.title;
-    middle.push(...indentWrap(text, columns, paint(`${symbols.warning} `, TONES[banner.tone]), "  ").slice(0, 2).map((l) => paint(l, TONES[banner.tone])));
+    middle.push(
+      ...indentWrap(text, columns, paint(`${symbols.warning} `, TONES[banner.tone]), "  ")
+        .slice(0, 2)
+        .map((l) => paint(l, TONES[banner.tone]))
+    );
   }
   for (const notice of model.notices.slice(-2)) {
     const text = notice.message ? `${notice.title} — ${notice.message}` : notice.title;
-    middle.push(...indentWrap(text, columns, paint(notice.tone === "error" ? `${symbols.cross} ` : notice.tone === "success" ? `${symbols.check} ` : "• ", TONES[notice.tone]), "  ").slice(0, 3).map((l) => paint(l, TONES[notice.tone])));
+    middle.push(
+      ...indentWrap(
+        text,
+        columns,
+        paint(
+          notice.tone === "error"
+            ? `${symbols.cross} `
+            : notice.tone === "success"
+              ? `${symbols.check} `
+              : "• ",
+          TONES[notice.tone]
+        ),
+        "  "
+      )
+        .slice(0, 3)
+        .map((l) => paint(l, TONES[notice.tone]))
+    );
   }
   if (model.outbox.length > 0 && !model.overlay) {
-    middle.push(style.gray(`${symbols.rule} queued (${model.outbox.length}) — /queue edits or discards ${symbols.rule}`));
+    middle.push(
+      style.gray(
+        `${symbols.rule} queued (${model.outbox.length}) — /queue edits or discards ${symbols.rule}`
+      )
+    );
     for (const item of model.outbox.slice(-3)) {
-      middle.push(truncate(`  ${item.failed ? style.red(symbols.cross) : style.yellow("◷")} ${item.text.replace(/\s+/g, " ")} ${style.gray(`(${item.state})`)}`, columns));
+      middle.push(
+        truncate(
+          `  ${item.failed ? style.red(symbols.cross) : style.yellow("◷")} ${item.text.replace(/\s+/g, " ")} ${style.gray(`(${item.state})`)}`,
+          columns
+        )
+      );
     }
   }
 
@@ -159,18 +248,42 @@ export function layoutScreen(model: ScreenModel): Screen {
   if (model.overlay) {
     const overlay = model.overlay.overlay;
     if (overlay.kind === "picker") top = renderPicker(overlay.picker, columns, rows);
-    else if (overlay.kind === "help") top = renderHelp(columns, rows, model.approvalsKey, overlay.scroll).lines;
-    else if (overlay.kind === "queue") top = renderQueue(model.overlay.queue, overlay.index, model.overlay.undo, columns, rows);
-    else {
+    else if (overlay.kind === "help")
+      top = renderHelp(columns, rows, model.approvalsKey, overlay.scroll).lines;
+    else if (overlay.kind === "queue")
+      top = renderQueue(model.overlay.queue, overlay.index, model.overlay.undo, columns, rows);
+    else if (overlay.kind === "detail") {
+      const content = overlay.lines(columns);
+      const room = Math.max(1, rows - 3);
+      const start = Math.max(0, Math.min(overlay.scroll, content.length - room));
+      top = [
+        style.bold(truncate(overlay.title, columns)),
+        style.gray(symbols.rule.repeat(columns)),
+        ...content.slice(start, start + room),
+      ];
+      while (top.length < rows - 1) top.push("");
+      top.push(style.gray(truncate("↑↓ PgUp/PgDn scroll · Home/End · y copy · Esc back", columns)));
+    } else {
       const prompt = overlay.prompt;
-      const body: string[] = [paint(prompt.title, "bold"), style.gray(symbols.rule.repeat(columns))];
-      if (prompt.hint) body.push(...indentWrap(prompt.hint, columns, "").map((l) => style.gray(l)), "");
+      const body: string[] = [
+        paint(prompt.title, "bold"),
+        style.gray(symbols.rule.repeat(columns)),
+      ];
+      if (prompt.hint)
+        body.push(...indentWrap(prompt.hint, columns, "").map((l) => style.gray(l)), "");
       const layout = layoutComposer(overlay.editor.text, overlay.editor.cursor, columns - 2);
       const at = body.length;
       layout.lines.forEach((line) => body.push(`${style.cyan("│")} ${line}`));
-      body.push("", style.gray(`Enter ${prompt.submitLabel ?? "save"}${prompt.multiline ? " · Alt-Enter new line" : ""} · Esc cancel`));
-      top = body.slice(0, rows);
-      cursor = { x: 2 + layout.cursorColumn, y: at + layout.cursorRow };
+      body.push(
+        "",
+        style.gray(
+          `Enter ${prompt.submitLabel ?? "save"}${prompt.multiline ? " · Alt-Enter new line" : ""} · Esc cancel`
+        )
+      );
+      const caretLine = at + layout.cursorRow;
+      const start = Math.max(0, Math.min(caretLine - rows + 2, body.length - rows));
+      top = body.slice(start, start + rows);
+      cursor = { x: 2 + layout.cursorColumn, y: caretLine - start };
     }
     while (top.length < rows) top.push("");
     transcriptRows = 0;
@@ -182,13 +295,22 @@ export function layoutScreen(model: ScreenModel): Screen {
   if (cursor && !model.overlay) {
     // Composer cursor: y is relative to the composer's first line, which
     // follows the transcript, sign-in card, middle area, menu and separator.
-    cursor = { x: cursor.x, y: rows + signIn.length + middle.length + menuCount + 1 + cursor.y };
+    cursor = {
+      x: cursor.x,
+      y: rows + signIn.length + middle.length + menuCount + 1 + cursor.y,
+    };
   }
   if (model.signIn.phase !== "idle" && !model.overlay) cursor = null;
   // On a very small terminal the bottom area wins; the transcript is cut first.
   const overflow = Math.max(0, lines.length - total);
-  if (cursor && overflow) cursor = cursor.y - overflow >= 0 ? { x: cursor.x, y: cursor.y - overflow } : null;
-  return { lines: lines.slice(overflow), cursor, transcriptRows };
+  if (cursor && overflow)
+    cursor = cursor.y - overflow >= 0 ? { x: cursor.x, y: cursor.y - overflow } : null;
+  return {
+    lines: lines.slice(overflow),
+    cursor,
+    transcriptRows,
+    overlayRows: model.overlay ? rows : 0,
+  };
 }
 
 function transcriptLines(model: ScreenModel, rows: number, columns: number): string[] {
@@ -208,12 +330,24 @@ function transcriptLines(model: ScreenModel, rows: number, columns: number): str
   const header: string[] = [];
   const window = computeWindow(source, rows, model.transcript.scroll);
   if (window.atTop) {
-    if (model.transcript.historyError) header.push(style.red(truncate(`${symbols.cross} Older messages didn't load: ${model.transcript.historyError}. Scroll up to retry.`, columns)));
-    else if (model.transcript.loadingOlder) header.push(style.gray(`${symbols.ellipsis} loading older messages`));
-    else if (model.transcript.hasMore) header.push(style.gray("↑ older messages — scroll up (PgUp) to load them"));
+    if (model.transcript.historyError)
+      header.push(
+        style.red(
+          truncate(
+            `${symbols.cross} Older messages didn't load: ${model.transcript.historyError}. Scroll up to retry.`,
+            columns
+          )
+        )
+      );
+    else if (model.transcript.loadingOlder)
+      header.push(style.gray(`${symbols.ellipsis} loading older messages`));
+    else if (model.transcript.hasMore)
+      header.push(style.gray("↑ older messages — scroll up (PgUp) to load them"));
     else if (model.transcript.replaySettled) header.push(style.gray("↑ start of conversation"));
   }
-  const body = header.length ? computeWindow(source, rows - header.length, model.transcript.scroll) : window;
+  const body = header.length
+    ? computeWindow(source, rows - header.length, model.transcript.scroll)
+    : window;
   const out = [...header];
   for (const line of body.lines) {
     const selected = line.rowIndex === model.transcript.selectedIndex;

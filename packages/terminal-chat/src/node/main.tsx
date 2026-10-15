@@ -29,10 +29,13 @@ export async function runTerminalChat(
 ): Promise<void> {
   const { stdin, stdout } = io;
   const control = (sequence: string) => stdout.write(sequence);
-  const runtime = new ChatRuntime(boot, { presentTitle: (title) => control(titleSequence(`${title} — Chat`)) });
+  const runtime = new ChatRuntime(boot, {
+    presentTitle: (title) => control(titleSequence(`${title} — Chat`)),
+  });
   const input: InputSource = {
     subscribe(listener) {
-      const onData = (chunk: string | Buffer) => listener(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      const onData = (chunk: string | Buffer) =>
+        listener(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
       stdin.on("data", onData);
       return () => {
         stdin.off("data", onData);
@@ -40,57 +43,110 @@ export async function runTerminalChat(
     },
   };
 
-  // Library logging must not write over the screen: keep it as diagnostics
-  // (Ctrl-K → Show diagnostics). The capture stays for the rest of the
-  // program: teardown after the UI is gone (closing the conversation and the
-  // connection) still logs, and the terminal it would land on is the person's.
-  captureConsole((level, text) => runtime.recordDiagnostic(level, text));
-  stdout.write(ALT_SCREEN_ON + ENTER_MODES);
-  if (stdin.isTTY) stdin.setRawMode(true);
-  stdin.setEncoding("utf8");
-  stdin.resume();
-  runtime.start();
-  const instance = render(<TerminalChatApp runtime={runtime} input={input} control={control} approvalsKey={io.approvalsKey} />, {
-    stdout,
-    stdin,
-    exitOnCtrlC: false,
-    patchConsole: false,
-  });
+  // Retain capture through joined runtime teardown, then restore the caller's console.
+  const restoreConsole = captureConsole((level, text) => runtime.recordDiagnostic(level, text));
+  let failure: unknown;
+  let restore = () => {};
+  try {
+    signal?.throwIfAborted();
+    await runtime.start();
+    signal?.throwIfAborted();
+    stdout.write(ALT_SCREEN_ON + ENTER_MODES);
+    if (stdin.isTTY) stdin.setRawMode(true);
+    stdin.setEncoding("utf8");
+    stdin.resume();
+    const instance = render(
+      <TerminalChatApp
+        runtime={runtime}
+        input={input}
+        control={control}
+        approvalsKey={io.approvalsKey}
+      />,
+      {
+        stdout,
+        stdin,
+        exitOnCtrlC: false,
+        patchConsole: false,
+      }
+    );
 
-  let restored = false;
-  const restore = () => {
-    if (restored) return;
-    restored = true;
-    instance.unmount();
-    runtime.dispose();
-    if (stdin.isTTY) stdin.setRawMode(false);
-    stdin.pause();
-    stdout.write(LEAVE_MODES + ALT_SCREEN_OFF);
-  };
-  await new Promise<void>((resolve) => {
-    const finish = () => {
-      process.off("SIGHUP", finish);
-      process.off("SIGTERM", finish);
-      process.off("exit", restore);
-      signal?.removeEventListener("abort", finish);
-      restore();
-      resolve();
+    let restored = false;
+    restore = () => {
+      if (restored) return;
+      restored = true;
+      instance.unmount();
+      if (stdin.isTTY) stdin.setRawMode(false);
+      stdin.pause();
+      stdout.write(LEAVE_MODES + ALT_SCREEN_OFF);
     };
-    process.once("SIGHUP", finish);
-    process.once("SIGTERM", finish);
-    process.once("exit", restore);
-    signal?.addEventListener("abort", finish, { once: true });
-    void instance.waitUntilExit().then(finish, finish);
-  });
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: unknown) => {
+        process.off("SIGHUP", stop);
+        process.off("SIGTERM", stop);
+        process.off("exit", restore);
+        signal?.removeEventListener("abort", stop);
+        restore();
+        if (error !== undefined) reject(error);
+        else resolve();
+      };
+      const stop = () => finish();
+      process.once("SIGHUP", stop);
+      process.once("SIGTERM", stop);
+      process.once("exit", restore);
+      signal?.addEventListener("abort", stop, { once: true });
+      if (signal?.aborted) stop();
+      void instance.waitUntilExit().then(
+        () => finish(),
+        (error: unknown) => finish(error)
+      );
+    });
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    try {
+      const results = await Promise.allSettled([
+        Promise.resolve().then(restore),
+        runtime.dispose(),
+      ]);
+      const errors = results.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : []
+      );
+      if (errors.length)
+        throw new AggregateError(
+          failure === undefined ? errors : [failure, ...errors],
+          "Terminal chat cleanup failed",
+          { cause: failure }
+        );
+    } finally {
+      restoreConsole();
+    }
+  }
 }
 
 type Level = "debug" | "info" | "warn" | "error";
 
-function captureConsole(sink: (level: Level, text: string) => void): void {
-  const methods = { log: "info", info: "info", debug: "debug", warn: "warn", error: "error" } as const;
+function captureConsole(sink: (level: Level, text: string) => void): () => void {
+  const methods = {
+    log: "info",
+    info: "info",
+    debug: "debug",
+    warn: "warn",
+    error: "error",
+  } as const;
+  const original = {
+    log: console.log,
+    info: console.info,
+    debug: console.debug,
+    warn: console.warn,
+    error: console.error,
+  };
   for (const [name, level] of Object.entries(methods) as Array<[keyof typeof methods, Level]>) {
     console[name] = (...args: unknown[]) => sink(level, args.map(format).join(" "));
   }
+  return () => {
+    Object.assign(console, original);
+  };
 }
 
 function format(value: unknown): string {
