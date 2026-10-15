@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
-  ConnectionManager,
-  type ChatParticipantMetadata,
-  type ClientParticipantMetadata,
-  type ConnectionConfig,
-} from "@workspace/agentic-core";
-import type { Participant, PubSubClient } from "@workspace/pubsub";
-import { useChannelMessages } from "./useChannelMessages.js";
+  ChildTranscriptStore,
+  type ChildTranscriptConnection,
+  type ChildTranscriptSnapshot,
+} from "@workspace/agentic-core/chat-store";
 
 /**
  * Lazily observe a subagent's own task channel so the parent can render the
@@ -14,36 +11,32 @@ import { useChannelMessages } from "./useChannelMessages.js";
  * inspection the child's own panel would show — instead of a bounded summary.
  *
  * A mounted card shares one observer between its compact activity status and
- * expanded transcript, and releases it on unmount. Collapsing the transcript
- * preserves live status without a copied progress feed in the parent.
+ * expanded transcript, and releases it on unmount. React adapter over
+ * `ChildTranscriptStore`.
  */
 
-export interface ChildTranscriptConnection {
-  /** RPC/protocol config reused from the parent panel's own connection. */
-  config: ConnectionConfig;
-  metadata: ClientParticipantMetadata;
-}
+export type { ChildTranscriptConnection };
 
-export interface ChildTranscriptResult {
-  messages: ReturnType<typeof useChannelMessages>["messages"];
-  participants: Record<string, Participant<ChatParticipantMetadata>>;
-  selfId: string | null;
-  /** True until the child's history has replayed. */
-  loading: boolean;
-  error: string | null;
-  hasMoreHistory: boolean;
-  loadingMore: boolean;
+export interface ChildTranscriptResult extends ChildTranscriptSnapshot {
   loadEarlierMessages: () => Promise<void>;
   /** Start a fresh observer generation after a terminal connection failure. */
   retry: () => void;
 }
 
-let nextObserverGeneration = 0;
-
-function observerClientId(base: string, channelId: string): string {
-  nextObserverGeneration += 1;
-  return `${base}:observe:${channelId}:${nextObserverGeneration}`;
-}
+const INACTIVE: ChildTranscriptSnapshot = {
+  messages: [],
+  participants: {},
+  selfId: null,
+  loading: false,
+  error: null,
+  failure: null,
+  hasMoreHistory: false,
+  loadingMore: false,
+};
+const noSubscription = () => () => undefined;
+const inactiveSnapshot = () => INACTIVE;
+const noHistory = async () => undefined;
+const noRetry = () => undefined;
 
 export function useChildTranscript(options: {
   connection: ChildTranscriptConnection | null;
@@ -52,103 +45,25 @@ export function useChildTranscript(options: {
   enabled: boolean;
 }): ChildTranscriptResult {
   const { connection, channelId, contextId, enabled } = options;
-  const [client, setClient] = useState<PubSubClient<ChatParticipantMetadata> | null>(null);
-  const [participants, setParticipants] = useState<
-    Record<string, Participant<ChatParticipantMetadata>>
-  >({});
-  const [error, setError] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState(false);
-  const [retryGeneration, setRetryGeneration] = useState(0);
-  const managerRef = useRef<ConnectionManager | null>(null);
-  const retry = useCallback(() => setRetryGeneration((value) => value + 1), []);
-
-  const active = enabled && Boolean(connection && channelId);
-
-  useEffect(() => {
-    if (!active || !connection || !channelId) {
-      setClient(null);
-      setParticipants({});
-      setError(null);
-      return;
-    }
-    let cancelled = false;
-    setConnecting(true);
-    setError(null);
-
-    // Every ATTEMPT gets a distinct client id. A channel-only suffix is not
-    // enough: StrictMode setup/cleanup, a retry, or two views of the same card
-    // can otherwise let an older asynchronous disconnect tear down the newer
-    // observer with the same registry identity.
-    const manager = new ConnectionManager({
-      config: {
-        ...connection.config,
-        clientId: observerClientId(connection.config.clientId, channelId),
-      },
-      metadata: { ...connection.metadata, type: "panel" },
-      callbacks: {
-        onRoster: (update) => {
-          if (!cancelled) setParticipants({ ...update.participants });
-        },
-        onError: (err) => {
-          if (!cancelled) setError(err.message);
-        },
-        onReconnect: () => {
-          if (!cancelled) setError(null);
-        },
-      },
-    });
-    managerRef.current = manager;
-
-    void manager
-      .connect({ channelId, methods: {}, ...(contextId ? { contextId } : {}) })
-      .then((connected) => {
-        if (cancelled) return;
-        setClient(connected);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (!cancelled) setConnecting(false);
-      });
-
-    return () => {
-      cancelled = true;
-      setClient(null);
-      void manager.disconnect().catch(() => {
-        /* tearing down an observer connection is best-effort */
-      });
-      if (managerRef.current === manager) managerRef.current = null;
-    };
-  }, [active, connection, channelId, contextId, retryGeneration]);
-
-  const transcript = useChannelMessages(active ? client : null);
-
+  const store = useMemo(
+    () =>
+      enabled && connection && channelId
+        ? new ChildTranscriptStore({ connection, channelId, contextId })
+        : null,
+    [enabled, connection, channelId, contextId],
+  );
+  useEffect(() => store?.retain(), [store]);
+  const snapshot = useSyncExternalStore(
+    store?.subscribe ?? noSubscription,
+    store?.getSnapshot ?? inactiveSnapshot,
+    store?.getSnapshot ?? inactiveSnapshot,
+  );
   return useMemo(
     () => ({
-      messages: transcript.messages,
-      participants,
-      selfId: client?.clientId ?? null,
-      loading: active && (connecting || !transcript.replaySettled),
-      error,
-      hasMoreHistory: transcript.hasMoreHistory,
-      loadingMore: transcript.loadingMore,
-      loadEarlierMessages: transcript.loadEarlierMessages,
-      retry,
+      ...snapshot,
+      loadEarlierMessages: store?.loadEarlierMessages ?? noHistory,
+      retry: store?.retry ?? noRetry,
     }),
-    [
-      transcript.messages,
-      transcript.replaySettled,
-      participants,
-      client,
-      active,
-      connecting,
-      error,
-      transcript.hasMoreHistory,
-      transcript.loadingMore,
-      transcript.loadEarlierMessages,
-      retry,
-    ]
+    [snapshot, store],
   );
 }

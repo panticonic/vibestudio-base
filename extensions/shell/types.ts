@@ -42,7 +42,6 @@ export const execRequestSchema = z
     // When set, the run is confined to the context's materialized working folder
     // (cwd resolves within it, env/cwd default to it) instead of the workspace root.
     contextId: z.string().min(1).optional(),
-    contextAttachToken: z.string().min(16).optional(),
   })
   .strict();
 
@@ -95,9 +94,28 @@ export const openRequestSchema = z
     // Context-scoped placement: the session lives inside the exact semantic
     // context projection; cwd confinement is relative to that projection.
     contextId: z.string().min(1).optional(),
-    contextAttachToken: z.string().min(16).optional(),
   })
   .strict();
+
+export const attachRequestSchema = z
+  .object({
+    after: z
+      .object({
+        epoch: z.number().int().min(0),
+        cursor: z.number().int().min(0),
+      })
+      .strict()
+      .optional(),
+    size: z
+      .object({
+        cols: z.number().int().min(1).max(1000),
+        rows: z.number().int().min(1).max(1000),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .optional();
 
 export const createContextRequestSchema = z
   .object({
@@ -112,7 +130,6 @@ export type OpenRequest = z.infer<typeof openRequestSchema>;
 export type CreateContextRequest = z.infer<typeof createContextRequestSchema>;
 export interface FreshContextHandle {
   contextId: string;
-  contextAttachToken: string;
 }
 export type ScrollCursor = string;
 
@@ -127,7 +144,10 @@ export interface ExecResult {
 
 export interface SessionInfo {
   sessionId: string;
-  ownerCallerId: string;
+  /** The owning person (`user:<id>`), or the exact caller for principals without one. */
+  owner: string;
+  /** The principal that opened the session. */
+  launchedBy: { callerId: string; callerKind: string };
   label: string;
   command: { argv: string[]; cwd: string };
   /** Set for context-scoped sessions (placed inside a VCS context folder). */

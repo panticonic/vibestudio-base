@@ -553,7 +553,15 @@ export interface EventStreamOptions extends EventFilterOptions {
   includeSignals?: boolean;
 }
 
-export type EventStreamItem = IncomingEvent;
+/** A non-durable control boundary after this subscriber consumed a replay generation. */
+export interface ChannelReplayBoundary {
+  type: "replay-complete";
+  delivery: "control";
+  generation: number;
+  firstEnvelopeSeq?: number;
+  hasMoreBefore: boolean;
+}
+export type EventStreamItem = IncomingEvent | ChannelReplayBoundary;
 
 /**
  * Agentic messaging client.
@@ -645,7 +653,7 @@ export interface AgenticClient<T extends AgenticParticipantMetadata = AgenticPar
   readonly totalMessageCount: number | undefined;
   /** Count of replayable channel envelopes. */
   readonly envelopeCount: number | undefined;
-  /** Sequence of the first replayable channel envelope. */
+  /** Earliest durable envelope retained by this client for replay. */
   readonly firstEnvelopeSeq: number | undefined;
   /** Whether the server reported older envelopes before the initial replay window. */
   readonly hasMoreBefore: boolean | undefined;

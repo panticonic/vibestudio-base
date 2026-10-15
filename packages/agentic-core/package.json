@@ -17,7 +17,9 @@
     "./model-failures": "./src/model-failures.ts",
     "./agent-channel-roster": "./src/agent-channel-roster.ts",
     "./agent-subscription-config": "./src/agent-subscription-config.ts",
-    "./rpc-contract": "./src/rpc-contract.ts"
+    "./rpc-contract": "./src/rpc-contract.ts",
+    "./chat-store": "./src/chat-store/index.ts",
+    "./chat-presentation": "./src/chat-presentation/index.ts"
   },
   "dependencies": {
     "@vibestudio/module-imports": "workspace:*",
@@ -31,7 +33,8 @@
     "@workspace/pubsub": "workspace:*",
     "@panticonic/pi-durable": "1.2.0-vibestudio.1",
     "@panticonic/pi-chord": "1.2.0-vibestudio.1",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@workspace/channel-fork": "workspace:*"
   },
   "//peerDependencies": "React appears here for one reason: component *types* cross this boundary (custom-message-types.ts names ComponentType). Nothing in this package renders, so it is optional -- a worker that only runs sessions needs the declarations to typecheck, never an instance to bundle. Any React 19 renderer is sufficient.",
   "peerDependencies": {

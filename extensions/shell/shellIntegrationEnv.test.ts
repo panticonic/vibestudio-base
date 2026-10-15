@@ -34,8 +34,16 @@ describe("VS Code shell integration launch preparation", () => {
       env: {},
     });
     expect(explicit.args).toEqual(["-lc", "echo hi"]);
-    expect(explicit.env["TERM_PROGRAM"]).toBe("vscode");
-    expect(explicit.env["VSCODE_INJECTION"]).toBeUndefined();
+    expect(explicit.env).toEqual({});
+  });
+
+  it("leaves programs that are not interactive shells untouched", async () => {
+    const program = await prepareVscodeShellIntegrationLaunch({
+      command: "/usr/bin/node",
+      args: [],
+      env: { PATH: "/bin" },
+    });
+    expect(program).toEqual({ command: "/usr/bin/node", args: [], env: { PATH: "/bin" } });
   });
 
   it("creates a zsh dotdir that sources VS Code's zsh integration files", async () => {

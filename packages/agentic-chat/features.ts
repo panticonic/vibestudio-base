@@ -1,4 +1,4 @@
-import { CONTENT_TYPE_INLINE_UI, type MethodDefinition } from "@workspace/pubsub";
+import { CONTENT_TYPE_INLINE_UI } from "@workspace/pubsub";
 import type { ChatMessage } from "@workspace/agentic-core";
 
 /**
@@ -42,24 +42,9 @@ export function resolveAgenticChatFeatures(
 
 /**
  * Compose independently owned method groups and reject ambiguous ownership.
- * A duplicate method is a feature-boundary defect, so it fails before joining
- * the channel instead of relying on object-spread order.
+ * The session's method-provider port uses the same composition.
  */
-export function composeAgenticChatMethods(
-  ...groups: Array<Record<string, MethodDefinition> | undefined>
-): Record<string, MethodDefinition> {
-  const methods: Record<string, MethodDefinition> = {};
-  for (const group of groups) {
-    if (!group) continue;
-    for (const [name, definition] of Object.entries(group)) {
-      if (Object.hasOwn(methods, name)) {
-        throw new Error(`AgenticChat method ${JSON.stringify(name)} has multiple owners`);
-      }
-      methods[name] = definition;
-    }
-  }
-  return methods;
-}
+export { composeChatMethods as composeAgenticChatMethods } from "@workspace/agentic-core/chat-store";
 
 /**
  * Apply the same capability selection to the stock transcript. The durable

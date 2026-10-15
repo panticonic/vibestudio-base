@@ -253,7 +253,7 @@ export interface ReadyMessage {
   totalCount?: number;
   /** Count of replayable channel envelopes. */
   envelopeCount?: number;
-  /** First replayable channel-envelope sequence. */
+  /** First durable envelope sequence in this replayed window. */
   firstEnvelopeSeq?: number;
   /** Whether older envelopes exist before the replayed window. */
   hasMoreBefore?: boolean;

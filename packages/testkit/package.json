@@ -20,7 +20,11 @@
     "./driver-contract": "./src/driver-contract.ts",
     "./suites": "./src/suites/index.ts",
     "./profiling": "./src/profile-core.ts",
-    "./native-channel-provider": "./src/native-channel-provider.ts"
+    "./native-channel-provider": {
+      "types": "./src/native-channel-provider.ts",
+      "node": "./src/native-channel-provider.ts",
+      "default": null
+    }
   },
   "dependencies": {
     "@vibestudio/shared": "workspace:*",

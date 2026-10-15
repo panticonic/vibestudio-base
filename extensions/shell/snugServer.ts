@@ -8,7 +8,7 @@ import type { SessionInfo } from "./types.js";
 const SNUG_CLI_VERSION = "0.1.0";
 
 export interface SnugSessionOps {
-  list(ownerCallerId: string): SessionInfo[];
+  list(owner: string): SessionInfo[];
   setMeta(sessionId: string, key: string, value: unknown): void;
   getMeta(sessionId: string, key?: string): unknown;
   deleteMeta(sessionId: string, key: string): void;
@@ -275,9 +275,9 @@ connect();
         return { ok: false, error: "invalid snug client" };
       const sessionId = this.tokens.get(socketToken);
       if (!sessionId) return { ok: false, error: "invalid snug session" };
-      const ownerCallerId = this.ops.ownerOf(sessionId);
-      if (!ownerCallerId) return { ok: false, error: "unknown snug owner" };
-      return await this.dispatch(sessionId, ownerCallerId, req.argv);
+      const owner = this.ops.ownerOf(sessionId);
+      if (!owner) return { ok: false, error: "unknown snug owner" };
+      return await this.dispatch(sessionId, owner, req.argv);
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -285,12 +285,12 @@ connect();
 
   private async dispatch(
     sessionId: string,
-    ownerCallerId: string,
+    owner: string,
     argv: string[]
   ): Promise<{ ok: true; stdout?: string } | { ok: false; error: string }> {
     const [cmd, ...rest] = argv;
     if (cmd === "ls")
-      return { ok: true, stdout: `${JSON.stringify(this.ops.list(ownerCallerId), null, 2)}\n` };
+      return { ok: true, stdout: `${JSON.stringify(this.ops.list(owner), null, 2)}\n` };
     if (cmd === "badge") {
       const parsed = parseBadgeArgs(rest);
       if (!parsed.text || parsed.text === "clear") this.ops.deleteMeta(sessionId, "badge");
@@ -308,7 +308,7 @@ connect();
     }
     if (cmd === "meta") return this.meta(sessionId, rest);
     if (cmd === "notify") return this.notify(sessionId, rest);
-    if (cmd === "send") return this.send(ownerCallerId, rest);
+    if (cmd === "send") return this.send(owner, rest);
     if (cmd === "split") return await this.split(sessionId, rest);
     if (cmd === "open") return await this.open(sessionId, rest);
     return { ok: false, error: `unknown snug command: ${cmd ?? ""}` };
@@ -334,13 +334,13 @@ connect();
     return { ok: false, error: "meta supports set/get/delete" };
   }
 
-  private send(ownerCallerId: string, argv: string[]): { ok: true } | { ok: false; error: string } {
+  private send(owner: string, argv: string[]): { ok: true } | { ok: false; error: string } {
     const toIndex = argv.indexOf("--to");
     const textIndex = argv.indexOf("--text");
     const target = toIndex >= 0 ? argv[toIndex + 1] : undefined;
     const text = textIndex >= 0 ? argv.slice(textIndex + 1).join(" ") : undefined;
     if (!target || text === undefined) return { ok: false, error: "send requires --to and --text" };
-    if (this.ops.ownerOf(target) !== ownerCallerId) return { ok: false, error: "EACCES" };
+    if (this.ops.ownerOf(target) !== owner) return { ok: false, error: "EACCES" };
     this.ops.write(target, text);
     return { ok: true };
   }

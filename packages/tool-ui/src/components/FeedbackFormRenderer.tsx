@@ -14,7 +14,14 @@ import { useState, useCallback, useMemo } from "react";
 import { Box, Button, Flex, Heading, Text } from "@radix-ui/themes";
 import { InfoCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { FormRenderer, type CustomFieldRendererProps } from "@workspace/react";
-import { FREE_TEXT_CHOICE_VALUE, type FieldDefinition, type FieldValue } from "@vibestudio/types";
+import { type FieldDefinition, type FieldValue } from "@vibestudio/types";
+import {
+  hasActiveFreeTextChoice,
+  initialFeedbackValues,
+  normalizeFreeTextValues,
+  validateFeedbackValues,
+  withDefaultFreeText,
+} from "@workspace/pubsub/feedback-form-values";
 import type { FeedbackCallbacks } from "../types";
 import { ToolPreviewField } from "./ToolPreviewField";
 import { ApprovalHeaderField } from "./ApprovalHeaderField";
@@ -60,72 +67,6 @@ function getSeverityColor(
   }
 }
 
-function isChoiceField(field: FieldDefinition): boolean {
-  return (
-    field.type === "select" ||
-    field.type === "segmented" ||
-    field.type === "multiSelect" ||
-    field.type === "buttonGroup"
-  );
-}
-
-function getsDefaultFreeText(field: FieldDefinition): boolean {
-  return field.type === "select" || field.type === "segmented" || field.type === "multiSelect";
-}
-
-function getFreeTextKey(field: FieldDefinition): string {
-  return field.freeTextKey ?? `${field.key}FreeText`;
-}
-
-function withDefaultFreeText(fields: FieldDefinition[]): FieldDefinition[] {
-  return fields.map((field) => {
-    if (!getsDefaultFreeText(field) || field.allowFreeText !== undefined) {
-      return field;
-    }
-    return { ...field, allowFreeText: true };
-  });
-}
-
-function hasActiveFreeTextChoice(
-  fields: FieldDefinition[],
-  values: Record<string, FieldValue>
-): boolean {
-  return fields.some((field) => {
-    if (!isChoiceField(field) || field.allowFreeText !== true) return false;
-    const value = values[field.key];
-    return Array.isArray(value)
-      ? value.includes(FREE_TEXT_CHOICE_VALUE)
-      : value === FREE_TEXT_CHOICE_VALUE;
-  });
-}
-
-function normalizeFreeTextValues(
-  fields: FieldDefinition[],
-  values: Record<string, FieldValue>
-): Record<string, FieldValue> {
-  const normalized = { ...values };
-  for (const field of fields) {
-    if (!isChoiceField(field) || field.allowFreeText !== true) continue;
-
-    const freeTextKey = getFreeTextKey(field);
-    const freeText = String(values[freeTextKey] ?? "").trim();
-    const value = values[field.key];
-
-    if (Array.isArray(value)) {
-      if (value.includes(FREE_TEXT_CHOICE_VALUE)) {
-        normalized[field.key] = value.flatMap((item) =>
-          item === FREE_TEXT_CHOICE_VALUE ? (freeText ? [freeText] : []) : [item]
-        );
-      }
-    } else if (value === FREE_TEXT_CHOICE_VALUE && freeText) {
-      normalized[field.key] = freeText;
-    }
-
-    delete normalized[freeTextKey];
-  }
-  return normalized;
-}
-
 export function FeedbackFormRenderer({
   title,
   fields,
@@ -142,15 +83,9 @@ export function FeedbackFormRenderer({
   const effectiveFields = useMemo(() => withDefaultFreeText(fields), [fields]);
 
   // Initialize state with defaults merged with initial values
-  const [values, setValues] = useState<Record<string, FieldValue>>(() => {
-    const defaults: Record<string, FieldValue> = {};
-    for (const field of effectiveFields) {
-      if (field.default !== undefined) {
-        defaults[field.key] = field.default;
-      }
-    }
-    return { ...defaults, ...initialValues };
-  });
+  const [values, setValues] = useState<Record<string, FieldValue>>(() =>
+    initialFeedbackValues(effectiveFields, initialValues)
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleChange = useCallback((key: string, value: FieldValue) => {
@@ -161,24 +96,10 @@ export function FeedbackFormRenderer({
   const handleSubmit = useCallback(
     (submittedValues?: Record<string, FieldValue>) => {
       const currentValues = submittedValues ?? values;
-      // Validate required fields
-      for (const field of effectiveFields) {
-        if (field.required) {
-          const value = currentValues[field.key];
-          if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) {
-            setValidationError(`Required field "${field.label ?? field.key}" is missing`);
-            return;
-          }
-        }
-        if (
-          isChoiceField(field) &&
-          field.allowFreeText === true &&
-          hasActiveFreeTextChoice([field], currentValues) &&
-          String(currentValues[getFreeTextKey(field)] ?? "").trim() === ""
-        ) {
-          setValidationError(`Required field "${field.label ?? field.key}" is missing`);
-          return;
-        }
+      const failure = validateFeedbackValues(effectiveFields, currentValues);
+      if (failure) {
+        setValidationError(failure);
+        return;
       }
       setValidationError(null);
       onSubmit(normalizeFreeTextValues(effectiveFields, currentValues));

@@ -10,6 +10,14 @@ delivery, and composer behavior with its own presentation. For a fully custom
 layout, compose `useAgenticChat`, `ChatProvider`, and the individually exported
 chat components instead.
 
+The chat logic itself is framework-free: `ChatSession`, `ChatHostController`
+and their sub-stores live in `@workspace/agentic-core/chat-store` (see
+[its README](../agentic-core/src/chat-store/README.md)). The hooks here only
+hold a session, read slices of its snapshot (`useChatStore(store, selector)`),
+and add browser-only features. A browser feature that advertises channel
+methods registers them through the session's method-provider port
+(`useChatMethodProvider`), never by editing the join.
+
 For a change that spans the chat panel, agent worker, channel, or shared event
 contract, read [agentic development](../../skills/agentic-development/SKILL.md).
 

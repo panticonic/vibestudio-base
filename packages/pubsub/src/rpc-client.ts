@@ -48,6 +48,7 @@ import type {
   IncomingAgenticEvent,
   IncomingAgentDebugEvent,
   EventStreamItem,
+  ChannelReplayBoundary,
   EventStreamOptions,
   MethodCallHandle,
   MethodResultChunk,
@@ -295,7 +296,7 @@ function eventToClientIngress(
   event: ServerLogEvent,
   phase: "replay" | "live",
 ): ClientIngressMessage {
-  if (!Number.isSafeInteger(event.id) || event.id < 0)
+  if (!Number.isSafeInteger(event.id) || event.id <= 0)
     throw new Error(
       "Channel log delivery requires its locally committed numeric cursor",
     );
@@ -353,7 +354,7 @@ export interface RpcConnectOptions<
   deliveryMode?: "stream" | "resident";
   /** Application-owned finite handler. Resident delivery is acknowledged only
    * after this handler accepts the hydrated event. */
-  residentEventHandler?: (event: IncomingEvent) => void | Promise<void>;
+  residentEventHandler?: (event: EventStreamItem) => void | Promise<void>;
   methods?: Record<string, MethodDefinitionLike>;
   /**
    * The sole automatic recovery owner. Without a coordinator this client is a
@@ -519,14 +520,17 @@ export function connectViaRpc<
   // Ready promise
   let readyResolve: (() => void) | null = null;
   let readyReject: ((err: Error) => void) | null = null;
-  const readyPromise = new Promise<void>((resolve, reject) => {
-    readyResolve = resolve;
-    readyReject = reject;
-  });
-  readyPromise.catch((err) => {
-    if (closed) return;
-    console.warn("[PubSubClient] Ready promise rejected:", err);
-  });
+  const createReplayReadiness = () => {
+    const completion = new Promise<void>((resolve, reject) => {
+      readyResolve = resolve;
+      readyReject = reject;
+    });
+    void completion.catch((err) => {
+      if (!closed) console.warn("[PubSubClient] Ready promise rejected:", err);
+    });
+    return completion;
+  };
+  let readyPromise = createReplayReadiness();
   let subscribeAckResolve: (() => void) | null = null;
   let subscribeAckReject: ((error: Error) => void) | null = null;
   const subscribeAckPromise = new Promise<void>((resolve, reject) => {
@@ -556,7 +560,9 @@ export function connectViaRpc<
   const configChangeHandlers = new Set<(config: ChannelConfig) => void>();
 
   // Events fanout
-  const eventsFanout = createFanout<IncomingEvent>();
+  const eventsFanout = createFanout<EventStreamItem>();
+  let replayBoundary: ChannelReplayBoundary | null = null;
+  let replayGeneration = 0;
 
   // Replay buffering
   let bufferingReplay = replayMode !== "skip";
@@ -944,10 +950,9 @@ export function connectViaRpc<
           serverEnvelopeCount = msg.envelopeCount;
         if (!emitRecoveryReplay) {
           if (!retainedProjectionTruncated) {
-            serverFirstEnvelopeSeq =
-              typeof msg.firstEnvelopeSeq === "number"
-                ? msg.firstEnvelopeSeq
-                : undefined;
+            serverFirstEnvelopeSeq = replayEvents.find(
+              (event) => event.pubsubId !== undefined,
+            )?.pubsubId;
           }
           serverHasMoreBefore =
             (typeof msg.hasMoreBefore === "boolean"
@@ -962,6 +967,14 @@ export function connectViaRpc<
         bufferingReplay = false;
         replayComplete = true;
         emitRecoveryReplay = false;
+
+        replayBoundary = {
+          type: "replay-complete", delivery: "control", generation: ++replayGeneration,
+          firstEnvelopeSeq: serverFirstEnvelopeSeq, hasMoreBefore: Boolean(serverHasMoreBefore),
+        };
+        if (opts.deliveryMode === "resident" && opts.residentEventHandler)
+          await opts.residentEventHandler(replayBoundary);
+        eventsFanout.emit(replayBoundary);
 
         resolveReady();
         for (const handler of readyHandlers) handler();
@@ -1163,7 +1176,7 @@ export function connectViaRpc<
   ): Promise<void> {
     if (snapshot.kind !== "receipt-snapshot") return;
     for (const event of snapshot.events) {
-      await handleServerMessage(eventToClientIngress(event, "replay"));
+      await handleServerMessage({ ...event, stream: "log", phase: "replay", attachments: event.attachments as WireAttachment[] | undefined });
     }
   }
 
@@ -2119,6 +2132,9 @@ export function connectViaRpc<
   }
 
   function resetReplayProjectionForRecovery(): void {
+    // Initial replay still pending belongs to this same recovery operation;
+    // an already-settled generation needs its own completion boundary.
+    if (readyResolve === null) readyPromise = createReplayReadiness();
     currentRoster = {};
     rosterOpIds.clear();
     // Durable replay already retained by this client remains the projection
@@ -2427,11 +2443,11 @@ export function connectViaRpc<
       () => undefined,
     );
     if (!signal) return fullyReady;
-    if (signal.aborted) throw new PubSubError("ready aborted", "connection");
+    const abortReason = () => "reason" in signal ? signal.reason : new PubSubError("ready aborted", "connection");
+    if (signal.aborted) throw abortReason();
 
     return new Promise<void>((resolve, reject) => {
-      const onAbort = () =>
-        reject(new PubSubError("ready aborted", "connection"));
+      const onAbort = () => reject(abortReason());
       signal.addEventListener("abort", onAbort, { once: true });
       fullyReady.then(
         () => {
@@ -2891,7 +2907,12 @@ export function connectViaRpc<
   function events(
     evtOptions?: EventStreamOptions,
   ): AsyncIterableIterator<EventStreamItem> {
-    const source = eventsFanout.subscribe();
+    interface EventAdmission {
+      source: AsyncIterableIterator<EventStreamItem>;
+      retainedReplay: IncomingEvent[];
+      boundary: ChannelReplayBoundary | null;
+    }
+    let ownedSource: AsyncIterableIterator<EventStreamItem> | null = null;
     const lifetime = new AbortController();
     const signal = lifetime.signal;
     // The subscription owns its terminal failure. AbortSignal only cancels the
@@ -2908,7 +2929,7 @@ export function connectViaRpc<
     const includeReplay = evtOptions?.includeReplay ?? false;
     const includeSignals = evtOptions?.includeSignals ?? false;
     const cancelSource = () => {
-      void source.return?.();
+      void ownedSource?.return?.();
     };
     const cancelCaller = () => {
       evtOptions?.signal?.removeEventListener("abort", cancelCaller);
@@ -2922,31 +2943,62 @@ export function connectViaRpc<
     const cleanup = async () => {
       signal.removeEventListener("abort", cancelSource);
       evtOptions?.signal?.removeEventListener("abort", cancelCaller);
-      await source.return?.();
+      await ownedSource?.return?.();
     };
     signal.addEventListener("abort", cancelSource, { once: true });
     evtOptions?.signal?.addEventListener("abort", cancelCaller, { once: true });
     if (evtOptions?.signal?.aborted) cancelCaller();
+    // Admit one immutable replay prefix and its live queue atomically. A
+    // listener waiting for producer readiness must not queue replay records
+    // that would then appear after its own replay-complete boundary.
+    const admit = (): EventAdmission => {
+      assertActive();
+      const source = eventsFanout.subscribe();
+      ownedSource = source;
+      return {
+        source,
+        retainedReplay: includeReplay && replayMode !== "skip" ? [...replayEvents] : [],
+        boundary: includeReplay && replayBoundary ? {
+          ...replayBoundary, firstEnvelopeSeq: serverFirstEnvelopeSeq,
+          hasMoreBefore: Boolean(serverHasMoreBefore),
+        } : null,
+      };
+    };
+    let admitted: Promise<EventAdmission>;
+    if (replayComplete || !includeReplay) {
+      try { admitted = Promise.resolve(admit()); }
+      catch (error) { admitted = Promise.reject(error); }
+    } else admitted = ready(signal).then(admit);
+    void admitted.catch(() => {}); // The iterator retains and propagates the original admission failure.
 
     const generator = (async function* () {
+      let deliveredReplayGeneration = 0;
       try {
         assertActive();
+        let admission: EventAdmission;
+        try { admission = await admitted; }
+        catch (error) { assertActive(); throw error; }
+        const { source, retainedReplay, boundary } = admission;
+        assertActive();
         if (includeReplay && replayMode !== "skip") {
-          if (!replayComplete) {
-            try {
-              await ready(signal);
-            } catch {
-              assertActive();
-            }
-          }
-          for (const item of replayEvents) {
+          for (const item of retainedReplay) {
             assertActive();
             if (!includeSignals && item.delivery === "signal") continue;
             yield item;
           }
+          if (boundary) {
+            deliveredReplayGeneration = boundary.generation;
+            yield boundary;
+          }
         }
         for await (const event of source) {
           assertActive();
+          if (event.type === "replay-complete") {
+            if (!includeReplay || event.generation <= deliveredReplayGeneration) continue;
+            deliveredReplayGeneration = event.generation;
+            yield event;
+            continue;
+          }
           if (!includeSignals && event.delivery === "signal") continue;
           if (!includeReplay && event.phase === "replay") continue;
           yield event;
@@ -2965,7 +3017,8 @@ export function connectViaRpc<
       next: () => generator.next(),
       async return(value) {
         cancel(new Error("Channel event subscription returned"));
-        await source.return?.();
+        await admitted.catch(() => {});
+        await ownedSource?.return?.();
         try {
           return await generator.return(value);
         } finally {
@@ -2974,7 +3027,8 @@ export function connectViaRpc<
       },
       async throw(error) {
         cancel(error);
-        await source.return?.();
+        await admitted.catch(() => {});
+        await ownedSource?.return?.();
         try {
           return await generator.throw(error);
         } finally {

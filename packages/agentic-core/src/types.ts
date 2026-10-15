@@ -203,6 +203,9 @@ export interface AgenticChatActions {
   onBecomeVisible?: () => void;
   /** Raise host-level attention for a blocking in-chat question. */
   onAttentionRequired?: (title: string, message?: string) => void;
+  /** The channel's participant set changed (ids of everyone present). A host
+   *  re-checks installed-agent recovery when an agent leaves. */
+  onParticipantsChanged?: (participantIds: string[]) => void;
   /** Open the Local Models panel focused on a specific server's log. Wired
    *  from a local model's red error dot in the model picker (item 6). Absent
    *  on hosts that don't wire panel navigation. */

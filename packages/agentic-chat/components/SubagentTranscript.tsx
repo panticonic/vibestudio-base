@@ -44,7 +44,19 @@ export function SubagentTranscriptContent({
   transcript: ChildTranscriptResult;
   chat?: ChatSandboxValue;
 }) {
-  const { messages, participants, selfId, loading, error } = transcript;
+  const { messages, participants, selfId, loading, error, failure } = transcript;
+  const failureDetail = failure?.detail ? (
+    <details>
+      <summary>
+        <Text size="1" color="gray">
+          Details
+        </Text>
+      </summary>
+      <Text size="1" color="gray" style={{ overflowWrap: "anywhere" }}>
+        {failure.detail}
+      </Text>
+    </details>
+  ) : null;
 
   if (error && messages.length === 0) {
     return (
@@ -54,9 +66,13 @@ export function SubagentTranscriptContent({
         className="subagent-transcript-error"
       >
         <Callout.Text>
-          Could not open the child&rsquo;s transcript ({error}). The retained
-          task result remains available for inspection.
+          <Text weight="medium">
+            {failure?.title ?? "Couldn't load this subagent's transcript"}
+          </Text>{" "}
+          {failure?.message ?? error} The task&rsquo;s result is still shown on
+          its card.
         </Callout.Text>
+        {failureDetail}
         <Button
           size="1"
           variant="soft"
@@ -97,16 +113,17 @@ export function SubagentTranscriptContent({
           className="subagent-transcript-error"
         >
           <Callout.Text>
-            Live transcript refresh was interrupted ({error}). The loaded
-            history is preserved.
+            Live updates for this transcript stopped. What&rsquo;s shown so far
+            is kept; retry to resume updates.
           </Callout.Text>
+          {failureDetail}
           <Button
             size="1"
             variant="soft"
             color="amber"
             onClick={transcript.retry}
           >
-            Retry refresh
+            Resume updates
           </Button>
         </Callout.Root>
       ) : null}

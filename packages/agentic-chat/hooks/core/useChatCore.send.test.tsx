@@ -5,20 +5,6 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createTranscriptHarness } from "../__tests__/transcriptTestHarness.js";
 import { useChatCore, type ChatCoreState } from "./useChatCore.js";
 
-const projection = vi.hoisted(() => ({ replay: vi.fn() }));
-vi.mock("../useChannelMessages.js", () => ({
-  useChannelMessages: () => ({
-    messages: [],
-    actionBar: null,
-    messageTypes: [],
-    hasMoreHistory: false,
-    loadingMore: false,
-    hasOpenTurn: false,
-    loadEarlierMessages: vi.fn(),
-    backfillAfterLocalPublish: projection.replay,
-    replaySettled: true,
-  }),
-}));
 afterEach(() => vi.clearAllMocks());
 
 it.each(["interrupt", "flush"] as const)(
@@ -148,7 +134,7 @@ it("keeps an accepted send out of the composer and surfaces the original project
   try {
     await waitFor(() => expect(latest.clientRef.current).not.toBeNull());
     const failure = new Error("Replay connection lost");
-    projection.replay.mockRejectedValueOnce(failure);
+    vi.spyOn(latest.session.feed, "backfillAfterLocalPublish").mockRejectedValueOnce(failure);
     const send = vi
       .spyOn(latest.clientRef.current!, "send")
       .mockResolvedValue({ messageId: "accepted", pubsubId: 42 });
@@ -160,9 +146,11 @@ it("keeps an accepted send out of the composer and surfaces the original project
     expect(latest.input).toBe("");
     expect(latest.pendingSendCount).toBe(0);
     expect(latest.connectionError).toMatchObject({ cause: failure });
-    expect(latest.connectionError?.message).toContain(
-      "server accepted the change",
-    );
+    expect(latest.connectionError).toMatchObject({
+      title: "Sent, but not shown yet",
+      detail: "Replay connection lost",
+      retryable: true,
+    });
     await act(async () => {
       await latest.sendMessage();
     });
@@ -214,14 +202,13 @@ it("rejects queued publication when there is no connected client instead of clai
   const harness = await createTranscriptHarness("queued-disconnected");
   let latest!: ChatCoreState;
   const view = render(<Probe harness={harness} onValue={(core) => { latest = core; }} />);
-  let client: ChatCoreState["clientRef"]["current"] = null;
   try {
     await waitFor(() => expect(latest.clientRef.current).not.toBeNull());
-    client = latest.clientRef.current;
-    latest.clientRef.current = null;
+    await act(async () => {
+      await latest.session.disconnect();
+    });
     await expect(latest.publishText("Keep this queued")).rejects.toThrow("not connected");
   } finally {
-    latest.clientRef.current = client;
     view.unmount();
   }
 });

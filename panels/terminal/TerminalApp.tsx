@@ -3,7 +3,10 @@ import { Box, Button, Flex, Text, Theme } from "@radix-ui/themes";
 import { ShortcutsHelp, type ShortcutGroup } from "@workspace/ui/command";
 import { EmptyState } from "@workspace/ui/feedback";
 import { useIsMobile, useHostCommands, usePanelTheme, usePanelThemeConfig } from "@workspace/react";
-import { rpc, panel, notifications, runtime, callMain } from "@workspace/runtime";
+import { rpc, panel, notifications, runtime, callMain, contextId as panelContextId } from "@workspace/runtime";
+import { EventsClient } from "@vibestudio/service-schemas/clients/eventsClient";
+import { TERMINAL_SESSIONS_CHANGED_EVENT } from "@vibestudio/service-schemas/terminalApps";
+import type { TerminalSessionEntry } from "@vibestudio/shared/terminalSessions";
 import type { RuntimeSupervisionDescription } from "@vibestudio/service-schemas/runtime";
 import { isReviewPending } from "@vibestudio/shared/authority/reviewPending";
 
@@ -13,7 +16,7 @@ const expose = (method: string, handler: (...args: any[]) => unknown | Promise<u
   rpc.expose(method, (request) => handler(...request.args), {"kind":"closed","reason":"This handler controls an internal execution or presentation surface."});
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandLauncher } from "./CommandLauncher.js";
-import { ContextPicker, type CreatedContext, type PickedContextOptions } from "./ContextPicker.js";
+import { ContextPicker, type CreatedContext } from "./ContextPicker.js";
 import { deriveContextOptions, type ContextOption } from "./contextPickerModel.js";
 import { documentTitleForPanel } from "./documentTitle.js";
 import { NotificationCenter } from "./NotificationCenter.js";
@@ -38,8 +41,11 @@ import { openPort, openUrl } from "./portClick.js";
 import { restoreTerminalState } from "./restore.js";
 import { settingsToastMessage } from "./settingsFeedback.js";
 import { terminalStartupDetail, terminalStartupPendingLabel } from "./startupModel.js";
+import { createTerminalLauncher } from "./terminalLauncher.js";
 import {
+  addLeaf,
   containsSession,
+  dedupeLeaves,
   splitLeaf,
   updateSplitRatio,
   usePanelActions,
@@ -78,6 +84,17 @@ export function TerminalApp() {
   const panelAppearance = usePanelTheme();
   const isMobile = useIsMobile();
   const shell = useShellExtension();
+  const launcher = useMemo(
+    () =>
+      createTerminalLauncher({
+        launch: (request) => callMain("terminalApps.launch", request),
+        resume: (request) => callMain("terminalApps.resume", request),
+        restart: (request) => callMain("terminalApps.restart", request),
+        close: (sessionId) => callMain("terminalApps.close", sessionId),
+        ...(panelContextId ? { contextId: panelContextId } : {}),
+      }),
+    []
+  );
   const sessionStore = useMemo(() => new SessionStore(), []);
   const sessions = useAllSessions(sessionStore);
   const [state, setState] = useState<TerminalState>(() =>
@@ -165,7 +182,7 @@ export function TerminalApp() {
     },
     [sessionStore]
   );
-  const actions = usePanelActions({ shell, state, sessions, setState, setSessions });
+  const actions = usePanelActions({ shell, launcher, state, sessions, setState, setSessions });
   const refreshShellUnit = useCallback(async (): Promise<ShellUnitStatus | null> => {
     const units = await runtime.supervision.list({ kind: "extension" });
     const match = units.find(
@@ -480,15 +497,8 @@ export function TerminalApp() {
     [shell]
   );
   const openTerminalInContext = useCallback(
-    (contextId?: string, contextOpts?: PickedContextOptions) => {
-      const opts = contextId
-        ? {
-            contextId,
-            ...(contextOpts?.contextAttachToken
-              ? { contextAttachToken: contextOpts.contextAttachToken }
-              : {}),
-          }
-        : undefined;
+    (contextId?: string) => {
+      const opts = contextId ? { contextId } : undefined;
       if (!state.tree) {
         void runInteractiveOpen(() => actions.openSession(undefined, opts));
       } else {
@@ -572,7 +582,7 @@ export function TerminalApp() {
         return;
       }
       initialOpenPendingRef.current = false;
-      const result = await restoreTerminalState(shell, state);
+      const result = await restoreTerminalState(shell, launcher, state);
       if (cancelled) return;
       setSessions((prev) => ({ ...prev, ...result.sessions }));
       setState((prev) => ({
@@ -591,6 +601,60 @@ export function TerminalApp() {
       cancelled = true;
     };
   }, []);
+
+  // The person's terminal sessions are one registry shared with the terminal
+  // browser: a running session started anywhere (the browser, another device)
+  // appears here as a pane, as the panes opened here appear there.
+  useEffect(() => {
+    if (!restored) return;
+    let disposed = false;
+    const adopt = async (entries: readonly TerminalSessionEntry[]) => {
+      for (const entry of entries) {
+        const shellSessionId = entry.shellSessionId;
+        if (!entry.running || !shellSessionId) continue;
+        const latest = latestStateRef.current;
+        if (containsSession(latest.tree, shellSessionId)) continue;
+        try {
+          const info = await shell.get(shellSessionId);
+          if (disposed) return;
+          await shell.setScrollbackLimit?.(shellSessionId, latestStateRef.current.scrollbackBytes);
+          setSessions((prev) => ({ ...prev, [shellSessionId]: info }));
+          setState((prev) => ({
+            ...prev,
+            tree: dedupeLeaves(addLeaf(prev.tree, shellSessionId)),
+            focusedSessionId: prev.focusedSessionId ?? shellSessionId,
+            perSession: {
+              ...prev.perSession,
+              [shellSessionId]: {
+                cwd: info.command.cwd,
+                originalArgv: info.command.argv,
+                readCursor: prev.perSession[shellSessionId]?.readCursor ?? 0,
+                lastSeenAt: Date.now(),
+                label: info.label,
+                registryId: entry.sessionId,
+              },
+            },
+          }));
+        } catch (error) {
+          console.warn("[terminal] Could not show terminal session", entry.sessionId, error);
+        }
+      }
+    };
+    const events = new EventsClient(rpc);
+    const stop = events.on(TERMINAL_SESSIONS_CHANGED_EVENT, (payload) => void adopt(payload.sessions));
+    void events
+      .subscribe(TERMINAL_SESSIONS_CHANGED_EVENT)
+      .then(() => callMain("terminalApps.list"))
+      .then((entries) => adopt(entries))
+      .catch((error: unknown) =>
+        console.warn("[terminal] Terminal session updates are unavailable:", error)
+      );
+    return () => {
+      disposed = true;
+      stop();
+      void events.unsubscribe(TERMINAL_SESSIONS_CHANGED_EVENT).catch(() => {});
+    };
+  }, [restored, shell, setSessions]);
 
   useEffect(() => {
     if (state.tree) return;
@@ -1143,7 +1207,7 @@ function EmptyTerminalState(props: {
   shellUnit: ShellUnitStatus | null;
   startedAt: number | null;
   onOpen(): void;
-  onPickContext(contextId?: string, opts?: PickedContextOptions): void;
+  onPickContext(contextId?: string): void;
   loadContexts(): Promise<ContextOption[]>;
   createContext(): Promise<CreatedContext>;
 }) {

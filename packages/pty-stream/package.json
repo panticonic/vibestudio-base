@@ -1,0 +1,13 @@
+{
+  "name": "@workspace/pty-stream",
+  "version": "0.1.0",
+  "description": "The shell extension's terminal attach stream: framed PTY output with explicit cursors, epochs, gap/reset events and byte-counted flow control. Shared by the extension (encoder) and every terminal client (decoder).",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

@@ -212,3 +212,64 @@ export const agentSubscriptionConfigSchema: z.ZodType<AgentSubscriptionConfig> =
   observations: z.object({ payloadKinds: z.array(z.string()) }).optional(),
   features: z.object({ resources: z.record(z.object({ kind: z.string(), id: z.string() })).optional(), tools: z.array(z.object({ kind: z.string(), resource: z.string().optional() })).optional() }).optional(),
 }).passthrough();
+
+/** Every thinking level, lowest first. */
+export const AGENT_THINKING_LEVELS: readonly AgentThinkingLevel[] = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+const SETTINGS_THINKING_LEVELS = new Set<string>(AGENT_THINKING_LEVELS);
+const SETTINGS_RESPOND_POLICIES = new Set<string>(RESPOND_POLICIES);
+
+/**
+ * The config that recreates an agent on `model` while keeping its current
+ * behaviour: thinking level, fast mode, approval level and respond policy are
+ * read tolerantly from its `getAgentSettings` result. Every chat surface's
+ * model switch uses this, so a switch never silently resets settings.
+ */
+export function modelSwitchConfigFromSettings(
+  settings: unknown,
+  model: string,
+  handle?: string,
+): AgentSubscriptionConfig {
+  const source =
+    settings && typeof settings === "object"
+      ? (settings as Record<string, unknown>)
+      : {};
+  const config: AgentSubscriptionConfig = {
+    model,
+    ...(handle ? { handle } : {}),
+  };
+  const thinkingLevel = source["thinkingLevel"];
+  if (typeof thinkingLevel === "string" && SETTINGS_THINKING_LEVELS.has(thinkingLevel)) {
+    config.thinkingLevel =
+      thinkingLevel as AgentSubscriptionConfig["thinkingLevel"];
+  }
+  if (typeof source["fastMode"] === "boolean") {
+    config.fastMode = source["fastMode"];
+  }
+  const approvalLevel = source["approvalLevel"];
+  if (approvalLevel === 0 || approvalLevel === 1 || approvalLevel === 2) {
+    config.approvalLevel = approvalLevel;
+  }
+  const respondPolicy = source["respondPolicy"];
+  if (
+    typeof respondPolicy === "string" &&
+    SETTINGS_RESPOND_POLICIES.has(respondPolicy)
+  ) {
+    config.respondPolicy =
+      respondPolicy as AgentSubscriptionConfig["respondPolicy"];
+  }
+  const respondFrom = source["respondFrom"];
+  if (
+    Array.isArray(respondFrom) &&
+    respondFrom.every((value) => typeof value === "string")
+  ) {
+    config.respondFrom = respondFrom;
+  }
+  return config;
+}

@@ -6,6 +6,8 @@ The terminal panel uses a vendored VS Code xterm layer for browser-side terminal
 
 The panel owns one terminal split tree. It does not maintain a terminal-local sidebar, tab strip, saved-layout registry, or tab badge layer; workspace panels provide the outer navigation model. Inside the terminal panel, new shells are added as panes in the split tree, and the focused pane is tracked by `focusedSessionId`.
 
+Panes are sessions of the person's terminal registry. The panel starts, relaunches and ends them only through the workspace's terminal launch service (`terminalApps.launch/resume/restart/close`, wrapped by `terminalLauncher.ts`); it attaches to, types into and resizes their PTYs through the shell extension. It never calls the shell extension's `open`. Each pane remembers its registry id (`perSession[...].registryId`), and running registry sessions started elsewhere (the terminal browser, another device) are adopted as panes, so both clients show the same sessions.
+
 Pane headers carry the compact controls that belong to an individual terminal surface: split, zoom, settings, ports, preview, find, restart, and close. Global overlays are limited to the command launcher and notification center so the terminal output area remains the dominant surface on desktop and mobile.
 
 ## Host terminals

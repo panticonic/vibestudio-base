@@ -9,7 +9,8 @@ export type VscodeTerminalWriteTarget = {
 
 export type VscodeTerminalWriteSchedulerOptions = {
   target(): VscodeTerminalWriteTarget | null;
-  acknowledge(charCount: number): void;
+  /** Output bytes xterm has parsed (the shell's flow-control unit). */
+  acknowledge(bytes: number): void;
   onWillData?(data: string): void;
   onData?(data: string): void;
 };
@@ -27,7 +28,7 @@ export class VscodeTerminalWriteScheduler {
 
   constructor(private readonly options: VscodeTerminalWriteSchedulerOptions) {}
 
-  writeProcessData(data: string, trackCommit = false): Promise<void> | undefined {
+  writeProcessData(data: string, byteLength: number, trackCommit = false): Promise<void> | undefined {
     const leadingSegmentedData: string[] = [];
     // oxlint-disable-next-line eslint/no-control-regex -- ESC and BEL delimit shell integration OSC frames.
     const matches = data.matchAll(/(?<seq>\x1b\][16]33;(?:C|D(?:;\d+)?)\x07)/g);
@@ -44,23 +45,30 @@ export class VscodeTerminalWriteScheduler {
     for (const segment of leadingSegmentedData) {
       this.writeProcessSegment(segment);
     }
+    // xterm parses writes in order: once the last segment is parsed, so are
+    // all bytes of this event.
+    const parsed = () => this.options.acknowledge(byteLength);
     if (trackCommit) {
-      return new Promise<void>((resolve) => this.writeProcessSegment(lastData, resolve));
+      return new Promise<void>((resolve) =>
+        this.writeProcessSegment(lastData, () => {
+          parsed();
+          resolve();
+        })
+      );
     }
-    this.writeProcessSegment(lastData);
+    this.writeProcessSegment(lastData, parsed);
     return undefined;
   }
 
   private writeProcessSegment(data: string, callback?: () => void): void {
     if (!data) {
-      callback?.();
+      this.options.target()?.write("", callback);
       return;
     }
     this.options.onWillData?.(data);
     const messageId = ++this.latestXtermWriteData;
     this.options.target()?.write(data, () => {
       this.latestXtermParseData = messageId;
-      this.options.acknowledge(data.length);
       callback?.();
       this.options.onData?.(data);
     });

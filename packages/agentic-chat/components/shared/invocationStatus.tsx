@@ -1,65 +1,25 @@
 import { Box } from "@radix-ui/themes";
-import type { InvocationCardPayload, ToolExecutionState } from "@workspace/agentic-core";
+import {
+  executionStatusLabel,
+  executionStatusTone,
+  getStatusColor,
+  getStatusKey,
+  isLiveStatus,
+  type StatusKey,
+  type StatusTone,
+} from "@workspace/agentic-core/chat-presentation";
 
-/**
- * One status vocabulary for every surface that renders an invocation: the
- * inline tool pill, the expanded tool detail, and the subagent run card (its
- * header, and the child calls consolidated inside it). Previously each of
- * these carried its own colour/label table, so a "cancelled" child call could
- * read amber in one place and gray in another.
- */
-
-export type StatusKey = "pending" | "complete" | "error" | "cancelled" | "abandoned";
-
-export type StatusTone = "gray" | "green" | "red" | "amber" | "blue";
-
-const STATUS_LABEL: Record<ToolExecutionState["status"], string> = {
-  pending: "Pending",
-  running: "Running",
-  complete: "Complete",
-  error: "Error",
-  cancelled: "Cancelled",
-  abandoned: "Abandoned",
+// The status vocabulary lives in @workspace/agentic-core/chat-presentation so
+// every chat surface (including the terminal chat) shares it.
+export {
+  executionStatusLabel,
+  executionStatusTone,
+  getStatusColor,
+  getStatusKey,
+  isLiveStatus,
+  type StatusKey,
+  type StatusTone,
 };
-
-/** Full execution status → tone, for headers that distinguish running from queued. */
-const EXECUTION_TONE: Record<ToolExecutionState["status"], StatusTone> = {
-  pending: "gray",
-  running: "blue",
-  complete: "green",
-  error: "red",
-  cancelled: "amber",
-  abandoned: "gray",
-};
-
-export function getStatusKey(payload: InvocationCardPayload): StatusKey {
-  const status = payload.execution.status;
-  if (status === "pending" || status === "running") return "pending";
-  if (status === "cancelled") return "cancelled";
-  if (status === "abandoned") return "abandoned";
-  return payload.execution.isError || status === "error" ? "error" : "complete";
-}
-
-export function getStatusColor(statusKey: StatusKey): "red" | "amber" | "green" {
-  return statusKey === "error"
-    ? "red"
-    : statusKey === "pending" || statusKey === "cancelled" || statusKey === "abandoned"
-      ? "amber"
-      : "green";
-}
-
-export function executionStatusLabel(status: ToolExecutionState["status"]): string {
-  return STATUS_LABEL[status];
-}
-
-export function executionStatusTone(status: ToolExecutionState["status"]): StatusTone {
-  return EXECUTION_TONE[status];
-}
-
-/** True while the run may still produce updates. */
-export function isLiveStatus(status: ToolExecutionState["status"]): boolean {
-  return status === "pending" || status === "running";
-}
 
 export function StatusDot({
   statusKey,

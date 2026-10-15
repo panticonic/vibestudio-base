@@ -4,6 +4,7 @@ import { createTestDO } from "@workspace/runtime/worker/test-utils";
 import { PubSubChannel } from "./channel-do.js";
 import { ChannelLog } from "./log-store.js";
 import type { SqlStorage } from "@workspace/runtime/worker";
+import { ChannelViewFeed } from "@workspace/agentic-core/chat-store";
 
 async function owner() {
   const fixture = await createTestDO(PubSubChannel,{__objectKey:"channel-1"});
@@ -20,6 +21,29 @@ async function owner() {
 }
 
 describe("ChannelLog owner history", () => {
+  it("keeps a cold tail's older question reachable through its returned replay boundary", async () => {
+    const { log } = await owner();
+    for (let seq = 1; seq <= 8; seq++) await log.append({
+      type: "agentic.trajectory.v1/event",
+      payload: { kind: "message.completed", actor: { kind: "agent", id: "agent-1" }, causality: { messageId: `message-${seq}` }, payload: { protocol: "agentic.trajectory.v1", role: "assistant", outcome: "completed", blocks: [{ blockId: `block-${seq}`, type: "text", content: seq === 4 ? "original question" : `message ${seq}` }] }, createdAt: "2026-10-10T12:00:00.000Z" },
+      senderId: "agent-1", contentClass: "internal", externalKeys: [],
+    });
+    const tail = await log.replayInitial(2, {});
+    expect(tail.ready).toMatchObject({ firstEnvelopeSeq: 7, replayFromId: 7, hasMoreBefore: true });
+    const feed = new ChannelViewFeed({ channelId: "channel-1" });
+    const anchors: number[] = [];
+    feed.attach({ channelId: "channel-1", connected: true, hasMoreBefore: true, firstEnvelopeSeq: tail.ready.firstEnvelopeSeq,
+      getReplayBefore: (anchor, limit) => { anchors.push(anchor); return log.replayBefore(anchor, limit!, {}); },
+      getReplayAfter: (request) => log.replayAfter(request, {}),
+    });
+    for (const event of tail.logEvents) feed.ingest({ ...event, pubsubId: event.id, envelopeId: event.messageId, delivery: "log", phase: "replay" });
+    feed.ingest({ type: "replay-complete", delivery: "control", generation: 1, firstEnvelopeSeq: tail.ready.firstEnvelopeSeq, hasMoreBefore: true });
+    await feed.loadEarlierMessages();
+    expect(anchors).toEqual([7]);
+    expect(feed.getSnapshot().messages.some((message) => message.content.includes("original question"))).toBe(true);
+    expect(feed.getSnapshot().hasMoreHistory).toBe(false);
+    feed.dispose();
+  });
   it("derives registry changes from local canonical history before observation and detaches cached results", async () => {
     const { log, calls } = await owner();
     const register = (typeId: string, source: string) => log.append({ type: "agentic.trajectory.v1/event", payload: { createdAt: "2026-10-10T12:00:00.000Z", kind: "messageType.registered", payload: { protocol: "agentic.trajectory.v1", typeId, displayMode: "inline", source: { type: "code", code: source } }, actor: { kind: "agent", id: "agent-1" } }, senderId: "agent-1", contentClass: "internal", externalKeys: [] });

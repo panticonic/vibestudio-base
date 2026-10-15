@@ -168,6 +168,8 @@ export interface PubSubClient<T extends ParticipantMetadata = ParticipantMetadat
    * @param options.includeReplay - Include replay events (default: false)
    * @param options.includeSignals - Include signal events (default: false)
    */
+  /** Replay subscribers receive their retained prefix followed by a non-durable
+   * replay-complete control. Later recovery batches end with the same control. */
   events(options?: EventStreamOptions): AsyncIterableIterator<EventStreamItem>;
 
   // === Agentic convenience methods ===

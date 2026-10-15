@@ -31,6 +31,7 @@ import {
 } from "@workspace/pubsub";
 import { LOCAL_FALLBACK_MODEL_REF } from "@workspace/model-catalog/catalog";
 import type { AgentSubscriptionConfig } from "@workspace/agentic-core";
+import { presentActor } from "@workspace/agentic-core/chat-presentation";
 import type { Participant } from "@workspace/pubsub";
 import { useOptionalChatMessageActions } from "../context/ChatContext";
 import { TypingIndicator } from "./TypingIndicator";
@@ -1399,7 +1400,7 @@ function CrossChannelDispatchRow({
 function ForkRow({ fork }: { fork: NonNullable<ChatMessage["fork"]> }) {
   const forkState = useOptionalChatMessageActions()?.forkState;
   if (fork.archived) return null;
-  const actorName = fork.actor.displayName ?? fork.actor.id;
+  const actorName = forkState?.presentActor(fork.actor) ?? presentActor(fork.actor, []);
   return (
     <Box className="message-row message-row-system">
       <Card className="message-card message-card-lifecycle">

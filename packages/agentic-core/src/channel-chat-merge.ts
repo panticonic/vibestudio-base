@@ -635,6 +635,7 @@ function projectedForkToChatMessage(
       actor: {
         kind: fork.actor.kind,
         id: fork.actor.id,
+        ...(fork.actor.participantId ? { participantId: fork.actor.participantId } : {}),
         ...(fork.actor.displayName ? { displayName: fork.actor.displayName } : {}),
       },
       createdAtSeq: fork.createdAtSeq,

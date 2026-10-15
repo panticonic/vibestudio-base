@@ -1,0 +1,219 @@
+{
+  "name": "@workspace-terminal-apps/chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Chat",
+    "description": "Talk with agents in this workspace: the full chat, in your terminal.",
+    "icon": "💬",
+    "entry": "index.ts",
+    "authority": {
+      "provides": [],
+      "serviceRequests": [
+        {
+          "protocol": "vibestudio.channel.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.missions.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.models.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.images.v1",
+          "availability": "optional"
+        }
+      ],
+      "requests": [
+        {
+          "capability": "workspace.dependencies.inspect",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "account.profile.update",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "accounts.connect",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "channel.members.remove",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "critical",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "context.clone",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "context.materialize",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "context.relationships.record",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "devices.read",
+          "resource": {
+            "kind": "exact",
+            "key": "devices.read"
+          },
+          "tier": "gated",
+          "evidence": "exact"
+        },
+        {
+          "capability": "subagents.create",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:channel",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:gad.workspace",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:missions",
+          "resource": {
+            "kind": "exact",
+            "key": "do:workers/missions:MissionsDO:workspace-missions"
+          },
+          "tier": "gated",
+          "evidence": "exact"
+        },
+        {
+          "capability": "workspace-service:models",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:workspace.state",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace.runtime-state.inspect",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace.runtime-state.manage",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspaces.read",
+          "resource": {
+            "kind": "exact",
+            "key": "workspaces.read"
+          },
+          "tier": "gated",
+          "evidence": "exact"
+        },
+        {
+          "capability": "userland:extensions/templates/workspace.templates.inspect#*",
+          "resource": {
+            "kind": "exact",
+            "key": "workspace.templates:extension:@workspace-extensions/templates"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "workspace-service:images",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "@workspace/terminal-app": "workspace:*",
+    "@workspace/terminal-chat": "workspace:*"
+  }
+}

@@ -23,16 +23,8 @@ import type {
 import type { DefaultAgentConfig } from "@workspace/model-catalog/catalog";
 import { ModelPicker } from "./ModelPicker";
 
-export interface AgentConfigDraft {
-  model: string;
-  thinkingLevel?: AgentThinkingLevel;
-  fastMode?: boolean;
-  approvalLevel?: AgentApprovalLevel;
-  respondPolicy?: AgentRespondPolicy;
-  respondFrom?: string[];
-  handle?: string;
-  systemPrompt?: string;
-}
+export type { AgentConfigDraft } from "@workspace/agentic-core/chat-store";
+import type { AgentConfigDraft } from "@workspace/agentic-core/chat-store";
 
 export interface AgentConfigFormProps {
   catalog: ModelCatalog | null;

@@ -24,12 +24,14 @@ import type { ForkEntry } from "../types";
 
 function ForkItem({
   entry,
+  actorLabel,
   onSwitch,
   onOpen,
   onRename,
   onArchive,
 }: {
   entry: ForkEntry;
+  actorLabel: string;
   onSwitch: (e: ForkEntry) => void;
   onOpen: (e: ForkEntry) => void;
   onRename: (e: ForkEntry) => void;
@@ -51,7 +53,7 @@ function ForkItem({
       </DropdownMenu.SubTrigger>
       <DropdownMenu.SubContent>
         <DropdownMenu.Label>
-          {entry.actorName} · from message {entry.forkPointId}
+          {actorLabel} · from message {entry.forkPointId}
         </DropdownMenu.Label>
         <DropdownMenu.Item onSelect={() => onSwitch(entry)}>Switch to this fork</DropdownMenu.Item>
         <DropdownMenu.Item onSelect={() => onOpen(entry)}>Open in new panel</DropdownMenu.Item>
@@ -134,6 +136,7 @@ export function ForkSwitcher({ variant = "button" }: { variant?: "button" | "sub
             <ForkItem
               key={entry.forkId}
               entry={entry}
+              actorLabel={forkState.presentActor(entry.actor)}
               onSwitch={handleSwitch}
               onOpen={handleOpen}
               onRename={handleRename}
@@ -150,6 +153,7 @@ export function ForkSwitcher({ variant = "button" }: { variant?: "button" | "sub
             <ForkItem
               key={entry.forkId}
               entry={entry}
+              actorLabel={forkState.presentActor(entry.actor)}
               onSwitch={handleSwitch}
               onOpen={handleOpen}
               onRename={handleRename}
@@ -167,6 +171,11 @@ export function ForkSwitcher({ variant = "button" }: { variant?: "button" | "sub
           <DropdownMenu.Label>
             <Text color="red">{error}</Text>
           </DropdownMenu.Label>
+          {forkState.liveUpdatesInterrupted && actions.retryLiveUpdates ? (
+            <DropdownMenu.Item onSelect={actions.retryLiveUpdates}>
+              Retry fork updates
+            </DropdownMenu.Item>
+          ) : null}
           <DropdownMenu.Item onSelect={actions.clearError}>Dismiss error</DropdownMenu.Item>
         </>
       )}

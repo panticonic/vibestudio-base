@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import type { SessionInfo, ShellApi, SplitNode, TerminalState } from "./types.js";
+import type { OpenedSession, ShellOpenRequest, TerminalLauncher } from "./terminalLauncher.js";
 import { liveSessionCwd } from "./vscodeShellIntegrationMeta.js";
 
 type SetState = (updater: (state: TerminalState) => TerminalState) => void;
 type SetSessions = (
   updater: (sessions: Record<string, SessionInfo>) => Record<string, SessionInfo>
 ) => void;
-type ContextOpenOptions = { contextId?: string; contextAttachToken?: string };
+type ContextOpenOptions = { contextId?: string };
 
 export interface PanelActions {
   openSession(command?: string, opts?: ContextOpenOptions): Promise<string>;
@@ -36,6 +37,7 @@ export interface PanelActions {
 
 export function usePanelActions(args: {
   shell: ShellApi;
+  launcher: TerminalLauncher;
   state: TerminalState;
   sessions: Record<string, SessionInfo>;
   setState: SetState;
@@ -43,19 +45,20 @@ export function usePanelActions(args: {
 }): PanelActions {
   return useMemo(
     () => createPanelActions(args),
-    [args.shell, args.state, args.sessions, args.setState, args.setSessions]
+    [args.shell, args.launcher, args.state, args.sessions, args.setState, args.setSessions]
   );
 }
 
 export function createPanelActions(args: {
   shell: ShellApi;
+  launcher: TerminalLauncher;
   state: TerminalState;
   sessions: Record<string, SessionInfo>;
   setState: SetState;
   setSessions: SetSessions;
 }): PanelActions {
-  const { shell, state, sessions, setState, setSessions } = args;
-  const rememberSession = (info: SessionInfo) => {
+  const { shell, launcher, state, sessions, setState, setSessions } = args;
+  const rememberSession = (info: SessionInfo, registryId?: string) => {
     setSessions((prev) => ({ ...prev, [info.sessionId]: info }));
     setState((prev) => ({
       ...prev,
@@ -67,6 +70,9 @@ export function createPanelActions(args: {
           readCursor: prev.perSession[info.sessionId]?.readCursor ?? 0,
           lastSeenAt: Date.now(),
           label: prev.perSession[info.sessionId]?.label ?? info.label,
+          ...(registryId ?? prev.perSession[info.sessionId]?.registryId
+            ? { registryId: registryId ?? prev.perSession[info.sessionId]?.registryId }
+            : {}),
         },
       },
     }));
@@ -88,11 +94,36 @@ export function createPanelActions(args: {
     });
   };
 
+  /**
+   * End a pane's session for good. A registered session goes through the
+   * launch service (program stopped, registry entry forgotten); a session the
+   * shell extension spawned itself (`snug split`) has no entry and is ended
+   * there.
+   */
+  const endSession = async (sessionId: string): Promise<void> => {
+    const registryId = state.perSession[sessionId]?.registryId;
+    if (registryId) {
+      await launcher.close(registryId);
+      return;
+    }
+    if (sessions[sessionId]?.alive) await shell.kill(sessionId);
+    await shell.dispose?.(sessionId);
+  };
+
   const disposeReplacedSession = async (sessionId: string) => {
     forgetSession(sessionId);
-    await shell
-      .dispose?.(sessionId)
-      .catch((error) => console.warn("[terminal] Failed to dispose replaced session:", error));
+    await endSession(sessionId).catch((error) =>
+      console.warn("[terminal] Failed to end replaced session:", error)
+    );
+  };
+
+  /** Start a session and add it to the panel's sessions (not yet to the tree). */
+  const startSession = async (req: ShellOpenRequest): Promise<OpenedSession> => {
+    const opened = await launcher.open(req);
+    const info = await shell.get(opened.sessionId);
+    await applyScrollbackLimit(opened.sessionId);
+    rememberSession(info, opened.registryId);
+    return opened;
   };
 
   const openSession = async (command?: string, opts?: ContextOpenOptions): Promise<string> => {
@@ -103,16 +134,12 @@ export function createPanelActions(args: {
       ? {
           ...base,
           contextId: opts.contextId,
-          ...(opts.contextAttachToken ? { contextAttachToken: opts.contextAttachToken } : {}),
         }
       : base;
-    const { sessionId } = await shell.open(req);
-    const info = await shell.get(sessionId);
-    await applyScrollbackLimit(sessionId);
-    rememberSession(info);
+    const { sessionId } = await startSession(req);
     setState((prev) => ({
       ...prev,
-      tree: { kind: "leaf", sessionId },
+      tree: addLeaf(prev.tree, sessionId),
       focusedSessionId: sessionId,
     }));
     return sessionId;
@@ -126,14 +153,9 @@ export function createPanelActions(args: {
   };
 
   const closeSession = (sessionId: string) => {
-    if (sessions[sessionId]?.alive) {
-      void shell
-        .kill(sessionId)
-        .catch((error) => console.warn("[terminal] Failed to stop session:", error));
-    }
-    void shell
-      .dispose?.(sessionId)
-      .catch((error) => console.warn("[terminal] Failed to dispose session:", error));
+    void endSession(sessionId).catch((error) =>
+      console.warn("[terminal] Failed to end session:", error)
+    );
     forgetSession(sessionId);
     setState((prev) => {
       const tree = prev.tree ? removeLeaf(prev.tree, sessionId) : undefined;
@@ -173,16 +195,14 @@ export function createPanelActions(args: {
       ...(command ? { command: "/bin/sh", args: ["-c", command], label: command } : {}),
       ...(inheritCwd && cwd ? { cwd } : {}),
       ...(contextId ? { contextId } : {}),
-      ...(opts?.contextAttachToken ? { contextAttachToken: opts.contextAttachToken } : {}),
     };
-    const { sessionId } = await shell.open(req);
-    const info = await shell.get(sessionId);
-    await applyScrollbackLimit(sessionId);
-    rememberSession(info);
+    const { sessionId } = await startSession(req);
     setState((prev) => ({
       ...prev,
       tree: prev.tree
-        ? splitLeaf(prev.tree, targetSessionId, direction, sessionId)
+        ? containsSession(prev.tree, sessionId)
+          ? prev.tree
+          : splitLeaf(prev.tree, targetSessionId, direction, sessionId)
         : { kind: "leaf", sessionId },
       focusedSessionId: sessionId,
     }));
@@ -203,16 +223,13 @@ export function createPanelActions(args: {
 
   const replaceSessionWithOpen = async (
     sessionId: string,
-    req: Parameters<ShellApi["open"]>[0]
+    req: ShellOpenRequest
   ): Promise<string | undefined> => {
-    const { sessionId: nextSessionId } = await shell.open(req);
-    const info = await shell.get(nextSessionId);
-    await applyScrollbackLimit(nextSessionId);
-    rememberSession(info);
+    const { sessionId: nextSessionId } = await startSession(req);
     setState((prev) => ({
       ...prev,
       tree: prev.tree
-        ? replaceLeaf(prev.tree, sessionId, nextSessionId)
+        ? dedupeLeaves(replaceLeaf(prev.tree, sessionId, nextSessionId))
         : { kind: "leaf", sessionId: nextSessionId },
       focusedSessionId: nextSessionId,
     }));
@@ -229,20 +246,21 @@ export function createPanelActions(args: {
     sendText: (sessionId, text) => shell.write(sessionId, text),
     runCommand,
     restart: async (sessionId) => {
-      const result = await shell.restart?.(sessionId);
-      if (!result) return undefined;
-      const info = await shell.get(result.sessionId);
-      await applyScrollbackLimit(result.sessionId);
-      rememberSession(info);
+      const registryId = state.perSession[sessionId]?.registryId;
+      if (!registryId) return undefined;
+      const restarted = await launcher.restart(registryId);
+      const info = await shell.get(restarted.sessionId);
+      await applyScrollbackLimit(restarted.sessionId);
+      rememberSession(info, registryId);
       setState((prev) => ({
         ...prev,
         tree: prev.tree
-          ? replaceLeaf(prev.tree, sessionId, result.sessionId)
-          : { kind: "leaf", sessionId: result.sessionId },
-        focusedSessionId: result.sessionId,
+          ? dedupeLeaves(replaceLeaf(prev.tree, sessionId, restarted.sessionId))
+          : { kind: "leaf", sessionId: restarted.sessionId },
+        focusedSessionId: restarted.sessionId,
       }));
-      await disposeReplacedSession(sessionId);
-      return result.sessionId;
+      forgetSession(sessionId);
+      return restarted.sessionId;
     },
     restartCommand: async (sessionId) => {
       const saved = state.perSession[sessionId];
@@ -259,9 +277,7 @@ export function createPanelActions(args: {
         label: argv.join(" "),
       });
     },
-    dispose: async (sessionId) => {
-      await shell.dispose?.(sessionId);
-    },
+    dispose: (sessionId) => endSession(sessionId),
     clearScrollback: async (sessionId) => {
       await shell.clearScrollback?.(sessionId);
     },
@@ -273,6 +289,35 @@ export function createPanelActions(args: {
       await shell.deleteMeta?.(sessionId, key);
     },
   };
+}
+
+/**
+ * Keep the first occurrence of each pane. A session this panel opens can also
+ * be adopted from the registry's change event before the opening call returns;
+ * whichever places it first wins and the tree never shows it twice.
+ */
+export function dedupeLeaves(
+  node: SplitNode | undefined,
+  seen: Set<string> = new Set()
+): SplitNode | undefined {
+  if (!node) return undefined;
+  if (node.kind === "leaf") {
+    if (seen.has(node.sessionId)) return undefined;
+    seen.add(node.sessionId);
+    return node;
+  }
+  const a = dedupeLeaves(node.a, seen);
+  const b = dedupeLeaves(node.b, seen);
+  if (!a) return b;
+  if (!b) return a;
+  return { ...node, a, b };
+}
+
+/** Add a pane beside the first one (or as the only pane); a pane already shown stays where it is. */
+export function addLeaf(node: SplitNode | undefined, sessionId: string): SplitNode {
+  if (!node) return { kind: "leaf", sessionId };
+  if (containsSession(node, sessionId)) return node;
+  return splitLeaf(node, firstLeaf(node) ?? sessionId, "row", sessionId);
 }
 
 export function containsSession(node: SplitNode | undefined, sessionId: string): boolean {

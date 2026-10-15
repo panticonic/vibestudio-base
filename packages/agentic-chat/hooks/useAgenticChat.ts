@@ -12,6 +12,9 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
  * presentation.
  *
  * For minimal chat (no tools, no feedback, no debug), use useChatCore directly.
+ * All non-React chat logic lives in the session (`@workspace/agentic-core/chat-store`);
+ * this hook adds the browser-only features and registers their channel methods
+ * through the session's method-provider port.
  */
 import {
   useCallback,
@@ -21,14 +24,9 @@ import {
   useEffect,
   useState,
 } from "react";
-import { z } from "zod";
 
 import { fsMethods } from "@vibestudio/service-schemas/fs";
-import type {
-  ChannelConfig,
-  MethodExecutionContext,
-  PubSubClient,
-} from "@workspace/pubsub";
+import type { ChannelConfig } from "@workspace/pubsub";
 import { ScopeManager } from "@workspace/eval/scope";
 import type {
   SandboxImportLoader,
@@ -39,18 +37,26 @@ import type {
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
-  type ParticipantKind,
-  participantRefFromMetadata,
   type ParticipantRef,
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
-import { useChatCore } from "./core/useChatCore";
-import { useForkLineage } from "./useForkLineage";
-import { useDeferredAgent } from "./useDeferredAgent";
+import { useChatCoreState, useChatSession } from "./core/useChatCore";
+import { useChatMethodProvider, useStoreSnapshot } from "./useChatStore";
+import {
+  hostContextSlice,
+  sessionActionsSlice,
+  sessionStateSlice,
+} from "./chatContextSlices";
 import { useChatFeedback } from "./features/useChatFeedback";
 import { useChatTools } from "./features/useChatTools";
 import { buildClientEvalMethod } from "./features/clientEval";
-import { validateComponentSource } from "./features/validateComponentSource";
+import {
+  actorForClient,
+  inlineUiMethod,
+  inspectCardMethod,
+  loadActionBarMethod,
+  type BrowserMethodRuntime,
+} from "./features/browserChatMethods";
 import { useChatDebug } from "./features/useChatDebug";
 import { useInlineUi } from "./features/useInlineUi";
 import { useActionBar } from "./features/useActionBar";
@@ -60,40 +66,36 @@ import type {
   AgenticChatActions,
   ToolProvider,
   ChatSandboxValue,
-  ChatParticipantMetadata,
   ClientParticipantMetadata,
   ChatContextValue,
   ChatInputContextValue,
   ActionBarData,
   BrowserHandoffCallerKind,
   ForkNavHandlers,
+  ForkUiState,
 } from "../types";
-import { channelParticipantId, runtimeCallerId } from "../types";
-import type { MessageTypeComponentEntry } from "../types";
-import { customInspectorPayload } from "../components/CustomMessage";
+import { runtimeCallerId } from "../types";
 import { unwrapChatMethodResult } from "@workspace/agentic-core";
-import type {
-  ChatMethodResult,
-  AgentSubscriptionConfig,
-} from "@workspace/agentic-core";
+import type { ChatMethodResult } from "@workspace/agentic-core";
 import {
   LocalStorageScopePersistence,
   panelLocalScopeChannelId,
 } from "../utils/localStorageScopePersistence";
 import { scheduleBackgroundWork } from "../utils/scheduleBackgroundWork";
 import { sendSandboxText, type SandboxSendOptions } from "./sandboxSend";
+import type { ReadableStore } from "@workspace/agentic-core/chat-store";
 import {
-  connectionRetryDelayMs,
-  isTransientConnectionFailure,
-} from "./connectionRetry";
-import {
-  composeAgenticChatMethods,
   resolveAgenticChatFeatures,
   type AgenticChatFeature,
   type ResolvedAgenticChatFeatures,
 } from "../features";
 
 const NO_INLINE_UI_MESSAGES: ChatContextValue["messages"] = [];
+/** Stand-in store for a chat without fork navigation (hooks run unconditionally). */
+const NO_FORKS: ReadableStore<ForkUiState | undefined> = {
+  getSnapshot: () => undefined,
+  subscribe: () => () => undefined,
+};
 /** Installed agent info passed from the host panel. */
 interface InstalledAgentInfo {
   agentId: string;
@@ -113,48 +115,11 @@ function actionBarLoadKey(
   return `${path}\n${propsKey}\n${maxHeight ?? ""}`;
 }
 
-function actorKindFromMetadata(
-  type: string | undefined,
-  participantId?: string,
-): ParticipantKind {
-  // A `user:<userId>` participant id is the channel-stamped human identity
-  // (WP6 §4) — it always resolves to the semantic `user` role, regardless of
-  // the client-supplied metadata type.
-  if (participantId?.startsWith("user:")) return "user";
-  if (
-    type === "agent" ||
-    type === "system" ||
-    type === "panel" ||
-    type === "external"
-  )
-    return type;
-  return "user";
-}
-
 function browserHandoffCallerKindFromMetadata(
   type: string | undefined,
 ): BrowserHandoffCallerKind {
   if (type === "app" || type === "shell") return type;
   return "panel";
-}
-
-function actorForClient(
-  client: Pick<PubSubClient<ChatParticipantMetadata>, "clientId" | "roster">,
-  metadata: ClientParticipantMetadata,
-) {
-  const id = client.clientId ?? metadata.handle ?? "panel";
-  // Live identity projection (WP6 §3/§5): the channel stamps human
-  // participants with `id: user:<userId>` and the ACCOUNT-derived
-  // handle/displayName on the roster row — prefer that over the local panel
-  // label, so events carry the real account participant and profile.
-  const self = client.roster?.[id]?.metadata;
-  const merged = { ...metadata, ...(self ?? {}) };
-  return {
-    kind: actorKindFromMetadata(merged.type ?? metadata.type, id),
-    id,
-    displayName: merged.name ?? merged.handle ?? id,
-    metadata: { ...merged },
-  };
 }
 
 async function waitForMethodHandle<T>(
@@ -280,38 +245,19 @@ export function useAgenticChat({
     [channelName, metadataOption],
   );
   // --- Core (durable channel trajectory events -> transcript view model) ---
-  const core = useChatCore({
+  const session = useChatSession({
     config,
     channelName,
     channelConfig,
     contextId,
     metadata,
-    theme,
+    ...(actions ? { agentHost: actions } : {}),
+    ...(forkNav ? { forkNav } : {}),
   });
-  const [connectionAttempt, setConnectionAttempt] = useState(0);
-  const retryConnection = useCallback(() => {
-    core.dismissConnectionError();
-    core.hasConnectedRef.current = false;
-    setConnectionAttempt((attempt) => attempt + 1);
-  }, [core.dismissConnectionError, core.hasConnectedRef]);
-  // Fork lineage state + actions (switcher, tree, inline rows, subagent review).
-  // Only enabled when the panel supplies navigation handlers.
-  const forkState = useForkLineage({
-    rpc: config.rpc,
-    channelId: channelName,
-    contextId,
-    selfId: core.selfId,
-    selfMetadata: {
-      type: metadata.type,
-      name: metadata.name,
-      handle: metadata.handle,
-    },
-    messages: core.messages,
-    replaySettled: core.replaySettled,
-    retrySignal: connectionRetrySignal,
-    client: core.client,
-    nav: forkNav,
-  });
+  const core = useChatCoreState(session, { config, channelName, theme });
+  // Fork lineage (switcher, tree, inline rows, subagent review) is owned by
+  // the session when the panel supplies navigation handlers.
+  const forkState = useStoreSnapshot(session.forks ?? NO_FORKS);
   const scopeBlobBackend = useMemo<ScopeBlobBackend>(
     () => ({
       putText: (valueJson: string) =>
@@ -381,7 +327,7 @@ export function useAgenticChat({
       event: AgenticEvent,
       options?: { idempotencyKey?: string },
     ): Promise<number | undefined> => {
-      const client = core.clientRef.current;
+      const client = session.client;
       if (!client) return undefined;
       return client.publish(AGENTIC_EVENT_PAYLOAD_KIND, event, {
         idempotencyKey: options?.idempotencyKey ?? crypto.randomUUID(),
@@ -929,603 +875,108 @@ export function useAgenticChat({
     loadActionBarFromFile,
     features.actionBar,
   ]);
-  // --- Stable refs for connection effect (avoids unstable object deps) ---
-  const feedbackRef = useRef(feedback);
-  const chatToolsRef = useRef(chatTools);
-  const actionsRef = useRef(actions);
-  feedbackRef.current = feedback;
-  chatToolsRef.current = chatTools;
-  actionsRef.current = actions;
-  const connectionMethodsRef = useRef({
-    clearActionBar,
-    loadActionBarFromFile,
-    metadata,
-    publishTypedAgenticEvent,
-    importLoader,
-    boundExecuteSandbox,
-    loadSourceFile,
-    managedActionBarPath,
-    writeManagedActionBar,
-    chat,
-    scopeManager,
-  });
-  connectionMethodsRef.current = {
-    clearActionBar,
-    loadActionBarFromFile,
-    metadata,
-    publishTypedAgenticEvent,
-    importLoader,
-    boundExecuteSandbox,
-    loadSourceFile,
-    managedActionBarPath,
-    writeManagedActionBar,
-    chat,
-    scopeManager,
-  };
-  // Live snapshot for the inspect_card method: agents debug a card by reading
-  // the same data the UI's "Copy details" produces.
-  const cardInspectionRef = useRef<{
-    messages: typeof core.messages;
-    registry: Map<string, MessageTypeComponentEntry>;
-  }>({ messages: [], registry: new Map() });
-  cardInspectionRef.current = {
-    messages: core.messages,
-    registry: messageTypes.messageTypeComponents,
-  };
-  // --- Connect to channel on mount ---
+  // --- Method providers: each browser feature advertises its own group through
+  // the session's method-provider port. Registration is a layout effect, so it
+  // precedes the passive effect that starts the join; a provider is read when
+  // a join starts, so its methods are fixed per join. ---
+  useChatMethodProvider(session, "tools", chatTools.buildToolMethods);
+  useChatMethodProvider(
+    session,
+    "feedback",
+    features.feedback ? feedback.buildFeedbackMethods : undefined,
+  );
+  // inspect_card reads the live transcript and renderer registry at call time.
+  const messageTypeComponentsRef = useRef(messageTypes.messageTypeComponents);
+  messageTypeComponentsRef.current = messageTypes.messageTypeComponents;
+  const provideInspectCard = useCallback(
+    () => ({
+      inspect_card: inspectCardMethod(() => ({
+        messages: session.getSnapshot().messages,
+        registry: messageTypeComponentsRef.current,
+      })),
+    }),
+    [session],
+  );
+  useChatMethodProvider(session, "inspect-card", provideInspectCard);
+  const browserMethodRuntime = useMemo<BrowserMethodRuntime>(
+    () => ({
+      getClient: () => session.client,
+      metadata,
+      ...(importLoader ? { importLoader } : {}),
+      loadSourceFile,
+      publishTypedAgenticEvent,
+      managedActionBarPath,
+      writeManagedActionBar,
+      loadActionBarFromFile,
+      clearActionBar,
+    }),
+    [
+      session,
+      metadata,
+      importLoader,
+      loadSourceFile,
+      publishTypedAgenticEvent,
+      managedActionBarPath,
+      writeManagedActionBar,
+      loadActionBarFromFile,
+      clearActionBar,
+    ],
+  );
+  const provideInlineUi = useCallback(
+    () => ({ inline_ui: inlineUiMethod(browserMethodRuntime) }),
+    [browserMethodRuntime],
+  );
+  useChatMethodProvider(
+    session,
+    "inline-ui",
+    features.inlineUi ? provideInlineUi : undefined,
+  );
+  const provideActionBar = useCallback(
+    () => ({ load_action_bar: loadActionBarMethod(browserMethodRuntime) }),
+    [browserMethodRuntime],
+  );
+  useChatMethodProvider(
+    session,
+    "action-bar",
+    features.actionBar ? provideActionBar : undefined,
+  );
+  const provideClientEval = useCallback(
+    () => ({
+      client_eval: buildClientEvalMethod({
+        importLoader,
+        executeSandbox: boundExecuteSandbox,
+        loadSourceFile,
+        getChat: () => chat,
+        scopeManager,
+      }),
+    }),
+    [importLoader, boundExecuteSandbox, loadSourceFile, chat, scopeManager],
+  );
+  useChatMethodProvider(
+    session,
+    "client-eval",
+    features.clientEval ? provideClientEval : undefined,
+  );
+
+  // --- Connection: the session owns the join loop. A host signal that a
+  // blocking review resolved retries a stalled join; a live join is kept. ---
   useEffect(() => {
-    if (!channelName || !config.rpc) return;
-    if (core.hasConnectedRef.current) return;
-    core.hasConnectedRef.current = true;
-    const controller = new AbortController();
-    let cancelled = false;
-    let connected = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    async function doConnect() {
-      let transientAttempt = 0;
-      for (;;) {
-        try {
-          const methodRuntime = connectionMethodsRef.current;
-          const toolMethods = chatToolsRef.current.buildToolMethods();
-          const methods = composeAgenticChatMethods(
-            toolMethods,
-            features.feedback
-              ? feedbackRef.current.buildFeedbackMethods()
-              : undefined,
-            {
-              inspect_card: {
-                description:
-                  "Inspect a custom message card in this conversation: wire payload, renderer registry status " +
-                  "(ready / load stage / error), definition metadata, and full update history. Use this when a " +
-                  "card you published is not rendering, looks wrong, or a user reports a stuck spinner — it " +
-                  "returns exactly what the user's 'Copy details' button shows. Parameters: { messageId: string }.",
-                parameters: z.object({
-                  messageId: z
-                    .string()
-                    .describe(
-                      "The custom message id (custom.started messageId)",
-                    ),
-                }),
-                execute: async (args: unknown, ctx: MethodExecutionContext) => {
-                  const { messageId } = args as { messageId?: string };
-                  if (!messageId)
-                    return ctx.result(
-                      { ok: false, error: "Missing messageId" },
-                      { isError: true },
-                    );
-                  const snapshot = cardInspectionRef.current;
-                  const message = snapshot.messages.find(
-                    (item) => item.custom?.messageId === messageId,
-                  );
-                  if (!message?.custom) {
-                    const known = snapshot.messages
-                      .filter((item) => item.custom)
-                      .map(
-                        (item) =>
-                          `${item.custom!.typeId}:${item.custom!.messageId}`,
-                      );
-                    return ctx.result(
-                      {
-                        ok: false,
-                        error: `No custom message "${messageId}" in this channel view.`,
-                        knownCards: known,
-                      },
-                      { isError: true },
-                    );
-                  }
-                  return {
-                    ok: true,
-                    details: customInspectorPayload(
-                      message.custom,
-                      snapshot.registry.get(message.custom.typeId),
-                    ),
-                  };
-                },
-              },
-            },
-            features.inlineUi
-              ? {
-                  inline_ui: {
-                    description: `Render an interactive UI component inline in the chat transcript. Non-blocking: it returns immediately and the user interacts whenever they choose.
+    session.start();
+  }, [session]);
+  const observedRetrySignal = useRef(connectionRetrySignal);
+  useEffect(() => {
+    if (observedRetrySignal.current === connectionRetrySignal) return;
+    observedRetrySignal.current = connectionRetrySignal;
+    session.reconnect("host-unblocked");
+  }, [session, connectionRetrySignal]);
 
-**When to use:** whenever a visual or interactive answer serves the user better than prose — the user does not need to ask for UI. Reach for it for plans and itineraries, comparisons, data the user will explore, calculators and what-if tools, checklists and multi-step setup, dashboards, and anything the user may come back to. For presentation and local interaction — response components, or a one-off component with its own state defined in the message — write MDX in your message instead. Use inline_ui for a durable surface: refreshed under a stable id, calling workspace services or runtime APIs, or something the user returns to.
-
-**Contrast with other tools:**
-- \`eval\`: agent-triggered side effects; runs immediately and returns a result.
-- \`inline_ui\`: rich presentation plus user-triggered side effects; persists in the transcript.
-- \`ask_user\` / \`feedback_form\` / \`feedback_custom\`: block until the user answers and return the answer to you.
-
-**Fastest path — response components** from \`@workspace/react\`: \`Chart\`, \`Stats\`, \`Compare\`, \`Timeline\`, \`Checklist\`, \`PlaceMap\`, \`Choices\`, \`Calculator\`, \`ActionButton\`, \`Image\`, \`Video\`. Fill them with props; compose them with Radix layout. Read \`skills/visualize/COMPONENTS.md\` for their props.
-
-**The component receives { props, chat, scope, scopes, inlineUi }:**
-- props: data you pass via the props parameter
-- inlineUi: stable identity \`{ id, renderedAt }\`; \`renderedAt\` changes whenever the same ID is rendered again and can trigger a data-refresh effect
-- chat:
-  - chat.send(content, { metadata: { interaction: { source, kind, action, targetId } } }) — send a user message that starts a new agent turn; the structured \`interaction\` tells you exactly which control was used. Response components such as \`Choices\` and \`ActionButton\` do this for you.
-  - chat.rpc.call(target, methodDescriptor, args) — call a runtime service with its receiver-owned descriptor and complete positional argument array. For host methods, import \`mainRpcMethods\` from \`@vibestudio/service-schemas/mainRpc\`; for example, chat.rpc.call("main", mainRpcMethods["fs.readFile"], ["/src/config.ts"]).
-  - chat.publish(type, payload, options?) — publish a typed non-message event.
-  - chat.contextId, chat.channelId — current identifiers
-- scope: panel-local durable UI state shared by inline_ui, feedback_custom, and the action bar in this panel instance. Serializable values persist in localStorage across panel reloads; nonserializable values are live-only and dropped on restore.
-- scopes: scopes.save(), scopes.push(), scopes.list(), scopes.get(id)
-
-**Lifecycle:** The card starts expanded and auto-collapses above 400px; users can expand or collapse it. Pass a stable \`id\` for one evolving surface: a later render by the same participant with that ID replaces the card and moves it to the newest position. Omit \`id\` for a new independent card. **Result:** \`{ ok: true, id }\` means the source compiled and the card was published. A compile failure (syntax error, unresolved import) is returned directly as an error result \`{ ok: false, error, compileError: true }\` with the compiler message, and nothing is rendered; fix the source and call again. Render-time and props failures happen after publishing: a ui-feedback note naming the inline UI id and the error starts a repair turn when you are idle, or follows your current turn (failures of what you publish in a repair turn wait for your next turn); fix the source and render again with the same id.
-
-**Imports:** react, @radix-ui/themes, @radix-ui/react-icons, @workspace/react, @workspace/runtime. Provide either \`code\` or \`path\`; \`path\` reads a context-relative TSX file, supports static relative imports, and infers bare package imports from the nearest package.json. Use \`imports\` for explicit package versions.
-**Must use** \`export default\`. Root with an unframed layout that stays usable at a 320px card width.
-
-**Example:**
-\`\`\`tsx
-import { Flex } from "@radix-ui/themes";
-import { Chart, Choices, Stats } from "@workspace/react";
-
-export default function Spending({ props }) {
-  return (
-    <Flex direction="column" gap="3" p="2" style={{ width: "100%", minWidth: 0 }}>
-      <Stats items={[{ label: "Total", value: props.total }, { label: "vs. last month", value: props.delta, tone: "negative" }]} />
-      <Chart type="bar" data={props.months} x="month" y={["groceries", "dining"]} valueFormat="currency" stacked />
-      <Choices id="spending-next" question="What should we look at next?" options={[{ label: "Cut dining costs" }, { label: "Set a monthly budget" }]} />
-    </Flex>
-  );
-}
-\`\`\``,
-                    parameters: z.object({
-                      id: z
-                        .string()
-                        .trim()
-                        .min(1)
-                        .optional()
-                        .describe(
-                          "Stable component ID. Reusing it updates and bumps the existing card; omit it to create a new card.",
-                        ),
-                      code: z
-                        .string()
-                        .optional()
-                        .describe(
-                          "TSX source code for the component. Provide either code or path.",
-                        ),
-                      path: z
-                        .string()
-                        .optional()
-                        .describe(
-                          "Context-relative TSX file to render instead of inline code. Supports static relative imports.",
-                        ),
-                      imports: z
-                        .record(z.string(), z.string())
-                        .optional()
-                        .describe(
-                          "On-demand package builds. Same semantics as eval imports.",
-                        ),
-                      props: z
-                        .record(z.unknown())
-                        .optional()
-                        .describe("Props passed to the component as { props }"),
-                    }),
-                    execute: async (
-                      args: unknown,
-                      ctx: MethodExecutionContext,
-                    ) => {
-                      const {
-                        id: requestedId,
-                        code,
-                        path,
-                        imports,
-                        props,
-                      } = args as {
-                        id?: string;
-                        code?: string;
-                        path?: string;
-                        imports?: Record<string, string>;
-                        props?: Record<string, unknown>;
-                      };
-                      const trimmedPath = path?.trim();
-                      const sourceCode = trimmedPath
-                        ? await methodRuntime.loadSourceFile(trimmedPath)
-                        : code;
-                      if (!sourceCode) {
-                        return ctx.result(
-                          { ok: false, error: "Missing code or path" },
-                          { isError: true },
-                        );
-                      }
-                      const validation = await validateComponentSource(
-                        {
-                          code: sourceCode,
-                          ...(trimmedPath ? { path: trimmedPath } : {}),
-                        },
-                        {
-                          imports,
-                          loadSourceFile: methodRuntime.loadSourceFile,
-                          loadImport: methodRuntime.importLoader,
-                        },
-                      );
-                      if (!validation.ok) {
-                        return ctx.result(
-                          { ...validation, compileError: true },
-                          { isError: true },
-                        );
-                      }
-                      const client = core.clientRef.current;
-                      if (!client)
-                        return ctx.result(
-                          { ok: false, error: "Not connected" },
-                          { isError: true },
-                        );
-                      const id = requestedId?.trim() || crypto.randomUUID();
-                      const source = trimmedPath
-                        ? { type: "file" as const, path: trimmedPath }
-                        : { type: "code" as const, code: code! };
-                      const eventPayload: AgenticEvent<"ui.inline_rendered">["payload"] =
-                        {
-                          protocol: AGENTIC_PROTOCOL_VERSION,
-                          uiType: "inline",
-                          requestedBy: participantRefFromMetadata(
-                            ctx.callerId,
-                            client.roster?.[ctx.callerId]?.metadata,
-                          ),
-                          id,
-                          source,
-                        };
-                      if (imports !== undefined) eventPayload.imports = imports;
-                      if (props !== undefined) eventPayload.props = props;
-                      await methodRuntime.publishTypedAgenticEvent(
-                        {
-                          kind: "ui.inline_rendered",
-                          actor: actorForClient(client, methodRuntime.metadata),
-                          ...(ctx.turnId
-                            ? { turnId: ctx.turnId as never }
-                            : {}),
-                          payload: eventPayload,
-                          createdAt: new Date().toISOString(),
-                        },
-                        // The component ID is intentionally reusable. Event idempotency
-                        // remains unique so a later render is reduced as an update.
-                        {
-                          idempotencyKey: `ui:inline:${id}:${crypto.randomUUID()}`,
-                        },
-                      );
-                      return { ok: true, id };
-                    },
-                  },
-                }
-              : undefined,
-            features.actionBar
-              ? {
-                  load_action_bar: {
-                    description: `Load, replace, or clear a compact persistent action bar at the top of this chat panel.
-
-Use this for small always-available controls or status for the current workflow.
-Pass exactly one source: \`code\` (inline TSX) or \`path\` (a context-relative TSX
-file in this panel's current filesystem context, e.g. a checked-in repo file).
-Inline code is written to a scratch file this panel owns and persists, so the bar
-survives panel reloads; do not create, track, or delete a file for it.
-The loaded component receives { props, chat, scope, scopes }, supports the same
-imports as inline_ui, and must export default. A \`path\` source also supports
-static relative imports from the loaded file and infers bare package imports from
-the nearest package.json when possible.
-
-Unlike inline_ui, load_action_bar does not add visible chat history. The latest
-loaded file replaces any previous action bar for this panel only. Other panels
-connected to this channel may be in different filesystem contexts.
-Keep it compact; the panel clamps the rendered height to a small scrollable area.
-
-Result: \`{ ok: true, id }\` means the source compiled and the bar was loaded. A compile failure (syntax error, unresolved import) is returned directly as an error result \`{ ok: false, error, compileError: true }\` and the current bar is left unchanged. Render-time and props failures arrive afterward as ui-feedback notes: one starts a repair turn when you are idle, or follows your current turn.`,
-                    parameters: z.object({
-                      code: z
-                        .string()
-                        .optional()
-                        .describe(
-                          "Inline TSX source with a default-exported component. Provide code or path unless clear is true.",
-                        ),
-                      path: z
-                        .string()
-                        .optional()
-                        .describe(
-                          "Context-relative TSX file to load. Provide code or path unless clear is true.",
-                        ),
-                      imports: z
-                        .record(z.string(), z.string())
-                        .optional()
-                        .describe(
-                          "On-demand package builds. Same semantics as eval imports.",
-                        ),
-                      props: z
-                        .record(z.unknown())
-                        .optional()
-                        .describe("Props passed to the component as { props }"),
-                      maxHeight: z
-                        .number()
-                        .optional()
-                        .describe(
-                          "Preferred maximum height in pixels. Defaults to 180 and is clamped between 64 and 360.",
-                        ),
-                      clear: z
-                        .boolean()
-                        .optional()
-                        .describe("When true, remove the current action bar."),
-                    }),
-                    execute: async (
-                      args: unknown,
-                      ctx: MethodExecutionContext,
-                    ) => {
-                      const { code, path, imports, props, maxHeight, clear } =
-                        args as {
-                          code?: string;
-                          path?: string;
-                          imports?: Record<string, string>;
-                          props?: Record<string, unknown>;
-                          maxHeight?: number;
-                          clear?: boolean;
-                        };
-                      const client = core.clientRef.current;
-                      if (!client)
-                        return ctx.result(
-                          { ok: false, error: "Not connected" },
-                          { isError: true },
-                        );
-                      const requestedBy = participantRefFromMetadata(
-                        ctx.callerId,
-                        client.roster?.[ctx.callerId]?.metadata,
-                      );
-                      if (clear) {
-                        await methodRuntime.clearActionBar({
-                          requestedBy,
-                          turnId: ctx.turnId,
-                        });
-                        return { ok: true, cleared: true };
-                      }
-                      const inlineCode = code?.trim() ? code : undefined;
-                      const filePath = path?.trim();
-                      if ((inlineCode === undefined) === !filePath)
-                        return ctx.result(
-                          {
-                            ok: false,
-                            error: "Provide exactly one of code or path",
-                          },
-                          { isError: true },
-                        );
-                      const barPath =
-                        filePath ?? methodRuntime.managedActionBarPath;
-                      // Validate before writing: the managed file may back the
-                      // currently loaded bar, which a compile failure must keep.
-                      const validation = await validateComponentSource(
-                        {
-                          code:
-                            inlineCode ??
-                            (await methodRuntime.loadSourceFile(barPath)),
-                          path: barPath,
-                        },
-                        {
-                          imports,
-                          loadSourceFile: methodRuntime.loadSourceFile,
-                          loadImport: methodRuntime.importLoader,
-                        },
-                      );
-                      if (!validation.ok) {
-                        return ctx.result(
-                          { ...validation, compileError: true },
-                          { isError: true },
-                        );
-                      }
-                      if (inlineCode !== undefined)
-                        await methodRuntime.writeManagedActionBar(inlineCode);
-                      const result = await methodRuntime.loadActionBarFromFile({
-                        path: barPath,
-                        imports,
-                        props,
-                        maxHeight,
-                        requestedBy,
-                        turnId: ctx.turnId,
-                      });
-                      return result.ok
-                        ? result
-                        : ctx.result(result, { isError: true });
-                    },
-                  },
-                }
-              : undefined,
-            features.clientEval
-              ? {
-                  client_eval: buildClientEvalMethod({
-                    importLoader: methodRuntime.importLoader,
-                    executeSandbox: methodRuntime.boundExecuteSandbox,
-                    loadSourceFile: methodRuntime.loadSourceFile,
-                    getChat: () => methodRuntime.chat,
-                    scopeManager: methodRuntime.scopeManager,
-                  }),
-                }
-              : undefined,
-          );
-          await core.connectToChannel({
-            signal: controller.signal,
-            channelId: channelName,
-            methods,
-            channelConfig,
-            contextId,
-          });
-          connected = true;
-          return;
-        } catch (err) {
-          if (cancelled) return;
-          if (!isTransientConnectionFailure(err)) {
-            console.error("[Chat] Connection error:", err);
-            return;
-          }
-          const delayMs = connectionRetryDelayMs(transientAttempt++);
-          // A failure this loop is about to retry is not news. A first startup
-          // builds the workspace while the panel is already connecting, so a
-          // call can time out on a slow machine and succeed moments later;
-          // saying so at warning level reports a defect for something that
-          // healed itself, and the retry that follows is the real answer.
-          console.debug(
-            `[Chat] Transient connection failure; retrying in ${delayMs}ms`,
-            err,
-          );
-          await new Promise<void>((resolve) => {
-            retryTimer = setTimeout(resolve, delayMs);
-          });
-          retryTimer = undefined;
-          if (cancelled) return;
-        }
-      }
-    }
-    void doConnect();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (retryTimer !== undefined) clearTimeout(retryTimer);
-      if (!connected) core.hasConnectedRef.current = false;
-    };
-  }, [
-    channelName,
-    channelConfig,
-    contextId,
-    core.connectToChannel,
-    config.rpc,
-    core.hasConnectedRef,
-    core.selfIdRef,
-    core.clientRef,
-    connectionAttempt,
-    connectionRetrySignal,
-    features,
-  ]);
-  // --- Wrap platform actions ---
-  const handleAddAgent = useCallback(
-    async (agentId?: string, config?: AgentSubscriptionConfig) => {
-      if (!actions?.onAddAgent) return;
-      const launcherContextId = core.clientRef.current?.contextId;
-      await actions.onAddAgent(channelName, launcherContextId, agentId, config);
-    },
-    [channelName, core.clientRef, actions],
-  );
-  const handlePrepareAgent = useCallback(
-    async (
-      agentId: string | undefined,
-      config: AgentSubscriptionConfig | null,
-    ) => {
-      if (!actions?.onPrepareAgent) return;
-      const launcherContextId = core.clientRef.current?.contextId;
-      await actions.onPrepareAgent(
-        channelName,
-        launcherContextId,
-        agentId,
-        config,
-      );
-    },
-    [channelName, core.clientRef, actions],
-  );
-  const handleReplaceAgent = useCallback(
-    async (
-      participantId: string,
-      agentId?: string,
-      config?: AgentSubscriptionConfig,
-    ) => {
-      if (!actions?.onReplaceAgent) return;
-      await actions.onReplaceAgent(channelName, participantId, agentId, config);
-    },
-    [channelName, actions],
-  );
-  const handlePersistAgentModel = useCallback(
-    async (participantId: string, model: string) => {
-      if (!actions?.onPersistAgentModel) return;
-      await actions.onPersistAgentModel(channelName, participantId, model);
-    },
-    [channelName, actions],
-  );
-  const handleRemoveAgent = useCallback(
-    async (handle: string) => {
-      if (!actions?.onRemoveAgent) return;
-      await actions.onRemoveAgent(channelName, handle);
-    },
-    [channelName, actions],
-  );
-  const sessionEnabled = true; // Always persistent: transcript state is projected from the durable PubSub log.
-  const onAddAgent = actions?.onAddAgent ? handleAddAgent : undefined;
-  const onPrepareAgent = actions?.onPrepareAgent
-    ? handlePrepareAgent
-    : undefined;
-  const onReplaceAgent = actions?.onReplaceAgent
-    ? handleReplaceAgent
-    : undefined;
-  const onPersistAgentModel = actions?.onPersistAgentModel
-    ? handlePersistAgentModel
-    : undefined;
-  const onInstallLocalModel = actions?.onInstallLocalModel;
-  const onConnectModelProvider = actions?.onConnectModelProvider;
-  const availableAgents = actions?.availableAgents;
-  const modelCatalog = actions?.modelCatalog;
-  const defaultModelRef = actions?.defaultModelRef;
-  const defaultAgentConfig = actions?.defaultAgentConfig;
-  const firstAgentModelPreflight = actions?.firstAgentModelPreflight;
-  const onSaveDefaults = actions?.onSaveDefaults;
-  const onRemoveAgent = actions?.onRemoveAgent ? handleRemoveAgent : undefined;
-  const onFocusPanel = actions?.onFocusPanel;
-  const onReloadPanel = actions?.onReloadPanel;
-  const onOpenChannel = actions?.onOpenChannel;
-  const onNewConversation = actions?.onNewConversation;
-  const onListTaskRules = actions?.onListTaskRules;
-  const onResetTaskRules = actions?.onResetTaskRules;
-  const onOpenLocalModelsLog = actions?.onOpenLocalModelsLog;
-  const onOpenLocalModels = actions?.onOpenLocalModels;
-
-  // --- Deferred first-agent flow (inline config + pre-send delivery queue) ---
-  const clearComposer = useCallback(() => {
-    core.handleInputChange("");
-    core.setPendingImages([]);
-  }, [core.handleInputChange, core.setPendingImages]);
-  const resolveOpeningRequest = useCallback(
-    async (outcome: "deliver" | "cancel") => {
-      const client = core.clientRef.current;
-      if (!client) throw new Error("Conversation is not connected");
-      await client.resolveOpeningRequest(outcome);
-    },
-    [core.clientRef],
-  );
-  const { deferredAgent, sendMessage: deferredSendMessage } = useDeferredAgent({
-    participants: core.participants,
-    pendingAgents: core.pendingAgents,
-    input: core.input,
-    clearComposer,
-    publishText: core.publishText,
-    maybeSetDefaultTitle: core.maybeSetDefaultTitle,
-    coreSendMessage: core.sendMessage,
-    onAddAgent,
-    onPrepareAgent,
-    availableAgents: availableAgents ?? [],
-    modelCatalog: modelCatalog ?? null,
-    defaultModelRef,
-    defaultAgentConfig,
-    firstAgentModelPreflight,
-    firstAgentPending: core.initialization?.firstAgentPending ?? false,
-    openingRequest: core.initialization?.openingRequest,
-    resolveOpeningRequest,
-    channelName,
-    replaySettled: core.replaySettled,
-  });
-  // Pre-send queue intercept: the composer's send becomes the deferred wrapper,
-  // which holds the first message(s) until the agent it spawns joins the roster.
+  // --- Deferred first-agent flow (inline config + pre-send delivery queue),
+  // owned by the session: the composer submits through it, so the first
+  // message(s) are held until the agent it spawns joins the roster. ---
+  const { deferredAgent } = useStoreSnapshot(session.deferredAgent);
   const inputContextValue = useMemo<ChatInputContextValue>(
-    () => ({ ...core.inputContextValue, onSendMessage: deferredSendMessage }),
-    [core.inputContextValue, deferredSendMessage],
+    () => ({ ...core.inputContextValue, onSendMessage: session.submit }),
+    [core.inputContextValue, session],
   );
 
   // Keep the observer transport identity independent from transcript and UI
@@ -1555,88 +1006,46 @@ Result: \`{ ok: true, id }\` means the source compiled and the bar was loaded. A
     ],
   );
 
-  // --- Assemble context values ---
-  const contextValue: ChatContextValue = useMemo(
+  // --- Assemble the context from independently memoized slices ---
+  const sessionSnapshot = useStoreSnapshot(session);
+  const sessionState = useMemo(
+    () => sessionStateSlice(sessionSnapshot),
+    [sessionSnapshot],
+  );
+  const sessionActions = useMemo(
+    () => sessionActionsSlice(session, core.clientRef),
+    [session, core.clientRef],
+  );
+  const host = useMemo(
+    () => hostContextSlice(session, actions),
+    [session, actions],
+  );
+  const browser = useMemo(
     () => ({
-      connected: core.connected,
-      replaySettled: core.replaySettled,
-      status: core.status,
       channelId: channelName,
-      channelTitle: core.channelTitle,
       browserHandoffCaller: {
         id: runtimeCallerId(config.rpc.selfId),
         kind: browserHandoffCallerKindFromMetadata(metadata.type),
       },
-      sessionEnabled,
-      connectionError: core.connectionError,
-      dismissConnectionError: core.dismissConnectionError,
-      retryConnection,
+      // Always persistent: transcript state is projected from the durable log.
+      sessionEnabled: true,
       chat,
-      clientRef: core.clientRef,
       panelScopeId: config.clientId,
       scope,
       scopes,
       scopeManager,
-      messages: core.messages,
       inlineUiComponents: inlineUi.inlineUiComponents,
       messageTypeComponents: messageTypes.messageTypeComponents,
       actionBar: actionBar.actionBar,
       onActionBarMaxHeightChange: updateActionBarMaxHeight,
-      hasMoreHistory: core.hasMoreHistory,
-      loadingMore: core.loadingMore,
-      selfId: core.selfId ? channelParticipantId(core.selfId) : null,
-      participants: core.participants,
-      allParticipants: core.allParticipants,
-      debugEvents: core.debugEvents,
       debugConsoleAgent: debug.debugConsoleAgent,
-      dirtyRepoWarnings: core.dirtyRepoWarnings,
-      pendingAgents: core.pendingAgents,
-      deferredAgent,
+      onDebugConsoleChange: debug.setDebugConsoleAgent,
       activeFeedbacks: feedback.activeFeedbacks,
-      // Resolved appearance (explicit prop OR system) — never a "dark" literal.
-      theme: core.theme,
-      agentBusy: core.agentBusy,
-      hasOpenTurn: core.hasOpenTurn,
-      editPendingMessage: core.editPendingMessage,
-      cancelPendingMessage: core.cancelPendingMessage,
-      flushOutboxAndInterrupt: core.flushOutboxAndInterrupt,
-      primaryActionIntent: core.primaryActionIntent,
-      flushNarration: core.flushNarration,
-      undoableAction: core.undoableAction,
-      undoLastAction: core.undoLastAction,
-      pendingSendCount: core.pendingSendCount,
-      afterTurnMessageIds: core.afterTurnMessageIds,
-      onLoadEarlierMessages: core.loadEarlierMessages,
-      onInterrupt: core.handleInterruptAgent,
-      onCancelInvocation: core.handleCancelInvocation,
-      onCallMethod: core.handleCallMethod,
-      onCallMethodResult: core.handleCallMethodResult,
       onFeedbackDismiss: feedback.onFeedbackDismiss,
       onFeedbackError: feedback.onFeedbackError,
-      onDebugConsoleChange: debug.setDebugConsoleAgent,
-      onDismissDirtyWarning: core.onDismissDirtyWarning,
-      onAddAgent,
-      onReplaceAgent,
-      onPersistAgentModel,
-      onInstallLocalModel,
-      onConnectModelProvider,
-      availableAgents,
-      modelCatalog,
-      defaultModelRef,
-      defaultAgentConfig,
-      onSaveDefaults,
-      onRemoveAgent,
-      onFocusPanel,
-      onReloadPanel,
-      onOpenChannel,
-      onNewConversation,
-      onListTaskRules,
-      onResetTaskRules,
-      onOpenLocalModelsLog,
-      onOpenLocalModels,
+      // Resolved appearance (explicit prop OR system) — never a "dark" literal.
+      theme: core.theme,
       toolApproval: chatTools.toolApprovalValue,
-      // Fork UI is enabled only when the panel wired navigation handlers.
-      forkState: forkNav ? forkState : undefined,
       // Lets subagent cards open an observer connection on a child's task
       // channel; reuses this panel's own transport config.
       childTranscript,
@@ -1644,85 +1053,41 @@ Result: \`{ ok: true, id }\` means the source compiled and the bar was loaded. A
       importLoader,
     }),
     [
-      core.connected,
-      core.replaySettled,
-      core.status,
-      core.channelTitle,
-      core.selfId,
-      config.rpc.selfId,
-      metadata.type,
-      core.connectionError,
-      core.dismissConnectionError,
-      retryConnection,
-      config.clientId,
       channelName,
-      sessionEnabled,
+      config.rpc.selfId,
+      config.clientId,
+      metadata.type,
       chat,
-      core.clientRef,
       scope,
       scopes,
       scopeManager,
       scopeVersion,
-      core.messages,
       inlineUi.inlineUiComponents,
       messageTypes.messageTypeComponents,
       actionBar.actionBar,
       updateActionBarMaxHeight,
-      core.hasMoreHistory,
-      core.loadingMore,
-      core.participants,
-      core.allParticipants,
-      core.debugEvents,
       debug.debugConsoleAgent,
-      core.dirtyRepoWarnings,
-      core.pendingAgents,
-      deferredAgent,
+      debug.setDebugConsoleAgent,
       feedback.activeFeedbacks,
-      core.theme,
-      core.agentBusy,
-      core.hasOpenTurn,
-      core.editPendingMessage,
-      core.cancelPendingMessage,
-      core.flushOutboxAndInterrupt,
-      core.primaryActionIntent,
-      core.flushNarration,
-      core.undoableAction,
-      core.undoLastAction,
-      core.pendingSendCount,
-      core.afterTurnMessageIds,
-      core.loadEarlierMessages,
-      core.handleInterruptAgent,
-      core.handleCallMethod,
-      core.handleCallMethodResult,
       feedback.onFeedbackDismiss,
       feedback.onFeedbackError,
-      debug.setDebugConsoleAgent,
-      core.onDismissDirtyWarning,
-      onAddAgent,
-      onReplaceAgent,
-      onPersistAgentModel,
-      onInstallLocalModel,
-      onConnectModelProvider,
-      availableAgents,
-      modelCatalog,
-      defaultModelRef,
-      defaultAgentConfig,
-      onSaveDefaults,
-      onRemoveAgent,
-      onFocusPanel,
-      onReloadPanel,
-      onOpenChannel,
-      onNewConversation,
-      onListTaskRules,
-      onResetTaskRules,
-      onOpenLocalModelsLog,
-      onOpenLocalModels,
+      core.theme,
       chatTools.toolApprovalValue,
-      forkNav,
-      forkState,
       childTranscript,
       importLoader,
     ],
+  );
+  const contextValue: ChatContextValue = useMemo(
+    () => ({
+      ...sessionState,
+      ...sessionActions,
+      ...host,
+      ...browser,
+      deferredAgent,
+      // Fork UI is enabled only when the panel wired navigation handlers.
+      forkState: session.forks ? forkState : undefined,
+    }),
+    [sessionState, sessionActions, host, browser, deferredAgent, session, forkState],
   );
   return { contextValue, inputContextValue, features };
 }

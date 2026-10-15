@@ -1,3 +1,4 @@
+import type { TerminalLauncher } from "./terminalLauncher.js";
 import type { PerSessionState, SessionInfo, ShellApi, SplitNode, TerminalState } from "./types.js";
 
 export interface RestoreResult {
@@ -7,12 +8,16 @@ export interface RestoreResult {
   perSession: Record<string, PerSessionState>;
 }
 
-export async function restoreTerminalState(shell: ShellApi, state: TerminalState): Promise<RestoreResult> {
+export async function restoreTerminalState(
+  shell: ShellApi,
+  launcher: TerminalLauncher,
+  state: TerminalState
+): Promise<RestoreResult> {
   const sessions: Record<string, SessionInfo> = {};
   const perSession: Record<string, PerSessionState> = {};
 
   if (!state.tree) return { sessions, perSession };
-  const restored = await restoreTree(shell, state.tree, state.perSession, sessions, perSession, {
+  const restored = await restoreTree(shell, launcher, state.tree, state.perSession, sessions, perSession, {
     scrollbackBytes: state.scrollbackBytes,
     disposeOriginalLeaves: true,
   });
@@ -30,6 +35,7 @@ export async function restoreTerminalState(shell: ShellApi, state: TerminalState
 
 async function restoreTree(
   shell: ShellApi,
+  launcher: TerminalLauncher,
   node: SplitNode,
   perSession: TerminalState["perSession"],
   sessions: Record<string, SessionInfo>,
@@ -38,7 +44,7 @@ async function restoreTree(
 ): Promise<{ node: SplitNode; sessionMap: Record<string, string> } | undefined> {
   if (node.kind === "leaf") {
     const saved = perSession[node.sessionId];
-    let openedSessionId: string | undefined;
+    let openedRegistryId: string | undefined;
     try {
       try {
         const existing = await shell.get(node.sessionId);
@@ -49,14 +55,21 @@ async function restoreTree(
           readCursor: saved?.readCursor ?? 0,
           lastSeenAt: Date.now(),
           label: existing.label,
+          ...(saved?.registryId ? { registryId: saved.registryId } : {}),
         };
         if (opts.scrollbackBytes) await shell.setScrollbackLimit?.(node.sessionId, opts.scrollbackBytes);
         return { node, sessionMap: { [node.sessionId]: node.sessionId } };
       } catch {
         // The host no longer has it; recreate a clearly identified fresh shell.
       }
-      const { sessionId } = await shell.open({ cwd: saved?.cwd, label: "Restored shell (restarted)" });
-      openedSessionId = sessionId;
+      // The PTY is gone. A registered session starts again as itself (same
+      // program, context and folder); one from before sessions were registered
+      // is replaced by a fresh shell and its leftover record removed.
+      const reopened = saved?.registryId
+        ? await launcher.resume(saved.registryId)
+        : await launcher.open({ cwd: saved?.cwd, label: "Restored shell (restarted)" });
+      const { sessionId, registryId } = reopened;
+      if (!saved?.registryId) openedRegistryId = registryId;
       const info = await shell.get(sessionId);
       if (opts.scrollbackBytes) await shell.setScrollbackLimit?.(sessionId, opts.scrollbackBytes);
       sessions[sessionId] = info;
@@ -66,17 +79,22 @@ async function restoreTree(
         readCursor: saved?.readCursor ?? 0,
         lastSeenAt: Date.now(),
         label: info.label,
+        registryId,
       };
-      if (opts.disposeOriginalLeaves) void shell.dispose?.(node.sessionId).catch(() => {});
+      if (opts.disposeOriginalLeaves && !saved?.registryId) {
+        void shell.dispose?.(node.sessionId).catch(() => {});
+      }
       return { node: { kind: "leaf", sessionId }, sessionMap: { [node.sessionId]: sessionId } };
     } catch {
-      if (openedSessionId) void shell.dispose?.(openedSessionId).catch(() => {});
-      if (opts.disposeOriginalLeaves) void shell.dispose?.(node.sessionId).catch(() => {});
+      if (openedRegistryId) void launcher.close(openedRegistryId).catch(() => {});
+      if (opts.disposeOriginalLeaves && !saved?.registryId) {
+        void shell.dispose?.(node.sessionId).catch(() => {});
+      }
       return undefined;
     }
   }
-  const a = await restoreTree(shell, node.a, perSession, sessions, nextPerSession, opts);
-  const b = await restoreTree(shell, node.b, perSession, sessions, nextPerSession, opts);
+  const a = await restoreTree(shell, launcher, node.a, perSession, sessions, nextPerSession, opts);
+  const b = await restoreTree(shell, launcher, node.b, perSession, sessions, nextPerSession, opts);
   if (!a) return b;
   if (!b) return a;
   return {

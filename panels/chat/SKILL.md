@@ -41,12 +41,17 @@ Where other changes go:
 - Reusable components, transcript, composer, renderers, theming:
   `packages/agentic-chat`.
 - Generic agent launch state machines: `packages/agentic-core`.
+- Channel bootstrap, model settings, agent catalog, installed-agent persistence
+  and recovery: the framework-free `ChatHostController` in
+  `packages/agentic-core/src/chat-store/host`. `index.tsx` only backs its ports
+  with the panel runtime and renders its snapshot.
 - Agent execution behavior: `packages/agentic-do` or `workers/agent-worker`.
 
 ## Verification
 
-1. Run the focused tests beside `bootstrap.ts`, `agentLifecycle.ts`, and the
-   affected chat behavior.
+1. Run the focused tests in `packages/agentic-core/src/chat-store/host`
+   (controller, installed agents, agent lifecycle, recovery) and the affected
+   chat behavior.
 2. Build `panels/chat` against the semantic context you are working in.
 3. Open or rebuild one panel with that context and the ref
    `ctx:${ctx.contextId}`. Reuse its handle to inspect lifecycle observation,
