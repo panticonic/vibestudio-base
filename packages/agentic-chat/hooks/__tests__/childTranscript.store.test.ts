@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RpcCaller } from "@vibestudio/rpc";
 import { ChildTranscriptStore } from "@workspace/agentic-core/chat-store";
 import {
   appendTrajectoryEventsAndBroadcast,
@@ -33,18 +34,16 @@ describe("ChildTranscriptStore", () => {
       handle: "parent",
     });
     const claim = (args: unknown) => {
-      const found = JSON.stringify(args ?? null).match(/panel:parent:observe:[^"]+/);
+      const found = JSON.stringify(args ?? null).match(
+        /panel:parent:observe:[^"]+/,
+      );
       if (found) caller = found[0];
     };
-    const rpc = {
+    const rpc: RpcCaller & { selfId: string } = {
       ...inner,
-      call: (target: string, method: unknown, args: unknown, options?: unknown) => {
+      streamReadable: (target, method, args, options) => {
         claim(args);
-        return (inner.call as (...values: unknown[]) => unknown)(target, method, args, options);
-      },
-      stream: (target: string, method: unknown, args: unknown, options?: unknown) => {
-        claim(args);
-        return (inner.stream as (...values: unknown[]) => unknown)(target, method, args, options);
+        return inner.streamReadable(target, method, args, options);
       },
     };
     const store = new ChildTranscriptStore({
@@ -63,18 +62,26 @@ describe("ChildTranscriptStore", () => {
       await until(() => !store.getSnapshot().loading);
       const settled = store.getSnapshot();
       expect(settled.error).toBeNull();
-      expect(settled.selfId).toMatch(/^panel:parent:observe:child-transcript-store:\d+$/);
+      expect(settled.selfId).toMatch(
+        /^panel:parent:observe:child-transcript-store:\d+$/,
+      );
       await until(() =>
-        store.getSnapshot().messages.some((message) => message.id === "child-history")
+        store
+          .getSnapshot()
+          .messages.some((message) => message.id === "child-history"),
       );
 
       await appendTrajectoryEventsAndBroadcast(harness, [
         assistantMessage("child-live", "Live after observing"),
       ]);
       await until(() =>
-        store.getSnapshot().messages.some((message) => message.id === "child-live")
+        store
+          .getSnapshot()
+          .messages.some((message) => message.id === "child-live"),
       );
-      const history = store.getSnapshot().messages.find((message) => message.id === "child-history");
+      const history = store
+        .getSnapshot()
+        .messages.find((message) => message.id === "child-history");
       expect(history?.content).toBe("History before observing");
     } finally {
       releaseTranscript();

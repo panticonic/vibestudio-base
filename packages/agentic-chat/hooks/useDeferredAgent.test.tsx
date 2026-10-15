@@ -325,7 +325,9 @@ describe("useDeferredAgent", () => {
     await act(async () => { await result.current.sendMessage(); });
     rerender(makeParams(m, { participants: agentRoster }));
     await waitFor(() => expect(result.current.deferredAgent?.deliveryError).toBe("Disconnected"));
-    act(() => result.current.deferredAgent?.cancelQueued(result.current.deferredAgent.queued[0]!.id));
+    await act(async () => {
+      await result.current.deferredAgent?.cancelQueued(result.current.deferredAgent.queued[0]!.id);
+    });
     await waitFor(() => expect(result.current.deferredAgent).toBeUndefined());
     expect(m.publishText.mock.calls.map(([text]) => text)).toEqual(["first", "second"]);
   });
@@ -339,7 +341,9 @@ describe("useDeferredAgent", () => {
     const id = result.current.deferredAgent!.queued[0]!.id;
     rerender(makeParams(m, { participants: agentRoster }));
     await waitFor(() => expect(result.current.deferredAgent?.deliveringId).toBe(id));
-    act(() => result.current.deferredAgent?.cancelQueued(id));
+    await act(async () => {
+      await result.current.deferredAgent?.cancelQueued(id);
+    });
     expect(result.current.deferredAgent?.queued[0]?.id).toBe(id);
     await act(async () => complete());
     await waitFor(() => expect(result.current.deferredAgent).toBeUndefined());
@@ -374,8 +378,8 @@ describe("useDeferredAgent", () => {
     await waitFor(() => expect(m.publishText).toHaveBeenCalledWith("first", expect.any(Object)));
     const second = result.current.deferredAgent?.queued.find((q) => q.text === "second");
     expect(second).toBeTruthy();
-    act(() => {
-      result.current.deferredAgent?.cancelQueued(second!.id);
+    await act(async () => {
+      await result.current.deferredAgent?.cancelQueued(second!.id);
     });
 
     await act(async () => {

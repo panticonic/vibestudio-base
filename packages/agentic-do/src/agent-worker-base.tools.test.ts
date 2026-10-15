@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { schemaRpcClient, wireClientFor } from "@vibestudio/rpc/internal";
+import { schemaRpcClientMock } from "@vibestudio/rpc/test-utils";
 
 import { createNativeVesselTestDO } from "./testing/native-vessel.js";
 import type { ParticipantDescriptor } from "@workspace/harness";
@@ -129,41 +129,44 @@ describe("conversation address discovery", () => {
     }
     protected override get rpc(): RpcClient {
       const base = super.rpc;
-      const wire = wireClientFor(base);
-      return schemaRpcClient({
-        ...wire,
-        call: async (
-          destination: string,
-          method: string,
-          args: unknown[],
-          options?: RpcCallOptions,
-        ) => {
-          options?.signal?.throwIfAborted();
-          this.rpcCalls.push({
-            target: destination,
-            method,
-            args,
-            signal: options?.signal,
-          });
-          if (destination === "main" && method === "workers.resolveService") {
-            return durableObjectServiceFixture(
-              "do:workers/workspace-source:GadWorkspaceDO:workspace",
-              {
-                source: "workers/workspace-source",
-                className: "GadWorkspaceDO",
-                objectKey: "workspace",
-              },
+      return schemaRpcClientMock(
+        {
+          call: async (
+            destination: string,
+            method: string,
+            args: unknown[],
+            options?: RpcCallOptions,
+          ) => {
+            options?.signal?.throwIfAborted();
+            this.rpcCalls.push({
+              target: destination,
+              method,
+              args,
+              signal: options?.signal,
+            });
+            if (destination === "main" && method === "workers.resolveService") {
+              return durableObjectServiceFixture(
+                "do:workers/workspace-source:GadWorkspaceDO:workspace",
+                {
+                  source: "workers/workspace-source",
+                  className: "GadWorkspaceDO",
+                  objectKey: "workspace",
+                },
+              );
+            }
+            if (
+              destination ===
+                "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
+              method === "searchAgentDirectory"
+            )
+              return await this.search();
+            throw new Error(
+              `Unexpected discovery RPC ${destination}.${method}`,
             );
-          }
-          if (
-            destination ===
-              "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
-            method === "searchAgentDirectory"
-          )
-            return await this.search();
-          return wire.call(destination, method, args, options);
+          },
         },
-      });
+        base.selfId,
+      );
     }
     discovery(context: Context) {
       if (!context.abortSignal)

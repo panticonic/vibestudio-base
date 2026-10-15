@@ -10,7 +10,11 @@ import {
   type BlockId,
   type MessageId,
 } from "@workspace/agentic-protocol";
-import type { IncomingEvent, PubSubClient } from "@workspace/pubsub";
+import type {
+  EventStreamItem,
+  IncomingEvent,
+  PubSubClient,
+} from "@workspace/pubsub";
 import type { QuickfireTranscriptEntry } from "./model";
 import {
   useQuickfireSessionCore,
@@ -79,10 +83,19 @@ function fakeClient(options: {
   hasMoreBefore?: boolean;
   getReplayBefore?: PubSubClient["getReplayBefore"];
 }) {
-  const queue: IncomingEvent[] = [...options.replay];
+  const queue: EventStreamItem[] = [
+    ...options.replay,
+    {
+      type: "replay-complete",
+      delivery: "control",
+      generation: 1,
+      firstEnvelopeSeq: options.firstEnvelopeSeq,
+      hasMoreBefore: options.hasMoreBefore ?? false,
+    },
+  ];
   let wake: (() => void) | null = null;
   let closed = false;
-  const iterator: AsyncIterableIterator<IncomingEvent> = {
+  const iterator: AsyncIterableIterator<EventStreamItem> = {
     [Symbol.asyncIterator]() {
       return this;
     },
@@ -166,7 +179,9 @@ describe("useQuickfireSessionCore", () => {
     const { result, unmount } = renderHook(() =>
       useQuickfireSessionCore("slot-1", transport),
     );
-    await waitFor(() => expect(texts(result.current.view.transcript)).toEqual(["Hi"]));
+    await waitFor(() =>
+      expect(texts(result.current.view.transcript)).toEqual(["Hi"]),
+    );
     expect(result.current.view.connecting).toBe(false);
 
     await act(async () => {
@@ -174,7 +189,10 @@ describe("useQuickfireSessionCore", () => {
         delivery: "signal",
         type: "signal",
         contentType: AGENTIC_EVENT_PAYLOAD_KIND,
-        content: JSON.stringify([delta("answer", "Hel"), delta("answer", "lo")]),
+        content: JSON.stringify([
+          delta("answer", "Hel"),
+          delta("answer", "lo"),
+        ]),
         ts: Date.parse("2026-10-12T08:00:01.000Z"),
       } as unknown as IncomingEvent);
     });
@@ -185,11 +203,23 @@ describe("useQuickfireSessionCore", () => {
 
     await act(async () => {
       channel.push(
-        wire(2, completed("answer", "Hello there", "assistant", "2026-10-12T08:00:02.000Z"), "live"),
+        wire(
+          2,
+          completed(
+            "answer",
+            "Hello there",
+            "assistant",
+            "2026-10-12T08:00:02.000Z",
+          ),
+          "live",
+        ),
       );
     });
     await waitFor(() =>
-      expect(texts(result.current.view.transcript)).toEqual(["Hi", "Hello there"]),
+      expect(texts(result.current.view.transcript)).toEqual([
+        "Hi",
+        "Hello there",
+      ]),
     );
     unmount();
   });
@@ -255,7 +285,9 @@ describe("useQuickfireSessionCore", () => {
       await result.current.showOlder();
     });
     expect(getReplayBefore).toHaveBeenLastCalledWith(5, 500);
-    await waitFor(() => expect(result.current.view.historyError).toBe("History is unavailable"));
+    await waitFor(() =>
+      expect(result.current.view.historyError).toBe("History is unavailable"),
+    );
     // A history failure is not a conversation failure: composing stays enabled.
     expect(result.current.view.error).toBeNull();
     expect(texts(result.current.view.transcript)).toEqual(["Recent answer"]);
@@ -275,8 +307,12 @@ describe("useQuickfireSessionCore", () => {
   });
 
   it("drops the previous binding's transcript when rebinding to another source", async () => {
-    const first = fakeClient({ replay: [wire(1, completed("a", "First slot"), "replay")] });
-    const second = fakeClient({ replay: [wire(1, completed("b", "Second slot"), "replay")] });
+    const first = fakeClient({
+      replay: [wire(1, completed("a", "First slot"), "replay")],
+    });
+    const second = fakeClient({
+      replay: [wire(1, completed("b", "Second slot"), "replay")],
+    });
     const transport = fakeTransport([first.client, second.client]);
     const { result, rerender, unmount } = renderHook(
       ({ source }: { source: string | QuickfireSessionSource }) =>

@@ -49,6 +49,8 @@ interface ConnectionScope {
   eventLoop: Promise<void> | null;
   closing: Promise<void> | null;
   failures: unknown[];
+  /** The connecting caller owns this result, separately from retirement. */
+  connectionFailure: { reason: unknown } | null;
 }
 function throwFailures(failures: unknown[], message: string): void {
   const unique = new Set<unknown>();
@@ -120,6 +122,7 @@ export class ConnectionManager {
       eventLoop: null,
       closing: null,
       failures: [],
+      connectionFailure: null,
     };
     this.scope = scope;
     const signal = scope.abort.signal;
@@ -284,10 +287,9 @@ export class ConnectionManager {
       return client;
     } catch (error) {
       const ownedCancellation = isRpcAbortedBy(error, signal.reason);
-      if (!ownedCancellation) scope.failures.push(error);
+      scope.connectionFailure = { reason: error };
       scope.abort.abort(error);
       if (this.scope === scope) {
-        this.scope = null;
         this._client = null;
         this._clientId = null;
         if (!ownedCancellation) {
@@ -305,6 +307,7 @@ export class ConnectionManager {
       } catch (cleanupError) {
         failures.push(cleanupError);
       }
+      if (this.scope === scope) this.scope = null;
       throwFailures(failures, "Channel connection and retirement failed");
       throw error;
     }
@@ -327,6 +330,10 @@ export class ConnectionManager {
           ...scope.failures,
           ...results.flatMap((result) =>
             result.status === "rejected" &&
+            !(
+              scope.connectionFailure &&
+              result.reason === scope.connectionFailure.reason
+            ) &&
             !isRpcAbortedBy(result.reason, scope.abort.signal.reason)
               ? [result.reason]
               : [],
@@ -355,12 +362,17 @@ export class ConnectionManager {
         throwFailures(
           [
             ...failures,
-            ...results.flatMap((result) =>
-              result.status === "rejected" &&
-              !isRpcAbortedBy(result.reason, ownedReason)
-                ? [result.reason]
-                : [],
-            ),
+            // The attempt's caller receives its primary result. Joining it
+            // establishes retirement, not a second delivery of that failure
+            // to an unrelated successor; closeScope retains cleanup failures.
+            ...results
+              .slice(0, 2)
+              .flatMap((result) =>
+                result.status === "rejected" &&
+                !isRpcAbortedBy(result.reason, ownedReason)
+                  ? [result.reason]
+                  : [],
+              ),
           ],
           "Channel disconnect failed",
         );

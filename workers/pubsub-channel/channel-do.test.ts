@@ -4981,7 +4981,7 @@ describe("PubSubChannel", () => {
     ).rejects.toThrow(/invalid request.*pause/u);
   });
 
-  it("uses GAD as the durable channel log backend without changing replay shape", async () => {
+  it("replays the channel-owned log with the returned page boundary", async () => {
     const { instance, sql } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
 
@@ -5013,10 +5013,16 @@ describe("PubSubChannel", () => {
     ).toEqual([
       { id: 2, type: AGENTIC_EVENT_PAYLOAD_KIND, senderId: "panel:user" },
     ]);
+    // The replay boundary is the returned page, not the full ledger's first row.
     expect(replay.ready).toMatchObject({
       totalCount: 2,
       envelopeCount: 2,
-      firstEnvelopeSeq: 1,
+      firstEnvelopeSeq: 2,
+      replayFromId: 2,
+      replayToId: 2,
+      snapshotLastSeq: 2,
+      hasMoreBefore: true,
+      hasMoreAfter: false,
     });
     expect(replay.snapshots[0]).toMatchObject({
       kind: "roster-snapshot",

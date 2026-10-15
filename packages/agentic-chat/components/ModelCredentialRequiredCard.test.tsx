@@ -172,18 +172,16 @@ describe("ModelCredentialRequiredCard", () => {
       fireEvent.click(
         screen.getByRole("button", { name: /Use system browser/i }),
       );
-      await waitFor(() =>
-        expect(onConnect).toHaveBeenCalledWith(
-          `${providerId}:model`,
-          "subscription",
-          "external",
-          expect.any(AbortSignal),
-          {},
-        ),
-      );
       expect(
-        screen.getByText("Provider connected. You can start chatting."),
+        await screen.findByText("Provider connected. You can start chatting."),
       ).toBeTruthy();
+      expect(onConnect).toHaveBeenCalledWith(
+        `${providerId}:model`,
+        "subscription",
+        "external",
+        expect.any(AbortSignal),
+        {},
+      );
     },
   );
 
