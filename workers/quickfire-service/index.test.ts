@@ -4,6 +4,12 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcClient } from "@vibestudio/rpc";
 import { QuickfireSessionsDO } from "./index.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import { quickfireRpcMethods } from "./contract.js";
+import { quickfireRpcMethods as clientRpcMethods } from "@workspace/quickfire-core/service";
+
+it("shares the platform-neutral client ABI with the worker", () => {
+  expect(quickfireRpcMethods).toBe(clientRpcMethods);
+});
 
 class TestQuickfireSessionsDO extends QuickfireSessionsDO {
   modelSettingsFailure: Error | null = null;
