@@ -51,7 +51,21 @@ function createClient(
     ready: vi.fn(async () => undefined),
     onReady: vi.fn(() => () => undefined),
     close: vi.fn(),
-    events: vi.fn(async function* () {}),
+    events: vi.fn(async function* (options?: { signal?: AbortSignal }) {
+      yield {
+        type: "replay-complete",
+        delivery: "control",
+        generation: 1,
+        hasMoreBefore: false,
+      };
+      await new Promise<void>((resolve) => {
+        if (options?.signal?.aborted) resolve();
+        else
+          options?.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+      });
+    }),
     onRoster: vi.fn(() => () => undefined),
     onReconnect: vi.fn(() => () => undefined),
     onConfigChange: vi.fn(() => () => undefined),

@@ -22,7 +22,22 @@ function client(id: string) {
     clientId: id,
     ready: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
-    events: () => (async function* () {})(),
+    events: (options?: { signal?: AbortSignal }) =>
+      (async function* () {
+        yield {
+          type: "replay-complete",
+          delivery: "control",
+          generation: 1,
+          hasMoreBefore: false,
+        };
+        await new Promise<void>((resolve) => {
+          if (options?.signal?.aborted) resolve();
+          else
+            options?.signal?.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+        });
+      })(),
     onRoster: vi.fn(() => vi.fn()),
     onReconnect: vi.fn(() => vi.fn()),
   };
@@ -92,16 +107,18 @@ describe("connection attempt ownership", () => {
       .mockReturnValueOnce(next as never);
     const { value, onError } = manager();
     const abandoned = value.connect(options);
-    const rejected = expect(abandoned).rejects.toThrow("superseded");
+    const result = abandoned.catch((error: unknown) => error);
     await vi.waitFor(() => expect(old.ready).toHaveBeenCalled());
     const replacement = value.connect(options);
+    const oldSignal = vi.mocked(resolveRpcChannelTarget).mock.calls[0]![0]
+      .signal!;
     expect(connectViaRpc).toHaveBeenCalledTimes(1);
     replay.resolve();
     await vi.waitFor(() => expect(old.close).toHaveBeenCalledTimes(1));
     expect(connectViaRpc).toHaveBeenCalledTimes(1);
     expect(value.connected).toBe(false);
     leave.resolve();
-    await rejected;
+    expect(await result).toBe(oldSignal.reason);
     await replacement;
     expect(old.close).toHaveBeenCalledTimes(1);
     expect(next.close).not.toHaveBeenCalled();
@@ -123,14 +140,69 @@ describe("connection attempt ownership", () => {
     initial.close.mockReturnValue(leave.promise);
     const controller = new AbortController();
     const cancelled = value.connect({ ...options, signal: controller.signal });
-    const rejected = expect(cancelled).rejects.toThrow("superseded");
+    const reason = new Error("Caller cancelled the waiting attempt");
+    const rejected = expect(cancelled).rejects.toBe(reason);
+    controller.abort(reason);
     const replacement = value.connect(options);
-    controller.abort();
     leave.resolve();
     await rejected;
     await replacement;
     expect(value.client).toBe(next);
     expect(initial.close).toHaveBeenCalledTimes(1);
+    await value.disconnect();
+  });
+
+  it("blocks a successor when the replaced client's retirement fails", async () => {
+    vi.mocked(resolveRpcChannelTarget).mockResolvedValue("channel");
+    const initial = client("initial");
+    vi.mocked(connectViaRpc).mockReturnValue(initial as never);
+    const { value } = manager();
+    await value.connect(options);
+    const failure = new Error("Channel leave failed");
+    initial.close.mockRejectedValue(failure);
+    await expect(value.connect(options)).rejects.toBe(failure);
+    expect(connectViaRpc).toHaveBeenCalledTimes(1);
+    expect(value.connected).toBe(false);
+    await value.disconnect();
+  });
+
+  it("does not confuse an undefined retirement rejection with an absent primary failure", async () => {
+    vi.mocked(resolveRpcChannelTarget).mockResolvedValue("channel");
+    const initial = client("initial");
+    vi.mocked(connectViaRpc).mockReturnValue(initial as never);
+    const { value } = manager();
+    await value.connect(options);
+    initial.close.mockRejectedValue(undefined);
+    await expect(value.connect(options)).rejects.toBeUndefined();
+    expect(connectViaRpc).toHaveBeenCalledTimes(1);
+    expect(value.connected).toBe(false);
+    await value.disconnect();
+  });
+
+  it("preserves a failed attempt's primary error and independent retirement failure", async () => {
+    vi.mocked(resolveRpcChannelTarget).mockResolvedValue("channel");
+    const replay = deferred<void>();
+    const old = client("old");
+    old.ready.mockReturnValue(replay.promise);
+    const leave = deferred<void>();
+    old.close.mockReturnValue(leave.promise);
+    vi.mocked(connectViaRpc).mockReturnValue(old as never);
+    const { value } = manager();
+    const abandoned = value.connect(options).catch((error: unknown) => error);
+    await vi.waitFor(() => expect(old.ready).toHaveBeenCalled());
+    const replacement = value.connect(options).catch((error: unknown) => error);
+    const primary = new Error("Replay failed independently");
+    const cleanup = new Error("Leave failed independently");
+    replay.reject(primary);
+    await vi.waitFor(() => expect(old.close).toHaveBeenCalled());
+    leave.reject(cleanup);
+    const result = await abandoned;
+    expect(result).toBeInstanceOf(AggregateError);
+    if (!(result instanceof AggregateError))
+      throw new Error("Expected both owned failures");
+    expect(result.errors).toEqual([primary, cleanup]);
+    expect(await replacement).toBe(cleanup);
+    expect(connectViaRpc).toHaveBeenCalledTimes(1);
     await value.disconnect();
   });
 });

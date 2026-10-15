@@ -10,14 +10,21 @@ import {
   type BlockId,
   type MessageId,
 } from "@workspace/agentic-protocol";
-import type { IncomingEvent, PubSubClient } from "@workspace/pubsub";
+import type {
+  EventStreamItem,
+  IncomingEvent,
+  PubSubClient,
+} from "@workspace/pubsub";
 
-import { useChannelMessages, type UseChannelMessagesResult } from "./useChannelMessages";
+import {
+  useChannelMessages,
+  type UseChannelMessagesResult,
+} from "./useChannelMessages";
 
 function messageCompleted(
   id: string,
   content: string,
-  createdAt = "2026-05-21T08:00:00.000Z"
+  createdAt = "2026-05-21T08:00:00.000Z",
 ): AgenticEvent<"message.completed"> {
   return {
     kind: "message.completed",
@@ -26,7 +33,9 @@ function messageCompleted(
     payload: {
       protocol: AGENTIC_PROTOCOL_VERSION,
       role: "user",
-      blocks: [{ blockId: brandId<BlockId>(`${id}:block:0`), type: "text", content }],
+      blocks: [
+        { blockId: brandId<BlockId>(`${id}:block:0`), type: "text", content },
+      ],
       outcome: "completed",
     },
     createdAt,
@@ -35,7 +44,7 @@ function messageCompleted(
 
 function messageTypeRegistered(
   typeId: string,
-  createdAt = "2026-05-21T08:00:00.000Z"
+  createdAt = "2026-05-21T08:00:00.000Z",
 ): AgenticEvent<"messageType.registered"> {
   return {
     kind: "messageType.registered",
@@ -56,7 +65,7 @@ function messageTypeRegistered(
 function messageReceived(
   id: string,
   actorId: string,
-  createdAt = "2026-05-21T08:00:10.000Z"
+  createdAt = "2026-05-21T08:00:10.000Z",
 ): AgenticEvent<"message.received"> {
   return {
     kind: "message.received",
@@ -70,7 +79,7 @@ function messageReceived(
 function messageRead(
   id: string,
   actorId: string,
-  createdAt = "2026-05-21T08:00:20.000Z"
+  createdAt = "2026-05-21T08:00:20.000Z",
 ): AgenticEvent<"message.read"> {
   return {
     kind: "message.read",
@@ -84,7 +93,7 @@ function messageRead(
 function messageRetracted(
   id: string,
   actorId: string,
-  createdAt = "2026-05-21T08:00:30.000Z"
+  createdAt = "2026-05-21T08:00:30.000Z",
 ): AgenticEvent<"message.retracted"> {
   return {
     kind: "message.retracted",
@@ -101,7 +110,7 @@ function messageRetracted(
 function messageDelta(
   id: string,
   text: string,
-  createdAt = "2026-05-21T08:00:00.000Z"
+  createdAt = "2026-05-21T08:00:00.000Z",
 ): AgenticEvent<"message.delta"> {
   return {
     kind: "message.delta",
@@ -119,7 +128,7 @@ function messageDelta(
 
 function inlineUiRendered(
   props: Record<string, unknown>,
-  createdAt: string
+  createdAt: string,
 ): AgenticEvent<"ui.inline_rendered"> {
   return {
     kind: "ui.inline_rendered",
@@ -164,7 +173,10 @@ function rawReplayEvent(seq: number, payload: AgenticEvent) {
   };
 }
 
-function createClient(events: unknown[] = [], overrides: Partial<PubSubClient> = {}): PubSubClient {
+function createClient(
+  events: unknown[] = [],
+  overrides: Partial<PubSubClient> = {},
+): PubSubClient {
   const client = {
     channelId: "channel-1",
     hasMoreBefore: false,
@@ -172,6 +184,13 @@ function createClient(events: unknown[] = [], overrides: Partial<PubSubClient> =
     onReady: vi.fn(() => () => {}),
     events: vi.fn(async function* () {
       for (const event of events) yield event;
+      yield {
+        type: "replay-complete",
+        delivery: "control",
+        generation: 1,
+        firstEnvelopeSeq: overrides.firstEnvelopeSeq,
+        hasMoreBefore: Boolean(overrides.hasMoreBefore),
+      };
     }),
     getReplayAfter: vi.fn(async () => ({
       logEvents: [],
@@ -191,13 +210,16 @@ function createClient(events: unknown[] = [], overrides: Partial<PubSubClient> =
  * events into `client.events()` without the generator returning early.
  */
 function createEventStream() {
-  const queue: IncomingEvent[] = [];
-  let resolveNext: ((value: IteratorResult<IncomingEvent>) => void) | null = null;
-  const iterator: AsyncIterableIterator<IncomingEvent> = {
+  const queue: EventStreamItem[] = [];
+  let closed = false;
+  let resolveNext: ((value: IteratorResult<EventStreamItem>) => void) | null =
+    null;
+  const iterator: AsyncIterableIterator<EventStreamItem> = {
     [Symbol.asyncIterator]() {
       return this;
     },
-    next(): Promise<IteratorResult<IncomingEvent>> {
+    next(): Promise<IteratorResult<EventStreamItem>> {
+      if (closed) return Promise.resolve({ value: undefined, done: true });
       if (queue.length > 0) {
         return Promise.resolve({ value: queue.shift()!, done: false });
       }
@@ -205,13 +227,17 @@ function createEventStream() {
         resolveNext = resolve;
       });
     },
-    return(): Promise<IteratorResult<IncomingEvent>> {
-      return Promise.resolve({ value: undefined as never, done: true });
+    return(): Promise<IteratorResult<EventStreamItem>> {
+      closed = true;
+      resolveNext?.({ value: undefined, done: true });
+      resolveNext = null;
+      return Promise.resolve({ value: undefined, done: true });
     },
   };
   return {
     iterator,
-    push(event: IncomingEvent) {
+    push(event: EventStreamItem) {
+      if (closed) throw new Error("Cannot publish to a closed fixture stream");
       if (resolveNext) {
         const resolve = resolveNext;
         resolveNext = null;
@@ -240,17 +266,34 @@ describe("useChannelMessages", () => {
     let latest!: UseChannelMessagesResult;
     type Replay = Awaited<ReturnType<PubSubClient["getReplayBefore"]>>;
     let finish!: (value: Replay) => void;
-    const client = createClient([pubsubAgenticEvent(10, messageCompleted("recent", "Recent"))], {
-      getReplayBefore: vi.fn(() => new Promise<Replay>((resolve) => { finish = resolve; })),
-    });
-    const onValue = (value: UseChannelMessagesResult) => { latest = value; };
+    const client = createClient(
+      [pubsubAgenticEvent(10, messageCompleted("recent", "Recent"))],
+      {
+        getReplayBefore: vi.fn(
+          () =>
+            new Promise<Replay>((resolve) => {
+              finish = resolve;
+            }),
+        ),
+      },
+    );
+    const onValue = (value: UseChannelMessagesResult) => {
+      latest = value;
+    };
     const view = render(<Probe client={client} onValue={onValue} />);
     await waitFor(() => expect(latest.messages).toHaveLength(1));
     let loading!: Promise<void>;
-    await act(async () => { loading = latest.loadEarlierMessages(); });
+    await act(async () => {
+      loading = latest.loadEarlierMessages();
+    });
     view.rerender(<Probe client={null} onValue={onValue} />);
     await act(async () => {
-      finish({ mode: "before", snapshots: [], logEvents: [rawReplayEvent(1, messageCompleted("old", "Old"))], ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false } });
+      finish({
+        mode: "before",
+        snapshots: [],
+        logEvents: [rawReplayEvent(1, messageCompleted("old", "Old"))],
+        ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false },
+      });
       await loading;
     });
     expect(latest.messages).toEqual([]);
@@ -259,12 +302,19 @@ describe("useChannelMessages", () => {
 
   it("releases the transcript and cancels its subscription when detached", async () => {
     let latest!: UseChannelMessagesResult;
-    const client = createClient([{
-      type: AGENTIC_EVENT_PAYLOAD_KIND, delivery: "log", phase: "replay", pubsubId: 1,
-      payload: messageCompleted("one", "A retained transcript"),
-    }]);
+    const client = createClient([
+      {
+        type: AGENTIC_EVENT_PAYLOAD_KIND,
+        delivery: "log",
+        phase: "replay",
+        pubsubId: 1,
+        payload: messageCompleted("one", "A retained transcript"),
+      },
+    ]);
     const events = vi.spyOn(client, "events");
-    const onValue = (value: UseChannelMessagesResult) => { latest = value; };
+    const onValue = (value: UseChannelMessagesResult) => {
+      latest = value;
+    };
     const view = render(<Probe client={client} onValue={onValue} />);
     await waitFor(() => expect(latest.messages).toHaveLength(1));
     const signal = events.mock.calls[0]![0]!.signal!;
@@ -279,13 +329,15 @@ describe("useChannelMessages", () => {
     let latest: UseChannelMessagesResult | undefined;
     const getReplayBefore = vi.fn(async () => ({
       mode: "before" as const,
-      logEvents: [rawReplayEvent(2, messageCompleted("original", "Original prompt"))],
+      logEvents: [
+        rawReplayEvent(2, messageCompleted("original", "Original prompt")),
+      ],
       snapshots: [],
       ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false },
     }));
     const client = createClient(
       [{ type: "presence", delivery: "log", phase: "replay", pubsubId: 20 }],
-      { connected: true, hasMoreBefore: true, getReplayBefore }
+      { connected: true, hasMoreBefore: true, getReplayBefore },
     );
     await act(async () => {
       render(
@@ -294,7 +346,7 @@ describe("useChannelMessages", () => {
           onValue={(value) => {
             latest = value;
           }}
-        />
+        />,
       );
     });
     expect(latest!.messages).toEqual([]);
@@ -309,7 +361,9 @@ describe("useChannelMessages", () => {
     const stream = createEventStream();
     const getReplayBefore = vi.fn(async () => ({
       mode: "before" as const,
-      logEvents: [rawReplayEvent(2, messageCompleted("original", "Original prompt"))],
+      logEvents: [
+        rawReplayEvent(2, messageCompleted("original", "Original prompt")),
+      ],
       snapshots: [],
       ready: { totalCount: 2, envelopeCount: 2, hasMoreBefore: false },
     }));
@@ -325,26 +379,41 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
-    // The scroll-to-top loader can run as soon as readiness metadata arrives,
-    // before the asynchronous replay consumer has populated its cursor.
+    // Client metadata alone is not the ordered replay boundary.
     await act(async () => {
       await latest!.loadEarlierMessages();
     });
-    expect(latest!.hasMoreHistory).toBe(true);
+    expect(latest!.replaySettled).toBe(false);
+    expect(latest!.hasMoreHistory).toBe(false);
     expect(getReplayBefore).not.toHaveBeenCalled();
     await act(async () => {
       stream.push(
-        pubsubAgenticEvent(10, messageCompleted("recent", "Recent reply")) as IncomingEvent
+        pubsubAgenticEvent(
+          10,
+          messageCompleted("recent", "Recent reply"),
+        ) as IncomingEvent,
       );
+      stream.push({
+        type: "replay-complete",
+        delivery: "control",
+        generation: 1,
+        firstEnvelopeSeq: 10,
+        hasMoreBefore: true,
+      });
     });
-    await waitFor(() => expect(latest!.messages.map(({ id }) => id)).toEqual(["recent"]));
+    await waitFor(() =>
+      expect(latest!.messages.map(({ id }) => id)).toEqual(["recent"]),
+    );
     await act(async () => {
       await latest!.loadEarlierMessages();
     });
     expect(getReplayBefore).toHaveBeenCalledWith(10, 500);
-    expect(latest!.messages.map(({ id }) => id)).toEqual(["original", "recent"]);
+    expect(latest!.messages.map(({ id }) => id)).toEqual([
+      "original",
+      "recent",
+    ]);
     expect(latest!.hasMoreHistory).toBe(false);
   });
   it("reads pagination metadata from a client that is already replay-ready", async () => {
@@ -361,27 +430,21 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await waitFor(() => expect(latest!.replaySettled).toBe(true));
-    await waitFor(() => expect(latest!.messages.map(({ id }) => id)).toEqual(["retained"]));
+    await waitFor(() =>
+      expect(latest!.messages.map(({ id }) => id)).toEqual(["retained"]),
+    );
     expect(latest!.hasMoreHistory).toBe(true);
   });
 
-  it("reads finalized pagination metadata when replay becomes ready", async () => {
+  it("reads finalized pagination metadata at the ordered replay completion", async () => {
     let latest: UseChannelMessagesResult | undefined;
-    let ready: (() => void) | undefined;
-    let hasMoreBefore = false;
+    const stream = createEventStream();
     const client = createClient([], {
-      onReady: vi.fn((callback: () => void) => {
-        ready = callback;
-        return () => {};
-      }),
-    });
-    Object.defineProperty(client, "hasMoreBefore", {
-      configurable: true,
-      get: () => hasMoreBefore,
+      events: () => stream.iterator,
     });
 
     render(
@@ -390,28 +453,40 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
     expect(latest!.hasMoreHistory).toBe(false);
 
-    hasMoreBefore = true;
-    act(() => ready?.());
+    await act(async () => {
+      stream.push({
+        type: "replay-complete",
+        delivery: "control",
+        generation: 1,
+        firstEnvelopeSeq: 10,
+        hasMoreBefore: true,
+      });
+    });
 
     await waitFor(() => expect(latest!.hasMoreHistory).toBe(true));
   });
 
   it("backfills a locally published envelope through replay instead of optimistic transcript state", async () => {
     let latest: UseChannelMessagesResult | undefined;
-    const initialPrompt = messageCompleted("initial-prompt", "Read the docs first");
-    const getReplayAfter = vi.fn(async (request: { after: number; throughSeq?: number }) => {
-      expect(request).toEqual({ after: 0, throughSeq: 1 });
-      return {
-        mode: "after" as const,
-        logEvents: [rawReplayEvent(1, initialPrompt)],
-        snapshots: [],
-        ready: { totalCount: 1, envelopeCount: 1, hasMoreBefore: false },
-      };
-    });
+    const initialPrompt = messageCompleted(
+      "initial-prompt",
+      "Read the docs first",
+    );
+    const getReplayAfter = vi.fn(
+      async (request: { after: number; throughSeq?: number }) => {
+        expect(request).toEqual({ after: 0, throughSeq: 1 });
+        return {
+          mode: "after" as const,
+          logEvents: [rawReplayEvent(1, initialPrompt)],
+          snapshots: [],
+          ready: { totalCount: 1, envelopeCount: 1, hasMoreBefore: false },
+        };
+      },
+    );
     const client = createClient([], { getReplayAfter });
 
     render(
@@ -420,7 +495,7 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await act(async () => {
@@ -445,14 +520,16 @@ describe("useChannelMessages", () => {
   it("propagates the original local publication replay failure", async () => {
     let latest: UseChannelMessagesResult | undefined;
     const failure = new Error("Replay stream disconnected");
-    const client = createClient([], { getReplayAfter: vi.fn().mockRejectedValue(failure) });
+    const client = createClient([], {
+      getReplayAfter: vi.fn().mockRejectedValue(failure),
+    });
     render(
       <Probe
         client={client}
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
     await expect(latest!.backfillAfterLocalPublish(42)).rejects.toBe(failure);
     expect(latest!.messages).toEqual([]);
@@ -460,8 +537,16 @@ describe("useChannelMessages", () => {
 
   it("loads earlier typed envelopes before the replay anchor and updates pagination metadata", async () => {
     let latest: UseChannelMessagesResult | undefined;
-    const current = messageCompleted("current", "Current message", "2026-05-21T08:01:00.000Z");
-    const older = messageCompleted("older", "Older message", "2026-05-21T08:00:00.000Z");
+    const current = messageCompleted(
+      "current",
+      "Current message",
+      "2026-05-21T08:01:00.000Z",
+    );
+    const older = messageCompleted(
+      "older",
+      "Older message",
+      "2026-05-21T08:00:00.000Z",
+    );
     const getReplayBefore = vi.fn(async (anchor: number, limit: number) => {
       expect(anchor).toBe(10);
       expect(limit).toBe(500);
@@ -483,11 +568,13 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await waitFor(() => {
-      expect(latest!.messages.map((message) => message.id)).toEqual(["current"]);
+      expect(latest!.messages.map((message) => message.id)).toEqual([
+        "current",
+      ]);
       expect(latest!.hasMoreHistory).toBe(true);
     });
 
@@ -496,16 +583,30 @@ describe("useChannelMessages", () => {
     });
 
     await waitFor(() => {
-      expect(latest!.messages.map((message) => message.id)).toEqual(["older", "current"]);
+      expect(latest!.messages.map((message) => message.id)).toEqual([
+        "older",
+        "current",
+      ]);
       expect(latest!.hasMoreHistory).toBe(false);
     });
   });
 
   it("preserves message type array identity when only transcript messages change", async () => {
     let latest: UseChannelMessagesResult | undefined;
-    const registryEvent = messageTypeRegistered("weather", "2026-05-21T08:00:00.000Z");
-    const firstMessage = messageCompleted("msg-1", "First", "2026-05-21T08:01:00.000Z");
-    const secondMessage = messageCompleted("msg-2", "Second", "2026-05-21T08:02:00.000Z");
+    const registryEvent = messageTypeRegistered(
+      "weather",
+      "2026-05-21T08:00:00.000Z",
+    );
+    const firstMessage = messageCompleted(
+      "msg-1",
+      "First",
+      "2026-05-21T08:01:00.000Z",
+    );
+    const secondMessage = messageCompleted(
+      "msg-2",
+      "Second",
+      "2026-05-21T08:02:00.000Z",
+    );
     let resumeEvents: ((event: IncomingEvent) => void) | undefined;
     const client = createClient([], {
       events: vi.fn(async function* () {
@@ -523,7 +624,7 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await waitFor(() => {
@@ -537,7 +638,10 @@ describe("useChannelMessages", () => {
     });
 
     await waitFor(() => {
-      expect(latest!.messages.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
+      expect(latest!.messages.map((message) => message.id)).toEqual([
+        "msg-1",
+        "msg-2",
+      ]);
     });
     expect(latest!.messageTypes).toBe(registryProjection);
   });
@@ -553,21 +657,21 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await act(async () => {
       stream.push(
         livePubsubAgenticEvent(
           1,
-          inlineUiRendered({ revision: 1 }, "2026-05-21T08:00:00.000Z")
-        ) as IncomingEvent
+          inlineUiRendered({ revision: 1 }, "2026-05-21T08:00:00.000Z"),
+        ) as IncomingEvent,
       );
       stream.push(
         livePubsubAgenticEvent(
           2,
-          messageCompleted("between", "Refresh", "2026-05-21T08:01:00.000Z")
-        ) as IncomingEvent
+          messageCompleted("between", "Refresh", "2026-05-21T08:01:00.000Z"),
+        ) as IncomingEvent,
       );
     });
     await waitFor(() => {
@@ -581,8 +685,8 @@ describe("useChannelMessages", () => {
       stream.push(
         livePubsubAgenticEvent(
           3,
-          inlineUiRendered({ revision: 2 }, "2026-05-21T08:02:00.000Z")
-        ) as IncomingEvent
+          inlineUiRendered({ revision: 2 }, "2026-05-21T08:02:00.000Z"),
+        ) as IncomingEvent,
       );
     });
     await waitFor(() => {
@@ -600,7 +704,11 @@ describe("useChannelMessages", () => {
   it("re-renders the projection when receipts / retract land (sameChatMessage gate)", async () => {
     let latest: UseChannelMessagesResult | undefined;
     const stream = createEventStream();
-    const completed = messageCompleted("m1", "steer the agent", "2026-05-21T08:00:00.000Z");
+    const completed = messageCompleted(
+      "m1",
+      "steer the agent",
+      "2026-05-21T08:00:00.000Z",
+    );
     const received = messageReceived("m1", "agent:writer");
     const read = messageRead("m1", "agent:writer");
     const client = createClient([], { events: vi.fn(() => stream.iterator) });
@@ -611,7 +719,7 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await act(async () => {
@@ -627,7 +735,9 @@ describe("useChannelMessages", () => {
       stream.push(livePubsubAgenticEvent(2, received) as IncomingEvent);
     });
     await waitFor(() => {
-      expect(latest!.messages[0]!.receipts?.byParticipant["agent:agent:writer"]).toBe("received");
+      expect(
+        latest!.messages[0]!.receipts?.byParticipant["agent:agent:writer"],
+      ).toBe("received");
       expect(latest!.messages[0]!.receipts?.aggregate).toBe("pending");
     });
 
@@ -635,7 +745,9 @@ describe("useChannelMessages", () => {
       stream.push(livePubsubAgenticEvent(3, read) as IncomingEvent);
     });
     await waitFor(() => {
-      expect(latest!.messages[0]!.receipts?.byParticipant["agent:agent:writer"]).toBe("read");
+      expect(
+        latest!.messages[0]!.receipts?.byParticipant["agent:agent:writer"],
+      ).toBe("read");
       expect(latest!.messages[0]!.receipts?.aggregate).toBe("read");
     });
   });
@@ -643,7 +755,11 @@ describe("useChannelMessages", () => {
   it("re-renders to a tombstone when an unread message is retracted", async () => {
     let latest: UseChannelMessagesResult | undefined;
     const stream = createEventStream();
-    const completed = messageCompleted("m2", "cancel me", "2026-05-21T08:00:00.000Z");
+    const completed = messageCompleted(
+      "m2",
+      "cancel me",
+      "2026-05-21T08:00:00.000Z",
+    );
     const retracted = messageRetracted("m2", "panel:user");
     const client = createClient([], { events: vi.fn(() => stream.iterator) });
 
@@ -653,7 +769,7 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
     await act(async () => {
       stream.push(livePubsubAgenticEvent(1, completed) as IncomingEvent);
@@ -691,7 +807,7 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await waitFor(() => {
@@ -700,7 +816,7 @@ describe("useChannelMessages", () => {
           id: "msg-stream",
           content: "hello",
           complete: false,
-        })
+        }),
       );
     });
   });
@@ -716,22 +832,30 @@ describe("useChannelMessages", () => {
         onValue={(value) => {
           latest = value;
         }}
-      />
+      />,
     );
 
     await act(async () => {
       stream.push(
         livePubsubAgenticEvent(
           1,
-          messageCompleted("initial-prompt", "Help me get onboarded", "2026-05-21T08:00:00.000Z")
-        ) as IncomingEvent
+          messageCompleted(
+            "initial-prompt",
+            "Help me get onboarded",
+            "2026-05-21T08:00:00.000Z",
+          ),
+        ) as IncomingEvent,
       );
       stream.push({
         delivery: "signal",
         type: "signal",
         contentType: AGENTIC_EVENT_PAYLOAD_KIND,
         content: JSON.stringify(
-          messageDelta("assistant-stream", "Welcome", "2026-05-21T08:00:01.000Z")
+          messageDelta(
+            "assistant-stream",
+            "Welcome",
+            "2026-05-21T08:00:01.000Z",
+          ),
         ),
         ts: Date.parse("2026-05-21T08:00:01.000Z"),
       } as IncomingEvent);
