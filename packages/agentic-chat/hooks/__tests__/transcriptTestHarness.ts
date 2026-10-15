@@ -1,6 +1,7 @@
 import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import { createHash } from "node:crypto";
-import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { schemaRpcClientMock, schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { wireClientFor } from "@vibestudio/rpc/internal";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { vi } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
@@ -116,16 +117,15 @@ export async function createTranscriptHarness(
     emit: vi.fn(async (target: string, _event: string, payload: unknown) => {
       listeners.get(target)?.({ payload });
     }),
-    expose: () => {},
-    exposeAll: () => {},
-    on: () => () => {},
   };
+  const fixtureClient = wireClientFor(schemaRpcClientMock(mockClient, channelTarget));
+  fixtureClient.emit = mockClient.emit;
   (
     channel.instance as unknown as {
       _connectionless: { client: unknown; respond: unknown; deliver: unknown };
     }
   )._connectionless = {
-    client: mockClient,
+    client: fixtureClient,
     // Inbound dispatch: `harness.channel.call(...)` reaches the DO via fetch →
     // the method-path adapter calls `respond(envelope)` to invoke the method.
     // Dispatch it straight onto the instance (the converged core's respond would
