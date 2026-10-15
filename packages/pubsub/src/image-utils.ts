@@ -4,6 +4,12 @@
  */
 
 import type { Attachment } from "./types.js";
+import {
+  bytesToBase64 as uint8ArrayToBase64,
+  base64ToBytes as base64ToUint8Array,
+} from "@vibestudio/rpc";
+
+export { uint8ArrayToBase64, base64ToUint8Array };
 
 // Supported image MIME types
 export const SUPPORTED_IMAGE_TYPES = [
@@ -81,39 +87,6 @@ export function validateAttachments(attachments: Attachment[]): AttachmentValida
   }
 
   return { valid: true };
-}
-
-/**
- * Convert Uint8Array to base64 string
- */
-export function uint8ArrayToBase64(data: Uint8Array): string {
-  // Node.js environment
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(data).toString("base64");
-  }
-  // Browser environment
-  let binary = "";
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i]!);
-  }
-  return btoa(binary);
-}
-
-/**
- * Convert base64 string to Uint8Array
- */
-export function base64ToUint8Array(base64: string): Uint8Array {
-  // Node.js environment
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(base64, "base64"));
-  }
-  // Browser environment
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }
 
 /**

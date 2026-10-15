@@ -8,7 +8,10 @@ import {
 import { launchAgentIntoChannel } from "@workspace/agentic-core/agent-launch";
 import { quickfireAgentConfig } from "@workspace/quickfire-core/agent";
 
-import type { QuickfireSession } from "@workspace/quickfire-core/service";
+import type {
+  QuickfireServiceClient,
+  QuickfireSession,
+} from "@workspace/quickfire-core/service";
 
 const CHANNEL_SOURCE = "workers/pubsub-channel";
 const CHANNEL_CLASS = "PubSubChannel";
@@ -48,7 +51,10 @@ interface PanelTreeDetail {
   currentHistory?: { context_id?: string; source?: string };
 }
 
-export class QuickfireSessionsDO extends DurableObjectBase {
+export class QuickfireSessionsDO
+  extends DurableObjectBase
+  implements QuickfireServiceClient
+{
   static override schemaVersion = 1;
 
   protected createTables(): void {

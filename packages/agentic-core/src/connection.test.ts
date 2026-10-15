@@ -37,31 +37,33 @@ function createConfig(
     rpc: {
       ...schemaRpcMock({
         call,
-        stream: vi.fn((_target, _method, _args, options) =>
-          Promise.resolve(
-            new Response(
-              new ReadableStream<Uint8Array>({
-                start(controller) {
-                  onStream?.(controller);
-                  controller.enqueue(
-                    new TextEncoder().encode(
-                      `${JSON.stringify({
-                        kind: "subscribed",
-                        result: { ok: true, participantId: "panel:panel-1" },
-                      })}\n`,
-                    ),
-                  );
-                  options?.signal?.addEventListener(
-                    "abort",
-                    () => controller.close(),
-                    {
-                      once: true,
-                    },
-                  );
-                },
-              }),
-            ),
-          ),
+        streamReadable: vi.fn((_target, _method, _args, options) =>
+          Promise.resolve({
+            status: 200,
+            statusText: "OK",
+            headers: [],
+            finalUrl: "",
+            body: new ReadableStream<Uint8Array>({
+              start(controller) {
+                onStream?.(controller);
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `${JSON.stringify({
+                      kind: "subscribed",
+                      result: { ok: true, participantId: "panel:panel-1" },
+                    })}\n`,
+                  ),
+                );
+                options?.signal?.addEventListener(
+                  "abort",
+                  () => controller.close(),
+                  {
+                    once: true,
+                  },
+                );
+              },
+            }),
+          }),
         ),
       }),
       selfId: "panel:panel-1",
@@ -89,7 +91,7 @@ describe("ConnectionManager", () => {
       methods: {},
     });
     await vi.waitFor(() => {
-      expect(config.rpc!.stream).toHaveBeenCalledWith(
+      expect(config.rpc!.streamReadable).toHaveBeenCalledWith(
         CHANNEL_TARGET,
         "subscribe",
         [
@@ -124,7 +126,7 @@ describe("ConnectionManager", () => {
       methods: {},
     });
     await vi.waitFor(() => {
-      expect(config.rpc.stream).toHaveBeenCalledWith(
+      expect(config.rpc.streamReadable).toHaveBeenCalledWith(
         CHANNEL_TARGET,
         "subscribe",
         [
@@ -147,16 +149,17 @@ describe("ConnectionManager", () => {
   it("propagates a terminal stream failure before replay becomes ready", async () => {
     const config = createConfig();
     const failure = new Error("Original subscription transport failure");
-    vi.mocked(config.rpc!.stream).mockImplementation(
-      async () =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              controller.error(failure);
-            },
-          }),
-        ),
-    );
+    vi.mocked(config.rpc!.streamReadable).mockImplementation(async () => ({
+      status: 200,
+      statusText: "OK",
+      headers: [],
+      finalUrl: "",
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(failure);
+        },
+      }),
+    }));
     const onError = vi.fn();
     const manager = new ConnectionManager({
       config,
@@ -192,7 +195,7 @@ describe("ConnectionManager", () => {
     await expect(
       manager.connect({ channelId: "chat-1", methods: {} }),
     ).rejects.toBe(failure);
-    expect(config.rpc!.stream).not.toHaveBeenCalled();
+    expect(config.rpc!.streamReadable).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(failure);
     expect(manager.status).toBe("disconnected");
     await manager.disconnect();
@@ -336,7 +339,9 @@ describe("ConnectionManager owned readiness", () => {
     });
     const connecting = manager.connect({ channelId: "chat-1", methods: {} });
     try {
-      await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+      );
       sendReady(stream);
       await boundary;
       expect(manager.status).toBe("connecting");
@@ -396,7 +401,9 @@ describe("ConnectionManager owned readiness", () => {
       signal: owner.signal,
     });
     const rejected = expect(connecting).rejects.toBe(reason);
-    await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+    );
     sendReady(stream);
     await boundary;
     owner.abort(reason);
@@ -446,7 +453,9 @@ describe("ConnectionManager owned readiness", () => {
       name: "AggregateError",
       errors: [callbackFailure, cleanupFailure],
     });
-    await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+    );
     sendReady(stream);
     await rejected;
     expect(callbackSignal.reason).toBe(callbackFailure);
@@ -488,7 +497,9 @@ describe("ConnectionManager owned readiness", () => {
         name: "AggregateError",
         errors: [failure, observerFailure],
       });
-      await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+      );
       sendReady(stream);
       await rejected;
       expect(callbackSignal.reason).toBe(failure);
@@ -554,7 +565,7 @@ describe("ConnectionManager owned readiness", () => {
       });
       try {
         await vi.waitFor(() =>
-          expect(config.rpc!.stream).toHaveBeenCalledOnce(),
+          expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
         );
         sendReady(stream);
         await rejected;
@@ -623,7 +634,9 @@ describe("ConnectionManager owned readiness", () => {
     const manager = new ConnectionManager({ config, metadata, callbacks: {} });
     const connecting = manager.connect({ channelId: "chat-1", methods: {} });
     void connecting.catch(() => undefined);
-    await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+    );
     const disconnected = manager.disconnect();
     let retired = false;
     void disconnected.then(() => {
@@ -665,7 +678,9 @@ it("preserves the pending owner when a replacement is already cancelled", async 
   const manager = new ConnectionManager({ config, metadata, callbacks: {} });
   const connecting = manager.connect({ channelId: "chat-1", methods: {} });
   void connecting.catch(() => undefined);
-  await vi.waitFor(() => expect(config.rpc!.stream).toHaveBeenCalledOnce());
+  await vi.waitFor(() =>
+    expect(config.rpc!.streamReadable).toHaveBeenCalledOnce(),
+  );
   const cancelled = new AbortController();
   const reason = new Error("Cancelled replacement");
   cancelled.abort(reason);

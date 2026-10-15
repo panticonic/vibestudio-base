@@ -32,7 +32,13 @@ function manager() {
   const value = new ConnectionManager({
     config: {
       clientId: "panel",
-      rpc: { selfId: "panel", call: vi.fn(), stream: vi.fn(), on: vi.fn() },
+      rpc: {
+        selfId: "panel",
+        call: vi.fn(),
+        stream: vi.fn(),
+        streamReadable: vi.fn(),
+        on: vi.fn(),
+      },
     } as ConnectionConfig,
     metadata: { name: "Panel", type: "panel" },
     callbacks: { onError },

@@ -81,7 +81,7 @@ function fakeRpc(
         if (name === "unsubscribe") return undefined;
         throw new Error(`unavailable in this test: ${name}`);
       },
-      stream: async (_target, method, args, options) => {
+      streamReadable: async (_target, method, args, options) => {
         const encoder = new TextEncoder();
         let ended = false;
         let abort = () => {};
@@ -124,7 +124,7 @@ function fakeRpc(
             options?.signal?.removeEventListener("abort", abort);
           },
         });
-        return new Response(body);
+        return { status: 200, statusText: "OK", headers: [], finalUrl: "", body };
       },
     },
     "code:terminal-chat"

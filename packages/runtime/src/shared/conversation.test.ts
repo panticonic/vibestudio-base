@@ -8,7 +8,9 @@ describe("createConversationClient", () => {
       .fn()
       .mockResolvedValueOnce([{ seq: 1, text: "hello" }])
       .mockResolvedValueOnce({ messageId: "m1" });
-    const client = createConversationClient(schemaRpcMock({ call, stream: vi.fn() }));
+    const client = createConversationClient(
+      schemaRpcMock({ call, streamReadable: vi.fn() }),
+    );
 
     await expect(client.history("chat")).resolves.toEqual([
       { seq: 1, text: "hello" },
@@ -43,9 +45,19 @@ describe("createConversationClient", () => {
       },
       cancel: cancelled,
     });
-    const stream = vi.fn().mockResolvedValue(new Response(body));
+    const streamReadable = vi
+      .fn()
+      .mockResolvedValue({
+        status: 200,
+        statusText: "OK",
+        headers: [],
+        finalUrl: "",
+        body,
+      });
     const call = vi.fn();
-    const client = createConversationClient(schemaRpcMock({ call, stream }));
+    const client = createConversationClient(
+      schemaRpcMock({ call, streamReadable }),
+    );
     const records: unknown[] = [];
     await expect(
       client.subscribe("chat", "website-participant", {}, (record) => {

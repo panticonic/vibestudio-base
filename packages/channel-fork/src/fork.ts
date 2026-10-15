@@ -68,7 +68,7 @@ const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
  * durable `fork` RPC; the DO owns the whole journaled saga.
  */
 export async function forkConversation(
-  rpc: RpcCaller,
+  rpc: Pick<RpcCaller, "call">,
   opts: ForkConversationOpts
 ): Promise<ForkResult> {
   const service = await resolveDurableObjectService(rpc, CHANNEL_SERVICE_PROTOCOL, opts.channelId);

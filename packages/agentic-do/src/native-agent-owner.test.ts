@@ -127,6 +127,35 @@ class Owner extends NativeAgentOwner {
     };
   }
   @rpc({
+    website: { kind: "closed", reason: "Test owner readable stream scope." },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async inspectOwnerReadableStream() {
+    const response = await this.agentRpc.streamReadable(
+      "main",
+      mainRpcMethods["credentials.proxyFetch"],
+      [{ url: "https://provider.test/v1", method: "GET" }],
+      this.ownerCallOptions,
+    );
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let body = "";
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        body += decoder.decode(chunk.value, { stream: true });
+      }
+      body += decoder.decode();
+    } finally {
+      reader.releaseLock();
+    }
+    return { status: response.status, url: response.finalUrl, body };
+  }
+  @rpc({
     website: { kind: "closed", reason: "Test input admission." },
     principals: ["host"],
     effect: { kind: "open" },
@@ -1224,7 +1253,7 @@ describe("native Pi entity activation and release", () => {
     expect(message).not.toHaveProperty("authorityParentNonce");
   });
 
-  it("keeps owner streaming independent while preserving its separately admitted context", async () => {
+  it.each(["inspectOwnerStream", "inspectOwnerReadableStream"] as const)("keeps owner streaming independent while preserving its separately admitted context (%s)", async (method) => {
     const h = await host();
     const fixture = await owner(h);
     const bytes = new TextEncoder().encode("owned response");
@@ -1257,7 +1286,7 @@ describe("native Pi entity activation and release", () => {
       },
       "admission:stream",
     );
-    await expect(fixture.call("inspectOwnerStream")).resolves.toEqual({
+    await expect(fixture.call(method)).resolves.toEqual({
       status: 202,
       url: "https://provider.test/v1",
       body: "owned response",

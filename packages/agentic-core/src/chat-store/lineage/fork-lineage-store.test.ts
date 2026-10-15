@@ -44,15 +44,15 @@ function fixture() {
   const streams: Array<{ controller: ReadableStreamDefaultController<Uint8Array>; signal: AbortSignal }> = [];
   const rpc: ForkLineageRpc = {
     ...schemaRpcMock({
-      stream: async (_target: string, _method: string, _args: unknown[], options?: { signal?: AbortSignal }) =>
-        new Response(
-          new ReadableStream<Uint8Array>({
+      streamReadable: async (_target: string, _method: string, _args: unknown[], options?: { signal?: AbortSignal }) => ({
+          status: 200, statusText: "OK", headers: [], finalUrl: "",
+          body: new ReadableStream<Uint8Array>({
             start(controller) {
               streams.push({ controller, signal: options!.signal! });
               controller.enqueue(encodeChannelSubscriptionRecord({ kind: "subscribed", result: {} }));
             },
           })
-        ),
+        }),
       call: async (_target: string, method: string, args: unknown[]) => {
         if (method === "workers.resolveService") return service(String(args[1]));
         if (method === "getProvenance") return { kind: "root" };

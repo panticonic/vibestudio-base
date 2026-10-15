@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RpcCaller } from "@vibestudio/rpc";
 import { createExtensionsClient } from "./extensions.js";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
@@ -150,18 +149,12 @@ describe("createExtensionsClient", () => {
 function createRpc(
   response: Response = new Response(),
   streamingMethods: string[] = []
-): RpcCaller & {
-  call: ReturnType<typeof vi.fn>;
-  stream: ReturnType<typeof vi.fn>;
-} {
+) {
   const wire = {
     call: vi.fn(async (_target: string, method: string) =>
       method === "extensions.streamingMethods" ? streamingMethods : null
     ),
     stream: vi.fn(async () => response),
   };
-  return schemaRpcMock(wire) as RpcCaller & {
-    call: ReturnType<typeof vi.fn>;
-    stream: ReturnType<typeof vi.fn>;
-  };
+  return schemaRpcMock(wire);
 }

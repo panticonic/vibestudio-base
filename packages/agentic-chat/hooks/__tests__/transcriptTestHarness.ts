@@ -1,6 +1,7 @@
 import { gadWireMethods } from "@vibestudio/service-schemas/workspaceSource";
 import { createHash } from "node:crypto";
-import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { schemaRpcClientMock, schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import { wireClientFor } from "@vibestudio/rpc/internal";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { vi } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
@@ -116,16 +117,15 @@ export async function createTranscriptHarness(
     emit: vi.fn(async (target: string, _event: string, payload: unknown) => {
       listeners.get(target)?.({ payload });
     }),
-    expose: () => {},
-    exposeAll: () => {},
-    on: () => () => {},
   };
+  const fixtureClient = wireClientFor(schemaRpcClientMock(mockClient, channelTarget));
+  fixtureClient.emit = mockClient.emit;
   (
     channel.instance as unknown as {
       _connectionless: { client: unknown; respond: unknown; deliver: unknown };
     }
   )._connectionless = {
-    client: mockClient,
+    client: fixtureClient,
     // Inbound dispatch: `harness.channel.call(...)` reaches the DO via fetch →
     // the method-path adapter calls `respond(envelope)` to invoke the method.
     // Dispatch it straight onto the instance (the converged core's respond would
@@ -202,7 +202,7 @@ export async function createTranscriptHarness(
     return {
       ...schemaRpcMock({
         call,
-        stream: vi.fn(
+        streamReadable: vi.fn(
           async (
             target: string,
             method: string,
@@ -215,7 +215,15 @@ export async function createTranscriptHarness(
                 `streaming client rpc ${target}.${method} did not return a Response`,
               );
             }
-            if (!response.body || !options?.signal) return response;
+            if (!response.body)
+              throw new Error("Channel subscription returned no body");
+            const head = {
+              status: response.status,
+              statusText: response.statusText,
+              headers: [...response.headers.entries()],
+              finalUrl: response.url,
+            };
+            if (!options?.signal) return { ...head, body: response.body };
 
             const reader = response.body.getReader();
             const signal = options.signal;
@@ -256,11 +264,7 @@ export async function createTranscriptHarness(
                 return stop(reason);
               },
             });
-            return new Response(body, {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-            });
+            return { ...head, body };
           },
         ),
       }),

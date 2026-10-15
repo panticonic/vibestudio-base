@@ -154,6 +154,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       this.rpc.call(targetId, method, args, mergeRpcOptions(options, { authorityAcquisition: "return" }))),
     stream: (targetId, method, args, options) => this.runDetached(() =>
       this.rpc.stream(targetId, method, args, options)),
+    streamReadable: (targetId, method, args, options) => this.runDetached(() =>
+      this.rpc.streamReadable(targetId, method, args, options)),
   };
 
   /**

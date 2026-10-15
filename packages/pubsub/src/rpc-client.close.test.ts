@@ -47,48 +47,51 @@ it("keeps cooperative leave owned until the actual RPC acknowledgment", async ()
     rpc: {
       selfId: participant,
       call: caller.call.bind(caller),
-      stream: async (_target, _method, _args, options) =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              const frames = [
-                {
-                  kind: "subscribed",
-                  result: { ok: true, participantId: participant },
-                },
-                {
-                  kind: "message",
-                  payload: {
-                    channelId: "held-close",
-                    message: {
-                      kind: "control",
-                      type: "ready",
-                      ready: {
-                        contextId: "ctx-held-close",
-                        totalCount: 0,
-                        envelopeCount: 0,
-                        hasMoreBefore: false,
-                      },
+      streamReadable: async (_target, _method, _args, options) => ({
+        status: 200,
+        statusText: "OK",
+        headers: [],
+        finalUrl: "",
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            const frames = [
+              {
+                kind: "subscribed",
+                result: { ok: true, participantId: participant },
+              },
+              {
+                kind: "message",
+                payload: {
+                  channelId: "held-close",
+                  message: {
+                    kind: "control",
+                    type: "ready",
+                    ready: {
+                      contextId: "ctx-held-close",
+                      totalCount: 0,
+                      envelopeCount: 0,
+                      hasMoreBefore: false,
                     },
                   },
                 },
-              ];
-              controller.enqueue(
-                new TextEncoder().encode(
-                  frames.map((frame) => JSON.stringify(frame) + "\n").join(""),
-                ),
-              );
-              options?.signal?.addEventListener(
-                "abort",
-                () => {
-                  subscriptionAborted = true;
-                  controller.close();
-                },
-                { once: true },
-              );
-            },
-          }),
-        ),
+              },
+            ];
+            controller.enqueue(
+              new TextEncoder().encode(
+                frames.map((frame) => JSON.stringify(frame) + "\n").join(""),
+              ),
+            );
+            options?.signal?.addEventListener(
+              "abort",
+              () => {
+                subscriptionAborted = true;
+                controller.close();
+              },
+              { once: true },
+            );
+          },
+        }),
+      }),
     },
   });
   await vi.advanceTimersByTimeAsync(0);

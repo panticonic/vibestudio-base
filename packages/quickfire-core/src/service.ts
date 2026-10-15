@@ -1,3 +1,5 @@
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+
 export const QUICKFIRE_SERVICE_PROTOCOL = "vibestudio.quickfire.v1";
 
 export interface QuickfireSession {
@@ -33,3 +35,12 @@ export interface QuickfireServiceClient {
   promote(input: { slotId: string }): Promise<QuickfireSession | null>;
   list(): Promise<QuickfireSession[]>;
 }
+
+/** Platform-neutral client ABI; the worker implements this same contract. */
+export const quickfireRpcMethods =
+  createReceiverRpcMethods<QuickfireServiceClient>([
+    "sessionFor",
+    "clear",
+    "promote",
+    "list",
+  ]);

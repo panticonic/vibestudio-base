@@ -8,47 +8,66 @@ function createApprovalEventsRpc(initialApprovalIds: string[]) {
     encodeEventWatchRecord(record);
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   let sequence = 0;
-  const stream = vi.fn(
-    async (_target: string, _method: string, args: unknown[], options?: { signal?: AbortSignal }) =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(next) {
-            controller = next;
-            next.enqueue(
-              encoder({
-                kind: "watching",
-                events: args[0] as ["shell-approval:pending-changed"],
-                epoch: "test-epoch",
-              })
-            );
-            next.enqueue(
-              encoder({
-                kind: "snapshot",
-                event: "shell-approval:pending-changed",
-                payload: {
-                  pending: initialApprovalIds.map((approvalId) => ({ approvalId })),
-                },
-                sequence,
-              })
-            );
-            options?.signal?.addEventListener("abort", () => next.close(), { once: true });
-          },
-        })
-      )
+  const streamReadable = vi.fn(
+    async (
+      _target: string,
+      _method: string,
+      args: unknown[],
+      options?: { signal?: AbortSignal },
+    ) => ({
+      status: 200,
+      statusText: "OK",
+      headers: [],
+      finalUrl: "",
+      body: new ReadableStream<Uint8Array>({
+        start(next) {
+          controller = next;
+          next.enqueue(
+            encoder({
+              kind: "watching",
+              events: args[0] as ["shell-approval:pending-changed"],
+              epoch: "test-epoch",
+            }),
+          );
+          next.enqueue(
+            encoder({
+              kind: "snapshot",
+              event: "shell-approval:pending-changed",
+              payload: {
+                pending: initialApprovalIds.map((approvalId) => ({
+                  approvalId,
+                })),
+              },
+              sequence,
+            }),
+          );
+          options?.signal?.addEventListener("abort", () => next.close(), {
+            once: true,
+          });
+        },
+      }),
+    }),
   );
 
   return {
-    rpc: schemaRpcMock({ call: async () => { throw new Error("Unexpected unary RPC"); }, stream }),
-    stream,
+    rpc: schemaRpcMock({
+      call: async () => {
+        throw new Error("Unexpected unary RPC");
+      },
+      streamReadable,
+    }),
+    streamReadable,
     update(approvalIds: string[]) {
       sequence += 1;
       controller?.enqueue(
         encoder({
           kind: "event",
           event: "shell-approval:pending-changed",
-          payload: { pending: approvalIds.map((approvalId) => ({ approvalId })) },
+          payload: {
+            pending: approvalIds.map((approvalId) => ({ approvalId })),
+          },
           sequence,
-        })
+        }),
       );
     },
   };
@@ -56,7 +75,10 @@ function createApprovalEventsRpc(initialApprovalIds: string[]) {
 
 describe("review readiness", () => {
   it("shares one authoritative watch while resolving only the changed approval", async () => {
-    const { rpc, stream, update } = createApprovalEventsRpc(["review-a", "review-b"]);
+    const { rpc, streamReadable, update } = createApprovalEventsRpc([
+      "review-a",
+      "review-b",
+    ]);
     let firstResolved = false;
     let secondResolved = false;
     const first = waitForApprovalResolution(rpc, "review-a").then(() => {
@@ -66,7 +88,7 @@ describe("review readiness", () => {
       secondResolved = true;
     });
 
-    await vi.waitFor(() => expect(stream).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(streamReadable).toHaveBeenCalledTimes(1));
     update(["review-b"]);
     await first;
 

@@ -118,7 +118,7 @@ function committedPublication(args: unknown[], id: number) {
 
 interface MockRpc {
   call: ReturnType<typeof vi.fn>;
-  stream: ReturnType<typeof vi.fn>;
+  streamReadable: ReturnType<typeof vi.fn>;
   selfId: string;
 }
 
@@ -181,7 +181,7 @@ function createMockRpc() {
       }
       return undefined;
     }),
-    stream: vi.fn(
+    streamReadable: vi.fn(
       async (
         target: string,
         method: string,
@@ -228,7 +228,13 @@ function createMockRpc() {
               approvalController = null;
             },
           });
-          return new Response(body);
+          return {
+            status: 200,
+            statusText: "OK",
+            headers: [],
+            finalUrl: "",
+            body,
+          };
         }
         priorSignalStatesAtOpen.push(
           streamSignals.map((signal) => signal.aborted),
@@ -268,7 +274,13 @@ function createMockRpc() {
             removeListener();
           },
         });
-        return new Response(body);
+        return {
+          status: 200,
+          statusText: "OK",
+          headers: [],
+          finalUrl: "",
+          body,
+        };
       },
     ),
     selfId: SELF_ID,
@@ -460,7 +472,7 @@ describe("connectViaRpc", () => {
       });
       await subscribeStarted;
 
-      expect(mockRpc.stream).toHaveBeenCalledWith(
+      expect(mockRpc.streamReadable).toHaveBeenCalledWith(
         DO_TARGET,
         "subscribe",
         [
@@ -489,7 +501,7 @@ describe("connectViaRpc", () => {
       await expect(client.ready()).rejects.toThrow(
         "Resident channel delivery requires the owning Durable Object registrar",
       );
-      expect(mockRpc.stream).not.toHaveBeenCalledWith(
+      expect(mockRpc.streamReadable).not.toHaveBeenCalledWith(
         DO_TARGET,
         "subscribe",
         expect.anything(),
@@ -507,7 +519,7 @@ describe("connectViaRpc", () => {
       const unregister = vi.fn();
       const rpc = {
         selfId: SELF_ID,
-        stream: vi.fn(),
+        streamReadable: vi.fn(),
         registerResidentSession: vi.fn(() => ({
           transport: {
             call: <Args extends unknown[], Result>(
@@ -575,7 +587,7 @@ describe("connectViaRpc", () => {
         expect(attempts[0]!.metadata).not.toHaveProperty("replay");
         await recover();
         expect(attempts[2]!.operationId).not.toBe(attempts[0]!.operationId);
-        expect(rpc.stream).not.toHaveBeenCalled();
+        expect(rpc.streamReadable).not.toHaveBeenCalled();
         await client.close();
         expect(
           rpc.call.mock.calls.some((call) => call[1] === "relationshipState"),
@@ -596,7 +608,7 @@ describe("connectViaRpc", () => {
       const registrar = vi.fn();
       const rpc = {
         selfId: SELF_ID,
-        stream: vi.fn(),
+        streamReadable: vi.fn(),
         registerResidentSession: registrar,
         call: vi.fn(
           async (
@@ -653,7 +665,7 @@ describe("connectViaRpc", () => {
       const closedRegistrations = vi.fn();
       const rpc = {
         selfId: SELF_ID,
-        stream: vi.fn(),
+        streamReadable: vi.fn(),
         registerResidentSession: vi.fn(() => ({
           transport: {
             call: <Args extends unknown[], Result>(
@@ -754,7 +766,7 @@ describe("connectViaRpc", () => {
       const unregister = vi.fn();
       const rpc = {
         selfId: SELF_ID,
-        stream: vi.fn(),
+        streamReadable: vi.fn(),
         registerResidentSession: vi.fn(
           (
             _channelId: string,
@@ -825,7 +837,7 @@ describe("connectViaRpc", () => {
           targetId: DO_TARGET,
         },
       );
-      expect(rpc.stream).not.toHaveBeenCalled();
+      expect(rpc.streamReadable).not.toHaveBeenCalled();
       expect(rpc.call).not.toHaveBeenCalledWith(
         "main",
         "workers.resolveService",
@@ -955,7 +967,7 @@ describe("connectViaRpc", () => {
         call: vi.fn(async () => {
           throw accessError;
         }),
-        stream: vi.fn(),
+        streamReadable: vi.fn(),
       };
       const errors: Error[] = [];
       const client = connectViaRpc({
@@ -1021,7 +1033,7 @@ describe("connectViaRpc", () => {
       expect(ready).toBe(false);
       expect(errors).toEqual([]);
       await vi.waitFor(() =>
-        expect(mockRpc.stream).toHaveBeenCalledWith(
+        expect(mockRpc.streamReadable).toHaveBeenCalledWith(
           "main",
           "events.watch",
           [["shell-approval:pending-changed"], expect.any(String)],
@@ -1109,7 +1121,7 @@ describe("connectViaRpc", () => {
       });
       await subscribeStarted;
 
-      const subscribeCall = mockRpc.stream.mock.calls.find(
+      const subscribeCall = mockRpc.streamReadable.mock.calls.find(
         (call) => call[1] === "subscribe",
       );
       const metadata = subscribeCall?.[2]?.[1] as
@@ -1162,7 +1174,7 @@ describe("connectViaRpc", () => {
       ).toThrow(
         /Invalid JSON Schema advertised for method "client_eval" parameters:.*exclusiveMinimum.*number/,
       );
-      expect(mockRpc.stream).not.toHaveBeenCalled();
+      expect(mockRpc.streamReadable).not.toHaveBeenCalled();
     });
 
     it("does not settle cooperative close before self-leave is acknowledged", async () => {
@@ -3119,7 +3131,7 @@ describe("connectViaRpc", () => {
       await recover();
 
       await expect(handle.result).resolves.toEqual({ content: { answer: 42 } });
-      expect(mockRpc.stream).toHaveBeenCalledTimes(2);
+      expect(mockRpc.streamReadable).toHaveBeenCalledTimes(2);
       expect(removeListener).toHaveBeenCalledTimes(1);
       expect(
         mockRpc.call.mock.calls.some((call) => call[1] === "unsubscribe"),
@@ -3146,7 +3158,7 @@ describe("connectViaRpc", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(mock.rpc.stream).toHaveBeenCalledTimes(1);
+      expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(1);
       await client.close();
     });
 
@@ -3166,7 +3178,7 @@ describe("connectViaRpc", () => {
 
       await coordinator.run("resubscribe");
 
-      expect(mock.rpc.stream).toHaveBeenCalledTimes(2);
+      expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(2);
       expect(mock.priorSignalStatesAtOpen[1]).toEqual([false]);
       expect(firstSignal.aborted).toBe(true);
       await client.close();
@@ -3237,7 +3249,7 @@ describe("connectViaRpc", () => {
         await vi.waitFor(() => expect(errors).toHaveLength(1));
         connected = true;
         await coordinator.run("resubscribe");
-        const metadata = mock.rpc.stream.mock.calls[1]?.[2]?.[1] as {
+        const metadata = mock.rpc.streamReadable.mock.calls[1]?.[2]?.[1] as {
           sinceId?: number;
         };
         expect(metadata.sinceId).toBe(1);
@@ -3362,7 +3374,7 @@ describe("connectViaRpc", () => {
       await events.next();
 
       await coordinator.run("resubscribe");
-      const metadata = mock.rpc.stream.mock.calls[1]?.[2]?.[1] as {
+      const metadata = mock.rpc.streamReadable.mock.calls[1]?.[2]?.[1] as {
         sinceId?: number;
       };
       expect(metadata.sinceId).toBe(200);
@@ -3621,7 +3633,9 @@ describe("connectViaRpc", () => {
       await client.ready();
       mock.closeSubscription();
 
-      await vi.waitFor(() => expect(mock.rpc.stream).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(2),
+      );
       expect(mock.priorSignalStatesAtOpen[1]).toEqual([false]);
       await client.close();
     });
@@ -3646,19 +3660,19 @@ describe("connectViaRpc", () => {
       );
       await Promise.resolve();
       await Promise.resolve();
-      expect(mock.rpc.stream).toHaveBeenCalledTimes(1);
+      expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(1);
 
       await coordinator.run("resubscribe");
-      expect(mock.rpc.stream).toHaveBeenCalledTimes(2);
+      expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(2);
       await Promise.resolve();
-      expect(mock.rpc.stream).toHaveBeenCalledTimes(2);
+      expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(2);
       await client.close();
     });
 
     it("keeps ready pending across a transient first-subscription failure and resolves on recovery", async () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
-      mock.rpc.stream.mockRejectedValueOnce(
+      mock.rpc.streamReadable.mockRejectedValueOnce(
         new Error("first subscription transport failed"),
       );
       const client = connectViaRpc({
@@ -3668,7 +3682,9 @@ describe("connectViaRpc", () => {
       });
       const ready = client.ready();
 
-      await vi.waitFor(() => expect(mock.rpc.stream).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(2),
+      );
       mock.emit({
         kind: "ready",
         contextId: "ctx-recovered-first-connect",
@@ -3683,16 +3699,20 @@ describe("connectViaRpc", () => {
     it("redrives a replacement that terminates during its ACK instead of losing the request behind recovering", async () => {
       const coordinator = createRecoveryCoordinator();
       const mock = createMockRpc();
-      const defaultStream = mock.rpc.stream.getMockImplementation()!;
+      const defaultStream = mock.rpc.streamReadable.getMockImplementation()!;
       let streamAttempt = 0;
-      mock.rpc.stream.mockImplementation(
+      mock.rpc.streamReadable.mockImplementation(
         async (...args: Parameters<typeof defaultStream>) => {
           streamAttempt += 1;
           if (streamAttempt !== 2) return defaultStream(...args);
           const result = await mock.rpc.call(args[0], args[1], args[2]);
           const encoder = new TextEncoder();
-          return new Response(
-            new ReadableStream<Uint8Array>({
+          return {
+            status: 200,
+            statusText: "OK",
+            headers: [],
+            finalUrl: "",
+            body: new ReadableStream<Uint8Array>({
               start(controller) {
                 controller.enqueue(
                   encoder.encode(
@@ -3703,7 +3723,7 @@ describe("connectViaRpc", () => {
                 controller.close();
               },
             }),
-          );
+          };
         },
       );
       const client = connectViaRpc({
@@ -3715,7 +3735,9 @@ describe("connectViaRpc", () => {
       await client.ready();
 
       await coordinator.run("resubscribe");
-      await vi.waitFor(() => expect(mock.rpc.stream).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() =>
+        expect(mock.rpc.streamReadable).toHaveBeenCalledTimes(3),
+      );
 
       await client.close();
     });
@@ -4615,7 +4637,7 @@ describe("connectViaRpc", () => {
       expect((await received.next()).value).toMatchObject({ pubsubId: 371 });
       await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
       expect(claimAttempts).toBe(2);
-      expect(mockRpc.stream).toHaveBeenCalledTimes(1);
+      expect(mockRpc.streamReadable).toHaveBeenCalledTimes(1);
       await client.close();
     });
 

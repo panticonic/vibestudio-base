@@ -37,7 +37,7 @@ import type {
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 const FORK_HEAD_CHANGED_SIGNAL = "fork.head_changed";
 
-export type ForkLineageRpc = Pick<ConnectionConfig["rpc"], "call" | "stream"> &
+export type ForkLineageRpc = Pick<ConnectionConfig["rpc"], "call" | "streamReadable"> &
   Partial<Pick<ConnectionConfig["rpc"], "selfId">>;
 
 /** Fixed identity of one lineage store. */
@@ -430,7 +430,7 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
           ? state.provenance.rootChannelId
           : channelId;
     const wanted =
-      enabled && rootId && inputs.selfId && typeof this.#rpc.stream === "function" && inputs.client
+      enabled && rootId && inputs.selfId && inputs.client
         ? { client: inputs.client, rootId, selfId: inputs.selfId }
         : null;
     const bound = this.#subscription;
@@ -493,7 +493,7 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       try {
         const target = await resolveChannelTarget(rpc, binding.rootId);
         if (abort.signal.aborted) return;
-        const response = await rpc.stream!(
+        const response = await rpc.streamReadable(
           target,
           channelClientRpcMethods.subscribeLineage,
           [binding.selfId],
