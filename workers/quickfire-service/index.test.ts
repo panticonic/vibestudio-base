@@ -4,12 +4,7 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcClient } from "@vibestudio/rpc";
 import { QuickfireSessionsDO } from "./index.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
-import { quickfireRpcMethods } from "./contract.js";
-import { quickfireRpcMethods as clientRpcMethods } from "@workspace/quickfire-core/service";
-
-it("shares the platform-neutral client ABI with the worker", () => {
-  expect(quickfireRpcMethods).toBe(clientRpcMethods);
-});
+import { quickfireRpcMethods } from "@workspace/quickfire-core/service";
 
 class TestQuickfireSessionsDO extends QuickfireSessionsDO {
   modelSettingsFailure: Error | null = null;
@@ -171,6 +166,38 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
 }
 
 describe("QuickfireSessionsDO", () => {
+  it("dispatches every public client descriptor through the worker RPC boundary", async () => {
+    const { call } = await createTestDO(TestQuickfireSessionsDO);
+    const client = schemaRpcMock({
+      call: async (_target, method, args) => call(method, ...args),
+    });
+    const session = await client.call(
+      "quickfire",
+      quickfireRpcMethods.sessionFor,
+      [{ slotId: "slot-a" }],
+    );
+    expect(session).toMatchObject({ slotId: "slot-a", state: "fresh" });
+    await expect(
+      client.call("quickfire", quickfireRpcMethods.list, []),
+    ).resolves.toEqual([{ ...session, state: "resumed", messageCount: null }]);
+    await expect(
+      client.call("quickfire", quickfireRpcMethods.promote, [
+        { slotId: "slot-a" },
+      ]),
+    ).resolves.toMatchObject({
+      channelId: session.channelId,
+      state: "promoted",
+    });
+    await expect(
+      client.call("quickfire", quickfireRpcMethods.clear, [
+        { slotId: "slot-a" },
+      ]),
+    ).resolves.toEqual({ cleared: true });
+    await expect(
+      client.call("quickfire", quickfireRpcMethods.list, []),
+    ).resolves.toEqual([]);
+  });
+
   it("propagates model settings failure before creating the agent", async () => {
     const { instance } = await createTestDO(TestQuickfireSessionsDO);
     const failure = new Error("Model settings service disconnected");
@@ -178,10 +205,13 @@ describe("QuickfireSessionsDO", () => {
     await expect(instance.sessionFor({ slotId: "slot-a" })).rejects.toBe(
       failure,
     );
-    expect(instance.calls.some(({ method, args }) =>
-      method === "runtime.createEntity" &&
-      (args[0] as { className?: string }).className === "AiChatWorker"
-    )).toBe(false);
+    expect(
+      instance.calls.some(
+        ({ method, args }) =>
+          method === "runtime.createEntity" &&
+          (args[0] as { className?: string }).className === "AiChatWorker",
+      ),
+    ).toBe(false);
   });
 
   it("launches an ordinary AI chat agent with declarative prompt, tools, and panel binding", async () => {
