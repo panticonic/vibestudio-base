@@ -10,16 +10,13 @@ import { useForkLineage, type UseForkLineageOptions } from "./useForkLineage";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
 function resolvedChannelService(channelId: string) {
-  return durableObjectServiceFixture(
-    `do:workers/pubsub-channel:PubSubChannel:${channelId}`,
-    {
-      name: "pubsub-channel",
-      source: "workers/pubsub-channel",
-      className: "PubSubChannel",
-      objectKey: channelId,
-      protocols: ["vibestudio.channel.v1"],
-    },
-  );
+  return durableObjectServiceFixture(`do:workers/pubsub-channel:PubSubChannel:${channelId}`, {
+    name: "pubsub-channel",
+    source: "workers/pubsub-channel",
+    className: "PubSubChannel",
+    objectKey: channelId,
+    protocols: ["vibestudio.channel.v1"],
+  });
 }
 
 function message(content: string): ChatMessage {
@@ -36,37 +33,35 @@ function message(content: string): ChatMessage {
 function lineageSubscriptionFixture() {
   const signals: AbortSignal[] = [];
   const bodies: ReadableStream<Uint8Array>[] = [];
-  const streamReadable = vi.fn<
-    import("@vibestudio/rpc/internal").RpcWireClient["streamReadable"]
-  >(async (_target, _method, _args, options) => {
-    const signal = options!.signal!;
-    signals.push(signal);
-    let onAbort: () => void;
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        onAbort = () => controller.close();
-        if (signal.aborted) {
-          controller.close();
-          return;
-        }
-        signal.addEventListener("abort", onAbort, { once: true });
-        controller.enqueue(
-          encodeChannelSubscriptionRecord({ kind: "subscribed", result: {} }),
-        );
-      },
-      cancel() {
-        signal.removeEventListener("abort", onAbort);
-      },
-    });
-    bodies.push(body);
-    return {
-      status: 200,
-      statusText: "OK",
-      headers: [],
-      finalUrl: "",
-      body,
-    };
-  });
+  const streamReadable = vi.fn<import("@vibestudio/rpc/internal").RpcWireClient["streamReadable"]>(
+    async (_target, _method, _args, options) => {
+      const signal = options!.signal!;
+      signals.push(signal);
+      let onAbort: () => void;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          onAbort = () => controller.error(signal.reason);
+          if (signal.aborted) {
+            onAbort();
+            return;
+          }
+          signal.addEventListener("abort", onAbort, { once: true });
+          controller.enqueue(encodeChannelSubscriptionRecord({ kind: "subscribed", result: {} }));
+        },
+        cancel() {
+          signal.removeEventListener("abort", onAbort);
+        },
+      });
+      bodies.push(body);
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: [],
+        finalUrl: "",
+        body,
+      };
+    }
+  );
   return { streamReadable, signals, bodies };
 }
 
@@ -94,7 +89,7 @@ describe("useForkLineage render stability", () => {
           messages,
           selfMetadata: { type: "panel", name: "Panel", handle: "alice" },
         }),
-      { initialProps: { messages: [message("a")] } },
+      { initialProps: { messages: [message("a")] } }
     );
     const initial = result.current;
 
@@ -152,10 +147,12 @@ describe("useForkLineage render stability", () => {
         messages: [],
         replaySettled: true,
         client: {
-          onReconnect: () => () => undefined,
-        } as UseForkLineageOptions["client"],
+          connected: true,
+          onDisconnect: () => () => undefined,
+          onReady: () => () => undefined,
+        },
         nav,
-      }),
+      })
     );
 
     await waitFor(() => expect(result.current.children).toHaveLength(1));
@@ -181,7 +178,7 @@ describe("useForkLineage render stability", () => {
       forkId: string,
       channelId: string,
       contextId: string,
-      label: string,
+      label: string
     ) => ({
       parentChannelId,
       forkId,
@@ -200,9 +197,7 @@ describe("useForkLineage render stability", () => {
         projection("root", "fork-a", "child-a", "context-a", "Path A"),
         projection("root", "fork-b", "child-b", "context-b", "Path B"),
       ],
-      "child-a": [
-        projection("child-a", "fork-c", "child-c", "context-c", "Path C"),
-      ],
+      "child-a": [projection("child-a", "fork-c", "child-c", "context-c", "Path C")],
       "child-b": [],
       "child-c": [],
     };
@@ -213,9 +208,7 @@ describe("useForkLineage render stability", () => {
           if (target === "main" && method === "workers.resolveService") {
             return resolvedChannelService(String(args[1]));
           }
-          const targetChannel = target.slice(
-            "do:workers/pubsub-channel:PubSubChannel:".length,
-          );
+          const targetChannel = target.slice("do:workers/pubsub-channel:PubSubChannel:".length);
           if (method === "getProvenance") {
             return targetChannel === "child-a"
               ? {
@@ -230,9 +223,7 @@ describe("useForkLineage render stability", () => {
           if (method === "listForks") {
             return {
               headSeq: 2,
-              forks:
-                forksByChannel[targetChannel as keyof typeof forksByChannel] ??
-                [],
+              forks: forksByChannel[targetChannel as keyof typeof forksByChannel] ?? [],
             };
           }
           throw new Error(`unexpected ${target}.${method}`);
@@ -249,10 +240,12 @@ describe("useForkLineage render stability", () => {
         messages: [],
         replaySettled: true,
         client: {
-          onReconnect: () => () => undefined,
-        } as UseForkLineageOptions["client"],
+          connected: true,
+          onDisconnect: () => () => undefined,
+          onReady: () => () => undefined,
+        },
         nav: { switchTo: () => {}, openInNewPanel: () => {} },
-      }),
+      })
     );
     await waitFor(() => expect(result.current.provenance?.kind).toBe("fork"));
 
@@ -261,13 +254,8 @@ describe("useForkLineage render stability", () => {
       tree = await result.current.loadTree();
     });
     expect(tree[0]?.contextId).toBe("context-root");
-    expect(tree[0]?.children.map((node) => node.label)).toEqual([
-      "Path A",
-      "Path B",
-    ]);
-    expect(tree[0]?.children[0]?.children.map((node) => node.label)).toEqual([
-      "Path C",
-    ]);
+    expect(tree[0]?.children.map((node) => node.label)).toEqual(["Path A", "Path B"]);
+    expect(tree[0]?.children[0]?.children.map((node) => node.label)).toEqual(["Path C"]);
     await waitFor(() => expect(subscription.streamReadable).toHaveBeenCalled());
     expect(result.current.error).toBeUndefined();
     unmount();
@@ -310,10 +298,12 @@ describe("useForkLineage render stability", () => {
         messages: [],
         replaySettled: true,
         client: {
-          onReconnect: () => () => undefined,
-        } as UseForkLineageOptions["client"],
+          connected: true,
+          onDisconnect: () => () => undefined,
+          onReady: () => () => undefined,
+        },
         nav,
-      }),
+      })
     );
 
     await waitFor(() => expect(result.current.provenance?.kind).toBe("root"));
@@ -322,14 +312,11 @@ describe("useForkLineage render stability", () => {
       try {
         await result.current.actions.markForkRead?.("root-channel", 13);
       } catch (cause) {
-        result.current.actions.reportError(
-          "Could not save the conversation read position",
-          cause,
-        );
+        result.current.actions.reportError("Could not save the conversation read position", cause);
       }
     });
     expect(result.current.error).toBe(
-      "Could not save the conversation read position: storage unavailable",
+      "Could not save the conversation read position: storage unavailable"
     );
     expect(subscription.streamReadable).toHaveBeenCalled();
     unmount();
@@ -390,11 +377,13 @@ describe("useForkLineage render stability", () => {
           replaySettled: true,
           retrySignal,
           client: {
-            onReconnect: () => () => undefined,
-          } as UseForkLineageOptions["client"],
+            connected: true,
+            onDisconnect: () => () => undefined,
+            onReady: () => () => undefined,
+          },
           nav,
         }),
-      { initialProps: { retrySignal: 0 } },
+      { initialProps: { retrySignal: 0 } }
     );
 
     await waitFor(() => expect(markForkRead).toHaveBeenCalledTimes(1));
