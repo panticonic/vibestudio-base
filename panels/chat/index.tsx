@@ -71,7 +71,7 @@ import "./conversationPresentation.css";
 const AgenticChat = lazy(() =>
   import("@workspace/agentic-chat/chat").then((module) => ({
     default: module.AgenticChat,
-  })),
+  }))
 );
 
 /** Chat panel state args: the host-controller state plus panel presentation. */
@@ -158,7 +158,7 @@ function createPanelHostPorts(resolvedContextId: string): ChatHostPorts {
 function useChatHost(resolvedContextId: string): ChatHostController {
   const controller = useMemo(
     () => new ChatHostController(createPanelHostPorts(resolvedContextId)),
-    [resolvedContextId],
+    [resolvedContextId]
   );
   useEffect(() => controller.retain(), [controller]);
   return controller;
@@ -184,8 +184,8 @@ export default function ChatPanel() {
               This chat isn't attached to a workspace
             </Text>
             <Text size="2" color="gray" style={{ maxWidth: 420 }}>
-              Chats run their agents inside a workspace. Close this panel and
-              open a new chat from your workspace.
+              Chats run their agents inside a workspace. Close this panel and open a new chat from
+              your workspace.
             </Text>
           </Flex>
         </Theme>
@@ -210,12 +210,12 @@ function ChatPanelInContext({
   const host = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
-    controller.getSnapshot,
+    controller.getSnapshot
   );
   const channelName = host.channelName;
   const creationChannelConfig = useMemo(
     () => ({ ...stateArgs.channelConfig, seed: stateArgs.seed }),
-    [stateArgs.channelConfig, stateArgs.seed],
+    [stateArgs.channelConfig, stateArgs.seed]
   );
 
   // Build ConnectionConfig from runtime
@@ -226,23 +226,20 @@ function ChatPanelInContext({
       recoveryCoordinator,
       scopeRehydrators: createRuntimeScopeRehydrators(getPanelHandle),
     }),
-    [],
+    []
   );
 
-  const handleNewConversation = useCallback(
-    (options?: NewConversationOptions) => {
-      const nextStateArgs: ChatStateArgs = {};
-      if (options?.seed) nextStateArgs.seed = options.seed;
-      if (options?.agentConfig) nextStateArgs.agentConfig = options.agentConfig;
-      const hasStateArgs = Object.keys(nextStateArgs).length > 0;
-      const stateArgsForLink: Record<string, unknown> = { ...nextStateArgs };
-      window.location.href = buildPanelLink(
-        "panels/chat",
-        hasStateArgs ? { stateArgs: stateArgsForLink } : undefined,
-      );
-    },
-    [],
-  );
+  const handleNewConversation = useCallback((options?: NewConversationOptions) => {
+    const nextStateArgs: ChatStateArgs = {};
+    if (options?.seed) nextStateArgs.seed = options.seed;
+    if (options?.agentConfig) nextStateArgs.agentConfig = options.agentConfig;
+    const hasStateArgs = Object.keys(nextStateArgs).length > 0;
+    const stateArgsForLink: Record<string, unknown> = { ...nextStateArgs };
+    window.location.href = buildPanelLink(
+      "panels/chat",
+      hasStateArgs ? { stateArgs: stateArgsForLink } : undefined
+    );
+  }, []);
 
   const handleFocusPanel = useCallback((panelId: string) => {
     void panel.focusPanel(panelId);
@@ -256,8 +253,7 @@ function ChatPanelInContext({
   // Once the transcript has landed on the requested envelope, drop the request
   // from the panel's own stateArgs so it does not replay on remount.
   const handleFocusMessageConsumed = useCallback((messageId: string) => {
-    if (panel.stateArgs.get<ChatStateArgs>().focusMessageId !== messageId)
-      return;
+    if (panel.stateArgs.get<ChatStateArgs>().focusMessageId !== messageId) return;
     void panel.stateArgs.patch({ focusMessageId: null }).catch(() => undefined);
   }, []);
 
@@ -266,22 +262,19 @@ function ChatPanelInContext({
       const { openChannelPanel } = await import("./openChannelPanel");
       await openChannelPanel(targetChannelId, opts);
     },
-    [],
+    []
   );
 
   const openLocalModelsCapability = useCallback(async (server?: ServerKind) => {
     try {
-      const capabilities =
-        localModelsExtensionMethods.capabilities.result.parse(
-          await extensions.invoke(
-            LOCAL_MODELS_EXTENSION_ID,
-            localModelsExtensionMethods.capabilities.method,
-            [],
-          ),
-        );
-      const target = server
-        ? capabilities.serverLogs[server]
-        : capabilities.managementPanel;
+      const capabilities = localModelsExtensionMethods.capabilities.result.parse(
+        await extensions.invoke(
+          LOCAL_MODELS_EXTENSION_ID,
+          localModelsExtensionMethods.capabilities.method,
+          []
+        )
+      );
+      const target = server ? capabilities.serverLogs[server] : capabilities.managementPanel;
       await openPanel(target.source, {
         focus: true,
         ...(target.stateArgs ? { stateArgs: target.stateArgs } : {}),
@@ -298,25 +291,21 @@ function ChatPanelInContext({
     (server: ServerKind) => {
       void openLocalModelsCapability(server);
     },
-    [openLocalModelsCapability],
+    [openLocalModelsCapability]
   );
   const handleOpenLocalModels = useCallback(() => {
     void openLocalModelsCapability();
   }, [openLocalModelsCapability]);
 
   const handleActionBarFileChange = useCallback(
-    (value: {
-      path: string | null;
-      props?: Record<string, unknown>;
-      maxHeight?: number;
-    }) => {
+    (value: { path: string | null; props?: Record<string, unknown>; maxHeight?: number }) => {
       void panel.stateArgs.patch({
         actionBarFile: value.path,
         actionBarProps: value.path ? (value.props ?? null) : null,
         actionBarMaxHeight: value.path ? (value.maxHeight ?? null) : null,
       });
     },
-    [],
+    []
   );
 
   const chatActions: AgenticChatActions = useMemo(
@@ -350,7 +339,7 @@ function ChatPanelInContext({
       handleOpenChannel,
       handleOpenLocalModelsLog,
       handleOpenLocalModels,
-    ],
+    ]
   );
 
   // In-place fork switch: explicitly move the panel runtime to the fork's
@@ -363,9 +352,7 @@ function ChatPanelInContext({
         forkChannelId,
         forkContextId,
       });
-      const current = panel.stateArgs.get<
-        ChatStateArgs & { contextId?: unknown }
-      >();
+      const current = panel.stateArgs.get<ChatStateArgs & { contextId?: unknown }>();
       const { contextId: _obsoleteContextId, ...panelState } = current;
       // A fork's agents are its own clones: adopt the fork's roster, never the
       // source conversation's installed-agent keys (Identity collision).
@@ -374,7 +361,7 @@ function ChatPanelInContext({
         stateArgs: { ...panelState, ...conversation },
       });
     },
-    [channelName, resolvedContextId, controller],
+    [channelName, resolvedContextId, controller]
   );
 
   // Side-by-side: open the fork in a fresh chat panel (news-panel shape).
@@ -392,7 +379,7 @@ function ChatPanelInContext({
         stateArgs: { channelName: forkChannelId },
       });
     },
-    [channelName, resolvedContextId],
+    [channelName, resolvedContextId]
   );
 
   // Hand external-fork notification policy to the shell, which owns the real
@@ -415,13 +402,9 @@ function ChatPanelInContext({
             onClick: () => {
               void (async () => {
                 try {
-                  await handleForkSwitch(
-                    fork.forkedChannelId,
-                    fork.forkedContextId,
-                  );
+                  await handleForkSwitch(fork.forkedChannelId, fork.forkedContextId);
                 } catch (cause) {
-                  const message =
-                    cause instanceof Error ? cause.message : String(cause);
+                  const message = cause instanceof Error ? cause.message : String(cause);
                   try {
                     await notifications.show({
                       type: "error",
@@ -431,7 +414,7 @@ function ChatPanelInContext({
                   } catch (notificationCause) {
                     console.error(
                       "[ChatPanel] failed to switch from fork notification and show the error",
-                      { cause, notificationCause },
+                      { cause, notificationCause }
                     );
                   }
                 }
@@ -441,7 +424,7 @@ function ChatPanelInContext({
         ],
       });
     },
-    [handleForkSwitch],
+    [handleForkSwitch]
   );
 
   const forkNav: ForkNavHandlers = useMemo(
@@ -449,11 +432,10 @@ function ChatPanelInContext({
       switchTo: handleForkSwitch,
       openInNewPanel: handleOpenForkPanel,
       readForkCursors: () => controller.readForkCursors(),
-      markForkRead: (forkChannelId, headSeq) =>
-        controller.markForkRead(forkChannelId, headSeq),
+      markForkRead: (forkChannelId, headSeq) => controller.markForkRead(forkChannelId, headSeq),
       onExternalFork: handleExternalFork,
     }),
-    [controller, handleForkSwitch, handleOpenForkPanel, handleExternalFork],
+    [controller, handleForkSwitch, handleOpenForkPanel, handleExternalFork]
   );
 
   const importLoader = useMemo(
@@ -461,16 +443,17 @@ function ChatPanelInContext({
       createPanelImportLoader(rpc, {
         defaultWorkspaceRef: () => `ctx:${resolvedContextId}`,
       }),
-    [resolvedContextId],
+    [resolvedContextId]
   );
 
   const panelMetadata = useMemo(
     () => ({
       name: channelName ?? "Channel",
       type: "panel" as const,
+      surface: "browser" as const,
       hostPlatform: getVibestudioHostPlatform(),
     }),
-    [channelName],
+    [channelName]
   );
   const installedAgents = stateArgs.installedAgents ?? undefined;
   const presentation = stateArgs.presentation;
@@ -567,33 +550,24 @@ function ChatPanelInContext({
             importLoader={importLoader}
             initialActionBarFile={stateArgs.actionBarFile ?? undefined}
             initialActionBarProps={stateArgs.actionBarProps ?? undefined}
-            initialActionBarMaxHeight={
-              stateArgs.actionBarMaxHeight ?? undefined
-            }
+            initialActionBarMaxHeight={stateArgs.actionBarMaxHeight ?? undefined}
             onActionBarFileChange={handleActionBarFileChange}
             connectionRetrySignal={host.connectionRetrySignal}
             focusMessageId={stateArgs.focusMessageId}
             onFocusMessageConsumed={handleFocusMessageConsumed}
             renderHeader={
-              presentation
-                ? () => <ConversationHeader presentation={presentation} />
-                : undefined
+              presentation ? () => <ConversationHeader presentation={presentation} /> : undefined
             }
             renderEmptyState={
               presentation
                 ? (defaultContent, state) =>
-                    renderConversationEmptyState(
-                      presentation,
-                      defaultContent,
-                      state.phase,
-                    )
+                    renderConversationEmptyState(presentation, defaultContent, state.phase)
                 : undefined
             }
             composerPlaceholder={presentation?.composerPlaceholder}
             composerDefaultMentions={stateArgs.defaultRecipients}
             composerDisabled={
-              Boolean(stateArgs.defaultRecipients?.length) &&
-              host.recovery.status !== "idle"
+              Boolean(stateArgs.defaultRecipients?.length) && host.recovery.status !== "idle"
             }
           />
         </Suspense>

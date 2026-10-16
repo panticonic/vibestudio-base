@@ -10,7 +10,8 @@ export interface ComposeSystemPromptOptions {
   systemPromptMode?: SystemPromptMode;
 }
 
-export const CONVERSATION_IDENTITY_GUIDANCE = "When `set_title` is available, give a new conversation a short, descriptive title as soon as its purpose is clear. Replace the automatic first-message title with a compact noun phrase that names the work; do not merely repeat or truncate the user's request. Complete this naming action before your first substantive reply. Do this once, then retitle only when the conversation's enduring purpose materially changes—not for ordinary follow-ups or status updates.";
+export const CONVERSATION_IDENTITY_GUIDANCE =
+  "When `set_title` is available, give a new conversation a short, descriptive title as soon as its purpose is clear. Replace the automatic first-message title with a compact noun phrase that names the work; do not merely repeat or truncate the user's request. Complete this naming action before your first substantive reply. Do this once, then retitle only when the conversation's enduring purpose materially changes—not for ordinary follow-ups or status updates.";
 
 export const VIBESTUDIO_BASE_SYSTEM_PROMPT = `You are an AI assistant running inside Vibestudio.
 
@@ -94,6 +95,7 @@ Answer in the clearest medium, and treat visual and interactive answers as first
   - a narrowing question or next step → \`Choices\` or \`ActionButton\`.
 - When the natural next step is one of a few directions, end with \`Choices\` or a few \`ActionButton\`s instead of listing questions in prose. The user's selection arrives as a message carrying a structured \`interaction\`.
 - Diagrams: a \`\`\`mermaid fenced code block renders as a live diagram. Reach for a diagram whenever structure, flow, or relationships are the point: architecture and dependencies (\`flowchart\`), interactions over time (\`sequenceDiagram\`), lifecycles (\`stateDiagram-v2\`), data models (\`erDiagram\`), schedules (\`gantt\`), plus class, pie, mindmap, and timeline diagrams. Keep node labels short and quote labels containing punctuation. In MDX you can also use \`<Diagram code={\`flowchart TD; A-->B\`} />\` or inline \`<svg>\` for free-form visuals.
+- People read the conversation in the browser chat panel (assume it) or in the terminal chat. A message sent from the terminal says so at its end, and chat clients name their kind where they offer methods (\`inline_ui\`) and in \`list_addressees\`. In the terminal, MDX and inline UI draw as text cells: layout, text, tables, controls and response components work; charts draw as text bars, while maps, images, video and diagrams become links or source (\`skills/sandbox/TERMINAL_CARDS.md\`). Messages persist, so they may later be opened in either client.
 - MDX components render when your message completes. Write valid JSX: close every tag, quote string props, and use only documented components. \`inline_ui\` and \`load_action_bar\` return compile errors directly and show nothing. If a message's MDX, an inline UI, or an action bar fails to compile or render, or a component rejects its props, a ui-feedback note starts a repair turn when you are idle, or follows your current turn (failures of what you publish in a repair turn wait for your next turn); repair it rather than abandoning the visual.
 - When no response component fits — a stepper through a process, a color mixer, a small simulation, a diagram that reacts to input — define a one-off component in the message itself; it may import \`react\` hooks, \`@radix-ui/themes\`, and \`@workspace/react\` exactly as \`inline_ui\` can. Build it rather than settling for prose. Keep its state local and its effects presentational:
   \`\`\`mdx
@@ -154,9 +156,7 @@ function cleanSection(value: string | undefined): string {
   return (value ?? "").trim();
 }
 
-export function composeSystemPrompt(
-  options: ComposeSystemPromptOptions,
-): string {
+export function composeSystemPrompt(options: ComposeSystemPromptOptions): string {
   const mode = options.systemPromptMode ?? "append";
   const workspacePrompt = cleanSection(options.workspacePrompt);
   const skillIndex = cleanSection(options.skillIndex);
@@ -164,12 +164,7 @@ export function composeSystemPrompt(
   const overridePrompt = cleanSection(options.systemPrompt);
 
   if (mode === "replace") {
-    return (
-      overridePrompt ||
-      agentPrompt ||
-      workspacePrompt ||
-      VIBESTUDIO_BASE_SYSTEM_PROMPT
-    );
+    return overridePrompt || agentPrompt || workspacePrompt || VIBESTUDIO_BASE_SYSTEM_PROMPT;
   }
 
   const sections: string[] = [];

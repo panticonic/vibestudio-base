@@ -1,11 +1,9 @@
 import { Type } from "@panticonic/pi-ai";
 import { copyJson, type JsonValue } from "@panticonic/pi-chord";
 import type { ToolRegistration } from "@panticonic/pi-durable";
-import {
-  canonicalJson,
-  sha256HexSyncText,
-} from "@vibestudio/content-addressing";
+import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { RosterEntry } from "@workspace/agentic-core/agent-channel-roster";
+import { chatClientSurface, chatClientSurfaceLabel } from "@workspace/agentic-protocol";
 import { captureChannelMethodOffers } from "@workspace/pubsub";
 import type { createNativeChannelMethodExecution } from "./native-channel-method.js";
 
@@ -20,13 +18,13 @@ interface Offered {
   handle: string | undefined;
   displayName: string;
   kind: string;
+  /** The chat client this participant is, when it says so. */
+  surface: string | undefined;
   offer: ReturnType<typeof captureChannelMethodOffers>[number];
   schemaKey: string;
 }
 
-function isObjectSchema(
-  parameters: unknown,
-): parameters is {
+function isObjectSchema(parameters: unknown): parameters is {
   type: "object";
   properties?: Record<string, unknown>;
   required?: string[];
@@ -36,10 +34,7 @@ function isObjectSchema(
     typeof parameters === "object" &&
     !Array.isArray(parameters) &&
     (parameters as { type?: unknown }).type === "object" &&
-    !Object.hasOwn(
-      (parameters as { properties?: object }).properties ?? {},
-      TARGET_PARAMETER,
-    )
+    !Object.hasOwn((parameters as { properties?: object }).properties ?? {}, TARGET_PARAMETER)
   );
 }
 
@@ -59,7 +54,7 @@ export function createNativeChannelMethodTools(
   callerId: string,
   roster: readonly RosterEntry[],
   localNames: ReadonlySet<string>,
-  execution: Execution,
+  execution: Execution
 ): ToolRegistration[] {
   const offers: Offered[] = roster
     .flatMap((entry) =>
@@ -68,25 +63,24 @@ export function createNativeChannelMethodTools(
         handle: entry.handle,
         displayName: entry.ref.displayName ?? entry.handle ?? entry.participantId,
         kind: entry.ref.kind,
+        surface: (() => {
+          const surface = chatClientSurface(entry.ref.metadata);
+          return surface ? chatClientSurfaceLabel(surface) : undefined;
+        })(),
         offer,
         schemaKey: canonicalJson(offer.parameters as JsonValue),
-      })),
+      }))
     )
     .sort(
       (a, b) =>
-        a.offer.name.localeCompare(b.offer.name) ||
-        a.participantId.localeCompare(b.participantId),
+        a.offer.name.localeCompare(b.offer.name) || a.participantId.localeCompare(b.participantId)
     );
   const byMethod = new Map<string, Offered[]>();
   for (const offered of offers)
-    byMethod.set(offered.offer.name, [
-      ...(byMethod.get(offered.offer.name) ?? []),
-      offered,
-    ]);
+    byMethod.set(offered.offer.name, [...(byMethod.get(offered.offer.name) ?? []), offered]);
   const selectedNames = new Set(localNames);
   const claim = (name: string): string => {
-    if (selectedNames.has(name))
-      throw new Error(`Channel method tool name is ambiguous: ${name}`);
+    if (selectedNames.has(name)) throw new Error(`Channel method tool name is ambiguous: ${name}`);
     selectedNames.add(name);
     return name;
   };
@@ -95,14 +89,8 @@ export function createNativeChannelMethodTools(
     const plainFree = !localNames.has(method);
     const identical = group.every((o) => o.schemaKey === group[0]!.schemaKey);
     if (plainFree && group.length === 1) {
-      tools.push(
-        buildTool(claim(method), group, group[0]!.offer, false),
-      );
-    } else if (
-      plainFree &&
-      identical &&
-      isObjectSchema(group[0]!.offer.parameters)
-    ) {
+      tools.push(buildTool(claim(method), group, group[0]!.offer, false));
+    } else if (plainFree && identical && isObjectSchema(group[0]!.offer.parameters)) {
       tools.push(buildTool(claim(method), group, group[0]!.offer, true));
     } else {
       for (const offered of group) {
@@ -122,19 +110,16 @@ export function createNativeChannelMethodTools(
     name: string,
     owners: Offered[],
     offer: Offered["offer"],
-    selectable: boolean,
+    selectable: boolean
   ): ToolRegistration {
     // Handles are what ask_user addresses; fall back to ids unless every
     // owner has a distinct handle.
     const handles = owners.map((o) => o.handle);
     const useHandles =
-      handles.every((h): h is string => !!h) &&
-      new Set(handles).size === handles.length;
-    const keys = owners.map((o) =>
-      useHandles ? o.handle! : o.participantId,
-    );
+      handles.every((h): h is string => !!h) && new Set(handles).size === handles.length;
+    const keys = owners.map((o) => (useHandles ? o.handle! : o.participantId));
     const describe = (o: Offered, key: string) =>
-      `${key} (${o.displayName}, ${o.kind}${useHandles ? `, ${o.participantId}` : ""})`;
+      `${key} (${o.displayName}, ${o.surface ?? o.kind}${useHandles ? `, ${o.participantId}` : ""})`;
     const description = selectable
       ? [
           offer.description ?? `Call ${offer.name}.`,
@@ -142,7 +127,7 @@ export function createNativeChannelMethodTools(
         ].join("\n")
       : [
           offer.description ?? `Call ${offer.name}.`,
-          `Channel method ${offer.name}, offered by ${owners[0]!.handle ? `@${owners[0]!.handle} (${owners[0]!.participantId})` : owners[0]!.participantId}.`,
+          `Channel method ${offer.name}, offered by ${owners[0]!.handle ? `@${owners[0]!.handle} (${owners[0]!.participantId})` : owners[0]!.participantId}${owners[0]!.surface ? `, the person's ${owners[0]!.surface}` : ""}.`,
         ].join("\n");
     const schema = selectable
       ? (() => {
@@ -187,9 +172,7 @@ export function createNativeChannelMethodTools(
               !binding["targetIds"].length ||
               !binding["targetIds"].every((id) => typeof id === "string")
             ) {
-              throw new Error(
-                "Channel method tool lost its original offered owner",
-              );
+              throw new Error("Channel method tool lost its original offered owner");
             }
             const targetIds = binding["targetIds"] as string[];
             const targetKeys = binding["targetKeys"];
@@ -199,15 +182,11 @@ export function createNativeChannelMethodTools(
               const { [TARGET_PARAMETER]: chosen, ...rest } = callArgs;
               const index = targetKeys.indexOf(chosen as JsonValue);
               if (index < 0 || index >= targetIds.length)
-                throw new Error(
-                  `${TARGET_PARAMETER} must be one of: ${targetKeys.join(", ")}`,
-                );
+                throw new Error(`${TARGET_PARAMETER} must be one of: ${targetKeys.join(", ")}`);
               targetId = targetIds[index]!;
               callArgs = rest;
             } else if (targetIds.length !== 1) {
-              throw new Error(
-                "Channel method tool lost its original offered owner",
-              );
+              throw new Error("Channel method tool lost its original offered owner");
             }
             return {
               channelId: binding["channelId"],
@@ -218,7 +197,7 @@ export function createNativeChannelMethodTools(
             };
           },
           api,
-          context,
+          context
         ),
       cancel: (_args, api, context) => execution.cancel(api, context),
     };

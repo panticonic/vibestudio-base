@@ -14,10 +14,7 @@ import {
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { ChannelEvent, ParticipantDescriptor } from "@workspace/harness";
 import type { ServerLogEvent } from "@workspace/pubsub";
-import type {
-  VcsCompareResult,
-  VcsStatusResult,
-} from "@vibestudio/service-schemas/vcs";
+import type { VcsCompareResult, VcsStatusResult } from "@vibestudio/service-schemas/vcs";
 import type { MissionRecord } from "@vibestudio/automation/mission";
 import { AgentVesselBase, type SubagentIdentity } from "./agent-vessel.js";
 import type { ChannelClient } from "./channel-client.js";
@@ -34,49 +31,34 @@ import {
   type JsonObject,
 } from "@panticonic/pi-durable";
 import type { NativeChannelIntake } from "./native-channel-session.js";
-import {
-  getChannelPolicy,
-  type ChannelCallDescriptor,
-} from "@workspace/channel-policies";
+import { getChannelPolicy, type ChannelCallDescriptor } from "@workspace/channel-policies";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
-const methodBuilders = getChannelPolicy(
-  "agentic.conversation.v1",
-).callEventPayload!;
+const methodBuilders = getChannelPolicy("agentic.conversation.v1").callEventPayload!;
 
 const sessions: Harness[] = [];
 const databases: Array<{ close(): void }> = [];
 afterEach(async () => {
   const results = await Promise.allSettled(
-    sessions.splice(0).map((session) => session.close(BACKGROUND_CONTEXT)),
+    sessions.splice(0).map((session) => session.close(BACKGROUND_CONTEXT))
   );
   for (const database of databases.splice(0)) database.close();
   vi.restoreAllMocks();
-  for (const result of results)
-    if (result.status === "rejected") throw result.reason;
+  for (const result of results) if (result.status === "rejected") throw result.reason;
 });
-async function runTool(
-  tool: ToolRegistration,
-  args: JsonObject,
-): Promise<JsonValue> {
+async function runTool(tool: ToolRegistration, args: JsonObject): Promise<JsonValue> {
   const models = createModels();
   const provider = fauxProvider();
   models.setProvider(provider.provider);
   const registry = createRegistry();
-  registry.install(
-    defineExtension({ name: "product-domain-tool", tools: [tool] }),
-  );
-  const harness = await Harness.open(
-    new MemoryStorage(),
-    { models, registry },
-    BACKGROUND_CONTEXT,
-  );
+  registry.install(defineExtension({ name: "product-domain-tool", tools: [tool] }));
+  const harness = await Harness.open(new MemoryStorage(), { models, registry }, BACKGROUND_CONTEXT);
   sessions.push(harness);
   const conversation = await harness.createConversation(
     {
       ownership: { kind: "ownerless" },
       agent: { model: { provider: "faux", modelId: "faux-1" }, tools: [tool] },
     },
-    BACKGROUND_CONTEXT,
+    BACKGROUND_CONTEXT
   );
   const taskId = await conversation.invokeTool(
     {
@@ -84,14 +66,14 @@ async function runTool(
       name: tool.name,
       arguments: args,
     },
-    BACKGROUND_CONTEXT,
+    BACKGROUND_CONTEXT
   );
   const task = await harness.waitForTask(taskId, BACKGROUND_CONTEXT);
   if (task.state.outcome.status !== "completed")
     throw new Error(
       task.state.outcome.status === "failed"
         ? task.state.outcome.error.message
-        : "Domain tool aborted",
+        : "Domain tool aborted"
     );
   expect(provider.state.callCount).toBe(0);
   if (task.state.outcome.result.kind !== "direct")
@@ -103,7 +85,7 @@ async function runTool(
     },
     1,
     undefined,
-    BACKGROUND_CONTEXT,
+    BACKGROUND_CONTEXT
   );
   const entry = entries.items[0];
   if (!entry || !DirectToolResultEntry.is(entry))
@@ -138,14 +120,10 @@ const WEATHER_TYPE = {
     additionalProperties: false,
   },
 };
-async function waitForCall(
-  vessel: TestVessel,
-): Promise<{ callId: string; method: string }> {
+async function waitForCall(vessel: TestVessel): Promise<{ callId: string; method: string }> {
   return vessel.firstChannelCall;
 }
-function automationRecord(
-  overrides: Partial<MissionRecord> = {},
-): MissionRecord {
+function automationRecord(overrides: Partial<MissionRecord> = {}): MissionRecord {
   return {
     schemaVersion: 3,
     missionId: "mission-daily",
@@ -203,27 +181,20 @@ class TestVessel extends AgentVesselBase {
     return super.createChannelClient(channelId);
   }
   rpcWireMockForTest:
-    | ((
-        target: string,
-        method: string,
-        args: unknown[],
-        options?: unknown,
-      ) => Promise<unknown>)
+    | ((target: string, method: string, args: unknown[], options?: unknown) => Promise<unknown>)
     | null = null;
   private rpcWireIntercepted = false;
   callerIdForTest: string | null = null;
 
   callerKindForTest: string | null = null;
 
-  blobImageReaderForTest: ((digest: string) => Promise<string | null>) | null =
-    null;
+  blobImageReaderForTest: ((digest: string) => Promise<string | null>) | null = null;
 
   automationLaunchForTest: MissionRecord | null = null;
 
   automationVisibleForTest: MissionRecord[] | null = null;
 
-  credentialConnectForTest: (() => Promise<Record<string, unknown>>) | null =
-    null;
+  credentialConnectForTest: (() => Promise<Record<string, unknown>>) | null = null;
 
   readonly automationLaunchCalls: Array<{
     args: unknown[];
@@ -242,15 +213,10 @@ class TestVessel extends AgentVesselBase {
   }> = [];
 
   readonly channelPublishFailures = new Set<string>();
-  private resolveFirstChannelCall!: (call: {
-    callId: string;
-    method: string;
-  }) => void;
-  readonly firstChannelCall = new Promise<{ callId: string; method: string }>(
-    (resolve) => {
-      this.resolveFirstChannelCall = resolve;
-    },
-  );
+  private resolveFirstChannelCall!: (call: { callId: string; method: string }) => void;
+  readonly firstChannelCall = new Promise<{ callId: string; method: string }>((resolve) => {
+    this.resolveFirstChannelCall = resolve;
+  });
   private readonly methodRoutes = new Map<string, ChannelCallDescriptor>();
 
   readonly channelStub = {
@@ -301,9 +267,9 @@ class TestVessel extends AgentVesselBase {
           `SELECT COUNT(*) AS count
              FROM agent_hot_path_trace
             WHERE channel_id = ?`,
-          channelId,
+          channelId
         )
-        .toArray()[0]?.["count"] ?? 0,
+        .toArray()[0]?.["count"] ?? 0
     );
   }
 
@@ -389,19 +355,11 @@ class TestVessel extends AgentVesselBase {
         ) {
           return durableObjectServiceFixture("do:missions");
         }
-        if (
-          vessel.automationLaunchForTest &&
-          targetId === "do:missions" &&
-          method === "launch"
-        ) {
+        if (vessel.automationLaunchForTest && targetId === "do:missions" && method === "launch") {
           vessel.automationLaunchCalls.push({ args, options });
           return vessel.automationLaunchForTest;
         }
-        if (
-          vessel.automationVisibleForTest &&
-          targetId === "do:missions" &&
-          method === "list"
-        ) {
+        if (vessel.automationVisibleForTest && targetId === "do:missions" && method === "list") {
           return vessel.automationVisibleForTest;
         }
         if (
@@ -411,17 +369,12 @@ class TestVessel extends AgentVesselBase {
         ) {
           vessel.automationControlCalls.push({ method, args, options });
           const mission = vessel.automationVisibleForTest.find(
-            (candidate) => candidate.missionId === args[0],
+            (candidate) => candidate.missionId === args[0]
           );
           if (!mission) throw new Error("unknown test automation");
           return {
             ...mission,
-            state:
-              method === "pause"
-                ? "paused"
-                : method === "retire"
-                  ? "retired"
-                  : "active",
+            state: method === "pause" ? "paused" : method === "retire" ? "retired" : "active",
           };
         }
         return forward(targetId, method, args, options);
@@ -453,10 +406,7 @@ class TestVessel extends AgentVesselBase {
     return runTool(tool, input);
   }
 
-  async registerSubscriptionForTest(
-    channelId = CHANNEL,
-    config?: unknown,
-  ): Promise<void> {
+  async registerSubscriptionForTest(channelId = CHANNEL, config?: unknown): Promise<void> {
     this.ensureIdentity();
     await this.subscriptions.subscribe({
       channelId,
@@ -477,23 +427,15 @@ class TestVessel extends AgentVesselBase {
     const failures = this.channelPublishFailures;
     const operationLog = this.operationLog;
     const getReplayAfter = vi.fn(
-      async (request: {
-        after: number;
-        limit?: number;
-        throughSeq?: number;
-      }) => {
+      async (request: { after: number; limit?: number; throughSeq?: number }) => {
         const all = (stub.replay.get(channelId) ?? []).filter(
           (event) =>
             (event.id ?? 0) > request.after &&
-            (request.throughSeq === undefined ||
-              (event.id ?? 0) <= request.throughSeq),
+            (request.throughSeq === undefined || (event.id ?? 0) <= request.throughSeq)
         );
         const snapshotLastSeq =
           request.throughSeq ??
-          all.reduce(
-            (maximum, event) => Math.max(maximum, event.id ?? 0),
-            request.after,
-          );
+          all.reduce((maximum, event) => Math.max(maximum, event.id ?? 0), request.after);
         const logEvents = all.slice(0, request.limit ?? 500);
         return {
           mode: "after" as const,
@@ -507,24 +449,16 @@ class TestVessel extends AgentVesselBase {
             hasMoreAfter: logEvents.length < all.length,
           },
         };
-      },
+      }
     );
     return {
       publishAgenticEvent: vi.fn(
-        async (
-          pid: string,
-          event: AgenticEvent,
-          opts?: { idempotencyKey?: string },
-        ) => {
+        async (pid: string, event: AgenticEvent, opts?: { idempotencyKey?: string }) => {
           if (opts?.idempotencyKey && failures.has(opts.idempotencyKey)) {
             throw new Error(`publish failed: ${opts.idempotencyKey}`);
           }
-          const envelopeId = opts?.idempotencyKey
-            ? `ik:${opts.idempotencyKey}`
-            : undefined;
-          const channelEnvelopeId = envelopeId
-            ? `${channelId}\u0000${envelopeId}`
-            : undefined;
+          const envelopeId = opts?.idempotencyKey ? `ik:${opts.idempotencyKey}` : undefined;
+          const channelEnvelopeId = envelopeId ? `${channelId}\u0000${envelopeId}` : undefined;
           const existing = channelEnvelopeId
             ? stub.channelEnvelopes.get(channelEnvelopeId)
             : undefined;
@@ -546,11 +480,9 @@ class TestVessel extends AgentVesselBase {
             } as ChannelEvent);
           }
           return { id };
-        },
+        }
       ),
-      getMessageType: vi.fn(
-        async (typeId: string) => stub.messageTypes.get(typeId) ?? null,
-      ),
+      getMessageType: vi.fn(async (typeId: string) => stub.messageTypes.get(typeId) ?? null),
       getMessageTypes: vi.fn(async () => [...stub.messageTypes.values()]),
       getParticipants: vi.fn(async () => stub.participants),
       callMethod: vi.fn(
@@ -560,7 +492,7 @@ class TestVessel extends AgentVesselBase {
           callId: string,
           method: string,
           args: unknown,
-          options: { invocationId?: string; transportCallId?: string } = {},
+          options: { invocationId?: string; transportCallId?: string } = {}
         ) => {
           stub.calls.push({ callId, targetPid, method, args });
           const route: ChannelCallDescriptor = {
@@ -583,16 +515,13 @@ class TestVessel extends AgentVesselBase {
             ts: Date.now(),
           });
           this.resolveFirstChannelCall({ callId, method });
-        },
+        }
       ),
       cancelCall: vi.fn(async (_caller: string, callId: string) => {
         const key = `${channelId}\u0000terminal:${callId}`;
         if (stub.channelEnvelopes.has(key)) return;
         const route = this.methodRoutes.get(callId);
-        if (!route)
-          throw new Error(
-            "Fixture cancellation requires its original channel admission",
-          );
+        if (!route) throw new Error("Fixture cancellation requires its original channel admission");
         stub.channelEnvelopes.set(key, {
           id: 2,
           messageId: `terminal:${callId}`,
@@ -627,14 +556,14 @@ class TestVessel extends AgentVesselBase {
         async (envelopeId: string) =>
           stub.channelEnvelopes.get(`${channelId}\u0000${envelopeId}`) ??
           stub.envelopes.get(envelopeId) ??
-          null,
+          null
       ),
       send: vi.fn(
         async (
           participantId: string,
           messageId: string,
           content: string,
-          options?: Record<string, unknown>,
+          options?: Record<string, unknown>
         ) => {
           stub.sent.push({
             channelId,
@@ -643,28 +572,26 @@ class TestVessel extends AgentVesselBase {
             content,
             options,
           });
-        },
+        }
       ),
       recordTaskProvenance: vi.fn(async () => undefined),
-      join: vi.fn(
-        async (input: { participantId: string; operationId: string }) => {
-          operationLog.push(`channel:${channelId}:join`);
-          stub.subscriptions.push({
-            channelId,
-            participantId: input.participantId,
-          });
-          return {
-            ok: true,
-            channelConfig: {},
-            envelope: {
-              logEvents: [],
-              ready: { totalCount: 0, envelopeCount: 0 },
-            },
-            participantId: input.participantId,
-            revision: 1,
-          };
-        },
-      ),
+      join: vi.fn(async (input: { participantId: string; operationId: string }) => {
+        operationLog.push(`channel:${channelId}:join`);
+        stub.subscriptions.push({
+          channelId,
+          participantId: input.participantId,
+        });
+        return {
+          ok: true,
+          channelConfig: {},
+          envelope: {
+            logEvents: [],
+            ready: { totalCount: 0, envelopeCount: 0 },
+          },
+          participantId: input.participantId,
+          revision: 1,
+        };
+      }),
       leave: vi.fn(async () => {
         operationLog.push(`channel:${channelId}:leave`);
       }),
@@ -679,13 +606,10 @@ class TestVessel extends AgentVesselBase {
       | "invocation.failed"
       | "invocation.cancelled"
       | "invocation.abandoned",
-    payload: Record<string, unknown>,
+    payload: Record<string, unknown>
   ): Promise<void> {
     const route = this.methodRoutes.get(transportCallId);
-    if (!route)
-      throw new Error(
-        "Fixture terminal requires the original channel admission",
-      );
+    if (!route) throw new Error("Fixture terminal requires the original channel admission");
     const outcome =
       kind === "invocation.cancelled"
         ? methodBuilders.cancelled({
@@ -697,9 +621,7 @@ class TestVessel extends AgentVesselBase {
         : methodBuilders.terminal({
             descriptor: route,
             result:
-              kind === "invocation.completed"
-                ? payload["result"]
-                : { error: payload["error"] },
+              kind === "invocation.completed" ? payload["result"] : { error: payload["error"] },
             isError: kind !== "invocation.completed",
             createdAt: route.createdAt,
           });
@@ -711,15 +633,10 @@ class TestVessel extends AgentVesselBase {
       senderId: AGENT_ID,
       ts: Date.now(),
     };
-    this.channelStub.channelEnvelopes.set(
-      `${CHANNEL}\u0000${event.messageId}`,
-      event,
-    );
+    this.channelStub.channelEnvelopes.set(`${CHANNEL}\u0000${event.messageId}`, event);
     await this.selectForTest(CHANNEL, event);
   }
-  protected override async refreshNativeChannelConfiguration(
-    _channelId: string,
-  ): Promise<void> {}
+  protected override async refreshNativeChannelConfiguration(_channelId: string): Promise<void> {}
   rejectAgentOpenForTest = vi.fn(async (): Promise<Harness> => {
     throw new Error("Inspection entered native session admission");
   });
@@ -728,14 +645,14 @@ class TestVessel extends AgentVesselBase {
   }
   selectForTest(
     channelId: string,
-    event: ChannelEvent,
+    event: ChannelEvent
   ): Promise<{ targetChannelId: string; intake: NativeChannelIntake }> {
     return (
       this as unknown as {
         selectNativeChannelIntake(
           channelId: string,
           event: ChannelEvent,
-          context: unknown,
+          context: unknown
         ): Promise<{ targetChannelId: string; intake: NativeChannelIntake }>;
       }
     ).selectNativeChannelIntake(channelId, event, {
@@ -768,7 +685,7 @@ class PromptEventProbe extends TestVessel {
 
   protected override async onChannelEvent(
     _channelId: string,
-    event: ChannelEvent,
+    event: ChannelEvent
   ): Promise<boolean> {
     return event.type === this.consumePayloadKind;
   }
@@ -776,7 +693,7 @@ class PromptEventProbe extends TestVessel {
   protected override async shouldRespond(
     channelId: string,
     event: ChannelEvent,
-    deliveredContext?: import("@workspace/pubsub").ChannelAgenticContext,
+    deliveredContext?: import("@workspace/pubsub").ChannelAgenticContext
   ): Promise<boolean> {
     return this.useDeliveredDecisionContext
       ? super.shouldRespond(channelId, event, deliveredContext)
@@ -798,20 +715,15 @@ async function makeVessel(): Promise<TestVessel> {
   return instance;
 }
 async function makePromptProbe(config?: unknown): Promise<PromptEventProbe> {
-  const { instance, db } = await createTestDO(
-    PromptEventProbe,
-    TEST_AGENT_ENV,
-    { props: TEST_AGENT_PROPS },
-  );
+  const { instance, db } = await createTestDO(PromptEventProbe, TEST_AGENT_ENV, {
+    props: TEST_AGENT_PROPS,
+  });
   await instance.registerSubscriptionForTest(CHANNEL, config);
   instance.markEmptyRosterFresh(CHANNEL);
   databases.push(db);
   return instance;
 }
-function customChannelEvent(
-  type: string,
-  overrides: Partial<ServerLogEvent> = {},
-): ServerLogEvent {
+function customChannelEvent(type: string, overrides: Partial<ServerLogEvent> = {}): ServerLogEvent {
   return {
     id: 17,
     messageId: "custom-envelope-17",
@@ -856,16 +768,14 @@ describe("canonical channel endpoint admission", () => {
       const oldClient = vessel.resolvedChannelClientForTest(selected);
       const failed = expect(oldClient.resolveTarget()).rejects.toBe(original);
       await entered;
-      if (ordering === "after")
-        await vessel.registerSubscriptionForTest(selected);
+      if (ordering === "after") await vessel.registerSubscriptionForTest(selected);
       rejectSelection(original);
       await failed;
-      if (ordering === "before")
-        await vessel.registerSubscriptionForTest(selected);
+      if (ordering === "before") await vessel.registerSubscriptionForTest(selected);
       const currentClient = vessel.resolvedChannelClientForTest(selected);
       expect(currentClient).not.toBe(oldClient);
       await expect(currentClient.resolveTarget()).resolves.toBe(
-        `do:workers/pubsub-channel:PubSubChannel:${selected}`,
+        `do:workers/pubsub-channel:PubSubChannel:${selected}`
       );
       expect(vessel.resolvedChannelClientForTest(selected)).toBe(currentClient);
       expect(resolver).toHaveBeenCalledOnce();
@@ -873,11 +783,11 @@ describe("canonical channel endpoint admission", () => {
       const replacement = vessel.resolvedChannelClientForTest(selected);
       expect(replacement).not.toBe(currentClient);
       await expect(replacement.resolveTarget()).resolves.toBe(
-        `do:workers/pubsub-channel:PubSubChannel:${selected}`,
+        `do:workers/pubsub-channel:PubSubChannel:${selected}`
       );
       expect(vessel.resolvedChannelClientForTest(selected)).toBe(replacement);
       await expect(oldClient.resolveTarget()).rejects.toBe(original);
-    },
+    }
   );
 });
 
@@ -891,46 +801,41 @@ describe("AgentVesselBase default automation authority", () => {
       catalogDigest: "d".repeat(64),
     };
     let installed: MissionRecord | null = null;
-    const remote = vi.fn(
-      async (_target: string, method: string, args: unknown[]) => {
-        if (method === "workers.resolveService")
-          return durableObjectServiceFixture("do:missions");
-        if (method === "getDefault") return installed;
-        if (method === "runtime.createEntity")
-          return {
-            id: `do:workers/pubsub-channel:PubSubChannel:${(args[0] as { key: string }).key}`,
-            kind: "do",
-            source: {
-              repoPath: "workers/pubsub-channel",
-              effectiveVersion: "test",
-            },
-            contextId: "ctx-1",
-            targetId: `do:workers/pubsub-channel:PubSubChannel:${(args[0] as { key: string }).key}`,
-          };
-        if (method === "authority.compileAuthorityPlan") return authorityPlan;
-        if (method === "provisionDefault") {
-          installed = automationRecord({
-            ...(args[1] as Partial<MissionRecord>),
-            missionId: "mission-default",
-            state: "active",
-          });
-          return installed;
-        }
-        throw new Error(`Unexpected default RPC ${method}`);
-      },
-    );
+    const remote = vi.fn(async (_target: string, method: string, args: unknown[]) => {
+      if (method === "workers.resolveService") return durableObjectServiceFixture("do:missions");
+      if (method === "getDefault") return installed;
+      if (method === "runtime.createEntity")
+        return {
+          id: `do:workers/pubsub-channel:PubSubChannel:${(args[0] as { key: string }).key}`,
+          kind: "do",
+          source: {
+            repoPath: "workers/pubsub-channel",
+            effectiveVersion: "test",
+          },
+          contextId: "ctx-1",
+          targetId: `do:workers/pubsub-channel:PubSubChannel:${(args[0] as { key: string }).key}`,
+        };
+      if (method === "authority.compileAuthorityPlan") return authorityPlan;
+      if (method === "provisionDefault") {
+        installed = automationRecord({
+          ...(args[1] as Partial<MissionRecord>),
+          missionId: "mission-default",
+          state: "active",
+        });
+        return installed;
+      }
+      throw new Error(`Unexpected default RPC ${method}`);
+    });
     class DefaultVessel extends TestVessel {}
     const { instance, db } = await createTestDO(DefaultVessel, TEST_AGENT_ENV, {
       props: TEST_AGENT_PROPS,
     });
     databases.push(db);
     instance.rpcWireMockForTest = remote;
-    vi.spyOn(instance, "subscribeChannel").mockImplementation(
-      async ({ channelId }) => {
-        await instance.registerSubscriptionForTest(channelId);
-        return { ok: true, participantId: AGENT_ID };
-      },
-    );
+    vi.spyOn(instance, "subscribeChannel").mockImplementation(async ({ channelId }) => {
+      await instance.registerSubscriptionForTest(channelId);
+      return { ok: true, participantId: AGENT_ID };
+    });
     const input = {
       id: "workspace-review",
       contextId: "ctx-1",
@@ -954,7 +859,7 @@ describe("AgentVesselBase default automation authority", () => {
     };
     const first = await instance.initializeAutomation(input);
     const compiled = remote.mock.calls.find(
-      ([, method]) => method === "authority.compileAuthorityPlan",
+      ([, method]) => method === "authority.compileAuthorityPlan"
     )!;
     expect(compiled[0]).toBe("main");
     expect(compiled[2]).toEqual([{ execution: first.charter.execution }]);
@@ -976,13 +881,11 @@ describe("AgentVesselBase default automation authority", () => {
       "do:missions",
       "provisionDefault",
       [input.id, { name: "Review", charter: first.charter, authorityPlan }],
-      { idempotencyKey: "default-automation:workspace-review:provision" },
+      { idempotencyKey: "default-automation:workspace-review:provision" }
     );
     expect(await instance.initializeAutomation(input)).toEqual(first);
     expect(
-      remote.mock.calls.filter(
-        ([, method]) => method === "authority.compileAuthorityPlan",
-      ),
+      remote.mock.calls.filter(([, method]) => method === "authority.compileAuthorityPlan")
     ).toHaveLength(1);
   });
 });
@@ -1019,15 +922,11 @@ describe("AgentVesselBase activation-local inspection", () => {
 
   it("returns a truthful unloaded snapshot without entering stalled native session admission", async () => {
     const vessel = await makeVessel();
-    vessel.rejectAgentOpenForTest.mockImplementation(
-      () => new Promise(() => {}),
-    );
+    vessel.rejectAgentOpenForTest.mockImplementation(() => new Promise(() => {}));
     vessel.callerKindForTest = "do";
     vessel.callerIdForTest = "do:workers/pubsub-channel:PubSubChannel:chan-1";
 
-    await expect(
-      vessel.readAgentInspection(CHANNEL, "getDebugState"),
-    ).resolves.toMatchObject({
+    await expect(vessel.readAgentInspection(CHANNEL, "getDebugState")).resolves.toMatchObject({
       result: {
         conversations: {
           [CHANNEL]: {
@@ -1047,9 +946,7 @@ describe("AgentVesselBase activation-local inspection", () => {
     vessel.callerIdForTest = "do:workers/pubsub-channel:PubSubChannel:chan-1";
 
     const tables = vessel.tablesForTest();
-    await expect(
-      vessel.readAgentInspection(CHANNEL, "getDebugState"),
-    ).resolves.toMatchObject({
+    await expect(vessel.readAgentInspection(CHANNEL, "getDebugState")).resolves.toMatchObject({
       result: { conversations: { [CHANNEL]: { loaded: false } } },
     });
     expect(vessel.tablesForTest()).toEqual(tables);
@@ -1061,9 +958,9 @@ describe("AgentVesselBase activation-local inspection", () => {
     vessel.callerKindForTest = "panel";
     vessel.callerIdForTest = "panel:untrusted";
 
-    await expect(
-      vessel.readAgentInspection(CHANNEL, "getDebugState"),
-    ).rejects.toThrow(/refusing caller/u);
+    await expect(vessel.readAgentInspection(CHANNEL, "getDebugState")).rejects.toThrow(
+      /refusing caller/u
+    );
   });
 });
 describe("AgentVesselBase.chatOp", () => {
@@ -1071,16 +968,14 @@ describe("AgentVesselBase.chatOp", () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
     await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(
-      /only this agent's own EvalDO/,
+      /only this agent's own EvalDO/
     );
   });
 
   it("rejects when there is no verified caller", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = null;
-    await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(
-      /refusing caller/,
-    );
+    await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(/refusing caller/);
   });
 
   it("accepts the agent's own EvalDO (key matches the eval service formula)", async () => {
@@ -1104,15 +999,9 @@ describe("AgentVesselBase.chatOp", () => {
     } as ChannelEvent;
     vessel.channelStub.envelopes.set("env-7", event);
 
-    await expect(
-      vessel.chatOp(CHANNEL, "replayEnvelope", ["env-7"]),
-    ).resolves.toEqual(event);
-    await expect(
-      vessel.chatOp(CHANNEL, "replayEnvelope", ["missing"]),
-    ).resolves.toBeNull();
-    await expect(
-      vessel.chatOp(CHANNEL, "replayEnvelope", [""]),
-    ).resolves.toBeNull();
+    await expect(vessel.chatOp(CHANNEL, "replayEnvelope", ["env-7"])).resolves.toEqual(event);
+    await expect(vessel.chatOp(CHANNEL, "replayEnvelope", ["missing"])).resolves.toBeNull();
+    await expect(vessel.chatOp(CHANNEL, "replayEnvelope", [""])).resolves.toBeNull();
   });
 
   it("getParticipants exposes the canonical chat participant shape", async () => {
@@ -1126,9 +1015,7 @@ describe("AgentVesselBase.chatOp", () => {
       },
     ];
 
-    await expect(
-      vessel.chatOp(CHANNEL, "getParticipants", []),
-    ).resolves.toEqual([
+    await expect(vessel.chatOp(CHANNEL, "getParticipants", [])).resolves.toEqual([
       {
         id: "participant-1",
         ref: { kind: "agent", id: "agent-1" },
@@ -1169,9 +1056,9 @@ describe("AgentVesselBase.chatOp", () => {
   it("configureAgent validates its patch (rejects an empty model)", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
-    await expect(
-      vessel.chatOp(CHANNEL, "configureAgent", [{ model: "" }]),
-    ).rejects.toThrow(/model/);
+    await expect(vessel.chatOp(CHANNEL, "configureAgent", [{ model: "" }])).rejects.toThrow(
+      /model/
+    );
   });
 
   it("registerMessageType publishes messageType.registered AS the agent", async () => {
@@ -1203,9 +1090,7 @@ describe("AgentVesselBase.chatOp", () => {
     // The stub returns { id: published.length }; the first publish is id 1, and
     // the handle must surface it (harmonized with the panel client).
     expect(result.pubsubId).toBe(1);
-    const started = vessel.channelStub.published.find(
-      (p) => p.event.kind === "custom.started",
-    );
+    const started = vessel.channelStub.published.find((p) => p.event.kind === "custom.started");
     expect(started).toBeDefined();
     expect(started!.event.actor.kind).toBe("agent");
   });
@@ -1270,14 +1155,12 @@ describe("AgentVesselBase.chatOp", () => {
     const pillKey = "automation:instituted:mission-daily";
     vessel.channelPublishFailures.add(pillKey);
     await expect(vessel.executeAutomationLaunchForTest(input)).rejects.toThrow(
-      `publish failed: ${pillKey}`,
+      `publish failed: ${pillKey}`
     );
     expect(vessel.channelStub.published).toHaveLength(0);
 
     vessel.channelPublishFailures.delete(pillKey);
-    await expect(
-      vessel.executeAutomationLaunchForTest(input),
-    ).resolves.toMatchObject({
+    await expect(vessel.executeAutomationLaunchForTest(input)).resolves.toMatchObject({
       details: { missionId: "mission-daily", state: "active" },
     });
 
@@ -1323,14 +1206,12 @@ describe("AgentVesselBase.chatOp", () => {
           },
         ],
         options: {
-          idempotencyKey: expect.stringMatching(
-            /automation:launch:.*:[0-9a-f]{64}$/,
-          ),
+          idempotencyKey: expect.stringMatching(/automation:launch:.*:[0-9a-f]{64}$/),
         },
-      })),
+      }))
     );
     expect(vessel.automationLaunchCalls[1]!.options).toEqual(
-      vessel.automationLaunchCalls[0]!.options,
+      vessel.automationLaunchCalls[0]!.options
     );
     expect(vessel.channelStub.published).toContainEqual(
       expect.objectContaining({
@@ -1350,12 +1231,13 @@ describe("AgentVesselBase.chatOp", () => {
             }),
           }),
         }),
-      }),
+      })
     );
 
-    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual(
-      ["authority.compileAuthorityPlan", "authority.compileAuthorityPlan"],
-    );
+    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual([
+      "authority.compileAuthorityPlan",
+      "authority.compileAuthorityPlan",
+    ]);
     vessel.automationAuthorityCalls.length = 0;
     await vessel.executeAutomationLaunchForTest({
       ...input,
@@ -1367,9 +1249,10 @@ describe("AgentVesselBase.chatOp", () => {
         },
       ],
     });
-    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual(
-      ["authority.compileAuthorityPlan", "authority.acquireForCurrentTask"],
-    );
+    expect(vessel.automationAuthorityCalls.map(({ method }) => method)).toEqual([
+      "authority.compileAuthorityPlan",
+      "authority.acquireForCurrentTask",
+    ]);
     expect(vessel.automationAuthorityCalls[1]!.args).toEqual([
       { authorityPlanDigest: "c".repeat(64) },
     ]);
@@ -1397,7 +1280,7 @@ describe("AgentVesselBase.chatOp", () => {
     ];
 
     await expect(
-      vessel.executeAutomationControlForTest({ action: "pause" }),
+      vessel.executeAutomationControlForTest({ action: "pause" })
     ).resolves.toMatchObject({
       output: [{ text: "Sloth fun facts was paused." }],
       details: { missionId: "mission-sloths", state: "paused" },
@@ -1408,7 +1291,7 @@ describe("AgentVesselBase.chatOp", () => {
         args: ["mission-sloths"],
         options: {
           idempotencyKey: expect.stringMatching(
-            /automation:control:agent-key:[0-9a-f]{64}:pause:mission-sloths/,
+            /automation:control:agent-key:[0-9a-f]{64}:pause:mission-sloths/
           ),
         },
       },
@@ -1422,14 +1305,14 @@ describe("AgentVesselBase.chatOp", () => {
       automationRecord({ missionId: "mission-two", name: "Two" }),
     ];
 
-    await expect(
-      vessel.executeAutomationControlForTest({ action: "pause" }),
-    ).rejects.toThrow("More than one automation matches");
+    await expect(vessel.executeAutomationControlForTest({ action: "pause" })).rejects.toThrow(
+      "More than one automation matches"
+    );
     await expect(
       vessel.executeAutomationControlForTest({
         action: "pause",
         name: "Two",
-      }),
+      })
     ).resolves.toMatchObject({ details: { missionId: "mission-two" } });
   });
 
@@ -1446,9 +1329,7 @@ describe("AgentVesselBase.chatOp", () => {
     ]);
     // Second publish on this channel → stub id 2.
     expect(pubsubId).toBe(2);
-    const updated = vessel.channelStub.published.find(
-      (p) => p.event.kind === "custom.updated",
-    );
+    const updated = vessel.channelStub.published.find((p) => p.event.kind === "custom.updated");
     expect(updated).toBeDefined();
     expect(updated!.event.actor.kind).toBe("agent");
   });
@@ -1456,19 +1337,13 @@ describe("AgentVesselBase.chatOp", () => {
   it("focusMessage is panel-only and resolves false", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
-    await expect(
-      vessel.chatOp(CHANNEL, "focusMessage", ["msg-1"]),
-    ).resolves.toBe(false);
+    await expect(vessel.chatOp(CHANNEL, "focusMessage", ["msg-1"])).resolves.toBe(false);
   });
 
   it("callMethod initiates a channel call and resolves with the delivered content", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
-    const promise = vessel.chatOp(CHANNEL, "callMethod", [
-      "panel-pid",
-      "doThing",
-      { x: 1 },
-    ]);
+    const promise = vessel.chatOp(CHANNEL, "callMethod", ["panel-pid", "doThing", { x: 1 }]);
     const call = await waitForCall(vessel);
     expect(call.method).toBe("doThing");
     await vessel.deliverTerminal(call.callId, "invocation.completed", {
@@ -1486,17 +1361,15 @@ describe("AgentVesselBase.chatOp", () => {
           channelMethodRelays: { call: (...args: unknown[]) => unknown };
         }
       ).channelMethodRelays,
-      "call",
+      "call"
     );
     for (const args of [
       ["history", { channelId: "missing", limit: 10 }],
       ["panel-pid", "doThing"],
       [null, "doThing", {}],
     ]) {
-      await expect(
-        vessel.chatOp(CHANNEL, "callMethodResult", args),
-      ).rejects.toThrow(
-        "chat.callMethod requires (participantId: string, method: string, args: JSON value)",
+      await expect(vessel.chatOp(CHANNEL, "callMethodResult", args)).rejects.toThrow(
+        "chat.callMethod requires (participantId: string, method: string, args: JSON value)"
       );
     }
     expect(relay).not.toHaveBeenCalled();
@@ -1505,11 +1378,7 @@ describe("AgentVesselBase.chatOp", () => {
   it("callMethodResult resolves with the full ChatMethodResult envelope", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
-    const promise = vessel.chatOp(CHANNEL, "callMethodResult", [
-      "panel-pid",
-      "doThing",
-      {},
-    ]);
+    const promise = vessel.chatOp(CHANNEL, "callMethodResult", ["panel-pid", "doThing", {}]);
     const call = await waitForCall(vessel);
     await vessel.deliverTerminal(call.callId, "invocation.completed", {
       result: "hello",
@@ -1520,11 +1389,7 @@ describe("AgentVesselBase.chatOp", () => {
   it("callMethod rejects when the channel terminal is an error", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
-    const promise = vessel.chatOp(CHANNEL, "callMethod", [
-      "panel-pid",
-      "boom",
-      {},
-    ]);
+    const promise = vessel.chatOp(CHANNEL, "callMethod", ["panel-pid", "boom", {}]);
     const call = await waitForCall(vessel);
     await vessel.deliverTerminal(call.callId, "invocation.failed", {
       error: "kaboom",
@@ -1537,7 +1402,7 @@ describe("AgentVesselBase.chatOp", () => {
     vessel.callerIdForTest = await expectedEvalCaller();
 
     await expect(
-      vessel.chatOp(CHANNEL, "callMethod", [AGENT_ID, "getDebugState", {}]),
+      vessel.chatOp(CHANNEL, "callMethod", [AGENT_ID, "getDebugState", {}])
     ).rejects.toThrow("gad.inspectAgent");
     expect(vessel.channelStub.calls).toHaveLength(0);
   });
@@ -1555,7 +1420,7 @@ describe("AgentVesselBase.onEvalProgress (live eval console streaming)", () => {
     });
 
     const published = vessel.channelStub.published.find(
-      (p) => p.event.kind === "invocation.output",
+      (p) => p.event.kind === "invocation.output"
     );
     expect(published?.event).toMatchObject({
       kind: "invocation.output",
@@ -1573,7 +1438,7 @@ describe("AgentVesselBase.onEvalProgress (live eval console streaming)", () => {
         agentInvocationId: "inv-6",
         channelId: CHANNEL,
         output: "x",
-      }),
+      })
     ).rejects.toThrow(/only this agent's own EvalDO/);
   });
 
@@ -1586,11 +1451,9 @@ describe("AgentVesselBase.onEvalProgress (live eval console streaming)", () => {
       channelId: CHANNEL,
       output: "",
     });
-    expect(
-      vessel.channelStub.published.some(
-        (p) => p.event.kind === "invocation.output",
-      ),
-    ).toBe(false);
+    expect(vessel.channelStub.published.some((p) => p.event.kind === "invocation.output")).toBe(
+      false
+    );
   });
 });
 describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
@@ -1609,9 +1472,8 @@ describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
     });
 
     expect(
-      vessel.channelStub.published.find(
-        (entry) => entry.event.kind === "invocation.progress",
-      )?.event,
+      vessel.channelStub.published.find((entry) => entry.event.kind === "invocation.progress")
+        ?.event
     ).toMatchObject({
       kind: "invocation.progress",
       causality: { invocationId: "inv-authority" },
@@ -1663,16 +1525,10 @@ class SubagentSpawnProbe extends TestVessel {
       }
       if (target === "main" && method === "vcs.status") {
         const contextId = String(
-          (args[0] as { contextId?: unknown } | undefined)?.contextId ??
-            "ctx-1",
+          (args[0] as { contextId?: unknown } | undefined)?.contextId ?? "ctx-1"
         );
         const eventId = `event:${contextId}`;
-        return semanticStatus(
-          contextId,
-          eventId,
-          { kind: "event", eventId },
-          true,
-        );
+        return semanticStatus(contextId, eventId, { kind: "event", eventId }, true);
       }
       if (target === "main" && method === "runtime.resolveContext") {
         return this.ownerRuntimeContextId;
@@ -1730,7 +1586,7 @@ class SubagentSpawnProbe extends TestVessel {
 
   seedSubagentStartedInParentChannelForTest(
     runId: string,
-    options: { includeChildParticipantId?: boolean } = {},
+    options: { includeChildParticipantId?: boolean } = {}
   ) {
     this.channelStub.replay.set(CHANNEL, [
       {
@@ -1795,19 +1651,11 @@ class SubagentSpawnProbe extends TestVessel {
     });
   }
 
-  async inspectSubagentForTest(
-    runId: string,
-    query: string,
-    parentChannelId = CHANNEL,
-  ) {
+  async inspectSubagentForTest(runId: string, query: string, parentChannelId = CHANNEL) {
     return this.inspectSubagent(runId, query, parentChannelId);
   }
 
-  async mergeSubagentForTest(
-    runId: string,
-    parentChannelId = CHANNEL,
-    intent?: string,
-  ) {
+  async mergeSubagentForTest(runId: string, parentChannelId = CHANNEL, intent?: string) {
     return this.mergeSubagent(runId, parentChannelId, [], intent);
   }
 
@@ -1815,19 +1663,11 @@ class SubagentSpawnProbe extends TestVessel {
     this.vcsResponses.set(`vcs.${method}`, [...responses]);
   }
 
-  async readSubagentForTest(
-    runId: string,
-    afterSeq: number,
-    parentChannelId = CHANNEL,
-  ) {
+  async readSubagentForTest(runId: string, afterSeq: number, parentChannelId = CHANNEL) {
     return this.readSubagent(runId, afterSeq, parentChannelId);
   }
 
-  async sendToSubagentForTest(
-    runId: string,
-    message: string,
-    parentChannelId = CHANNEL,
-  ) {
+  async sendToSubagentForTest(runId: string, message: string, parentChannelId = CHANNEL) {
     return this.sendToSubagent("send-test", runId, message, parentChannelId);
   }
 
@@ -1839,14 +1679,10 @@ class SubagentSpawnProbe extends TestVessel {
     this.subagentRuns.setSourceEventId(runId, sourceEventId);
   }
 }
-async function makeSubagentSpawnProbe(
-  config?: unknown,
-): Promise<SubagentSpawnProbe> {
-  const { instance, db } = await createTestDO(
-    SubagentSpawnProbe,
-    TEST_AGENT_ENV,
-    { props: TEST_AGENT_PROPS },
-  );
+async function makeSubagentSpawnProbe(config?: unknown): Promise<SubagentSpawnProbe> {
+  const { instance, db } = await createTestDO(SubagentSpawnProbe, TEST_AGENT_ENV, {
+    props: TEST_AGENT_PROPS,
+  });
   await instance.registerSubscriptionForTest(CHANNEL, config);
   databases.push(db);
   return instance;
@@ -1854,11 +1690,9 @@ async function makeSubagentSpawnProbe(
 function semanticStatus(
   contextId: string,
   committedEventId: string,
-  workingHead:
-    | { kind: "event"; eventId: string }
-    | { kind: "application"; applicationId: string },
+  workingHead: { kind: "event"; eventId: string } | { kind: "application"; applicationId: string },
   clean: boolean,
-  integrating: VcsStatusResult["integrating"] = [],
+  integrating: VcsStatusResult["integrating"] = []
 ) {
   return {
     contextId,
@@ -1876,16 +1710,12 @@ function semanticStatus(
   };
 }
 function semanticComparison(
-  target:
-    | { kind: "event"; eventId: string }
-    | { kind: "application"; applicationId: string },
+  target: { kind: "event"; eventId: string } | { kind: "application"; applicationId: string },
   sourceEventId: string,
   coordinates: Array<{ id: string; status: "adopt" | "conflict" }>,
-  concluded = coordinates.length === 0,
+  concluded = coordinates.length === 0
 ): VcsCompareResult {
-  const conflict = coordinates.filter(
-    (coordinate) => coordinate.status === "conflict",
-  ).length;
+  const conflict = coordinates.filter((coordinate) => coordinate.status === "conflict").length;
   const adopt = coordinates.length - conflict;
   return {
     target,
@@ -1922,9 +1752,7 @@ function semanticComparison(
       ],
       attribution: {
         ours: [],
-        theirs: [
-          { changeId: `change:${entry.id}`, workUnitId: `work:${entry.id}` },
-        ],
+        theirs: [{ changeId: `change:${entry.id}`, workUnitId: `work:${entry.id}` }],
       },
       resolutions: ["theirs", "ours", "current"],
       summary: entry.id,
@@ -1943,16 +1771,12 @@ describe("AgentVesselBase retained subagent resources", () => {
         runId: "inv-invalid-query",
         status: "running",
       });
-      await expect(
-        probe.inspectSubagentForTest("inv-invalid-query", query),
-      ).rejects.toMatchObject({
+      await expect(probe.inspectSubagentForTest("inv-invalid-query", query)).rejects.toMatchObject({
         code: "InvalidReference",
         errorData: { referenceKind: "child-file-path", query },
       });
-      expect(
-        probe.rpcCalls.filter(({ method }) => method.startsWith("vcs.")),
-      ).toEqual([]);
-    },
+      expect(probe.rpcCalls.filter(({ method }) => method.startsWith("vcs."))).toEqual([]);
+    }
   );
 
   it("returns a bounded parent-relative diff instead of expanding the child semantic graph", async () => {
@@ -1967,26 +1791,21 @@ describe("AgentVesselBase retained subagent resources", () => {
     probe.respondToVcs(
       "status",
       semanticStatus("ctx-inv-diff-stale", "event:child", childHead, true),
-      semanticStatus("ctx-1", "event:parent", parentHead, false),
+      semanticStatus("ctx-1", "event:parent", parentHead, false)
     );
     probe.respondToVcs(
       "compare",
-      semanticComparison(parentHead, "event:child", [
-        { id: "child", status: "adopt" },
-      ]),
+      semanticComparison(parentHead, "event:child", [{ id: "child", status: "adopt" }])
     );
 
     const out = await probe.inspectSubagentForTest(runId, "diff");
-    const text =
-      (out.output?.[0] as { text?: string } | undefined)?.text ?? "";
+    const text = (out.output?.[0] as { text?: string } | undefined)?.text ?? "";
 
     expect(text).toContain("Source event:child: 1 adopt");
     expect(text).toContain("Coordinate: file:child · adopt · child");
     expect(text).toContain("Child source is committed and clean");
     expect(text.length).toBeLessThan(20_000);
-    expect(
-      probe.rpcCalls.filter(({ method }) => method.startsWith("vcs.")),
-    ).toEqual([
+    expect(probe.rpcCalls.filter(({ method }) => method.startsWith("vcs."))).toEqual([
       {
         target: "main",
         method: "vcs.status",
@@ -2009,9 +1828,7 @@ describe("AgentVesselBase retained subagent resources", () => {
         ],
       },
     ]);
-    expect(probe.rpcCalls.some(({ method }) => method === "vcs.inspect")).toBe(
-      false,
-    );
+    expect(probe.rpcCalls.some(({ method }) => method === "vcs.inspect")).toBe(false);
   });
 
   it("compares the child's current working state when it has uncommitted edits", async () => {
@@ -2028,26 +1845,19 @@ describe("AgentVesselBase retained subagent resources", () => {
     };
     probe.respondToVcs(
       "status",
-      semanticStatus(
-        "ctx-inv-dirty-diff",
-        "event:child-commit",
-        childWorkingHead,
-        false,
-      ),
-      semanticStatus("ctx-1", "event:parent", parentHead, false),
+      semanticStatus("ctx-inv-dirty-diff", "event:child-commit", childWorkingHead, false),
+      semanticStatus("ctx-1", "event:parent", parentHead, false)
     );
     probe.respondToVcs(
       "compare",
       semanticComparison(parentHead, "application:child-working", [
         { id: "dirty-child", status: "adopt" },
-      ]),
+      ])
     );
 
     const out = await probe.inspectSubagentForTest(runId, "diff");
     expect(out.output?.[0]).toMatchObject({
-      text: expect.stringContaining(
-        "comparison includes its current working state",
-      ),
+      text: expect.stringContaining("comparison includes its current working state"),
     });
     expect(probe.rpcCalls).toContainEqual({
       target: "main",
@@ -2067,29 +1877,20 @@ describe("AgentVesselBase retained subagent resources", () => {
     };
     probe.respondToVcs(
       "status",
-      semanticStatus(
-        "ctx-inv-log-stale",
-        committed.eventId,
-        workingHead,
-        false,
-      ),
+      semanticStatus("ctx-inv-log-stale", committed.eventId, workingHead, false)
     );
     probe.respondToVcs("history", {
       root: committed,
-      entries: [
-        { node: committed, createdAt: null, summary: "Child fixture commit" },
-      ],
+      entries: [{ node: committed, createdAt: null, summary: "Child fixture commit" }],
       nextCursor: null,
     });
 
     const out = await probe.inspectSubagentForTest(runId, "log");
 
     expect((out.output?.[0] as { text?: string } | undefined)?.text).toContain(
-      "Child fixture commit",
+      "Child fixture commit"
     );
-    expect(
-      probe.rpcCalls.filter(({ method }) => method.startsWith("vcs.")),
-    ).toEqual([
+    expect(probe.rpcCalls.filter(({ method }) => method.startsWith("vcs."))).toEqual([
       {
         target: "main",
         method: "vcs.status",
@@ -2129,12 +1930,7 @@ describe("AgentVesselBase retained subagent resources", () => {
     probe.respondToVcs(
       "status",
       semanticStatus("ctx-1", "event:parent", target, false),
-      semanticStatus(
-        "ctx-child",
-        sourceEventId,
-        { kind: "event", eventId: sourceEventId },
-        true,
-      ),
+      semanticStatus("ctx-child", sourceEventId, { kind: "event", eventId: sourceEventId }, true)
     );
     const initialComparison = semanticComparison(target, sourceEventId, [
       { id: "one", status: "adopt" },
@@ -2154,7 +1950,7 @@ describe("AgentVesselBase retained subagent resources", () => {
     probe.respondToVcs(
       "compare",
       initialComparison,
-      semanticComparison(integrated, sourceEventId, []),
+      semanticComparison(integrated, sourceEventId, [])
     );
     probe.respondToVcs("merge", {
       ...integration,
@@ -2192,7 +1988,7 @@ describe("AgentVesselBase retained subagent resources", () => {
     const result = await probe.mergeSubagentForTest(
       runId,
       CHANNEL,
-      "Integrate the reviewed fixture corpus",
+      "Integrate the reviewed fixture corpus"
     );
 
     expect(result.details).toMatchObject({
@@ -2210,30 +2006,25 @@ describe("AgentVesselBase retained subagent resources", () => {
     expect(result.output?.[0]).toMatchObject({
       type: "text",
       text: expect.stringMatching(
-        /Resolution: complete=true; concluded=true; remaining=0[\s\S]*Source: asked by user:owner[\s\S]*Composed: file:one/,
+        /Resolution: complete=true; concluded=true; remaining=0[\s\S]*Source: asked by user:owner[\s\S]*Composed: file:one/
       ),
     });
     expect(probe.subagentRunForTest(runId)?.sourceEventId).toBe(sourceEventId);
     const vcsCalls = probe.rpcCalls.filter(
-      ({ target: callTarget, method }) =>
-        callTarget === "main" && method.startsWith("vcs."),
+      ({ target: callTarget, method }) => callTarget === "main" && method.startsWith("vcs.")
     );
-    expect(vcsCalls.map(({ method }) => method)).toEqual([
-      "vcs.status",
-      "vcs.status",
-      "vcs.merge",
-    ]);
-    const integrateInput = vcsCalls.find(({ method }) => method === "vcs.merge")
-      ?.args[0] as Record<string, unknown>;
+    expect(vcsCalls.map(({ method }) => method)).toEqual(["vcs.status", "vcs.status", "vcs.merge"]);
+    const integrateInput = vcsCalls.find(({ method }) => method === "vcs.merge")?.args[0] as Record<
+      string,
+      unknown
+    >;
     expect(integrateInput).toMatchObject({
       contextId: "ctx-1",
       expectedWorkingHead: target,
       source: { kind: "event", eventId: sourceEventId },
       intentSummary: "Integrate the reviewed fixture corpus",
     });
-    expect(integrateInput["commandId"]).toMatch(
-      /^subagent-merge:[a-f0-9]{64}$/,
-    );
+    expect(integrateInput["commandId"]).toMatch(/^subagent-merge:[a-f0-9]{64}$/);
     expect(vcsCalls.some(({ method }) => method === "vcs.commit")).toBe(false);
   });
 
@@ -2249,12 +2040,7 @@ describe("AgentVesselBase retained subagent resources", () => {
     probe.respondToVcs(
       "status",
       semanticStatus("ctx-1", "event:parent", target, false),
-      semanticStatus(
-        "ctx-child",
-        sourceEventId,
-        { kind: "event", eventId: sourceEventId },
-        true,
-      ),
+      semanticStatus("ctx-child", sourceEventId, { kind: "event", eventId: sourceEventId }, true)
     );
     probe.respondToVcs("merge", {
       status: "unchanged",
@@ -2313,18 +2099,13 @@ describe("AgentVesselBase retained subagent resources", () => {
     probe.respondToVcs(
       "status",
       semanticStatus("ctx-1", "event:parent", target, false),
-      semanticStatus(
-        "ctx-child",
-        sourceEventId,
-        { kind: "event", eventId: sourceEventId },
-        true,
-      ),
+      semanticStatus("ctx-child", sourceEventId, { kind: "event", eventId: sourceEventId }, true)
     );
     const latePage = semanticComparison(
       target,
       sourceEventId,
       [{ id: "late-conflict", status: "conflict" }],
-      true,
+      true
     );
     probe.respondToVcs("merge", {
       status: "unchanged",
@@ -2354,12 +2135,8 @@ describe("AgentVesselBase retained subagent resources", () => {
         ],
       }),
     });
-    expect(
-      probe.rpcCalls.filter(({ method }) => method === "vcs.compare"),
-    ).toHaveLength(0);
-    expect(
-      probe.rpcCalls.filter(({ method }) => method === "vcs.merge"),
-    ).toHaveLength(1);
+    expect(probe.rpcCalls.filter(({ method }) => method === "vcs.compare")).toHaveLength(0);
+    expect(probe.rpcCalls.filter(({ method }) => method === "vcs.merge")).toHaveLength(1);
   });
 
   it("keeps adopted changes local and reports remaining conflicting changes", async () => {
@@ -2379,12 +2156,7 @@ describe("AgentVesselBase retained subagent resources", () => {
     probe.respondToVcs(
       "status",
       semanticStatus("ctx-1", "event:parent", target, false),
-      semanticStatus(
-        "ctx-child",
-        sourceEventId,
-        { kind: "event", eventId: sourceEventId },
-        true,
-      ),
+      semanticStatus("ctx-child", sourceEventId, { kind: "event", eventId: sourceEventId }, true)
     );
     probe.respondToVcs(
       "compare",
@@ -2392,7 +2164,7 @@ describe("AgentVesselBase retained subagent resources", () => {
         { id: "applicable", status: "adopt" },
         conflicting,
       ]),
-      semanticComparison(integrated, sourceEventId, [conflicting], true),
+      semanticComparison(integrated, sourceEventId, [conflicting], true)
     );
     probe.respondToVcs("merge", {
       status: "working",
@@ -2422,12 +2194,7 @@ describe("AgentVesselBase retained subagent resources", () => {
         conflict: 1,
         resolved: 1,
       },
-      conflicts: semanticComparison(
-        integrated,
-        sourceEventId,
-        [conflicting],
-        true,
-      ).coordinates,
+      conflicts: semanticComparison(integrated, sourceEventId, [conflicting], true).coordinates,
       nextConflictCursor: null,
       composed: [],
     });
@@ -2467,11 +2234,9 @@ describe("AgentVesselBase retained subagent resources", () => {
       empty: true,
     });
     expect(await probe.addresseeRunsForTest()).toContainEqual(
-      expect.objectContaining({ runId, runRef, status: "completed" }),
+      expect.objectContaining({ runId, runRef, status: "completed" })
     );
-    await expect(
-      probe.sendToSubagentForTest(runRef, "follow up"),
-    ).resolves.toMatchObject({
+    await expect(probe.sendToSubagentForTest(runRef, "follow up")).resolves.toMatchObject({
       details: { runId, runRef, messageId: "subagent-msg:send-test" },
     });
     expect(probe.subagentRunForTest(runId)?.status).toBe("running");
@@ -2494,9 +2259,7 @@ describe("AgentVesselBase retained subagent resources", () => {
       "@s0",
       "@s999",
     ]) {
-      await expect(probe.readSubagentForTest(reference, 0)).rejects.toThrow(
-        "unknown subagent run",
-      );
+      await expect(probe.readSubagentForTest(reference, 0)).rejects.toThrow("unknown subagent run");
     }
   });
 
@@ -2526,8 +2289,8 @@ describe("AgentVesselBase retained subagent resources", () => {
             },
             stale: false,
           },
-        ],
-      ),
+        ]
+      )
     );
 
     const prompt = await probe.systemPromptForTest();
@@ -2568,14 +2331,10 @@ describe("AgentVesselBase retained subagent resources", () => {
         },
       },
     };
+    await expect(child.acceptsMessageForTest("task-inv-1", event)).resolves.toBe(true);
+    await expect(child.acceptsMessageForTest(CHANNEL, event)).resolves.toBe(false);
     await expect(
-      child.acceptsMessageForTest("task-inv-1", event),
-    ).resolves.toBe(true);
-    await expect(child.acceptsMessageForTest(CHANNEL, event)).resolves.toBe(
-      false,
-    );
-    await expect(
-      child.acceptsMessageForTest("task-inv-1", { ...event, senderId: "peer" }),
+      child.acceptsMessageForTest("task-inv-1", { ...event, senderId: "peer" })
     ).resolves.toBe(false);
   });
 });
@@ -2607,10 +2366,7 @@ describe("AgentVesselBase native intake decisions", () => {
     };
     const selected = await vessel.selectForTest(CHANNEL, event);
     expect(selected.intake.kind).toBe("input");
-    if (
-      selected.intake.kind !== "input" ||
-      typeof selected.intake.content !== "string"
-    )
+    if (selected.intake.kind !== "input" || typeof selected.intake.content !== "string")
       throw new Error("The UI choice was not admitted as native input");
     const [text, selection] = selected.intake.content.split("\n\n");
     expect(text).toBe("Use the selected setup action.");
@@ -2638,8 +2394,29 @@ describe("AgentVesselBase native intake decisions", () => {
             metadata: { interaction: { ...interaction, targetId: null } },
           },
         },
-      }),
+      })
     ).rejects.toThrow("UI interaction requires");
+  });
+
+  it("notes a message sent from the terminal chat, and nothing for the browser default", async () => {
+    const vessel = await makePromptProbe();
+    const sent = (surface: string) => ({
+      ...customChannelEvent(AGENTIC_EVENT_PAYLOAD_KIND),
+      senderMetadata: { name: "Client", type: "panel", surface },
+      payload: {
+        kind: "message.completed",
+        actor: { kind: "user", id: "user" },
+        causality: { messageId: `from-${surface}` },
+        payload: { blocks: [{ type: "text", content: "Show me the plan." }] },
+      },
+    });
+    const terminal = await vessel.selectForTest(CHANNEL, sent("terminal"));
+    expect(terminal.intake).toMatchObject({ kind: "input" });
+    const content = (terminal.intake as { content: string }).content;
+    expect(content.startsWith("Show me the plan.\n\n(Sent from the terminal chat")).toBe(true);
+    expect(content).toContain("skills/sandbox/TERMINAL_CARDS.md");
+    const browser = await vessel.selectForTest(CHANNEL, sent("browser"));
+    expect(browser.intake).toEqual({ kind: "input", content: "Show me the plan." });
   });
 
   it("renders structured selected values in the admitted model input", async () => {
@@ -2663,25 +2440,18 @@ describe("AgentVesselBase native intake decisions", () => {
         },
       },
     });
-    if (
-      selected.intake.kind !== "input" ||
-      typeof selected.intake.content !== "string"
-    )
+    if (selected.intake.kind !== "input" || typeof selected.intake.content !== "string")
       throw new Error("The UI choice was not admitted as native input");
-    expect(
-      JSON.parse(selected.intake.content.split("\n\n")[1]!.split("\n")[1]!),
-    ).toEqual(interaction);
+    expect(JSON.parse(selected.intake.content.split("\n\n")[1]!.split("\n")[1]!)).toEqual(
+      interaction
+    );
   });
 
   it("keeps an unconfigured custom payload as a passive observation", async () => {
     const vessel = await makePromptProbe();
     expect(
-      (
-        await vessel.selectForTest(
-          CHANNEL,
-          customChannelEvent("application.incident.v1"),
-        )
-      ).intake.kind,
+      (await vessel.selectForTest(CHANNEL, customChannelEvent("application.incident.v1"))).intake
+        .kind
     ).toBe("observation");
   });
   it("selects exact configured payloads with bounded sanitized provenance", async () => {
@@ -2695,12 +2465,9 @@ describe("AgentVesselBase native intake decisions", () => {
     };
     const selected = await vessel.selectForTest(
       CHANNEL,
-      customChannelEvent("application.incident.v1", { payload }),
+      customChannelEvent("application.incident.v1", { payload })
     );
-    if (
-      selected.intake.kind !== "input" ||
-      typeof selected.intake.content !== "string"
-    )
+    if (selected.intake.kind !== "input" || typeof selected.intake.content !== "string")
       throw new Error("Configured observation was not selected");
     const [title, json] = selected.intake.content.split("\n\n");
     expect(title).toBe("Channel observation: application.incident.v1");
@@ -2731,11 +2498,10 @@ describe("AgentVesselBase native intake decisions", () => {
       const vessel = await makePromptProbe({
         observations: { payloadKinds: ["application.incident.v1"] },
       });
-      expect(
-        (await vessel.selectForTest(CHANNEL, customChannelEvent(type))).intake
-          .kind,
-      ).toBe("observation");
-    },
+      expect((await vessel.selectForTest(CHANNEL, customChannelEvent(type))).intake.kind).toBe(
+        "observation"
+      );
+    }
   );
   it("keeps self-authored configured payloads passive", async () => {
     const vessel = await makePromptProbe({
@@ -2745,9 +2511,9 @@ describe("AgentVesselBase native intake decisions", () => {
       (
         await vessel.selectForTest(
           CHANNEL,
-          customChannelEvent("application.incident.v1", { senderId: AGENT_ID }),
+          customChannelEvent("application.incident.v1", { senderId: AGENT_ID })
         )
-      ).intake.kind,
+      ).intake.kind
     ).toBe("observation");
   });
   it("replaces oversized payloads with a canonical bounded preview", async () => {
@@ -2757,22 +2523,17 @@ describe("AgentVesselBase native intake decisions", () => {
     const payload = { details: "x".repeat(40_000) };
     const selected = await vessel.selectForTest(
       CHANNEL,
-      customChannelEvent("application.incident.v1", { payload }),
+      customChannelEvent("application.incident.v1", { payload })
     );
-    if (
-      selected.intake.kind !== "input" ||
-      typeof selected.intake.content !== "string"
-    )
+    if (selected.intake.kind !== "input" || typeof selected.intake.content !== "string")
       throw new Error("Observation not selected");
-    expect(JSON.parse(selected.intake.content.split("\n\n")[1]!)).toMatchObject(
-      {
-        payload: null,
-        truncated: {
-          originalChars: JSON.stringify(payload).length,
-          preview: JSON.stringify(payload).slice(0, 8192),
-        },
+    expect(JSON.parse(selected.intake.content.split("\n\n")[1]!)).toMatchObject({
+      payload: null,
+      truncated: {
+        originalChars: JSON.stringify(payload).length,
+        preview: JSON.stringify(payload).slice(0, 8192),
       },
-    );
+    });
   });
   it.each(["manual", "explicit"])(
     "suppresses configured input for %s wake policy",
@@ -2782,14 +2543,10 @@ describe("AgentVesselBase native intake decisions", () => {
         observations: { payloadKinds: ["application.incident.v1"] },
       });
       expect(
-        (
-          await vessel.selectForTest(
-            CHANNEL,
-            customChannelEvent("application.incident.v1"),
-          )
-        ).intake.kind,
+        (await vessel.selectForTest(CHANNEL, customChannelEvent("application.incident.v1"))).intake
+          .kind
       ).toBe("observation");
-    },
+    }
   );
   it("keeps agentic infrastructure passive", async () => {
     const vessel = await makePromptProbe({
@@ -2812,12 +2569,8 @@ describe("AgentVesselBase native intake decisions", () => {
     });
     vessel.consumePayloadKind = "application.incident.v1";
     expect(
-      (
-        await vessel.selectForTest(
-          CHANNEL,
-          customChannelEvent("application.incident.v1"),
-        )
-      ).intake.kind,
+      (await vessel.selectForTest(CHANNEL, customChannelEvent("application.incident.v1"))).intake
+        .kind
     ).toBe("observation");
   });
   it("refuses to infer an input from a message without canonical source identity", async () => {
@@ -2831,7 +2584,7 @@ describe("AgentVesselBase native intake decisions", () => {
       },
     };
     await expect(vessel.selectForTest(CHANNEL, event)).rejects.toThrow(
-      "canonical source message identity",
+      "canonical source message identity"
     );
   });
 });

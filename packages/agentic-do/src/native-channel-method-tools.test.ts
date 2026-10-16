@@ -41,7 +41,7 @@ describe("native advertised channel tools", () => {
       "agent",
       [peer("user:one")],
       new Set(),
-      execution as never,
+      execution as never
     );
     expect(tool!.name).toBe("inline_ui");
     expect(tool!.parameters).toMatchObject({
@@ -51,11 +51,9 @@ describe("native advertised channel tools", () => {
     await tool!.execute(
       { path: "skills/onboarding/SetupHub.tsx" },
       { executionData: tool!.executionData } as ToolExecutionApi,
-      BACKGROUND_CONTEXT,
+      BACKGROUND_CONTEXT
     );
-    await expect(
-      execution.execute.mock.results[0]!.value,
-    ).resolves.toMatchObject({
+    await expect(execution.execute.mock.results[0]!.value).resolves.toMatchObject({
       details: {
         channelId: "chat",
         callerId: "agent",
@@ -72,19 +70,19 @@ describe("native advertised channel tools", () => {
       "agent",
       [peer("user:old")],
       new Set(),
-      execution as never,
+      execution as never
     );
     const [current] = createNativeChannelMethodTools(
       "other-chat",
       "other-agent",
       [peer("user:new")],
       new Set(),
-      execution as never,
+      execution as never
     );
     const result = await current!.execute(
       { path: "original.tsx" },
       { executionData: old!.executionData } as ToolExecutionApi,
-      BACKGROUND_CONTEXT,
+      BACKGROUND_CONTEXT
     );
     expect(result).toMatchObject({
       details: {
@@ -107,11 +105,11 @@ describe("native advertised channel tools", () => {
         "agent",
         roster,
         new Set(["eval"]),
-        execution as never,
+        execution as never
       );
     const tools = make(peers);
     expect(tools.map((tool) => tool.name)).toEqual(
-      make([...peers].reverse()).map((tool) => tool.name),
+      make([...peers].reverse()).map((tool) => tool.name)
     );
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "eval_alice",
@@ -119,21 +117,16 @@ describe("native advertised channel tools", () => {
       "eval_user_three",
     ]);
     for (const tool of tools)
-      expect(
-        (tool.executionData as { targetIds: string[] }).targetIds,
-      ).toHaveLength(1);
+      expect((tool.executionData as { targetIds: string[] }).targetIds).toHaveLength(1);
   });
   it("merges identical offers into one plain-named tool with a required target selector", async () => {
     const execution = engine();
     const [tool, ...rest] = createNativeChannelMethodTools(
       "chat",
       "agent",
-      [
-        withHandle(peer("user:one"), "desktop"),
-        withHandle(peer("user:two"), "mobile"),
-      ],
+      [withHandle(peer("user:one"), "desktop"), withHandle(peer("user:two"), "mobile")],
       new Set(),
-      execution as never,
+      execution as never
     );
     expect(rest).toHaveLength(0);
     expect(tool!.name).toBe("inline_ui");
@@ -149,19 +142,17 @@ describe("native advertised channel tools", () => {
     await tool!.execute(
       { path: "a.tsx", target_participant: "mobile" },
       { executionData: tool!.executionData } as ToolExecutionApi,
-      BACKGROUND_CONTEXT,
+      BACKGROUND_CONTEXT
     );
-    await expect(
-      execution.execute.mock.results[0]!.value,
-    ).resolves.toMatchObject({
+    await expect(execution.execute.mock.results[0]!.value).resolves.toMatchObject({
       details: { targetIds: ["user:two"], args: { path: "a.tsx" } },
     });
     await expect(
       tool!.execute(
         { path: "a.tsx", target_participant: "nobody" },
         { executionData: tool!.executionData } as ToolExecutionApi,
-        BACKGROUND_CONTEXT,
-      ),
+        BACKGROUND_CONTEXT
+      )
     ).rejects.toThrow("target_participant must be one of");
   });
   it("targets participant ids when handles are missing", () => {
@@ -170,7 +161,7 @@ describe("native advertised channel tools", () => {
       "agent",
       [peer("user:one"), peer("user:two")],
       new Set(),
-      engine() as never,
+      engine() as never
     );
     expect(tool!.parameters).toMatchObject({
       properties: {
@@ -189,12 +180,9 @@ describe("native advertised channel tools", () => {
       "agent",
       [withHandle(peer("user:one"), "desktop"), different],
       new Set(),
-      engine() as never,
+      engine() as never
     );
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "inline_ui_desktop",
-      "inline_ui_mobile",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(["inline_ui_desktop", "inline_ui_mobile"]);
   });
   it("uses the same native cancellation owner and refuses a lost execution binding", async () => {
     const execution = engine();
@@ -203,17 +191,41 @@ describe("native advertised channel tools", () => {
       "agent",
       [peer("user:one")],
       new Set(),
-      execution as never,
+      execution as never
     );
     const api = { executionData: tool!.executionData } as ToolExecutionApi;
     await tool!.cancel!({}, api, BACKGROUND_CONTEXT);
     expect(execution.cancel).toHaveBeenCalledWith(api, BACKGROUND_CONTEXT);
     await expect(
-      tool!.execute(
-        {},
-        { executionData: null } as ToolExecutionApi,
-        BACKGROUND_CONTEXT,
-      ),
+      tool!.execute({}, { executionData: null } as ToolExecutionApi, BACKGROUND_CONTEXT)
     ).rejects.toThrow("Channel method tool lost its original offered owner");
+  });
+  it("names the chat client each offer comes from", () => {
+    const client = (id: string, name: string, surface: string): RosterEntry => ({
+      ...peer(id),
+      ref: {
+        kind: "panel",
+        id: id as never,
+        displayName: name,
+        metadata: { type: "panel", name, surface },
+      },
+    });
+    const [single] = createNativeChannelMethodTools(
+      "chat",
+      "agent",
+      [client("terminal-chat-1", "Terminal", "terminal")],
+      new Set(),
+      engine() as never
+    );
+    expect(single!.description).toContain("the person's terminal chat");
+    const [shared] = createNativeChannelMethodTools(
+      "chat",
+      "agent",
+      [client("panel-1", "Chat", "browser"), client("terminal-chat-1", "Terminal", "terminal")],
+      new Set(),
+      engine() as never
+    );
+    expect(shared!.description).toContain("panel-1 (Chat, browser chat panel)");
+    expect(shared!.description).toContain("terminal-chat-1 (Terminal, terminal chat)");
   });
 });
