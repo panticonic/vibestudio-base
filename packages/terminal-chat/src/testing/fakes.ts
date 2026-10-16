@@ -61,6 +61,8 @@ export interface FakeCalls {
   flushed: number;
   agentCalls: Array<{ id: string; method: string; args: unknown }>;
   loadEarlier: number;
+  /** What cards sent as the person. */
+  cardSends: Array<{ text: string; options: unknown }>;
 }
 
 const HOST: ChatHostSnapshot = {
@@ -158,6 +160,7 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
     flushed: 0,
     agentCalls: [],
     loadEarlier: 0,
+    cardSends: [],
   };
   const sessionStore = new ValueStore<ChatSessionSnapshot>(fakeSessionSnapshot(initial));
   const deferredStore = new ValueStore<{ deferredAgent: DeferredAgentState | undefined }>({
@@ -245,6 +248,11 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
       session.setInput(text);
       await session.submit(undefined, options);
     },
+    sendFromCard: async (text: string, options: unknown) => {
+      calls.cardSends.push({ text, options });
+    },
+    publishFromCard: async () => {},
+    reportCardFailure: async () => {},
     attachFile: async () => {},
     removeAttachment: async () => {},
     notify(notice: Omit<Notice, "id">) {

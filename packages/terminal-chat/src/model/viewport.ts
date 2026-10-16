@@ -24,6 +24,8 @@ export const FOLLOW: ScrollState = { mode: "follow" };
 export interface VisibleLine {
   text: string;
   rowIndex: number;
+  /** Its line within the row. */
+  line: number;
   /** First line of its row (where the selection marker goes). */
   first: boolean;
 }
@@ -73,7 +75,7 @@ export function computeWindow(source: RowSource, rows: number, scroll: ScrollSta
   while (index < source.count && lines.length < rows) {
     const rowLines = source.lines(index);
     for (; line < rowLines.length && lines.length < rows; line++) {
-      lines.push({ text: rowLines[line]!, rowIndex: index, first: line === 0 });
+      lines.push({ text: rowLines[line]!, rowIndex: index, line, first: line === 0 });
     }
     if (line >= rowLines.length) {
       index++;

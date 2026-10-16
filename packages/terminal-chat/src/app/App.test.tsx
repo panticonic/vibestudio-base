@@ -389,6 +389,40 @@ describe("TerminalChatApp", () => {
     await expect(answer).resolves.toEqual({ type: "submit", value: { color: "blue" } });
   });
 
+  it("draws an agent's MDX message as a card and sends what is clicked on it", async () => {
+    const app = await mount({}, 80, 30);
+    app.chat.update({
+      messages: [
+        agentReply(
+          "a1",
+          'Pick one:\n\n<Choices id="next" question="What next?" options={[{ label: "Ship it" }, { label: "Wait" }]} />'
+        ),
+      ],
+    });
+    // The card compiles asynchronously, then is drawn into its row.
+    for (let i = 0; i < 100 && !app.text().includes("○ Ship it"); i++) await settle();
+    expect(app.text()).toContain("What next?");
+    const click = async (text: string) => {
+      const y = app.screen().findIndex((line) => line.includes(text));
+      const x = app.screen()[y]!.indexOf(text);
+      await app.type(`\x1b[<0;${x + 1};${y + 1}M`, `\x1b[<0;${x + 1};${y + 1}m`);
+    };
+    await click("Ship it");
+    for (let i = 0; i < 50 && !app.text().includes("◉ Ship it"); i++) await settle();
+    await click("Send");
+    for (let i = 0; i < 50 && !app.chat.calls.cardSends.length; i++) await settle();
+    expect(app.chat.calls.cardSends).toEqual([
+      {
+        text: "What next? → Ship it",
+        options: {
+          metadata: {
+            interaction: expect.objectContaining({ source: "choices", targetId: "next" }),
+          },
+        },
+      },
+    ]);
+  });
+
   it("offers a clickable way back to the newest message after scrolling up", async () => {
     const messages = Array.from({ length: 60 }, (_, i) =>
       agentReply(`m${i}`, `message number ${i}`)

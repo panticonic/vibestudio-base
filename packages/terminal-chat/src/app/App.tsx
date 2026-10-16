@@ -47,6 +47,7 @@ import {
   renderRow,
   rowKind,
   type RowContext,
+  type RowKind,
 } from "../model/transcript.js";
 import {
   FOLLOW,
@@ -61,6 +62,9 @@ import { attentionSequence, copySequence, hyperlink, titleSequence } from "../te
 import { useInputEvents, useStore, useTerminalSize, type InputSource } from "../ui/hooks.js";
 import { ChatActions, type CurrentSettings, type PromptSpec } from "./actions.js";
 import { layoutScreen, type Screen, type ScreenModel } from "./screen.js";
+import { CardHost, type CardEnvironment } from "../cards/cardHost.js";
+import { cardSpec } from "../cards/cardSpec.js";
+import { keyBytes } from "../cards/keyBytes.js";
 import { sanitize, wrap } from "../model/ansi.js";
 
 export interface TerminalChatProps {
@@ -368,11 +372,84 @@ export function TerminalChatApp({
 
   // ── transcript rows ────────────────────────────────────────────────────────
   const gutter = 2;
+  // Cards: live Ink trees drawn into their rows (MDX messages, inline UI).
+  const [, setCardVersion] = useState(0);
+  const cardHost = useRef<CardHost | null>(null);
+  cardHost.current ??= new CardHost(() => setCardVersion((v) => v + 1));
+  const cards = cardHost.current;
+  useEffect(() => () => cards.dispose(), [cards]);
+  /** The card that has the keyboard, by message id. */
+  const [cardFocus, setCardFocus] = useState<string | null>(null);
+  const cardEnvironment = useMemo<CardEnvironment>(() => {
+    // Answered state comes from the durable transcript, as in the panel.
+    const answers = new Map<string, { text: string; values?: string[] }>();
+    for (const message of transcript) {
+      const interaction = message.interaction;
+      if (!interaction || message.error || message.pending) continue;
+      answers.set(`${interaction.source}\u0000${interaction.targetId}`, {
+        text: message.content,
+        ...(interaction.values ? { values: interaction.values } : {}),
+      });
+    }
+    return {
+      actions: {
+        send: (text, options) =>
+          runtime.sendFromCard(
+            text,
+            options?.interaction ? { metadata: { interaction: options.interaction } } : undefined
+          ),
+        answer: (source, targetId) => answers.get(`${source}\u0000${targetId}`),
+      },
+      chat: {
+        send: (content: string, options?: { metadata?: Record<string, unknown> }) =>
+          runtime.sendFromCard(content, options),
+        publish: (type: string, payload: unknown, options?: { idempotencyKey?: string }) =>
+          runtime.publishFromCard(type, payload, options),
+      },
+      onFailure: (key, spec, phase, error) => {
+        // An inline UI's author hears that it failed here, as from the panel.
+        const msg = transcript.find((m) => m.id === key);
+        if (spec.kind !== "inline" || !msg) return;
+        void runtime
+          .reportCardFailure(
+            { kind: msg.senderMetadata?.type ?? "agent", id: msg.senderId },
+            {
+              category: phase === "compile" ? "compile_failed" : "render_failed",
+              refs: {
+                inlineUiId: spec.id,
+                ...(msg.inlineUi?.turnId ? { turnId: msg.inlineUi.turnId as never } : {}),
+              },
+              error,
+              occurrenceKey: [
+                "inline_ui",
+                phase,
+                spec.id,
+                msg.inlineUi?.renderedAt ?? "",
+                error.message,
+              ].join(":"),
+            }
+          )
+          .catch((cause) =>
+            runtime.fail("A card's failure could not be reported to its agent", cause)
+          );
+      },
+    };
+  }, [transcript, runtime]);
+  useEffect(() => cards.setEnvironment(cardEnvironment), [cards, cardEnvironment]);
+  useEffect(() => {
+    const live = new Set(transcript.filter((m) => cardSpec(m, selfId)).map((m) => m.id));
+    cards.retain(live);
+    if (cardFocus && !live.has(cardFocus)) setCardFocus(null);
+  }, [transcript, selfId, cards, cardFocus]);
   const rowCtx: RowContext = {
     selfId,
     participants,
     columns: size.columns - gutter,
     approvalsKey,
+    card: (msg) => {
+      const spec = cardSpec(msg, selfId);
+      return spec ? cards.view(msg.id, spec, Math.max(20, size.columns - gutter) - 2) : null;
+    },
   };
   const isRowExpanded = (msg: ChatMessage) =>
     isExpandable(msg, selfId) && expandAll !== expanded.has(msg.id);
@@ -404,7 +481,7 @@ export function TerminalChatApp({
         isRowExpanded(m),
         m.task && isRowExpanded(m) ? childLinesFor(m) : undefined
       );
-      return index > 0 && (kind === "user" || kind === "agent") ? ["", ...lines] : lines;
+      return opensWithBlank(index, kind) ? ["", ...lines] : lines;
     }
   );
   const selectedIndex = selectedId ? source.indexOf(selectedId) : -1;
@@ -630,6 +707,12 @@ export function TerminalChatApp({
     }
   }
 
+  /** Give a card the keyboard, its first control focused. */
+  function enterCard(id: string) {
+    setCardFocus(id);
+    cards.input(id, "\t");
+  }
+
   function backToComposer() {
     setMode("compose");
     setSelectedId(null);
@@ -680,6 +763,15 @@ export function TerminalChatApp({
         if (!msg) return;
         setMode("select");
         setSelectedId(msg.id);
+        // A card row is a blank line (after the first row), the header, then
+        // the card two columns into the row, which is two into the screen.
+        if (cards.isLive(msg.id)) {
+          const top = (opensWithBlank(target.index, rowKind(msg, selfId)) ? 1 : 0) + 1;
+          if (target.line >= top && cards.press(msg.id, event.x - gutter - 2, target.line - top)) {
+            setCardFocus(msg.id);
+            return;
+          }
+        }
         if (isExpandable(msg, selfId)) toggleRow(msg);
         return;
       }
@@ -817,6 +909,7 @@ export function TerminalChatApp({
         title: `Can't ${what} on this message`,
         message: hintFor(msg),
       });
+    if (action === "toggle" && cards.isLive(msg.id)) return enterCard(msg.id);
     switch (action) {
       case "toggle":
         return available.has("toggle") ? toggleRow(msg) : unavailable("expand");
@@ -1120,6 +1213,14 @@ export function TerminalChatApp({
       return;
     }
     if (overlay) return handleOverlayKey(overlay, event);
+    if (cardFocus) {
+      // Esc (or Ctrl-C) gives the keyboard back; everything else is the card's.
+      if (event.type === "key" && (event.name === "escape" || (event.ctrl && event.text === "c")))
+        return setCardFocus(null);
+      const bytes = keyBytes(event);
+      if (bytes) cards.input(cardFocus, bytes);
+      return;
+    }
     if (event.type === "paste") {
       if (mode === "select") setMode("compose");
       setMenuDismissedFor(null);
@@ -1197,7 +1298,17 @@ export function TerminalChatApp({
       ),
       placeholder: placeholder(),
       mode,
-      selectedActions: selectedMessage ? messageActions(selectedMessage, selfId) : null,
+      selectedActions: selectedMessage
+        ? [
+            ...(cards.isLive(selectedMessage.id)
+              ? [
+                  { key: "Enter", label: "use the card" },
+                  ...messageActions(selectedMessage, selfId).filter((a) => a.id !== "toggle"),
+                ]
+              : messageActions(selectedMessage, selfId)),
+          ]
+        : null,
+      card: cardFocus !== null,
     },
     status: {
       connection: rt.connection,
@@ -1434,4 +1545,9 @@ export function editCommandFor(event: KeyEvent, history: readonly string[]): Edi
     default:
       return null;
   }
+}
+
+/** Messages and cards are set apart from the row above by a blank line. */
+function opensWithBlank(index: number, kind: RowKind): boolean {
+  return index > 0 && (kind === "user" || kind === "agent" || kind === "card");
 }

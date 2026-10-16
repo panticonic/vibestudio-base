@@ -8,6 +8,9 @@ define its own components, including stateful ones. When the UI must persist
 and refresh under a stable id, call workspace services, or run a workflow, use
 `inline_ui`, `load_action_bar`, or `feedback_custom` instead.
 
+The terminal chat draws MDX messages too, in text cells; see
+[TERMINAL_CARDS.md](TERMINAL_CARDS.md) for what draws there.
+
 ## Three tiers
 
 1. **Response components** (`Chart`, `Compare`, `Calculator`, ...): the
@@ -48,13 +51,7 @@ export function StrokeStepper() {
   const [i, setI] = useState(0);
   return (
     <Flex direction="column" gap="2" style={{ width: "100%", minWidth: 0 }}>
-      <Slider
-        min={0}
-        max={3}
-        step={1}
-        value={[i]}
-        onValueChange={([v]) => setI(v)}
-      />
+      <Slider min={0} max={3} step={1} value={[i]} onValueChange={([v]) => setI(v)} />
       <Text weight="bold">
         {i + 1}. {strokes[i][0]}
       </Text>
@@ -98,9 +95,7 @@ next-step prompts that the agent can continue from as a normal chat message.
 
 ```mdx
 <Flex gap="2" wrap="wrap">
-  <ActionButton message="Show me the browser import workflow">
-    Browser import
-  </ActionButton>
+  <ActionButton message="Show me the browser import workflow">Browser import</ActionButton>
   <ActionButton message="Help me build a panel">Build a panel</ActionButton>
 </Flex>
 ```
@@ -121,8 +116,7 @@ Use callouts for short status, caveats, or setup notes.
     <Icons.InfoCircledIcon />
   </Callout.Icon>
   <Callout.Text>
-    I found an existing Google OAuth client. You can reuse it or create a new
-    one.
+    I found an existing Google OAuth client. You can reuse it or create a new one.
   </Callout.Text>
 </Callout.Root>
 ```
@@ -176,10 +170,7 @@ do not rely on partially streamed JSX.
 
 ```mdx
 <Video url="https://youtu.be/Pb6C4ORBOOI" title="Introduction to Vibestudio" />
-<Image
-  src="https://example.com/diagram.png"
-  alt="The three stages of the workflow"
-/>
+<Image src="https://example.com/diagram.png" alt="The three stages of the workflow" />
 ```
 
 `Video` accepts YouTube watch, short, shorts, live, and embed URLs, including
@@ -242,10 +233,7 @@ in a workspace source file and pass its `path`):
 import { Video } from "@workspace/react";
 export default function Introduction() {
   return (
-    <Video
-      url="https://www.youtube.com/watch?v=Pb6C4ORBOOI"
-      title="Introduction to Vibestudio"
-    />
+    <Video url="https://www.youtube.com/watch?v=Pb6C4ORBOOI" title="Introduction to Vibestudio" />
   );
 }
 ```

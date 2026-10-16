@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MethodExecutionContext } from "@workspace/pubsub";
+import { AGENTIC_EVENT_PAYLOAD_KIND } from "@workspace/agentic-protocol";
 import type { ChatRpc, SessionStateStore, TerminalChatBootstrap } from "./bootstrap.js";
 import { ChatRuntime } from "./chatRuntime.js";
 import { ProviderSignIn } from "./providerSignIn.js";
@@ -482,11 +483,42 @@ describe("ChatRuntime", () => {
     expect(again.getSnapshot().host?.channelName).toBe("chat-fork");
   });
 
-  it("advertises feedback_form only, and turns a call into a pending form until answered or cancelled", async () => {
+  it("inline_ui returns a compile failure to the agent and publishes a card that compiles", async () => {
+    const runtime = await start();
+    const methods = runtime.getSnapshot().session!.methods.compose();
+    const result = vi.fn((value: unknown, options: unknown) => ({ value, options }));
+    const ctx = { callId: "c1", callerId: "ai", result } as unknown as MethodExecutionContext;
+    await methods["inline_ui"]!.execute({ code: "export default function (" }, ctx);
+    expect(result).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: false, compileError: true }),
+      { isError: true }
+    );
+
+    const publish = vi
+      .spyOn(
+        runtime.actionSession!.client as unknown as {
+          publish: (type: string, payload: unknown, options: unknown) => Promise<unknown>;
+        },
+        "publish"
+      )
+      .mockResolvedValue(undefined);
+    const code = 'import { Text } from "@workspace/react";\nexport default () => <Text>hi</Text>;';
+    await expect(
+      methods["inline_ui"]!.execute({ id: "card", code, props: { n: 1 } }, ctx)
+    ).resolves.toEqual({ ok: true, id: "card" });
+    const [type, event] = publish.mock.calls[0]!;
+    expect(type).toBe(AGENTIC_EVENT_PAYLOAD_KIND);
+    expect(event).toMatchObject({
+      kind: "ui.inline_rendered",
+      payload: { id: "card", source: { type: "code", code }, props: { n: 1 } },
+    });
+  });
+
+  it("advertises feedback_form and inline_ui, and turns a call into a pending form until answered or cancelled", async () => {
     const runtime = await start();
     const session = runtime.getSnapshot().session!;
     const methods = session.methods.compose();
-    expect(Object.keys(methods)).toEqual(["feedback_form"]);
+    expect(Object.keys(methods)).toEqual(["feedback_form", "inline_ui"]);
     const abort = new AbortController();
     const ctx = {
       callId: "c1",

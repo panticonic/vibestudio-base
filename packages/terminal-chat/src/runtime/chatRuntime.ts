@@ -18,7 +18,15 @@ import {
   type SendOptions,
   type ReadableStore,
 } from "@workspace/agentic-core/chat-store";
-import { AGENTIC_EVENT_PAYLOAD_KIND, type AgenticEvent } from "@workspace/agentic-protocol";
+import {
+  AGENTIC_EVENT_PAYLOAD_KIND,
+  AGENTIC_PROTOCOL_VERSION,
+  participantRefFromMetadata,
+  type AgenticEvent,
+  type UiFeedbackPayload,
+} from "@workspace/agentic-protocol";
+import { z } from "zod";
+import { compileInlineCard } from "../cards/modules.js";
 import {
   FeedbackFormArgsSchema,
   type FeedbackFormArgs,
@@ -762,6 +770,12 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
           execute: (args: unknown, ctx: MethodExecutionContext) =>
             this.#showForm(args as FeedbackFormArgs, ctx),
         },
+        inline_ui: {
+          description: INLINE_UI_DESCRIPTION,
+          parameters: InlineUiArgsSchema,
+          execute: (args: unknown, ctx: MethodExecutionContext) =>
+            this.#renderInlineUi(args as z.infer<typeof InlineUiArgsSchema>, ctx),
+        },
       }));
       this.#session = session;
       await session.deferredAgent.ready();
@@ -892,6 +906,120 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
     form?.answer({ type: "cancel" });
   }
 
+  // ── cards ──────────────────────────────────────────────────────────────────
+
+  /**
+   * A card's message, sent as the person through the composer's own path (so
+   * it shows at once and is backfilled), with whatever metadata the card
+   * attached, e.g. the `interaction` a choice or button records.
+   */
+  async sendFromCard(
+    text: string,
+    options?: { metadata?: Record<string, unknown>; mentions?: string[]; replyTo?: string }
+  ): Promise<void> {
+    const session = this.actionSession;
+    if (!session) throw new Error("The conversation is not connected yet.");
+    await session.publishText(text, {
+      ...(options?.metadata ? { metadata: options.metadata } : {}),
+      ...(options?.mentions ? { mentions: options.mentions } : {}),
+      ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+    });
+  }
+
+  /** A card's typed event on the channel (`chat.publish`), as in the panel. */
+  async publishFromCard(
+    type: string,
+    payload: unknown,
+    options?: { idempotencyKey?: string }
+  ): Promise<unknown> {
+    const client = this.actionSession?.client;
+    if (!client) throw new Error("The conversation is not connected yet.");
+    return client.publish(type, payload, {
+      idempotencyKey: options?.idempotencyKey ?? crypto.randomUUID(),
+    });
+  }
+
+  /**
+   * `inline_ui`: compile the source against the terminal kit (so a failure
+   * comes back to the agent as the result), then publish the same
+   * `ui.inline_rendered` event the panel does; the transcript draws it.
+   */
+  async #renderInlineUi(
+    args: z.infer<typeof InlineUiArgsSchema>,
+    ctx: MethodExecutionContext
+  ): Promise<unknown> {
+    try {
+      await compileInlineCard(args.code);
+    } catch (error) {
+      return ctx.result(
+        { ok: false, error: errorMessage(error), compileError: true },
+        { isError: true }
+      );
+    }
+    const client = this.actionSession?.client;
+    if (!client) return ctx.result({ ok: false, error: "Not connected" }, { isError: true });
+    const id = args.id?.trim() || crypto.randomUUID();
+    const self = client.clientId ?? "terminal-chat";
+    const event: AgenticEvent<"ui.inline_rendered"> = {
+      kind: "ui.inline_rendered",
+      actor: { kind: "panel", id: self, displayName: "Terminal" },
+      ...(ctx.turnId ? { turnId: ctx.turnId as never } : {}),
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        uiType: "inline",
+        requestedBy: participantRefFromMetadata(
+          ctx.callerId,
+          client.roster?.[ctx.callerId]?.metadata
+        ),
+        id,
+        source: { type: "code", code: args.code },
+        ...(args.props !== undefined ? { props: args.props } : {}),
+      },
+      createdAt: new Date().toISOString(),
+    };
+    // The id is reusable (a later render replaces the card); each event is new.
+    await client.publish(AGENTIC_EVENT_PAYLOAD_KIND, event, {
+      idempotencyKey: `ui:inline:${id}:${crypto.randomUUID()}`,
+    });
+    return { ok: true, id };
+  }
+
+  /**
+   * Tell an inline UI's author that it failed to draw here (`ui.feedback`,
+   * once per occurrence), as the panel does, so the agent can repair it.
+   */
+  async reportCardFailure(
+    author: { kind: string; id: string },
+    failure: {
+      category: UiFeedbackPayload["category"];
+      refs: NonNullable<UiFeedbackPayload["refs"]>;
+      error: Error;
+      occurrenceKey: string;
+    }
+  ): Promise<void> {
+    const event: AgenticEvent<"ui.feedback"> = {
+      kind: "ui.feedback",
+      actor: { kind: "panel", id: "terminal-chat" },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        target: { kind: author.kind as never, id: author.id, participantId: author.id },
+        to: [{ kind: "participant", participantId: author.id }],
+        category: failure.category,
+        refs: failure.refs,
+        error: {
+          message: failure.error.message || String(failure.error),
+          name: failure.error.name,
+          ...(failure.error.stack ? { stack: failure.error.stack } : {}),
+        },
+        occurrenceKey: failure.occurrenceKey,
+      },
+      createdAt: new Date().toISOString(),
+    };
+    await this.publishFromCard(AGENTIC_EVENT_PAYLOAD_KIND, event, {
+      idempotencyKey: `ui-feedback:${failure.occurrenceKey}`,
+    });
+  }
+
   // ── agent methods ──────────────────────────────────────────────────────────
 
   /** Call an agent method and unwrap `{ result }` / `{ isError }` into a value or a thrown error. */
@@ -939,4 +1067,39 @@ const FEEDBACK_FORM_DESCRIPTION = `Show a form in the person's terminal and wait
 **Conditional props:** \`visibleWhen\` and \`enabledWhen\` accept \`{ field, operator, value }\`.
 **Choice fields:** select, segmented and multiSelect include an "Other" free-text choice unless \`allowFreeText: false\`.
 **Pre-populate:** \`values: { "key": "existing value" }\`
-This client is a text terminal: it cannot show custom components, inline UI or images.`;
+This client is a text terminal: for interactive or rich content use \`inline_ui\` (or MDX in your message); it cannot show images.`;
+
+const InlineUiArgsSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe("Stable card ID. Reusing it replaces the existing card; omit it for a new card."),
+  code: z.string().min(1).describe("TSX source of the component (must `export default`)."),
+  props: z.record(z.unknown()).optional().describe("Props passed to the component as { props }."),
+});
+
+const INLINE_UI_DESCRIPTION = `Draw an interactive card in the person's terminal transcript: a React component rendered with Ink, in text cells. The person can click it or Tab through its controls.
+
+**Imports:** react, ink, @workspace/terminal-ui (the terminal kit). The names @radix-ui/themes, @workspace/react and @radix-ui/react-icons resolve to the same kit, so a card written against them draws in the terminal as well as in a browser chat; prefer them when the conversation may also be open in a panel. Available: Flex, Box, Grid, Card, Text, Heading, Code, Badge, Callout, Separator, Table, DataList, Progress, Button, Checkbox, Switch, RadioGroup, CheckboxGroup, SegmentedControl, Select, TextField, TextArea, Slider, Tabs, Choices, ActionButton, Checklist, Stats, Compare, Timeline. Charts, maps, images, video and diagrams cannot be drawn and show as a placeholder.
+**Props:** \`{ props, chat }\`; \`chat.send(text)\` posts as the person, \`chat.publish(type, payload)\` publishes an event. Use \`useState\` for local state.
+**Layout:** text cells, not pixels: no CSS, \`style\`, \`className\` or HTML elements. Keep it narrow (it may get 40 columns) and short.
+**Lifecycle:** reusing \`id\` replaces the card. **Result:** \`{ ok: true, id }\`, or a compile error \`{ ok: false, error, compileError: true }\` with nothing drawn; fix and call again. A render failure afterwards comes back as a ui-feedback note naming the id.
+
+**Example:**
+\`\`\`tsx
+import { useState } from "react";
+import { Flex, Text, Button, Choices } from "@workspace/react";
+
+export default function Plan({ props }) {
+  const [n, setN] = useState(props.start ?? 0);
+  return (
+    <Flex direction="column" gap="1">
+      <Text>Servings: {n}</Text>
+      <Button onClick={() => setN(n + 1)}>More</Button>
+      <Choices id="plan-next" question="Cook it?" options={[{ label: "Yes" }, { label: "Later" }]} />
+    </Flex>
+  );
+}
+\`\`\``;

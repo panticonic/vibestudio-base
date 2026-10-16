@@ -108,6 +108,9 @@ state all see the same event.
 - Collect secrets only through host credential prompts, never through React
   inputs or component state.
 
+In the terminal chat, inline UI draws as text cells with a narrower
+vocabulary; see [TERMINAL_CARDS.md](TERMINAL_CARDS.md).
+
 ## Panel Scope
 
 Components receive `{ props, chat, scope, scopes, inlineUi }`. Serializable
@@ -161,7 +164,7 @@ export default function ServiceHealth({ scope, scopes, inlineUi }) {
       scope[CACHE_KEY] = { ...(scope[CACHE_KEY] ?? {}), ...update };
       await scopes?.save?.();
     },
-    [scope, scopes],
+    [scope, scopes]
   );
 
   const refresh = useCallback(async () => {
@@ -187,12 +190,7 @@ export default function ServiceHealth({ scope, scopes, inlineUi }) {
   }, [inlineUi?.renderedAt, refresh]);
 
   return (
-    <Flex
-      direction="column"
-      gap="3"
-      p="2"
-      style={{ width: "100%", minWidth: 0 }}
-    >
+    <Flex direction="column" gap="3" p="2" style={{ width: "100%", minWidth: 0 }}>
       <Flex align="center" justify="between" gap="2" wrap="wrap">
         <Text weight="medium">Service health</Text>
         <Button size="1" variant="soft" disabled={loading} onClick={refresh}>
@@ -252,16 +250,8 @@ import { Badge, Box, Checkbox, Flex, Text } from "@radix-ui/themes";
 import { OpenLinkButtons } from "@workspace/react";
 
 const steps = [
-  [
-    "project",
-    "Create project",
-    "https://console.cloud.google.com/projectcreate",
-  ],
-  [
-    "credentials",
-    "Open credentials",
-    "https://console.cloud.google.com/apis/credentials",
-  ],
+  ["project", "Create project", "https://console.cloud.google.com/projectcreate"],
+  ["credentials", "Open credentials", "https://console.cloud.google.com/apis/credentials"],
 ];
 
 export default function SetupChecklist() {

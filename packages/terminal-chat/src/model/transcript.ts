@@ -27,6 +27,15 @@ export interface RowContext {
   columns: number;
   /** How to open the approvals overlay, e.g. "Ctrl-B a". */
   approvalsKey: string;
+  /** The live card a message draws, if it is one (an MDX message, an inline UI). */
+  card?: (msg: ChatMessage) => RowCard | null;
+}
+
+/** A card's current drawing, as its row shows it. */
+export interface RowCard {
+  status: "compiling" | "ready" | "failed";
+  lines: string[];
+  error?: Error;
 }
 
 export type MessageActionId =
@@ -58,6 +67,7 @@ export type RowKind =
   | "lifecycle"
   | "disconnect"
   | "fork"
+  | "card"
   | "notice";
 
 export function rowKind(msg: ChatMessage, selfId: string | null): RowKind {
@@ -81,6 +91,8 @@ export function rowKind(msg: ChatMessage, selfId: string | null): RowKind {
     case "fork":
     case "cross-channel-sent":
       return "fork";
+    case "inline_ui":
+      return "card";
     case undefined:
     case "text":
     case "markdown":
@@ -192,6 +204,9 @@ export function renderRow(
 ): string[] {
   // Names can change under an unchanged message (a participant renames), so
   // the sender's current label is part of the key.
+  // A card changes under an unchanged message (its own state), so it is never cached.
+  const card = ctx.card?.(msg);
+  if (card) return layoutCardRow(msg, ctx, card);
   const key = `${ctx.columns}|${expanded ? 1 : 0}|${ctx.selfId}|${senderLabel(msg, ctx)}|${ctx.approvalsKey}`;
   if (!childLines) {
     const cached = rowCache.get(msg);
@@ -243,6 +258,7 @@ function layoutRow(
     }
     case "fork":
       return forkRow(msg, cols);
+    case "card":
     case "notice":
       return noticeRow(msg, cols);
   }
@@ -258,6 +274,36 @@ function receiptBadge(msg: ChatMessage): string {
     default:
       return style.gray("sent");
   }
+}
+
+/**
+ * A card's row: the sender's header, then the card, two columns in (where a
+ * click on it is located). Until it is drawn an MDX message shows as
+ * Markdown; if it cannot be drawn it stays Markdown and says why.
+ */
+function layoutCardRow(msg: ChatMessage, ctx: RowContext, card: RowCard): string[] {
+  const cols = Math.max(20, ctx.columns);
+  const mdx = msg.contentType !== "inline_ui";
+  if (card.status === "ready") {
+    const [header] = messageRow({ ...msg, content: "" }, ctx, "agent", cols);
+    return [header!, ...card.lines.map((line) => `  ${line}`)];
+  }
+  const lines = mdx
+    ? messageRow(msg, ctx, "agent", cols)
+    : [messageRow({ ...msg, content: "" }, ctx, "agent", cols)[0]!];
+  if (card.status === "compiling") {
+    if (!mdx) lines.push(style.gray(`  ▣ Preparing the card${symbols.ellipsis}`));
+    return lines;
+  }
+  lines.push(
+    ...indentWrap(
+      `${mdx ? "This message's components" : "This card"} could not be drawn here: ${sanitize(card.error?.message ?? "unknown error")}`,
+      cols,
+      style.red(`  ${symbols.cross} `),
+      "    "
+    ).map((l) => style.red(l))
+  );
+  return lines;
 }
 
 function messageRow(
@@ -733,7 +779,9 @@ function noticeRow(msg: ChatMessage, cols: number): string[] {
     return [
       style.gray(
         truncate(
-          `▣ An interactive card is here; open this chat in the desktop app to use it.`,
+          msg.contentType === "inline_ui"
+            ? `▣ An interactive card is here; its source is a workspace file the terminal does not load.`
+            : `▣ An interactive card is here; open this chat in the desktop app to use it.`,
           cols
         )
       ),

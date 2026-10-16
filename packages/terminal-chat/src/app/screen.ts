@@ -80,6 +80,8 @@ export interface ScreenModel {
     mode: Mode;
     /** Actions of the selected message, as its keys and labels. */
     selectedActions: ReadonlyArray<{ key: string; label: string }> | null;
+    /** A card in the transcript has the keyboard. */
+    card: boolean;
   };
   status: StatusInfo;
   approvalsKey: string;
@@ -90,8 +92,8 @@ export interface ScreenModel {
 export type ScreenTarget =
   | { kind: "key"; key: KeyEvent }
   | { kind: "command"; name: CommandName }
-  /** A transcript row, by its index in the transcript. */
-  | { kind: "row"; index: number }
+  /** A line of a transcript row, by the row's index and the line within it. */
+  | { kind: "row"; index: number; line: number }
   /** An item of the open picker or queue, as listed. */
   | { kind: "item"; index: number }
   /** A completion of the inline command or mention menu. */
@@ -342,7 +344,7 @@ export function layoutScreen(model: ScreenModel): Screen {
   } else {
     const transcript = transcriptLines(model, rows, columns);
     top = transcript.lines;
-    topTargets = transcript.rows.map((index) => (index === null ? null : { kind: "row", index }));
+    topTargets = transcript.rows.map((at) => (at === null ? null : { kind: "row", ...at }));
     if (transcript.jumpLine !== null) topTargets[transcript.jumpLine] = { kind: "latest" };
   }
 
@@ -387,7 +389,7 @@ function transcriptLines(
   model: ScreenModel,
   rows: number,
   columns: number
-): { lines: string[]; rows: (number | null)[]; jumpLine: number | null } {
+): { lines: string[]; rows: ({ index: number; line: number } | null)[]; jumpLine: number | null } {
   const { source } = model.transcript;
   if (source.count === 0) {
     const empty = model.empty;
@@ -423,11 +425,11 @@ function transcriptLines(
     ? computeWindow(source, rows - header.length, model.transcript.scroll)
     : window;
   const out = [...header];
-  const shown: (number | null)[] = header.map(() => null);
+  const shown: ({ index: number; line: number } | null)[] = header.map(() => null);
   for (const line of body.lines) {
     const selected = line.rowIndex === model.transcript.selectedIndex;
     out.push((selected ? style.cyan("▌ ") : "  ") + line.text);
-    shown.push(line.rowIndex);
+    shown.push({ index: line.rowIndex, line: line.line });
   }
   // Short transcripts sit at the bottom, next to the composer.
   while (out.length < rows) {
@@ -453,6 +455,12 @@ type HintSegment = { text: string; target?: ScreenTarget };
 const press = (k: KeyEvent): ScreenTarget => ({ kind: "key", key: k });
 
 function hintSegments(model: ScreenModel): HintSegment[] {
+  if (model.composer.card)
+    return [
+      { text: "Tab next" },
+      { text: "Enter press" },
+      { text: "Esc leave the card", target: press(key("escape")) },
+    ];
   if (model.composer.mode === "select")
     return [
       ...(model.composer.selectedActions ?? []).map((action) => ({

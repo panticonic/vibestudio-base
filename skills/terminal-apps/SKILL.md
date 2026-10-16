@@ -23,6 +23,10 @@ again on resume; anything that must survive belongs in its durable session
 state.
 
 Reference implementation: `terminal-apps/chat` in the Base template.
+`@workspace/terminal-ui` is the Ink kit the chat draws agent cards with
+(Radix-named layout, text and controls, mouse clicks and Tab focus included);
+an app may use it too. Cards in the chat transcript are covered in
+[sandbox/TERMINAL_CARDS.md](../sandbox/TERMINAL_CARDS.md).
 
 ## Manifest
 

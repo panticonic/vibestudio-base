@@ -18,6 +18,7 @@ bars, and feedback components render in a connected chat panel.
 | Pinned panel controls                                          | [ACTION_BAR.md](ACTION_BAR.md)                     |
 | Typed custom transcript messages                               | [CUSTOM_MESSAGES.md](CUSTOM_MESSAGES.md)           |
 | Rich chat content, images, videos, and generated image sharing | [MDX.md](MDX.md)                                   |
+| Interactive cards in the terminal chat                         | [TERMINAL_CARDS.md](TERMINAL_CARDS.md)             |
 | Blocking user feedback                                         | [FEEDBACK.md](FEEDBACK.md)                         |
 | Chat and channel operations                                    | [CHAT_API.md](CHAT_API.md)                         |
 | Panel/browser CDP automation from eval                         | [BROWSER_AUTOMATION.md](BROWSER_AUTOMATION.md)     |
