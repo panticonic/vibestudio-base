@@ -11,3 +11,4 @@ export * from "./file-mutation.js";
 export * from "./invocation-status.js";
 export * from "./outbox.js";
 export * from "./tool-presentation.js";
+export * from "./message-mdx.js";

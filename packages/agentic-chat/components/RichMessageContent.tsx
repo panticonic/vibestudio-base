@@ -1,3 +1,4 @@
+import { isMdxMessage } from "@workspace/agentic-core/chat-presentation";
 import React, { type ReactNode, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -105,7 +106,7 @@ class MdxRenderErrorBoundary extends React.Component<
 
   static getDerivedStateFromProps(
     props: MdxRenderErrorBoundary["props"],
-    state: MdxRenderErrorBoundary["state"],
+    state: MdxRenderErrorBoundary["state"]
   ) {
     return props.source === state.source ? null : { source: props.source, failure: null };
   }
@@ -140,48 +141,12 @@ function PlainTextMessageContent({ content }: { content: string }) {
   );
 }
 
-// Compile MDX when a capitalized tag names a registered component (so an
-// unclosed `<Callout>` still compiles, fails, and is reported) or is shaped
-// like an element: self-closing (`<Slider ... />`) or closed (`</Slider>`), so
-// an unknown component is reported too. Prose generics such as `Array<T>` or
-// `Map<K, V>` are neither and render as Markdown without a spurious failure
-// report. Props may span lines and contain `=>`, so the opening tag and its
-// terminator are matched separately.
-const JSX_OPENING_RE = /<([A-Z][\w.]*)(?=[\s/>])/g;
 const REGISTERED_COMPONENTS = new Set(
-  Object.keys(mdxComponents).filter((name) => /^[A-Z]/.test(name)),
+  Object.keys(mdxComponents).filter((name) => /^[A-Z]/.test(name))
 );
 
-// A message that defines its own components (`import { useState } from
-// "react"`, `export function Stepper() {…}`) is an MDX module. Only statements
-// outside fenced code count: an `import` line inside a ```ts snippet is prose.
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
-const ESM_STATEMENT_RE =
-  /^(?:import\s*(?:["']|[\w$*{][^\n]*?\bfrom\s*["'])|export\s+(?:default\b|const\b|let\b|var\b|function\b|async\s+function\b|class\b|\{|\*))/;
-
-function containsEsmStatement(content: string): boolean {
-  let fence: string | null = null;
-  for (const line of content.split("\n")) {
-    const opener = FENCE_RE.exec(line)?.[1];
-    if (fence) {
-      if (opener && opener[0] === fence[0] && opener.length >= fence.length) fence = null;
-    } else if (opener) {
-      fence = opener;
-    } else if (ESM_STATEMENT_RE.test(line)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function containsJsxElement(content: string): boolean {
-  for (const match of content.matchAll(JSX_OPENING_RE)) {
-    const name = match[1]!;
-    if (REGISTERED_COMPONENTS.has(name.split(".")[0]!)) return true;
-    const rest = content.slice(match.index + match[0].length);
-    if (rest.includes("/>") || rest.includes(`</${name}`)) return true;
-  }
-  return containsEsmStatement(content);
+  return isMdxMessage(content, REGISTERED_COMPONENTS);
 }
 
 interface CompiledSource {
@@ -234,7 +199,7 @@ export const RichMessageContent = React.memo(function RichMessageContent({
     // leaves it so, and the completed message's compile reports the toolchain.
     getMdxParser().then(
       (loaded) => setParser(() => loaded),
-      (error) => console.debug("MDX parser unavailable while streaming:", error),
+      (error) => console.debug("MDX parser unavailable while streaming:", error)
     );
   }, [needsParser, parser]);
 
@@ -242,7 +207,7 @@ export const RichMessageContent = React.memo(function RichMessageContent({
   // whole message once complete; null when it has no JSX or ESM to compile.
   const streamedPrefix = useMemo(
     () => (needsParser && parser ? splitStreamingMdx(content, parser).prefix : ""),
-    [content, needsParser, parser],
+    [content, needsParser, parser]
   );
   const mdxSource = isStreaming ? streamedPrefix : content;
   const target = mdxSource && containsJsxElement(mdxSource) ? mdxSource : null;
