@@ -136,7 +136,7 @@ export type RuntimeCallerId = string & {
 export type ChannelParticipantId = string & {
   readonly [channelParticipantIdBrand]: true;
 };
-export type BrowserHandoffCallerKind = "app" | "panel" | "shell";
+export type BrowserHandoffCallerKind = "client" | "panel" | "shell";
 
 export interface BrowserHandoffCaller {
   id: RuntimeCallerId;

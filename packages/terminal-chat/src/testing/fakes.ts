@@ -250,7 +250,7 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
         mimeType: "text/plain",
         bytes: new Uint8Array(1),
       }),
-      writeExport: async (name: string) => `/ws/chat-exports/${name}`,
+      writeExport: async (path: string) => path,
     },
     rpc: {},
     operationSignal: new AbortController().signal,
@@ -262,7 +262,8 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
       async (...args: Args) =>
         callback(...args),
     readHistory: async () => sessionStore.getSnapshot().messages,
-    exportConversation: async () => "chat-exports/conversation.md",
+    suggestedExportPath: () => "chat-exports/conversation.md",
+    exportConversation: async (path: string) => path,
     submit: async (text: string, options: unknown) => {
       session.setInput(text);
       await session.submit(undefined, options);

@@ -561,7 +561,7 @@ export {
 export type { SubagentIdentity } from "@workspace/agentic-core/subagent-prompt";
 
 type BrowserOpenMode = "internal" | "external";
-type BrowserHandoffCallerKind = "app" | "panel" | "shell";
+type BrowserHandoffCallerKind = "client" | "panel" | "shell";
 type ConnectCredentialEnvelope = {
   spec: ConnectCredentialRequest;
   handoffTarget: {
@@ -585,7 +585,7 @@ function normalizeBrowserHandoffTarget(input: {
   const callerId = input.browserHandoffCallerId;
   const callerKind = input.browserHandoffCallerKind;
   if (typeof callerId !== "string" || callerId.length === 0) return null;
-  if (callerKind !== "app" && callerKind !== "panel" && callerKind !== "shell") return null;
+  if (callerKind !== "client" && callerKind !== "panel" && callerKind !== "shell") return null;
   return { callerId, callerKind };
 }
 

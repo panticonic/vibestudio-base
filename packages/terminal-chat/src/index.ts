@@ -16,6 +16,12 @@ export type {
   SessionStateStore,
   TerminalChatBootstrap,
 } from "./runtime/bootstrap.js";
+export type {
+  ChatHostSurface,
+  HostSurfaceSize,
+  HostSurfaceState,
+} from "./runtime/hostSurface.js";
 export { ProviderSignIn, type SignInState } from "./runtime/providerSignIn.js";
 export { runTerminalChat, type TerminalChatIo } from "./node/main.js";
-export { nodeChatFiles } from "./node/files.js";
+export { mimeTypeFor, nodeChatFiles } from "./node/files.js";
+export { key, KeyDecoder, type InputEvent, type KeyEvent } from "./model/keys.js";

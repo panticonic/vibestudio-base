@@ -37,6 +37,15 @@
           "evidence": "intentional-broad"
         },
         {
+          "capability": "workspace-service:channel",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
           "capability": "context.boundary",
           "resource": {
             "kind": "prefix",
@@ -83,7 +92,8 @@
     "react": "^19.0.0",
     "@vibestudio/shared": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
-    "@workspace/agentic-do": "workspace:*"
+    "@workspace/agentic-do": "workspace:*",
+    "@workspace/pubsub": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.7",

@@ -102,7 +102,7 @@ function actionBarLoadKey(
 }
 
 function browserHandoffCallerKindFromMetadata(type: string | undefined): BrowserHandoffCallerKind {
-  if (type === "app" || type === "shell") return type;
+  if (type === "client" || type === "shell") return type;
   return "panel";
 }
 

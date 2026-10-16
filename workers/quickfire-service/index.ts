@@ -6,9 +6,11 @@ import {
   rpc,
 } from "@workspace/runtime/worker/kernel";
 import { launchAgentIntoChannel } from "@workspace/agentic-core/agent-launch";
-import { quickfireAgentConfig } from "@workspace/quickfire-core/agent";
+import { askAgentConfig, quickfireAgentConfig } from "@workspace/quickfire-core/agent";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 
 import type {
+  QuickfireAskRequest,
   QuickfireServiceClient,
   QuickfireSession,
 } from "@workspace/quickfire-core/service";
@@ -338,5 +340,95 @@ export class QuickfireSessionsDO
     return rows.map((row) =>
       this.present(row, row.promoted_at === null ? "resumed" : "promoted"),
     );
+  }
+
+  /**
+   * The handler of a client's background `ask` intent: put the question to a
+   * fresh agent in its own conversation, wait for the turn to settle, and
+   * return the reply text. The agent is released afterwards; the channel log
+   * stays as the record. This is the `text` result kind: a channel
+   * subscription has no end-of-turn signal a caller could follow to its end.
+   */
+  @rpc({
+    website: {
+      kind: "closed",
+      reason: "Client background intents are invoked by the server for a paired device.",
+    },
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async ask(input: QuickfireAskRequest): Promise<string> {
+    const text = input?.params?.text?.trim();
+    if (!text) throw new Error("Ask needs the question to put to the agent");
+    const suffix = crypto.randomUUID().slice(0, 12);
+    const channelId = `ask-${suffix}`;
+    const agentKey = `ask-agent-${suffix}`;
+    await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
+      {
+        kind: "do",
+        execution: { surface: "code", source: CHANNEL_SOURCE },
+        className: CHANNEL_CLASS,
+        key: channelId,
+      },
+    ]);
+    const launched = await launchAgentIntoChannel(this.rpc, {
+      source: AGENT_SOURCE,
+      className: AGENT_CLASS,
+      key: agentKey,
+      channelId,
+      config: askAgentConfig(),
+      replay: true,
+    });
+    if (!launched.handle.id) throw new Error("Ask agent has no runtime entity id");
+    const channel = doTargetId({
+      source: CHANNEL_SOURCE,
+      className: CHANNEL_CLASS,
+      objectKey: channelId,
+    });
+    let failure: unknown;
+    try {
+      const sent = await this.rpc.call(channel, channelClientRpcMethods["sendAsCaller"], [
+        text,
+        {
+          handle: "ask",
+          to: [{ kind: "participant", participantId: launched.subscription.participantId }],
+        },
+      ]);
+      const settled = await this.rpc.call(
+        launched.handle.targetId,
+        agentRpcMethods["waitForNativeRun"],
+        [{ channelId, inputMessageId: sent.messageId }],
+      );
+      const reply = settled.answers
+        .flatMap((answer) => answer.messages)
+        .filter((message) => message.published && message.text.trim())
+        .map((message) => message.text.trim())
+        .join("\n\n");
+      if (!reply) {
+        const failed = settled.inputs.find((record) => record.status !== "done");
+        throw new Error(
+          failed
+            ? `The agent did not answer (${failed.status})`
+            : "The agent finished without a reply",
+        );
+      }
+      return reply;
+    } catch (error) {
+      failure = error;
+      throw error;
+    } finally {
+      try {
+        await this.release({
+          agent_key: agentKey,
+          channel_id: channelId,
+          agent_entity_id: launched.handle.id,
+        } as SessionRow);
+      } catch (error) {
+        if (failure === undefined) throw error;
+        console.error("[quickfire] ask cleanup failed:", error);
+      }
+    }
   }
 }

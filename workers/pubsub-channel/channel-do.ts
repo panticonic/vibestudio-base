@@ -4099,12 +4099,12 @@ export class PubSubChannel
     // background code. Panels were the only ones named originally, which left
     // the desktop shell chrome — the app the command overlay runs in — unable to
     // join any channel at all: its participant id stayed the raw client id and
-    // the authorization check below rejected it. A chrome app and a paired
+    // the authorization check below rejected it. A client principal and a paired
     // device shell are as much a human's client as a panel is; what makes the
     // claim safe is the host-stamped `userId`, which no client can assert.
     const humanClient =
       subscribeCaller?.callerPanelId !== undefined ||
-      subscribeCaller?.callerKind === "app" ||
+      subscribeCaller?.callerKind === "client" ||
       subscribeCaller?.callerKind === "shell" ||
       this.authorization?.authorizingOrigin.kind === "user";
     const verifiedUserId =

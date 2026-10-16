@@ -56,7 +56,7 @@ import { isRpcAbortedBy, withRpcAbortSignal } from "@vibestudio/rpc";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import type { FeedbackResult } from "../model/forms.js";
-import type { TerminalChatBootstrap } from "./bootstrap.js";
+import type { ChatFiles, TerminalChatBootstrap } from "./bootstrap.js";
 import { ProviderSignIn } from "./providerSignIn.js";
 import { ValueStore } from "./valueStore.js";
 import {
@@ -430,8 +430,13 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
     return scope ? withRpcAbortSignal(this.#boot.rpc, scope.signal) : this.#boot.rpc;
   }
 
-  get files(): TerminalChatBootstrap["files"] {
-    return this.#boot.files;
+  get files(): ChatFiles {
+    const files = this.#boot.files;
+    if (!files)
+      throw new Error(
+        "This chat has no access to files on your computer: the launcher did not grant local file access."
+      );
+    return files;
   }
 
   get controller(): ChatHostController | null {
@@ -543,27 +548,29 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
     return this.#own((_key, signal) => session.feed.readCompleteHistory(signal));
   }
 
-  exportConversation(): Promise<string> {
+  /** Where an export would go by default; the person confirms or edits it. */
+  suggestedExportPath(): string | null {
+    const snapshot = this.#session?.getSnapshot();
+    if (!snapshot?.channelName) return null;
+    return `chat-exports/${exportFileName(snapshot.channelTitle, snapshot.channelName, new Date())}`;
+  }
+
+  exportConversation(path: string): Promise<string> {
     const session = this.#session;
     if (!session) return Promise.reject(new Error("The conversation has not opened yet."));
     return this.#own(async (_key, signal) => {
       const messages = await session.feed.readCompleteHistory(signal);
       const snapshot = session.getSnapshot();
       if (!snapshot.channelName) throw new Error("No conversation exists to export.");
-      const at = new Date();
       const markdown = exportMarkdown({
         title: snapshot.channelTitle,
         channelId: snapshot.channelName,
         messages,
         participants: snapshot.allParticipants,
         selfId: snapshot.selfId,
-        exportedAt: at,
+        exportedAt: new Date(),
       });
-      return this.files.writeExport(
-        exportFileName(snapshot.channelTitle, snapshot.channelName, at),
-        markdown,
-        { signal }
-      );
+      return this.files.writeExport(path, markdown, { signal });
     });
   }
 

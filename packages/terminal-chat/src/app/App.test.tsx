@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { render, type Instance } from "ink";
+import { Text, render, type Instance } from "ink";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { DeferredAgentMachine } from "@workspace/agentic-core/chat-store";
 import { TerminalChatApp } from "./App.js";
+import type { ChatHostSurface, HostSurfaceState } from "../runtime/hostSurface.js";
 import { FrameStdout, TypedInput, createFakeChat } from "../testing/fakes.js";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
@@ -485,5 +486,84 @@ describe("TerminalChatApp", () => {
     await settle();
     expect(app.screen()).toHaveLength(39);
     expect(app.screen().every((line) => line.length <= 120)).toBe(true);
+  });
+
+  describe("host surface", () => {
+    function surfaceHarness() {
+      const listeners = new Set<() => void>();
+      const seen: string[] = [];
+      let state: HostSurfaceState = { view: null, attention: null };
+      const surface: ChatHostSurface = {
+        getSnapshot: () => state,
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        handleInput: (event) => {
+          if (state.view === null) return false;
+          if (event.type === "key") seen.push(event.text);
+          return true;
+        },
+      };
+      return {
+        surface,
+        seen,
+        set(next: HostSurfaceState) {
+          state = next;
+          for (const listener of [...listeners]) listener();
+        },
+      };
+    }
+
+    async function mountWithSurface(surface: ChatHostSurface) {
+      const chat = createFakeChat({});
+      const stdout = new FrameStdout(80, 24);
+      const input = new TypedInput();
+      instance = render(
+        <TerminalChatApp
+          runtime={chat.runtime}
+          input={input}
+          control={() => {}}
+          surface={surface}
+        />,
+        { stdout: stdout as never, debug: true, patchConsole: false, exitOnCtrlC: false }
+      );
+      await settle();
+      return {
+        chat,
+        text: () => stdout.screen().join("\n"),
+        type: async (chunk: string) => {
+          input.type(chunk);
+          await settle();
+        },
+      };
+    }
+
+    it("replaces the chat screen while its view is open, keeps the keyboard, and returns the chat intact", async () => {
+      const host = surfaceHarness();
+      const app = await mountWithSurface(host.surface);
+      await app.type("draft");
+      expect(app.text()).toContain("draft");
+
+      host.set({ view: () => <Text>HOST OVERLAY</Text>, attention: null });
+      await settle();
+      expect(app.text()).toContain("HOST OVERLAY");
+      expect(app.text()).not.toContain("draft");
+      await app.type("x");
+      expect(host.seen).toEqual(["x"]);
+
+      host.set({ view: null, attention: null });
+      await settle();
+      expect(app.text()).toContain("draft");
+      expect(app.text()).not.toContain("HOST OVERLAY");
+    });
+
+    it("announces what waits in the composer's placeholder", async () => {
+      const host = surfaceHarness();
+      const app = await mountWithSurface(host.surface);
+      host.set({ view: null, attention: "1 approval waiting — Ctrl-G answers" });
+      await settle();
+      expect(app.text()).toContain("1 approval waiting — Ctrl-G answers · you can still write here");
+    });
   });
 });

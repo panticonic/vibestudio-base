@@ -20,7 +20,7 @@ const ACTOR_KINDS = new Set([
   "system",
   "external",
   "panel",
-  "app",
+  "client",
   "worker",
   "do",
   "shell",

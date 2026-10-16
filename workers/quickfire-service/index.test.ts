@@ -8,6 +8,16 @@ import { quickfireRpcMethods } from "@workspace/quickfire-core/service";
 
 class TestQuickfireSessionsDO extends QuickfireSessionsDO {
   modelSettingsFailure: Error | null = null;
+  /** What the mocked agent's settled run publishes, or why it did not answer. */
+  askRun: {
+    answers: Array<{
+      messages: Array<{ text: string; published: boolean }>;
+    }>;
+    inputs: Array<{ status: string }>;
+  } = {
+    answers: [{ messages: [{ text: "Hello there.", published: true }] }],
+    inputs: [{ status: "done" }],
+  };
   readonly calls: Array<{ target: string; method: string; args: unknown[] }> =
     [];
 
@@ -25,6 +35,8 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
       "runtime.retireEntity",
       "interruptChannel",
       "unsubscribeChannel",
+      "sendAsCaller",
+      "waitForNativeRun",
     ]);
     const mockedCall = schemaRpcMock({
       call: async (_target: string, method: string, args: unknown[]) => {
@@ -143,6 +155,8 @@ class TestQuickfireSessionsDO extends QuickfireSessionsDO {
         }
         if (method === "subscribeChannel")
           return { ok: true, participantId: "agent:quickfire" };
+        if (method === "sendAsCaller") return { id: 1, messageId: "msg-1" };
+        if (method === "waitForNativeRun") return this.askRun;
         if (
           method === "runtime.replaceResourceBindings" ||
           method === "runtime.releaseResourceBindings" ||
@@ -394,5 +408,42 @@ describe("QuickfireSessionsDO", () => {
           (args[0] as { id?: string }).id === original.agentEntityId,
       ),
     ).toBe(false);
+  });
+
+  it("ask puts the question to a fresh agent, returns its reply, and releases the agent", async () => {
+    const { instance } = await createTestDO(TestQuickfireSessionsDO);
+    const reply = await instance.ask({
+      params: { text: "  hi  " },
+      principalId: "client:chat:terminal:dev-1",
+    });
+    expect(reply).toBe("Hello there.");
+    const send = instance.calls.find(({ method }) => method === "sendAsCaller");
+    expect(send?.args[0]).toBe("hi");
+    expect(send?.args[1]).toMatchObject({
+      to: [{ kind: "participant", participantId: "agent:quickfire" }],
+    });
+    const wait = instance.calls.find(({ method }) => method === "waitForNativeRun");
+    expect(wait?.args[0]).toMatchObject({ inputMessageId: "msg-1" });
+    const retired = instance.calls.filter(({ method }) => method === "runtime.retireEntity");
+    expect(retired).toHaveLength(2);
+  });
+
+  it("ask reports a turn that produced no reply, and still releases the agent", async () => {
+    const { instance } = await createTestDO(TestQuickfireSessionsDO);
+    instance.askRun = { answers: [], inputs: [{ status: "failed" }] };
+    await expect(
+      instance.ask({ params: { text: "hi" }, principalId: "client:chat:terminal:dev-1" }),
+    ).rejects.toThrow("did not answer (failed)");
+    expect(
+      instance.calls.filter(({ method }) => method === "runtime.retireEntity"),
+    ).toHaveLength(2);
+  });
+
+  it("ask refuses an empty question before creating anything", async () => {
+    const { instance } = await createTestDO(TestQuickfireSessionsDO);
+    await expect(
+      instance.ask({ params: { text: "  " }, principalId: "client:chat:terminal:dev-1" }),
+    ).rejects.toThrow("needs the question");
+    expect(instance.calls).toHaveLength(0);
   });
 });

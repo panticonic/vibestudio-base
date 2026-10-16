@@ -35,6 +35,7 @@ const fakes = vi.hoisted(() => {
     disposed = false;
     reconnects: string[] = [];
     hostSets = 0;
+    inputs: string[] = [];
     constructor(public options: { channelName: string; forkNav: Record<string, (...args: never[]) => unknown> }) {
       FakeSession.instances.push(this);
     }
@@ -46,6 +47,9 @@ const fakes = vi.hoisted(() => {
     }
     dispose() {
       this.disposed = true;
+    }
+    setInput(text: string) {
+      this.inputs.push(text);
     }
     setAgentHost() {
       this.hostSets += 1;
@@ -68,7 +72,7 @@ vi.mock("@workspace/agentic-core/chat-store", async (importActual) => ({
 import { ChatConversationModel, type ChatConversationTarget } from "./conversation-model.js";
 
 const rpc = { call: vi.fn() };
-function makeModel(channelName?: string | null) {
+function makeModel(channelName?: string | null, initialInput?: string) {
   const targets: ChatConversationTarget[] = [];
   const model = new ChatConversationModel({
     hostPorts: (target) => {
@@ -87,6 +91,7 @@ function makeModel(channelName?: string | null) {
     connection: { clientId: "c", rpc: {} } as never,
     contextId: "ctx-main",
     ...(channelName !== undefined ? { channelName } : {}),
+    ...(initialInput ? { initialInput } : {}),
   });
   return { model, targets };
 }
@@ -172,6 +177,21 @@ describe("ChatConversationModel", () => {
     expect(fakes.FakeController.instances).toHaveLength(2);
     expect(fakes.FakeController.instances[1]?.retained).toBe(1);
     expect(model.getSnapshot().session).not.toBeNull();
+  });
+
+  it("places the initial input in the first session's composer once, when the host has a channel", () => {
+    const { model } = makeModel(null, "shared words");
+    model.retain();
+    const controller = fakes.FakeController.instances[0]!;
+    expect(fakes.FakeSession.instances).toHaveLength(0);
+    controller.set({ channelName: "chat-abc" });
+    const session = fakes.FakeSession.instances[0]!;
+    expect(session.inputs).toEqual(["shared words"]);
+    controller.set({ connectionRetrySignal: 1 });
+    expect(session.inputs).toEqual(["shared words"]);
+    model.newConversation();
+    fakes.FakeController.instances.at(-1)!.set({ channelName: "chat-def" });
+    expect(fakes.FakeSession.instances.at(-1)!.inputs).toEqual([]);
   });
 
   it("lists the context's conversations with the current one marked", async () => {

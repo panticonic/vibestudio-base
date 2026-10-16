@@ -1048,25 +1048,30 @@ export class ChatActions {
 
   // ── export & attach ────────────────────────────────────────────────────────
 
-  private async export(): Promise<void> {
-    const snapshot = this.session?.getSnapshot();
-    if (!snapshot?.channelName) {
+  private export(): void {
+    const suggested = this.runtime.suggestedExportPath();
+    if (suggested === null) {
       this.runtime.notify({ tone: "info", title: "Nothing to export yet" });
       return;
     }
+    this.ui.openPrompt({
+      title: "Export this conversation as Markdown",
+      hint: "Path to write (relative paths start at the folder the chat runs in). Enter writes it.",
+      initial: suggested,
+      onSubmit: (value) => this.writeExport(value.trim()),
+    });
+  }
+
+  private async writeExport(destination: string): Promise<void> {
     try {
-      const path = await this.runtime.exportConversation();
-      this.runtime.notify({
-        tone: "success",
-        title: "Exported",
-        message: `${path} — use the terminal browser's Download file action to save it on your computer.`,
-      });
+      const path = await this.runtime.exportConversation(destination);
+      this.runtime.notify({ tone: "success", title: "Exported", message: path });
     } catch (error) {
       if (isRpcAbortedBy(error, this.runtime.operationSignal.reason)) throw error;
       this.runtime.fail(
         "Couldn't write the export",
         error,
-        "Copy it instead: select a message (Ctrl-↑) and press y, or check that the workspace is writable."
+        "Copy it instead: select a message (Ctrl-↑) and press y, or check that the destination is writable."
       );
     }
   }
@@ -1116,12 +1121,12 @@ export class ChatActions {
 
   attach(path: string): void {
     const read = (value: string) =>
-      this.guard("attach the workspace file", () => this.runtime.attachFile(value.trim()));
+      this.guard("attach the file", () => this.runtime.attachFile(value.trim()));
     if (path) void read(path);
     else
       this.ui.openPrompt({
         title: "Attach a file",
-        hint: "Path of a file in the workspace (relative paths start at the workspace root). It is sent with your next message.",
+        hint: "Path of a file to attach (relative paths start at the folder the chat runs in). It is sent with your next message.",
         initial: "",
         onSubmit: read,
       });
@@ -1131,7 +1136,7 @@ export class ChatActions {
     this.ui.openPicker(
       {
         title: "Pending attachments",
-        hint: "Enter removes the selected attachment from your draft. Workspace files are not deleted.",
+        hint: "Enter removes the selected attachment from your draft. The files themselves are not deleted.",
         items: this.runtime.getSnapshot().composer.attachments.map((file) => ({
           id: file.id,
           label: file.name,

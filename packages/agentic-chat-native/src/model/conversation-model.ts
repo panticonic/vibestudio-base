@@ -40,6 +40,8 @@ export interface ChatConversationOptions {
   contextId: string;
   /** The conversation to open first; omitted starts a new chat. */
   channelName?: string | null;
+  /** Text placed once in the composer of the first conversation's session, once it exists. */
+  initialInput?: string;
   /** Fork read cursors and external-fork notices stay with the host's policy. */
   onExternalFork?: ForkNavHandlers["onExternalFork"];
 }
@@ -64,13 +66,17 @@ export class ChatConversationModel implements ReadableStore<ChatConversationSnap
   #retained = 0;
   #retrySignal = 0;
   #spent = false;
+  /** The initial conversation's target key and the input still waiting to be placed in it. */
+  #pendingInput: { key: string; text: string } | null = null;
 
   constructor(options: ChatConversationOptions) {
     this.#options = options;
+    const key = `native-chat:${(targetSerial += 1)}`;
+    if (options.initialInput) this.#pendingInput = { key, text: options.initialInput };
     this.#cell = new StateCell(
       this.#build(
         {
-          key: `native-chat:${(targetSerial += 1)}`,
+          key,
           channelName: options.channelName ?? null,
           contextId: options.contextId,
         },
@@ -214,6 +220,10 @@ export class ChatConversationModel implements ReadableStore<ChatConversationSnap
       },
     });
     this.#releaseSession = session.retain();
+    if (this.#pendingInput?.key === target.key) {
+      session.setInput(this.#pendingInput.text);
+      this.#pendingInput = null;
+    }
     session.start();
     return session;
   }

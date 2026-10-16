@@ -70,3 +70,19 @@ export function quickfireAgentConfig(
     },
   };
 }
+
+/**
+ * The agent behind a background `ask`: a general workspace agent for one
+ * question, with no attached panel. It answers in full, since nobody is
+ * watching its conversation as it happens.
+ */
+export function askAgentConfig(): AgentSubscriptionConfig {
+  return {
+    handle: "assistant",
+    name: "Assistant",
+    systemPrompt:
+      "Someone asked you a question from outside the chat, through a command that prints your final reply. Answer it directly and completely in your final message; do not ask follow-up questions unless the request cannot be answered without them.",
+    systemPromptMode: "append",
+    features: { tools: [{ kind: "standard" }] },
+  };
+}

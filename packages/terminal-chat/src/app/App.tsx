@@ -3,7 +3,7 @@
  * input, and lays the screen out as lines (see `screen.ts`); Ink draws them
  * and places the real cursor in the composer.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Box, Text, useApp, useCursor } from "ink";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { deriveActiveOutbox } from "@workspace/agentic-core/chat-presentation";
@@ -58,6 +58,7 @@ import {
   type ScrollState,
 } from "../model/viewport.js";
 import type { ChatRuntime } from "../runtime/chatRuntime.js";
+import type { ChatHostSurface, HostSurfaceState } from "../runtime/hostSurface.js";
 import { attentionSequence, copySequence, hyperlink, titleSequence } from "../terminal/escapes.js";
 import { useInputEvents, useStore, useTerminalSize, type InputSource } from "../ui/hooks.js";
 import { ChatActions, type CurrentSettings, type PromptSpec } from "./actions.js";
@@ -75,7 +76,12 @@ export interface TerminalChatProps {
   control: (sequence: string) => void;
   /** How the terminal opens its approvals overlay, as shown in approval cards. */
   approvalsKey?: string;
+  /** Host chrome drawn over the chat (see `ChatHostSurface`); absent for launchers with none. */
+  surface?: ChatHostSurface;
 }
+
+const CLOSED_SURFACE: HostSurfaceState = { view: null, attention: null };
+const NO_SURFACE = { getSnapshot: () => CLOSED_SURFACE, subscribe: () => () => {} };
 
 type Overlay =
   | { kind: "picker"; picker: PickerState; onPick: (item: PickerItem) => void }
@@ -98,8 +104,13 @@ export function TerminalChatApp({
   input,
   control,
   approvalsKey = "Ctrl-B a",
+  surface,
 }: TerminalChatProps) {
   const size = useTerminalSize();
+  const hostSurface = useSyncExternalStore(
+    (surface ?? NO_SURFACE).subscribe,
+    (surface ?? NO_SURFACE).getSnapshot
+  );
   const rt = useStore(runtime, runtime.getSnapshot());
   const session = rt.session;
   const chat = useStore(session, EMPTY_SESSION);
@@ -1205,6 +1216,7 @@ export function TerminalChatApp({
 
   useInputEvents(input, handleInput);
   function handleInput(event: InputEvent): void {
+    if (surface?.handleInput(event)) return;
     if (event.type === "focus") {
       setFocused(event.focused);
       return;
@@ -1377,6 +1389,7 @@ export function TerminalChatApp({
 
   function placeholder(): string {
     if (!chat?.connected) return "Connecting…";
+    if (hostSurface.attention) return `${hostSurface.attention} · you can still write here`;
     if (needsYou.length > 0)
       return `Waiting for you — ${approvalsKey} answers it · you can still write here`;
     if (agents.length === 0)
@@ -1494,6 +1507,10 @@ export function TerminalChatApp({
     return out;
   }
 
+  if (hostSurface.view) {
+    setCursorPosition(undefined);
+    return hostSurface.view(size);
+  }
   return (
     <Box flexDirection="column" width={size.columns}>
       {laidOut.lines.map((line, index) => (

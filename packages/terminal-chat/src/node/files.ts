@@ -1,10 +1,9 @@
 /**
  * `ChatFiles` over the local filesystem of the machine the chat runs on (the
- * workspace runtime): attachments are read relative to `root`, exports are
- * written to `<root>/chat-exports/`.
+ * workspace runtime): attachments and exports are resolved relative to `root`.
  */
 import { mkdir, open, writeFile } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import type { ChatFiles } from "../runtime/bootstrap.js";
 
 const MIME_TYPES: Record<string, string> = {
@@ -81,12 +80,13 @@ export function nodeChatFiles(root: string): ChatFiles {
         }
       }
     },
-    async writeExport(fileName, contents, options) {
-      const directory = join(root, "chat-exports");
-      await mkdir(directory, { recursive: true });
-      const path = join(directory, fileName);
+    async writeExport(path, contents, options) {
+      if (!path) throw new Error("Type the path to write the export to.");
+      const absolute = isAbsolute(path) ? path : resolve(root, path);
+      options?.signal?.throwIfAborted();
+      await mkdir(dirname(absolute), { recursive: true });
       try {
-        await writeFile(path, contents, {
+        await writeFile(absolute, contents, {
           encoding: "utf8",
           signal: options?.signal,
         });
@@ -102,7 +102,7 @@ export function nodeChatFiles(root: string): ChatFiles {
           throw error.cause;
         throw error;
       }
-      return `chat-exports/${fileName}`;
+      return path;
     },
   };
 }

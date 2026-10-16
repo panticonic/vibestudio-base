@@ -164,7 +164,7 @@ function boot(state = new MemoryState(), rpc = fakeRpc().rpc): TerminalChatBoots
     state,
     files: {
       read: async () => ({ name: "", mimeType: "", bytes: new Uint8Array() }),
-      writeExport: async () => "",
+      writeExport: async (path: string) => path,
     },
   };
 }
@@ -299,12 +299,21 @@ describe("ChatRuntime", () => {
     );
   });
 
+  it("explains that files are unavailable when the launcher granted no file access", async () => {
+    const runtime = new ChatRuntime({ ...boot(), files: null });
+    runtimes.push(runtime);
+    await runtime.start();
+    await expect(runtime.attachFile("a.txt")).rejects.toThrow("no access to files on your computer");
+    expect(() => runtime.suggestedExportPath()).not.toThrow();
+    await expect(runtime.exportConversation("out.md")).rejects.toThrow();
+  });
+
   it("joins a late file read without attaching it to the destination", async () => {
     let finish!: (file: { name: string; mimeType: string; bytes: Uint8Array }) => void;
     let readSignal: AbortSignal | undefined;
     const fixture = fakeRpc();
     const bootstrap = boot(new MemoryState(), fixture.rpc);
-    bootstrap.files.read = (_path, options) => {
+    bootstrap.files!.read = (_path, options) => {
       readSignal = options?.signal;
       return new Promise((resolve) => {
         finish = resolve;

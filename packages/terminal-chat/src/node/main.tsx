@@ -7,6 +7,7 @@
 import { render } from "ink";
 import { TerminalChatApp } from "../app/App.js";
 import { ChatRuntime } from "../runtime/chatRuntime.js";
+import type { ChatHostSurface } from "../runtime/hostSurface.js";
 import type { TerminalChatBootstrap } from "../runtime/bootstrap.js";
 import { ENTER_MODES, LEAVE_MODES, titleSequence } from "../terminal/escapes.js";
 import type { InputSource } from "../ui/hooks.js";
@@ -16,6 +17,8 @@ export interface TerminalChatIo {
   stdout: NodeJS.WriteStream;
   /** How the terminal opens its approvals overlay (shown in approval cards). */
   approvalsKey?: string;
+  /** Host chrome drawn over the chat (the terminal client's approvals overlay). */
+  surface?: ChatHostSurface;
 }
 
 const ALT_SCREEN_ON = "\x1b[?1049h";
@@ -61,6 +64,7 @@ export async function runTerminalChat(
         input={input}
         control={control}
         approvalsKey={io.approvalsKey}
+        surface={io.surface}
       />,
       {
         stdout,

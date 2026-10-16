@@ -13,6 +13,7 @@ describe("quickfire client RPC contract", () => {
       ["clear", "clear"],
       ["promote", "promote"],
       ["list", "list"],
+      ["ask", "ask"],
     ]);
   });
 

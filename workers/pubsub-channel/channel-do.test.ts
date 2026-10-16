@@ -2250,15 +2250,15 @@ describe("PubSubChannel", () => {
 
   it("does not let a superseded client's late unsubscribe close its replacement", async () => {
     const { instance } = await createGadBackedChannel();
-    setRpcCaller(instance, "app:clients/desktop-browser:main", "app", null, "usr_alice");
+    setRpcCaller(instance, "client:browser:web:device-1", "client", null, "usr_alice");
     const metadata = {
       contextId: "ctx-1",
       name: "Shell",
       type: "client",
     };
 
-    await instance.subscribe("app:clients/desktop-browser:main", metadata, "quickfire-old");
-    await instance.subscribe("app:clients/desktop-browser:main", metadata, "quickfire-new");
+    await instance.subscribe("client:browser:web:device-1", metadata, "quickfire-old");
+    await instance.subscribe("client:browser:web:device-1", metadata, "quickfire-new");
     await instance.unsubscribe("user:usr_alice", "quickfire-old");
 
     await expect(instance.getChannelPresence()).resolves.toMatchObject({

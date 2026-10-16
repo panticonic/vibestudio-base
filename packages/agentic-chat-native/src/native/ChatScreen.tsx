@@ -33,6 +33,8 @@ export interface ChatScreenProps {
   contextId: string;
   /** Open this conversation first; omitted starts a new chat. */
   channelName?: string | null;
+  /** Text to place in the composer of the conversation this screen opens with (for example text shared into a new chat). */
+  initialInput?: string;
   metadata?: ClientParticipantMetadata;
   theme?: ChatNativeTheme;
   /** Open a link from agent prose. */
@@ -54,6 +56,7 @@ export function ChatScreen({
   connection,
   contextId,
   channelName,
+  initialInput,
   metadata,
   theme = lightChatNativeTheme,
   openLink,
@@ -67,9 +70,10 @@ export function ChatScreen({
         connection,
         contextId,
         ...(channelName !== undefined ? { channelName } : {}),
+        ...(initialInput ? { initialInput } : {}),
         ...(metadata ? { metadata } : {}),
       }),
-    [hostPorts, connection, contextId, channelName, metadata]
+    [hostPorts, connection, contextId, channelName, initialInput, metadata]
   );
   useEffect(() => model.retain(), [model]);
 

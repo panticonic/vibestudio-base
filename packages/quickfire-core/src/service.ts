@@ -26,6 +26,15 @@ export type QuickfireSessionSummary = Pick<
   | "promotedAt"
 >;
 
+/**
+ * What a client's background `ask` intent hands its handler: the declared
+ * parameters, and the client principal the person's device launched it as.
+ */
+export interface QuickfireAskRequest {
+  params: { text: string };
+  principalId: string;
+}
+
 export interface QuickfireServiceClient {
   sessionFor(input: {
     slotId: string;
@@ -34,6 +43,8 @@ export interface QuickfireServiceClient {
   clear(input: { slotId: string }): Promise<{ cleared: boolean }>;
   promote(input: { slotId: string }): Promise<QuickfireSession | null>;
   list(): Promise<QuickfireSession[]>;
+  /** One question to a fresh agent, answered in full: the reply text once its turn completes. */
+  ask(input: QuickfireAskRequest): Promise<string>;
 }
 
 /** Platform-neutral client ABI; the worker implements this same contract. */
@@ -43,4 +54,5 @@ export const quickfireRpcMethods =
     "clear",
     "promote",
     "list",
+    "ask",
   ]);

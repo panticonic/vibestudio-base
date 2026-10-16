@@ -29,7 +29,7 @@ export const SEMANTIC_PARTICIPANT_KINDS = [
 ] as const;
 export const PRINCIPAL_KINDS = [
   "panel",
-  "app",
+  "client",
   "worker",
   "do",
   "shell",
