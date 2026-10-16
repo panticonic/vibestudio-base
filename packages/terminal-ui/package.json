@@ -1,0 +1,22 @@
+{
+  "name": "@workspace/terminal-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Terminal-friendly components for agent-authored UI (MDX messages and inline UI in the terminal chat), drawn with Ink. Names and props follow the browser vocabulary (Radix themes, @workspace/react, the response kit), so a card written for the panel chat draws here where the terminal can draw it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ink": "^6.8.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}
