@@ -30,12 +30,12 @@ Reference implementation: `terminal-apps/chat` in the Base template.
 {
   "name": "@workspace-terminal-apps/my-app",
   "vibestudio": {
-    "title": "My App",                            // shown in the launcher
+    "title": "My App", // shown in the launcher
     "description": "What it is for, in one sentence.",
-    "icon": "🧭",                                  // optional; an emoji (asset icons are not drawn in terminals)
-    "entry": "index.ts"
+    "icon": "🧭", // optional; an emoji (asset icons are not drawn in terminals)
+    "entry": "index.ts",
   },
-  "dependencies": { "@workspace/terminal-app": "workspace:*" }
+  "dependencies": { "@workspace/terminal-app": "workspace:*" },
 }
 ```
 
