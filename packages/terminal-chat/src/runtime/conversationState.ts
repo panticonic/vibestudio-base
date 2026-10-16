@@ -1,7 +1,8 @@
-import type {
-  ChatHostState,
-  StateArgsPort,
-  PendingDelivery,
+import {
+  applyChatHostStatePatch,
+  type ChatHostState,
+  type StateArgsPort,
+  type PendingDelivery,
 } from "@workspace/agentic-core/chat-store";
 import type { SessionStateStore } from "./bootstrap.js";
 
@@ -165,16 +166,11 @@ export class ConversationStateStore {
       patch: (partial) =>
         this.#mutate((state) => {
           const record = state.conversations[key]!;
-          const host: Record<string, unknown> = { ...record.host };
-          for (const [name, value] of Object.entries(partial)) {
-            if (value === null) delete host[name];
-            else host[name] = value;
-          }
           return {
             ...state,
             conversations: {
               ...state.conversations,
-              [key]: { ...record, host: host as ChatHostState },
+              [key]: { ...record, host: applyChatHostStatePatch(record.host, partial) },
             },
           };
         }),

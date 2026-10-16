@@ -12,6 +12,9 @@ import {
   ChatSession,
   StateCell,
   chatHostActionData,
+  createChatHostPorts,
+  listChannelConversations,
+  type ChannelListing,
   errorMessage,
   type ChatHostSnapshot,
   type ChatHostState,
@@ -48,7 +51,6 @@ import {
   type FeedbackFormArgs,
   type MethodExecutionContext,
 } from "@workspace/pubsub";
-import { listChannelDurableObjectEntities } from "@vibestudio/shared/channelTarget";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { isRpcAbortedBy, withRpcAbortSignal } from "@vibestudio/rpc";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -64,7 +66,6 @@ import {
   type PendingFile,
 } from "./conversationState.js";
 import { conversationQueueStore } from "./queuedDelivery.js";
-import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { exportFileName, exportMarkdown } from "../model/export.js";
 
@@ -105,13 +106,7 @@ export interface ChatRuntimePorts {
   presentTitle?(title: string): void;
 }
 
-export interface ChannelListing {
-  channelId: string;
-  contextId: string;
-  createdAt: number;
-  current: boolean;
-  title: string;
-}
+export type { ChannelListing };
 
 /** Adapts the session state store to the controller's typed state port. */
 /** One line of program output the screen does not show directly (console, library warnings). */
@@ -534,47 +529,12 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
 
   /** Conversations (channels) in the current conversation's context, newest first. */
   async listConversations(): Promise<ChannelListing[]> {
-    return this.#own(async (_key, signal) => {
-      const rpc = this.#boot.rpc;
-      const current = this.getSnapshot().host?.channelName ?? null;
-      const entities = await listChannelDurableObjectEntities({
-        listServices: () =>
-          rpc.call("main", mainRpcMethods["workers.listServices"], [], {
-            signal,
-          }),
-        listDurableObjectEntities: async () =>
-          (
-            await rpc.call("main", mainRpcMethods["runtime.listEntities"], [{ kind: "do" }], {
-              signal,
-            })
-          ).filter((entity): entity is typeof entity & { kind: "do" } => entity.kind === "do"),
-      });
-      const channels = entities;
-      const listings: ChannelListing[] = [];
-      let next = 0;
-      const lanes = Array.from({ length: Math.min(4, channels.length) }, async () => {
-        while (next < channels.length) {
-          const entity = channels[next++]!;
-          const config = await rpc.call(entity.id, channelClientRpcMethods["getConfig"], [], {
-            signal,
-          });
-          listings.push({
-            channelId: entity.key,
-            contextId: entity.contextId,
-            createdAt: entity.createdAt,
-            current: entity.key === current,
-            title: config?.title || entity.key,
-          });
-        }
-      });
-      const results = await Promise.allSettled(lanes);
-      const errors = results.flatMap((result) =>
-        result.status === "rejected" ? [result.reason] : []
-      );
-      if (errors.length)
-        throw new AggregateError(errors, "Conversation titles could not all be read");
-      return listings.sort((a, b) => b.createdAt - a.createdAt);
-    });
+    return this.#own((_key, signal) =>
+      listChannelConversations(this.#boot.rpc, {
+        currentChannelId: this.getSnapshot().host?.channelName ?? null,
+        signal,
+      })
+    );
   }
 
   readHistory(): Promise<readonly ChatMessage[]> {
@@ -682,22 +642,23 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
     this.#opening = null;
     const record = this.#state.record(key);
     const contextId = record.contextId;
-    const controller = new ChatHostController({
-      rpc: this.#boot.rpc,
-      contextId,
-      state: this.#state.hostPort(key),
-      // One host instance per conversation context, as a chat panel gets a new
-      // runtime when it switches to a fork's context: agent identities derived
-      // from it must not collide across contexts.
-      instanceId: `terminal-chat:${this.#boot.sessionId}:${contextId}`,
-      connection: this.#boot.rpc,
-      notify: (notification) =>
-        this.notify({
-          tone: notification.type === "info" ? "info" : notification.type,
-          title: notification.title,
-          ...(notification.message ? { message: notification.message } : {}),
-        }),
-    });
+    const controller = new ChatHostController(
+      createChatHostPorts({
+        rpc: this.#boot.rpc,
+        contextId,
+        state: this.#state.hostPort(key),
+        // One host instance per conversation context, as a chat panel gets a new
+        // runtime when it switches to a fork's context: agent identities derived
+        // from it must not collide across contexts.
+        instanceId: `terminal-chat:${this.#boot.sessionId}:${contextId}`,
+        notify: (notification) =>
+          this.notify({
+            tone: notification.type === "info" ? "info" : notification.type,
+            title: notification.title,
+            ...(notification.message ? { message: notification.message } : {}),
+          }),
+      })
+    );
     this.#controller = controller;
     this.#releaseController = controller.retain();
     this.#retrySignal = controller.getSnapshot().connectionRetrySignal;

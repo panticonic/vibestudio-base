@@ -20,7 +20,6 @@ import {
   extensions,
 } from "@workspace/runtime";
 import { EventsClient } from "@vibestudio/service-schemas/clients/eventsClient";
-import { SHELL_APPROVAL_PENDING_CHANGED_EVENT } from "@vibestudio/shell-core/approvalState";
 import { recoveryCoordinator } from "@workspace/runtime/internal/diagnostics";
 import { createRuntimeScopeRehydrators } from "@workspace/runtime/panel-runtime";
 import { useStateArgs } from "@workspace/react/hooks";
@@ -50,13 +49,14 @@ import { createPanelImportLoader } from "@workspace/agentic-core/panel-import-lo
 import {
   ChatHostController,
   chatHostActionData,
+  createChatHostPorts,
+  createStateArgsPort,
   requireChatContextId,
   type ChatHostPorts,
   type ChatHostSnapshot,
   type ChatHostState,
   type UserFacingError,
 } from "@workspace/agentic-core/chat-store";
-import { waitForApprovalResolution } from "@workspace/pubsub";
 import { LOCAL_MODELS_EXTENSION_ID } from "@workspace/model-catalog/catalog";
 import type { ServerKind } from "@workspace/model-catalog/localModels";
 import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
@@ -98,40 +98,20 @@ const STATE_ARGS_CHANGED_EVENT = "vibestudio:stateArgsChanged";
 
 /** Back the controller's ports with this panel's runtime. */
 function createPanelHostPorts(resolvedContextId: string): ChatHostPorts {
-  const workspaceEvents = new EventsClient(rpc);
-  const waitForReview = (approvalId: string) => waitForApprovalResolution(rpc, approvalId);
-  return {
+  return createChatHostPorts({
     rpc,
     contextId: resolvedContextId,
-    state: {
+    instanceId: panel.slotId,
+    state: createStateArgsPort({
       get: () => panel.stateArgs.get<ChatStateArgs>(),
-      patch: async (partial) => {
-        await panel.stateArgs.patch(partial);
-      },
+      patch: (partial) => panel.stateArgs.patch(partial),
       subscribe: (listener) => {
         window.addEventListener(STATE_ARGS_CHANGED_EVENT, listener);
         return () => window.removeEventListener(STATE_ARGS_CHANGED_EVENT, listener);
       },
-    },
-    waitForReview: async (approvalId) => {
-      await waitForReview(approvalId);
-    },
-    connection: rpc,
+    }),
+    events: new EventsClient(rpc),
     notify: (notification) => notifications.show(notification),
-    onWorkspaceEvent: (event, handler) => {
-      const name =
-        event === "approvals-changed"
-          ? SHELL_APPROVAL_PENDING_CHANGED_EVENT
-          : event === "units-changed"
-            ? "workspace:units-changed"
-            : "workspace:config-changed";
-      const off = workspaceEvents.on(name, handler);
-      void workspaceEvents.subscribe(name);
-      return () => {
-        off();
-        void workspaceEvents.unsubscribe(name);
-      };
-    },
     localModels: {
       installModel: async (modelRef) => {
         await extensions.invoke(LOCAL_MODELS_EXTENSION_ID, "installModel", [modelRef]);
@@ -148,8 +128,7 @@ function createPanelHostPorts(resolvedContextId: string): ChatHostPorts {
       },
     },
     recoveryCoordinator,
-    instanceId: panel.slotId,
-  };
+  });
 }
 
 /** Create the panel's controller and hold it while mounted. Construction is

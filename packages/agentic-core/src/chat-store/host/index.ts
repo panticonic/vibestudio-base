@@ -44,3 +44,14 @@ export type {
   AgentRecoveryTask,
 } from "./agent-recovery.js";
 export { ownModelSettingsConnection, ownModelSettingsRequest } from "./model-settings-request.js";
+export {
+  CHAT_HOST_WORKSPACE_EVENT_NAMES,
+  applyChatHostStatePatch,
+  createChatHostPorts,
+  createReviewWaiter,
+  createStateArgsPort,
+  createWorkspaceEventPort,
+} from "./host-ports.js";
+export type { ChatHostEventsClient, ChatHostPortsInput } from "./host-ports.js";
+export { listChannelConversations } from "./conversation-listing.js";
+export type { ChannelListing } from "./conversation-listing.js";

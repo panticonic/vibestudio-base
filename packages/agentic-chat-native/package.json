@@ -1,0 +1,29 @@
+{
+  "name": "@workspace/agentic-chat-native",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React Native renderer over the shared chat core: ChatScreen (conversation list, transcript, composer) driven by ChatHostPorts.",
+  "//": "Dependencies are the set clients/mobile-browser already ships (react 19.0.0 and react-native 0.79.7 are provided by that bundle). Inline UI cards that are panels render through the injected renderPanelCard port, so this package never imports react-native-webview.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./model": "./src/model/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@workspace/agentic-core": "workspace:*",
+    "@workspace/agentic-protocol": "workspace:*",
+    "@workspace/quickfire-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-native": "0.79.7"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "vitest": "^3.2.7"
+  }
+}

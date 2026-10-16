@@ -13,6 +13,7 @@
  */
 
 import {
+  Fragment,
   createContext,
   useContext,
   useMemo,
@@ -41,6 +42,12 @@ export interface TranscriptProps {
    */
   header?: ReactNode;
   footer?: ReactNode;
+  /**
+   * Draw a card the surface knows more about than the card does (a chat client
+   * running an agent's inline UI). Returning `undefined` leaves the card to the
+   * shared renderer, so a surface overrides only what it can improve on.
+   */
+  renderCard?: (card: QuickfireCard) => ReactNode | undefined;
 }
 
 /** One disclosure state owner preserves manual choices across streaming updates. */
@@ -77,6 +84,7 @@ export function Transcript({
   onAction,
   header,
   footer,
+  renderCard,
 }: TranscriptProps) {
   const { Box, Text, Pressable, Input, Icon } = useSkin();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -162,13 +170,18 @@ export function Transcript({
           ) : null}
         </Box>
         <Box row gap="xs">
-          {filtered.map((card) => (
-            <TranscriptCard
-              key={card.id}
-              card={card}
-              {...(onAction ? { onAction } : {})}
-            />
-          ))}
+          {filtered.map((card) => {
+            const custom = renderCard?.(card);
+            return custom !== undefined ? (
+              <Fragment key={card.id}>{custom}</Fragment>
+            ) : (
+              <TranscriptCard
+                key={card.id}
+                card={card}
+                {...(onAction ? { onAction } : {})}
+              />
+            );
+          })}
         </Box>
         {filtered.length === 0 ? (
           <Box surface="sunken" pad="md">
