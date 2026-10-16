@@ -114,10 +114,10 @@ Import these from `@workspace-skills/workspace-dev`:
   finds catalog IDs. `listProjectIcons()` lists all installed IDs.
 - `prepareUnitIcon(icon)` returns `{ icon, files }` without changing anything.
   It turns a catalog ID into local SVG artwork and a `./` path for the
-  manifest. Use it when writing complete app/extension files yourself.
+  manifest. Use it when writing complete panel/client/extension files yourself.
 - `setUnitIcon({ repoPath, icon })` updates an existing executable unit's
   manifest and artwork in one semantic VCS edit, checked against the working
-  head. It supports `about/`, `panels/`, `workers/`, `apps/`, and
+  head. It supports `about/`, `panels/`, `workers/`, `clients/`, and
   `extensions/`. Keep its receipt in `scope`; review, verify, commit, and
   publish separately.
 

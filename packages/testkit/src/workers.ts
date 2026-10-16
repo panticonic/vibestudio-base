@@ -34,7 +34,7 @@ function compact(unit: RuntimeSupervisionDescription): CompactUnitStatus {
   };
 }
 
-/** All workspace units (panels/workers/extensions/apps) in compact form. */
+/** All workspace units (panels/workers/extensions/clients) in compact form. */
 export async function listUnits(filter?: {
   kind?: CompactUnitStatus["kind"];
   status?: CompactUnitStatus["status"];

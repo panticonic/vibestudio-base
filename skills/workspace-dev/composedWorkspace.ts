@@ -5,7 +5,7 @@ import * as path from "node:path";
  * The workspace a check sees, composed from the templates under test.
  *
  * Templates are independent repositories, so a unit a cross-cutting contract
- * covers -- `apps/shell`, `about/templates`, `skills/appdev` -- may or may not
+ * covers -- `clients/desktop-browser`, `about/templates`, `skills/clientdev` -- may or may not
  * be present depending on which templates were composed. Reading a sibling path
  * out of this repository stopped being the same question as reading it out of
  * the workspace, and these contracts are about the workspace.

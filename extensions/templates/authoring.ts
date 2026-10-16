@@ -19,6 +19,10 @@ import { normalizeWorkspaceRepoPath } from "@vibestudio/workspace/remotes";
 import { WorkspaceConfigTopLayerSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import { WORKSPACE_PACKAGE_SCOPES } from "@vibestudio/workspace-contracts/sourceDirs";
 import {
+  HOST_RUNTIME,
+  isHostKind,
+} from "@vibestudio/workspace-contracts/clients";
+import {
   authoredTemplateManifest,
   rootRuntimeFromTemplateManifest,
 } from "@vibestudio/workspace/templateManifest";
@@ -103,11 +107,21 @@ function projectManifest(
           .filter(([, values]) => Array.isArray(values) && values.length > 0),
       )
     : undefined;
-  const hostTargets = config.hostTargets
+  const clientDefaults = config.clientDefaults
     ? Object.fromEntries(
-        Object.entries(config.hostTargets).filter(
-          ([, target]) => target && available.has(target.app),
+        Object.entries(config.clientDefaults).filter(
+          ([, source]) => source && available.has(source),
         ),
+      )
+    : undefined;
+  const runtimeExtensions = config.runtimeExtensions
+    ? Object.fromEntries(
+        Object.entries(config.runtimeExtensions)
+          .map(([runtime, sources]) => [
+            runtime,
+            sources?.filter((source) => available.has(source)),
+          ])
+          .filter(([, sources]) => Array.isArray(sources) && sources.length > 0),
       )
     : undefined;
   const runtime = WorkspaceConfigTopLayerSchema.parse({
@@ -144,8 +158,8 @@ function projectManifest(
     ...(selectedRecords(config.extensions, available)
       ? { extensions: selectedRecords(config.extensions, available) }
       : {}),
-    ...(selectedRecords(config.apps, available)
-      ? { apps: selectedRecords(config.apps, available) }
+    ...(selectedRecords(config.clients, available)
+      ? { clients: selectedRecords(config.clients, available) }
       : {}),
     ...(config.panelRestorePolicy
       ? { panelRestorePolicy: config.panelRestorePolicy }
@@ -155,7 +169,12 @@ function projectManifest(
       : {}),
     ...(providers && Object.keys(providers).length ? { providers } : {}),
     ...(trust && Object.keys(trust).length ? { trust } : {}),
-    ...(hostTargets && Object.keys(hostTargets).length ? { hostTargets } : {}),
+    ...(clientDefaults && Object.keys(clientDefaults).length
+      ? { clientDefaults }
+      : {}),
+    ...(runtimeExtensions && Object.keys(runtimeExtensions).length
+      ? { runtimeExtensions }
+      : {}),
   });
   return canonicalYaml({
     ...runtime,
@@ -244,7 +263,8 @@ function runtimeReferences(
     | "singletonObjects"
     | "services"
     | "routes"
-    | "hostTargets"
+    | "clientDefaults"
+    | "runtimeExtensions"
   >,
 ): Array<[owner: string, target: string]> {
   const refs: Array<[string, string]> = [];
@@ -258,10 +278,11 @@ function runtimeReferences(
     add(item.source, item.source);
   for (const item of config.services ?? []) add(item.source, item.source);
   for (const item of config.routes ?? []) add(item.source, item.source);
-  for (const target of Object.values(config.hostTargets ?? {})) {
-    if (!target) continue;
-    for (const extension of target.requiresExtensions ?? [])
-      add(target.app, extension);
+  // A host's default client needs the extensions its runtime builds with.
+  for (const [host, client] of Object.entries(config.clientDefaults ?? {})) {
+    if (!isHostKind(host)) continue;
+    for (const extension of config.runtimeExtensions?.[HOST_RUNTIME[host]] ?? [])
+      add(client, extension);
   }
   return refs;
 }

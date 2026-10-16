@@ -105,7 +105,7 @@ the user's decision; otherwise offer non-blocking `Choices`.
 
 - Tool `path` arguments are context-relative, with no leading slash.
 - Workspace source paths are root-relative: `packages/`, `panels/`, `workers/`,
-  `skills/`, `apps/`, `extensions/`, `meta/`. Never use host checkout paths.
+  `skills/`, `clients/`, `extensions/`, `meta/`. Never use host checkout paths.
 - Use `fs.mktemp`/`fs.mkdtemp` for disposable state, and clean it up.
 
 Read [Vibestudio VCS](../vibestudio-vcs/SKILL.md) before changing managed

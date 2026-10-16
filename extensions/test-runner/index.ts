@@ -37,7 +37,7 @@ interface JsonReport {
 
 const WORKSPACE_ROOTS = new Set([
   "about",
-  "apps",
+  "clients",
   "extensions",
   "packages",
   "panels",

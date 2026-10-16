@@ -37,7 +37,7 @@ commands. RPC approvals don't confine raw native effects.
 Admission identifies the declared package, source, and requested authority;
 neither a package name nor its filesystem location grants trust. Native client
 hosting also checks for the user's designated System workspace, so a normal
-workspace or website can't gain client authority by declaring an `apps/`
+workspace or website can't gain client authority by declaring a `clients/`
 path.
 
 | Kind                                | Runs in                                                                                             | Trust                                                | Use for                                                                     |
@@ -45,12 +45,12 @@ path.
 | **Panel** (`panels/*`)              | Isolated webview, talks to the server over WebSocket RPC                                            | Sandboxed                                            | User-facing UI                                                              |
 | **Worker / DO** (`workers/*`)       | workerd V8 isolate                                                                                  | Sandboxed                                            | Server-side userland logic; DOs are the app-database primitive (`this.sql`) |
 | **Extension** (`extensions/*`)      | Native Node process in its workspace runtime                                                        | Source admission plus the platform's native contract | Wrapping native dependencies and long-lived Node services                   |
-| **App** (`apps/*`)                  | Trusted client runtime: `electron` shell view, `react-native` signed bundle, or `terminal` artifact | **Trusted** client unit                              | Client software with its own runtime target                                 |
+| **Client** (`clients/*`)            | Trusted top-level program on a device, run by a host: `web` renderer, `react-native` bundle, or `terminal` module | **Trusted** client unit                              | Client software with its own runtime and host ABI                           |
 | **Package** (`packages/*`)          | Wherever imported                                                                                   | Same as the importer                                 | Shared libraries                                                            |
 | **Project** (`projects/*`), `meta/` | Content only                                                                                        | n/a                                                  | Plain content repos; push is not gated                                      |
 
 Panels and workers keep browser and workerd isolation; native extensions
-follow the platform contract above; client apps need their own admission of
+follow the platform contract above; clients need their own admission of
 the exact code. Approving source doesn't make a workspace a host process or
 lend it another workspace's grants. New workspaces own their source and
 runtime state; adopting Base source creates no live dependency on a Base

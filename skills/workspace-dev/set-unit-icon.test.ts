@@ -65,7 +65,7 @@ describe("setUnitIcon", () => {
   it.each([
     "panels/inbox",
     "workers/inbox",
-    "apps/inbox",
+    "clients/inbox",
     "extensions/inbox",
     "about/inbox",
   ])(

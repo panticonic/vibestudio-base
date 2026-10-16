@@ -644,7 +644,7 @@ integration. Git branches, tags, and raw SHAs are not workspace build
 selectors.
 
 Workspace runtime units build from one exact working state. Managed edits under
-`apps/`, `extensions/`, `packages/`, `panels/`, `workers/`, and `skills/`
+`clients/`, `extensions/`, `packages/`, `panels/`, `workers/`, and `skills/`
 create semantic VCS changes and write the resulting state to disk. A context
 has one committed event and an optional local application head, not one head
 per repository. Read [vibestudio-vcs](../vibestudio-vcs/SKILL.md) before you

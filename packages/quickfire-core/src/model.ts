@@ -1,10 +1,10 @@
 /**
  * The platform-neutral quickfire view model (quickfire-overlay-spec §4, §7).
  *
- * These types started life in `apps/shell/overlay/quickfireSurfaceModel.ts` as
+ * These types started life in `clients/desktop-browser/overlay/quickfireSurfaceModel.ts` as
  * the props contract between the chrome owner and the overlay surface. The
  * mobile sheets render the same information natively, and the parity rule in
- * `apps/shell/SKILL.md` is explicit that the two clients share canonical
+ * `clients/desktop-browser/SKILL.md` is explicit that the two clients share canonical
  * presentation *rules*, not renderer components — so the rules live here and
  * each client keeps its own renderer.
  *

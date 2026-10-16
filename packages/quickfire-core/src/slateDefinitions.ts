@@ -7,7 +7,7 @@
  * Electron main and the mobile app drives its own native panel host, and
  * pretending those are the same call would be a lie in both directions. So this
  * module owns the definitions and each client owns a `run` per id
- * (`apps/shell/commands/slate.ts`, `apps/mobile/src/commands/slate.ts`).
+ * (`clients/desktop-browser/commands/slate.ts`, `clients/mobile-browser/src/commands/slate.ts`).
  *
  * Everything here is pure: availability predicates and argument suggesters read
  * only the injected `SurfaceContext` (plus, for the workspace picker, a getter
@@ -328,7 +328,7 @@ export function buildSlateDefinitions(
       section: "Appearance & Layout",
       icon: "◍",
       // Desktop-only on purpose, and stated rather than silently dropped (the
-      // parity rule in apps/shell/SKILL.md): the mobile app has no accent
+      // parity rule in clients/desktop-browser/SKILL.md): the mobile app has no accent
       // system at all — its palette is two literal light/dark colour tables in
       // `state/themeAtoms.ts`. Offering the command there would list nine
       // swatches that change nothing. Give mobile an accent and this flips.

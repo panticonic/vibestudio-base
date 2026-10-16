@@ -11,7 +11,7 @@ import {
 } from "./project-preparation.js";
 
 export interface SetUnitIconParams {
-  /** Exact workspace repository, e.g. panels/inbox or apps/mobile. */
+  /** Exact workspace repository, e.g. panels/inbox or clients/mobile-browser. */
   repoPath: string;
   /** Catalog ID, one emoji, or an existing unit-relative image path. */
   icon: string;
@@ -29,7 +29,7 @@ export async function setUnitIcon({
   repoPath,
   icon,
 }: SetUnitIconParams): Promise<SetUnitIconResult> {
-  if (!/^(about|panels|workers|apps|extensions)\/[^/]+$/u.test(repoPath)) {
+  if (!/^(about|panels|workers|clients|extensions)\/[^/]+$/u.test(repoPath)) {
     throw new Error(
       "setUnitIcon requires an exact executable unit repository path",
     );

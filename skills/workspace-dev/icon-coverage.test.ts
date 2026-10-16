@@ -10,8 +10,8 @@ import { MAX_UNIT_ICON_BYTES } from "@vibestudio/shared/panel/icon";
 const REPO_ROOT = composedWorkspaceRoot(
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 );
-const UNIT_ROOTS = ["about", "panels", "workers", "apps", "extensions"] as const;
-const MOBILE_SOURCE_ROOT = path.join(REPO_ROOT, "apps/mobile/src");
+const UNIT_ROOTS = ["about", "panels", "workers", "clients", "extensions"] as const;
+const MOBILE_SOURCE_ROOT = path.join(REPO_ROOT, "clients/mobile-browser/src");
 const MOBILE_ICON_REGISTRY = path.join(MOBILE_SOURCE_ROOT, "design/icons.tsx");
 
 function* sourceFiles(directory: string): Generator<string> {
@@ -95,7 +95,7 @@ describe("built-in workspace unit icons", () => {
     expect(invalid).toEqual([]);
   });
 
-  // `apps/mobile` ships in System, so this runs where that template is composed.
+  // `clients/mobile-browser` ships in System, so this runs where that template is composed.
   it.skipIf(!fs.existsSync(MOBILE_SOURCE_ROOT))(
     "keeps native Lucide imports inside the tree-shakeable mobile registry",
     () => {

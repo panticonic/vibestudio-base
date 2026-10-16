@@ -130,7 +130,7 @@ A peer range is checked against every consumer, so write the range you mean:
 An exact `19.0.0` accepts _only_ 19.0.0, so a consuming app that owns 19.2.4 is
 refused. `^19.0.0` usually expresses what a shared package means: any React 19
 the consumer owns. `@workspace/quickfire-core` needs exactly this, because the
-desktop shell provides 19.2.4 while `apps/mobile` provides 19.0.0, which is
+desktop shell provides 19.2.4 while `clients/mobile-browser` provides 19.0.0, which is
 pinned by the react-native renderer compiled into the installed APK.
 
 Mark a peer `optional` when only part of your package needs it, most often for

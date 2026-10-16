@@ -1,7 +1,7 @@
 /**
  * The primitive contract the shared overlay components draw against.
  *
- * `apps/shell/SKILL.md` says desktop and mobile share presentation *rules*, not
+ * `clients/desktop-browser/SKILL.md` says desktop and mobile share presentation *rules*, not
  * renderer components — and that rule produced two hand-written transcripts that
  * drifted apart in every detail that mattered (one showed a tool's failure text,
  * the other did not; one glued a notice's detail into its heading; both wrote

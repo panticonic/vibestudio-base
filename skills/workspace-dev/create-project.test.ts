@@ -1354,8 +1354,8 @@ describe("scaffold runtime contract", () => {
     ) as { peerDependencies?: Record<string, string> };
     expect(reactPackage.peerDependencies?.["react"]).toBe("^19.0.0");
     expect(reactPackage.peerDependencies?.["react-dom"]).toBe("^19.0.0");
-    // `apps/shell` ships in System: assert its pin where it is composed.
-    const shellManifest = join(baseRoot, "apps", "shell", "package.json");
+    // `clients/desktop-browser` ships in System: assert its pin where it is composed.
+    const shellManifest = join(baseRoot, "clients", "desktop-browser", "package.json");
     if (existsSync(shellManifest)) {
       const shellPackage = JSON.parse(readFileSync(shellManifest, "utf8")) as {
         dependencies?: Record<string, string>;

@@ -19,7 +19,7 @@ and the destination's incoming policy must allow the call before operation
 authority is checked. See [RPC.md](RPC.md). Do not build a separate forwarding
 channel.
 
-Use the System workspace's `skills/appdev/SKILL.md` for trusted apps and
+Use the System workspace's `skills/clientdev/SKILL.md` for trusted clients and
 [extension development](../extensiondev/SKILL.md) for trusted Node services.
 
 ## Read by task
@@ -93,7 +93,7 @@ schemas, and volatile constants to live docs or code.
 - Use workspace-root-relative paths. Never put host checkout paths in workspace
   source or tool arguments.
 - A repository's location determines its unit kind. A repository under
-  `panels/`, `workers/`, `apps/`, `extensions/`, `packages/`, or `skills/` must
+  `panels/`, `workers/`, `clients/`, `extensions/`, `packages/`, or `skills/` must
   match that kind and its package scope; manifests configure the kind but never
   choose it. Verify the repository path to get manifest, source, type, build,
   and authority diagnostics in one report.

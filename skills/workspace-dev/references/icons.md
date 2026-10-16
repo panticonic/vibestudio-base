@@ -10,7 +10,7 @@ Use a single, restrained icon system for workspace UI and unit identity.
 - Imports are tree-shakeable. Import named components only; never import an
   object of all icons, a sprite, an icon font, or a runtime icon loader.
 - In the first-party mobile shell, import named components from
-  `apps/mobile/src/design/icons`. That registry is the only module that imports
+  `clients/mobile-browser/src/design/icons`. That registry is the only module that imports
   `lucide-react-native`: it exports each icon literally so Metro bundles only
   the icons the app renders. Add a missing icon there; never import the
   package's barrel or a package subpath elsewhere.

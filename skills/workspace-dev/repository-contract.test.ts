@@ -112,7 +112,7 @@ describe("panel debugging guidance", () => {
 });
 
 describe("host command guidance", () => {
-  it("keeps panel authoring and app hosting discoverable from their skills", () => {
+  it("keeps panel authoring and client hosting discoverable from their skills", () => {
     const skill = fs.readFileSync(
       path.join(workspaceRoot, "skills/workspace-dev/SKILL.md"),
       "utf8",
@@ -125,14 +125,14 @@ describe("host command guidance", () => {
       path.join(workspaceRoot, "skills/sandbox/RUNTIME_API.md"),
       "utf8",
     );
-    // `skills/appdev` ships in System; check its half of the contract where
+    // `skills/clientdev` ships in System; check its half of the contract where
     // the composed workspace actually carries it.
-    const appdevRoot = path.join(workspaceRoot, "skills/appdev");
-    const appSkill = fs.existsSync(appdevRoot)
-      ? fs.readFileSync(path.join(appdevRoot, "SKILL.md"), "utf8")
+    const clientdevRoot = path.join(workspaceRoot, "skills/clientdev");
+    const clientSkill = fs.existsSync(clientdevRoot)
+      ? fs.readFileSync(path.join(clientdevRoot, "SKILL.md"), "utf8")
       : null;
-    const appAuthoring = fs.existsSync(appdevRoot)
-      ? fs.readFileSync(path.join(appdevRoot, "AUTHORING.md"), "utf8")
+    const clientAuthoring = fs.existsSync(clientdevRoot)
+      ? fs.readFileSync(path.join(clientdevRoot, "AUTHORING.md"), "utf8")
       : null;
 
     expect(skill).toContain("PANEL_API.md#host-commands");
@@ -145,13 +145,13 @@ describe("host command guidance", () => {
     expect(runtimeApi).toContain("registerHostCommands");
     expect(runtimeApi).not.toContain("unregisterHostCommands");
     expect(runtimeApi).not.toContain("onHostCommandRun");
-    if (appSkill !== null && appAuthoring !== null) {
-      expect(appSkill).toContain(
+    if (clientSkill !== null && clientAuthoring !== null) {
+      expect(clientSkill).toContain(
         "AUTHORING.md#hosting-panel-contributed-commands",
       );
-      expect(appAuthoring).toContain("## Hosting panel-contributed commands");
-      expect(appAuthoring).toContain('target: "shell"');
-      expect(appAuthoring).toContain("unknown future shell event");
+      expect(clientAuthoring).toContain("## Hosting panel-contributed commands");
+      expect(clientAuthoring).toContain('target: "shell"');
+      expect(clientAuthoring).toContain("unknown future shell event");
     }
   });
 });
