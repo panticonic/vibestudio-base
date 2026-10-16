@@ -19,7 +19,7 @@
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "react-native": "0.79.7"
+    "react-native": "^0.79.7"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
