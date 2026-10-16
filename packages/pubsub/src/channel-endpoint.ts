@@ -14,11 +14,12 @@ export async function resolveChannelEndpoint(
   channelId: string,
   callOptions?: RpcCallOptions,
   protocol = CHANNEL_SERVICE_PROTOCOL,
+  contextId?: string,
 ): Promise<ChannelEndpoint> {
   const service = await rpc.call(
     "main",
     mainRpcMethods["workers.resolveService"],
-    [protocol, channelId],
+    contextId ? [protocol, channelId, contextId] : [protocol, channelId],
     callOptions,
   );
   const ref =

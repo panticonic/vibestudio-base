@@ -168,6 +168,7 @@ export class ConnectionManager {
           reviewRpc: this.config.rpc,
           channel: options.channelId,
           protocol: this.config.protocol,
+          ...(options.contextId ? { contextId: options.contextId } : {}),
           signal,
         }));
       signal.throwIfAborted();

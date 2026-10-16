@@ -1105,6 +1105,29 @@ describe("connectViaRpc", () => {
       }
     });
 
+    it("names the context a new channel is placed in when the caller has none of its own", async () => {
+      mockRpc.call.mockImplementation(
+        async (target: string, method: string) =>
+          target === "main" && method === "workers.resolveService"
+            ? resolvedChannelService()
+            : undefined,
+      );
+
+      await expect(
+        resolveRpcChannelTarget({
+          rpc: publicRpcMock(mockRpc),
+          reviewRpc: publicRpcMock(mockRpc),
+          channel: CHANNEL,
+          contextId: "ctx-home",
+        }),
+      ).resolves.toBe(DO_TARGET);
+      const call = mockRpc.call.mock.calls.find(
+        ([target, method]) =>
+          target === "main" && method === "workers.resolveService",
+      );
+      expect(call?.[2]).toEqual([expect.any(String), CHANNEL, "ctx-home"]);
+    });
+
     it("advertises Zod methods as provider-valid JSON Schema", async () => {
       const client = connectViaRpc({
         rpc: publicRpcMock(mockRpc),

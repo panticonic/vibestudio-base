@@ -56,7 +56,13 @@ export async function importAgentChannelKnowledge(
   handleOrTargetId: AgentEntityHandle | string,
   input: Omit<ImportChannelKnowledgeInput, "channelRef">,
 ): Promise<AgentSubscriptionResult> {
-  const channelRef = await resolveChannelEndpoint(rpc, input.channelId);
+  const channelRef = await resolveChannelEndpoint(
+    rpc,
+    input.channelId,
+    undefined,
+    undefined,
+    input.contextId,
+  );
   return requireAgentSubscriptionResult(
     "importChannelKnowledge",
     await rpc.call(

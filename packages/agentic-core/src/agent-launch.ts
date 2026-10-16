@@ -221,7 +221,13 @@ export async function subscribeAgentToChannel(
   handleOrTargetId: AgentEntityHandle | string,
   input: AgentChannelSubscriptionInput,
 ): Promise<AgentSubscriptionResult> {
-  const channelRef = await resolveChannelEndpoint(rpc, input.channelId);
+  const channelRef = await resolveChannelEndpoint(
+    rpc,
+    input.channelId,
+    undefined,
+    undefined,
+    input.contextId,
+  );
   return requireAgentSubscriptionResult(
     "subscribeChannel",
     await rpc.call(

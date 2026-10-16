@@ -232,6 +232,11 @@ export interface RpcChannelTargetOptions {
   reviewRpc: Pick<RpcConnectOptions["rpc"], "streamReadable">;
   channel: string;
   protocol?: string;
+  /**
+   * The context a new channel is placed in, for a caller that is no runtime
+   * of its own (a device shell) and so has no context to be placed in.
+   */
+  contextId?: string;
   signal?: AbortSignal;
   /** Bound for one service-resolution RPC. Explicit review waiting is not
    * charged against this operation deadline. */
@@ -249,6 +254,7 @@ export async function resolveRpcChannelTarget({
   reviewRpc,
   channel,
   protocol = DEFAULT_CHANNEL_SERVICE_PROTOCOL,
+  contextId,
   signal,
   resolutionTimeoutMs,
 }: RpcChannelTargetOptions): Promise<string> {
@@ -265,6 +271,7 @@ export async function resolveRpcChannelTarget({
               : {}),
           },
           protocol,
+          contextId,
         ),
       );
     } catch (error) {
@@ -396,6 +403,7 @@ export function connectViaRpc<
       reviewRpc: rpc,
       channel,
       protocol,
+      ...(opts.contextId ? { contextId: opts.contextId } : {}),
       signal,
     });
   const getDoTarget = (signal?: AbortSignal): Promise<string> => {
