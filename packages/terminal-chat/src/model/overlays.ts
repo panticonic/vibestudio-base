@@ -56,9 +56,23 @@ function frame(
   return out.slice(0, rows);
 }
 
-export function renderPicker(picker: PickerState, columns: number, rows: number): string[] {
+/** Rendered lines, and for each line the listed item it shows (null for none). */
+export interface ListLines {
+  lines: string[];
+  items: (number | null)[];
+}
+
+/** `frame` output's item map: its body starts after the title and the rule. */
+function framedItems(bodyItems: readonly (number | null)[], rows: number): (number | null)[] {
+  const items: (number | null)[] = [null, null, ...bodyItems.slice(0, Math.max(1, rows - 3))];
+  while (items.length < rows) items.push(null);
+  return items.slice(0, rows);
+}
+
+export function renderPicker(picker: PickerState, columns: number, rows: number): ListLines {
   const items = pickerVisibleItems(picker);
   const body: string[] = [];
+  const bodyItems: (number | null)[] = [];
   if (picker.hint) body.push(...indentWrap(picker.hint, columns, "").map((l) => style.gray(l)), "");
   if (picker.filterable)
     body.push(`${style.cyan("filter ›")} ${picker.query}${style.cyan(symbols.cursor)}`, "");
@@ -75,16 +89,22 @@ export function renderPicker(picker: PickerState, columns: number, rows: number)
       const mark = item.current ? style.green(" ✓") : "";
       const label = `${selected ? style.cyan("❯ ") : "  "}${indent}${item.disabled ? style.gray(item.label) : selected ? style.bold(item.label) : item.label}${mark}`;
       const detail = item.detail ? style.gray(`  ${item.detail}`) : "";
+      while (bodyItems.length < body.length) bodyItems.push(null);
       body.push(truncate(label + detail, columns));
+      bodyItems.push(i);
     }
   }
-  return frame(
-    picker.title,
-    body,
-    "↑↓ choose · Enter select · Esc close" + (picker.filterable ? " · type to filter" : ""),
-    columns,
-    rows
-  );
+  while (bodyItems.length < body.length) bodyItems.push(null);
+  return {
+    lines: frame(
+      picker.title,
+      body,
+      "↑↓ choose · Enter select · Esc close" + (picker.filterable ? " · type to filter" : ""),
+      columns,
+      rows
+    ),
+    items: framedItems(bodyItems, rows),
+  };
 }
 
 /** Move the picker cursor, skipping nothing (disabled items stay selectable to read their reason). */
@@ -119,6 +139,14 @@ export function renderHelp(
   body.push(
     ...indentWrap(
       "Up/Down at the first/last line browse what you sent before; @ completes names; Tab accepts a completion.",
+      columns,
+      "  "
+    )
+  );
+  section("Mouse");
+  body.push(
+    ...indentWrap(
+      "Click a message to select it, a tool call or thinking to expand it, a menu or list item to choose it, and any key in the hint line to press it; the status line opens settings. An agent's questions take clicks on their fields, options and buttons. Scrolled up, the ↓ bar at the bottom (or Ctrl-End) returns to the newest message. The wheel scrolls. Hold Shift to select text with your terminal.",
       columns,
       "  "
     )
@@ -175,8 +203,9 @@ export function renderQueue(
   undo: string | null,
   columns: number,
   rows: number
-): string[] {
+): ListLines {
   const body: string[] = [];
+  const bodyItems: (number | null)[] = [];
   let selectedLine = 0;
   if (items.length === 0)
     body.push(
@@ -193,23 +222,28 @@ export function renderQueue(
       body.push(`    ${selected ? line : style.gray(line)}`);
     for (const file of item.attachments ?? [])
       for (const line of wrap(file, columns - 4)) body.push(`    ${style.gray(line)}`);
+    while (bodyItems.length < body.length) bodyItems.push(i);
   });
   if (undo) body.push("", style.yellow(undo));
+  while (bodyItems.length < body.length) bodyItems.push(null);
   const start = Math.max(0, Math.min(selectedLine, body.length - Math.max(1, rows - 3)));
-  return frame(
-    `Queued messages (${items.length})`,
-    body.slice(start),
-    "↑↓ choose · Enter inspect · e edit · c cancel opening & compose · d discard · r retry · u undo · Esc",
-    columns,
-    rows
-  );
+  return {
+    lines: frame(
+      `Queued messages (${items.length})`,
+      body.slice(start),
+      "↑↓ choose · Enter inspect · e edit · c cancel opening & compose · d discard · r retry · u undo · Esc",
+      columns,
+      rows
+    ),
+    items: framedItems(bodyItems.slice(start), rows),
+  };
 }
 
 export function renderSignIn(
   state: SignInState,
   columns: number,
   linkify: (url: string, text: string) => string,
-  approvalsKey = "Ctrl-Space a"
+  approvalsKey = "Ctrl-B a"
 ): string[] {
   if (state.phase === "idle") return [];
   const out: string[] = [];
@@ -296,8 +330,8 @@ export function renderMenu(
   index: number,
   columns: number,
   maxRows: number
-): string[] {
-  if (items.length === 0) return [];
+): ListLines {
+  if (items.length === 0) return { lines: [], items: [] };
   const rows = Math.min(maxRows, items.length);
   const start = Math.max(0, Math.min(index - Math.floor(rows / 2), items.length - rows));
   const labelWidth = Math.min(32, Math.max(...items.map((item) => width(item.label))) + 2);
@@ -309,5 +343,5 @@ export function renderMenu(
     const line = `${selected ? style.cyan("❯ ") : "  "}${selected ? style.bold(label) : label}${item.detail ? style.gray(item.detail) : ""}`;
     out.push(truncate(line, columns));
   }
-  return out;
+  return { lines: out, items: out.map((_, i) => start + i) };
 }

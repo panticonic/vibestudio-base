@@ -25,7 +25,7 @@ export interface RowContext {
   participants: ChatParticipants;
   /** Width available to the row (the transcript gutter is already subtracted). */
   columns: number;
-  /** How to open the approvals overlay, e.g. "Ctrl-Space a". */
+  /** How to open the approvals overlay, e.g. "Ctrl-B a". */
   approvalsKey: string;
 }
 
@@ -135,6 +135,25 @@ export function messageActions(msg: ChatMessage, selfId: string | null): Message
   return actions;
 }
 
+/**
+ * What a row asks of the person, or null when it asks nothing: an approval
+ * still requested, or a turn parked until the person answers one. Both are
+ * answered in the terminal's approvals overlay.
+ */
+export function awaitedDecision(msg: ChatMessage): string | null {
+  if (msg.contentType === "approval" && msg.approval?.status === "requested")
+    return msg.approval.question
+      ? sanitize(msg.approval.question)
+      : "An agent asked for permission.";
+  if (
+    msg.contentType === "lifecycle" &&
+    msg.lifecycle?.status === "waiting" &&
+    msg.lifecycle.reason === "input_required"
+  )
+    return sanitize(msg.lifecycle.title);
+  return null;
+}
+
 // ── names ────────────────────────────────────────────────────────────────────
 
 export function participantName(
@@ -212,7 +231,7 @@ function layoutRow(
     case "diagnostic":
       return diagnosticRow(msg, cols);
     case "lifecycle":
-      return lifecycleRow(msg, cols);
+      return lifecycleRow(msg, ctx, cols);
     case "disconnect": {
       const agent = msg.disconnectedAgent!;
       return indentWrap(
@@ -658,8 +677,19 @@ function diagnosticRow(msg: ChatMessage, cols: number): string[] {
   return lines;
 }
 
-function lifecycleRow(msg: ChatMessage, cols: number): string[] {
+function lifecycleRow(msg: ChatMessage, ctx: RowContext, cols: number): string[] {
   const lifecycle = msg.lifecycle!;
+  if (awaitedDecision(msg) !== null) {
+    return [
+      ...indentWrap(
+        `Waiting for you: ${sanitize(lifecycle.title)}`,
+        cols,
+        style.yellow(`${symbols.warning} `),
+        "  "
+      ).map((l) => style.yellow(style.bold(l))),
+      style.gray(`  Press ${ctx.approvalsKey} to answer it; the agent continues once you do.`),
+    ];
+  }
   const badge =
     {
       recovered: "Recovered",
@@ -670,7 +700,8 @@ function lifecycleRow(msg: ChatMessage, cols: number): string[] {
   const tone =
     lifecycle.status === "failed" ? "red" : lifecycle.status === "recovered" ? "green" : "yellow";
   const lines = indentWrap(`${badge}: ${sanitize(lifecycle.title)}`, cols, paint("◆ ", tone), "  ");
-  const detail = lifecycle.detail ?? msg.content;
+  // A waiting turn's content is its title; say it once.
+  const detail = lifecycle.detail ?? (msg.content !== lifecycle.title ? msg.content : "");
   if (detail) lines.push(...indentWrap(sanitize(detail), cols, "  ").map((l) => style.gray(l)));
   if (lifecycle.status === "interrupted")
     lines.push(style.gray("  Select this row and press r to resume."));

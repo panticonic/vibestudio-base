@@ -47,7 +47,7 @@ import { startTerminalApp } from "@workspace/terminal-app";
 const app = await startTerminalApp();
 // app.rpc: the app's own principal in the workspace
 // app.state: durable per-session state (survives relaunch)
-// app.launch.approvalsKey: how the person opens approvals, e.g. "Ctrl-Space a"
+// app.launch.approvalsKey: how the person opens approvals, e.g. "Ctrl-B a"
 ```
 
 `startTerminalApp` reads the one-shot launch material the launch service
@@ -72,13 +72,27 @@ turn them into chrome:
 
 ## Rules
 
-- **Keys.** Every key except the person's prefix key (Ctrl-Space by default)
-  reaches the program. Show your keys on screen.
+- **Keys.** Every key except the person's prefix key (Ctrl-B by default;
+  pressed twice it reaches the program too) reaches the program. Show your
+  keys on screen.
+- **Mouse.** Make the app clickable: enable SGR mouse reporting
+  (`\x1b[?1000h\x1b[?1006h`, off again on exit) and the terminal forwards
+  clicks and wheel turns inside the tab. Hit-test against the same layout
+  that drew the screen, and let a click do exactly what its key does. People
+  hold Shift to select text natively while an app owns the mouse.
+- **Quitting.** Give the person an obvious way out: repeated Ctrl-C should end
+  in quitting once there is nothing left to clear or stop. Exit with code 0
+  when the person leaves on purpose; the terminal then closes the tab and,
+  with nothing else open, shows its launcher. Any other exit keeps the tab
+  with its output and a restart key, so failures stay readable.
 - **Size.** Follow the PTY size (`process.stdout.columns/rows`, `SIGWINCH`);
   on attach the terminal resizes the PTY so full-screen programs redraw.
-- **Approvals.** Gated calls raise approvals attributed to the app; the
-  terminal shows them in chrome no program can draw. Never draw an approval
-  prompt yourself; say that one may be waiting and name `approvalsKey`.
+- **Approvals.** Gated calls raise approvals attributed to the app, and
+  reviews your work joins are attributed to it too; the terminal shows them in
+  chrome no program can draw. While your tab's work waits on one, the terminal
+  shows a clickable "Needs you" bar above its status bar (your tab is one row
+  shorter meanwhile). Never draw an approval prompt or a bar of your own; say
+  in your own view what is waiting, and name `approvalsKey`.
 - **Files.** Read workspace files from the program itself; there is no
   terminal-side file request.
 - **State.** Keep anything that must survive a restart in `app.state`, never

@@ -20,7 +20,7 @@ const ctx: RowContext = {
     },
   } as never,
   columns: 60,
-  approvalsKey: "Ctrl-Space a",
+  approvalsKey: "Ctrl-B a",
 };
 const text = (lines: string[]) => lines.map(stripAnsi);
 
@@ -175,7 +175,7 @@ describe("transcript rows", () => {
     };
     const lines = text(renderRow(approval, ctx, false));
     expect(lines[0]).toBe("! Approval needed: Delete the build folder?");
-    expect(lines[1]).toBe("  Answer it in the approvals overlay: press Ctrl-Space a.");
+    expect(lines[1]).toBe("  Answer it in the approvals overlay: press Ctrl-B a.");
     expect(messageActions(approval, "me")).toEqual([]);
   });
 

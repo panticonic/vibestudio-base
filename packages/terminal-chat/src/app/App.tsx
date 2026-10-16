@@ -4,7 +4,7 @@
  * and places the real cursor in the composer.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useCursor } from "ink";
+import { Box, Text, useApp, useCursor } from "ink";
 import type { ChatMessage } from "@workspace/agentic-core";
 import { deriveActiveOutbox } from "@workspace/agentic-core/chat-presentation";
 import {
@@ -30,9 +30,9 @@ import {
   parseAgentSettings,
   type AgentSettings,
 } from "../model/agents.js";
-import { createForm, formReduce, renderForm, type FormState } from "../model/forms.js";
+import { createForm, formClick, formReduce, renderForm, type FormState } from "../model/forms.js";
 import { resolveBinding, type Mode } from "../model/keymap.js";
-import type { InputEvent, KeyEvent } from "../model/keys.js";
+import { key, type InputEvent, type KeyEvent, type MouseEvent } from "../model/keys.js";
 import {
   movePicker,
   pickerVisibleItems,
@@ -41,6 +41,7 @@ import {
   type QueueItem,
 } from "../model/overlays.js";
 import {
+  awaitedDecision,
   isExpandable,
   messageActions,
   renderRow,
@@ -58,8 +59,8 @@ import {
 import type { ChatRuntime } from "../runtime/chatRuntime.js";
 import { attentionSequence, copySequence, hyperlink, titleSequence } from "../terminal/escapes.js";
 import { useInputEvents, useStore, useTerminalSize, type InputSource } from "../ui/hooks.js";
-import { ChatActions, type PromptSpec } from "./actions.js";
-import { layoutScreen, type ScreenModel } from "./screen.js";
+import { ChatActions, type CurrentSettings, type PromptSpec } from "./actions.js";
+import { layoutScreen, type Screen, type ScreenModel } from "./screen.js";
 import { sanitize, wrap } from "../model/ansi.js";
 
 export interface TerminalChatProps {
@@ -91,7 +92,7 @@ export function TerminalChatApp({
   runtime,
   input,
   control,
-  approvalsKey = "Ctrl-Space a",
+  approvalsKey = "Ctrl-B a",
 }: TerminalChatProps) {
   const size = useTerminalSize();
   const rt = useStore(runtime, runtime.getSnapshot());
@@ -101,6 +102,7 @@ export function TerminalChatApp({
   const forks = useStore(session?.forks, null);
   const signIn = useStore(runtime.signIn, runtime.signIn.getSnapshot());
   const { setCursorPosition } = useCursor();
+  const { exit } = useApp();
 
   const [mode, setMode] = useState<Mode>("compose");
   const [editor, setEditor] = useState<EditorState>(emptyEditor);
@@ -112,6 +114,8 @@ export function TerminalChatApp({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scroll, setScroll] = useState<ScrollState>(FOLLOW);
   const [escArmed, setEscArmed] = useState(false);
+  /** Ctrl-C found nothing left to clear or stop; the next consecutive one quits. */
+  const [quitArmed, setQuitArmed] = useState(false);
   const attachments = rt.composer.attachments;
   const [focused, setFocused] = useState(true);
   const [form, setForm] = useState<{
@@ -145,6 +149,13 @@ export function TerminalChatApp({
     session?.setInput(next.text);
   };
 
+  const currentSettings = useRef<CurrentSettings>({
+    model: null,
+    thinkingLevel: null,
+    fastMode: null,
+    approvalLevel: null,
+    respondPolicy: null,
+  });
   const actions = useMemo(
     () =>
       new ChatActions(runtime, {
@@ -174,6 +185,8 @@ export function TerminalChatApp({
         },
         copy: (text, what) => copy(text, what),
         settingsChanged: () => setSettingsVersion((v) => v + 1),
+        currentSettings: () => currentSettings.current,
+        quit: () => exit(),
         selectMessage: (id) => {
           setMode("select");
           setSelectedId(id);
@@ -205,21 +218,27 @@ export function TerminalChatApp({
     [chat?.messages, chat?.selfId, chat?.participants]
   );
   const outboxIds = useMemo(() => new Set(outbox.map((m) => m.id)), [outbox]);
-  const transcript = useMemo(
-    () =>
-      (chat?.messages ?? []).filter(
-        (m) =>
-          !outboxIds.has(m.id) &&
-          !(
-            rowKind(m, chat?.selfId ?? null) === "notice" &&
-            !m.content &&
-            !m.automation &&
-            m.contentType !== "inline_ui" &&
-            m.contentType !== "custom"
-          )
-      ),
-    [chat?.messages, outboxIds, chat?.selfId]
-  );
+  const transcript = useMemo(() => {
+    const messages = chat?.messages ?? [];
+    // A parked turn shows its wait; a "working" row beside it would say the opposite.
+    const waiting = new Set(
+      messages
+        .filter((m) => m.contentType === "lifecycle" && m.lifecycle?.status === "waiting")
+        .map((m) => m.senderId)
+    );
+    return messages.filter(
+      (m) =>
+        !(m.contentType === "typing" && waiting.has(m.senderId)) &&
+        !outboxIds.has(m.id) &&
+        !(
+          rowKind(m, chat?.selfId ?? null) === "notice" &&
+          !m.content &&
+          !m.automation &&
+          m.contentType !== "inline_ui" &&
+          m.contentType !== "custom"
+        )
+    );
+  }, [chat?.messages, outboxIds, chat?.selfId]);
   const history = useMemo(
     () =>
       (chat?.messages ?? [])
@@ -330,8 +349,11 @@ export function TerminalChatApp({
     if (wasBusy.current && !busy && !focused) control(attentionSequence("The agent finished"));
     wasBusy.current = busy;
   }, [busy, focused]);
-  const approvalsPending = transcript.filter((m) => m.approval?.status === "requested").length;
-  const attentionKey = `${rt.forms.length}|${approvalsPending}|${transcript.filter((m) => m.contentType === "credential-connect").length}`;
+  const needsYou = useMemo(
+    () => transcript.map(awaitedDecision).filter((d): d is string => d !== null),
+    [transcript]
+  );
+  const attentionKey = `${rt.forms.length}|${needsYou.length}|${transcript.filter((m) => m.contentType === "credential-connect").length}`;
   const lastAttentionKey = useRef(attentionKey);
   useEffect(() => {
     const [forms, approvals, credentials] = attentionKey.split("|").map(Number);
@@ -422,6 +444,8 @@ export function TerminalChatApp({
   useEffect(() => setMenuIndex(0), [completions.length, editor.text.split(" ")[0]]);
 
   const viewportRows = useRef(10);
+  /** The last laid-out screen, for hit testing clicks against what is shown. */
+  const screen = useRef<Screen | null>(null);
   const overlayRows = useRef(10);
   const page = Math.max(1, viewportRows.current - 2);
 
@@ -591,30 +615,101 @@ export function TerminalChatApp({
     setScroll((s) => revealRow(source, viewportRows.current, s, index));
   }
 
+  /** Take a completion; `run` runs a complete command, as Enter does. */
+  function acceptCompletion(item: Completion, run: boolean) {
+    if (editor.text.startsWith("/")) {
+      if (run && item.runs) {
+        const parsed = parseInput(item.insert.trim());
+        setDraft(emptyEditor);
+        if (parsed.kind === "command") actions.run(parsed.command.name, parsed.args);
+        return;
+      }
+      setDraft(editorFor(item.insert));
+    } else {
+      setDraft(completeMention(editor, item.insert));
+    }
+  }
+
+  function backToComposer() {
+    setMode("compose");
+    setSelectedId(null);
+    setScroll(FOLLOW);
+  }
+
+  /**
+   * Clicks do what the clicked thing's key or pick does, through the same
+   * handlers; the wheel scrolls whatever is in front.
+   */
+  function handleMouse(event: MouseEvent): void {
+    if (event.action === "wheel-up" || event.action === "wheel-down") {
+      const up = event.action === "wheel-up";
+      if ((form && pendingForm) || overlay?.kind === "help" || overlay?.kind === "detail")
+        return handleInput(key(up ? "pageup" : "pagedown"));
+      if (overlay) return handleInput(key(up ? "up" : "down"));
+      if (signIn.phase !== "idle") return;
+      return scrollPage(up ? -3 : 3);
+    }
+    if (event.action !== "press" || event.button !== 0) return;
+    if (signIn.phase !== "idle") return;
+    const target = screen.current?.hits.find(
+      (hit) => hit.y === event.y && event.x >= hit.x0 && event.x < hit.x1
+    )?.target;
+    if (!target) return;
+    if (form && pendingForm) {
+      if (target.kind !== "form") return;
+      const next = formClick(form.state, pendingForm.args, target.hit);
+      setForm({ id: form.id, state: next.state, scroll: form.scroll });
+      if (next.result) pendingForm.answer(next.result);
+      return;
+    }
+    switch (target.kind) {
+      case "key":
+        return handleInput(target.key);
+      case "command":
+        return actions.run(target.name, "");
+      case "completion":
+        return completions[target.index] && acceptCompletion(completions[target.index]!, true);
+      case "composer":
+        return mode === "select" ? backToComposer() : undefined;
+      case "latest":
+        return backToComposer();
+      case "form":
+        return;
+      case "row": {
+        const msg = transcript[target.index];
+        if (!msg) return;
+        setMode("select");
+        setSelectedId(msg.id);
+        if (isExpandable(msg, selfId)) toggleRow(msg);
+        return;
+      }
+      case "item": {
+        if (overlay?.kind === "queue") return setOverlay({ kind: "queue", index: target.index });
+        if (overlay?.kind !== "picker") return;
+        const item = pickerVisibleItems(overlay.picker)[target.index];
+        if (!item) return;
+        setOverlay(null);
+        overlay.onPick(item);
+        return;
+      }
+    }
+  }
+
   function handleComposeKey(event: KeyEvent) {
     if (menuOpen) {
       if (event.name === "up") return setMenuIndex((i) => Math.max(0, i - 1));
       if (event.name === "down")
         return setMenuIndex((i) => Math.min(completions.length - 1, i + 1));
       if (event.name === "escape") return setMenuDismissedFor(editor.text);
-      if (event.name === "tab" || (event.name === "enter" && !event.meta && !event.shift)) {
-        const item = completions[Math.min(menuIndex, completions.length - 1)]!;
-        if (editor.text.startsWith("/")) {
-          if (event.name === "enter" && item.runs) {
-            const parsed = parseInput(item.insert.trim());
-            setDraft(emptyEditor);
-            if (parsed.kind === "command") actions.run(parsed.command.name, parsed.args);
-            return;
-          }
-          setDraft(editorFor(item.insert));
-        } else {
-          setDraft(completeMention(editor, item.insert));
-        }
-        return;
-      }
+      if (event.name === "tab" || (event.name === "enter" && !event.meta && !event.shift))
+        return acceptCompletion(
+          completions[Math.min(menuIndex, completions.length - 1)]!,
+          event.name === "enter"
+        );
     }
     const action = resolveBinding("compose", event);
     if (action !== "interrupt") setEscArmed(false);
+    if (action !== "clear-or-interrupt") setQuitArmed(false);
     switch (action) {
       case "send":
         return void send(false);
@@ -632,8 +727,17 @@ export function TerminalChatApp({
         }
         return;
       case "clear-or-interrupt":
-        if (editor.text) setDraft(emptyEditor);
-        else interrupt();
+        // Each Ctrl-C does the next thing: clear the draft, stop the agent,
+        // then quit — a stubborn agent never keeps the person in.
+        if (quitArmed) return exit();
+        if (editor.text) return setDraft(emptyEditor);
+        if (busyIds.length > 0) interrupt();
+        setQuitArmed(true);
+        runtime.notify({
+          tone: "info",
+          title: "Press Ctrl-C again to quit",
+          message: "The conversation stays; the terminal's launcher or /resume reopens it.",
+        });
         return;
       case "palette":
         return actions.openPalette(paletteExtras());
@@ -647,6 +751,14 @@ export function TerminalChatApp({
         return scrollPage(page);
       case "toggle-all":
         return setExpandAll((v) => !v);
+      case "latest":
+        return setScroll(FOLLOW);
+      case "settings":
+        return actions.run("settings", "");
+      case "quit":
+        // Ctrl-D quits only from an empty draft; otherwise it deletes forward.
+        if (!editor.text) return exit();
+        break;
       case "help":
         return setOverlay({ kind: "help", scroll: 0 });
     }
@@ -725,7 +837,7 @@ export function TerminalChatApp({
     }
   }
 
-  function handleOverlayKey(current: Overlay, event: InputEvent) {
+  function handleOverlayKey(current: Overlay, event: Exclude<InputEvent, MouseEvent>) {
     if (event.type === "focus") return;
     if (current.kind === "detail") {
       if (event.type !== "key") return;
@@ -966,11 +1078,13 @@ export function TerminalChatApp({
     return items;
   }
 
-  useInputEvents(input, (event) => {
+  useInputEvents(input, handleInput);
+  function handleInput(event: InputEvent): void {
     if (event.type === "focus") {
       setFocused(event.focused);
       return;
     }
+    if (event.type === "mouse") return handleMouse(event);
     // A pending agent question takes the keyboard.
     if (form && pendingForm) {
       if (event.type === "key" && (event.name === "pageup" || event.name === "pagedown")) {
@@ -1025,7 +1139,7 @@ export function TerminalChatApp({
     }
     if (mode === "select") handleSelectKey(event);
     else handleComposeKey(event);
-  });
+  }
 
   // Window title follows the conversation title.
   useEffect(() => {
@@ -1034,6 +1148,15 @@ export function TerminalChatApp({
 
   // ── screen ─────────────────────────────────────────────────────────────────
   const host = rt.host;
+  currentSettings.current = {
+    model:
+      primaryAgent?.activeModel ??
+      modelNameFor(settings?.settings.model ?? deferred?.draft.model ?? null),
+    thinkingLevel: settings?.settings.thinkingLevel ?? deferred?.draft.thinkingLevel ?? null,
+    fastMode: settings?.settings.fastMode ?? null,
+    approvalLevel,
+    respondPolicy: settings?.settings.respondPolicy ?? null,
+  };
   const model: ScreenModel = {
     size,
     transcript: {
@@ -1074,20 +1197,19 @@ export function TerminalChatApp({
       ),
       placeholder: placeholder(),
       mode,
-      selectedHint: selectedMessage ? hintFor(selectedMessage) : null,
+      selectedActions: selectedMessage ? messageActions(selectedMessage, selfId) : null,
     },
     status: {
       connection: rt.connection,
       joined: !!chat?.connected,
-      model:
-        primaryAgent?.activeModel ??
-        modelNameFor(settings?.settings.model ?? deferred?.draft.model ?? null),
-      thinkingLevel: settings?.settings.thinkingLevel ?? deferred?.draft.thinkingLevel ?? null,
-      fastMode: settings?.settings.fastMode ?? null,
+      model: currentSettings.current.model,
+      thinkingLevel: currentSettings.current.thinkingLevel,
+      fastMode: currentSettings.current.fastMode,
       contextPercent: primaryAgent?.contextPercent ?? null,
       approvalLevel,
       agentCount: agents.length,
       busy,
+      waitingForYou: needsYou.length > 0,
       unreadForks: forks
         ? [...forks.children, ...forks.siblings].filter((f) => f.unread).length
         : 0,
@@ -1097,12 +1219,13 @@ export function TerminalChatApp({
     approvalsKey,
     linkify: hyperlink,
   };
-  const screen = layoutScreen(model);
-  viewportRows.current = screen.transcriptRows;
-  overlayRows.current = screen.overlayRows;
+  const laidOut = layoutScreen(model);
+  screen.current = laidOut;
+  viewportRows.current = laidOut.transcriptRows;
+  overlayRows.current = laidOut.overlayRows;
 
   // Ink applies the cursor position given during render to the frame it commits.
-  setCursorPosition(screen.cursor ?? undefined);
+  setCursorPosition(laidOut.cursor ?? undefined);
 
   function modelNameFor(ref: string | null): string | null {
     if (!ref) return null;
@@ -1111,7 +1234,10 @@ export function TerminalChatApp({
 
   function placeholder(): string {
     if (!chat?.connected) return "Connecting…";
-    if (agents.length === 0) return "Write your first message — an agent starts when you send it";
+    if (needsYou.length > 0)
+      return `Waiting for you — ${approvalsKey} answers it · you can still write here`;
+    if (agents.length === 0)
+      return "Write your first message — an agent starts when you send it · F2 settings";
     if (busy)
       return "The agent is working — Enter steers it, Ctrl-S sends after its turn, Esc stops it";
     return "Message the agent · / for commands · @ to mention · F1 for help";
@@ -1146,7 +1272,9 @@ export function TerminalChatApp({
         "Ask anything. Tips:",
         "  /         commands (models, forks, automations, export…)",
         "  @name     address one agent       Ctrl-K   command palette",
+        "  F2        agent settings: model, thinking, approvals",
         "  Ctrl-↑    select earlier messages  F1       all keys",
+        "  Ctrl-D    quit (from an empty draft; also /quit) — the conversation stays",
         `  Approvals open in the terminal browser: ${approvalsKey}`,
       ],
     };
@@ -1225,7 +1353,7 @@ export function TerminalChatApp({
 
   return (
     <Box flexDirection="column" width={size.columns}>
-      {screen.lines.map((line, index) => (
+      {laidOut.lines.map((line, index) => (
         <Text key={index} wrap="truncate-end">
           {line || " " /* an empty Text has no height */}
         </Text>

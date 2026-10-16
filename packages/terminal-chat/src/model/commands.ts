@@ -5,6 +5,7 @@
  */
 
 export type CommandName =
+  | "settings"
   | "model"
   | "thinking"
   | "fast"
@@ -24,6 +25,7 @@ export type CommandName =
   | "attachments"
   | "search"
   | "queue"
+  | "quit"
   | "help";
 
 export interface CommandSpec {
@@ -34,6 +36,10 @@ export interface CommandSpec {
 }
 
 export const COMMANDS: readonly CommandSpec[] = [
+  {
+    name: "settings",
+    summary: "Agent settings: model, thinking, fast mode, approvals and when it answers",
+  },
   {
     name: "model",
     args: "[model]",
@@ -99,6 +105,10 @@ export const COMMANDS: readonly CommandSpec[] = [
     summary: "Show queued messages: edit, undo or discard them",
   },
   { name: "help", summary: "Keys and commands" },
+  {
+    name: "quit",
+    summary: "Leave the chat; the conversation stays and /resume or the launcher reopens it",
+  },
 ];
 
 export function findCommand(name: string): CommandSpec | undefined {

@@ -12,6 +12,7 @@ const info: StatusInfo = {
   approvalLevel: 1,
   agentCount: 1,
   busy: true,
+  waitingForYou: false,
   unreadForks: 2,
   queued: 1,
   title: "Planning",

@@ -32,6 +32,15 @@ export interface PromptSpec {
   onSubmit(text: string): void | Promise<void>;
 }
 
+/** The conversation's current agent settings, as far as they are known. */
+export interface CurrentSettings {
+  model: string | null;
+  thinkingLevel: string | null;
+  fastMode: boolean | null;
+  approvalLevel: 0 | 1 | 2 | null;
+  respondPolicy: string | null;
+}
+
 /** What actions may do to the screen. */
 export interface ActionUi {
   openPicker(
@@ -49,6 +58,10 @@ export interface ActionUi {
   copy(text: string, what: string): void;
   /** Agent settings changed; refresh what the status line shows. */
   settingsChanged(): void;
+  /** Leave the chat program. */
+  quit(): void;
+  /** The settings the status line shows, for the settings panel. */
+  currentSettings(): CurrentSettings;
   selectMessage(id: string): void;
 }
 
@@ -151,6 +164,8 @@ export class ChatActions {
 
   private dispatch(name: CommandName, args: string): void | Promise<void> {
     switch (name) {
+      case "settings":
+        return this.settings();
       case "model":
         return this.model(args);
       case "thinking":
@@ -192,6 +207,8 @@ export class ChatActions {
         return this.ui.openQueue();
       case "help":
         return this.ui.openHelp();
+      case "quit":
+        return this.ui.quit();
     }
   }
 
@@ -232,6 +249,98 @@ export class ChatActions {
   }
 
   // ── model & settings ───────────────────────────────────────────────────────
+
+  /** Every agent setting with its current value; choosing one opens its picker. */
+  private settings(): void {
+    const current = this.ui.currentSettings();
+    const hasAgent = this.agents().length > 0;
+    const afterStart = "available once the agent has started";
+    const approval = APPROVAL_CHOICES.find((c) => c.value === current.approvalLevel);
+    const rows: Array<{
+      id: CommandName;
+      label: string;
+      value: string;
+      detail: string;
+      disabled?: boolean;
+    }> = [
+      {
+        id: "model",
+        label: "Model",
+        value: current.model ?? "workspace default",
+        detail: hasAgent
+          ? "restarts the agent on the new model"
+          : "used by the agent your first message starts",
+      },
+      {
+        id: "thinking",
+        label: "Thinking",
+        value: current.thinkingLevel ?? "default",
+        detail: "how much the agent thinks before answering",
+      },
+      {
+        id: "fast",
+        label: "Fast mode",
+        value: current.fastMode === null ? "—" : current.fastMode ? "on" : "off",
+        detail: hasAgent ? "faster output where the model offers it" : afterStart,
+        disabled: !hasAgent,
+      },
+      {
+        id: "approval",
+        label: "Approvals",
+        value: approval?.word ?? "—",
+        detail: approval?.label ?? "what agents may do without asking you",
+      },
+      {
+        id: "respond",
+        label: "Answers",
+        value: current.respondPolicy ?? "—",
+        detail: hasAgent
+          ? current.respondPolicy
+            ? respondPolicyLabel(current.respondPolicy)
+            : "when the agent answers"
+          : afterStart,
+        disabled: !hasAgent,
+      },
+      {
+        id: "agents",
+        label: "Agents",
+        value: `${this.agents().length} in this chat`,
+        detail: "add, replace or remove agents",
+      },
+      {
+        id: "connect",
+        label: "Providers",
+        value: "connect…",
+        detail: "sign in to a model provider account",
+      },
+    ];
+    this.ui.openPicker(
+      {
+        title: "Agent settings",
+        hint: "Enter changes a setting. The status line under the composer shows them while you chat.",
+        items: rows.map((row) => ({
+          id: row.id,
+          label: `${row.label.padEnd(11)} ${row.value}`,
+          detail: row.detail,
+          ...(row.disabled ? { disabled: true } : {}),
+        })),
+        empty: "",
+      },
+      (item) => {
+        const row = rows.find((r) => r.id === item.id);
+        if (!row) return;
+        if (row.disabled) {
+          this.runtime.notify({
+            tone: "info",
+            title: `${row.label} is ${afterStart}`,
+            message: "Send your first message to start the agent.",
+          });
+          return;
+        }
+        this.run(row.id, "");
+      }
+    );
+  }
 
   private model(arg: string): void {
     const catalog = this.runtime.getSnapshot().host?.modelCatalog;

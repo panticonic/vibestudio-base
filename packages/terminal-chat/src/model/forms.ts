@@ -19,10 +19,10 @@ import {
   validateFeedbackValues,
   withDefaultFreeText,
 } from "@workspace/pubsub/feedback-form-values";
-import { indentWrap, paint, sanitize, style, symbols, wrap } from "./ansi.js";
+import { indentWrap, paint, sanitize, style, symbols, width, wrap } from "./ansi.js";
 import { applyEdit, editorFor, layoutComposer, type EditCommand } from "./composer.js";
 import { highlightLines } from "./highlight.js";
-import type { InputEvent } from "./keys.js";
+import { key, type InputEvent } from "./keys.js";
 
 export type FeedbackResult =
   | { type: "submit"; value: Record<string, FieldValue> }
@@ -173,7 +173,7 @@ export function formReduce(
   args: FeedbackFormArgs,
   event: InputEvent
 ): { state: FormState; result?: FeedbackResult } {
-  if (event.type === "focus") return { state };
+  if (event.type === "focus" || event.type === "mouse") return { state };
   const stops = formStops(state, args);
   const focus = Math.min(state.focus, Math.max(0, stops.length - 1));
   const stop = stops[focus];
@@ -336,7 +336,42 @@ function setValue(state: FormState, key: string, value: FieldValue): FormState {
 
 // ── rendering ────────────────────────────────────────────────────────────────
 
+/**
+ * A clickable span of a rendered form: a click focuses `stop` (pointing at
+ * `option` of a choice field), and an activating one then presses Space, as
+ * the keyboard would. `x1` is exclusive; a whole line spans to Infinity.
+ */
+export interface FormHit {
+  line: number;
+  x0: number;
+  x1: number;
+  stop: number;
+  option?: number;
+  activate: boolean;
+}
+
+/** A click on a form: the focus move and key press it stands for, through `formReduce`. */
+export function formClick(
+  state: FormState,
+  args: FeedbackFormArgs,
+  hit: FormHit
+): { state: FormState; result?: FeedbackResult } {
+  const stop = formStops(state, args)[hit.stop];
+  if (!stop) return { state };
+  const focused: FormState = {
+    ...state,
+    focus: hit.stop,
+    error: null,
+    ...(hit.option !== undefined && stop.kind === "field"
+      ? { optionCursor: { ...state.optionCursor, [stop.key]: hit.option } }
+      : {}),
+  };
+  return hit.activate ? formReduce(focused, args, key("char", { text: " " })) : { state: focused };
+}
+
 export interface FormRender {
+  /** What a click on each part of `lines` does. */
+  hits: FormHit[];
   lines: string[];
   /** Line index of the focused stop, so a scroll window can keep it visible. */
   focusLine: number;
@@ -349,6 +384,11 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
   const stops = formStops(state, args);
   const focused = stops[Math.min(state.focus, Math.max(0, stops.length - 1))];
   const lines: string[] = [];
+  const lineHits = new Map<number, FormHit>();
+  const whole = (line: number, stop: number, extra: Partial<FormHit> = {}) => {
+    if (stop >= 0)
+      lineHits.set(line, { line, x0: 0, x1: Infinity, stop, activate: false, ...extra });
+  };
   let focusLine = 0;
   let cursor: FormRender["cursor"] = null;
   const tone = args.severity === "danger" ? "red" : args.severity === "warning" ? "yellow" : "cyan";
@@ -360,6 +400,8 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
   for (const field of visibleFields(state)) {
     const enabled = isEnabled(field, state.values);
     const isFocused = focused?.kind === "field" && focused.key === field.key;
+    const fieldStop = stops.findIndex((s) => s.kind === "field" && s.key === field.key);
+    const fieldStart = lines.length + 1;
     const marker = isFocused ? style.cyan("❯ ") : "  ";
     if (isFocused) focusLine = lines.length + 1;
     lines.push("");
@@ -416,6 +458,7 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
       }
       case "boolean":
       case "toggle":
+        whole(lines.length, fieldStop, { activate: true });
         lines.push(
           `  ${value ? style.green("[x] yes") : "[ ] no"}${isFocused ? style.gray("  Space toggles") : ""}`
         );
@@ -446,14 +489,16 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
           const pointer = isFocused && index === cursorIndex ? style.cyan("›") : " ";
           const text = `${pointer} ${box} ${option.label}${option.description ? style.gray(` — ${option.description}`) : ""}`;
           if (isFocused && index === cursorIndex) focusLine = lines.length;
-          lines.push(
-            ...indentWrap(
-              isFocused && index === cursorIndex ? style.bold(text) : text,
-              cols,
-              "  ",
-              "      "
-            )
+          const wrapped = indentWrap(
+            isFocused && index === cursorIndex ? style.bold(text) : text,
+            cols,
+            "  ",
+            "      "
           );
+          wrapped.forEach((_, at) =>
+            whole(lines.length + at, fieldStop, { option: index, activate: true })
+          );
+          lines.push(...wrapped);
         });
         if (freeTextActive(field, state.values)) {
           const key = getFreeTextKey(field);
@@ -466,11 +511,13 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
             focusLine = at + layout.cursorRow;
             cursor = { line: focusLine, column: 6 + layout.cursorColumn };
           }
-          layout.lines.forEach((line, index) =>
+          const freeStop = stops.findIndex((s) => s.kind === "free-text" && s.key === field.key);
+          layout.lines.forEach((line, index) => {
+            whole(lines.length, freeStop);
             lines.push(
               `${freeFocused && index === 0 ? style.cyan("❯ ") : "  "}  ${style.gray("│")} ${index === 0 && !text ? style.gray(field.freeTextPlaceholder ?? "Type your answer") : line}`
-            )
-          );
+            );
+          });
         }
         break;
       }
@@ -478,9 +525,14 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
     for (const warning of field.warnings ?? []) {
       void warning;
     }
+    // The rest of the field's lines (label, description, value) focus it.
+    for (let line = fieldStart; line < lines.length; line++)
+      if (!lineHits.has(line)) whole(line, fieldStop);
   }
   lines.push("");
   const buttons: string[] = [];
+  const buttonHits: FormHit[] = [];
+  let x = 2;
   const stopIndex = (kind: "submit" | "cancel") => stops.findIndex((s) => s.kind === kind);
   for (const kind of ["submit", "cancel"] as const) {
     const index = stopIndex(kind);
@@ -489,7 +541,11 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
       kind === "submit" ? (args.submitLabel ?? "Submit") : (args.cancelLabel ?? "Cancel");
     const isFocused = focused?.kind === kind;
     if (isFocused) focusLine = lines.length;
-    buttons.push(isFocused ? style.inverse(` ${label} `) : `[ ${label} ]`);
+    const button = isFocused ? style.inverse(` ${label} `) : `[ ${label} ]`;
+    const end = x + width(button);
+    buttonHits.push({ line: lines.length, x0: x, x1: end, stop: index, activate: true });
+    x = end + 2;
+    buttons.push(button);
   }
   lines.push(`  ${buttons.join("  ")}`);
   if (state.error)
@@ -503,5 +559,5 @@ export function renderForm(state: FormState, args: FeedbackFormArgs, columns: nu
       "  Tab/↑↓ move · PgUp/PgDn inspect · ←→ choose · Space toggles · Enter confirms · Ctrl-S submits · Esc cancels"
     )
   );
-  return { lines, focusLine, cursor };
+  return { lines, focusLine, cursor, hits: [...lineHits.values(), ...buttonHits] };
 }

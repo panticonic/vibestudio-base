@@ -35,6 +35,10 @@ export function copySequence(text: string): string {
   return `${ESC}]52;c;${btoa(binary)}${BEL}`;
 }
 
-/** Modes the chat turns on while it runs: bracketed paste and focus reporting. */
-export const ENTER_MODES = `${ESC}[?2004h${ESC}[?1004h`;
-export const LEAVE_MODES = `${ESC}[?1004l${ESC}[?2004l`;
+/**
+ * Modes the chat turns on while it runs: bracketed paste, focus reporting and
+ * mouse clicks and wheel (SGR encoding). With mouse reporting on, terminals
+ * select text natively while Shift is held.
+ */
+export const ENTER_MODES = `${ESC}[?2004h${ESC}[?1004h${ESC}[?1000h${ESC}[?1006h`;
+export const LEAVE_MODES = `${ESC}[?1006l${ESC}[?1000l${ESC}[?1004l${ESC}[?2004l`;

@@ -182,6 +182,14 @@ async function start(state = new MemoryState()) {
   return runtime;
 }
 
+const NO_SETTINGS = {
+  model: null,
+  thinkingLevel: null,
+  fastMode: null,
+  approvalLevel: null,
+  respondPolicy: null,
+};
+
 describe("ChatRuntime", () => {
   it("opens the committed destination after joined source retirement reports an error", async () => {
     const failure = new Error("source membership leave rejected");
@@ -292,6 +300,8 @@ describe("ChatRuntime", () => {
       setDraft: vi.fn(),
       copy: vi.fn(),
       settingsChanged: vi.fn(),
+      currentSettings: () => NO_SETTINGS,
+      quit: vi.fn(),
       selectMessage: vi.fn(),
     };
     new ChatActions(runtime, ui).attach("");
@@ -367,6 +377,8 @@ describe("ChatRuntime", () => {
       setDraft: vi.fn(),
       copy: vi.fn(),
       settingsChanged: vi.fn(),
+      currentSettings: () => NO_SETTINGS,
+      quit: vi.fn(),
       selectMessage: vi.fn(),
     };
     new ChatActions(runtime, ui).run("fork", "");

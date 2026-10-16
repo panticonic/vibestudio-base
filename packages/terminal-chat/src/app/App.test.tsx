@@ -106,9 +106,9 @@ describe("TerminalChatApp", () => {
     const screen = app.screen();
     expect(screen).toHaveLength(23); // one row short of the terminal, so Ink rewrites only changed lines
     expect(app.text()).toContain("New conversation");
-    expect(app.text()).toContain("Approvals open in the terminal browser: Ctrl-Space a");
+    expect(app.text()).toContain("Approvals open in the terminal browser: Ctrl-B a");
     expect(screen.at(-1)).toMatch(/^● online │ ◇ idle │ GPT-5 │ thinking medium │ ctx 12%/);
-    expect(screen.at(-2)).toContain("Enter send · Alt-Enter newline");
+    expect(screen.at(-2)).toContain("Enter send · F2 settings");
     expect(app.control.some((s) => s.includes("\x1b]2;Planning — Chat"))).toBe(true);
   });
 
@@ -201,6 +201,45 @@ describe("TerminalChatApp", () => {
     expect(app.screen().at(-2)).toContain("f fork here");
   });
 
+  it("is clickable: tool cards expand, hint keys press, pickers pick, the wheel scrolls", async () => {
+    const tool: ChatMessage = {
+      id: "invocation:1",
+      senderId: "ai",
+      content: "",
+      contentType: "invocation",
+      invocation: {
+        id: "1",
+        name: "eval",
+        arguments: { code: "1+1" },
+        execution: {
+          status: "complete",
+          description: "Adds",
+          result: { details: { success: true, returnValue: 2 } },
+        },
+      },
+    };
+    const app = await mount({ messages: [agentReply("a1", "Let me compute", { seq: 1 }), tool] });
+    const click = (x: number, y: number) =>
+      app.type(`\x1b[<0;${x + 1};${y + 1}M`, `\x1b[<0;${x + 1};${y + 1}m`);
+    const rowOf = (text: string) => app.screen().findIndex((line) => line.includes(text));
+    const hintAt = (text: string) =>
+      [app.screen().at(-2)!.indexOf(text), app.screen().length - 2] as const;
+
+    await click(4, rowOf("Eval"));
+    expect(app.text()).toContain('"code": "1+1"');
+    expect(app.screen().at(-2)).toContain("Enter collapse".slice(0, 5));
+    await click(...hintAt("Esc back"));
+    expect(app.screen().at(-2)).toContain("Enter send");
+
+    await app.type("\x1b[<64;1;1M"); // wheel up scrolls the transcript, never the draft
+    expect(app.screen().at(-2)).toContain("Enter send");
+
+    await click(...hintAt("F2 settings"));
+    expect(app.text()).toContain("Agent settings");
+    await click(4, rowOf("Thinking "));
+    expect(app.text()).toContain("Thinking level");
+  });
+
   it("shows inline approval cards as display-only, pointing at the overlay key", async () => {
     const app = await mount({
       messages: [
@@ -214,7 +253,78 @@ describe("TerminalChatApp", () => {
       ],
     });
     expect(app.text()).toContain("Approval needed: Run rm -rf build?");
-    expect(app.text()).toContain("press Ctrl-Space a");
+    expect(app.text()).toContain("press Ctrl-B a");
+  });
+
+  it("shows a turn parked on the person's decision once, as waiting for them", async () => {
+    const title = "Finish reviewing Welcome — here's what's in your workspace to continue.";
+    const app = await mount({
+      messages: [
+        { id: "u1", senderId: "me", content: "tell me a joke" },
+        { id: "turn:t1", senderId: "ai", content: "", contentType: "typing", complete: false },
+        {
+          id: "turn:t1:waiting",
+          senderId: "ai",
+          content: title,
+          contentType: "lifecycle",
+          kind: "system",
+          complete: false,
+          lifecycle: { status: "waiting", title, reason: "input_required" },
+        },
+      ],
+    });
+    const text = app.text();
+    // The terminal browser draws the "Needs you" bar in its own chrome; the
+    // chat says it once, in the transcript, with the key that answers it.
+    expect(text).not.toContain("Needs you");
+    expect(text).toContain("Waiting for you: Finish reviewing Welcome");
+    expect(text).toContain("Press Ctrl-B a to answer it");
+    expect(text.split("Finish reviewing Welcome").length - 1).toBe(1);
+    expect(text).not.toContain("is working");
+    expect(app.screen().at(-1)).toContain("◆ waiting for you");
+  });
+
+  it("quits with Ctrl-D from an empty draft and deletes with it otherwise", async () => {
+    const app = await mount();
+    let exited = false;
+    void instance!.waitUntilExit().then(() => {
+      exited = true;
+    });
+    await app.type("ab", "\x1b[D", "\x04");
+    expect(app.text()).toContain("› a");
+    expect(exited).toBe(false);
+    await app.type("\x15", "\x04");
+    expect(exited).toBe(true);
+  });
+
+  it("walks repeated Ctrl-C from clearing the draft to quitting", async () => {
+    const app = await mount();
+    let exited = false;
+    void instance!.waitUntilExit().then(() => {
+      exited = true;
+    });
+    await app.type("draft", "\x03");
+    expect(app.text()).not.toContain("› draft");
+    await app.type("\x03");
+    expect(app.chat.notices()).toContainEqual(
+      expect.objectContaining({ title: "Press Ctrl-C again to quit" })
+    );
+    await app.type("x", "\x03");
+    expect(exited).toBe(false); // another key in between starts over: this one cleared "x"
+    await app.type("\x03", "\x03");
+    expect(exited).toBe(true);
+  });
+
+  it("opens agent settings with F2 and changes one from there", async () => {
+    const app = await mount();
+    await app.type("\x1bOQ");
+    const text = app.text();
+    expect(text).toContain("Agent settings");
+    expect(text).toMatch(/Model\s+GPT-5/);
+    expect(text).toMatch(/Thinking\s+medium/);
+    expect(text).toContain("Approvals");
+    await app.type("\r");
+    expect(app.text()).toContain("Choose a model");
   });
 
   it("answers an agent's feedback_form as a terminal form", async () => {
@@ -244,6 +354,56 @@ describe("TerminalChatApp", () => {
     await expect(answer).resolves.toEqual({ type: "submit", value: { color: "blue" } });
     await settle();
     expect(app.text()).not.toContain("Which color?");
+  });
+
+  it("answers an agent's question by mouse: options, then the Submit button", async () => {
+    const app = await mount();
+    const answer = app.chat.addForm({
+      id: "call-2",
+      from: "ai",
+      args: {
+        title: "Which color?",
+        fields: [
+          {
+            key: "color",
+            type: "select",
+            required: true,
+            options: [
+              { value: "red", label: "Red" },
+              { value: "blue", label: "Blue" },
+            ],
+          },
+        ],
+      },
+    });
+    await settle();
+    const click = (x: number, y: number) =>
+      app.type(`\x1b[<0;${x + 1};${y + 1}M`, `\x1b[<0;${x + 1};${y + 1}m`);
+    const at = (text: string) => {
+      const y = app.screen().findIndex((line) => line.includes(text));
+      return [app.screen()[y]!.indexOf(text), y] as const;
+    };
+    await click(...at("Blue"));
+    expect(app.screen()[at("Blue")[1]]).toContain("(•) Blue");
+    await click(...at("[ Submit ]"));
+    await expect(answer).resolves.toEqual({ type: "submit", value: { color: "blue" } });
+  });
+
+  it("offers a clickable way back to the newest message after scrolling up", async () => {
+    const messages = Array.from({ length: 60 }, (_, i) =>
+      agentReply(`m${i}`, `message number ${i}`)
+    );
+    const app = await mount({ messages });
+    expect(app.text()).not.toContain("jump to the latest");
+    await app.type("\x1b[5~", "\x1b[5~");
+    const y = app.screen().findIndex((line) => line.includes("jump to the latest"));
+    expect(y).toBeGreaterThan(0);
+    expect(app.screen()[y]).toMatch(/↓ \d+ newer messages/);
+    await app.type(`\x1b[<0;5;${y + 1}M`, `\x1b[<0;5;${y + 1}m`);
+    expect(app.text()).not.toContain("jump to the latest");
+    expect(app.text()).toContain("message number 59");
+    await app.type("\x1b[5~", "\x1b[1;5F"); // Ctrl-End does the same
+    expect(app.text()).not.toContain("jump to the latest");
   });
 
   it("guides first-time setup when no model is usable", async () => {

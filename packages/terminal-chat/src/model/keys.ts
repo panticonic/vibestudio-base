@@ -24,7 +24,8 @@ export type KeyName =
   | "pageup"
   | "pagedown"
   | "insert"
-  | "f1";
+  | "f1"
+  | "f2";
 
 export interface KeyEvent {
   type: "key";
@@ -47,13 +48,26 @@ export interface FocusEvent {
   focused: boolean;
 }
 
-export type InputEvent = KeyEvent | PasteEvent | FocusEvent;
+/**
+ * A mouse report (SGR encoding, `CSI < b ; x ; y M|m`, enabled with
+ * `CSI ? 1000 h` and `CSI ? 1006 h`). Cells are 0-based.
+ */
+export interface MouseEvent {
+  type: "mouse";
+  action: "press" | "release" | "wheel-up" | "wheel-down";
+  /** 0 left, 1 middle, 2 right. */
+  button: number;
+  x: number;
+  y: number;
+}
+
+export type InputEvent = KeyEvent | PasteEvent | FocusEvent | MouseEvent;
 
 const ESC = "\x1b";
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
-const key = (
+export const key = (
   name: KeyName,
   modifiers: Partial<Pick<KeyEvent, "ctrl" | "meta" | "shift" | "text">> = {}
 ): KeyEvent => ({
@@ -80,10 +94,11 @@ const CSI_FINAL_KEYS: Record<string, KeyName> = {
   F: "end",
 };
 
-const SS3_KEYS: Record<string, KeyName> = { ...CSI_FINAL_KEYS, P: "f1" };
+const SS3_KEYS: Record<string, KeyName> = { ...CSI_FINAL_KEYS, P: "f1", Q: "f2" };
 
 const TILDE_KEYS: Record<number, KeyName> = {
   11: "f1",
+  12: "f2",
   1: "home",
   2: "insert",
   3: "delete",
@@ -130,6 +145,7 @@ function decodeCsi(params: string, final: string): KeyEvent | null {
   }
   if (final === "Z") return key("tab", { shift: true });
   if (final === "P" && parts[1] !== undefined) return key("f1", modifierFlags(parts[1]));
+  if (final === "Q" && parts[1] !== undefined) return key("f2", modifierFlags(parts[1]));
   const name = CSI_FINAL_KEYS[final];
   return name ? key(name, modifierFlags(parts[1])) : null;
 }
@@ -174,6 +190,26 @@ export class KeyDecoder {
         flushText();
         const next = chunk[index + 1];
         if (next === "[") {
+          const mouse = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/.exec(chunk.slice(index));
+          if (mouse) {
+            const code = Number(mouse[1]);
+            events.push({
+              type: "mouse",
+              action:
+                code & 64
+                  ? code & 1
+                    ? "wheel-down"
+                    : "wheel-up"
+                  : mouse[4] === "M"
+                    ? "press"
+                    : "release",
+              button: code & 3,
+              x: Number(mouse[2]) - 1,
+              y: Number(mouse[3]) - 1,
+            });
+            index += mouse[0].length;
+            continue;
+          }
           const match = /^\x1b\[([0-9;:?]*)([ -/]*)([@-~])/.exec(chunk.slice(index));
           if (match) {
             if (match[1] === "" && (match[3] === "I" || match[3] === "O")) {

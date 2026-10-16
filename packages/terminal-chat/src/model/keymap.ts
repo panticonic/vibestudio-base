@@ -19,6 +19,9 @@ export type ActionId =
   | "page-up"
   | "page-down"
   | "toggle-all"
+  | "latest"
+  | "settings"
+  | "quit"
   | "help"
   // transcript selection
   | "select-up"
@@ -86,7 +89,7 @@ export const BINDINGS: readonly Binding[] = [
     keys: ["C-c"],
     action: "clear-or-interrupt",
     label: "Ctrl-C",
-    description: "Clear the draft, or stop the agent when the draft is empty",
+    description: "Clear the draft, then stop the agent; pressed again, quit the chat",
   },
   {
     mode: "compose",
@@ -125,10 +128,31 @@ export const BINDINGS: readonly Binding[] = [
   },
   {
     mode: "compose",
+    keys: ["C-end"],
+    action: "latest",
+    label: "Ctrl-End",
+    description: "Jump back to the newest message and follow new ones",
+  },
+  {
+    mode: "compose",
     keys: ["C-o"],
     action: "toggle-all",
     label: "Ctrl-O",
     description: "Expand or collapse all tool calls and thinking",
+  },
+  {
+    mode: "compose",
+    keys: ["f2"],
+    action: "settings",
+    label: "F2",
+    description: "Agent settings: model, thinking, fast mode, approvals (also /settings)",
+  },
+  {
+    mode: "compose",
+    keys: ["C-d"],
+    action: "quit",
+    label: "Ctrl-D",
+    description: "Quit the chat when the draft is empty (also /quit); the conversation stays",
   },
   {
     mode: "compose",

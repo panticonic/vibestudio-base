@@ -17,6 +17,8 @@ export interface StatusInfo {
   approvalLevel: 0 | 1 | 2 | null;
   agentCount: number;
   busy: boolean;
+  /** An agent's turn is parked on a decision only the person can make. */
+  waitingForYou: boolean;
   unreadForks: number;
   queued: number;
   title: string | null;
@@ -35,7 +37,15 @@ export function statusLine(info: StatusInfo, columns: number): string {
         : style.red("○ offline");
   parts.push({ text: connection, priority: 0 });
   if (info.agentCount === 0) parts.push({ text: style.gray("no agent yet"), priority: 1 });
-  else parts.push({ text: info.busy ? style.cyan("◆ working") : style.gray("◇ idle"), priority: 1 });
+  else
+    parts.push({
+      text: info.waitingForYou
+        ? style.yellow("◆ waiting for you")
+        : info.busy
+          ? style.cyan("◆ working")
+          : style.gray("◇ idle"),
+      priority: 1,
+    });
   if (info.model) parts.push({ text: style.bold(info.model) + (info.fastMode ? style.yellow(" fast") : ""), priority: 2 });
   if (info.thinkingLevel) parts.push({ text: `thinking ${info.thinkingLevel}`, priority: 4 });
   if (info.contextPercent !== null) {

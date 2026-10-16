@@ -614,9 +614,11 @@ export const MessageCard = React.memo(function MessageCard({
                   {msg.lifecycle.title}
                 </Text>
               </Flex>
-              {(msg.lifecycle.detail || msg.content) && (
+              {/* A waiting turn's content is its title; say it once. */}
+              {(msg.lifecycle.detail ||
+                (msg.content && msg.content !== msg.lifecycle.title)) && (
                 <Text size="1" color="gray" style={{ whiteSpace: "pre-wrap" }}>
-                  {msg.lifecycle.detail ?? msg.content}
+                  {msg.lifecycle.detail || msg.content}
                 </Text>
               )}
             </Flex>

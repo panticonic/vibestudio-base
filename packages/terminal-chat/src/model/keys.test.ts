@@ -26,8 +26,19 @@ describe("KeyDecoder", () => {
     expect(chords("\n")).toEqual(["C-j"]);
   });
 
+  it("decodes SGR mouse clicks and wheel turns as 0-based cells", () => {
+    expect(decode("\x1b[<0;5;3M\x1b[<0;5;3ma\x1b[<64;1;1M\x1b[<65;1;1M")).toEqual([
+      { type: "mouse", action: "press", button: 0, x: 4, y: 2 },
+      { type: "mouse", action: "release", button: 0, x: 4, y: 2 },
+      expect.objectContaining({ type: "key", name: "char", text: "a" }),
+      { type: "mouse", action: "wheel-up", button: 0, x: 0, y: 0 },
+      { type: "mouse", action: "wheel-down", button: 1, x: 0, y: 0 },
+    ]);
+  });
+
   it("decodes Alt+letter, a lone Esc, Esc Esc, and F1", () => {
     expect(chords("\x1bb", "\x1b", "\x1b\x1b", "\x1bOP", "\x1b[11~")).toEqual(["M-b", "escape", "escape", "escape", "f1", "f1"]);
+    expect(chords("\x1bOQ", "\x1b[12~", "\x1b[1;5Q")).toEqual(["f2", "f2", "C-f2"]);
   });
 
   it("assembles bracketed pastes across chunks and normalises newlines", () => {
