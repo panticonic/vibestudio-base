@@ -78,8 +78,10 @@ turn them into chrome:
 - **Mouse.** Make the app clickable: enable SGR mouse reporting
   (`\x1b[?1000h\x1b[?1006h`, off again on exit) and the terminal forwards
   clicks and wheel turns inside the tab. Hit-test against the same layout
-  that drew the screen, and let a click do exactly what its key does. People
-  hold Shift to select text natively while an app owns the mouse.
+  that drew the screen, and let a click do exactly what its key does. Draw
+  what a click presses as a button — a filled block (inverse, or a background
+  colour) naming its key — instead of writing "click here". People hold Shift
+  to select text natively while an app owns the mouse.
 - **Quitting.** Give the person an obvious way out: repeated Ctrl-C should end
   in quitting once there is nothing left to clear or stop. Exit with code 0
   when the person leaves on purpose; the terminal then closes the tab and,
@@ -89,12 +91,13 @@ turn them into chrome:
   on attach the terminal resizes the PTY so full-screen programs redraw.
 - **Approvals.** Gated calls raise approvals attributed to the app, and
   reviews your work joins are attributed to it too; the terminal shows them in
-  chrome no program can draw. Each new one is shown in full over the screen as
-  it arrives (keys go to it, not your program, until the person hides it with
-  Esc; stray keys never answer it). While your tab's work waits on one, the terminal
-  shows a clickable "Needs you" bar above its status bar (your tab is one row
-  shorter meanwhile). Never draw an approval prompt or a bar of your own; say
-  in your own view what is waiting, and name `approvalsKey`.
+  chrome no program can draw. Each new one docks below your tab as it
+  arrives, at the height it needs (your tab is that many rows shorter
+  meanwhile); keys go to it, not your program, until the person hides it with
+  Esc or Ctrl-C, and stray keys never answer it. Hidden, a waiting approval is
+  one bar above the status bar (one row). Never draw an approval prompt or a
+  bar of your own; say in your own view what is waiting, and name
+  `approvalsKey`.
 - **Files.** Read workspace files from the program itself; there is no
   terminal-side file request.
 - **State.** Keep anything that must survive a restart in `app.state`, never

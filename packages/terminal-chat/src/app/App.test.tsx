@@ -108,7 +108,7 @@ describe("TerminalChatApp", () => {
     expect(app.text()).toContain("New conversation");
     expect(app.text()).toContain("Approvals open in the terminal browser: Ctrl-B a");
     expect(screen.at(-1)).toMatch(/^● online │ ◇ idle │ GPT-5 │ thinking medium │ ctx 12%/);
-    expect(screen.at(-2)).toContain("Enter send · F2 settings");
+    expect(screen.at(-2)).toContain(" Enter send   F2 settings ");
     expect(app.control.some((s) => s.includes("\x1b]2;Planning — Chat"))).toBe(true);
   });
 
@@ -394,16 +394,16 @@ describe("TerminalChatApp", () => {
       agentReply(`m${i}`, `message number ${i}`)
     );
     const app = await mount({ messages });
-    expect(app.text()).not.toContain("jump to the latest");
+    expect(app.text()).not.toContain("· Ctrl-End");
     await app.type("\x1b[5~", "\x1b[5~");
-    const y = app.screen().findIndex((line) => line.includes("jump to the latest"));
+    const y = app.screen().findIndex((line) => line.includes("· Ctrl-End"));
     expect(y).toBeGreaterThan(0);
     expect(app.screen()[y]).toMatch(/↓ \d+ newer messages/);
     await app.type(`\x1b[<0;5;${y + 1}M`, `\x1b[<0;5;${y + 1}m`);
-    expect(app.text()).not.toContain("jump to the latest");
+    expect(app.text()).not.toContain("· Ctrl-End");
     expect(app.text()).toContain("message number 59");
     await app.type("\x1b[5~", "\x1b[1;5F"); // Ctrl-End does the same
-    expect(app.text()).not.toContain("jump to the latest");
+    expect(app.text()).not.toContain("· Ctrl-End");
   });
 
   it("guides first-time setup when no model is usable", async () => {

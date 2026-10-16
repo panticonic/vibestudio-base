@@ -441,11 +441,8 @@ function transcriptLines(
     const newer = source.count - 1 - last;
     const label = newer > 0 ? `${newer} newer message${newer === 1 ? "" : "s"}` : "more below";
     jumpLine = Math.min(rows, out.length) - 1;
-    out[jumpLine] = paint(
-      padEnd(` ↓ ${label} — click here or press Ctrl-End to jump to the latest`, columns),
-      "inverse",
-      "cyan"
-    );
+    // The whole line is the button: its fill says so, and the key is named on it.
+    out[jumpLine] = paint(padEnd(` ↓ ${label} · Ctrl-End `, columns), "inverse", "cyan");
     shown[jumpLine] = null;
   }
   return { lines: out.slice(0, rows), rows: shown.slice(0, rows), jumpLine };
@@ -484,20 +481,25 @@ function hintSegments(model: ScreenModel): HintSegment[] {
   ];
 }
 
-/** The hint line as text, and the span of each segment that fits. */
+/**
+ * The hint line as text, and the span of each segment on it. What a click
+ * presses is drawn as a button (a filled block); a plain hint stays text.
+ * Whole segments only, in order of importance: none is cut off.
+ */
 function hintLine(
   segments: readonly HintSegment[],
   columns: number
 ): { text: string; spans: Omit<Hit, "y">[] } {
   const spans: Omit<Hit, "y">[] = [];
+  const parts: string[] = [];
   let x = 0;
   for (const segment of segments) {
-    const end = x + width(segment.text);
-    if (segment.target && end <= columns) spans.push({ x0: x, x1: end, target: segment.target });
-    x = end + 3;
+    const text = segment.target ? ` ${segment.text} ` : segment.text;
+    const end = x + width(text);
+    if (end > columns) break;
+    parts.push(segment.target ? paint(text, "gray", "inverse") : style.gray(text));
+    if (segment.target) spans.push({ x0: x, x1: end, target: segment.target });
+    x = end + 1;
   }
-  return {
-    text: style.gray(truncate(segments.map((segment) => segment.text).join(" · "), columns)),
-    spans,
-  };
+  return { text: parts.join(" "), spans };
 }
