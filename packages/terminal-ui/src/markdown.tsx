@@ -8,8 +8,8 @@ import React, { createContext, useContext } from "react";
 import { Box, Text as InkText } from "ink";
 import { InlineContext } from "./interaction.js";
 import { Separator } from "./layout.js";
-import { Unavailable } from "./data.js";
-import { Blockquote, Link, Strong, Em, Code, Heading } from "./text.js";
+import { Image } from "./media.js";
+import { Blockquote, CodeBlock, Link, Strong, Em, Code, Heading } from "./text.js";
 
 type Loose = Record<string, unknown> & { children?: React.ReactNode };
 
@@ -113,22 +113,15 @@ function ListItem(props: Loose): React.ReactElement {
 const PreContext = createContext(false);
 
 function Pre(props: Loose): React.ReactElement {
+  const code = React.Children.toArray(props.children)[0];
+  const className = React.isValidElement(code)
+    ? (code.props as { className?: unknown }).className
+    : undefined;
+  const mermaid = typeof className === "string" && /\blanguage-mermaid\b/.test(className);
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="gray"
-      borderDimColor
-      borderTop={false}
-      borderRight={false}
-      borderBottom={false}
-      paddingLeft={1}
-      marginBottom={1}
-    >
-      <PreContext.Provider value>
-        <InkText>{props.children}</InkText>
-      </PreContext.Provider>
-    </Box>
+    <CodeBlock caption={mermaid ? "diagram" : undefined}>
+      <PreContext.Provider value>{props.children}</PreContext.Provider>
+    </CodeBlock>
   );
 }
 
@@ -144,11 +137,6 @@ function Strike(props: Loose): React.ReactElement {
 
 function Break(): React.ReactElement {
   return <InkText>{"\n"}</InkText>;
-}
-
-function Image(props: Loose): React.ReactElement {
-  const alt = typeof props["alt"] === "string" && props["alt"] ? `: ${props["alt"]}` : "";
-  return <Unavailable what={`Image${alt}`} />;
 }
 
 function Input(props: Loose): React.ReactElement {

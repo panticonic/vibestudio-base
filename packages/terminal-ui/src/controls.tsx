@@ -10,12 +10,12 @@ import { tone } from "./theme.js";
 type Loose = Record<string, unknown> & { children?: React.ReactNode };
 type Handler = ((...args: unknown[]) => unknown) | undefined;
 
-function call(handler: unknown, ...args: unknown[]): void {
+export function call(handler: unknown, ...args: unknown[]): void {
   if (typeof handler === "function") (handler as (...a: unknown[]) => unknown)(...args);
 }
 
 /** The event-ish object a DOM handler reads its value from. */
-function changeEvent(value: string) {
+export function changeEvent(value: string) {
   return { target: { value }, currentTarget: { value }, preventDefault() {}, stopPropagation() {} };
 }
 
@@ -244,7 +244,7 @@ function SelectTrigger(props: Loose): React.ReactElement {
   );
 }
 
-function SelectItem(): null {
+function SelectItem(_props: Loose): null {
   return null;
 }
 

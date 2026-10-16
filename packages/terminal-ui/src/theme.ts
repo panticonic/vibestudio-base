@@ -78,3 +78,46 @@ export function record(value: unknown): Record<string, unknown> | null {
     ? (value as Record<string, unknown>)
     : null;
 }
+
+/** A number from a number or numeric text ("$1,234.50", "45%"); null for anything else. */
+export function number(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const cleaned = value
+    .trim()
+    .replace(/[\s,_]/g, "")
+    .replace(/^−/, "-")
+    .replace(/^(-?)[$€£¥₹]/, "$1")
+    .replace(/%$/, "");
+  if (cleaned === "" || cleaned === "-") return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export interface NumberStyle {
+  /** "percent" means the value is already in points (25 → "25%"). */
+  format?: "number" | "percent" | "currency";
+  currency?: string;
+  unit?: string;
+}
+
+/** A number as people write it: grouped, with its currency or unit. */
+export function formatNumber(value: number, { format, currency, unit }: NumberStyle = {}): string {
+  let shown: string;
+  try {
+    shown =
+      format === "currency"
+        ? new Intl.NumberFormat(undefined, {
+            style: "currency",
+            currency: (currency ?? "USD").trim().toUpperCase(),
+            minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+            maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+          }).format(value)
+        : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+  } catch {
+    shown = `${value} ${currency}`;
+  }
+  if (format === "percent") shown += "%";
+  if (!unit) return shown;
+  return /^[A-Za-z]/.test(unit) ? `${shown} ${unit}` : `${shown}${unit}`;
+}

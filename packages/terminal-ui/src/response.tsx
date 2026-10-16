@@ -25,7 +25,7 @@ export interface ResponseAnswer {
 }
 
 export interface ResponseActions {
-  send(text: string, options?: { interaction?: ResponseInteraction }): Promise<void>;
+  send(text: string, options?: { interaction?: ResponseInteraction }): Promise<unknown>;
   answer(source: string, targetId: string): ResponseAnswer | undefined;
 }
 

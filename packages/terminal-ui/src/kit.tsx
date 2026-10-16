@@ -9,15 +9,12 @@ import * as data from "./data.js";
 import * as controls from "./controls.js";
 import * as response from "./response.js";
 import { Pressable, Clickable, ButtonFace } from "./interaction.js";
+import * as media from "./media.js";
+import * as actions from "./actions.js";
+import { Chart } from "./chart.js";
+import { Calculator } from "./calculator.js";
 import { markdownElements, markInline } from "./markdown.js";
 import { iconFor } from "./icons.js";
-
-/** Visual content that needs a graphical client. */
-function unavailable(what: string) {
-  return function UnavailableHere() {
-    return <data.Unavailable what={what} />;
-  };
-}
 
 const Tooltip = layout.Passthrough;
 
@@ -27,6 +24,15 @@ export const kit: Record<string, unknown> = {
   ...data,
   ...controls,
   ...response,
+  ...actions,
+  Image: media.Image,
+  Video: media.Video,
+  GeneratedImage: media.GeneratedImage,
+  PlaceMap: media.PlaceMap,
+  Diagram: media.Diagram,
+  Mermaid: media.Diagram,
+  Chart,
+  Calculator,
   Pressable,
   Clickable,
   ButtonFace,
@@ -49,13 +55,6 @@ export const kit: Record<string, unknown> = {
   Theme: layout.Passthrough,
   ScrollArea: layout.Box,
   AspectRatio: layout.Box,
-  Chart: unavailable("Chart"),
-  PlaceMap: unavailable("Map"),
-  Calculator: unavailable("Calculator"),
-  Image: unavailable("Image"),
-  Video: unavailable("Video"),
-  Diagram: unavailable("Diagram"),
-  Mermaid: unavailable("Diagram"),
 };
 
 markInline(
@@ -70,7 +69,10 @@ markInline(
   data.Progress,
   data.Spinner,
   data.Avatar,
-  data.Unavailable
+  data.Unavailable,
+  media.Image,
+  media.Video,
+  media.GeneratedImage
 );
 
 /** What an MDX message's tags draw with: Markdown elements plus the vocabulary. */

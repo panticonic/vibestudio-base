@@ -128,3 +128,30 @@ function CalloutText(props: Loose): React.ReactElement {
 }
 
 export const Callout = { Root: CalloutRoot, Icon: CalloutIcon, Text: CalloutText };
+
+/** Preformatted text with a bar down the left, and a caption naming what it is. */
+export function CodeBlock({
+  caption,
+  children,
+}: {
+  caption?: string | undefined;
+  children?: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      {caption ? <InkText dimColor>{caption}</InkText> : null}
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="gray"
+        borderDimColor
+        borderTop={false}
+        borderRight={false}
+        borderBottom={false}
+        paddingLeft={1}
+      >
+        <InkText>{children}</InkText>
+      </Box>
+    </Box>
+  );
+}
