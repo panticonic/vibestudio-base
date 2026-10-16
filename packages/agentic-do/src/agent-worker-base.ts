@@ -786,6 +786,8 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           messageId: input.messageId,
           senderParticipantId: input.senderParticipantId,
           ...(input.senderHandle ? { senderHandle: input.senderHandle } : {}),
+          // The phone's reply field posts into this conversation as the person.
+          actions: [{ id: "reply", title: "Reply", input: "text" }],
         },
         toolRpc
       );
@@ -810,6 +812,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
       messageId?: string;
       senderParticipantId?: string;
       senderHandle?: string;
+      actions?: Array<{ id: string; title: string; input: "text" }>;
     },
     toolRpc: RpcClient = this.rpc
   ): Promise<number> {
