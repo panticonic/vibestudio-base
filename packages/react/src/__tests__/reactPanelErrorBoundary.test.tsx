@@ -9,6 +9,7 @@ const runtime = vi.hoisted(() => ({
   getTheme: vi.fn(() => "dark" as const),
   onThemeChange: vi.fn(() => vi.fn()),
   onConnectionError: vi.fn(() => vi.fn()),
+  images: {},
 }));
 
 vi.mock("@workspace/runtime", () => runtime);

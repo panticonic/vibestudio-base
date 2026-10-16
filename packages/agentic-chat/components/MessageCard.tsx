@@ -1,5 +1,3 @@
-import { reportSelectedProblem } from "@workspace/runtime/problem-reports";
-import { rpc as reportingRpc, panel } from "@workspace/runtime";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -34,6 +32,7 @@ import type { AgentSubscriptionConfig } from "@workspace/agentic-core";
 import { presentActor } from "@workspace/agentic-core/chat-presentation";
 import type { Participant } from "@workspace/pubsub";
 import { useOptionalChatMessageActions } from "../context/ChatContext";
+import { useChatHostServices } from "../context/ChatHostServices";
 import { TypingIndicator } from "./TypingIndicator";
 import { MessageContent } from "./MessageContent";
 import { MessageSurface } from "./MessageSurface";
@@ -217,19 +216,15 @@ export const MessageCard = React.memo(function MessageCard({
   const handleCopy = useCallback(() => {
     onCopy(msg.id, msg.content);
   }, [onCopy, msg.id, msg.content]);
+  const { problemReports } = useChatHostServices();
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState("");
   const handleReport = async () => {
+    if (!problemReports) return;
     setReportBusy(true);
     setReportError("");
-    const coordinate = JSON.stringify({
-      panelId: panel.slotId,
-      channelId:
-        typeof chat["channelId"] === "string" ? chat["channelId"] : null,
-      messageId: msg.id,
-    });
     try {
-      await reportSelectedProblem(reportingRpc, {
+      await problemReports.report({
         problem: {
           category: "quality",
           component: "agent",
@@ -240,8 +235,11 @@ export const MessageCard = React.memo(function MessageCard({
           externalFramesOmitted: 0,
         },
         source: "chat",
-        coordinate,
-        reference: { kind: "message", coordinate },
+        coordinate: {
+          channelId:
+            typeof chat["channelId"] === "string" ? chat["channelId"] : null,
+          messageId: msg.id,
+        },
         value: {
           messageId: msg.id,
           senderId: msg.senderId,
@@ -986,12 +984,14 @@ export const MessageCard = React.memo(function MessageCard({
                             Reply
                           </DropdownMenu.Item>
                         )}
-                        <DropdownMenu.Item
-                          disabled={reportBusy}
-                          onSelect={() => void handleReport()}
-                        >
-                          Report a problem
-                        </DropdownMenu.Item>
+                        {problemReports && (
+                          <DropdownMenu.Item
+                            disabled={reportBusy}
+                            onSelect={() => void handleReport()}
+                          >
+                            Report a problem
+                          </DropdownMenu.Item>
+                        )}
                       </>
                     )}
                     {showForkMenu && (

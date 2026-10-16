@@ -1,16 +1,21 @@
 import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from "react";
-import { images } from "@workspace/runtime";
 import type { ImageAsset } from "@workspace/runtime/images";
-import { createImageLoader, type LoadedImage } from "@workspace/runtime/image-loader";
+import type { LoadedImage } from "@workspace/runtime/image-loader";
+import { NO_IMAGES_PORT, imageLoaderFor, useImagesPort } from "./imagesPort.js";
 
-const loader = createImageLoader(images);
 export function useGeneratedImage(asset: ImageAsset | null | undefined) {
+  const port = useImagesPort();
+  const loader = port ? imageLoaderFor(port) : null;
   const [state, setState] = useState<{ id: string; loaded?: LoadedImage; error?: Error } | null>(
     null
   );
   useEffect(() => {
     setState(asset ? { id: asset.id } : null);
     if (!asset) return;
+    if (!loader) {
+      setState({ id: asset.id, error: new Error(NO_IMAGES_PORT) });
+      return;
+    }
     const controller = new AbortController();
     let loaded: LoadedImage | undefined;
     void loader.load(asset, { signal: controller.signal }).then(
@@ -34,7 +39,7 @@ export function useGeneratedImage(asset: ImageAsset | null | undefined) {
       controller.abort();
       loaded?.release();
     };
-  }, [asset?.id]);
+  }, [asset?.id, loader]);
   const current = state?.id === asset?.id ? state : null;
   return {
     url: current?.loaded?.url,

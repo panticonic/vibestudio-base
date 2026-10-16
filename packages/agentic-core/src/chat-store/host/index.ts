@@ -15,6 +15,10 @@ export type {
 } from "./chat-host-controller.js";
 export type {
   ChatHostConnectionPort,
+  ChatImageAsset,
+  ChatImagesPort,
+  ChatProblemReportPort,
+  ChatProblemReportSelection,
   ChatHostNotification,
   ChatHostPorts,
   ChatHostRpc,

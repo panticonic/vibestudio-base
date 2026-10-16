@@ -46,6 +46,7 @@ export {
   type VideoProps,
 } from "./media.js";
 
+export { ImagesPortProvider, useImagesPort, type ImagesPort } from "./imagesPort.js";
 export { GeneratedImage, useGeneratedImage, type GeneratedImageProps } from "./GeneratedImage.js";
 
 export {

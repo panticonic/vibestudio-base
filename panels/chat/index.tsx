@@ -18,7 +18,9 @@ import {
   getPanelHandle,
   notifications,
   extensions,
+  images,
 } from "@workspace/runtime";
+import { createPanelProblemReports } from "./problemReports.js";
 import { EventsClient } from "@vibestudio/service-schemas/clients/eventsClient";
 import { recoveryCoordinator } from "@workspace/runtime/internal/diagnostics";
 import { createRuntimeScopeRehydrators } from "@workspace/runtime/panel-runtime";
@@ -37,6 +39,7 @@ import {
 import { Button, Callout, Flex, Spinner, Text, Theme } from "@radix-ui/themes";
 import { ErrorBoundary } from "@workspace/agentic-chat/error-boundary";
 import { FULL_AGENTIC_CHAT_FEATURES } from "@workspace/agentic-chat/features";
+import type { ChatHostServices } from "@workspace/agentic-chat/chat-host-services";
 import type {
   ConnectionConfig,
   AgenticChatActions,
@@ -112,6 +115,8 @@ function createPanelHostPorts(resolvedContextId: string): ChatHostPorts {
     }),
     events: new EventsClient(rpc),
     notify: (notification) => notifications.show(notification),
+    problemReports: createPanelProblemReports(),
+    images,
     localModels: {
       installModel: async (modelRef) => {
         await extensions.invoke(LOCAL_MODELS_EXTENSION_ID, "installModel", [modelRef]);
@@ -134,13 +139,20 @@ function createPanelHostPorts(resolvedContextId: string): ChatHostPorts {
 /** Create the panel's controller and hold it while mounted. Construction is
  *  side-effect free; live work starts on the first retain, and the deferred
  *  release lets StrictMode's remount reuse the same instance. */
-function useChatHost(resolvedContextId: string): ChatHostController {
-  const controller = useMemo(
-    () => new ChatHostController(createPanelHostPorts(resolvedContextId)),
-    [resolvedContextId]
-  );
-  useEffect(() => controller.retain(), [controller]);
-  return controller;
+function useChatHost(resolvedContextId: string): {
+  controller: ChatHostController;
+  /** The ports the chat UI itself consumes, from the same set the controller runs on. */
+  hostServices: ChatHostServices;
+} {
+  const host = useMemo(() => {
+    const ports = createPanelHostPorts(resolvedContextId);
+    return {
+      controller: new ChatHostController(ports),
+      hostServices: { problemReports: ports.problemReports, images: ports.images },
+    };
+  }, [resolvedContextId]);
+  useEffect(() => host.controller.retain(), [host]);
+  return host;
 }
 
 export default function ChatPanel() {
@@ -185,7 +197,7 @@ function ChatPanelInContext({
 }) {
   const stateArgs = useStateArgs<ChatStateArgs>();
   const resolvedContextId = requireChatContextId(panelContextId);
-  const controller = useChatHost(resolvedContextId);
+  const { controller, hostServices } = useChatHost(resolvedContextId);
   const host = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -513,6 +525,7 @@ function ChatPanelInContext({
           }
         >
           <AgenticChat
+            hostServices={hostServices}
             heightMode="container"
             className={presentation ? "immersive-conversation" : undefined}
             style={conversationStyle(presentation)}

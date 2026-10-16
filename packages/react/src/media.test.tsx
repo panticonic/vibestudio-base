@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-vi.mock("@workspace/runtime", () => ({ images: {} }));
+import { ImagesPortProvider } from "./imagesPort.js";
 import { Image, Video, mediaUrl, youtubeSource } from "./media.js";
 
 describe("shared conversation media", () => {
@@ -89,5 +89,21 @@ describe("shared conversation media", () => {
     ).toBeTruthy();
     fireEvent.error(container.querySelector("img")!);
     expect(screen.getByRole("alert").textContent).toContain("unavailable");
+  });
+
+  it("resolves asset ids through the host images port and fails without one", async () => {
+    const getAsset = vi.fn(async () => {
+      throw new Error("no such asset");
+    });
+    const view = render(
+      <ImagesPortProvider images={{ getAsset, getBytes: vi.fn() }}>
+        <Image assetId="asset-1" alt="Scene" />
+      </ImagesPortProvider>,
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain("no such asset");
+    expect(getAsset).toHaveBeenCalledWith("asset-1");
+    view.unmount();
+    render(<Image assetId="asset-1" alt="Scene" />);
+    expect((await screen.findByRole("alert")).textContent).toContain("no images port");
   });
 });

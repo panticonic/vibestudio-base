@@ -105,6 +105,8 @@ export interface ChatHostPortsInput {
   /** Override review waiting; defaults to waiting over `rpc`. */
   waitForReview?: WorkspaceReviewWaiter;
   localModels?: ChatHostPorts["localModels"];
+  problemReports?: ChatHostPorts["problemReports"];
+  images?: ChatHostPorts["images"];
   recoveryCoordinator?: ChatHostPorts["recoveryCoordinator"];
   randomUuid?: () => string;
 }

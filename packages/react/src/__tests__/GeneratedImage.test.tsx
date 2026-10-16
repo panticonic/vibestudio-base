@@ -3,11 +3,15 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ImageAsset } from "@workspace/runtime/images";
 const mocks = vi.hoisted(() => ({ load: vi.fn() }));
-vi.mock("@workspace/runtime", () => ({ images: {} }));
 vi.mock("@workspace/runtime/image-loader", () => ({
   createImageLoader: () => ({ load: mocks.load }),
 }));
 import { GeneratedImage } from "../GeneratedImage.js";
+import { ImagesPortProvider, type ImagesPort } from "../imagesPort.js";
+const port = {} as ImagesPort;
+const withPort = (node: React.ReactNode) => (
+  <ImagesPortProvider images={port}>{node}</ImagesPortProvider>
+);
 afterEach(() => {
   cleanup();
   mocks.load.mockReset();
@@ -20,11 +24,9 @@ it("shows dynamically selected assets and ignores late completion of an obsolete
   );
   const oldRelease = vi.fn(),
     newRelease = vi.fn();
-  const view = render(
-    <GeneratedImage asset={asset("old")} alt="Current scene" data-testid="scene" />
-  );
+  const view = render(withPort(<GeneratedImage asset={asset("old")} alt="Current scene" data-testid="scene" />));
   expect(screen.getByRole("status").textContent).toContain("Loading");
-  view.rerender(<GeneratedImage asset={asset("new")} alt="Current scene" data-testid="scene" />);
+  view.rerender(withPort(<GeneratedImage asset={asset("new")} alt="Current scene" data-testid="scene" />));
   await act(async () => {
     pending.get("new")!({ url: "blob:new", release: newRelease });
   });
@@ -39,9 +41,14 @@ it("shows dynamically selected assets and ignores late completion of an obsolete
 });
 it("renders explicit errors and recovers when the selected asset changes", async () => {
   mocks.load.mockRejectedValueOnce(new Error("missing asset"));
-  const view = render(<GeneratedImage asset={asset("missing")} alt="Scene" />);
+  const view = render(withPort(<GeneratedImage asset={asset("missing")} alt="Scene" />));
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("could not"));
   mocks.load.mockResolvedValueOnce({ url: "blob:valid", release: vi.fn() });
-  view.rerender(<GeneratedImage asset={asset("valid")} alt="Scene" />);
+  view.rerender(withPort(<GeneratedImage asset={asset("valid")} alt="Scene" />));
   await waitFor(() => expect(screen.getByRole("img").getAttribute("src")).toBe("blob:valid"));
+});
+it("fails explicitly when the host provides no images port", async () => {
+  render(<GeneratedImage asset={asset("a")} alt="Scene" />);
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("could not"));
+  expect(mocks.load).not.toHaveBeenCalled();
 });

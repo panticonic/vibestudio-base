@@ -133,4 +133,15 @@ describe("createChatHostPorts", () => {
     expect(ports.notify).toBe(notify);
     expect("events" in ports).toBe(false);
   });
+
+  it("passes the problem-report and image ports through", () => {
+    const problemReports = { report: vi.fn(async () => {}) };
+    const images = { getAsset: vi.fn(), getBytes: vi.fn() };
+    const ports = createChatHostPorts({ ...base, problemReports, images });
+    expect(ports.problemReports).toBe(problemReports);
+    expect(ports.images).toBe(images);
+    const bare = createChatHostPorts(base);
+    expect(bare.problemReports).toBeUndefined();
+    expect(bare.images).toBeUndefined();
+  });
 });

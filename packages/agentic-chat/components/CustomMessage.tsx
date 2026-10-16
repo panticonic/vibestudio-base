@@ -1,5 +1,3 @@
-import { reportSelectedProblem } from "@workspace/runtime/problem-reports";
-import { rpc as reportingRpc, panel } from "@workspace/runtime";
 import React, {
   Suspense,
   useCallback,
@@ -34,6 +32,7 @@ import {
   UiFeedbackReporter,
   type FeedbackDeliveryState,
 } from "./UiFeedbackReporter";
+import { useChatHostServices } from "../context/ChatHostServices";
 import type { MessageTypeComponentEntry } from "../types";
 
 function cardRefs(payload: CustomMessageCardPayload) {
@@ -150,18 +149,15 @@ function CardActionsMenu({
   onToggleInspect?: () => void;
   onCollapse?: (() => void) | undefined;
 }) {
+  const { problemReports } = useChatHostServices();
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState("");
   const report = async () => {
+    if (!problemReports) return;
     setReportBusy(true);
     setReportError("");
-    const coordinate = JSON.stringify({
-      panelId: panel.slotId,
-      messageId: payload.messageId,
-      lastSeq: payload.lastSeq,
-    });
     try {
-      await reportSelectedProblem(reportingRpc, {
+      await problemReports.report({
         problem: {
           category: "runtime",
           component: "renderer",
@@ -172,8 +168,7 @@ function CardActionsMenu({
           externalFramesOmitted: 0,
         },
         source: "chat",
-        coordinate,
-        reference: { kind: "message", coordinate },
+        coordinate: { messageId: payload.messageId, lastSeq: payload.lastSeq },
         value: customInspectorPayload(payload, entry),
       });
     } catch (error) {
@@ -204,9 +199,11 @@ function CardActionsMenu({
         <DropdownMenu.Item onSelect={() => void copy()}>
           Copy details
         </DropdownMenu.Item>
-        <DropdownMenu.Item disabled={reportBusy} onSelect={() => void report()}>
-          Report a problem
-        </DropdownMenu.Item>
+        {problemReports && (
+          <DropdownMenu.Item disabled={reportBusy} onSelect={() => void report()}>
+            Report a problem
+          </DropdownMenu.Item>
+        )}
         {reportError && (
           <Text size="1" color="red" role="alert">
             {reportError}

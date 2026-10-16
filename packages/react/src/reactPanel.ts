@@ -2,7 +2,8 @@ import type { ComponentType, ReactNode } from "react";
 import type { Root } from "react-dom/client";
 import { reportSelectedProblem } from "@workspace/runtime/problem-reports";
 import { rpc as reportingRpc } from "@workspace/runtime";
-import { panel } from "@workspace/runtime";
+import { images, panel } from "@workspace/runtime";
+import { ImagesPortProvider } from "./imagesPort.js";
 
 interface PanelRenderErrorDiagnosticRequest {
   surfaceName?: string;
@@ -466,15 +467,17 @@ export function createReactPanelMount(
     }
   }
 
-  const Wrapper: ComponentType<{ children: ReactNode }> = ThemeProvider
-    ? ({ children }) =>
-        ReactLib.createElement(
-          ConnectionErrorBarrier,
-          null,
-          ReactLib.createElement(ThemeProvider, null, children),
-        )
-    : ({ children }) =>
-        ReactLib.createElement(ConnectionErrorBarrier, null, children);
+  // The panel runtime backs image assets for everything this panel renders.
+  const Wrapper: ComponentType<{ children: ReactNode }> = ({ children }) =>
+    ReactLib.createElement(
+      ConnectionErrorBarrier,
+      null,
+      ReactLib.createElement(
+        ImagesPortProvider,
+        { images },
+        ThemeProvider ? ReactLib.createElement(ThemeProvider, null, children) : children,
+      ),
+    );
 
   return function mountReactPanel<Props>(
     Component: ComponentType<Props>,

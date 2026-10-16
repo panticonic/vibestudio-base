@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, Flex, IconButton } from "@radix-ui/themes";
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { images } from "@workspace/runtime";
 import type { ImageAsset } from "@workspace/runtime/images";
 import { useGeneratedImage } from "./GeneratedImage.js";
+import { NO_IMAGES_PORT, useImagesPort } from "./imagesPort.js";
 
 /** Media sources are browser URLs, never server-local filesystem paths. */
 export function mediaUrl(source: string): string {
@@ -195,9 +195,14 @@ function ImageSource({ src, assetId, alt, caption, filename }: ImageProps) {
   const [asset, setAsset] = useState<ImageAsset>();
   const [error, setError] = useState<string>();
   const [open, setOpen] = useState(false);
+  const images = useImagesPort();
   const loaded = useGeneratedImage(asset);
   useEffect(() => {
     if (!assetId) return;
+    if (!images) {
+      setError(NO_IMAGES_PORT);
+      return;
+    }
     let active = true;
     void images.getAsset(assetId).then(
       (value) => {
@@ -211,7 +216,7 @@ function ImageSource({ src, assetId, alt, caption, filename }: ImageProps) {
     return () => {
       active = false;
     };
-  }, [assetId]);
+  }, [assetId, images]);
   let url: string | undefined;
   try {
     if (Boolean(src) === Boolean(assetId))

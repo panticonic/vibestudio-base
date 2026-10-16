@@ -188,3 +188,7 @@ export {
   formatBytes,
 } from "./utils/imageUtils";
 export type { PendingImage } from "./utils/imageUtils";
+
+// --- Host services (problem reports, image assets) ---
+export { ChatHostServicesProvider, useChatHostServices } from "./context/ChatHostServices";
+export type { ChatHostServices } from "./context/ChatHostServices";

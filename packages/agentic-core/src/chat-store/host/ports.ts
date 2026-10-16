@@ -8,6 +8,7 @@
  * storage and omits the browser-only ports.
  */
 import type { RpcCaller, RpcClient } from "@vibestudio/rpc";
+import type { ProblemReportBundle } from "@vibestudio/service-schemas/problemReportBundle";
 import type { WorkspaceReviewWaiter } from "../../provisional-agent-lifecycle.js";
 import type { InstalledAgentRecord } from "./installed-agents.js";
 
@@ -78,6 +79,53 @@ export type ChatHostWorkspaceEvent =
   | "workspace-config-changed"
   | "units-changed";
 
+/**
+ * One chat message or card the user selected for a problem report. The surface
+ * adds its own coordinates (the panel id) and prepares a reviewable draft;
+ * nothing is sent without the host's own sharing approval.
+ */
+export interface ChatProblemReportSelection {
+  problem: ProblemReportBundle["problem"];
+  source: ProblemReportBundle["evidence"][number]["source"];
+  /** Identifies the selected message; the port prefixes its surface identity. */
+  coordinate: Record<string, unknown>;
+  /** The evidence captured for the draft. */
+  value: unknown;
+}
+
+export interface ChatProblemReportPort {
+  report(selection: ChatProblemReportSelection): Promise<void>;
+}
+
+/**
+ * Structurally identical to the runtime's `ImageAsset`: this package cannot
+ * depend on the runtime, so `@workspace/agentic-chat` asserts the equivalence.
+ */
+export interface ChatImageAsset {
+  id: string;
+  digest: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  width: number;
+  height: number;
+  byteLength: number;
+  provenance: {
+    provider: string;
+    imageModel: string;
+    responseModel?: string;
+    responseId?: string;
+    imageId?: string;
+    revisedPrompt?: string;
+    createdAt: number;
+    artDirection?: { id: string; version: number };
+  };
+}
+
+/** Authenticated, workspace-scoped image reads backing `Image` / `GeneratedImage`. */
+export interface ChatImagesPort {
+  getAsset(id: string): Promise<ChatImageAsset>;
+  getBytes(asset: ChatImageAsset): Promise<Uint8Array>;
+}
+
 export interface ChatHostPorts {
   rpc: ChatHostRpc;
   /** The workspace context this host runs in; agents are created in it. */
@@ -117,6 +165,16 @@ export interface ChatHostPorts {
       options?: { includeCurrentGeneration?: boolean }
     ): () => void;
   };
+  /**
+   * Prepare a problem report about a chat message. Absent: the chat offers no
+   * "Report a problem" action.
+   */
+  problemReports?: ChatProblemReportPort;
+  /**
+   * Resolve generated-image assets for `Image` / `GeneratedImage` in messages
+   * and inline UI. Absent: those components render an explicit error.
+   */
+  images?: ChatImagesPort;
   /** Unique id of this host instance (panel slot id); scopes recovery keys. */
   instanceId: string;
   /** Random id source (tests make it deterministic). */

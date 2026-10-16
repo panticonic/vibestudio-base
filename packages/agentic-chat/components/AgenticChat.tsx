@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { ChatLayout, type ChatLayoutProps } from "./ChatLayout";
 import { ChatHostCommands } from "./ChatPaletteCommands";
 import { ChatProvider } from "../context/ChatProvider";
+import { ChatHostServicesProvider, type ChatHostServices } from "../context/ChatHostServices";
 import { useAgenticChat } from "../hooks/useAgenticChat";
 import type {
   ChatParticipantMetadata,
@@ -28,6 +29,12 @@ export interface AgenticChatHandle {
 }
 
 export interface AgenticChatProps {
+  /**
+   * Host-supplied services (the matching `ChatHostPorts` members): problem
+   * reporting and image-asset reads. Omit a member and the chat renders
+   * without that feature.
+   */
+  hostServices?: ChatHostServices;
   /** Product-owned presentation class and semantic-variable overrides. */
   className?: string;
   style?: CSSProperties;
@@ -113,6 +120,7 @@ export interface AgenticChatProps {
  */
 export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(function AgenticChat(
   {
+    hostServices,
     className,
     style,
     config,
@@ -198,6 +206,7 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
           height: heightMode === "container" ? "100%" : "100dvh",
         }}
       >
+          <ChatHostServicesProvider services={hostServices}>
           <ChatProvider value={contextValue} inputValue={inputContextValue}>
             <ChatHostCommands />
             <ChatLayout
@@ -218,6 +227,7 @@ export const AgenticChat = forwardRef<AgenticChatHandle, AgenticChatProps>(funct
             onFocusMessageConsumed={onFocusMessageConsumed}
           />
           </ChatProvider>
+          </ChatHostServicesProvider>
         </Theme>
       </ErrorBoundary>
   );
