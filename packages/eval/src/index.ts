@@ -14,14 +14,15 @@ export {
   getAsyncRequire,
   getPreloadModules,
 } from "./execute.js";
-export type { ExecuteOptions, ExecuteResult, ValidateRequiresResult, PreloadRequiresResult } from "./execute.js";
+export type {
+  ExecuteOptions,
+  ExecuteResult,
+  ValidateRequiresResult,
+  PreloadRequiresResult,
+} from "./execute.js";
 
 // Console capture for streaming
-export {
-  createConsoleCapture,
-  formatConsoleEntry,
-  formatConsoleOutput,
-} from "./consoleCapture.js";
+export { createConsoleCapture, formatConsoleEntry, formatConsoleOutput } from "./consoleCapture.js";
 export type { ConsoleCapture, ConsoleEntry } from "./consoleCapture.js";
 
 // Async tracking (unified API for panels and workers)
@@ -29,11 +30,7 @@ export { getAsyncTracking } from "./asyncTracking.js";
 export type { TrackingContext, AsyncTrackingAPI } from "./asyncTracking.js";
 
 // Unified sandbox execution engine
-export {
-  executeSandbox,
-  compileComponent,
-  compileModule,
-} from "./sandbox.js";
+export { executeSandbox, compileComponent, compileModule } from "./sandbox.js";
 export type {
   SandboxImportLoader,
   SandboxOptions,
@@ -43,11 +40,7 @@ export type {
   CompileComponentOptions,
 } from "./sandbox.js";
 
-export {
-  loadSourceFileBundle,
-  normalizeSourcePath,
-  prepareSourceCode,
-} from "./sourceFiles.js";
+export { loadSourceFileBundle, normalizeSourcePath, prepareSourceCode } from "./sourceFiles.js";
 export type {
   LoadSourceFile,
   PreparedSource,
@@ -61,12 +54,13 @@ export type { ScopesApi, HydrateResult } from "./scope.js";
 export { SqlScopePersistence, SqlScopeRowBackend, SCOPE_TABLE } from "./sqlScopePersistence.js";
 export type { SqlLike } from "./sqlScopePersistence.js";
 export { ScopePersistenceAdapter } from "./scopePersistenceAdapter.js";
+export {
+  KeyValueScopePersistence,
+  clientUiScopeChannelId,
+  type ScopeKeyValueStore,
+} from "./keyValueScopePersistence.js";
 export type { ScopeBlobBackend, ScopeRowBackend } from "./scopePersistenceAdapter.js";
-export type {
-  ScopePersistence,
-  ScopeEntry,
-  ScopeListEntry,
-} from "./scopePersistence.js";
+export type { ScopePersistence, ScopeEntry, ScopeListEntry } from "./scopePersistence.js";
 export {
   serializeScope,
   deserializeScope,

@@ -1962,6 +1962,9 @@ async function prepareModule(code: string, options: CompileComponentOptions): Pr
       sourcePath: options.sourcePath,
       sourceFiles: options.sourceFiles,
       loadSourceFile: options.loadSourceFile,
+      // A host's own modules serve the source's local files too.
+      ...(options.moduleMap ? { moduleMap: options.moduleMap } : {}),
+      ...(componentRequire(options) ? { require: componentRequire(options)! } : {}),
     },
     (requires, context) => ensureRequires(requires, requireOptions, context)
   );

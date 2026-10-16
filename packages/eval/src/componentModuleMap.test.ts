@@ -20,4 +20,26 @@ describe("compileComponent with a host module map", () => {
     expect(result.success).toBe(false);
     expect(result.error?.message).toContain("@host/missing");
   });
+
+  it("serves a file source's local modules from the same map", async () => {
+    const files: Record<string, string> = {
+      "ui/card.tsx": `import { label } from "@host/kit"; import { name } from "./name"; export default function Card() { return label(name); }`,
+      "ui/name.ts": `export const name = "local";`,
+    };
+    const moduleMap: Record<string, unknown> = {
+      "@host/kit": { label: (name: string) => `Hello, ${name}` },
+    };
+    const result = await compileComponent<() => string>(files["ui/card.tsx"]!, {
+      moduleMap,
+      sourcePath: "ui/card.tsx",
+      loadSourceFile: async (path) => {
+        const file = files[path];
+        if (file === undefined) throw Object.assign(new Error(path), { code: "ENOENT" });
+        return file;
+      },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.Component!()).toBe("Hello, local");
+    expect((globalThis as Record<string, unknown>)["__vibestudioModuleMap__"]).toBeUndefined();
+  });
 });
