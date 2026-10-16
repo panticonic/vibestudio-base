@@ -29,19 +29,25 @@ export function startProblemReportConversation(
   ]);
 }
 
-/** A user-selected source becomes one bounded, reviewable draft; this never enables or sends reporting. */
-export async function reportSelectedProblem(
-  rpc: Pick<RpcCaller, "call">,
-  selection: {
-    problem: import("@vibestudio/service-schemas/problemReportBundle").ProblemReportBundle["problem"];
-    source: import("@vibestudio/service-schemas/problemReportBundle").ProblemReportBundle["evidence"][number]["source"];
+type ProblemSelection = {
+  problem: import("@vibestudio/service-schemas/problemReportBundle").ProblemReportBundle["problem"];
+  source: import("@vibestudio/service-schemas/problemReportBundle").ProblemReportBundle["evidence"][number]["source"];
+  coordinate: string;
+  value: unknown;
+  reference?: {
+    kind: "panel" | "message" | "invocation" | "build";
     coordinate: string;
-    value: unknown;
-    reference?: {
-      kind: "panel" | "message" | "invocation" | "build";
-      coordinate: string;
-    };
-  },
+  };
+};
+
+/**
+ * A user-selected source becomes one bounded, reviewable draft; this never
+ * enables or sends reporting. Returns the reference a reporting conversation
+ * names, so each surface opens that conversation where it can.
+ */
+export async function draftSelectedProblem(
+  rpc: Pick<RpcCaller, "call">,
+  selection: ProblemSelection,
 ) {
   const reports = createProblemReportsClient(rpc);
   const draft = await reports.create(selection.problem);
@@ -72,7 +78,15 @@ export async function reportSelectedProblem(
     draft.revision,
     reportDraftContent(value),
   );
-  const reference = await reports.forConversation(draft.id, updated.revision);
+  return reports.forConversation(draft.id, updated.revision);
+}
+
+/** Draft the selection and open the reporting conversation in the shell's command-agent surface. */
+export async function reportSelectedProblem(
+  rpc: Pick<RpcCaller, "call">,
+  selection: ProblemSelection,
+) {
+  const reference = await draftSelectedProblem(rpc, selection);
   await startProblemReportConversation(rpc, reference);
   return reference;
 }
