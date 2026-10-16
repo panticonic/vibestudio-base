@@ -25,8 +25,24 @@ import {
   type AgenticEvent,
   type UiFeedbackPayload,
 } from "@workspace/agentic-protocol";
-import { z } from "zod";
-import { compileInlineCard } from "../cards/modules.js";
+import { createPanelImportLoader } from "@workspace/agentic-core";
+import {
+  INLINE_UI_METHOD_DESCRIPTION,
+  inlineUiMethodParameters,
+  type InlineUiMethodArgs,
+} from "@workspace/agentic-core/chat-presentation";
+import {
+  KeyValueScopePersistence,
+  ScopeManager,
+  clientUiScopeChannelId,
+  type ScopeKeyValueStore,
+} from "@workspace/eval";
+import {
+  createTerminalRuntime,
+  terminalRuntimeModule,
+  type WorkspaceRuntime,
+} from "@workspace/runtime/terminal";
+import { cardModules, createCardCompiler, type CardCompiler } from "../cards/modules.js";
 import {
   FeedbackFormArgsSchema,
   type FeedbackFormArgs,
@@ -144,6 +160,9 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
   #opening: Promise<void> | null = null;
   #shutdown: Promise<void> | null = null;
   readonly #scope = new AsyncLocalStorage<ConversationScope>();
+  #cardRuntime: WorkspaceRuntime | null = null;
+  #cardCompiler: CardCompiler | null = null;
+  #cardScope: { channelName: string; manager: ScopeManager; retire: () => void } | null = null;
 
   get operationSignal(): AbortSignal {
     return this.#scope.getStore()?.signal ?? this.#conversationLifetime.signal;
@@ -734,7 +753,7 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
         },
         channelName,
         contextId,
-        metadata: { name: "Terminal", type: "panel" },
+        metadata: { name: "Terminal", type: "panel", surface: "terminal" },
         agentHost: {
           ...controller.actions,
           ...chatHostActionData(controller.getSnapshot()),
@@ -771,10 +790,10 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
             this.#showForm(args as FeedbackFormArgs, ctx),
         },
         inline_ui: {
-          description: INLINE_UI_DESCRIPTION,
-          parameters: InlineUiArgsSchema,
+          description: INLINE_UI_METHOD_DESCRIPTION,
+          parameters: inlineUiMethodParameters,
           execute: (args: unknown, ctx: MethodExecutionContext) =>
-            this.#renderInlineUi(args as z.infer<typeof InlineUiArgsSchema>, ctx),
+            this.#renderInlineUi(session, args as InlineUiMethodArgs, ctx),
         },
       }));
       this.#session = session;
@@ -833,6 +852,7 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
     this.#releaseSession?.();
     this.#releaseSession = null;
     this.#session = null;
+    this.#retireCardScope();
     this.#controllerOff?.();
     this.#controllerOff = null;
     this.#releaseController?.();
@@ -908,61 +928,111 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
 
   // ── cards ──────────────────────────────────────────────────────────────────
 
+  /** The workspace runtime agent card code imports as `@workspace/runtime`. */
+  get cardRuntime(): WorkspaceRuntime {
+    return (this.#cardRuntime ??= createTerminalRuntime({
+      rpc: this.#boot.rpc,
+      contextId: this.#boot.contextId,
+    }));
+  }
+
+  /** How MDX messages and inline UI compile here (the transcript and `inline_ui` share it). */
+  get cardCompiler(): CardCompiler {
+    return (this.#cardCompiler ??= createCardCompiler({
+      modules: cardModules(terminalRuntimeModule(this.cardRuntime)),
+      loadSourceFile: async (path) => String(await this.cardRuntime.fs.readFile(path, "utf8")),
+      loadImport: createPanelImportLoader(this.#boot.rpc, {
+        defaultWorkspaceRef: () => `ctx:${this.getSnapshot().contextId}`,
+      }),
+    }));
+  }
+
   /**
-   * A card's message, sent as the person through the composer's own path (so
-   * it shows at once and is backfilled), with whatever metadata the card
-   * attached, e.g. the `interaction` a choice or button records.
+   * The open conversation's card scope: this terminal session's durable UI
+   * state, as a panel's is its own (persisted in the session's state).
    */
-  async sendFromCard(
-    text: string,
-    options?: { metadata?: Record<string, unknown>; mentions?: string[]; replyTo?: string }
-  ): Promise<void> {
-    const session = this.actionSession;
-    if (!session) throw new Error("The conversation is not connected yet.");
-    await session.publishText(text, {
-      ...(options?.metadata ? { metadata: options.metadata } : {}),
-      ...(options?.mentions ? { mentions: options.mentions } : {}),
-      ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+  get cardScope(): ScopeManager | null {
+    const channelName = this.#session?.options.channelName;
+    if (!channelName) return null;
+    if (this.#cardScope?.channelName === channelName) return this.#cardScope.manager;
+    this.#retireCardScope();
+    const state = this.#boot.state;
+    const store: ScopeKeyValueStore = {
+      get: (key) => {
+        const value = state.get()[key];
+        return typeof value === "string" ? value : null;
+      },
+      set: (key, value) => state.patch({ [key]: value }),
+      keys: () => Object.keys(state.get()),
+    };
+    const rpc = this.#boot.rpc;
+    const manager = new ScopeManager({
+      channelId: clientUiScopeChannelId(channelName, `terminal-chat-${this.#boot.sessionId}`),
+      panelId: "panel-ui",
+      persistence: new KeyValueScopePersistence(store, {
+        putText: (valueJson) => rpc.call("main", mainRpcMethods["blobstore.putText"], [valueJson]),
+        getText: (digest) => rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
+      }),
     });
+    const settle = (work: () => Promise<unknown>, failure: string) =>
+      void work().catch((error) => this.fail(failure, error));
+    // Nothing tells a terminal program it is about to end: persist each change.
+    const persist = () => {
+      if (manager.isDirty)
+        settle(() => manager.persist(), "A card's saved state could not be stored");
+    };
+    const offChange = manager.onChange(persist);
+    settle(() => manager.hydrate(), "Cards' saved state could not be restored");
+    this.#cardScope = {
+      channelName,
+      manager,
+      // A persist serializes synchronously, so it completes after dispose.
+      retire: () => {
+        offChange();
+        persist();
+        manager.dispose();
+      },
+    };
+    return manager;
   }
 
-  /** A card's typed event on the channel (`chat.publish`), as in the panel. */
-  async publishFromCard(
-    type: string,
-    payload: unknown,
-    options?: { idempotencyKey?: string }
-  ): Promise<unknown> {
-    const client = this.actionSession?.client;
-    if (!client) throw new Error("The conversation is not connected yet.");
-    return client.publish(type, payload, {
-      idempotencyKey: options?.idempotencyKey ?? crypto.randomUUID(),
-    });
+  #retireCardScope(): void {
+    this.#cardScope?.retire();
+    this.#cardScope = null;
   }
 
   /**
-   * `inline_ui`: compile the source against the terminal kit (so a failure
+   * \`inline_ui\` for \`session\`: compile the source as this terminal draws it (so a failure
    * comes back to the agent as the result), then publish the same
-   * `ui.inline_rendered` event the panel does; the transcript draws it.
+   * \`ui.inline_rendered\` event the panel does; every client draws it.
    */
   async #renderInlineUi(
-    args: z.infer<typeof InlineUiArgsSchema>,
+    session: ChatSession,
+    args: InlineUiMethodArgs,
     ctx: MethodExecutionContext
   ): Promise<unknown> {
+    const path = args.path?.trim();
+    if (!path && !args.code)
+      return ctx.result({ ok: false, error: "Missing code or path" }, { isError: true });
+    const source = path
+      ? { type: "file" as const, path }
+      : { type: "code" as const, code: args.code! };
     try {
-      await compileInlineCard(args.code);
+      await this.cardCompiler.inline(source, args.imports);
     } catch (error) {
       return ctx.result(
         { ok: false, error: errorMessage(error), compileError: true },
         { isError: true }
       );
     }
-    const client = this.actionSession?.client;
+    // The session that offers the method publishes its card (the call does
+    // not run in a conversation operation's scope).
+    const client = session.client;
     if (!client) return ctx.result({ ok: false, error: "Not connected" }, { isError: true });
     const id = args.id?.trim() || crypto.randomUUID();
-    const self = client.clientId ?? "terminal-chat";
     const event: AgenticEvent<"ui.inline_rendered"> = {
       kind: "ui.inline_rendered",
-      actor: { kind: "panel", id: self, displayName: "Terminal" },
+      actor: { kind: "panel", id: client.clientId ?? "terminal-chat", displayName: "Terminal" },
       ...(ctx.turnId ? { turnId: ctx.turnId as never } : {}),
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
@@ -972,7 +1042,8 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
           client.roster?.[ctx.callerId]?.metadata
         ),
         id,
-        source: { type: "code", code: args.code },
+        source,
+        ...(args.imports !== undefined ? { imports: args.imports } : {}),
         ...(args.props !== undefined ? { props: args.props } : {}),
       },
       createdAt: new Date().toISOString(),
@@ -1015,7 +1086,9 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
       },
       createdAt: new Date().toISOString(),
     };
-    await this.publishFromCard(AGENTIC_EVENT_PAYLOAD_KIND, event, {
+    const client = this.actionSession?.client;
+    if (!client) throw new Error("The conversation is not connected.");
+    await client.publish(AGENTIC_EVENT_PAYLOAD_KIND, event, {
       idempotencyKey: `ui-feedback:${failure.occurrenceKey}`,
     });
   }
@@ -1067,39 +1140,4 @@ const FEEDBACK_FORM_DESCRIPTION = `Show a form in the person's terminal and wait
 **Conditional props:** \`visibleWhen\` and \`enabledWhen\` accept \`{ field, operator, value }\`.
 **Choice fields:** select, segmented and multiSelect include an "Other" free-text choice unless \`allowFreeText: false\`.
 **Pre-populate:** \`values: { "key": "existing value" }\`
-This client is a text terminal: for interactive or rich content use \`inline_ui\` (or MDX in your message); it cannot show images.`;
-
-const InlineUiArgsSchema = z.object({
-  id: z
-    .string()
-    .trim()
-    .min(1)
-    .optional()
-    .describe("Stable card ID. Reusing it replaces the existing card; omit it for a new card."),
-  code: z.string().min(1).describe("TSX source of the component (must `export default`)."),
-  props: z.record(z.unknown()).optional().describe("Props passed to the component as { props }."),
-});
-
-const INLINE_UI_DESCRIPTION = `Draw an interactive card in the person's terminal transcript: a React component rendered with Ink, in text cells. The person can click it or Tab through its controls.
-
-**Imports:** react, ink, @workspace/terminal-ui (the terminal kit). The names @radix-ui/themes, @workspace/react and @radix-ui/react-icons resolve to the same kit, so a card written against them draws in the terminal as well as in a browser chat; prefer them when the conversation may also be open in a panel. Available: Flex, Box, Grid, Card, Text, Heading, Code, Badge, Callout, Separator, Table, DataList, Progress, Button, Checkbox, Switch, RadioGroup, CheckboxGroup, SegmentedControl, Select, TextField, TextArea, Slider, Tabs, Choices, ActionButton, Checklist, Stats, Compare, Timeline. Charts, maps, images, video and diagrams cannot be drawn and show as a placeholder.
-**Props:** \`{ props, chat }\`; \`chat.send(text)\` posts as the person, \`chat.publish(type, payload)\` publishes an event. Use \`useState\` for local state.
-**Layout:** text cells, not pixels: no CSS, \`style\`, \`className\` or HTML elements. Keep it narrow (it may get 40 columns) and short.
-**Lifecycle:** reusing \`id\` replaces the card. **Result:** \`{ ok: true, id }\`, or a compile error \`{ ok: false, error, compileError: true }\` with nothing drawn; fix and call again. A render failure afterwards comes back as a ui-feedback note naming the id.
-
-**Example:**
-\`\`\`tsx
-import { useState } from "react";
-import { Flex, Text, Button, Choices } from "@workspace/react";
-
-export default function Plan({ props }) {
-  const [n, setN] = useState(props.start ?? 0);
-  return (
-    <Flex direction="column" gap="1">
-      <Text>Servings: {n}</Text>
-      <Button onClick={() => setN(n + 1)}>More</Button>
-      <Choices id="plan-next" question="Cook it?" options={[{ label: "Yes" }, { label: "Later" }]} />
-    </Flex>
-  );
-}
-\`\`\``;
+This client is the terminal chat: for interactive or rich content use \`inline_ui\` or MDX in your message, which draw here in text cells (\`skills/sandbox/TERMINAL_CARDS.md\`).`;

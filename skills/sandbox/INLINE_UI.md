@@ -108,8 +108,9 @@ state all see the same event.
 - Collect secrets only through host credential prompts, never through React
   inputs or component state.
 
-In the terminal chat, inline UI draws as text cells with a narrower
-vocabulary; see [TERMINAL_CARDS.md](TERMINAL_CARDS.md).
+In the terminal chat, the same inline UI draws in text cells, with the same
+props and runtime; see [TERMINAL_CARDS.md](TERMINAL_CARDS.md) for what draws
+there and how it degrades.
 
 ## Panel Scope
 

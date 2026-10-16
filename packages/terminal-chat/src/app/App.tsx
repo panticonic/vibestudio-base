@@ -65,6 +65,7 @@ import { layoutScreen, type Screen, type ScreenModel } from "./screen.js";
 import { CardHost, type CardEnvironment } from "../cards/cardHost.js";
 import { cardSpec } from "../cards/cardSpec.js";
 import { keyBytes } from "../cards/keyBytes.js";
+import { createChatSandboxValue } from "@workspace/agentic-core/chat-store";
 import { sanitize, wrap } from "../model/ansi.js";
 
 export interface TerminalChatProps {
@@ -375,12 +376,40 @@ export function TerminalChatApp({
   // Cards: live Ink trees drawn into their rows (MDX messages, inline UI).
   const [, setCardVersion] = useState(0);
   const cardHost = useRef<CardHost | null>(null);
-  cardHost.current ??= new CardHost(() => setCardVersion((v) => v + 1));
+  cardHost.current ??= new CardHost(runtime.cardCompiler, () => setCardVersion((v) => v + 1));
   const cards = cardHost.current;
   useEffect(() => () => cards.dispose(), [cards]);
   /** The card that has the keyboard, by message id. */
   const [cardFocus, setCardFocus] = useState<string | null>(null);
-  const cardEnvironment = useMemo<CardEnvironment>(() => {
+  const channelId = session?.options.channelName ?? null;
+  const transcriptRef = useRef(transcript);
+  transcriptRef.current = transcript;
+  // The `chat` cards receive: the panel's own implementation over this session.
+  const cardChat = useMemo(
+    () =>
+      createChatSandboxValue({
+        client: () => session?.client ?? null,
+        publishText: (text, options) =>
+          session
+            ? session.publishText(text, options)
+            : Promise.reject(new Error("The conversation is not connected yet.")),
+        focusMessage: async (messageId) => {
+          if (!transcriptRef.current.some((m) => m.id === messageId)) return false;
+          setMode("select");
+          setSelectedId(messageId);
+          return true;
+        },
+        contextId: rt.contextId,
+        channelId,
+        // Read when a card calls, never while rendering: a render can run
+        // inside a conversation switch, when the old conversation is closed.
+        rpc: { call: (...args) => runtime.rpc.call(...args) },
+      }),
+    [session, channelId, rt.contextId, runtime]
+  );
+  const cardScope = useMemo(() => (session ? runtime.cardScope : null), [session, runtime]);
+  const cardEnvironment = useMemo<CardEnvironment | null>(() => {
+    if (!cardScope) return null;
     // Answered state comes from the durable transcript, as in the panel.
     const answers = new Map<string, { text: string; values?: string[] }>();
     for (const message of transcript) {
@@ -394,17 +423,18 @@ export function TerminalChatApp({
     return {
       actions: {
         send: (text, options) =>
-          runtime.sendFromCard(
+          cardChat.send(
             text,
             options?.interaction ? { metadata: { interaction: options.interaction } } : undefined
           ),
         answer: (source, targetId) => answers.get(`${source}\u0000${targetId}`),
       },
-      chat: {
-        send: (content: string, options?: { metadata?: Record<string, unknown> }) =>
-          runtime.sendFromCard(content, options),
-        publish: (type: string, payload: unknown, options?: { idempotencyKey?: string }) =>
-          runtime.publishFromCard(type, payload, options),
+      chat: cardChat,
+      scope: cardScope.current,
+      scopes: cardScope.api,
+      openers: {
+        openPanel: (url) => runtime.cardRuntime.openPanel(url, { focus: true }),
+        openExternal: (url, options) => runtime.cardRuntime.openExternal(url, options),
       },
       onFailure: (key, spec, phase, error) => {
         // An inline UI's author hears that it failed here, as from the panel.
@@ -434,8 +464,10 @@ export function TerminalChatApp({
           );
       },
     };
-  }, [transcript, runtime]);
-  useEffect(() => cards.setEnvironment(cardEnvironment), [cards, cardEnvironment]);
+  }, [transcript, runtime, cardChat, cardScope]);
+  useEffect(() => {
+    if (cardEnvironment) cards.setEnvironment(cardEnvironment);
+  }, [cards, cardEnvironment]);
   useEffect(() => {
     const live = new Set(transcript.filter((m) => cardSpec(m, selfId)).map((m) => m.id));
     cards.retain(live);

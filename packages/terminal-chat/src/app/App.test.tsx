@@ -414,13 +414,33 @@ describe("TerminalChatApp", () => {
     expect(app.chat.calls.cardSends).toEqual([
       {
         text: "What next? → Ship it",
-        options: {
+        // As the panel sends it: through the shared chat value, a secondary message.
+        options: expect.objectContaining({
+          tier: "secondary",
           metadata: {
             interaction: expect.objectContaining({ source: "choices", targetId: "next" }),
           },
-        },
+        }),
       },
     ]);
+  });
+
+  it("renders while a conversation switch has closed the old conversation", async () => {
+    // During a switch the runtime's conversation-scoped members throw; a render
+    // (and so the cards' chat value) must not read them.
+    const chat = createFakeChat({ messages: [agentReply("a1", "hello")] });
+    Object.defineProperty(chat.runtime, "rpc", {
+      get() {
+        throw new Error("Conversation closed");
+      },
+    });
+    const stdout = new FrameStdout(80, 24);
+    instance = render(
+      <TerminalChatApp runtime={chat.runtime} input={new TypedInput()} control={() => {}} />,
+      { stdout: stdout as never, debug: true, patchConsole: false, exitOnCtrlC: false }
+    );
+    await settle();
+    expect(stdout.screen().join("\n")).toContain("hello");
   });
 
   it("offers a clickable way back to the newest message after scrolling up", async () => {

@@ -257,6 +257,48 @@ describe("ChatRuntime", () => {
     expect(again.actionSession!.getSnapshot().input).toBe("other draft");
   });
 
+  it("keeps each conversation's card scope, and retires it when the conversation closes", async () => {
+    const state = new MemoryState();
+    state.value = { channelName: "chat-original" };
+    const runtime = await start(state);
+    expect(runtime.cardCompiler).toBeDefined();
+    const first = runtime.cardScope!;
+    first.current["count"] = 2;
+    await runtime.openConversation("chat-other", "ctx-other");
+    const second = runtime.cardScope!;
+    expect(second).not.toBe(first);
+    expect(second.current["count"]).toBeUndefined();
+    await runtime.openConversation("chat-original", "ctx-home");
+    await vi.waitFor(() => expect(runtime.cardScope!.current["count"]).toBe(2));
+  });
+
+  it("reports a card scope that fails to save after its conversation closed, without crashing", async () => {
+    const state = new MemoryState();
+    state.value = { channelName: "chat-original" };
+    const runtime = await start(state);
+    // Saving card state settles only after the conversation has been switched away.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const patch = state.patch.bind(state);
+    state.patch = async (partial) => {
+      if (Object.keys(partial).some((key) => key.includes(":scope:"))) {
+        await gate;
+        throw new Error("state store unavailable");
+      }
+      return patch(partial);
+    };
+    await runtime.runInConversation(async () => {
+      runtime.cardScope!.current["count"] = 1;
+    });
+    await runtime.openConversation("chat-other", "ctx-other");
+    release();
+    await vi.waitFor(() =>
+      expect(runtime.getSnapshot().notices.map((n) => n.title)).toContain(
+        "A card's saved state could not be stored"
+      )
+    );
+  });
+
   it("joins a late file read without attaching it to the destination", async () => {
     let finish!: (file: { name: string; mimeType: string; bytes: Uint8Array }) => void;
     let readSignal: AbortSignal | undefined;

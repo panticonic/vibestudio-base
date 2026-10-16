@@ -18,6 +18,8 @@ import type {
 } from "../runtime/chatRuntime.js";
 import type { SignInState } from "../runtime/providerSignIn.js";
 import { ValueStore } from "../runtime/valueStore.js";
+import { KeyValueScopePersistence, ScopeManager } from "@workspace/eval";
+import { cardModules, createCardCompiler } from "../cards/modules.js";
 import type { InputSource } from "../ui/hooks.js";
 
 export class FrameStdout extends EventEmitter {
@@ -105,7 +107,7 @@ export function fakeSessionSnapshot(patch: Partial<ChatSessionSnapshot> = {}): C
     status: "connected",
     connected: true,
     connectionError: null,
-    client: null,
+    client: { roster: {}, onConfigChange: () => () => {} },
     selfId: "me",
     initialization: undefined,
     channelTitle: "Planning",
@@ -166,12 +168,29 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
   const deferredStore = new ValueStore<{ deferredAgent: DeferredAgentState | undefined }>({
     deferredAgent: undefined,
   });
+  const memory = new Map<string, string>();
+  const cardScope = new ScopeManager({
+    channelId: "fake",
+    panelId: "panel-ui",
+    persistence: new KeyValueScopePersistence(
+      {
+        get: (key) => memory.get(key) ?? null,
+        set: (key, value) => void memory.set(key, value),
+        keys: () => memory.keys(),
+      },
+      { putText: async () => ({ digest: "d" }), getText: async () => null }
+    ),
+  });
   const session = {
+    publishText: async (text: string, options: unknown) => {
+      calls.cardSends.push({ text, options });
+    },
+    client: { roster: {}, onConfigChange: () => () => {} },
     getSnapshot: sessionStore.getSnapshot,
     subscribe: sessionStore.subscribe,
     deferredAgent: deferredStore,
     forks: null,
-    options: { config: {} },
+    options: { config: {}, channelName: "chan-1" },
     metadata: {},
     setInput: (input: string) => sessionStore.set({ ...sessionStore.getSnapshot(), input }),
     submit: async (_attachments: unknown, options: unknown) => {
@@ -248,10 +267,17 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
       session.setInput(text);
       await session.submit(undefined, options);
     },
-    sendFromCard: async (text: string, options: unknown) => {
-      calls.cardSends.push({ text, options });
-    },
-    publishFromCard: async () => {},
+    cardCompiler: createCardCompiler({
+      modules: cardModules({}),
+      loadSourceFile: async (path: string) => {
+        throw new Error(`No file ${path} in the fake workspace`);
+      },
+      loadImport: async (specifier: string) => {
+        throw new Error(`Cannot build ${specifier} in the fake workspace`);
+      },
+    }),
+    cardScope,
+    cardRuntime: {},
     reportCardFailure: async () => {},
     attachFile: async () => {},
     removeAttachment: async () => {},

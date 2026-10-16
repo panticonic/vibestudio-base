@@ -6,12 +6,14 @@ import type { CardSpec } from "./cardHost.js";
 import { registeredMdxComponents } from "./modules.js";
 
 export function cardSpec(msg: ChatMessage, selfId: string | null): CardSpec | null {
-  if (msg.contentType === "inline_ui" && msg.inlineUi?.source.type === "code")
+  if (msg.contentType === "inline_ui" && msg.inlineUi)
     return {
       kind: "inline",
       id: msg.inlineUi.id,
-      source: msg.inlineUi.source.code,
+      source: msg.inlineUi.source,
       props: msg.inlineUi.props ?? {},
+      ...(msg.inlineUi.imports ? { imports: msg.inlineUi.imports } : {}),
+      ...(msg.inlineUi.renderedAt !== undefined ? { renderedAt: msg.inlineUi.renderedAt } : {}),
     };
   if (
     rowKind(msg, selfId) === "agent" &&

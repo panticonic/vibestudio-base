@@ -12,23 +12,38 @@
 import { EventEmitter } from "node:events";
 import React from "react";
 import { render, Text, type Instance } from "ink";
+import type { ChatSandboxValue } from "@workspace/agentic-core";
+import type { ScopesApi } from "@workspace/eval";
 import {
   ClickTargets,
   ClickTargetsContext,
+  LinkOpenersContext,
   ResponseActionsProvider,
+  type LinkOpeners,
   type ResponseActions,
 } from "@workspace/terminal-ui";
-import { compileInlineCard, compileMdxCard } from "./modules.js";
+import type { CardCompiler, InlineSource } from "./modules.js";
 
 export type CardSpec =
   | { kind: "mdx"; content: string }
-  | { kind: "inline"; id: string; source: string; props: Record<string, unknown> };
+  | {
+      kind: "inline";
+      id: string;
+      source: InlineSource;
+      props: Record<string, unknown>;
+      imports?: Record<string, string>;
+      renderedAt?: string;
+    };
 
-/** What a card can reach of its conversation. */
+/** What a card can reach of its conversation: the props the panel gives inline UI. */
 export interface CardEnvironment {
   actions: ResponseActions;
-  /** Handed to inline UI as its `chat` prop: send and publish, as in the panel. */
-  chat: Record<string, unknown>;
+  chat: ChatSandboxValue;
+  /** This client's durable UI state, shared by its cards. */
+  scope: Record<string, unknown>;
+  scopes: ScopesApi;
+  /** How `OpenLinkButtons` opens a URL from here. */
+  openers: LinkOpeners;
   /** A card failed to compile or draw: the agent that wrote it should hear. */
   onFailure(key: string, spec: CardSpec, phase: "compile" | "render", error: Error): void;
 }
@@ -126,7 +141,10 @@ export class CardHost {
   private environment: CardEnvironment | null = null;
   private notify = false;
 
-  constructor(private readonly onChange: () => void) {}
+  constructor(
+    private readonly compiler: CardCompiler,
+    private readonly onChange: () => void
+  ) {}
 
   /** The conversation the cards talk to; cards redraw when it changes (answers, connection). */
   setEnvironment(environment: CardEnvironment): void {
@@ -135,9 +153,15 @@ export class CardHost {
     for (const [key, card] of this.cards) if (card.component) this.draw(key, card);
   }
 
-  /** The card for `key` at `width`: mounted on first sight, recompiled when its source changes. */
+  /**
+   * The card for `key` at `width`: mounted on first sight and recompiled when
+   * its source changes. New props (a re-render under the same id) reach the
+   * mounted component, as in the panel.
+   */
   view(key: string, spec: CardSpec, width: number): CardView {
-    const signature = JSON.stringify(spec);
+    const signature = JSON.stringify(
+      spec.kind === "mdx" ? spec : { source: spec.source, imports: spec.imports }
+    );
     let card = this.cards.get(key);
     if (!card || card.signature !== signature) {
       card?.instance?.unmount();
@@ -151,9 +175,15 @@ export class CardHost {
       };
       this.cards.set(key, card);
       this.compile(key, card, width);
-    } else if (card.stdout && card.stdout.columns !== width) {
-      card.stdout.columns = width;
-      card.stdout.emit("resize");
+    } else {
+      if (JSON.stringify(card.spec) !== JSON.stringify(spec)) {
+        card.spec = spec;
+        if (card.component) this.draw(key, card);
+      }
+      if (card.stdout && card.stdout.columns !== width) {
+        card.stdout.columns = width;
+        card.stdout.emit("resize");
+      }
     }
     return { status: card.status, lines: card.lines, ...(card.error ? { error: card.error } : {}) };
   }
@@ -190,8 +220,8 @@ export class CardHost {
   private compile(key: string, card: Card, width: number): void {
     const compiled =
       card.spec.kind === "mdx"
-        ? compileMdxCard(card.spec.content)
-        : compileInlineCard(card.spec.source);
+        ? this.compiler.mdx(card.spec.content)
+        : this.compiler.inline(card.spec.source, card.spec.imports);
     compiled.then(
       (component) => {
         if (this.cards.get(key) !== card) return;
@@ -222,15 +252,26 @@ export class CardHost {
     const spec = card.spec;
     const element = (
       <ClickTargetsContext.Provider value={card.targets}>
-        <ResponseActionsProvider actions={environment.actions}>
-          <CardBoundary onError={(error) => environment.onFailure(key, spec, "render", error)}>
-            {spec.kind === "inline" ? (
-              <Component props={spec.props} chat={environment.chat} inlineUi={{ id: spec.id }} />
-            ) : (
-              <Component />
-            )}
-          </CardBoundary>
-        </ResponseActionsProvider>
+        <LinkOpenersContext.Provider value={environment.openers}>
+          <ResponseActionsProvider actions={environment.actions}>
+            <CardBoundary onError={(error) => environment.onFailure(key, spec, "render", error)}>
+              {spec.kind === "inline" ? (
+                <Component
+                  props={spec.props}
+                  chat={environment.chat}
+                  scope={environment.scope}
+                  scopes={environment.scopes}
+                  inlineUi={{
+                    id: spec.id,
+                    ...(spec.renderedAt !== undefined ? { renderedAt: spec.renderedAt } : {}),
+                  }}
+                />
+              ) : (
+                <Component />
+              )}
+            </CardBoundary>
+          </ResponseActionsProvider>
+        </LinkOpenersContext.Provider>
       </ClickTargetsContext.Provider>
     );
     if (card.instance) card.instance.rerender(element);

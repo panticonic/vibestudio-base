@@ -150,15 +150,25 @@ function decodeCsi(params: string, final: string): KeyEvent | null {
   return name ? key(name, modifierFlags(parts[1])) : null;
 }
 
+/** An escape sequence cut off by the end of a read: CSI (keys, mouse, paste markers) or SS3. */
+const INCOMPLETE_SEQUENCE = /^\x1b(?:\[[0-9;:?<]*[ -/]*|O)$/;
+
 /**
- * Stateful decoder: a bracketed paste may span several input chunks.
- * `push` returns the complete events in a chunk.
+ * Stateful decoder: a read from the terminal may end anywhere, so a bracketed
+ * paste may span several chunks and an escape sequence may be cut in two.
+ * `push` returns the complete events so far and keeps the rest for the next
+ * chunk. A lone ESC ending a read is the Escape key (ordinary terminals send
+ * it alone), never held back.
  */
 export class KeyDecoder {
   private pasting: string | null = null;
+  /** The start of an escape sequence the last chunk ended in. */
+  private partial = "";
 
-  push(chunk: string): InputEvent[] {
+  push(input: string): InputEvent[] {
     const events: InputEvent[] = [];
+    let chunk = this.partial + input;
+    this.partial = "";
     let index = 0;
     let text = "";
     const flushText = () => {
@@ -167,15 +177,18 @@ export class KeyDecoder {
     };
     while (index < chunk.length) {
       if (this.pasting !== null) {
-        const end = chunk.indexOf(PASTE_END, index);
+        // The end marker may straddle the previous chunk and this one.
+        const from = Math.max(0, this.pasting.length - (PASTE_END.length - 1));
+        const buffer = this.pasting + chunk.slice(index);
+        const end = buffer.indexOf(PASTE_END, from);
         if (end === -1) {
-          this.pasting += chunk.slice(index);
+          this.pasting = buffer;
           return events;
         }
-        this.pasting += chunk.slice(index, end);
-        events.push({ type: "paste", text: this.pasting.replace(/\r\n?/g, "\n") });
+        events.push({ type: "paste", text: buffer.slice(0, end).replace(/\r\n?/g, "\n") });
         this.pasting = null;
-        index = end + PASTE_END.length;
+        chunk = buffer.slice(end + PASTE_END.length);
+        index = 0;
         continue;
       }
       if (chunk.startsWith(PASTE_START, index)) {
@@ -186,6 +199,11 @@ export class KeyDecoder {
       }
       const char = chunk[index]!;
       const code = char.charCodeAt(0);
+      if (char === ESC && INCOMPLETE_SEQUENCE.test(chunk.slice(index))) {
+        flushText();
+        this.partial = chunk.slice(index);
+        return events;
+      }
       if (char === ESC) {
         flushText();
         const next = chunk[index + 1];

@@ -9,6 +9,28 @@ const chords = (...chunks: string[]) =>
   decode(...chunks).map((event) => (event.type === "key" ? chordOf(event) : event.type));
 
 describe("KeyDecoder", () => {
+  it("decodes what a read cuts in two: paste markers, mouse reports and keys", () => {
+    const paste = "\x1b[200~line @one\nline two\x1b[201~\r";
+    const mouse = "\x1b[<0;12;7M";
+    const all = `${paste}${mouse}\x1b[A`;
+    for (let cut = 1; cut < all.length; cut++) {
+      // A read ending in a lone ESC is the Escape key (see below).
+      if (all[cut - 1] === "\x1b") continue;
+      const decoder = new KeyDecoder();
+      const events = [...decoder.push(all.slice(0, cut)), ...decoder.push(all.slice(cut))];
+      expect(events, `cut at ${cut}`).toMatchObject([
+        { type: "paste", text: "line @one\nline two" },
+        { type: "key", name: "enter" },
+        { type: "mouse", action: "press", x: 11, y: 6 },
+        { type: "key", name: "up" },
+      ]);
+    }
+  });
+
+  it("still reads a lone ESC ending a read as the Escape key", () => {
+    expect(new KeyDecoder().push("\x1b")).toMatchObject([{ type: "key", name: "escape" }]);
+  });
+
   it("groups typed text and decodes control keys", () => {
     expect(decode("héllo")).toMatchObject([{ type: "key", name: "char", text: "héllo" }]);
     expect(chords("\r", "\t", "\x7f", "\x0b", "\x01", "\x00")).toEqual([
