@@ -20,8 +20,12 @@ describe("workspace chat files", () => {
   it("writes the export where the person confirmed and returns that path", async () => {
     const root = await directory();
     const files = nodeChatFiles(root);
-    const path = await files.writeExport("chat-exports/conversation.md", "complete transcript");
+    const { path, followUp } = await files.writeExport(
+      "chat-exports/conversation.md",
+      "complete transcript"
+    );
     expect(path).toBe("chat-exports/conversation.md");
+    expect(followUp).toMatch(/Download file/u);
     expect(await readFile(join(root, path), "utf8")).toBe("complete transcript");
   });
 

@@ -164,7 +164,7 @@ function boot(state = new MemoryState(), rpc = fakeRpc().rpc): TerminalChatBoots
     state,
     files: {
       read: async () => ({ name: "", mimeType: "", bytes: new Uint8Array() }),
-      writeExport: async (path: string) => path,
+      writeExport: async (path: string) => ({ path }),
     },
   };
 }

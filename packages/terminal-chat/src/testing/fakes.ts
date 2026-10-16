@@ -250,7 +250,7 @@ export function createFakeChat(initial: Partial<ChatSessionSnapshot> = {}) {
         mimeType: "text/plain",
         bytes: new Uint8Array(1),
       }),
-      writeExport: async (path: string) => path,
+      writeExport: async (path: string) => ({ path }),
     },
     rpc: {},
     operationSignal: new AbortController().signal,

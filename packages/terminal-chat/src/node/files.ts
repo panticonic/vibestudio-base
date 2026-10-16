@@ -102,7 +102,10 @@ export function nodeChatFiles(root: string): ChatFiles {
           throw error.cause;
         throw error;
       }
-      return path;
+      return {
+        path,
+        followUp: "use the terminal browser's Download file action to save it on your computer.",
+      };
     },
   };
 }

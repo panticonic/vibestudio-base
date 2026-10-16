@@ -1064,8 +1064,12 @@ export class ChatActions {
 
   private async writeExport(destination: string): Promise<void> {
     try {
-      const path = await this.runtime.exportConversation(destination);
-      this.runtime.notify({ tone: "success", title: "Exported", message: path });
+      const written = await this.runtime.exportConversation(destination);
+      this.runtime.notify({
+        tone: "success",
+        title: "Exported",
+        message: written.followUp ? `${written.path} — ${written.followUp}` : written.path,
+      });
     } catch (error) {
       if (isRpcAbortedBy(error, this.runtime.operationSignal.reason)) throw error;
       this.runtime.fail(

@@ -56,7 +56,7 @@ import { isRpcAbortedBy, withRpcAbortSignal } from "@vibestudio/rpc";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import type { FeedbackResult } from "../model/forms.js";
-import type { ChatFiles, TerminalChatBootstrap } from "./bootstrap.js";
+import type { ChatFiles, TerminalChatBootstrap, ChatExport } from "./bootstrap.js";
 import { ProviderSignIn } from "./providerSignIn.js";
 import { ValueStore } from "./valueStore.js";
 import {
@@ -555,7 +555,7 @@ export class ChatRuntime implements ReadableStore<ChatRuntimeSnapshot> {
     return `chat-exports/${exportFileName(snapshot.channelTitle, snapshot.channelName, new Date())}`;
   }
 
-  exportConversation(path: string): Promise<string> {
+  exportConversation(path: string): Promise<ChatExport> {
     const session = this.#session;
     if (!session) return Promise.reject(new Error("The conversation has not opened yet."));
     return this.#own(async (_key, signal) => {

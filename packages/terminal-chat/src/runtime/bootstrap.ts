@@ -21,6 +21,12 @@ export interface SessionStateStore {
   subscribe(listener: () => void): () => void;
 }
 
+export interface ChatExport {
+  path: string;
+  /** The next step, e.g. downloading a workspace file to this computer. */
+  followUp?: string;
+}
+
 /** Files the chat may read and write, on whichever machine the launcher serves. */
 export interface ChatFiles {
   /** Read a file for an attachment; the path is as the person typed it. */
@@ -30,13 +36,14 @@ export interface ChatFiles {
   ): Promise<{ name: string; mimeType: string; bytes: Uint8Array }>;
   /**
    * Write an export to `path`, a destination the person confirmed (the chat
-   * suggests one and lets them edit it). Returns the path as written.
+   * suggests one and lets them edit it). Returns the path as written and,
+   * when the file is not yet where the person can use it, what to do next.
    */
   writeExport(
     path: string,
     contents: string,
     options?: { signal?: AbortSignal }
-  ): Promise<string>;
+  ): Promise<ChatExport>;
 }
 
 export interface TerminalChatBootstrap {
