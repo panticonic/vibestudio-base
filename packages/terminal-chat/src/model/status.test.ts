@@ -32,6 +32,8 @@ describe("status line", () => {
   });
 
   it("says when there is no agent or no connection", () => {
-    expect(stripAnsi(statusLine({ ...info, connection: "connecting", agentCount: 0, model: null }, 80))).toMatch(/^◌ reconnecting │ no agent yet/);
+    expect(
+      stripAnsi(statusLine({ ...info, connection: "connecting", agentCount: 0, model: null }, 80))
+    ).toMatch(/^◌ reconnecting │ no agent yet/);
   });
 });

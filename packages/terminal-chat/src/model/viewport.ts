@@ -37,7 +37,11 @@ export interface Window {
 }
 
 /** Normalise a scroll state into a concrete top position. */
-function topOf(source: RowSource, rows: number, scroll: ScrollState): { index: number; line: number } {
+function topOf(
+  source: RowSource,
+  rows: number,
+  scroll: ScrollState
+): { index: number; line: number } {
   if (source.count === 0) return { index: 0, line: 0 };
   if (scroll.mode === "anchored") {
     const index = source.indexOf(scroll.id);
@@ -85,7 +89,12 @@ export function computeWindow(source: RowSource, rows: number, scroll: ScrollSta
 }
 
 /** Scroll by `delta` lines (negative = up, towards older rows). */
-export function scrollBy(source: RowSource, rows: number, scroll: ScrollState, delta: number): ScrollState {
+export function scrollBy(
+  source: RowSource,
+  rows: number,
+  scroll: ScrollState,
+  delta: number
+): ScrollState {
   if (source.count === 0) return FOLLOW;
   let { index, line } = topOf(source, rows, scroll);
   let remaining = delta;
@@ -118,12 +127,18 @@ export function scrollBy(source: RowSource, rows: number, scroll: ScrollState, d
 }
 
 /** Scroll the least amount that makes row `index` fully visible (or its top, if taller than the viewport). */
-export function revealRow(source: RowSource, rows: number, scroll: ScrollState, index: number): ScrollState {
+export function revealRow(
+  source: RowSource,
+  rows: number,
+  scroll: ScrollState,
+  index: number
+): ScrollState {
   if (index < 0 || index >= source.count) return scroll;
   const window = computeWindow(source, rows, scroll);
   const visible = window.lines.filter((l) => l.rowIndex === index);
   const length = source.lines(index).length;
-  if (visible.length === Math.min(length, rows) && (visible[0]?.first || length > rows)) return scroll;
+  if (visible.length === Math.min(length, rows) && (visible[0]?.first || length > rows))
+    return scroll;
   const firstVisibleRow = window.lines[0]?.rowIndex ?? 0;
   if (index <= firstVisibleRow || length >= rows) {
     const next: ScrollState = { mode: "anchored", id: source.idAt(index), line: 0 };
@@ -149,7 +164,11 @@ export function revealRow(source: RowSource, rows: number, scroll: ScrollState, 
 }
 
 /** A `RowSource` over an array, laying rows out on demand. */
-export function rowSource<T>(items: readonly T[], id: (item: T) => string, layout: (item: T, index: number) => readonly string[]): RowSource {
+export function rowSource<T>(
+  items: readonly T[],
+  id: (item: T) => string,
+  layout: (item: T, index: number) => readonly string[]
+): RowSource {
   let ids: Map<string, number> | null = null;
   return {
     count: items.length,

@@ -46,7 +46,11 @@ export function statusLine(info: StatusInfo, columns: number): string {
           : style.gray("◇ idle"),
       priority: 1,
     });
-  if (info.model) parts.push({ text: style.bold(info.model) + (info.fastMode ? style.yellow(" fast") : ""), priority: 2 });
+  if (info.model)
+    parts.push({
+      text: style.bold(info.model) + (info.fastMode ? style.yellow(" fast") : ""),
+      priority: 2,
+    });
   if (info.thinkingLevel) parts.push({ text: `thinking ${info.thinkingLevel}`, priority: 4 });
   if (info.contextPercent !== null) {
     const pct = info.contextPercent;
@@ -58,7 +62,8 @@ export function statusLine(info: StatusInfo, columns: number): string {
     parts.push({ text: `approval ${choice.word}`, priority: 5 });
   }
   if (info.queued > 0) parts.push({ text: style.yellow(`${info.queued} queued`), priority: 2 });
-  if (info.unreadForks > 0) parts.push({ text: style.magenta(`⑂ ${info.unreadForks} unread`), priority: 3 });
+  if (info.unreadForks > 0)
+    parts.push({ text: style.magenta(`⑂ ${info.unreadForks} unread`), priority: 3 });
   if (info.agentCount > 1) parts.push({ text: `${info.agentCount} agents`, priority: 6 });
   if (info.title) parts.push({ text: style.gray(info.title), priority: 7 });
 

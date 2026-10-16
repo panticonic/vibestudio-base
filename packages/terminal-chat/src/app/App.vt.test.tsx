@@ -47,17 +47,23 @@ describe("terminal chat in a VT emulator", () => {
     const stdout = new VtStdout(term, 80, 24);
     const input = new TypedInput();
     const chat = createFakeChat();
-    const instance = render(<TerminalChatApp runtime={chat.runtime} input={input} control={() => {}} />, {
-      stdout: stdout as never,
-      patchConsole: false,
-      exitOnCtrlC: false,
-    });
+    const instance = render(
+      <TerminalChatApp runtime={chat.runtime} input={input} control={() => {}} />,
+      {
+        stdout: stdout as never,
+        patchConsole: false,
+        exitOnCtrlC: false,
+      }
+    );
     unmount = () => instance.unmount();
     const screen = async () => {
       await settle();
       await new Promise<void>((resolve) => term.write("", resolve));
       const buffer = term.buffer.active;
-      return Array.from({ length: 24 }, (_, y) => buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? "");
+      return Array.from(
+        { length: 24 },
+        (_, y) => buffer.getLine(buffer.viewportY + y)?.translateToString(true) ?? ""
+      );
     };
 
     let lines = await screen();
@@ -75,7 +81,9 @@ describe("terminal chat in a VT emulator", () => {
     chat.update({ messages: [{ id: "a", senderId: "ai", content: "Stream", complete: false }] });
     lines = await screen();
     expect(lines.join("\n")).toContain("Stream▌");
-    chat.update({ messages: [{ id: "a", senderId: "ai", content: "Streaming done", complete: true }] });
+    chat.update({
+      messages: [{ id: "a", senderId: "ai", content: "Streaming done", complete: true }],
+    });
     lines = await screen();
     expect(lines.join("\n")).toContain("Streaming done");
     expect(lines.join("\n")).not.toContain("▌");

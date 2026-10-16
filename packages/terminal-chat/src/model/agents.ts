@@ -26,7 +26,9 @@ export interface AgentSettings {
 
 export function agentsIn(participants: ChatParticipants, selfId: string | null): AgentInfo[] {
   return Object.values(participants)
-    .filter((p) => p.id !== selfId && isAgentParticipantType(p.metadata?.type as string | undefined))
+    .filter(
+      (p) => p.id !== selfId && isAgentParticipantType(p.metadata?.type as string | undefined)
+    )
     .map((p) => {
       const metadata = (p.metadata ?? {}) as Record<string, unknown>;
       const usage = metadata["contextUsage"] as { usagePercent?: unknown } | undefined;
@@ -34,8 +36,10 @@ export function agentsIn(participants: ChatParticipants, selfId: string | null):
         id: p.id,
         name: typeof metadata["name"] === "string" ? (metadata["name"] as string) : p.id,
         handle: typeof metadata["handle"] === "string" ? (metadata["handle"] as string) : null,
-        activeModel: typeof metadata["activeModel"] === "string" ? (metadata["activeModel"] as string) : null,
-        contextPercent: typeof usage?.usagePercent === "number" ? Math.round(usage.usagePercent) : null,
+        activeModel:
+          typeof metadata["activeModel"] === "string" ? (metadata["activeModel"] as string) : null,
+        contextPercent:
+          typeof usage?.usagePercent === "number" ? Math.round(usage.usagePercent) : null,
         typing: metadata["typing"] === true,
       };
     })
@@ -44,7 +48,8 @@ export function agentsIn(participants: ChatParticipants, selfId: string | null):
 
 /** Unwrap either `{ model: "x" }` or `{ model: { value: "x" } }`. */
 function settingValue(value: unknown): unknown {
-  if (value && typeof value === "object" && "value" in (value as object)) return (value as { value: unknown }).value;
+  if (value && typeof value === "object" && "value" in (value as object))
+    return (value as { value: unknown }).value;
   return value;
 }
 
@@ -63,7 +68,10 @@ export function parseAgentSettings(raw: unknown): AgentSettings {
 }
 
 /** Agents currently working: open-turn typing rows plus the roster typing flag. */
-export function busyAgentIds(messages: readonly ChatMessage[], agents: readonly AgentInfo[]): string[] {
+export function busyAgentIds(
+  messages: readonly ChatMessage[],
+  agents: readonly AgentInfo[]
+): string[] {
   const ids = new Set<string>();
   for (const message of messages) if (message.contentType === "typing") ids.add(message.senderId);
   for (const agent of agents) if (agent.typing) ids.add(agent.id);
@@ -71,14 +79,19 @@ export function busyAgentIds(messages: readonly ChatMessage[], agents: readonly 
 }
 
 /** Resolve `@handle`s in a draft to participant ids (every participant sharing a handle). */
-export function mentionIds(text: string, participants: ChatParticipants, selfId: string | null): string[] {
+export function mentionIds(
+  text: string,
+  participants: ChatParticipants,
+  selfId: string | null
+): string[] {
   const ids: string[] = [];
   for (const match of text.matchAll(/(^|[\s([{])@([A-Za-z0-9_.-]+)/g)) {
     const handle = match[2]!.toLowerCase();
     for (const p of Object.values(participants)) {
       if (p.id === selfId) continue;
       const own = (p.metadata as { handle?: unknown } | undefined)?.handle;
-      if (typeof own === "string" && own.toLowerCase() === handle && !ids.includes(p.id)) ids.push(p.id);
+      if (typeof own === "string" && own.toLowerCase() === handle && !ids.includes(p.id))
+        ids.push(p.id);
     }
   }
   return ids;
@@ -98,7 +111,8 @@ export function mentionCandidates(
     const metadata = (p.metadata ?? {}) as { handle?: unknown; name?: unknown };
     if (typeof metadata.handle !== "string" || seen.has(metadata.handle)) continue;
     const name = typeof metadata.name === "string" ? metadata.name : metadata.handle;
-    if (q && !metadata.handle.toLowerCase().includes(q) && !name.toLowerCase().includes(q)) continue;
+    if (q && !metadata.handle.toLowerCase().includes(q) && !name.toLowerCase().includes(q))
+      continue;
     seen.add(metadata.handle);
     out.push({ id: p.id, handle: metadata.handle, name });
   }

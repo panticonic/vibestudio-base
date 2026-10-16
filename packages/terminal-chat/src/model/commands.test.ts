@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { approvalFromArg, completeCommand, fuzzyScore, parseInput, type CompletionData } from "./commands.js";
+import {
+  approvalFromArg,
+  completeCommand,
+  fuzzyScore,
+  parseInput,
+  type CompletionData,
+} from "./commands.js";
 
 const data: CompletionData = {
   models: [
@@ -14,10 +20,21 @@ const data: CompletionData = {
 
 describe("slash commands", () => {
   it("parses commands, arguments, unknown commands and escaped slashes", () => {
-    expect(parseInput("/model openai:gpt-5")).toMatchObject({ kind: "command", command: { name: "model" }, args: "openai:gpt-5" });
-    expect(parseInput("/HELP")).toMatchObject({ kind: "command", command: { name: "help" }, args: "" });
+    expect(parseInput("/model openai:gpt-5")).toMatchObject({
+      kind: "command",
+      command: { name: "model" },
+      args: "openai:gpt-5",
+    });
+    expect(parseInput("/HELP")).toMatchObject({
+      kind: "command",
+      command: { name: "help" },
+      args: "",
+    });
     expect(parseInput("/nope")).toEqual({ kind: "unknown-command", name: "nope" });
-    expect(parseInput("//etc/hosts is a file")).toEqual({ kind: "message", text: "/etc/hosts is a file" });
+    expect(parseInput("//etc/hosts is a file")).toEqual({
+      kind: "message",
+      text: "/etc/hosts is a file",
+    });
     expect(parseInput("hello /model")).toEqual({ kind: "message", text: "hello /model" });
   });
 
@@ -31,9 +48,16 @@ describe("slash commands", () => {
   });
 
   it("completes arguments from live data", () => {
-    expect(completeCommand("/model cla", data)[0]).toMatchObject({ insert: "/model anthropic:claude", runs: true });
+    expect(completeCommand("/model cla", data)[0]).toMatchObject({
+      insert: "/model anthropic:claude",
+      runs: true,
+    });
     expect(completeCommand("/thinking h", data).map((c) => c.label)).toEqual(["high"]);
-    expect(completeCommand("/approval ", data).map((c) => c.label)).toEqual(["ask", "safe", "auto"]);
+    expect(completeCommand("/approval ", data).map((c) => c.label)).toEqual([
+      "ask",
+      "safe",
+      "auto",
+    ]);
     expect(completeCommand("/missions run ", data)[0]?.insert).toBe("/missions run Daily digest");
   });
 

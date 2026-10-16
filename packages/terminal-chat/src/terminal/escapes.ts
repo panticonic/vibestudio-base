@@ -9,7 +9,10 @@ const BEL = "\x07";
 
 function clean(text: string, max: number): string {
   // eslint-disable-next-line no-control-regex
-  return text.replace(/[\x00-\x1f\x7f-\x9f]/g, " ").trim().slice(0, max);
+  return text
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 /** OSC 2: window/tab title. */
@@ -31,7 +34,8 @@ export function hyperlink(url: string, text = url): string {
 export function copySequence(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return `${ESC}]52;c;${btoa(binary)}${BEL}`;
 }
 

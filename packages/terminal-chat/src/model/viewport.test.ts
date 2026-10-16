@@ -3,7 +3,10 @@ import { FOLLOW, computeWindow, revealRow, rowSource, scrollBy } from "./viewpor
 
 const rows = (...heights: number[]) =>
   rowSource(
-    heights.map((h, i) => ({ id: `r${i}`, lines: Array.from({ length: h }, (_, j) => `r${i}.${j}`) })),
+    heights.map((h, i) => ({
+      id: `r${i}`,
+      lines: Array.from({ length: h }, (_, j) => `r${i}.${j}`),
+    })),
     (row) => row.id,
     (row) => row.lines
   );
@@ -40,7 +43,9 @@ describe("transcript viewport", () => {
 
   it("keeps an anchored view stable when rows arrive below", () => {
     const anchored = { mode: "anchored" as const, id: "r0", line: 1 };
-    expect(texts(computeWindow(rows(3, 3, 3, 3), 2, anchored))).toEqual(texts(computeWindow(rows(3, 3, 3), 2, anchored)));
+    expect(texts(computeWindow(rows(3, 3, 3, 3), 2, anchored))).toEqual(
+      texts(computeWindow(rows(3, 3, 3), 2, anchored))
+    );
   });
 
   it("reveals a selected row above or below the viewport", () => {

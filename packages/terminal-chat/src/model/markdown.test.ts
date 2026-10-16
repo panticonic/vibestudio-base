@@ -33,7 +33,10 @@ describe("renderMarkdown", () => {
   it("lays out tables as a grid when they fit and as records when they do not", () => {
     const table = "| Name | Size |\n| --- | ---: |\n| a.ts | 12 |\n| b.ts | 3 |";
     expect(plain(table)).toEqual(["Name │ Size", "─────┼─────", "a.ts │   12", "b.ts │    3"]);
-    const narrow = plain("| Column one header | Column two header |\n| --- | --- |\n| value one | value two |", 20);
+    const narrow = plain(
+      "| Column one header | Column two header |\n| --- | --- |\n| value one | value two |",
+      20
+    );
     expect(narrow.some((line) => line.startsWith("Column one header:"))).toBe(true);
     expect(narrow.join(" ")).toContain("value two");
   });
@@ -65,6 +68,9 @@ describe("renderMarkdown", () => {
 
   it("maps highlight.js spans per line so styles never leak across lines", () => {
     const lines = htmlToAnsiLines('<span class="hljs-comment">/* a\nb */</span>x');
-    expect(lines).toEqual(["\x1b[3m\x1b[90m/* a\x1b[39m\x1b[23m", "\x1b[3m\x1b[90mb */\x1b[39m\x1b[23mx"]);
+    expect(lines).toEqual([
+      "\x1b[3m\x1b[90m/* a\x1b[39m\x1b[23m",
+      "\x1b[3m\x1b[90mb */\x1b[39m\x1b[23mx",
+    ]);
   });
 });

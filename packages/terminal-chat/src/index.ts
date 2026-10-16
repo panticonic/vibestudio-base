@@ -4,8 +4,18 @@
  * `TerminalChatApp` + `ChatRuntime` embed it (tests drive them directly).
  */
 export { TerminalChatApp, type TerminalChatProps } from "./app/App.js";
-export { ChatRuntime, type ChatRuntimeSnapshot, type Notice, type PendingForm } from "./runtime/chatRuntime.js";
-export type { ChatFiles, ChatRpc, SessionStateStore, TerminalChatBootstrap } from "./runtime/bootstrap.js";
+export {
+  ChatRuntime,
+  type ChatRuntimeSnapshot,
+  type Notice,
+  type PendingForm,
+} from "./runtime/chatRuntime.js";
+export type {
+  ChatFiles,
+  ChatRpc,
+  SessionStateStore,
+  TerminalChatBootstrap,
+} from "./runtime/bootstrap.js";
 export { ProviderSignIn, type SignInState } from "./runtime/providerSignIn.js";
 export { runTerminalChat, type TerminalChatIo } from "./node/main.js";
 export { nodeChatFiles } from "./node/files.js";

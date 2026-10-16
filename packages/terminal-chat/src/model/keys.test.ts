@@ -11,12 +11,32 @@ const chords = (...chunks: string[]) =>
 describe("KeyDecoder", () => {
   it("groups typed text and decodes control keys", () => {
     expect(decode("héllo")).toMatchObject([{ type: "key", name: "char", text: "héllo" }]);
-    expect(chords("\r", "\t", "\x7f", "\x0b", "\x01", "\x00")).toEqual(["enter", "tab", "backspace", "C-k", "C-a", "C- "]);
+    expect(chords("\r", "\t", "\x7f", "\x0b", "\x01", "\x00")).toEqual([
+      "enter",
+      "tab",
+      "backspace",
+      "C-k",
+      "C-a",
+      "C- ",
+    ]);
   });
 
   it("decodes arrows with xterm modifiers and SS3 arrows", () => {
-    expect(chords("\x1b[A", "\x1b[1;5A", "\x1b[1;3D", "\x1b[1;2B", "\x1bOC")).toEqual(["up", "C-up", "M-left", "S-down", "right"]);
-    expect(chords("\x1b[5~", "\x1b[6~", "\x1b[H", "\x1b[4~", "\x1b[3~", "\x1b[Z")).toEqual(["pageup", "pagedown", "home", "end", "delete", "S-tab"]);
+    expect(chords("\x1b[A", "\x1b[1;5A", "\x1b[1;3D", "\x1b[1;2B", "\x1bOC")).toEqual([
+      "up",
+      "C-up",
+      "M-left",
+      "S-down",
+      "right",
+    ]);
+    expect(chords("\x1b[5~", "\x1b[6~", "\x1b[H", "\x1b[4~", "\x1b[3~", "\x1b[Z")).toEqual([
+      "pageup",
+      "pagedown",
+      "home",
+      "end",
+      "delete",
+      "S-tab",
+    ]);
   });
 
   it("tells Enter, Alt-Enter and Shift-Enter apart where the terminal reports them", () => {
@@ -37,7 +57,14 @@ describe("KeyDecoder", () => {
   });
 
   it("decodes Alt+letter, a lone Esc, Esc Esc, and F1", () => {
-    expect(chords("\x1bb", "\x1b", "\x1b\x1b", "\x1bOP", "\x1b[11~")).toEqual(["M-b", "escape", "escape", "escape", "f1", "f1"]);
+    expect(chords("\x1bb", "\x1b", "\x1b\x1b", "\x1bOP", "\x1b[11~")).toEqual([
+      "M-b",
+      "escape",
+      "escape",
+      "escape",
+      "f1",
+      "f1",
+    ]);
     expect(chords("\x1bOQ", "\x1b[12~", "\x1b[1;5Q")).toEqual(["f2", "f2", "C-f2"]);
   });
 
@@ -58,7 +85,14 @@ describe("KeyDecoder", () => {
   });
 
   it("names chords with modifiers in a fixed order", () => {
-    const event: KeyEvent = { type: "key", name: "up", text: "", ctrl: true, meta: true, shift: true };
+    const event: KeyEvent = {
+      type: "key",
+      name: "up",
+      text: "",
+      ctrl: true,
+      meta: true,
+      shift: true,
+    };
     expect(chordOf(event)).toBe("C-M-S-up");
   });
 });
