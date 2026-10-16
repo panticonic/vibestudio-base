@@ -10,7 +10,7 @@
  * changes over time arrives through `setInputs()`; every input and every
  * internal state change runs one deterministic `reconcile()` that starts or
  * retires the keyed work it implies. Async work belongs to AbortController
- * generations; the channel client's `onReconnect` is the only resubscribe
+ * generations; the channel client's `onReady` is the only resubscribe
  * trigger (no timers).
  */
 
@@ -18,6 +18,7 @@ import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import { createRpcMethodCaller, type RpcMethodArgs } from "@vibestudio/shared/rpcMethods";
 import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { isReviewPending } from "@vibestudio/shared/authority/reviewPending";
+import { isRpcAbortedBy, isRpcConnectionLost } from "@vibestudio/rpc";
 import { forkConversation, type ForkLocus } from "@workspace/channel-fork";
 import type { ForkProjection, MessageBlockInput } from "@workspace/agentic-protocol";
 import { readChannelSubscriptionRecords, type PubSubClient } from "@workspace/pubsub";
@@ -50,9 +51,8 @@ export interface ForkLineageIdentity {
 
 /** Inputs that change over the store's lifetime. */
 export interface ForkLineageInputs {
-  /** Live channel connection. Only `onReconnect` is used: lineage owns its own
-   *  response stream, and a recovered channel session resubscribes it. */
-  client: Pick<PubSubClient, "onReconnect"> | null;
+  /** The channel session owns the lifetime of the dependent lineage stream. */
+  client: Pick<PubSubClient, "connected" | "onDisconnect" | "onReady"> | null;
   selfId: string | null;
   /** The channel's initial replay settled; read cursors may advance. */
   replaySettled: boolean;
@@ -83,21 +83,42 @@ interface LineageState {
 
 const EMPTY_ENTRIES: ForkEntry[] = [];
 
-async function resolveChannelTarget(rpc: ForkLineageRpc, channelId: string): Promise<string> {
-  const svc = await resolveDurableObjectService(rpc, CHANNEL_SERVICE_PROTOCOL, channelId);
+async function resolveChannelTarget(
+  rpc: ForkLineageRpc,
+  channelId: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const svc = await resolveDurableObjectService(rpc, CHANNEL_SERVICE_PROTOCOL, channelId, {
+    signal,
+  });
+  signal?.throwIfAborted();
   return svc.targetId ?? `do:${svc.source}:${svc.className}:${svc.objectKey}`;
 }
 
-async function readProvenance(rpc: ForkLineageRpc, channelId: string): Promise<ChannelProvenance> {
+async function readProvenance(
+  rpc: ForkLineageRpc,
+  channelId: string,
+  signal?: AbortSignal
+): Promise<ChannelProvenance> {
   return rpc.call(
-    await resolveChannelTarget(rpc, channelId),
+    await resolveChannelTarget(rpc, channelId, signal),
     channelClientRpcMethods["getProvenance"],
-    []
+    [],
+    { signal }
   );
 }
 
-async function readForks(rpc: ForkLineageRpc, channelId: string): Promise<ForkListResult> {
-  return rpc.call(await resolveChannelTarget(rpc, channelId), channelClientRpcMethods["listForks"], []);
+async function readForks(
+  rpc: ForkLineageRpc,
+  channelId: string,
+  signal?: AbortSignal
+): Promise<ForkListResult> {
+  return rpc.call(
+    await resolveChannelTarget(rpc, channelId, signal),
+    channelClientRpcMethods["listForks"],
+    [],
+    { signal }
+  );
 }
 
 function forkProjectionToEntry(fork: ForkProjection): ForkEntry {
@@ -127,10 +148,11 @@ function messageExcerpt(message: ChatMessage): string {
 }
 
 interface SubscriptionBinding {
-  client: Pick<PubSubClient, "onReconnect">;
-  rootId: string;
+  client: NonNullable<ForkLineageInputs["client"]>;
+  rootId: string | null;
   selfId: string;
-  offReconnect: () => void;
+  offDisconnect: () => void;
+  offReady: () => void;
   active: AbortController | null;
 }
 
@@ -148,7 +170,11 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     forking: false,
   });
   #holders = 0;
-  #inputs: ForkLineageInputs = { client: null, selfId: null, replaySettled: false };
+  #inputs: ForkLineageInputs = {
+    client: null,
+    selfId: null,
+    replaySettled: false,
+  };
   #live = false;
   /** Owns the loads of the current activation. */
   #lifetime = new AbortController();
@@ -156,6 +182,8 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
   #load: AbortController | null = null;
   #markReadKey: string | null = null;
   #subscription: SubscriptionBinding | null = null;
+  /** Every replacement joins its predecessor, including across binding changes. */
+  #streamRetirement: Promise<void> = Promise.resolve();
   /** Forks already known; `null` until the first durable roster loads. */
   #seenForkIds: Set<string> | null = null;
   #derived: { state: LineageState; value: ForkUiState } | null = null;
@@ -190,11 +218,14 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
 
   /**
    * Resubscribe the live lineage stream now (after it stopped). The channel
-   * client's reconnect event does the same automatically.
+   * client's next ready event does the same automatically.
    */
   readonly retryLiveUpdates = (): void => {
     const binding = this.#subscription;
-    if (!binding) return;
+    if (!binding || !binding.client.connected) return;
+    // A typed loss retires the session generation even if the primary reader
+    // has not observed it yet. Only session readiness can admit its successor.
+    if (isRpcConnectionLost(binding.active?.signal.reason)) return;
     this.#mutate({ streamError: undefined });
     this.#openStream(binding);
   };
@@ -237,8 +268,8 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
   };
 
   /**
-   * Hold the store live. Live work (snapshot load, lineage stream, reconnect
-   * listener) starts with the first holder and is released synchronously with
+   * Hold the store live. Live work (snapshot load, lineage stream, session
+   * listeners) starts with the first holder and is released synchronously with
    * the last one; the reduced state survives, so a later holder resumes from
    * it. Lineage holds no connection of its own worth sharing across a
    * StrictMode remount, so release is immediate rather than turn-deferred.
@@ -281,7 +312,11 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
   };
 
   readonly clearError = (): void => {
-    this.#mutate({ actionError: undefined, loadError: undefined, streamError: undefined });
+    this.#mutate({
+      actionError: undefined,
+      loadError: undefined,
+      streamError: undefined,
+    });
   };
 
   readonly refresh = (): void => {
@@ -322,16 +357,23 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     try {
       await this.#inputs.nav?.switchTo(targetChannelId, targetContextId);
     } catch (cause) {
-      this.#mutate({ actionError: `Could not switch conversations: ${errorMessage(cause)}` });
+      this.#mutate({
+        actionError: `Could not switch conversations: ${errorMessage(cause)}`,
+      });
       throw cause;
     }
   };
 
-  readonly openInNewPanel = async (targetChannelId: string, targetContextId: string): Promise<void> => {
+  readonly openInNewPanel = async (
+    targetChannelId: string,
+    targetContextId: string
+  ): Promise<void> => {
     try {
       await this.#inputs.nav?.openInNewPanel(targetChannelId, targetContextId);
     } catch (cause) {
-      this.#mutate({ actionError: `Could not open conversation: ${errorMessage(cause)}` });
+      this.#mutate({
+        actionError: `Could not open conversation: ${errorMessage(cause)}`,
+      });
       throw cause;
     }
   };
@@ -353,7 +395,11 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     });
 
   readonly newFork = (): Promise<void> =>
-    this.#runFork({ locus: { kind: "head" }, reason: "fork", label: "New direction" });
+    this.#runFork({
+      locus: { kind: "head" },
+      reason: "fork",
+      label: "New direction",
+    });
 
   readonly renameFork = (entry: ForkEntry, label: string): Promise<void> =>
     this.#mutateFork(entry, "renameFork", [entry.forkId, label]);
@@ -366,7 +412,9 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       this.#mutate({ actionError: undefined });
       return await this.#loadTreeData();
     } catch (cause) {
-      this.#mutate({ actionError: `Could not load conversation tree: ${errorMessage(cause)}` });
+      this.#mutate({
+        actionError: `Could not load conversation tree: ${errorMessage(cause)}`,
+      });
       return [];
     }
   };
@@ -430,21 +478,19 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
           ? state.provenance.rootChannelId
           : channelId;
     const wanted =
-      enabled && rootId && inputs.selfId && inputs.client
+      enabled && channelId && inputs.selfId && inputs.client
         ? { client: inputs.client, rootId, selfId: inputs.selfId }
         : null;
     const bound = this.#subscription;
-    if (
-      !bound ||
-      !wanted ||
-      bound.client !== wanted.client ||
-      bound.rootId !== wanted.rootId ||
-      bound.selfId !== wanted.selfId
-    ) {
+    if (!bound || !wanted || bound.client !== wanted.client || bound.selfId !== wanted.selfId) {
       if (bound || wanted) {
         this.#unbindSubscription();
         if (wanted) this.#bindSubscription(wanted);
       }
+    } else if (bound.rootId !== wanted.rootId) {
+      bound.rootId = wanted.rootId;
+      bound.active?.abort(new Error("Fork lineage root changed"));
+      this.#openStream(bound);
     }
   }
 
@@ -458,40 +504,61 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
   }
 
   #bindSubscription(wanted: {
-    client: Pick<PubSubClient, "onReconnect">;
-    rootId: string;
+    client: NonNullable<ForkLineageInputs["client"]>;
+    rootId: string | null;
     selfId: string;
   }): void {
     const binding: SubscriptionBinding = {
       ...wanted,
-      offReconnect: () => undefined,
+      offDisconnect: () => undefined,
+      offReady: () => undefined,
       active: null,
     };
     // The channel's recovered-session signal is the only resubscribe trigger;
     // a separate retry timer would compete with the transport's recovery.
-    binding.offReconnect = wanted.client.onReconnect(() => this.#openStream(binding));
     this.#subscription = binding;
-    this.#openStream(binding);
+    binding.offDisconnect = wanted.client.onDisconnect(() => {
+      binding.active?.abort(new Error("Channel session disconnected"));
+      this.#load?.abort(new Error("Channel session disconnected"));
+      this.#mutate({
+        streamError: "Fork updates paused while the channel reconnects.",
+      });
+    });
+    binding.offReady = wanted.client.onReady(() => {
+      if (binding.rootId) this.#openStream(binding);
+      else {
+        // The first snapshot may have failed while offline, before we knew
+        // the lineage root. The recovered session owns that same initial load.
+        this.#loadKey = null;
+        this.#mutate({ loadError: undefined });
+      }
+    });
+    if (binding.client.connected) this.#openStream(binding);
   }
 
   #unbindSubscription(): void {
     const binding = this.#subscription;
     if (!binding) return;
     this.#subscription = null;
-    binding.offReconnect();
+    binding.offDisconnect();
+    binding.offReady();
     binding.active?.abort();
     binding.active = null;
   }
 
   #openStream(binding: SubscriptionBinding): void {
-    if (this.#subscription !== binding) return;
-    binding.active?.abort();
+    const rootId = binding.rootId;
+    if (this.#subscription !== binding || !binding.client.connected || !rootId) return;
+    if (binding.active && !binding.active.signal.aborted) return;
     const abort = new AbortController();
     binding.active = abort;
     const rpc = this.#rpc;
-    void (async () => {
+    const preceding = this.#streamRetirement;
+    const task = (async () => {
       try {
-        const target = await resolveChannelTarget(rpc, binding.rootId);
+        await preceding;
+        if (abort.signal.aborted) return;
+        const target = await resolveChannelTarget(rpc, rootId, abort.signal);
         if (abort.signal.aborted) return;
         const response = await rpc.streamReadable(
           target,
@@ -536,19 +603,33 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
             void this.markForkRead(headChannel, headSeq).catch((cause) =>
               this.reportError("Could not save the conversation read position", cause)
             );
-            if (parsed.rosterChanged === true) void this.#refreshData(abort.signal);
+            if (parsed.rosterChanged === true) await this.#refreshData(abort.signal);
           }
         }
+        abort.signal.throwIfAborted();
+        throw new Error("Fork lineage subscription closed unexpectedly");
       } catch (cause) {
-        if (!abort.signal.aborted) {
+        if (abort.signal.aborted && isRpcAbortedBy(cause, abort.signal.reason)) return;
+        const current =
+          !abort.signal.aborted && this.#subscription === binding && binding.active === abort;
+        if (!abort.signal.aborted) abort.abort(cause);
+        if (isRpcConnectionLost(cause)) {
+          if (current) {
+            this.#mutate({
+              streamError: "Fork updates paused while the channel reconnects.",
+            });
+          }
+        } else {
           console.warn("[ForkLineageStore] live fork updates stopped:", cause);
-          this.#mutate({
-            streamError:
-              "Fork updates paused: new forks and unread badges won't refresh until you retry.",
-          });
+          if (current)
+            this.#mutate({
+              streamError:
+                "Fork updates paused: new forks and unread badges won't refresh until you retry.",
+            });
         }
       }
     })();
+    this.#streamRetirement = task;
   }
 
   async #refreshData(signal?: AbortSignal): Promise<void> {
@@ -557,15 +638,22 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     const owner = signal ?? this.#lifetime.signal;
     const rpc = this.#rpc;
     try {
-      const [provenance, own] = await Promise.all([
-        readProvenance(rpc, channelId),
-        readForks(rpc, channelId),
+      const reads = await Promise.allSettled([
+        readProvenance(rpc, channelId, owner),
+        readForks(rpc, channelId, owner),
       ]);
+      const failures = reads.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : []
+      );
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, "Could not read fork lineage");
+      const provenance = (reads[0] as PromiseFulfilledResult<ChannelProvenance>).value;
+      const own = (reads[1] as PromiseFulfilledResult<ForkListResult>).value;
       let siblings: ForkEntry[] = [];
       let label =
         provenance.kind === "task" ? "Subagent task" : provenance.kind === "fork" ? "Fork" : "Main";
       if (provenance.kind === "fork") {
-        const parent = await readForks(rpc, provenance.forkedFrom);
+        const parent = await readForks(rpc, provenance.forkedFrom, owner);
         const self = parent.forks.find((fork) => fork.forkedChannelId === channelId);
         if (self) label = self.label || self.reason || "Fork";
         siblings = parent.forks
@@ -589,8 +677,13 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       });
       this.#noticeExternalForks(children);
     } catch (cause) {
-      if (!owner.aborted)
-        this.#mutate({ loadError: `Could not load conversation forks: ${errorMessage(cause)}` });
+      if (owner.aborted) {
+        if (!isRpcAbortedBy(cause, owner.reason) && !isRpcConnectionLost(cause))
+          console.warn("[ForkLineageStore] fork snapshot retirement failed:", cause);
+      } else
+        this.#mutate({
+          loadError: `Could not load conversation forks: ${errorMessage(cause)}`,
+        });
     }
   }
 
@@ -658,7 +751,9 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       });
       await (this.#inputs.nav ?? nav).switchTo(result.forkedChannelId, result.forkedContextId);
     } catch (cause) {
-      this.#mutate({ actionError: `Could not create fork: ${errorMessage(cause)}` });
+      this.#mutate({
+        actionError: `Could not create fork: ${errorMessage(cause)}`,
+      });
       throw cause;
     } finally {
       this.#mutate({ forking: false });
@@ -676,7 +771,9 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
       await createRpcMethodCaller(this.#rpc, target, channelClientRpcMethods)(method, args);
       await this.#refreshData();
     } catch (cause) {
-      this.#mutate({ actionError: `Could not update fork: ${errorMessage(cause)}` });
+      this.#mutate({
+        actionError: `Could not update fork: ${errorMessage(cause)}`,
+      });
       throw cause;
     }
   }
@@ -691,7 +788,7 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
     const ancestrySeen = new Set<string>();
     while (!ancestrySeen.has(cursor)) {
       ancestrySeen.add(cursor);
-      const cursorProvenance = await readProvenance(rpc, cursor);
+      const cursorProvenance = await readProvenance(rpc, cursor, this.#lifetime.signal);
       if (cursorProvenance.kind === "fork") {
         rootChannelId = cursorProvenance.rootChannelId;
         contextByChannel.set(cursorProvenance.forkedFrom, cursorProvenance.parentContextId);
@@ -726,7 +823,7 @@ export class ForkLineageStore implements ReadableStore<ForkUiState> {
         };
       }
       seen.add(nodeChannelId);
-      const listed = await readForks(rpc, nodeChannelId);
+      const listed = await readForks(rpc, nodeChannelId, this.#lifetime.signal);
       const childNodes = await Promise.all(
         listed.forks
           .filter((fork) => !fork.archived)
@@ -788,8 +885,14 @@ function sameJson(a: unknown, b: unknown): boolean {
 
 function parentOf(provenance: ChannelProvenance | undefined): ForkUiState["parent"] {
   if (provenance?.kind === "fork")
-    return { channelId: provenance.forkedFrom, contextId: provenance.parentContextId };
+    return {
+      channelId: provenance.forkedFrom,
+      contextId: provenance.parentContextId,
+    };
   if (provenance?.kind === "task")
-    return { channelId: provenance.parentChannelId, contextId: provenance.parentContextId };
+    return {
+      channelId: provenance.parentChannelId,
+      contextId: provenance.parentContextId,
+    };
   return undefined;
 }
