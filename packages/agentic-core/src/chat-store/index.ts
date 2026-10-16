@@ -65,3 +65,11 @@ export * from "./lineage/index.js";
 
 // --- Host controller (host workstream) ---------------------------------------
 export * from "./host/index.js";
+
+// The `chat` value rendered UI receives, shared by every chat client.
+export { createChatSandboxValue, type ChatSandboxPorts } from "./sandbox-chat.js";
+export {
+  normalizeSandboxSendOptions,
+  sendSandboxText,
+  type SandboxSendOptions,
+} from "./sandbox-send.js";

@@ -19,6 +19,7 @@
       "vibestudio-panel": "./src/panel/installed.ts",
       "default": "./src/panel/index.ts"
     },
+    "./terminal": "./src/terminal/index.ts",
     "./hosted": "./src/shared/hostedRuntime.ts",
     "./panel-runtime": "./src/shared/panelRuntime.ts",
     "./portable": "./src/shared/portable.ts",

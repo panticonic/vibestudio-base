@@ -16,14 +16,7 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
  * this hook adds the browser-only features and registers their channel methods
  * through the session's method-provider port.
  */
-import {
-  useCallback,
-  useMemo,
-  useReducer,
-  useRef,
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useMemo, useReducer, useRef, useEffect, useState } from "react";
 
 import { fsMethods } from "@vibestudio/service-schemas/fs";
 import type { ChannelConfig } from "@workspace/pubsub";
@@ -42,11 +35,7 @@ import {
 } from "@workspace/agentic-protocol";
 import { useChatCoreState, useChatSession } from "./core/useChatCore";
 import { useChatMethodProvider, useStoreSnapshot } from "./useChatStore";
-import {
-  hostContextSlice,
-  sessionActionsSlice,
-  sessionStateSlice,
-} from "./chatContextSlices";
+import { hostContextSlice, sessionActionsSlice, sessionStateSlice } from "./chatContextSlices";
 import { useChatFeedback } from "./features/useChatFeedback";
 import { useChatTools } from "./features/useChatTools";
 import { buildClientEvalMethod } from "./features/clientEval";
@@ -75,15 +64,12 @@ import type {
   ForkUiState,
 } from "../types";
 import { runtimeCallerId } from "../types";
-import { unwrapChatMethodResult } from "@workspace/agentic-core";
-import type { ChatMethodResult } from "@workspace/agentic-core";
 import {
   LocalStorageScopePersistence,
   panelLocalScopeChannelId,
 } from "../utils/localStorageScopePersistence";
 import { scheduleBackgroundWork } from "../utils/scheduleBackgroundWork";
-import { sendSandboxText, type SandboxSendOptions } from "./sandboxSend";
-import type { ReadableStore } from "@workspace/agentic-core/chat-store";
+import { createChatSandboxValue, type ReadableStore } from "@workspace/agentic-core/chat-store";
 import {
   resolveAgenticChatFeatures,
   type AgenticChatFeature,
@@ -104,7 +90,7 @@ interface InstalledAgentInfo {
 function actionBarLoadKey(
   path: string,
   props: Record<string, unknown> | undefined,
-  maxHeight: number | undefined,
+  maxHeight: number | undefined
 ): string {
   let propsKey = "";
   try {
@@ -115,59 +101,9 @@ function actionBarLoadKey(
   return `${path}\n${propsKey}\n${maxHeight ?? ""}`;
 }
 
-function browserHandoffCallerKindFromMetadata(
-  type: string | undefined,
-): BrowserHandoffCallerKind {
+function browserHandoffCallerKindFromMetadata(type: string | undefined): BrowserHandoffCallerKind {
   if (type === "app" || type === "shell") return type;
   return "panel";
-}
-
-async function waitForMethodHandle<T>(
-  handle: { result: Promise<T>; cancel?: () => Promise<void> },
-  options?: { timeoutMs?: number; signal?: AbortSignal },
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  let abortCleanup: (() => void) | undefined;
-  const cancel = () => {
-    void handle.cancel?.().catch((err) => {
-      console.warn("[useAgenticChat] Failed to cancel method handle:", err);
-    });
-  };
-  try {
-    const blockers: Array<Promise<never>> = [];
-    if (options?.timeoutMs !== undefined && options.timeoutMs > 0) {
-      const timeoutMs = options.timeoutMs;
-      blockers.push(
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(() => {
-            cancel();
-            reject(new Error(`Method call timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-        }),
-      );
-    }
-    if (options?.signal) {
-      if (options.signal.aborted) {
-        cancel();
-        throw new Error("Method call aborted");
-      }
-      blockers.push(
-        new Promise<never>((_, reject) => {
-          const onAbort = () => {
-            cancel();
-            reject(new Error("Method call aborted"));
-          };
-          options.signal!.addEventListener("abort", onAbort, { once: true });
-          abortCleanup = () =>
-            options.signal!.removeEventListener("abort", onAbort);
-        }),
-      );
-    }
-    return await Promise.race([handle.result, ...blockers]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    abortCleanup?.();
-  }
 }
 
 export interface UseAgenticChatOptions {
@@ -237,12 +173,10 @@ export function useAgenticChat({
   connectionRetrySignal,
   features: requestedFeatures,
 }: UseAgenticChatOptions): UseAgenticChatResult {
-  const [features] = useState(() =>
-    resolveAgenticChatFeatures(requestedFeatures),
-  );
+  const [features] = useState(() => resolveAgenticChatFeatures(requestedFeatures));
   const metadata = useMemo<ClientParticipantMetadata>(
     () => metadataOption ?? { name: channelName, type: "panel" },
-    [channelName, metadataOption],
+    [channelName, metadataOption]
   );
   // --- Core (durable channel trajectory events -> transcript view model) ---
   const session = useChatSession({
@@ -261,13 +195,11 @@ export function useAgenticChat({
   const scopeBlobBackend = useMemo<ScopeBlobBackend>(
     () => ({
       putText: (valueJson: string) =>
-        config.rpc.call("main", mainRpcMethods["blobstore.putText"], [
-          valueJson,
-        ]),
+        config.rpc.call("main", mainRpcMethods["blobstore.putText"], [valueJson]),
       getText: (digest: string) =>
         config.rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
     }),
-    [config.rpc],
+    [config.rpc]
   );
   const scopeManager = useMemo(
     () =>
@@ -277,12 +209,9 @@ export function useAgenticChat({
         persistence: new LocalStorageScopePersistence(scopeBlobBackend),
         rehydrators: config.scopeRehydrators,
       }),
-    [channelName, config.clientId, config.scopeRehydrators, scopeBlobBackend],
+    [channelName, config.clientId, config.scopeRehydrators, scopeBlobBackend]
   );
-  const [scopeVersion, bumpScopeVersion] = useReducer(
-    (value: number) => value + 1,
-    0,
-  );
+  const [scopeVersion, bumpScopeVersion] = useReducer((value: number) => value + 1, 0);
   useEffect(() => {
     let cancelled = false;
     const unsubscribe = scopeManager.onChange(bumpScopeVersion);
@@ -293,13 +222,12 @@ export function useAgenticChat({
         bumpScopeVersion();
         if (result.lost.length > 0) {
           console.warn(
-            `[panel-ui-scope] Cold recovery lost live-only keys: [${result.lost.join(", ")}]`,
+            `[panel-ui-scope] Cold recovery lost live-only keys: [${result.lost.join(", ")}]`
           );
         }
       })
       .catch((err) => {
-        if (!cancelled)
-          console.warn("[panel-ui-scope] Failed to hydrate:", err);
+        if (!cancelled) console.warn("[panel-ui-scope] Failed to hydrate:", err);
       });
     const persistIfDirty = () => {
       if (!scopeManager.isDirty) return;
@@ -325,7 +253,7 @@ export function useAgenticChat({
   const publishTypedAgenticEvent = useCallback(
     async (
       event: AgenticEvent,
-      options?: { idempotencyKey?: string },
+      options?: { idempotencyKey?: string }
     ): Promise<number | undefined> => {
       const client = session.client;
       if (!client) return undefined;
@@ -333,7 +261,7 @@ export function useAgenticChat({
         idempotencyKey: options?.idempotencyKey ?? crypto.randomUUID(),
       });
     },
-    [core.clientRef],
+    [core.clientRef]
   );
   // --- Mirror host-owned installed agents into transient pending badges until they join ---
   useEffect(() => {
@@ -342,229 +270,39 @@ export function useAgenticChat({
   }, [installedAgentInfos, core.setPendingAgentInfos]);
   // --- Build chat sandbox value (stale-ref safe — dereferences clientRef at call time) ---
   const chat: ChatSandboxValue = useMemo(
-    () => ({
-      send: (content: string, opts?: SandboxSendOptions) => {
-        if (!core.clientRef.current) {
-          return Promise.reject(new Error("Agentic chat is not connected"));
-        }
-        return sendSandboxText(
-          core.publishText,
-          content,
-          opts,
-          crypto.randomUUID(),
-        );
-      },
-      publish: (
-        eventType: string,
-        payload: unknown,
-        opts?: {
-          idempotencyKey?: string;
-        },
-      ) => {
-        return core.clientRef.current!.publish(eventType, payload, {
-          ...opts,
-          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
-        });
-      },
-      publishCustomMessage: (input, opts) => {
-        return core.clientRef.current!.publishCustomMessage(input, {
-          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
-        });
-      },
-      updateCustomMessage: (messageId, update, opts) => {
-        return core.clientRef.current!.updateCustomMessage(messageId, update, {
-          idempotencyKey: opts?.idempotencyKey ?? crypto.randomUUID(),
-        });
-      },
-      registerMessageType: (input, opts) => {
-        return core.clientRef.current!.registerMessageType(
-          input,
-          opts?.idempotencyKey
-            ? { idempotencyKey: opts.idempotencyKey }
-            : undefined,
-        );
-      },
-      clearMessageType: (typeId, opts) => {
-        return core.clientRef.current!.clearMessageType(
-          typeId,
-          opts?.idempotencyKey
-            ? { idempotencyKey: opts.idempotencyKey }
-            : undefined,
-        );
-      },
-      getMessageType: (typeId) => {
-        return core.clientRef.current!.getMessageType(typeId);
-      },
-      getMessageTypes: () => {
-        return core.clientRef.current!.getMessageTypes();
-      },
-      getParticipants: async () => {
-        return Object.values(core.clientRef.current?.roster ?? {}).map(
-          ({ id, ref, metadata }) => ({
-            id,
-            ref,
-            type: metadata.type,
-            name: metadata.name,
-            isPerson: metadata.type === "user",
-            isAgent: metadata.type === "agent",
-            ...(metadata.handle ? { handle: metadata.handle } : {}),
-            ...(metadata.methods ? { methods: metadata.methods } : {}),
-          }),
-        );
-      },
-      replayEnvelope: (envelopeId: string) => {
-        return core.clientRef.current!.getEnvelope(envelopeId);
-      },
-      callMethod: async (
-        pid: string,
-        method: string,
-        callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal },
-      ) => {
-        const handle = core.clientRef.current!.callMethod(
-          pid,
-          method,
-          callArgs,
-          options,
-        );
-        const result = await waitForMethodHandle(
-          handle as {
-            result: Promise<ChatMethodResult>;
-            cancel?: () => Promise<void>;
-          },
-          options,
-        );
-        return unwrapChatMethodResult(result);
-      },
-      callMethodResult: async (
-        pid: string,
-        method: string,
-        callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal },
-      ) => {
-        const handle = core.clientRef.current!.callMethod(
-          pid,
-          method,
-          callArgs,
-          options,
-        );
-        return waitForMethodHandle(
-          handle as {
-            result: Promise<ChatMethodResult>;
-            cancel?: () => Promise<void>;
-          },
-          options,
-        );
-      },
-      participantByHandle: async (rawHandle: string) => {
-        const handle = rawHandle.startsWith("@")
-          ? rawHandle.slice(1)
-          : rawHandle;
-        const roster = core.clientRef.current?.roster ?? {};
-        return (
-          Object.values(roster).find((participant) => {
-            const metadataHandle = participant.metadata?.handle;
-            return (
-              typeof metadataHandle === "string" && metadataHandle === handle
-            );
-          }) ?? null
-        );
-      },
-      callMethodByHandle: async (
-        rawHandle: string,
-        method: string,
-        callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal },
-      ) => {
-        const handle = rawHandle.startsWith("@")
-          ? rawHandle.slice(1)
-          : rawHandle;
-        const roster = core.clientRef.current?.roster ?? {};
-        const participant = Object.values(roster).find(
-          (item) => item.metadata?.handle === handle,
-        );
-        if (!participant)
-          throw new Error(`No participant with handle @${handle}`);
-        const methodHandle = core.clientRef.current!.callMethod(
-          participant.id,
-          method,
-          callArgs,
-          options,
-        );
-        const result = await waitForMethodHandle(
-          methodHandle as {
-            result: Promise<ChatMethodResult>;
-            cancel?: () => Promise<void>;
-          },
-          options,
-        );
-        return unwrapChatMethodResult(result);
-      },
-      callMethodResultByHandle: async (
-        rawHandle: string,
-        method: string,
-        callArgs: unknown,
-        options?: { timeoutMs?: number; signal?: AbortSignal },
-      ) => {
-        const handle = rawHandle.startsWith("@")
-          ? rawHandle.slice(1)
-          : rawHandle;
-        const roster = core.clientRef.current?.roster ?? {};
-        const participant = Object.values(roster).find(
-          (item) => item.metadata?.handle === handle,
-        );
-        if (!participant)
-          throw new Error(`No participant with handle @${handle}`);
-        const methodHandle = core.clientRef.current!.callMethod(
-          participant.id,
-          method,
-          callArgs,
-          options,
-        );
-        return waitForMethodHandle(
-          methodHandle as {
-            result: Promise<ChatMethodResult>;
-            cancel?: () => Promise<void>;
-          },
-          options,
-        );
-      },
-      focusMessage: async (messageId: string): Promise<boolean> => {
-        // Message cards render with id={`message-${msg.id}`} in the same DOM
-        // as sandboxed renderers — no RPC needed. Retry briefly: the card the
-        // caller just created may still be folding into the transcript.
-        for (let attempt = 0; attempt < 10; attempt += 1) {
-          const element = document.getElementById(`message-${messageId}`);
-          if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
-            element.animate(
-              [
-                {
-                  boxShadow: "0 0 0 3px var(--accent-a7)",
-                  borderRadius: "8px",
-                },
-                { boxShadow: "0 0 0 3px transparent", borderRadius: "8px" },
-              ],
-              { duration: 1600, easing: "ease-out" },
-            );
-            return true;
+    () =>
+      createChatSandboxValue({
+        client: () => core.clientRef.current,
+        publishText: core.publishText,
+        focusMessage: async (messageId: string): Promise<boolean> => {
+          // Message cards render with id={`message-${msg.id}`} in the same DOM
+          // as sandboxed renderers — no RPC needed. Retry briefly: the card the
+          // caller just created may still be folding into the transcript.
+          for (let attempt = 0; attempt < 10; attempt += 1) {
+            const element = document.getElementById(`message-${messageId}`);
+            if (element) {
+              element.scrollIntoView({ behavior: "smooth", block: "center" });
+              element.animate(
+                [
+                  {
+                    boxShadow: "0 0 0 3px var(--accent-a7)",
+                    borderRadius: "8px",
+                  },
+                  { boxShadow: "0 0 0 3px transparent", borderRadius: "8px" },
+                ],
+                { duration: 1600, easing: "ease-out" }
+              );
+              return true;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 150));
           }
-          await new Promise((resolve) => setTimeout(resolve, 150));
-        }
-        return false;
-      },
-      contextId: contextId ?? "",
-      channelId: channelName,
-      rpc: config.rpc,
-    }),
-    [
-      contextId,
-      channelName,
-      config.rpc,
-      core.clientRef,
-      metadata,
-      publishTypedAgenticEvent,
-    ],
+          return false;
+        },
+        contextId: contextId ?? "",
+        channelId: channelName,
+        rpc: config.rpc,
+      }),
+    [contextId, channelName, config.rpc, core.clientRef, core.publishText]
   );
   // --- Bound executeSandbox with optional host import loading wired ---
   const boundExecuteSandbox = useCallback(
@@ -572,23 +310,21 @@ export function useAgenticChat({
       const { executeSandbox } = await import("@workspace/eval/sandbox");
       return executeSandbox(code, {
         ...opts,
-        ...(opts.loadImport || !importLoader
-          ? {}
-          : { loadImport: importLoader }),
+        ...(opts.loadImport || !importLoader ? {} : { loadImport: importLoader }),
       });
     },
-    [importLoader],
+    [importLoader]
   );
   const loadSourceFile = useCallback(
     async (path: string) => {
       const fsClient = createTypedRpcServiceClient(
         config.rpc,
         { targetId: "main", namespace: "fs" },
-        fsMethods,
+        fsMethods
       );
       return (await fsClient.readFile(path, "utf8")) as string;
     },
-    [config.rpc],
+    [config.rpc]
   );
   // `load_action_bar({ code })` owns exactly one context-local scratch file per
   // panel. The panel persists that path like any other action-bar file, so a
@@ -599,12 +335,12 @@ export function useAgenticChat({
       const fsClient = createTypedRpcServiceClient(
         config.rpc,
         { targetId: "main", namespace: "fs" },
-        fsMethods,
+        fsMethods
       );
       await fsClient.writeFile(managedActionBarPath, code);
       return managedActionBarPath;
     },
-    [config.rpc, managedActionBarPath],
+    [config.rpc, managedActionBarPath]
   );
   const feedback = useChatFeedback({
     chat,
@@ -634,9 +370,7 @@ export function useAgenticChat({
     loadSourceFile,
     loadImport: importLoader,
   });
-  const [actionBarData, setActionBarData] = useState<ActionBarData | null>(
-    null,
-  );
+  const [actionBarData, setActionBarData] = useState<ActionBarData | null>(null);
   const actionBar = useActionBar({
     data: features.actionBar ? actionBarData : null,
     loadSourceFile,
@@ -661,7 +395,7 @@ export function useAgenticChat({
       lastLoadedActionBarKeyRef.current = actionBarLoadKey(
         canonical.source.path,
         canonical.props,
-        canonical.maxHeight,
+        canonical.maxHeight
       );
     }
   }, [core.canonicalActionBar, features.actionBar]);
@@ -679,7 +413,7 @@ export function useAgenticChat({
         idempotencyKey?: string;
         requestedBy?: ParticipantRef;
         turnId?: string;
-      },
+      }
     ) => {
       const client = core.clientRef.current;
       if (!client) return;
@@ -691,12 +425,10 @@ export function useAgenticChat({
         result: payload.ok ? { ok: true } : { ok: false, error: payload.error },
       };
       if (payload.id !== undefined) eventPayload.id = payload.id;
-      if (payload.path !== undefined)
-        eventPayload.source = { type: "file", path: payload.path };
+      if (payload.path !== undefined) eventPayload.source = { type: "file", path: payload.path };
       if (payload.imports !== undefined) eventPayload.imports = payload.imports;
       if (payload.props !== undefined) eventPayload.props = payload.props;
-      if (payload.maxHeight !== undefined)
-        eventPayload.maxHeight = payload.maxHeight;
+      if (payload.maxHeight !== undefined) eventPayload.maxHeight = payload.maxHeight;
       await publishTypedAgenticEvent(
         {
           kind: "ui.action_bar.updated",
@@ -706,12 +438,11 @@ export function useAgenticChat({
           createdAt: new Date().toISOString(),
         },
         {
-          idempotencyKey:
-            payload.idempotencyKey ?? `ui:action-bar:${crypto.randomUUID()}`,
-        },
+          idempotencyKey: payload.idempotencyKey ?? `ui:action-bar:${crypto.randomUUID()}`,
+        }
       );
     },
-    [core.clientRef, metadata, publishTypedAgenticEvent],
+    [core.clientRef, metadata, publishTypedAgenticEvent]
   );
   const loadActionBarFromFile = useCallback(
     async ({
@@ -757,11 +488,7 @@ export function useAgenticChat({
           maxHeight,
           ...(turnId ? { turnId } : {}),
         });
-        lastLoadedActionBarKeyRef.current = actionBarLoadKey(
-          trimmedPath,
-          props,
-          maxHeight,
-        );
+        lastLoadedActionBarKeyRef.current = actionBarLoadKey(trimmedPath, props, maxHeight);
         if (persistStateArgs) {
           await onActionBarFileChange?.({
             path: trimmedPath,
@@ -797,7 +524,7 @@ export function useAgenticChat({
         return { ok: false, error };
       }
     },
-    [loadSourceFile, onActionBarFileChange, publishActionBarContext],
+    [loadSourceFile, onActionBarFileChange, publishActionBarContext]
   );
   const clearActionBar = useCallback(
     async ({
@@ -823,14 +550,14 @@ export function useAgenticChat({
         turnId,
       });
     },
-    [onActionBarFileChange, publishActionBarContext],
+    [onActionBarFileChange, publishActionBarContext]
   );
   const updateActionBarMaxHeight = useCallback(
     (
       maxHeight: number,
       options?: {
         saveState?: boolean;
-      },
+      }
     ) => {
       setActionBarData((current) => {
         if (!current) return current;
@@ -845,14 +572,14 @@ export function useAgenticChat({
         return next;
       });
     },
-    [onActionBarFileChange],
+    [onActionBarFileChange]
   );
   useEffect(() => {
     if (!features.actionBar || !core.connected || !initialActionBarFile) return;
     const loadKey = actionBarLoadKey(
       initialActionBarFile,
       initialActionBarProps,
-      initialActionBarMaxHeight,
+      initialActionBarMaxHeight
     );
     if (lastLoadedActionBarKeyRef.current === loadKey) return;
     // State-arg action bars decorate the chat; their file validation and
@@ -883,7 +610,7 @@ export function useAgenticChat({
   useChatMethodProvider(
     session,
     "feedback",
-    features.feedback ? feedback.buildFeedbackMethods : undefined,
+    features.feedback ? feedback.buildFeedbackMethods : undefined
   );
   // inspect_card reads the live transcript and renderer registry at call time.
   const messageTypeComponentsRef = useRef(messageTypes.messageTypeComponents);
@@ -895,7 +622,7 @@ export function useAgenticChat({
         registry: messageTypeComponentsRef.current,
       })),
     }),
-    [session],
+    [session]
   );
   useChatMethodProvider(session, "inspect-card", provideInspectCard);
   const browserMethodRuntime = useMemo<BrowserMethodRuntime>(
@@ -920,26 +647,18 @@ export function useAgenticChat({
       writeManagedActionBar,
       loadActionBarFromFile,
       clearActionBar,
-    ],
+    ]
   );
   const provideInlineUi = useCallback(
     () => ({ inline_ui: inlineUiMethod(browserMethodRuntime) }),
-    [browserMethodRuntime],
+    [browserMethodRuntime]
   );
-  useChatMethodProvider(
-    session,
-    "inline-ui",
-    features.inlineUi ? provideInlineUi : undefined,
-  );
+  useChatMethodProvider(session, "inline-ui", features.inlineUi ? provideInlineUi : undefined);
   const provideActionBar = useCallback(
     () => ({ load_action_bar: loadActionBarMethod(browserMethodRuntime) }),
-    [browserMethodRuntime],
+    [browserMethodRuntime]
   );
-  useChatMethodProvider(
-    session,
-    "action-bar",
-    features.actionBar ? provideActionBar : undefined,
-  );
+  useChatMethodProvider(session, "action-bar", features.actionBar ? provideActionBar : undefined);
   const provideClientEval = useCallback(
     () => ({
       client_eval: buildClientEvalMethod({
@@ -950,12 +669,12 @@ export function useAgenticChat({
         scopeManager,
       }),
     }),
-    [importLoader, boundExecuteSandbox, loadSourceFile, chat, scopeManager],
+    [importLoader, boundExecuteSandbox, loadSourceFile, chat, scopeManager]
   );
   useChatMethodProvider(
     session,
     "client-eval",
-    features.clientEval ? provideClientEval : undefined,
+    features.clientEval ? provideClientEval : undefined
   );
 
   // --- Connection: the session owns the join loop. A host signal that a
@@ -976,7 +695,7 @@ export function useAgenticChat({
   const { deferredAgent } = useStoreSnapshot(session.deferredAgent);
   const inputContextValue = useMemo<ChatInputContextValue>(
     () => ({ ...core.inputContextValue, onSendMessage: session.submit }),
-    [core.inputContextValue, session],
+    [core.inputContextValue, session]
   );
 
   // Keep the observer transport identity independent from transcript and UI
@@ -1003,23 +722,17 @@ export function useAgenticChat({
       metadata.type,
       metadata.handle,
       metadata.panelId,
-    ],
+    ]
   );
 
   // --- Assemble the context from independently memoized slices ---
   const sessionSnapshot = useStoreSnapshot(session);
-  const sessionState = useMemo(
-    () => sessionStateSlice(sessionSnapshot),
-    [sessionSnapshot],
-  );
+  const sessionState = useMemo(() => sessionStateSlice(sessionSnapshot), [sessionSnapshot]);
   const sessionActions = useMemo(
     () => sessionActionsSlice(session, core.clientRef),
-    [session, core.clientRef],
+    [session, core.clientRef]
   );
-  const host = useMemo(
-    () => hostContextSlice(session, actions),
-    [session, actions],
-  );
+  const host = useMemo(() => hostContextSlice(session, actions), [session, actions]);
   const browser = useMemo(
     () => ({
       channelId: channelName,
@@ -1075,7 +788,7 @@ export function useAgenticChat({
       chatTools.toolApprovalValue,
       childTranscript,
       importLoader,
-    ],
+    ]
   );
   const contextValue: ChatContextValue = useMemo(
     () => ({
@@ -1087,7 +800,7 @@ export function useAgenticChat({
       // Fork UI is enabled only when the panel wired navigation handlers.
       forkState: session.forks ? forkState : undefined,
     }),
-    [sessionState, sessionActions, host, browser, deferredAgent, session, forkState],
+    [sessionState, sessionActions, host, browser, deferredAgent, session, forkState]
   );
   return { contextValue, inputContextValue, features };
 }
