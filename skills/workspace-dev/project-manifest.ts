@@ -12,7 +12,12 @@ import {
 import { parse as parseSvelte } from "svelte/compiler";
 import { workspaceTestSuiteDeclarationSchema } from "@vibestudio/service-schemas/build";
 import type { WorkspaceTestSuiteDeclaration } from "@vibestudio/shared/types";
-import { validateUnitIconDeclaration } from "@vibestudio/shared/unitManifest";
+import {
+  clientUnitManifestDescriptor,
+  validateUnitIconDeclaration,
+  validateUnitManifest,
+} from "@vibestudio/shared/unitManifest";
+import type { ClientManifestBlock } from "@vibestudio/workspace-contracts/clients";
 
 export const PROJECT_TYPES = [
   "panel",
@@ -20,6 +25,7 @@ export const PROJECT_TYPES = [
   "skill",
   "project",
   "worker",
+  "client",
 ] as const;
 export type ProjectType = (typeof PROJECT_TYPES)[number];
 
@@ -87,6 +93,8 @@ interface BuildProjectManifestFields {
   /** Stored declaration: one emoji or unit-relative image path. Resolve catalog IDs with prepareUnitIcon first. */
   icon?: string;
   entry?: string;
+  /** Client projects only: the complete `vibestudio.client` block. */
+  client?: ClientManifestBlock;
   template?: string;
   exports?: Record<string, string>;
   exposeModules?: string[];
@@ -107,6 +115,7 @@ export type BuildProjectManifestInput = BuildProjectManifestFields &
   (
     | { projectType: "panel" | "worker"; authority: UnitAuthorityManifest }
     | { projectType: "package" | "skill"; authority?: never }
+    | { projectType: "client"; authority?: never; client: ClientManifestBlock }
   );
 
 const PACKAGE_SCOPES: Record<Exclude<ProjectType, "project">, string> = {
@@ -114,6 +123,7 @@ const PACKAGE_SCOPES: Record<Exclude<ProjectType, "project">, string> = {
   package: "@workspace",
   skill: "@workspace-skills",
   worker: "@workspace-workers",
+  client: "@workspace-clients",
 };
 
 function assertProjectName(name: string): void {
@@ -159,10 +169,16 @@ export function buildProjectManifest(
   const workspaceTestRuntime = tests.some(
     (suite) => suite.runtime !== "native",
   );
-  if (executable && !input.entry) {
+  if (input.projectType === "client") {
+    if (input.entry) {
+      throw new Error(
+        "client manifests declare their entry in vibestudio.client, not at the top level",
+      );
+    }
+  } else if (executable && !input.entry) {
     throw new Error(`${input.projectType} manifests require an explicit entry`);
   }
-  if (!executable && input.entry) {
+  if (!executable && input.projectType !== "client" && input.entry) {
     throw new Error(
       `${input.projectType} manifests cannot declare a Vibestudio entry`,
     );
@@ -177,7 +193,16 @@ export function buildProjectManifest(
     type: "module",
   };
   if (input.exports) manifest["exports"] = canonicalRecord(input.exports);
-  if (executable) {
+  if (input.projectType === "client") {
+    // A client holds no authority until it asks for some: the empty manifest
+    // is explicit, and a background intent adds its service request.
+    manifest["vibestudio"] = {
+      displayName: input.title,
+      icon: input.icon ?? "🧭",
+      client: input.client,
+      authority: parseUnitAuthorityManifest({ requests: [], provides: [] }),
+    };
+  } else if (executable) {
     manifest["vibestudio"] = {
       title: input.title,
       icon: input.icon ?? (input.projectType === "panel" ? "🧩" : "⚙️"),
@@ -378,6 +403,32 @@ export function preflightProjectFiles(input: {
       `${expectedName} vibestudio.authority`,
     ).requests.length;
     checked.push("executable entry", "authority manifest syntax");
+  } else if (input.projectType === "client") {
+    const vibestudio = asRecord(
+      manifest["vibestudio"],
+      "package.json vibestudio",
+    );
+    // The same validator the server runs when it reads the unit.
+    validateUnitManifest(clientUnitManifestDescriptor, vibestudio, {
+      unitName: expectedName,
+    });
+    entry = asRecord(vibestudio["client"], "vibestudio.client")[
+      "entry"
+    ] as string;
+    if (!(entry in input.files)) {
+      throw new Error(
+        "client entry must name a file in the planned repository",
+      );
+    }
+    authorityRequestCount = parseUnitAuthorityManifest(
+      vibestudio["authority"],
+      `${expectedName} vibestudio.authority`,
+    ).requests.length;
+    checked.push(
+      "client manifest",
+      "client entry",
+      "authority manifest syntax",
+    );
   } else if (manifest["exports"] === undefined) {
     throw new Error(`${input.projectType} package.json must declare exports`);
   }

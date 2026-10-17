@@ -2,6 +2,11 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { contextId, fs, vcs, rpc } from "@workspace/runtime";
 import YAML from "yaml";
 import { planServiceMutation } from "@vibestudio/workspace-contracts/serviceMutation";
+import {
+  CURRENT_HOST_ABI,
+  type ClientManifestBlock,
+  type ClientRuntime,
+} from "@vibestudio/workspace-contracts/clients";
 import type { WorkspaceServiceExport } from "@vibestudio/workspace-contracts/types";
 import type { VcsEditChange } from "@vibestudio/service-schemas/vcs";
 import {
@@ -82,6 +87,7 @@ const TYPE_DIRS: Record<ProjectType, string> = {
   skill: "skills",
   project: "projects",
   worker: "workers",
+  client: "clients",
 };
 
 const PACKAGE_SCOPES: Partial<Record<ProjectType, string>> = {
@@ -89,9 +95,142 @@ const PACKAGE_SCOPES: Partial<Record<ProjectType, string>> = {
   package: "@workspace",
   skill: "@workspace-skills",
   worker: "@workspace-workers",
+  client: "@workspace-clients",
 };
 
 const SUPPORTED_PROJECT_TYPES = PROJECT_TYPES.join(", ");
+
+/**
+ * The smallest valid client for one runtime: a manifest with the implicit
+ * foreground `open` intent, no capabilities and no authority, and an entry
+ * that shows the title. Everything else is added deliberately by the author.
+ */
+function clientScaffold(
+  hostAbi: ClientHostAbi,
+  name: string,
+  title: string,
+  icon: string | undefined,
+): Record<string, string> {
+  const runtime = (Object.keys(CURRENT_HOST_ABI) as ClientRuntime[]).find(
+    (candidate) => CURRENT_HOST_ABI[candidate] === hostAbi,
+  );
+  if (!runtime)
+    throw new Error(
+      `Unknown client runtime ${JSON.stringify(hostAbi)}. Must be one of: ${Object.values(CURRENT_HOST_ABI).join(", ")}`,
+    );
+  const entry = {
+    web: "index.ts",
+    "react-native": "App.tsx",
+    terminal: "src/index.ts",
+  }[runtime];
+  const client: ClientManifestBlock = {
+    id: name,
+    runtime,
+    hostAbi,
+    entry,
+    title,
+    capabilities: { required: [], optional: [] },
+    intents: [{ name: "open", kind: "foreground", title: `Open ${title}` }],
+  };
+  const quoted = JSON.stringify(title);
+  const dependencies: Record<string, string> | undefined = {
+    web: undefined,
+    terminal: { "@vibestudio/shell-core": "workspace:*" },
+    "react-native": {
+      "@vibestudio/rn-client-api": "workspace:*",
+      react: "19.0.0",
+      "react-native": "0.79.7",
+    },
+  }[runtime];
+  const files: Record<string, string> = {
+    "package.json": serializeProjectManifest({
+      projectType: "client",
+      name,
+      title,
+      ...(icon ? { icon } : {}),
+      client,
+      ...(dependencies ? { dependencies } : {}),
+    }),
+  };
+  switch (runtime) {
+    case "web":
+      files["index.html"] = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #app { padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./bundle.js"></script>
+  </body>
+</html>
+`;
+      files["index.ts"] = `const container = document.getElementById("app");
+if (!container) throw new Error("Renderer root not found");
+container.textContent = ${quoted};
+`;
+      break;
+    case "terminal":
+      files["src/index.ts"] = `import type {
+  TerminalClientExit,
+  TerminalClientHost,
+} from "@vibestudio/shell-core/terminal/terminalClientHost";
+
+/** The host calls run(host) and owns the terminal until it settles. */
+export async function run(host: TerminalClientHost): Promise<TerminalClientExit> {
+  host.stdout.write(${quoted} + "\\n");
+  return { kind: "quit" };
+}
+`;
+      break;
+    case "react-native":
+      files["App.tsx"] = `import "@vibestudio/rn-client-api/polyfills";
+import { AppRegistry, Text, View } from "react-native";
+import { CLIENT_ROOT_COMPONENT } from "@vibestudio/rn-client-api";
+
+function App() {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <Text>{${quoted}}</Text>
+    </View>
+  );
+}
+
+AppRegistry.registerComponent(CLIENT_ROOT_COMPONENT, () => App);
+
+export default App;
+`;
+      files["tsconfig.json"] = `${JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            module: "ESNext",
+            moduleResolution: "bundler",
+            customConditions: ["react-native"],
+            lib: ["ES2022"],
+            jsx: "react-jsx",
+            noEmit: true,
+            strict: true,
+            skipLibCheck: true,
+            isolatedModules: true,
+            types: ["react", "react-native"],
+          },
+          include: ["**/*.ts", "**/*.tsx"],
+        },
+        null,
+        2,
+      )}\n`;
+      break;
+  }
+  return files;
+}
 
 function toPascalCase(str: string): string {
   return str
@@ -118,6 +257,9 @@ interface PrepareProjectFields {
       };
 }
 
+/** The host ABI a client is written against; it fixes the client's runtime. */
+export type ClientHostAbi = (typeof CURRENT_HOST_ABI)[ClientRuntime];
+
 export type PrepareProjectParams = PrepareProjectFields &
   (
     | {
@@ -127,6 +269,13 @@ export type PrepareProjectParams = PrepareProjectFields &
       }
     | {
         projectType: "package" | "skill" | "project";
+        authority?: never;
+        authorityReason?: never;
+      }
+    | {
+        /** Scaffolds clients/<name>: a minimal client for one runtime. */
+        projectType: "client";
+        runtime: ClientHostAbi;
         authority?: never;
         authorityReason?: never;
       }
@@ -465,6 +614,12 @@ function ${toPascalCase(name)}Content() {
       files["SKILL.md"] =
         `---\nname: ${name}\ndescription: ${JSON.stringify(title)}\n---\n\n# ${title}\n`;
       break;
+
+    case "client": {
+      const { runtime } = params as { runtime: ClientHostAbi };
+      Object.assign(files, clientScaffold(runtime, name, title, manifestIcon));
+      break;
+    }
 
     case "project":
       files["README.md"] = `# ${title}\n\nPlain workspace project.\n`;
@@ -1224,6 +1379,10 @@ export async function forkProject(
 
   const fromType = projectTypeFromPath(from);
   const toType = projectTypeFromPath(to);
+  if (fromType === "client" || toType === "client")
+    throw new Error(
+      'Clients cannot be forked: a client\'s id and runtime identify it in the workspace, so a copy would collide. Create a new one with prepareProjects projectType "client".',
+    );
   const explicitType = options.projectType;
   const effectiveType = explicitType ?? toType ?? fromType;
   const warnings: string[] = [];

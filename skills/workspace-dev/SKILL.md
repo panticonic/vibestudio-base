@@ -28,7 +28,7 @@ Use the System workspace's `skills/clientdev/SKILL.md` for trusted clients and
 | -------------------------------------------------------------- | -------------------------------------------------------------------- |
 | Add a workspace from a folder, Git URL, or website link        | [Workspace creation](../templates/references/workspace-creation.md)  |
 | Publish a standalone workspace source                          | [Workspace authoring](../templates/references/template-authoring.md) |
-| Create a new panel, worker, package, or repo-local skill       | [Scaffold projects](PROJECTS.md)                                     |
+| Create a new panel, worker, package, client, or repo-local skill | [Scaffold projects](PROJECTS.md)                                     |
 | Fork an existing panel or worker source                        | [Fork projects](PROJECTS.md#fork-existing-source)                    |
 | Development loop                                               | [WORKFLOW.md](WORKFLOW.md)                                           |
 | External dependencies, overrides, and patches                  | [DEPENDENCIES.md](DEPENDENCIES.md)                                   |

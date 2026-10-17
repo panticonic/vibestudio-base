@@ -542,6 +542,94 @@ describe("prepareProjects", () => {
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["web-host-1", "web", "index.ts"],
+    ["terminal-host-1", "terminal", "src/index.ts"],
+    ["rn-host-6", "react-native", "App.tsx"],
+  ] as const)(
+    "scaffolds a valid %s client under clients/",
+    async (hostAbi, runtime, entry) => {
+      const { prepareProjects } = await import("./index.js");
+      const { validateUnitManifest, clientUnitManifestDescriptor } =
+        await import("@vibestudio/shared/unitManifest");
+
+      const [result] = await prepareProjects([
+        {
+          projectType: "client",
+          runtime: hostAbi,
+          name: "hello-client",
+          title: "Hello Client",
+        },
+      ]);
+
+      expect(result).toMatchObject({
+        created: "clients/hello-client",
+        preflight: {
+          ok: true,
+          projectType: "client",
+          packageName: "@workspace-clients/hello-client",
+          entry,
+          authorityRequestCount: 0,
+        },
+        authorityReview: null,
+      });
+      const manifest = JSON.parse(
+        mocks.files.get("clients/hello-client/package.json") as string,
+      );
+      expect(manifest.name).toBe("@workspace-clients/hello-client");
+      expect(manifest.vibestudio.client).toMatchObject({
+        id: "hello-client",
+        runtime,
+        hostAbi,
+        entry,
+        intents: [{ name: "open", kind: "foreground" }],
+      });
+      expect(() =>
+        validateUnitManifest(
+          clientUnitManifestDescriptor,
+          manifest.vibestudio,
+          {
+            unitName: manifest.name,
+          },
+        ),
+      ).not.toThrow();
+      expect(mocks.files.has(`clients/hello-client/${entry}`)).toBe(true);
+      expect(mocks.edit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          changes: [
+            expect.objectContaining({
+              kind: "repository-create",
+              repoPath: "clients/hello-client",
+            }),
+          ],
+        }),
+      );
+    },
+  );
+
+  it("requires a known client runtime and refuses to fork a client", async () => {
+    const { prepareProjects, forkProject } = await import("./index.js");
+
+    await expect(
+      prepareProjects([
+        {
+          projectType: "client",
+          name: "hello-client",
+          runtime: "web" as never,
+        },
+      ]),
+    ).rejects.toThrow(/Unknown client runtime "web"/);
+    await expect(
+      prepareProjects([{ projectType: "client", name: "no-runtime" } as never]),
+    ).rejects.toThrow(/Unknown client runtime/);
+    expect(mocks.edit).not.toHaveBeenCalled();
+
+    addFile("clients/source/package.json", "{}");
+    await expect(
+      forkProject({ from: "clients/source", to: "clients/copy" }),
+    ).rejects.toThrow(/Clients cannot be forked/);
+  });
+
   it("rejects removed agent scaffolding", async () => {
     const { prepareProjects } = await import("./index.js");
 
@@ -1355,7 +1443,12 @@ describe("scaffold runtime contract", () => {
     expect(reactPackage.peerDependencies?.["react"]).toBe("^19.0.0");
     expect(reactPackage.peerDependencies?.["react-dom"]).toBe("^19.0.0");
     // `clients/desktop-browser` ships in System: assert its pin where it is composed.
-    const shellManifest = join(baseRoot, "clients", "desktop-browser", "package.json");
+    const shellManifest = join(
+      baseRoot,
+      "clients",
+      "desktop-browser",
+      "package.json",
+    );
     if (existsSync(shellManifest)) {
       const shellPackage = JSON.parse(readFileSync(shellManifest, "utf8")) as {
         dependencies?: Record<string, string>;

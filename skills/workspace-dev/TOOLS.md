@@ -139,8 +139,10 @@ ID, label, URL, or data URL. See [icon authoring](references/icons.md).
 - `prepareProjects(projects)` prepares independent repositories in one edit
   and returns an array. Each input has `projectType`, `name`, and optional
   `title`, `icon`, `template`, and portable panel `website` entry options.
-  Executable inputs require `authority` and `authorityReason`; the
-  `durable-service` template also requires `methods`.
+  Panel and worker inputs require `authority` and `authorityReason`; the
+  `durable-service` template also requires `methods`. A `client` input
+  requires `runtime` (`web-host-1`, `terminal-host-1` or `rn-host-6`) instead
+  and takes no authority.
 - `forkProject({ from, to, authority?, authorityReason?, dryRun?, rewrite?, classMap? })`
   prepares copied source. `forkPanel` and `forkWorker` take `from`, `name`,
   required `authority` and `authorityReason`, and optional `title`, `dryRun`,
@@ -148,8 +150,8 @@ ID, label, URL, or data URL. See [icon authoring](references/icons.md).
   ceiling with the policy you pass; they never inherit authority silently. Dry
   runs run preflight without changing anything.
 
-Supported repository kinds are `panel`, `worker`, `package`, `skill`, and
-`project`. A repository's kind is determined by its location; `projectType`
+Supported repository kinds are `panel`, `worker`, `package`, `skill`,
+`project`, and `client`. A repository's kind is determined by its location; `projectType`
 cannot change an existing repository's kind. Put guidance for a repository in
 its own `SKILL.md` rather than creating a new skill repository. Use plain
 writes under `projects/` for private scratch content.

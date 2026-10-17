@@ -178,6 +178,22 @@ return scope.prepared;
 | package | packages/<name> | Reusable workspace package                                                   |
 | skill   | skills/<name>   | Cross-repository skill package                                               |
 | project | projects/<name> | Content-only repository                                                      |
+| client  | clients/<name>  | Minimal client for one `runtime` (`web-host-1`, `terminal-host-1`, `rn-host-6`) |
+
+A `client` input requires `runtime`, the host ABI the client is written
+against, and takes no `authority`: the scaffold declares an empty authority
+manifest, a `vibestudio.client` block with one foreground `open` intent and no
+capabilities, and a one-screen entry (`index.html` + `index.ts` for web,
+`src/index.ts` for terminal, `App.tsx` for React Native). It is not a declared
+client yet: add `- source: clients/<name>` under `clients:` in the System
+`meta/vibestudio.yml`. Follow the `clientdev` skill
+(in the System workspace) to extend it.
+
+```ts
+scope.prepared = await prepareProjects([
+  { projectType: "client", name: "hello", title: "Hello", runtime: "terminal-host-1" },
+]);
+```
 
 The repository location determines the unit kind and its package scope. A
 manifest cannot turn a panel into content or any other kind. Verifying the
