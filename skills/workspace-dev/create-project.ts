@@ -183,10 +183,35 @@ container.textContent = ${quoted};
   TerminalClientHost,
 } from "@vibestudio/shell-core/terminal/terminalClientHost";
 
-/** The host calls run(host) and owns the terminal until it settles. */
+/**
+ * The host calls run(host) and owns the terminal until it settles. The client
+ * runs until the user quits, the invocation is cancelled, or the host ends the
+ * connection (which is also how it re-enters the client on an update).
+ */
 export async function run(host: TerminalClientHost): Promise<TerminalClientExit> {
-  host.stdout.write(${quoted} + "\\n");
-  return { kind: "quit" };
+  host.stdout.write(${quoted} + "\\n(press q to quit)\\n");
+  return await new Promise<TerminalClientExit>((resolve) => {
+    let stopWatching = () => {};
+    const settle = (exit: TerminalClientExit) => {
+      host.stdin.off("data", onData);
+      host.signal.removeEventListener("abort", onAbort);
+      stopWatching();
+      resolve(exit);
+    };
+    const onData = (data: Buffer | string) => {
+      const text = data.toString();
+      if (text.includes("q") || text.includes("\\u0003")) settle({ kind: "quit" });
+    };
+    const onAbort = () => settle({ kind: "quit" });
+    const current = host.connectionState();
+    if (current.phase === "lost") return settle({ kind: "connection-lost", cause: current.cause });
+    if (host.signal.aborted) return settle({ kind: "quit" });
+    stopWatching = host.onConnectionState((state) => {
+      if (state.phase === "lost") settle({ kind: "connection-lost", cause: state.cause });
+    });
+    host.signal.addEventListener("abort", onAbort, { once: true });
+    host.stdin.on("data", onData);
+  });
 }
 `;
       break;

@@ -607,6 +607,61 @@ describe("prepareProjects", () => {
     },
   );
 
+  it("scaffolds a terminal client that runs until it is quit or its connection ends", async () => {
+    const { prepareProjects } = await import("./index.js");
+    const { EventEmitter } = await import("node:events");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    await prepareProjects([
+      { projectType: "client", runtime: "terminal-host-1", name: "hello-client", title: "Hello" },
+    ]);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-scaffold-"));
+    try {
+      const file = path.join(dir, "index.ts");
+      fs.writeFileSync(file, mocks.files.get("clients/hello-client/src/index.ts") as string);
+      const { run } = await import(/* @vite-ignore */ file);
+      const fakeHost = () => {
+        const listeners = new Set<(state: { phase: string; cause?: string }) => void>();
+        const stdin = new EventEmitter();
+        const written: string[] = [];
+        const host = {
+          stdin,
+          stdout: { write: (text: string) => written.push(text) },
+          signal: new AbortController().signal,
+          connectionState: () => ({ phase: "connected" }),
+          onConnectionState: (listener: (state: { phase: string }) => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+        };
+        return { host, stdin, written, listeners };
+      };
+
+      const quit = fakeHost();
+      let settled = false;
+      const quitting = run(quit.host).then((exit: unknown) => {
+        settled = true;
+        return exit;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      expect(quit.written.join("")).toContain("Hello");
+      quit.stdin.emit("data", "q");
+      await expect(quitting).resolves.toEqual({ kind: "quit" });
+      expect(quit.stdin.listenerCount("data")).toBe(0);
+      expect(quit.listeners.size).toBe(0);
+
+      const lost = fakeHost();
+      const losing = run(lost.host);
+      for (const listener of [...lost.listeners]) listener({ phase: "lost", cause: "update" });
+      await expect(losing).resolves.toEqual({ kind: "connection-lost", cause: "update" });
+      expect(lost.stdin.listenerCount("data")).toBe(0);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("requires a known client runtime and refuses to fork a client", async () => {
     const { prepareProjects, forkProject } = await import("./index.js");
 
