@@ -207,6 +207,15 @@
           "evidence": "bounded-dynamic"
         },
         {
+          "capability": "workspace.publish",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "workspace-trust-change:"
+          },
+          "tier": "gated",
+          "evidence": "bounded-dynamic"
+        },
+        {
           "capability": "workspace-service:channel",
           "resource": {
             "kind": "prefix",

@@ -623,7 +623,11 @@ describe("prepareProjects", () => {
       const { run } = await import(/* @vite-ignore */ file);
       const fakeHost = () => {
         const listeners = new Set<(state: { phase: string; cause?: string }) => void>();
-        const stdin = new EventEmitter();
+        const rawModes: boolean[] = [];
+        const stdin = Object.assign(new EventEmitter(), {
+          isTTY: true,
+          setRawMode: (mode: boolean) => void rawModes.push(mode),
+        });
         const written: string[] = [];
         const host = {
           stdin,
@@ -635,7 +639,7 @@ describe("prepareProjects", () => {
             return () => listeners.delete(listener);
           },
         };
-        return { host, stdin, written, listeners };
+        return { host, stdin, written, listeners, rawModes };
       };
 
       const quit = fakeHost();
@@ -651,6 +655,8 @@ describe("prepareProjects", () => {
       await expect(quitting).resolves.toEqual({ kind: "quit" });
       expect(quit.stdin.listenerCount("data")).toBe(0);
       expect(quit.listeners.size).toBe(0);
+      // A single key press ("press q") needs raw mode, handed back when it settles.
+      expect(quit.rawModes).toEqual([true, false]);
 
       const lost = fakeHost();
       const losing = run(lost.host);

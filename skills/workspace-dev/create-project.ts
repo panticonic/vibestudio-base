@@ -196,6 +196,7 @@ export async function run(host: TerminalClientHost): Promise<TerminalClientExit>
       host.stdin.off("data", onData);
       host.signal.removeEventListener("abort", onAbort);
       stopWatching();
+      if (host.stdin.isTTY) host.stdin.setRawMode(false);
       resolve(exit);
     };
     const onData = (data: Buffer | string) => {
@@ -210,6 +211,9 @@ export async function run(host: TerminalClientHost): Promise<TerminalClientExit>
       if (state.phase === "lost") settle({ kind: "connection-lost", cause: state.cause });
     });
     host.signal.addEventListener("abort", onAbort, { once: true });
+    // A single key press ("press q") reaches the client only in raw mode; the
+    // host restores the terminal when the client settles.
+    if (host.stdin.isTTY) host.stdin.setRawMode(true);
     host.stdin.on("data", onData);
   });
 }
