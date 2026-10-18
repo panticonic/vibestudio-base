@@ -37,7 +37,7 @@ export function createSuspendTurnTool(
   return {
     name: "suspend_turn",
     description:
-      "Suspend this agent turn without a visible assistant response. Use when the latest activity is for another agent, has already been handled, or when background work is running and you have no useful foreground work left. The runtime will wake the open turn on later user input or background results; do not poll while suspended.",
+      "Suspend this agent turn without a visible assistant response. Use only when the latest activity is for another agent, has already been handled, or when supervised background work is running and you have no useful foreground work left. It ends your turn, and nothing in your own task resumes it: never call it while your task is unfinished (keep working with tools, or answer instead). The runtime wakes the open turn only on later user input or background results; do not poll while suspended.",
     parameters: suspendTurnParameters,
     execute: options.execution.execute,
     cancel: options.execution.cancel,
