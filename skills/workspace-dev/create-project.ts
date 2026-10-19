@@ -102,7 +102,8 @@ const SUPPORTED_PROJECT_TYPES = PROJECT_TYPES.join(", ");
 
 /**
  * The smallest valid client for one runtime: a manifest with the implicit
- * foreground `open` intent, no capabilities and no authority, and an entry
+ * foreground `open` intent, no capabilities, only the authority its runtime's
+ * host contract always uses (see project-manifest.ts), and an entry
  * that shows the title. Everything else is added deliberately by the author.
  */
 function clientScaffold(

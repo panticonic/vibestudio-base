@@ -142,7 +142,8 @@ ID, label, URL, or data URL. See [icon authoring](references/icons.md).
   Panel and worker inputs require `authority` and `authorityReason`; the
   `durable-service` template also requires `methods`. A `client` input
   requires `runtime` (`web-host-1`, `terminal-host-1` or `rn-host-6`) instead
-  and takes no authority.
+  and takes no authority (an `rn-host-6` scaffold requests only the
+  `context.boundary` its host contract always uses).
 - `forkProject({ from, to, authority?, authorityReason?, dryRun?, rewrite?, classMap? })`
   prepares copied source. `forkPanel` and `forkWorker` take `from`, `name`,
   required `authority` and `authorityReason`, and optional `title`, `dryRun`,
@@ -194,7 +195,8 @@ explicit class map when several classes need renaming.
 Review the complete requested authority against what the application does: its
 effects, resources, callers, website access, and data sensitivity. Empty
 requests are intentional; scaffolding never adds blanket context-boundary or
-clone requests. Run `verify` on the specific targets, compare with main, commit
+clone requests, except the one a React Native client's host contract always
+uses. Run `verify` on the specific targets, compare with main, commit
 the reviewed chain, and push that event through VCS. See
 [WORKFLOW.md](WORKFLOW.md#development-loop). Publication goes through the
 existing protected gate and user decision; preparation adds no separate

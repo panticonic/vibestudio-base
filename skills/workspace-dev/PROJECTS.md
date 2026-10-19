@@ -182,7 +182,8 @@ return scope.prepared;
 
 A `client` input requires `runtime`, the host ABI the client is written
 against, and takes no `authority`: the scaffold declares an empty authority
-manifest, a `vibestudio.client` block with one foreground `open` intent and no
+manifest (for `rn-host-6`, only the critical `context.boundary` request the
+React Native host contract always uses), a `vibestudio.client` block with one foreground `open` intent and no
 capabilities, and a one-screen entry (`index.html` + `index.ts` for web,
 `src/index.ts` for terminal, `App.tsx` for React Native). It is not a declared
 client yet: add `- source: clients/<name>` under `clients:` in the System

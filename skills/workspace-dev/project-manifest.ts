@@ -194,13 +194,28 @@ export function buildProjectManifest(
   };
   if (input.exports) manifest["exports"] = canonicalRecord(input.exports);
   if (input.projectType === "client") {
-    // A client holds no authority until it asks for some: the empty manifest
-    // is explicit, and a background intent adds its service request.
+    // A client holds no authority until it asks for some, except what its
+    // runtime's host contract always uses: a React Native host gives every
+    // client a workspace context boundary, so that critical request is part of
+    // the smallest valid manifest. A background intent adds its service request.
     manifest["vibestudio"] = {
       displayName: input.title,
       icon: input.icon ?? "🧭",
       client: input.client,
-      authority: parseUnitAuthorityManifest({ requests: [], provides: [] }),
+      authority: parseUnitAuthorityManifest({
+        requests:
+          input.client?.runtime === "react-native"
+            ? [
+                {
+                  capability: "context.boundary",
+                  resource: { kind: "prefix", prefix: "" },
+                  tier: "critical",
+                  evidence: "intentional-broad",
+                },
+              ]
+            : [],
+        provides: [],
+      }),
     };
   } else if (executable) {
     manifest["vibestudio"] = {

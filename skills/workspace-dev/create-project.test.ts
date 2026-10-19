@@ -543,12 +543,13 @@ describe("prepareProjects", () => {
   });
 
   it.each([
-    ["web-host-1", "web", "index.ts"],
-    ["terminal-host-1", "terminal", "src/index.ts"],
-    ["rn-host-6", "react-native", "App.tsx"],
+    ["web-host-1", "web", "index.ts", []],
+    ["terminal-host-1", "terminal", "src/index.ts", []],
+    // The React Native host contract always crosses a context boundary.
+    ["rn-host-6", "react-native", "App.tsx", ["context.boundary"]],
   ] as const)(
     "scaffolds a valid %s client under clients/",
-    async (hostAbi, runtime, entry) => {
+    async (hostAbi, runtime, entry, requested) => {
       const { prepareProjects } = await import("./index.js");
       const { validateUnitManifest, clientUnitManifestDescriptor } =
         await import("@vibestudio/shared/unitManifest");
@@ -569,7 +570,7 @@ describe("prepareProjects", () => {
           projectType: "client",
           packageName: "@workspace-clients/hello-client",
           entry,
-          authorityRequestCount: 0,
+          authorityRequestCount: requested.length,
         },
         authorityReview: null,
       });
@@ -584,6 +585,11 @@ describe("prepareProjects", () => {
         entry,
         intents: [{ name: "open", kind: "foreground" }],
       });
+      expect(
+        manifest.vibestudio.authority.requests.map(
+          (request: { capability: string }) => request.capability,
+        ),
+      ).toEqual(requested);
       expect(() =>
         validateUnitManifest(
           clientUnitManifestDescriptor,
