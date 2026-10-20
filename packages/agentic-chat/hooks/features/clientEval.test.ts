@@ -10,7 +10,11 @@ import {
   type MethodExecutionContext,
   type MethodExecutionResult,
 } from "@workspace/pubsub";
-import { buildClientEvalMethod } from "./clientEval";
+import {
+  EVAL_AMBIENT_ONLY,
+  EVAL_IMPORTABLE_KEYS,
+} from "@vibestudio/service-schemas/runtime/runtimeSurface.eval";
+import { buildClientEvalMethod, errorHint } from "./clientEval";
 
 function scopeManager(initial: Record<string, unknown> = {}) {
   const current = { ...initial };
@@ -201,6 +205,75 @@ describe("client_eval", () => {
           ),
         }),
       ]),
+    );
+  });
+
+  it("hints every server-side eval global that client_eval does not inject", async () => {
+    let seen: SandboxOptions | undefined;
+    const executeSandbox = vi.fn(
+      async (_code: string, options?: SandboxOptions) => {
+        seen = options;
+        return { success: true, consoleOutput: "" };
+      },
+    );
+    const { definition } = method({ executeSandbox });
+    await definition.execute({ code: "return 1", syntax: "tsx" }, context());
+    const injected = new Set(Object.keys(seen?.bindings ?? {}));
+
+    const evalGlobals = [...EVAL_IMPORTABLE_KEYS, ...EVAL_AMBIENT_ONLY];
+    // client_eval never injects a name that eval does not.
+    for (const name of injected) expect(evalGlobals).toContain(name);
+    for (const name of evalGlobals) {
+      const hinted = errorHint(`${name} is not defined`);
+      if (injected.has(name)) expect(hinted).toBe(`${name} is not defined`);
+      else expect(hinted, name).toContain("Hint:");
+    }
+    expect(errorHint("panelTree is not defined")).toContain(
+      'import { panelTree } from "@workspace/runtime"',
+    );
+    expect(errorHint("db is not defined")).toContain("only in server-side");
+    expect(errorHint("somethingElse is not defined")).toBe(
+      "somethingElse is not defined",
+    );
+  });
+
+  it("steers an authority refusal to server-side eval, but not a user denial or other failure", async () => {
+    const failed = async (errorData?: unknown) => {
+      const { definition } = method({
+        executeSandbox: vi.fn(async () => ({
+          success: false,
+          consoleOutput: "",
+          error: serializeRpcFailure(
+            Object.assign(new Error("denied"), { errorData }),
+          ),
+          failureKind: "user-code" as const,
+        })),
+      });
+      const result = (await definition.execute(
+        { code: "x", syntax: "tsx" },
+        context(),
+      )) as MethodExecutionResult<{
+        content: Array<{ type: "text"; text: string }>;
+      }>;
+      return result.content.content.map((part) => part.text).join("\n");
+    };
+    const failure = (kind: string) => ({
+      authorityFailure: {
+        reasonCode: "fixed-code-not-requested",
+        capability: "panel.inspect",
+        remediation: { kind, message: "m" },
+      },
+    });
+
+    const steered = await failed(failure("update-installed-code-manifest"));
+    expect(steered).toContain("fixed authority");
+    expect(steered).toContain("`panel.inspect`");
+    expect(steered).toContain("server-side `eval`");
+
+    expect(await failed({ other: true })).not.toContain("server-side `eval`");
+    expect(await failed()).not.toContain("server-side `eval`");
+    expect(await failed(failure("respect-denial"))).not.toContain(
+      "server-side `eval`",
     );
   });
 });

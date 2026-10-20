@@ -125,6 +125,13 @@ export const LIFECYCLE_RECOVERY_NOTICES = {
 >;
 
 /**
+ * Which tool owns which authority. Shared by the system prompt and the
+ * `client_eval` tool description so the two cannot drift.
+ */
+export const CLIENT_EVAL_AUTHORITY_GUIDANCE =
+  "`client_eval` runs as the chat panel itself, with that panel's own fixed authority: use it for chat-panel UI and state. Reading, inspecting, or driving other panels or browser tabs (`panelTree` handles, `snapshot`/`observe`, CDP, `panel.inspect`) must use server-side `eval`, where you can request that authority and the user can approve it. In `client_eval`, runtime APIs such as `panelTree` are imported from `@workspace/runtime`, not globals.";
+
+/**
  * The stale-pre-dispatch lifecycle phrase. Its control flow is already typed at
  * the invocation level (`terminalOutcome: "stale_dispatch"` /
  * `reasonCode: "aborted_before_dispatch"`); this is the single source for the

@@ -771,23 +771,25 @@ describe("${className}", () => {
           dependencies: {
             "@workspace/runtime": "workspace:*",
             "@vibestudio/shared": "workspace:*",
-            zod: "3.25.76",
           },
         });
-        files["contract.ts"] = `import { z } from "zod";
-import { createRpcMethods } from "@vibestudio/shared/rpcMethods";
+        files["contract.ts"] = `import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import type { ${className}, RecordItem } from "./index.js";
 
-export const recordSchema = z.object({ id: z.string(), title: z.string(), createdAt: z.string(), updatedAt: z.string() });
-export type RecordItem = z.infer<typeof recordSchema>;
-export const recordStoreMethods = {
-  listRecords: { website: { kind: "closed", reason: "Workspace-private records" } as const, args: z.tuple([]), returns: z.array(recordSchema) },
-  upsertRecord: { website: { kind: "closed", reason: "Workspace-private records" } as const, args: z.tuple([z.object({ id: z.string().optional(), title: z.string() })]), returns: z.object({ id: z.string() }) },
-};
-export const recordStoreRpcMethods = createRpcMethods("recordStore", recordStoreMethods, "");
+export type { RecordItem };
+export const recordStoreRpcMethods = createReceiverRpcMethods<
+  Pick<${className}, "listRecords" | "upsertRecord">
+>(["listRecords", "upsertRecord"]);
 `;
         files["index.ts"] =
-          `import { recordStoreMethods, type RecordItem } from "./contract.js";
-import { DurableObjectBase, rpc } from "@workspace/runtime/worker/kernel";
+          `import { DurableObjectBase, rpc } from "@workspace/runtime/worker/kernel";
+
+export type RecordItem = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type RecordRow = {
   id: string;
@@ -797,7 +799,6 @@ type RecordRow = {
 };
 
 export class ${className} extends DurableObjectBase {
-  static override rpcMethods = recordStoreMethods;
   static override schemaVersion = 1;
 
   protected override createTables(): void {

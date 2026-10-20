@@ -28,6 +28,10 @@ sees the runtime differently from the user's panel:
   panel in the tree.
 - In eval, `panelTree.self()` is the EvalDO runtime handle. Use top-level
   `getParent()` for the owning agent's nearest visible panel ancestor.
+- `client_eval` runs as the chat panel with its own fixed authority and cannot
+  request `panel.inspect`. Reading, inspecting, or driving other panels or
+  browser tabs (`panelTree` handles, `snapshot`/`observe`, CDP) belongs in
+  `eval`, where you can request that authority and the user can approve it.
 - `openPanel()` from eval places new panels under that ancestor by default,
   when there is one.
 - A headless session has no initial panel ancestor. The panel tree still works,

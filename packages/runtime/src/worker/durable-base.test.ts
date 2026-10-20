@@ -41,6 +41,50 @@ const testRpcMethods = createRpcMethods(
 );
 
 abstract class TestDurableObjectBase extends DurableObjectBase {}
+const closedWebsite = { kind: "closed", reason: "Test receiver" } as const;
+
+/** The task-harbor-store shape: @rpc policy plus a schema table that declares none of it. */
+class IncompleteTableProbeDO extends TestDurableObjectBase {
+  static override rpcMethods = {
+    first: { website: closedWebsite, args: z.tuple([]), returns: z.string() },
+    second: {
+      website: closedWebsite,
+      args: z.tuple([]),
+      returns: z.string(),
+      authority: { principals: ["host"] },
+      tier: { tier: "open", session: "family", rationale: "Partially declared." },
+    },
+  } as never;
+
+  protected createTables(): void {}
+
+  @rpc({
+    website: closedWebsite,
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  first(): string {
+    return "first";
+  }
+
+  @rpc({
+    website: closedWebsite,
+    principals: ["host"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  second(): string {
+    return "second";
+  }
+
+  activateRpc(): unknown {
+    return this.rpc;
+  }
+}
+
 class RpcFacadeProbeDO extends TestDurableObjectBase {
   protected createTables(): void {}
   facadeForTest() {
@@ -805,6 +849,32 @@ class ComposedSchemaProbeDO extends TestDurableObjectBase {
 }
 
 describe("DurableObjectBase request parsing", () => {
+  it("rejects every incomplete schema-table method together, naming fields and fixes", async () => {
+    const { instance } = await createTestDO(IncompleteTableProbeDO, {
+      WORKER_SOURCE: "workers/test",
+      WORKER_CLASS_NAME: "IncompleteTableProbeDO",
+      __objectKey: "incomplete",
+    });
+    let message = "";
+    try {
+      instance.activateRpc();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("IncompleteTableProbeDO.first: missing authority, tier, access.sensitivity");
+    expect(message).toContain("IncompleteTableProbeDO.second: missing access.sensitivity, directEffect or capability");
+    expect(message).toContain("createReceiverRpcMethods");
+  });
+
+  it("serves @rpc-decorated receivers that declare no schema table", async () => {
+    const { instance } = await createTestDO(EchoDO, {
+      WORKER_SOURCE: "workers/test",
+      WORKER_CLASS_NAME: "EchoDO",
+      __objectKey: "echo",
+    });
+    expect(() => (instance as unknown as { rpc: unknown }).rpc).not.toThrow();
+  });
+
   it("shares one public facade per owned wire and recreates it after resetting that wire", async () => {
     const { instance } = await createTestDO(RpcFacadeProbeDO, {
       WORKER_SOURCE: "workers/test",

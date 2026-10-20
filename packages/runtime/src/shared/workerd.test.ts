@@ -10,6 +10,7 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 
 import { createWorkerdClient, type WorkerdClient } from "./workerd.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
+import { WORKERS_RUNTIME_METHOD_CATALOG } from "@vibestudio/service-schemas/runtime/runtimeSurface.portable";
 
 const testRpcMethods = createRpcMethods(
   "test",
@@ -272,6 +273,15 @@ describe("createWorkerdClient", () => {
       ["vibestudio.channel.v1", "chat-1"],
       undefined,
     );
+  });
+
+  it("help catalog documents durableObjectService with the implemented parameter order", () => {
+    const params = /\(([^)]*)\)/.exec(client.durableObjectService.toString())![1]!
+      .split(",").map((p) => p.trim()).filter(Boolean);
+    const doc = WORKERS_RUNTIME_METHOD_CATALOG.durableObjectService;
+    expect(doc.argumentNames).toEqual(params);
+    expect(doc.argsSchema.prefixItems).toHaveLength(params.length);
+    expect(doc.signature).toContain(`(${params[0]}: string, ${params[1]}: M, ${params[2]}?:`);
   });
 
   it("durableObjectService resolves then calls the service target through unified RPC", async () => {

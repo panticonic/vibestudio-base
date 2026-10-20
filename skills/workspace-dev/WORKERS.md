@@ -637,6 +637,13 @@ export const todoStoreRpcMethods = createReceiverRpcMethods<
 >(["upsertTodo", "listTodos"]);
 ```
 
+> **Two ways to build a contract table; use the first for receivers you author with `@rpc`.**
+>
+> - `createReceiverRpcMethods<Pick<Receiver, ...>>([...names])`: descriptors only; the policy (authority, tier, sensitivity, effect) comes from the receiver's `@rpc` decorators. This is the default.
+> - `createRpcMethods(name, { method: { args, returns, website, ... } }, prefix)`: a hand-written schema table. It carries NO receiver policy. If bound as a receiver's schema table, every entry must also declare `authority`, `tier`, `access.sensitivity`, and `directEffect` (or `capability`), or the object throws "incomplete typed receiver authority declaration" when it exposes the method. Do not use it for `@rpc` receivers.
+>
+> A passing build does not currently prove you chose correctly; a wrong choice surfaces only at runtime.
+
 Export `./contract` from the worker package and declare
 `@vibestudio/shared` as a dependency. Callers import this table; they don't
 restate method signatures or choose result types. Dynamic main-process method
@@ -715,16 +722,27 @@ const projectStore = await workers.resolveService(
 ```
 
 For repeated calls, bind the same contract table with
-`workers.durableObjectService(methods, protocol, objectKey?)`:
+`workers.durableObjectService(protocol, methods, objectKey?)` (service name first, contract table second):
 
 ```ts
 const projectTodos = workers.durableObjectService(
-  todoStoreRpcMethods,
   "example.todos.v1",
+  todoStoreRpcMethods,
   projectId,
 );
 const todos = await projectTodos.call("listTodos", []);
 ```
+
+The build bounds authority statically: the service query and every RPC method
+name must be a literal, a `const`, or a finite literal union (a generic
+`K extends keyof typeof methods & string` also qualifies). A query or method
+taken from a `string` parameter, `process.env`, or other runtime data is
+rejected at the protected-main gate. The query is the first argument of
+`workers.durableObjectService(query, methods, objectKey?)` and of the runtime's
+`createDurableObjectServiceClient(query, methods, objectKey?)`, but the second
+argument of the service-schemas helper
+`createDurableObjectServiceClient(rpc, query, methods, objectKey?)`, which
+takes the RPC caller first.
 
 This resolves `do:<source>:<className>:<projectId>` and creates or activates a
 separate SQLite database for that object key. Use stable, meaningful keys such

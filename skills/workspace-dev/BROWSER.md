@@ -301,6 +301,10 @@ closed or replaced fails with `cdp_dialog_closed`.
 
 ## Where it runs
 
+Reading or driving another panel or browser tab (including an already-open tab the
+user asks you to import from) must run in server-side `eval`; `client_eval` runs
+as the chat panel with its own fixed authority and cannot request `panel.inspect`.
+
 The CDP client is workerd-native and runs in panels **and** in workers, DOs, and
 server-side eval. It connects over a WebSocket to the panel's CDP endpoint, so
 any context holding a panel handle can drive the page. Because

@@ -14,6 +14,7 @@ export {
   TERMINAL_MESSAGE_KINDS,
   TURN_REASON_CODES,
   TURN_SCOPED_OWNER_KINDS,
+  CLIENT_EVAL_AUTHORITY_GUIDANCE,
   isLifecycleMessageReasonCode,
   isInvocationOutcome,
   isTerminalInvocationKind,

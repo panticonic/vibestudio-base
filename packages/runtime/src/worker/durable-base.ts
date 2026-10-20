@@ -95,11 +95,9 @@ import {
   type ResidentSessionReceiver,
 } from "@vibestudio/shared/residentSession";
 import {
-  bindMethodCapability,
-  allOf,
-  anyOf,
-  capability,
-} from "@vibestudio/shared/authorization";
+  assertReceiverAuthorityComplete,
+  resolveReceiverAuthority,
+} from "@vibestudio/shared/receiverAuthorityDeclaration";
 import {
   type DurableWorkQueue,
   type DurableWorkReleaseReceipt,
@@ -292,87 +290,12 @@ export abstract class DurableObjectBase {
     wireMethod: MethodSchema | undefined,
   ): ResolvedRpcAuthority | null {
     if (!wireMethod) return rpcMethodAuthority(this, method) ?? null;
-    const authority = wireMethod.authority;
-    const tier = wireMethod.tier;
-    const sensitivity = wireMethod.access?.sensitivity;
-    const methodCapability = wireMethod.capability;
-    if (!authority || !tier || !sensitivity) {
-      throw new Error(
-        `${this.constructor.name}.${method} has an incomplete typed receiver authority declaration`,
-      );
-    }
-    const effect = wireMethod.directEffect;
-    if (!effect && !methodCapability) {
-      throw new Error(
-        `${this.constructor.name}.${method} has an incomplete typed receiver authority declaration`,
-      );
-    }
-    const resolvedEffect =
-      effect ??
-      ({
-        kind: "host-capability" as const,
-        capability: methodCapability!,
-        resource: { kind: "receiver-object" as const },
-      } as const);
-    if (!("principals" in authority)) {
-      if (!methodCapability) {
-        throw new Error(
-          `${this.constructor.name}.${method} has an incomplete typed receiver authority declaration`,
-        );
-      }
-      if (authority.additional?.length || authority.prepared) {
-        throw new Error(
-          `${this.constructor.name}.${method} uses host-service-only prepared authority`,
-        );
-      }
-      return {
-        requires: bindMethodCapability(authority.requirement, methodCapability),
-        website: wireMethod.website,
-        effect: resolvedEffect,
-        tier: tier.tier,
-        sensitivity,
-        ...(tier.session === "codeOnly" ? { codeOnly: true } : {}),
-        ...(wireMethod.crossWorkspace === true ? { crossWorkspace: true } : {}),
-      };
-    }
-    const codeSource = this.rpcSchemaCodeSource(method, wireMethod);
-    if (!codeSource || !authority.principals.includes("code")) {
-      return {
-        principals: authority.principals,
-        website: wireMethod.website,
-        effect: resolvedEffect,
-        tier: tier.tier,
-        sensitivity,
-        ...(tier.session === "codeOnly" ? { codeOnly: true } : {}),
-        ...(wireMethod.crossWorkspace === true ? { crossWorkspace: true } : {}),
-      };
-    }
-    const unconstrained = authority.principals.filter(
-      (principal) => principal !== "code",
+    return resolveReceiverAuthority(
+      this.constructor.name,
+      method,
+      wireMethod,
+      this.rpcSchemaCodeSource(method, wireMethod),
     );
-    if (!methodCapability) {
-      throw new Error(
-        `${this.constructor.name}.${method} has an incomplete typed receiver authority declaration`,
-      );
-    }
-    return {
-      requires: anyOf(
-        ...unconstrained.map((principal) =>
-          capability(principal, methodCapability),
-        ),
-        allOf(capability("code", methodCapability), {
-          kind: "relationship",
-          name: "code-source",
-          value: codeSource,
-        }),
-      ),
-      website: wireMethod.website,
-      effect: resolvedEffect,
-      tier: tier.tier,
-      sensitivity,
-      ...(tier.session === "codeOnly" ? { codeOnly: true } : {}),
-      ...(wireMethod.crossWorkspace === true ? { crossWorkspace: true } : {}),
-    };
   }
 
   /** Tables that must exist before a schema version is recorded as ready. */
@@ -620,6 +543,20 @@ export abstract class DurableObjectBase {
     return this._invocationContext.runDetached(operation);
   }
 
+  /** Admit the object's schema-table policies together, before any method is served. */
+  private assertReceiverAuthorityComplete(): void {
+    const table = (this.constructor as typeof DurableObjectBase).rpcMethods;
+    assertReceiverAuthorityComplete(
+      this.constructor.name,
+      [...rpcExposedMethodNames(this)].flatMap((name) => {
+        const wireMethod = table?.[name];
+        return wireMethod
+          ? [{ name, wireMethod, codeSource: this.rpcSchemaCodeSource(name, wireMethod) }]
+          : [];
+      }),
+    );
+  }
+
   private connectionlessClient(): InternalConnectionlessRpcClient {
     if (!this._connectionless) {
       const token = this.env["RPC_AUTH_TOKEN"];
@@ -655,6 +592,7 @@ export abstract class DurableObjectBase {
         invocationSignal: () => this.activeInvocationContext?.requestSignal,
         onOutboundOperation: this._causalRpcOperations.observe,
       });
+      this.assertReceiverAuthorityComplete();
       // Expose ONLY this DO's `@rpc`-marked methods (opt-in / default-deny). Private/protected helpers
       // and all framework plumbing (`dispatchInboundEnvelope`, state KV, panel/alarm helpers) are
       // unreachable over the open relay; a forgotten `@rpc` fails loud ("not exposed").

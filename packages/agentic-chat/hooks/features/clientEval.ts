@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   deserializeRpcFailure,
   formatRpcFailure,
+  type AuthorityFailureInfo,
   type RpcFailure,
 } from "@vibestudio/rpc";
 import type {
@@ -14,12 +15,37 @@ import type {
   MethodDefinition,
   MethodExecutionContext,
 } from "@workspace/pubsub";
+import { CLIENT_EVAL_AUTHORITY_GUIDANCE } from "@workspace/agentic-protocol";
+import {
+  EVAL_AMBIENT_ONLY,
+  EVAL_IMPORTABLE_KEYS,
+} from "@vibestudio/service-schemas/runtime/runtimeSurface.eval";
 import type { ChatSandboxValue } from "../../types";
 
 const MAX_RESULT_CHARS = 100_000;
 const PREVIEW_CHARS = 20_000;
 const LAST_RETURN_KEY = "$lastClientEvalReturn";
 const LAST_CONSOLE_KEY = "$lastClientEvalConsole";
+
+/** The only names `client_eval` injects; everything else is imported. */
+const CLIENT_EVAL_BINDING_NAMES = ["chat", "scope", "scopes", "help"] as const;
+type ClientEvalBindingName = (typeof CLIENT_EVAL_BINDING_NAMES)[number];
+
+/**
+ * Names server-side `eval` injects as free variables that `client_eval` does not,
+ * derived from eval's own surface so they cannot drift: every importable runtime
+ * export is imported here, and the remaining ambient names exist only in `eval`.
+ */
+const IMPORT_IN_CLIENT_EVAL: ReadonlySet<string> = new Set(
+  EVAL_IMPORTABLE_KEYS.filter(
+    (name) => !(CLIENT_EVAL_BINDING_NAMES as readonly string[]).includes(name),
+  ),
+);
+const EVAL_ONLY: ReadonlySet<string> = new Set(
+  EVAL_AMBIENT_ONLY.filter(
+    (name) => !(CLIENT_EVAL_BINDING_NAMES as readonly string[]).includes(name),
+  ),
+);
 
 export interface ClientEvalDependencies {
   importLoader?: SandboxImportLoader;
@@ -122,7 +148,7 @@ function runtimeHelp(topic?: string): unknown {
   }
   return {
     executionContext: "inviting-panel",
-    preInjected: ["chat", "scope", "scopes", "help"],
+    preInjected: CLIENT_EVAL_BINDING_NAMES,
     loadedModules: Object.keys(moduleMap).sort(),
     runtimeUsage:
       'Import panel/runtime APIs statically, for example: import { callMain, panel } from "@workspace/runtime".',
@@ -156,25 +182,35 @@ function bounded(
   ].join("\n");
 }
 
-function errorHint(error: string): string {
-  const missingRuntimeBinding = error.match(
-    /^([A-Za-z_$][\w$]*) is not defined\b/,
-  );
-  const runtimeExports = new Set([
-    "callMain",
-    "contextId",
-    "fs",
-    "rpc",
-    "panel",
-    "openPanel",
-    "parent",
-    "getParent",
-  ]);
-  const name = missingRuntimeBinding?.[1];
-  if (name && runtimeExports.has(name)) {
+/** Steer an undefined eval global to its client_eval equivalent. */
+export function errorHint(error: string): string {
+  const name = error.match(/^([A-Za-z_$][\w$]*) is not defined\b/)?.[1];
+  if (name && IMPORT_IN_CLIENT_EVAL.has(name)) {
     return `${error}\nHint: import { ${name} } from "@workspace/runtime";`;
   }
+  if (name && EVAL_ONLY.has(name)) {
+    return `${error}\nHint: \`${name}\` exists only in server-side \`eval\`.`;
+  }
   return error;
+}
+
+/**
+ * An authority refusal in `client_eval` is final for the chat panel's fixed
+ * code identity; steer the agent to the surface where the user can approve it.
+ * A user denial is never retried.
+ */
+function authorityFailureHint(errorData: unknown): string | undefined {
+  const failure = (errorData as { authorityFailure?: AuthorityFailureInfo } | undefined)
+    ?.authorityFailure;
+  if (!failure || failure.remediation?.kind === "respect-denial") return undefined;
+  const capability = failure.capability
+    ? `\`${failure.capability}\``
+    : "this capability";
+  return (
+    `Hint: client_eval runs as the chat panel with fixed authority, so ${capability} ` +
+    "cannot be requested from here. Retry the same operation from server-side `eval`, " +
+    "where the capability can be requested and the user can approve it."
+  );
 }
 
 function executionSignal(
@@ -208,9 +244,9 @@ export function buildClientEvalMethod(
 
 This is client-affine execution: it shares the panel's runtime, filesystem context,
 host transport, loaded modules, DOM, and durable panel-local scope. Electron-local
-\`callMain\` services therefore resolve through this panel's Electron host. Use
-\`client_eval\` when work depends on the current customer's visible client or panel.
-Use server-side \`eval\` for durable server work that has no client affinity.
+\`callMain\` services therefore resolve through this panel's Electron host.
+
+${CLIENT_EVAL_AUTHORITY_GUIDANCE}
 
 \`chat\`, \`scope\`, \`scopes\`, and \`help\` are pre-injected. Import all runtime
 APIs and workspace packages with static imports. \`return\` sends a value back;
@@ -267,7 +303,7 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
             scope,
             scopes: scopeManager.api,
             help: runtimeHelp,
-          },
+          } satisfies Record<ClientEvalBindingName, unknown>,
           onConsole: (formatted) => {
             void context
               .stream({ type: "console", content: formatted })
@@ -288,6 +324,10 @@ APIs and workspace packages with static imports. \`return\` sends a value back;
               type: "text",
               text: `[client_eval] Failure data:\n${printable(result.error.errorData)}`,
             });
+          }
+          const authorityHint = authorityFailureHint(result.error?.errorData);
+          if (authorityHint) {
+            parts.push({ type: "text", text: `[client_eval] ${authorityHint}` });
           }
         }
         if (result.consoleOutput) {

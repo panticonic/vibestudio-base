@@ -36,6 +36,7 @@ Inside eval, `help()` lists the injected and importable runtime surface and
 | Surface                             | Runs in            | Use for                                                  |
 | ----------------------------------- | ------------------ | -------------------------------------------------------- |
 | `eval`                              | server-side EvalDO | imperative code, services, files, persistent agent scope |
+| `client_eval`                       | chat panel         | chat-panel UI and state (fixed authority)                |
 | `inline_ui`                         | chat panel         | persistent interactive transcript content                |
 | `load_action_bar`                   | chat panel         | compact controls pinned above history                    |
 | `feedback_form` / `feedback_custom` | chat panel         | responses the agent must await                           |
@@ -59,6 +60,12 @@ values and runtime handles (panel, worker, DO, CDP session) across reloads but
 cannot restore other functions or live objects. Do not use
 eval storage as an app database: put shared application data behind a
 manifest-declared Durable Object service with narrow RPC methods.
+
+`client_eval` runs as the chat panel with its own fixed authority; runtime APIs
+such as `panelTree` are imported there, not globals. Reading, inspecting, or
+driving other panels or browser tabs (`panelTree` handles, `snapshot`/`observe`,
+CDP, `panel.inspect`) must use server-side `eval`, where you can request that
+authority and the user can approve it.
 
 `panelTree.self()` returns the EvalDO runtime, not the visible chat panel. To
 find the visible parent, siblings, or children, use bounded panel-tree reads,
