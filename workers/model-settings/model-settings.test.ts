@@ -935,7 +935,7 @@ class DiscoveryModelSettingsDO extends ModelSettingsDO {
 const localUnit = {
   name: "@workspace-extensions/local-models",
   kind: "extension",
-  target: null,
+  runtime: null,
   capabilities: [],
   source: "extensions/local-models",
   displayName: "Local Models",
