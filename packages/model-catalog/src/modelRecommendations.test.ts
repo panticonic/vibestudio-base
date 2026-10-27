@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { getBuiltinModels } from "./builtinCatalog";
-import { DEFAULT_AGENT_MODEL_REF } from "./catalog";
+import { getBuiltinModels, getSupportedThinkingLevels } from "./builtinCatalog";
+import { DEFAULT_AGENT_MODEL_REF, modelServiceTiers } from "./catalog";
 
 import { pickRecommendedModelId } from "./modelRecommendations";
 
 describe("modelRecommendations", () => {
+  it("offers GPT-6.1 Terra through the OpenAI and Codex catalogs", () => {
+    for (const provider of ["openai", "azure", "openai-codex"]) {
+      const model = getBuiltinModels(provider).find((item) => item.id === "gpt-6.1-terra");
+      expect(model).toBeDefined();
+      expect(getSupportedThinkingLevels(model!)).toContain("max");
+      expect(model?.input).toContain("image");
+    }
+    expect(modelServiceTiers("openai-codex", "gpt-6.1-terra")).toEqual(["priority"]);
+  });
   it("prefers flagship provider families over smaller variants", () => {
     expect(
       pickRecommendedModelId("anthropic", [

@@ -72,6 +72,7 @@ export function modelServiceTiers(
     provider === "openai-codex" &&
     (modelId === "gpt-6-astra" ||
       modelId === "gpt-6.1-sol" ||
+      modelId === "gpt-6.1-terra" ||
       modelId === "gpt-6-sol" ||
       modelId === "gpt-6-luna" ||
       modelId.startsWith("gpt-5.6-") ||
