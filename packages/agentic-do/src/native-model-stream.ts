@@ -1,5 +1,5 @@
 import { type Context } from "@panticonic/pi-chord";
-import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import {
   LiveDoc,
   type Harness,
@@ -86,14 +86,7 @@ export async function observeNativeModelStream(
       try {
         await options.send(
           value,
-          value.phase === "cleared"
-            ? ctx
-            : {
-                ...ctx,
-                abortSignal: ctx.abortSignal
-                  ? AbortSignal.any([ctx.abortSignal, controller.signal])
-                  : controller.signal,
-              },
+          value.phase === "cleared" ? ctx : withAbortSignal(controller.signal, ctx),
         );
       } catch (error) {
         if (closing && controller.signal.aborted) return;
@@ -123,7 +116,7 @@ export async function observeNativeModelStream(
   }
   // Enqueue acquisition before starting: later exact frames follow this same original request's frame.
   const initial = observe(observer.value, context);
-  observer.start((value, _ops, ctx) => observe(value, ctx));
+  observer.start(({ value }, ctx) => observe(value, ctx));
   void initial;
   let close: Promise<void> | undefined;
   return {

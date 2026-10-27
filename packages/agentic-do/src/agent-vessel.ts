@@ -23,7 +23,7 @@ import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
 import { authorNativeTool } from "@workspace/harness/native-tool-authoring";
 import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
-import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import {
   defineExtension,
   GenerationTask,
@@ -1860,10 +1860,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     replay?: boolean;
     delivery?: "all" | "addressed";
   }): Promise<{ ok: boolean; participantId: string }> {
-    const context: Context = {
-      ...BACKGROUND_CONTEXT,
-      abortSignal: this.rpcAbortSignal ?? undefined,
-    };
+    const context: Context = this.rpcContext();
     this.admitChannelEndpoint(opts.channelId, opts.channelRef);
     const subscriptionStartedAt = Date.now();
     const schemaTiming = this.activationSchemaTiming;
@@ -4367,34 +4364,32 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     operation: Promise<unknown>;
   }>();
 
+  /** The current RPC's cancellation as a Chord context; the background context outside an RPC. */
+  private rpcContext(): Context {
+    const signal = this.rpcAbortSignal;
+    return signal ? withAbortSignal(signal, BACKGROUND_CONTEXT) : BACKGROUND_CONTEXT;
+  }
+
   protected async completeNativeModel(
     channelId: string,
     selected: Model<Api>,
     transcript: import("@panticonic/pi-ai").Context,
     options: { temperature?: number; maxTokens?: number },
-    context: Context = {
-      ...BACKGROUND_CONTEXT,
-      abortSignal: this.rpcAbortSignal ?? undefined,
-    },
+    context: Context = this.rpcContext(),
     parent?: ToolExecutionApi
   ): Promise<import("@panticonic/pi-ai").AssistantMessage> {
     const harness = await this.agentSession(context);
     this.assertNativeAgentAdmission();
     const controller = new AbortController();
-    const abortSignal = context.abortSignal
-      ? AbortSignal.any([context.abortSignal, controller.signal])
-      : controller.signal;
+    const operationContext = withAbortSignal(controller.signal, context);
     const operation = Promise.resolve().then(async () =>
       completeNativeModelHelper(
         harness,
-        await this.nativeChannelConversation(channelId, {
-          ...context,
-          abortSignal,
-        }),
+        await this.nativeChannelConversation(channelId, operationContext),
         selected,
         transcript,
         options,
-        { ...context, abortSignal },
+        operationContext,
         parent
       )
     );
@@ -5628,10 +5623,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     ) {
       throw new Error("cancelSubagentExecution: caller does not own this subagent run");
     }
-    const context = {
-      ...BACKGROUND_CONTEXT,
-      abortSignal: this.rpcAbortSignal ?? undefined,
-    };
+    const context = this.rpcContext();
     const conversation = await this.admittedNativeChannelConversation(input.taskChannelId);
     if (!conversation) throw new Error("Child cancellation has no admitted native conversation");
     const taskId = await this.nativeConversationCancellation.admit(
@@ -6712,10 +6704,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     inputs: SettledSubmissionRecord[];
     answers: NativePublishedAnswer[];
   }> {
-    const context = {
-      ...BACKGROUND_CONTEXT,
-      abortSignal: this.rpcAbortSignal ?? undefined,
-    };
+    const context = this.rpcContext();
     const harness = await this.agentSession(context);
     if (input.taskId === undefined && !input.inputMessageId)
       throw new Error("Native settlement requires its exact input or task");
@@ -6904,7 +6893,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     return this.nativeModelReset.schedule(
       channelId,
       { entryId: entryId as EntryId, resetAt: input.resetAt },
-      { ...BACKGROUND_CONTEXT, abortSignal: this.rpcAbortSignal ?? undefined }
+      this.rpcContext()
     );
   }
 
@@ -6965,10 +6954,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       input.submissionId <= 0
     )
       throw new Error("Child settlement read changed its original supervisor or input");
-    const context = {
-      ...BACKGROUND_CONTEXT,
-      abortSignal: this.rpcAbortSignal ?? undefined,
-    };
+    const context = this.rpcContext();
     const conversation = await this.admittedNativeChannelConversation(input.taskChannelId);
     const submission = await this.admittedAgentSession().submission(
       input.submissionId as SubmissionId,
@@ -7038,10 +7024,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           source.submission.reason === "aborted" ? "cancelled" : "failed",
           message,
           undefined,
-          {
-            ...BACKGROUND_CONTEXT,
-            abortSignal: this.rpcAbortSignal ?? undefined,
-          },
+          this.rpcContext(),
           this.rpc,
           `native-input:${source.submission.id}`
         );

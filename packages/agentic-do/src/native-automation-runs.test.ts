@@ -802,8 +802,8 @@ describe("native automation ownership", () => {
     const storage = await openNodeSqliteStorage(path);
     const original = new Error("Original watch signal commit response lost");
     let lose = true;
-    const commit: Storage["commit"] = async (writes, ctx) => {
-      const seq = await storage.commit(writes, ctx);
+    const commit: Storage["commit"] = async (writes, adopt, ctx) => {
+      const seq = await storage.commit(writes, adopt, ctx);
       if (
         lose &&
         writes.some(

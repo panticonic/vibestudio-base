@@ -5,7 +5,7 @@ import {
   fauxProvider,
   Type,
 } from "@panticonic/pi-ai";
-import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import {
   createRegistry,
   defineExtension,
@@ -181,7 +181,7 @@ describe("native one-shot model task", () => {
       f.model,
       f.transcript,
       {},
-      { ...context, abortSignal: controller.signal },
+      withAbortSignal(controller.signal, context),
     );
     const settled = vi.fn();
     void pending.then(settled, settled);

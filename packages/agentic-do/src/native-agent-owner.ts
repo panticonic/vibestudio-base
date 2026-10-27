@@ -391,7 +391,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     // This read-only portable connection uses Pi's canonical chunk decoder.
     // It creates no Session or execution owner, and its reads share the outer
     // native data-migration transaction.
-    const storage = await SqliteStorage.open(new NativeDatabase(this.native), () => Promise.resolve());
+    const storage = await SqliteStorage.open(new NativeDatabase(this.native));
     try {
       let cursor: Cursor | undefined;
       do {
@@ -587,7 +587,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             // The owning schema gate already committed and validated the whole
             // store. SqliteStorage consumes that gate, never a second installer.
             const sqliteStartedAt = Date.now();
-            const storage = await SqliteStorage.open(database, () => Promise.resolve());
+            const storage = await SqliteStorage.open(database);
             this.traceOwnerStartup("sqlite-open", sqliteStartedAt);
             return storage;
           } catch (error) {
@@ -609,9 +609,9 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         this.callAgentHost,
         {
           ...options,
-          onReport: (error) => {
+          onReport: (error, info) => {
             console.error("[NativeAgentOwner] native operation failure", JSON.stringify(nativeFailureDiagnostic(error)));
-            options.onReport?.(error);
+            options.onReport?.(error, info);
           },
           modelRequests: this.ownedModelRequests(options.modelRequests),
         },

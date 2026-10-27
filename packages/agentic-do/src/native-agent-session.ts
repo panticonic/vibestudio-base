@@ -404,6 +404,7 @@ export async function openBoundAgentSession(
       // replacement and retired-owner handover compose on one mutation line,
       // before Harness.open admits retained invocations or wake publication.
       if (replacedStorage || handover) {
+        // No Session holds this store yet, so there is no in-memory state to adopt.
         await storage.commit([{
           type: "document.change",
           id: record.id,
@@ -419,7 +420,7 @@ export async function openBoundAgentSession(
               status: "active",
             },
           },
-        }], context);
+        }], () => {}, context);
       }
     } else {
       const conversations = await storage.scanConversations(

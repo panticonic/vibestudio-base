@@ -48,6 +48,7 @@ export function nativeToolApi<TDetails extends JsonValue>(
     registry: createRegistry().snapshot(),
     models: createModels(),
     env: undefined,
+    now: () => Date.now(),
     outputWindow: undefined,
     agent: unavailable,
     output: (chunk) => {

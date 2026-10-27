@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import type { Context } from "@panticonic/pi-chord";
 import type { Model } from "@panticonic/pi-ai";
 import { stream } from "@panticonic/pi-ai/api/openai-codex-responses";
@@ -658,7 +658,7 @@ describe("credentialed model transport ownership", () => {
     );
     const connection = createCredentialedModelConnection(
       { model, credential: credential(), rpc, egressFetch: fetch },
-      { ...BACKGROUND_CONTEXT, abortSignal: controller.signal },
+      withAbortSignal(controller.signal, BACKGROUND_CONTEXT),
     );
     const response = await connection.options.fetch(
       `${model.baseUrl}/responses`,
@@ -1529,7 +1529,7 @@ describe("content-free model transport lifecycle diagnostics", () => {
         egressFetch: async () => upgraded(socket),
         onDiagnostic: (event) => events.push(event),
       },
-      { ...BACKGROUND_CONTEXT, abortSignal: controller.signal },
+      withAbortSignal(controller.signal, BACKGROUND_CONTEXT),
     );
     await connection.options.connectWebSocket(
       "wss://chatgpt.com/backend-api/codex/responses",
@@ -1565,7 +1565,7 @@ describe("protected upgrade ownership transfer", () => {
           return head.promise;
         },
       },
-      { ...BACKGROUND_CONTEXT, abortSignal: caller.signal },
+      withAbortSignal(caller.signal, BACKGROUND_CONTEXT),
     );
     const opening = connection.options.connectWebSocket(
       `${codex.baseUrl}/codex/responses`,
@@ -1595,7 +1595,7 @@ describe("protected upgrade ownership transfer", () => {
           return head.promise;
         },
       },
-      { ...BACKGROUND_CONTEXT, abortSignal: caller.signal },
+      withAbortSignal(caller.signal, BACKGROUND_CONTEXT),
     );
     const opening = connection.options.connectWebSocket(
       `${codex.baseUrl}/codex/responses`,
@@ -1682,7 +1682,7 @@ describe("protected upgrade ownership transfer", () => {
         cleanupRpc,
         egressFetch,
       },
-      { ...BACKGROUND_CONTEXT, abortSignal: caller.signal },
+      withAbortSignal(caller.signal, BACKGROUND_CONTEXT),
     );
     const opening = connection.options.connectWebSocket(
       `${codex.baseUrl}/codex/responses`,

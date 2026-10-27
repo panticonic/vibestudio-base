@@ -62,7 +62,7 @@ describe("Codex service-tier materialization", () => {
         provider,
         api:
           provider === "openai" ? "openai-responses" : "openai-codex-responses",
-        contextWindow: 272_000,
+        contextWindow: provider === "openai" ? 272_000 : 500_000,
         maxTokens: 128_000,
         cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
         thinkingLevelMap: {

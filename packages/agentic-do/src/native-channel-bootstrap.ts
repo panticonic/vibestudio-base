@@ -1,5 +1,6 @@
 import type { Message } from "@panticonic/pi-ai";
 import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
+import { withAbortSignal } from "@panticonic/pi-chord/context";
 import {
   defineTask,
   defineDoc,
@@ -455,11 +456,8 @@ export function createNativeChannelBootstrap(options: {
         if (opening.taskId === null)
           throw new Error("Channel bootstrap has no native task owner");
         if (!taskObservation) {
-          const signal = context.abortSignal
-            ? AbortSignal.any([context.abortSignal, controller.signal])
-            : controller.signal;
           taskObservation = harness
-            .waitForTask(opening.taskId, { ...context, abortSignal: signal })
+            .waitForTask(opening.taskId, withAbortSignal(controller.signal, context))
             .then(
               () => {
                 settled = true;

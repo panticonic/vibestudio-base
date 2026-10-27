@@ -158,7 +158,7 @@
     "@workspace-workers/agent-worker": "workspace:*",
     "@workspace/harness": "workspace:*",
     "zod": "^3.25.76",
-    "@panticonic/pi-durable": "1.2.0-vibestudio.2"
+    "@panticonic/pi-durable": "1.2.0-vibestudio.3"
   },
   "devDependencies": {
     "vitest": "^3.2.7"

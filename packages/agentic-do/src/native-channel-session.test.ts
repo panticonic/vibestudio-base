@@ -8,7 +8,7 @@ import {
   fauxProvider,
   fauxAssistantMessage,
 } from "@panticonic/pi-ai";
-import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import {
   AgentDoc,
   createRegistry,
@@ -393,7 +393,7 @@ describe("exact canonical native source admission observation", () => {
     const wait = waitForNativeChannelSourceMessageAt(
       f.harness,
       address(incoming),
-      { ...context, abortSignal: controller.signal },
+      withAbortSignal(controller.signal, context),
     );
     controller.abort(original);
     await expect(wait).rejects.toBe(original);
