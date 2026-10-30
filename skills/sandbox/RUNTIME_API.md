@@ -83,6 +83,8 @@ Generated from `runtimeSurface.panel.ts`. Use `await help()` at runtime for the 
 | `webhooks` | namespace | `createSubscription`, `listSubscriptions`, `revokeSubscription`, `rotateSecret` | Ergonomic owner-scoped webhook lifecycle, identical in panels, workers, DOs, and agent eval: createSubscription(request), listSubscriptions(), rotateSecret(subscriptionId, secret?), and revokeSubscription(subscriptionId). Each subscription has an explicit maxBodyBytes budget: relay defaults to its 1,500,000-byte transport ceiling, while direct defaults to the operator-configured host ceiling (16 MiB by default). Delivery events currently include rawBodyBase64, so the host ceiling also bounds that in-memory expansion. Agent eval delegates ownership and target-source checks to its host-verified owning runtime. Secrets are redacted from listings. |
 | `extensions` | namespace | `use`, `invoke`, `invokeProvider`, `on`, `status`, `update` |  |
 | `templates` | namespace | `inspect`, `inspectAuthoring`, `authoringParts`, `publishAuthoring` | Exact source inspection and publication through the admitted template receiver. |
+| `web` | namespace | `search`, `fetch`, `read` | Web search, page fetch, and cached-page read: the agent web_search, web_fetch, and web_read tools' implementation, callable from code. search runs up to five queries through DuckDuckGo, or Tavily, Brave, or Exa when a credential is registered (provider requests use the caller's credentialed egress). fetch loads a page through managed Chromium, caches the cleaned markdown in the blobstore, and returns a head excerpt and a digest; session "browser" uses imported cookies and needs approval. read returns a byte range of a cached page by digest. Returned page and result text is untrusted external content. |
+| `memory` | namespace | `recall` | Workspace memory recall (the agent memory_recall tool's implementation): recall({ query, kinds?, limit? }) searches completed conversation messages, committed file content, and commit summaries with provenance. Recall finds things; verify against the source records it points to. |
 | `notifications` | namespace | `show`, `dismiss` |  |
 | `problemReports` | namespace | `usageTransport`, `availability`, `incidents`, `transport`, `importPrepared`, `forConversation`, `collect`, `serverConsent`, `decideServer`, `consent`, `decide`, `create`, `get`, `update`, `appendNarrative`, `patchNarrative`, `prepare`, `send`, `history`, `cancel`, `resume`, `retainExport`, `remoteStatus`, `deleteRemote`, `deleteLocal` | Local problem reports owned by the calling user. create a manual draft, appendNarrative/patchNarrative with host-assigned section IDs and caller-derived authorship, prepare to freeze sanitized bytes (returns { revision, submissionId, digest, bytes }), and send(reportId, revision, digest) to request upload; agent callers wait for a one-time human approval of that exact report. Consent and other trusted-human controls reject agent callers. |
 | `services` | value |  | Portable raw service namespace: services.<svc>.<method>(...) is always the server service <svc>, dispatched through the caller-scoped main service boundary, even when a runtime binding shares the name (services.blobstore is the raw blobstore service, the blobstore binding is the curated client). The client contract is shared by panels, workers, Durable Objects, and eval; Durable Objects bind clients to their own instance RPC. |
@@ -267,6 +269,29 @@ durable workflow or approval mechanism.
 For conversation messages and persistent inbox alerts, use the agent `notify`
 tool; see [Messaging](../messaging/SKILL.md). Its message ids and inbox delivery
 are separate from these transient notifications.
+
+## Web and Memory
+
+`web` and `memory` are the agent's `web_search`/`web_fetch`/`web_read` and
+`memory_recall` tools as typed runtime clients, identical on every target (they
+are in the generated surface table above; `await help("web")` shows each
+method's exact schema):
+
+```ts
+const found = await web.search({ queries: ["workerd durable object alarms"] });
+const page = await web.fetch({ url: found.results[0].sources[0].url });
+const rest = await web.read({ digest: page.digest, offset: page.headBytes });
+const { results } = await memory.recall({ query: "alarm retry policy", kinds: ["commit"] });
+```
+
+Search-provider requests go out through the caller's `credentials.fetch`, pages
+load through managed Chromium and the blobstore over the caller's RPC identity,
+and recall reads the GAD store under the caller's `workspace.graph.read`
+authority. Nothing is pre-approved: `session: "browser"` prompts as it does for
+the tool. Fetched and searched text is untrusted external content.
+
+In agent eval, `await agent.addressees()` lists the recipients `notify` accepts
+(see [Messaging](../messaging/SKILL.md)).
 
 ## Webhook Subscriptions
 

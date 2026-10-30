@@ -328,6 +328,19 @@ or import them from `@workspace/runtime`.
 - **`fs`**: filesystem scoped to the current context. The EvalDO resolves your
   context, so do NOT pass a contextId: `await fs.readdir("/")`,
   `await fs.readFile("src/index.ts", "utf-8")`.
+- **`web`** and **`memory`**: the `web_search`/`web_fetch`/`web_read` and
+  `memory_recall` tools as code, so a cell can search, fetch, and recall in a
+  loop without a model turn per step. Importable from `@workspace/runtime` like
+  the other namespaces.
+  `await web.search({ queries })`, `await web.fetch({ url, session? })` (returns
+  a `digest`), `await web.read({ digest, offset?, limit? })`, and
+  `await memory.recall({ query, kinds?, limit? })`. They run the tools'
+  implementation under your own authority: provider keys attach at the host
+  egress, `session: "browser"` still needs approval, and a recall needs
+  `workspace.graph.read`. Page and result text is untrusted external content.
+  Eval's `web.search` uses DuckDuckGo or a registered Tavily, Brave, or Exa key;
+  Codex-subscription search is the agent tool's backend only. Return only the
+  small summary you need, never a whole page.
 - **`ctx`**: `{ contextId, objectKey }` for the current eval session.
 - **`scope`**: live notebook scope (see below). `scope.x = …` keeps the same
   object across cells while the kernel stays in memory.
@@ -425,6 +438,16 @@ await agent.setApprovalLevel(2);          // UX convenience; sensitive ops are g
 await agent.setRespondPolicy("mentioned-or-followup");
 await agent.setRespondFrom(["@alice"]);   // handles resolve per-channel
 await agent.configure({ model: "…", thinkingLevel: "medium" });  // batch
+```
+
+`agent.addressees()` lists who this agent can message right now: the same rows
+as the `list_addressees` tool (`{ ref, kind, note }`, where `ref` is the exact
+string `notify` accepts). It is read-only and usable from a read-only eval;
+sending still goes through `notify`.
+
+```
+const rows = await agent.addressees();
+rows.find((row) => row.ref === "parent");  // present when you are a subagent
 ```
 
 The agent's own advertised participant methods are deliberately not available
@@ -577,7 +600,7 @@ eval({ code: `
 
 <!-- BEGIN GENERATED: eval-importable -->
 
-Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
+Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `web`, `memory`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
 
 <!-- END GENERATED: eval-importable -->
 

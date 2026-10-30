@@ -48,6 +48,10 @@ notify({
 `list_addressees` shows these refs filled in for your current conversation.
 Each row prints the exact string `to` accepts.
 
+From eval, `await agent.addressees()` returns the same rows as data
+(`{ ref, kind, note }[]`), for code that resolves a person or agent name to the
+exact ref before you call `notify`. It lists; it never sends.
+
 **Unresolvable refs fail the call.** A misspelled handle returns suggestions
 instead of being broadcast; a handle that matches two participants returns an
 error asking which one. Nothing is guessed, so a message never reaches the

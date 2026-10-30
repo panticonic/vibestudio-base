@@ -26,7 +26,7 @@ against it.
 | What has this coordinate been _for_?                            | `vcs({ operation: "blame" })` and file history, read for intent drift                                     |
 | What was tried and rejected here?                               | `provenance({ target, walk: "rejections" })`                                                              |
 | Which subjects match a description?                             | `provenance({ target: "search: some words" })`                                                            |
-| Which record mentions a name or decision no current file holds? | In Personal, use its installed `memory_recall({ query })` tool; elsewhere use the provenance search above |
+| Which record mentions a name or decision no current file holds? | In Personal, use its installed `memory_recall({ query })` tool (or `memory.recall({ query })` from eval); elsewhere use the provenance search above |
 | A set-shaped question ("all X where Y")                         | `provenance({ query: "SELECT …" })`                                                                       |
 | Nothing above fits                                              | `provenance({ target })` for one subject's direct edges                                                   |
 

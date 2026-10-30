@@ -31,6 +31,25 @@ sources; do not cite them as sources in the answer.
 
 Use each tool's exposed schema for current limits and fields.
 
+## From eval
+
+The same three operations are `web` in eval and other runtimes, for a loop that
+would otherwise cost a model turn per page:
+
+```ts
+const found = await web.search({ queries: ["deno permissions model"] });
+const page = await web.fetch({ url: found.results[0].sources[0].url });
+// page.head is the first excerpt; page.digest names the cached full text.
+const more = await web.read({ digest: page.digest, offset: page.headBytes });
+return { title: page.title, digest: page.digest, next: more.text.slice(0, 500) };
+```
+
+It is the tools' implementation: `session: "browser"` needs the same approval,
+and provider keys attach at the host egress. `web.search` there uses
+DuckDuckGo or a registered Tavily, Brave, or Exa key (the Codex-subscription
+backend belongs to the `web_search` tool). Return digests and short excerpts,
+not whole pages.
+
 ## Large pages and PDFs
 
 `web_fetch` stores the extracted readable content in the blobstore and returns
