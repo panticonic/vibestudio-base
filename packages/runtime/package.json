@@ -22,7 +22,6 @@
     "./terminal": "./src/terminal/index.ts",
     "./hosted": "./src/shared/hostedRuntime.ts",
     "./memory": "./src/shared/memory.ts",
-    "./web-binding": "./src/shared/web.ts",
     "./panel-runtime": "./src/shared/panelRuntime.ts",
     "./portable": "./src/shared/portable.ts",
     "./credentials": "./src/shared/credentials.ts",

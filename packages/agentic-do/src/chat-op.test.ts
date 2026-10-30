@@ -12,8 +12,6 @@ import {
   type ParticipantRef,
 } from "@workspace/agentic-protocol";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
-import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
-import { createWebBinding } from "@workspace/runtime/web-binding";
 import type { ChannelEvent, ParticipantDescriptor } from "@workspace/harness";
 import type { ServerLogEvent } from "@workspace/pubsub";
 import type { VcsCompareResult, VcsStatusResult } from "@vibestudio/service-schemas/vcs";
@@ -1000,24 +998,17 @@ describe("AgentVesselBase.chatOp", () => {
     );
     expect(resets).toEqual([]);
 
-    // The web binding, wired to the agent exactly as the EvalDO wires it, reports
-    // before returning a search result.
+    // The owning EvalDO reports a source; the agent drops its task grants once
+    // through the same reset its web tools use.
     vessel.callerIdForTest = await expectedEvalCaller();
-    const lite = `<html><body><table><tr><td>1.</td><td><a class="result-link" href="https://example.com/a">A</a></td></tr></table></body></html>`;
-    const web = createWebBinding(
-      schemaRpcMock({ call: vi.fn() }) as never,
-      {
-        fetch: async () => new Response(lite, { status: 200 }),
-        resolveCredential: async () => null,
-      } as never,
-      async (entry) => vessel.observeOutsideContent(CHANNEL, entry.key)
-    );
-    await web.search({ queries: ["q"] });
+    await vessel.observeOutsideContent(CHANNEL, "web:example.com");
     expect(resets).toEqual([{ contextId: "ctx-1", channelId: CHANNEL }]);
 
     // The same source again is one reset, like the tools' per-source latch.
-    await web.search({ queries: ["q"] });
+    await vessel.observeOutsideContent(CHANNEL, "web:example.com");
     expect(resets).toHaveLength(1);
+    await vessel.observeOutsideContent(CHANNEL, "git:pullUpstream:projects/x");
+    expect(resets).toHaveLength(2);
   });
 
   it("lists the addressees the list_addressees tool lists, only to this agent's own EvalDO", async () => {

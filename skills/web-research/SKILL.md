@@ -48,8 +48,9 @@ It is the tools' implementation: `session: "browser"` needs the same approval,
 and provider keys attach at the host egress. `web.search` there uses
 DuckDuckGo or a registered Tavily, Brave, or Exa key (the Codex-subscription
 backend belongs to the `web_search` tool). In an agent's eval, content from
-`web.search` or `web.fetch` resets the task's standing approvals the same way the
-tools do. Return digests and short excerpts, not whole pages.
+`web.search` or `web.fetch` (like any outside content, see
+[Eval](../sandbox/EVAL.md#outside-content-in-agent-eval)) resets the task's
+standing approvals the same way the tools do. Return digests and short excerpts, not whole pages.
 
 ## Large pages and PDFs
 

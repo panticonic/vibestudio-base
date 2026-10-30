@@ -339,9 +339,9 @@ or import them from `@workspace/runtime`.
   egress, `session: "browser"` still needs approval, and a recall needs
   `workspace.graph.read`. Page and result text is untrusted external content.
   Eval's `web.search` uses DuckDuckGo or a registered Tavily, Brave, or Exa key;
-  Codex-subscription search is the agent tool's backend only. In agent eval,
-  fetched or searched content drops the task's standing approvals exactly as
-  the tools do, so the next gated operation asks the person again. Return only the
+  Codex-subscription search is the agent tool's backend only. See
+  [Outside content](#outside-content-in-agent-eval) for what fetched content
+  does to your standing approvals. Return only the
   small summary you need, never a whole page.
 - **`ctx`**: `{ contextId, objectKey }` for the current eval session.
 - **`scope`**: live notebook scope (see below). `scope.x = …` keeps the same
@@ -451,6 +451,22 @@ sending still goes through `notify`.
 const rows = await agent.addressees();
 rows.find((row) => row.ref === "parent");  // present when you are a subagent
 ```
+
+#### Outside content in agent eval
+
+Your standing task approvals were granted for the task as it stood. When
+content from outside the workspace enters an agent-owned eval, the agent drops
+those approvals, exactly as it does when its `web_fetch` or `web_search` tool
+ingests such content, and the next gated operation asks the person again. This
+is decided by code at the eval's single RPC transport, not by the model, and it
+covers every path that brings outside content in: `web.*`, `credentials.fetch`
+and its `hookForUrl`/`forAudience`/`publishFetch` variants, `credentials.gitHttp`,
+credentialed WebSocket scopes, `git.importProject`/`cloneRepo`/`pullUpstream`,
+and reads of a live page through a panel handle (`handle.cdp`, screenshots,
+console history). It applies equally to `services.*` and raw `rpc.call`. The
+report goes out once per source (a host, a repository, a panel), and it fails
+the call if the agent cannot record it. Evals with no owning agent hold no
+standing grants and are unaffected.
 
 The agent's own advertised participant methods are deliberately not available
 as model tools: calling the active turn back through its channel would make it
