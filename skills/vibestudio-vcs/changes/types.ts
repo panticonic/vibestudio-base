@@ -1,0 +1,111 @@
+/** What a compare result says about one side's reference to a state; only the paths are read. */
+export type CoordinatePaths = {
+  /** Where the file or repository was at the common base. */
+  base?: string;
+  /** Where it is in the target state (for a local comparison, protected main). */
+  ours?: string;
+  /** Where it is in the source state (for a local comparison, the working changes). */
+  theirs?: string;
+};
+
+/**
+ * The part of a `vcs.compare` result these functions read. For a comparison of the local working state against
+ * protected main (`vcs({ operation: "compare", view: "local" })`), the changes to describe are on the `theirs` side.
+ * Fields not listed here are accepted and ignored.
+ */
+export type Compare = {
+  resolution: {
+    /** Every coordinate the source touched is satisfied or decided. */
+    complete: boolean;
+    remainingCoordinateCount: number;
+    concluded: boolean;
+  };
+  counts: {
+    adopt: number;
+    convergent: number;
+    composed: number;
+    conflict: number;
+    resolved: number;
+  };
+  coordinates: {
+    coordinate: {
+      kind: "file" | "repository";
+      id: string;
+      paths: CoordinatePaths;
+    };
+    status: "adopt" | "convergent" | "composed" | "conflict" | "resolved";
+    aspects: {
+      aspect: "content" | "placement" | "mode" | "presence" | "path";
+      status: "adopt" | "convergent" | "composed" | "conflict" | "ours";
+    }[];
+  }[];
+  intents: {
+    side: "ours" | "theirs";
+    /** The coordinates (by id) this intent covers. */
+    coordinates: { kind: "file" | "repository"; id: string }[];
+    intent: {
+      /** The recorded intent, the request that triggered the work, or a mechanical summary of the effect. */
+      text: string;
+      /** stated: written by the author; trigger: an excerpt of the request; mechanical: derived from the effect. */
+      tier: "stated" | "trigger" | "mechanical";
+    };
+    state?: "merged" | "settled" | "split" | "contested" | "pending";
+  }[];
+  /** True when more changes exist than this page lists. */
+  intentsTruncated: boolean;
+  nextCursor: string | null;
+};
+
+/** One file or repository the source side changes. */
+export type ChangedFile = {
+  /** The path after the change (the path before it when the change deletes). */
+  path: string;
+  change: "added" | "deleted" | "edited" | "moved" | "mode-changed";
+  /** The path before a move. */
+  from?: string;
+  /** The repository the file belongs to: the first two path segments. */
+  unit: string;
+  status: "adopt" | "convergent" | "composed" | "conflict" | "resolved";
+};
+
+/** A unit (repository), the files that changed in it, and the recorded intents of the work that changed them. */
+export type UnitChange = {
+  unit: string;
+  files: ChangedFile[];
+  /** Stated intents first, then the request that triggered the work, then mechanical summaries (for example "file-create path"). */
+  intents: { text: string; tier: "stated" | "trigger" | "mechanical" }[];
+};
+
+/** The compare result reduced to what a description needs. */
+export type ChangeDigest = {
+  units: UnitChange[];
+  /** All the source side's recorded intents, stated ones first. */
+  intents: { text: string; tier: "stated" | "trigger" | "mechanical" }[];
+  fileCount: number;
+  truncated: boolean;
+};
+
+/** A proposal for `vcs({ operation: "commit", message, intent })`: the agent commits it, this function does not. */
+export type CommitProposal = {
+  /** One line, 72 characters or fewer, in the imperative: what the change does. */
+  message: string;
+  /** A recorded intent that gives the reason for the change, copied unchanged; null when none gives a reason. */
+  intent: string | null;
+  /** Problems found in the message that the caller should see (empty when none). */
+  warnings: string[];
+};
+
+export type ChangeSummary = {
+  /** One sentence: the net effect of all changes. */
+  headline: string;
+  units: {
+    unit: string;
+    files: ChangedFile[];
+    /** One sentence on what changed in this unit. */ what: string;
+  }[];
+  /** ready: nothing needs a decision; decisions-needed: composed or undecided coordinates remain; conflicts: some coordinate conflicts. */
+  state: "ready" | "decisions-needed" | "conflicts";
+  /** Coordinates that conflict or were composed mechanically: the ones to read before merging or committing. */
+  attention: { path: string; why: "conflict" | "composed" }[];
+  truncated: boolean;
+};
