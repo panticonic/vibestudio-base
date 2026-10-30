@@ -17,6 +17,12 @@ export type LocalModelRelease = {
     readonly contextTokens: number;
     /** Measured context memory per token (KV, sliding-window and recurrent state), which sizes the server's slots. */
     readonly kvBytesPerToken: number;
+    /**
+     * The model has sliding-window attention layers, so the server runs with `--swa-full`. Without it llama.cpp
+     * cannot resume from a cached prompt prefix on those layers (a restored warm opening, or any earlier prompt): it logs
+     * "forcing full prompt re-processing" and evaluates the whole prompt again. `kvBytesPerToken` is the cache size with it.
+     */
+    readonly fullSlidingWindowCache?: boolean;
     readonly downloadUrl: string;
     /** Chat template under models/templates/ (packaged as model-assets/); the GGUF's own template, extracted verbatim. */
     readonly template: string;

@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "bb44ec9212bf1b0dee810529bc08d510293ac0f5",
+  "commit": "c5740cf93405e368d1fd4b59cf17b97f0a9d7872",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -75,7 +75,7 @@
     "evaluation/types/llama/runtime.d.ts": "47c34efc7cc58a91593ccd9fdfa3d66c4b193bc952f5186cd8ee7d4c896adda5",
     "evaluation/types/llama/slots.d.ts": "3777ed744fa8ad3fa024f2eb39049ce4e352bbdf80bccafe64089aec99542bfa",
     "evaluation/types/machine-store.d.ts": "5eccba700a2aa21a25adb453f9be7620b077a27e8b7cf43cda5d5923067c3bd6",
-    "evaluation/types/model-catalog.d.ts": "fac5baed90881bb798ab17862166fb383ef8337bcc7a4bbd9a451d406218f732",
+    "evaluation/types/model-catalog.d.ts": "578c0e1559d66f82036fda478b1708f9dc5c51aac5df5d1ab6b1fc05c6ec74a1",
     "evaluation/types/model/chat-completion.d.ts": "fb7b67ab4413077f7f6ab4fe490eba5f9fabc171da249942fadc8c70cb95c2ce",
     "evaluation/types/model/config.d.ts": "aa673e72108c77f0b0a12c53eec2b55b2476ea1fa73ce681276b6a2531a2aec2",
     "evaluation/types/model/driver.d.ts": "9f6f9fc74d52c1857da5ce208fe6c5fe245655101f7f2d9126d3f24d3ee4efb1",
