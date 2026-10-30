@@ -49,6 +49,47 @@ windows. Pass `pageInfo.previous` or `pageInfo.next` as the next `window`, or
 let `gad.collectChannelEnvelopePages` follow them; don't request oversized
 pages.
 
+For "is this channel healthy?", load the typed report instead of reading the
+raw snapshot yourself. Code takes one snapshot, lists what it shows, and says
+how soon each finding needs attention by the documented policy; no model is
+involved.
+
+```ts
+const health = await natlang.load("skills/gad-context/inspectAgentHealth.nl");
+const report: HealthReport = await health.collect({ channelId: chat.channelId });
+return report;
+```
+
+- `integrity` (`ok` or `broken`) and `activity` (`idle` or `in-flight`) stay
+  separate answers.
+- `findings`: each has a `kind`, a `count`, the `evidence` that decides its
+  meaning, an `urgency` (`expected`, `investigate`, `urgent`), and the
+  dedicated inspector to run next (`next`).
+- `status`: `urgent` or `investigate` when any finding says so or integrity is
+  broken, else `busy` when work is in flight, else `healthy`.
+
+To recap a conversation, read pages of envelopes with
+`gad.inspectChannelEnvelopes` (or `gad.collectChannelEnvelopePages`) and pass
+them to the summary. It returns exact counts, the opening and latest message
+by `seq` with their text, and how the conversation `standing is: `agent-replied`,
+`awaiting-agent`, `failed`, or `empty`. Whether the agent's last message
+answers or asks the user for something, and what the conversation is about,
+stay with you: a small model misjudged "let me know if you want more" as a
+request in 3 of 8 measured cases, so the summary does not guess.
+
+```ts
+const pages = await gad.collectChannelEnvelopePages(
+  { channelId: chat.channelId, window: { kind: "tail" } },
+  { maximumItems: 100 },
+  gad.inspectChannelEnvelopes,
+);
+const summarize = await natlang.load("skills/gad-context/summarizeChannel.nl");
+const summary: ChannelSummary = summarize.collect(pages);
+return summary;
+```
+
+The raw form, when you need a field the report does not carry:
+
 ```ts
 const health = await gad.inspectAgentHealth({ channelId: chat.channelId });
 return {

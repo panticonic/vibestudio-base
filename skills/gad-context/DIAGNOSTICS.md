@@ -192,6 +192,11 @@ neither appears in `activity`, the activity counters, or the rows. `in-flight` t
 nested `turnState.summary` and `invocationState.summary` are the raw inspector
 counts and still include it.
 
+For a judged report, call the typed `inspectAgentHealth` function in
+[SKILL.md](SKILL.md): it takes this one snapshot, lists the findings below with
+their counts and evidence, and marks each `expected`, `investigate` or `urgent`
+by the policy in `inspectAgentHealth/policy.ts`, with the inspector to run next.
+
 The response holds only compact evidence: problem or open turn and
 invocation rows, active roster rows, a small envelope sample, and storage
 issues. Use a dedicated inspector only after it names a specific artifact.
