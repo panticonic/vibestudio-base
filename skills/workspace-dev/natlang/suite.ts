@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineEvaluationSuite } from "@natlang/node/evaluation";
-import { executorIdentityForChoice, loadModelConfiguration } from "@natlang/node/model";
+import { defineEvaluationSuite } from "@workspace/natlang/evaluation";
+import { executorIdentityForChoice, loadModelConfiguration } from "@workspace/natlang/model";
 
 type Unit = { name: string; kind: string; description: string };
 type Expected = { family: "brand" | "lucide" | "emoji"; accept: string[] };

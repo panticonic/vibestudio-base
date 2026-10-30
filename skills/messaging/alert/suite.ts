@@ -1,5 +1,5 @@
-import { defineEvaluationSuite } from "@natlang/node/evaluation";
-import { executorIdentityForChoice, loadModelConfiguration } from "@natlang/node/model";
+import { defineEvaluationSuite } from "@workspace/natlang/evaluation";
+import { executorIdentityForChoice, loadModelConfiguration } from "@workspace/natlang/model";
 
 /** One case calls one exported function of `natlang.ts` with `args`; `expected` is its exact result. */
 type CaseInput = { function: "alertRung"; args: unknown[] };
