@@ -311,15 +311,19 @@ const cdpEndpointParameters = Type.Object(
 
 export type PanelCdpEndpointParams = Static<typeof cdpEndpointParameters>;
 
-interface CdpEndpoint {
+/**
+ * The endpoint's loopback address. The host returns it beside a single-use
+ * handshake grant that any holder can redeem for that target; neither the
+ * model output nor these channel-visible details carry that grant.
+ */
+interface CdpEndpointDetails {
   wsEndpoint: string;
-  token?: string;
 }
 
 export function createPanelCdpEndpointTool(
   callMain: CallMain,
   boundPanelId: string,
-): ToolRegistration<typeof cdpEndpointParameters, JsonRepresentation<CdpEndpoint | null>> {
+): ToolRegistration<typeof cdpEndpointParameters, JsonRepresentation<CdpEndpointDetails | null>> {
   return {
     name: "panel_cdp_endpoint",
     description:
@@ -327,19 +331,19 @@ export function createPanelCdpEndpointTool(
     parameters: cdpEndpointParameters,
     execute: async (
       params: PanelCdpEndpointParams, _api, context,
-    ): Promise<ToolExecutionResult<JsonRepresentation<CdpEndpoint | null>>> => {
+    ): Promise<ToolExecutionResult<JsonRepresentation<CdpEndpointDetails | null>>> => {
       const panelId = params.panelId ?? boundPanelId;
-      const endpoint = await callMain("panelCdp.getCdpEndpoint", [
+      const { wsEndpoint } = await callMain("panelCdp.getCdpEndpoint", [
         panelId,
       ], context.abortSignal ? { signal: context.abortSignal } : undefined);
       return {
         output: [
           {
             type: "text",
-            text: `CDP endpoint for ${panelId}: ${endpoint.wsEndpoint}`,
+            text: `CDP endpoint for ${panelId}: ${wsEndpoint}`,
           },
         ],
-        details: copyJson(endpoint, { omitUndefinedProperties: true }) as JsonRepresentation<typeof endpoint>,
+        details: { wsEndpoint },
       };
     },
   };

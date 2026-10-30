@@ -639,25 +639,32 @@ with generic `eval`, a shell command, or direct `extensions.invoke` calls.
 import { browserData } from "@workspace/runtime";
 ```
 
-Core method groups:
+Methods by purpose:
 
-| Methods                                                                                                                  | Purpose                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `listImportHosts`, `listImportSources`, `previewImport`, `startImport`, `cancelImport`, `getImportJob`, `listImportJobs` | Discover sources and manage non-sensitive import jobs                            |
-| `previewSensitiveImport`, `startSensitiveImport`, `observeSensitiveImport`, `cancelSensitiveImport`                      | Review aggregate counts and control one sealed, persistent protected-data import |
-| `openBrowserPrivacyManager`                                                                                              | Open the host's protected-data manager; returns no vault rows                    |
-| `listOpenTabs`, `openTabsAsPanels`                                                                                       | Preview source tabs and open selected HTTP(S) tabs as panels                     |
-| `getBookmarks`, `addBookmark`, `updateBookmark`, `deleteBookmark`, `moveBookmark`, `searchBookmarks`                     | Manage bookmarks                                                                 |
-| `getHistory`, `searchHistory`, `deleteHistoryEntry`, `deleteHistoryRange`, `clearAllHistory`                             | Manage browsing history                                                          |
-| `getSitePreferences`, `setSiteZoom`, download and favicon methods                                                        | Manage browser chrome state                                                      |
-| `exportBookmarks`                                                                                                        | Export bookmarks                                                                 |
+| Methods                                                                                                                                                                  | Purpose                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `getBrowserEnvironment`                                                                                                                                                  | Identify the caller's browser environment                                                                        |
+| `listImportHosts`, `listImportAcquisitionOptions`, `beginImportAcquisition`, `listImportSources`, `releaseImportSource`                                                  | Discover import hosts and acquire or release opaque browser sources                                              |
+| `previewImport`, `startImport`, `observeImportJob`, `getImportJob`, `listImportJobs`, `cancelImport`                                                                     | Preview, run, and follow non-sensitive import jobs                                                               |
+| `previewSensitiveImport`, `startSensitiveImport`, `observeSensitiveImport`, `cancelSensitiveImport`                                                                      | Review aggregate counts and control one sealed, persistent protected-data import                                 |
+| `openBrowserDataSettings`                                                                                                                                                | Open Browser data in Settings, optionally at `"passwords"`, `"autofill"`, or `"siteData"`; returns no vault rows |
+| `listOpenTabs`, `openTabsAsPanels`                                                                                                                                       | Preview source tabs and open selected HTTP(S) tabs as panels                                                     |
+| `getBookmarks`, `addBookmark`, `updateBookmark`, `deleteBookmark`, `moveBookmark`, `searchBookmarks`, `exportBookmarks`                                                  | Manage and export bookmarks                                                                                      |
+| `getHistory`, `searchHistory`, `searchHistoryForAutocomplete`, `recordHistoryVisit`, `updateHistoryTitle`, `deleteHistoryEntry`, `deleteHistoryRange`, `clearAllHistory` | Read, record, and delete browsing history                                                                        |
+| `getSearchEngines`, `setDefaultEngine`, `saveSearchEngine`, `getSearchSuggestions`                                                                                       | Manage search engines and address-bar suggestions                                                                |
+| `listDownloads`, `listDownloadRecords`, `upsertDownloadRecord`, `pauseDownload`, `resumeDownload`, `cancelDownload`, `openDownload`, `revealDownload`                    | Track and control downloads                                                                                      |
+| `getSitePreferences`, `setSiteZoom`, `putPageFavicon`, `getPageFavicon`                                                                                                  | Manage per-site zoom and page favicons                                                                           |
 
 Use `await help("browserData")` for the full live API. Site permissions are
 approval records, not browser data. Imported profiles and their paths are never
 exposed.
 
-`startImport` is keyed by source and deterministic: repeating an import updates
-changed records and adds new ones without duplicates. The runtime client always
+`startImport(selection, operationId)` is keyed by source and deterministic:
+repeating an import updates changed records and adds new ones without
+duplicates. Generate a fresh `operationId` for each import and reuse it only to
+retry the identical request; it is also the job ID, so
+`observeImportJob(operationId)` follows progress while `startImport` resolves
+with the finished job. The runtime client always
 goes through the broker selected in the manifest, so imported history and visits
 recorded by Vibestudio are rows in the same BrowserDataDO. Do not resolve or call
 BrowserDataDO directly from a panel or worker.
@@ -690,11 +697,14 @@ eval({ code: `
   const sources = await browserData.listImportSources(host.hostId);
   const chrome = sources.find(source => source.browser === "chrome");
   if (!chrome) { console.log("Chrome not found"); return; }
-  const job = await browserData.startImport({
-    hostId: host.hostId,
-    sourceId: chrome.sourceId,
-    dataTypes: ["bookmarks", "history"],
-  });
+  const job = await browserData.startImport(
+    {
+      hostId: host.hostId,
+      sourceId: chrome.sourceId,
+      dataTypes: ["bookmarks", "history"],
+    },
+    crypto.randomUUID(),
+  );
   console.log("Import job:", job.jobId, job.phase);
 `
 })

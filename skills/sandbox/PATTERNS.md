@@ -294,11 +294,14 @@ if (host) {
   const sources = await browserData.listImportSources(host.hostId);
   const chrome = sources.find((source) => source.browser === "chrome");
   if (!chrome) throw new Error("Chrome is not available on the selected host");
-  const job = await browserData.startImport({
-    hostId: host.hostId,
-    sourceId: chrome.sourceId,
-    dataTypes: ["bookmarks", "history"],
-  });
+  const job = await browserData.startImport(
+    {
+      hostId: host.hostId,
+      sourceId: chrome.sourceId,
+      dataTypes: ["bookmarks", "history"],
+    },
+    crypto.randomUUID(),
+  );
   console.log("Import job:", job.jobId, job.phase);
 
   // Optional: recreate current source-browser HTTP(S) tabs as Vibestudio panels.
@@ -318,9 +321,11 @@ const bookmarks = await browserData.exportBookmarks("json");
 
 Browser profiles and filesystem paths are never exposed to userland.
 `startImport` is deterministic for a given opaque host/source pair: rerunning it
-updates changed records without creating duplicates. `openTabsAsPanels()` is
-deliberately not idempotent and creates new panels on every call. By default it
-creates a new root for the source browser with one nested collection per window.
+with a fresh `operationId` updates changed records without creating duplicates.
+Reuse an `operationId` only to retry the identical request.
+`openTabsAsPanels()` is deliberately not idempotent and creates new panels on
+every call. By default it creates a new root for the source browser with one
+nested collection per window.
 Pass `destination: "caller"` to attach the tabs under the calling panel, or
 `groupBy: "none"` to place every tab directly under the chosen anchor.
 

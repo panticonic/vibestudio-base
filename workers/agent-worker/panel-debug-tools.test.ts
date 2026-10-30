@@ -261,4 +261,18 @@ describe("panel_cdp_endpoint", () => {
     });
     expect(tool.description).toContain("panel_eval");
   });
+
+  it("keeps the single-use handshake grant out of the transcript", async () => {
+    const callMain = calls({
+      wsEndpoint: "ws://server/cdp/slot-a",
+      token: "handshake-grant",
+    });
+    const result = await executeTool(
+      createPanelCdpEndpointTool(callMain, BOUND),
+      {},
+      { callId: "t1" },
+    );
+    expect(result.details).toEqual({ wsEndpoint: "ws://server/cdp/slot-a" });
+    expect(JSON.stringify(result.output)).not.toContain("handshake-grant");
+  });
 });
