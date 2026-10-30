@@ -102,6 +102,11 @@ export function resolveModelRole(
               ? "The local executor model is running."
               : "The local executor model is installed and loads on first use.",
         };
+      // A local executor that cannot stay loaded beside the agent model reports why instead of thrashing it.
+      const localWhy =
+        local?.availability.state === "error"
+          ? ` (${local.availability.message})`
+          : "";
       const hosted = lowTierHostedModel(catalog, defaultModelRef);
       if (hosted)
         return {
@@ -112,7 +117,7 @@ export function resolveModelRole(
           reason:
             hosted.provider === TEST_MODEL_PROVIDER_ID
               ? "The deterministic test model fills the executor role."
-              : "The local executor model is not ready; using the lowest-priced usable hosted model, which is billed.",
+              : `The local executor model is not ready${localWhy}; using the lowest-priced usable hosted model, which is billed.`,
         };
       return {
         role,
@@ -120,7 +125,7 @@ export function resolveModelRole(
         source: "unavailable",
         model: null,
         reason:
-          "No local executor model is ready and no hosted model is usable. Connect a provider or install the local executor model.",
+          `No local executor model is ready${localWhy} and no hosted model is usable. Connect a provider or install the local executor model.`,
       };
     }
   }

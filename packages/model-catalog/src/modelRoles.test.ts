@@ -42,7 +42,7 @@ const catalogOf = (...models: ModelCatalogEntry[]): ModelCatalog => ({
   models,
 });
 
-const localExecutor = (state: "ready" | "startable" | "not-installed") =>
+const localExecutor = (state: "ready" | "startable" | "not-installed" | "error") =>
   entry(
     LOCAL_PROVIDER_ID,
     EXECUTOR_LOCAL_MODEL.id,
@@ -54,7 +54,9 @@ const localExecutor = (state: "ready" | "startable" | "not-installed") =>
           ? { state: "ready", detail: "running" }
           : state === "startable"
             ? { state: "startable", detail: "will-load-on-use" }
-            : { state: "needs-setup", detail: "not-installed" },
+            : state === "error"
+              ? { state: "error", message: "it does not fit in memory beside Big agent" }
+              : { state: "needs-setup", detail: "not-installed" },
     },
     { input: 0, output: 0 },
   );
@@ -153,6 +155,16 @@ describe("model roles", () => {
       ref: "vibestudio-test:deterministic",
       source: "test",
     });
+  });
+
+  it("resolves the executor to the hosted model, saying why, while the local one cannot stay loaded beside the agent model", () => {
+    const catalog = catalogOf(
+      entry("openai", "small", {}, { input: 0.1, output: 0.4 }),
+      localExecutor("error"),
+    );
+    const resolution = resolveModelRole("executor", catalog, "openai:small");
+    expect(resolution).toMatchObject({ ref: "openai:small", source: "hosted" });
+    expect(resolution.reason).toContain("it does not fit in memory beside Big agent");
   });
 
   it("reports an unavailable executor with a reason instead of inventing one", () => {
