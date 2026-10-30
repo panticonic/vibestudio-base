@@ -1,0 +1,76 @@
+{
+  "name": "@workspace-workers/natlang-records",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Natlang records",
+    "icon": "🧾",
+    "kind": "worker",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "NatlangRecordsDO"
+        }
+      ]
+    },
+    "tests": [
+      {
+        "name": "native",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ],
+    "authority": {
+      "provides": [],
+      "requests": []
+    },
+    "services": [
+      {
+        "action": "keep and review the call records of your workspace's natural-language programs",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code",
+            "session",
+            "mission"
+          ]
+        },
+        "description": "Stores what natural-language programs did (calls, traces, values), accepts good, bad and fixed verdicts as tuning examples, and streams live progress to whoever is watching.",
+        "durableObject": {
+          "className": "NatlangRecordsDO"
+        },
+        "name": "natlang-records",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "automation",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.natlang.v1"
+        ],
+        "title": "Natural-language program records"
+      }
+    ]
+  },
+  "dependencies": {
+    "@vibestudio/content-addressing": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/natlang-records": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@vibestudio/durable": "workspace:*",
+    "vitest": "^3.2.7"
+  },
+  "exports": {
+    ".": "./index.ts"
+  }
+}

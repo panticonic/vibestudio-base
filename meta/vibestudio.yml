@@ -53,6 +53,8 @@ services:
     source: workers/model-settings
   - name: model-gateway
     source: workers/model-gateway
+  - name: natlang-records
+    source: workers/natlang-records
   - name: quickfire
     source: workers/quickfire-service
   - name: missions
@@ -78,6 +80,9 @@ singletonObjects:
   - className: ModelGatewayDO
     key: workspace-model-gateway
     source: workers/model-gateway
+  - className: NatlangRecordsDO
+    key: workspace-natlang-records
+    source: workers/natlang-records
   - className: QuickfireSessionsDO
     key: workspace-quickfire
     source: workers/quickfire-service

@@ -802,6 +802,37 @@ Each turn is attributed to the authenticated caller (an agent's eval to its
 owning agent) in the gateway's native model evidence. Declare
 `workspace-service:model-gateway` in the caller's authority requests.
 
+### Natlang call records and live events
+
+The workspace's natlang records service, `vibestudio.natlang.v1`, stores the
+`natlang.calls/1` record of every natlang call (with its values and event
+stream, content-addressed), tester verdicts, and the tuning examples they
+produce, per workspace and scoped by owner (agent, channel, run). Use
+`@workspace/natlang-records`:
+
+```ts
+import { createNatlangRecordsClient } from "@workspace/natlang-records";
+
+const records = createNatlangRecordsClient(rpc);
+const calls = await records.listCalls({ agentRef, parentCallId: null, limit: 20 });
+const detail = await records.getCall(calls[0].call_id); // record, events, annotations
+const { message } = await records.feedback({ callId, verdict: "fix", expected: "billing" });
+const { jsonl } = await records.tuneExamples({ program: programRoot }); // text for tune.examples.jsonl
+```
+
+`begin`/`progress`/`record`/`discard` are the runtime's reporting calls; a
+running call has no `record` until it ends. Feedback on a root `.nl` program
+call stores a tune example in the service; the service never touches workspace
+files, so write `tuneExamples(...).jsonl` into the program folder yourself.
+Storage is bounded by size (oldest unpinned data is evicted first; annotated
+calls are kept), never by age.
+
+Live events are pull-gated. Ask `liveInterest()` once and call `publishLive`
+only when it reports a subscriber; a service with no subscriber stores and
+delivers nothing. Watch with `subscribeLive(filter)`, whose deliveries are an
+async iterable tied to the response stream: closing it (or losing the
+connection) ends the subscription.
+
 Which methods are exposed is decided by the active provider build,
 not by the source currently in the workspace. After adding or changing an
 exposed method on an existing declared service:
