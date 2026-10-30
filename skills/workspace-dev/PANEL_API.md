@@ -564,6 +564,11 @@ else console.log(packet.consoleHistory.error);
 console.log(packet.document?.document.text);
 ```
 
+`diagnosePanelLoad(packet)` from `@workspace-skills/workspace-dev` turns the
+packet (or an `observe()` result) into the layer that failed and the one check
+to make next; see [Diagnose panel loading
+first](SKILL.md#diagnose-panel-loading-first).
+
 `consoleHistory` has `entries`, `errors`, `dropped`, and `capacity`; there is no
 `warnings` array. Get warnings with
 `entries.filter((entry) => entry.level === "warning")`.

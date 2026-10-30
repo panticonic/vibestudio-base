@@ -64,6 +64,29 @@ when the packet places the failure below the panel lifecycle. Do not rebuild,
 reload, open a duplicate, enter VCS, or read test sources just to find out which
 layer failed. Profile performance only after the panel lifecycle is healthy.
 
+`diagnosePanelLoad` reads that evidence for you. Pass it the observation or the
+diagnostic packet; it routes by `phase` and `failure.code`, never by message
+text:
+
+```ts
+import { diagnosePanelLoad } from "@workspace-skills/workspace-dev";
+
+const { layer, next, evidence } = diagnosePanelLoad(await panel.diagnose());
+```
+
+| `next`             | Do                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `observe-again`    | Still preparing: observe on the same handle. Do not rebuild, reload, or open another. |
+| `diagnose`         | The attempt failed without a structured failure: call `diagnose()` once.             |
+| `fix-source`       | Unit, ref, or manifest is wrong. Retrying cannot fix it; repair the source.          |
+| `build-report`     | `services.build.getBuildReport(source, ctx:<contextId>)` for this source and ref.    |
+| `read-console`     | Read `consoleHistory.errors` in the packet, then repair the source.                  |
+| `supervision`      | `runtime.supervision.health(identity)` and `logs(identity)` for the runtime entity.  |
+| `server-logs`      | The failure is below the panel lifecycle: read the server logs.                      |
+| `reacquire-handle` | The handle no longer names a panel: observe through the panel tree.                  |
+| `rematerialize`    | The runtime was released: `focus()` or `rebuild()` brings it back.                   |
+| `exercise-flow`    | Ready is not success: exercise the behavior the user asked for.                      |
+
 ## Repo-local skills
 
 Put implementation-specific guidance next to its code as `<repo>/SKILL.md`

@@ -45,3 +45,5 @@ export type {
 } from "./unit-icons.js";
 export { setUnitIcon } from "./set-unit-icon.js";
 export type { SetUnitIconParams, SetUnitIconResult } from "./set-unit-icon.js";
+export { diagnosePanelLoad } from "./diagnose-panel-load.js";
+export type { Diagnosis, PanelLayer, PanelNextCheck } from "./diagnose-panel-load.js";
