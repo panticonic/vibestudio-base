@@ -140,11 +140,15 @@ export function createCredentialedModelConnection(
   return createModelConnection({ ...input, kind: "credential" }, context);
 }
 
-/** The extension owns its model server and secret. The host injects authentication
- * only after attributing each request to the exact active native model task. */
+/** The extension owns its model server and secret. Requests travel as host-mediated
+ * fetches on `rpc`, which carries the verified active native model invocation; the
+ * host injects authentication only after revalidating that exact task. A raw
+ * egress request names its code unit, never its invocation, so it cannot be
+ * attributed to a task. */
 export function createLoopbackModelConnection(
   input: {
     readonly model: ModelTransportTarget;
+    readonly rpc: RpcCaller;
     readonly egressFetch: typeof fetch;
     readonly onDiagnostic?: (event: NativeModelTransportDiagnostic) => void;
   },
@@ -166,6 +170,7 @@ type ModelTransportInput = {
     }
   | {
       readonly kind: "loopback";
+      readonly rpc: RpcCaller;
     }
 );
 
@@ -210,7 +215,10 @@ function createModelConnection(
           cleanupRpc: input.cleanupRpc,
           client: createCredentialClient(input.rpc),
         }
-      : { kind: "loopback" as const };
+      : {
+          kind: "loopback" as const,
+          client: createCredentialClient(input.rpc),
+        };
   const egressFetch = input.egressFetch;
   const accountId =
     model.provider === "openai-codex"
@@ -584,28 +592,19 @@ function createModelConnection(
               )
             : undefined;
           signal.throwIfAborted();
+          const audiences = [{ url: base.href, match: "path-prefix" as const }];
           const response =
             transport.kind === "credential"
               ? await transport.client.fetch(
                   url,
-                  {
-                    method: request.method,
-                    headers,
-                    body,
-                    signal,
-                  },
-                  {
-                    credentialId: transport.credentialId,
-                    audiences: [{ url: base.href, match: "path-prefix" }],
-                  },
+                  { method: request.method, headers, body, signal },
+                  { credentialId: transport.credentialId, audiences },
                 )
-              : await egressFetch(url, {
-                  method: request.method,
-                  headers,
-                  body,
-                  signal,
-                  redirect: "manual",
-                });
+              : await transport.client.fetch(
+                  url,
+                  { method: request.method, headers, body, signal },
+                  { audiences },
+                );
           const owned = ownResponse(response, signal);
           signal.throwIfAborted();
           return owned;

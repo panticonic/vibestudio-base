@@ -149,22 +149,20 @@ function upgraded(socket: Socket): Response {
 }
 
 describe("credentialed model transport ownership", () => {
-  it("leaves local authentication to attributed host egress and joins response cancellation", async () => {
+  it("sends local requests as host-mediated fetches on the invocation's rpc, with no authentication of their own, and joins response cancellation", async () => {
     const loopback = {
       ...model,
       provider: "local",
       baseUrl: "http://127.0.0.1:32123/v1",
     };
     const cancel = latch<void>();
-    const egress = vi.fn<typeof fetch>(
+    const rpc = rpcFixture(
       async () =>
         new Response(new ReadableStream({ cancel: () => cancel.promise })),
     );
+    const egress = vi.fn<typeof fetch>();
     const connection = createLoopbackModelConnection(
-      {
-        model: loopback,
-        egressFetch: egress,
-      },
+      { model: loopback, rpc, egressFetch: egress },
       BACKGROUND_CONTEXT,
     );
     expect(isModelCredentialSentinel(connection.options.apiKey)).toBe(true);
@@ -172,10 +170,22 @@ describe("credentialed model transport ownership", () => {
       `${loopback.baseUrl}/chat/completions`,
       { headers: { authorization: `Bearer ${connection.options.apiKey}` } },
     );
-    const init = egress.mock.calls[0]![1]!;
-    expect(new Headers(init.headers).get("authorization")).toBeNull();
-    expect(new Headers(init.headers).has(EGRESS_CREDENTIAL_HEADER)).toBe(false);
-    expect(init.redirect).toBe("manual");
+    // The host revalidates the active invocation and injects the key; the
+    // request names no credential and carries no authorization.
+    expect(rpc.wire.stream.mock.calls[0]?.slice(0, 3)).toEqual([
+      "main",
+      "credentials.proxyFetch",
+      [
+        {
+          url: `${loopback.baseUrl}/chat/completions`,
+          method: "GET",
+          headers: {},
+          body: undefined,
+          audiences: [{ url: loopback.baseUrl, match: "path-prefix" }],
+        },
+      ],
+    ]);
+    expect(egress).not.toHaveBeenCalled();
     const closing = connection.close(BACKGROUND_CONTEXT);
     let closed = false;
     void closing.then(() => {
@@ -200,6 +210,7 @@ describe("credentialed model transport ownership", () => {
       expect(() =>
         createLoopbackModelConnection(
           {
+            rpc: rpcFixture(),
             model: { ...model, baseUrl },
             egressFetch: egress,
           },
@@ -222,6 +233,7 @@ describe("credentialed model transport ownership", () => {
     const connection = createLoopbackModelConnection(
       {
         model: loopback,
+        rpc: rpcFixture(),
         egressFetch: egress,
       },
       BACKGROUND_CONTEXT,

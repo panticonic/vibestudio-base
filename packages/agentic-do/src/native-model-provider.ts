@@ -234,6 +234,7 @@ export function createProtectedModelProvider(
       return createLoopbackModelConnection(
         {
           model: prepared.model,
+          rpc,
           egressFetch: host.egressFetch,
           onDiagnostic,
         },
