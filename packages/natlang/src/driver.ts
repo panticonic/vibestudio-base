@@ -23,7 +23,8 @@ export interface ModelResolver {
  *
  * `model` is a model role (`executor`) or a "provider:id" ref; the resolver turns
  * it into the catalog entry whose API the request is rendered for, and the turn
- * runs on exactly that ref. Aborting `signal` cancels the pending gateway turn:
+ * runs on exactly that ref. The driver has no `decide` (decision readout): the gateway runs whole turns and cannot score
+ * a set of replies, so the runtime answers a finite-result call with the ordinary tool loop. Aborting `signal` cancels the pending gateway turn:
  * the abort reaches the gateway as the inbound call's cancellation.
  */
 export function gatewayDriver(options: {
