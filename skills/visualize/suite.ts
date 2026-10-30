@@ -54,7 +54,7 @@ export default defineEvaluationSuite({
       const correct = completed && result === testCase.expected;
       return {
         quality: correct ? 1 : 0,
-        gates: { completed },
+        gates: { completed } as Record<string, boolean>,
         feedback: correct ? "Correct." : `Expected ${String(testCase.expected)}; observed ${String(result ?? outcome.error?.message)}.`,
       };
     }
@@ -62,7 +62,7 @@ export default defineEvaluationSuite({
     return {
       quality: matched / total,
       metrics: { matched, total },
-      gates: { completed, rendered: completed && typeof (result as { mdx?: unknown } | undefined)?.mdx === "string" },
+      gates: { completed, rendered: completed && typeof (result as { mdx?: unknown } | undefined)?.mdx === "string" } as Record<string, boolean>,
       feedback: `${matched} of ${total} expected values held.${completed ? "" : ` ${outcome.error?.message ?? ""}`}`,
     };
   },
