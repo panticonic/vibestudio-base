@@ -52,6 +52,24 @@ From eval, `await agent.addressees()` returns the same rows as data
 (`{ ref, kind, note }[]`), for code that resolves a person or agent name to the
 exact ref before you call `notify`. It lists; it never sends.
 
+To turn a name a user said ("tell Maria the build passed") into that exact ref,
+use the typed resolver instead of matching rows by eye:
+
+```ts
+const resolver = await natlang.load(
+  "skills/messaging/addressee/resolveAddressee.nl",
+);
+const who = await resolver.resolve("Tell Maria the build passed");
+// { kind: "ref", ref: "@maria", note: "Maria Silva (desktop)" }
+// { kind: "ambiguous", reason: "several" | "none", candidates: [...] }
+```
+
+A small model judges each addressee against what the user said; an exact rule
+returns a ref only when one row fits and no other might. An ambiguity comes back
+as data with the competing rows, never as a guess: ask the user which one, and
+hold the note unsent. The resolver does not send; you call `notify` with the
+returned `ref`. It resolves one recipient per call (resolve each name for a list).
+
 **Unresolvable refs fail the call.** A misspelled handle returns suggestions
 instead of being broadcast; a handle that matches two participants returns an
 error asking which one. Nothing is guessed, so a message never reaches the
