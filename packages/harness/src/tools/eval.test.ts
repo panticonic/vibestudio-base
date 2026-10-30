@@ -324,6 +324,88 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(text).toContain("intentional user-facing result");
   });
 
+  it("lists the natlang calls a cell made, one compact line each", async () => {
+    const out = await formatEvalResult({
+      success: true,
+      console: "",
+      natlang: {
+        calls: [
+          {
+            callId: "c1",
+            name: "triage",
+            outcome: "returned",
+            turns: 1,
+            promptTokens: 120,
+            completionTokens: 8,
+            durationMs: 340,
+            model: "lfm3-1.7b",
+            recordId: "rec-1",
+          },
+          {
+            callId: "c2",
+            name: "brief",
+            outcome: "failed",
+            detail: "return type mismatch",
+            turns: 3,
+            promptTokens: 900,
+            completionTokens: 40,
+            durationMs: 2100,
+          },
+        ],
+        omitted: 2,
+      },
+    });
+    const text = textOf(out);
+    expect(text).toContain("[natlang] 4 calls:");
+    expect(text).toContain(
+      "- triage: returned [1 turn, 120+8 tokens, 340ms, lfm3-1.7b] record rec-1",
+    );
+    expect(text).toContain(
+      "- brief: failed (return type mismatch) [3 turns, 900+40 tokens, 2100ms]",
+    );
+    expect(text).toContain("- ... 2 more calls not listed");
+    expect(out.details).toMatchObject({ natlang: { calls: [{ callId: "c1" }, { callId: "c2" }] } });
+  });
+
+  it("omits the natlang section when the cell made no calls", async () => {
+    const text = textOf(
+      await formatEvalResult({ success: true, console: "", natlang: { calls: [] } }),
+    );
+    expect(text).not.toContain("[natlang]");
+  });
+
+  it("surfaces a failed natlang call as the cell's user-code failure text", async () => {
+    const out = await formatEvalResult({
+      success: false,
+      console: "",
+      failureKind: "user-code",
+      error: rpcFailure(
+        "natlang triage: failed: return type mismatch (record rec-9)",
+      ),
+      natlang: {
+        calls: [
+          {
+            callId: "c1",
+            name: "triage",
+            outcome: "failed",
+            detail: "return type mismatch",
+            turns: 2,
+            promptTokens: 10,
+            completionTokens: 2,
+            durationMs: 5,
+            recordId: "rec-9",
+          },
+        ],
+      },
+    });
+    const text = textOf(out);
+    expect(text).toContain(
+      "[eval] Error: natlang triage: failed: return type mismatch (record rec-9)",
+    );
+    expect(text).toContain("- triage: failed (return type mismatch)");
+    expect(out.isError).toBe(true);
+  });
+
   it("projects a canonical panel screenshot as native image content without base64 text", async () => {
     const data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
     const out = await formatEvalResult(

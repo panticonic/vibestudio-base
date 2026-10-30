@@ -3,7 +3,7 @@
  *
  * Turns two silent footguns into clear, actionable errors:
  *  1. Importing an ambient-only global (the `EVAL_AMBIENT_ONLY` set:
- *     `services`/`scope`/`scopes`/`db`/`ctx`/`help`/`chat`) from
+ *     `scope`/`scopes`/`db`/`ctx`/`help`/`chat`/`agent`/`automations`/`nl`/`natlang`) from
  *     `@workspace/runtime` — these are injected free variables, not exports, so
  *     importing them shadows the working binding with `undefined`. (`rpc`/`fs`
  *     are NOT in this set — they are genuinely importable.)

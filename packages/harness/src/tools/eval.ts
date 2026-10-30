@@ -184,6 +184,7 @@ export interface EvalRunResult {
   panelResources?: {
     open: Array<{ id: string; source: string; kind: "workspace" | "browser" }>;
   };
+  natlang?: import("@vibestudio/service-schemas/eval").EvalNatlangResult;
   kernel?: {
     incarnationId: string;
     startedAt: number;
@@ -385,6 +386,9 @@ export async function formatEvalResult(
         : `[eval] Return value:\n${clampText(safeStringify(projectedReturn), MAX_RETURN_CHARS, "$lastLargeReturn")}`,
     );
   }
+  if (result.natlang?.calls.length) {
+    parts.push(formatNatlangCalls(result.natlang));
+  }
   const keys = result.scopeKeys ?? [];
   if (
     result.operationJournal &&
@@ -421,6 +425,24 @@ export async function formatEvalResult(
     details: toolDetails(details),
     isError: !result.success,
   };
+}
+
+/** One compact line per natlang call the cell made; a failed call keeps its detail. */
+function formatNatlangCalls(natlang: NonNullable<EvalRunResult["natlang"]>): string {
+  const lines = natlang.calls.map((call) => {
+    const stats = [
+      `${call.turns} ${call.turns === 1 ? "turn" : "turns"}`,
+      `${call.promptTokens}+${call.completionTokens} tokens`,
+      `${call.durationMs}ms`,
+      ...(call.model ? [call.model] : []),
+    ].join(", ");
+    return (
+      `- ${call.name}: ${call.outcome}${call.detail ? ` (${call.detail})` : ""} [${stats}]` +
+      (call.recordId ? ` record ${call.recordId}` : "")
+    );
+  });
+  if (natlang.omitted) lines.push(`- ... ${natlang.omitted} more calls not listed`);
+  return `[natlang] ${natlang.calls.length + (natlang.omitted ?? 0)} calls:\n${lines.join("\n")}`;
 }
 
 async function imageContentFromEvalReturn(

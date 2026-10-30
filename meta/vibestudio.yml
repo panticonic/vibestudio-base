@@ -36,6 +36,8 @@ providers:
     source: "@workspace/eval"
   evalRuntime:
     source: "@workspace/runtime"
+  natlang:
+    source: "@workspace/natlang"
   gitInterop:
     extension: extensions/git-bridge
 services:

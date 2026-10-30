@@ -271,7 +271,7 @@ BuildStore root set.
 ## Injected Variables
 
 These names are available in eval code. `scope`, `scopes`, `db`, `ctx`, `help`,
-`chat`, and `agent` exist only in eval. `rpc`, `fs`, `services`, and `hosts`
+`chat`, `agent`, `nl`, and `natlang` exist only in eval. `rpc`, `fs`, `services`, and `hosts`
 are the same portable bindings that panels and workers use; use them directly
 or import them from `@workspace/runtime`.
 
@@ -339,6 +339,18 @@ or import them from `@workspace/runtime`.
 - **`agent`**: inspect and configure THIS agent: `await agent.describe()`,
   `await agent.setModel("provider:model")`, and so on. Agent eval only; see
   below.
+- **`nl`** and **`natlang`**: natural-language functions (a typed, traced
+  small-model call in this cell's realm) when the workspace declares
+  `providers.natlang`. They need no import and load only for a cell that
+  mentions `nl`, `natlang`, `iterateOn`, or `Neuralese`; any other cell never
+  pays for them. The cell is compiled with `nl` lowered before it runs, so a
+  lowering error (for example a call that needs an explicit `nl<T>`) fails the
+  cell with `cell.tsx:line:column` positions and executes nothing. Each call the
+  cell makes is listed in the result (`[natlang]` lines, `details.natlang`), and
+  a failed call fails the cell as
+  `natlang <name>: <outcome>: <detail> (record <id>)`. Cancelling the eval
+  cancels its running natlang calls. `await help("natlang")` returns the
+  authoring summary.
 - **`help()`**: `await help()` lists services and import guidance;
   `await help("vcs")` displays and returns a compact live method index;
   `await help("vcs.edit")` displays and returns that method's exact schema and typed errors.
@@ -543,7 +555,7 @@ when a later call needs them. Imported modules stay cached for the owner, so
 reimporting an unchanged package reuses its build.
 
 Do NOT import the **ambient-only** globals (`scope`, `scopes`, `db`, `ctx`,
-`help`, `chat`, `agent`, `automations`). They are injected variables, not
+`help`, `chat`, `agent`, `automations`, `nl`, `natlang`). They are injected variables, not
 module exports, and eval rejects importing them.
 
 `rpc` and `fs` are both injected **and** exported by `@workspace/runtime`, so

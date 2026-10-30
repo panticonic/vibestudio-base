@@ -47,7 +47,8 @@ data from eval and reply in plain conversation.
 ## Eval essentials
 
 Eval has these ambient bindings: `scope`, `scopes`, `db`, `ctx`, `help`, and,
-when the eval is agent-owned, `chat` and `agent`. The portable clients (`rpc`,
+when the eval is agent-owned, `chat` and `agent`, plus `nl` and `natlang` when
+the workspace declares the natlang provider (see [EVAL.md](EVAL.md)). The portable clients (`rpc`,
 `services`, `fs`, `workers`, `credentials`, `gad`, `panelTree`) are injected and
 can also be imported from `@workspace/runtime`.
 
