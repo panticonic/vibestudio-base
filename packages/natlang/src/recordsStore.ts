@@ -221,8 +221,8 @@ export class LivePublisher {
     this.send();
   };
 
-  /** Send what is batched and wait until everything sent has been delivered. */
-  async close(): Promise<void> {
+  /** Send what is batched and wait until everything sent has been delivered (the run keeps publishing afterwards). */
+  async drain(): Promise<void> {
     this.send();
     await this.queue;
   }

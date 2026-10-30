@@ -14,7 +14,7 @@ const lastToolText = (context: any): string =>
   JSON.stringify(context.messages.filter((message: any) => message.role === "toolResult").at(-1)?.content ?? "");
 
 function setup(services: FakeServices, extra: { fs?: unknown; bindings?: Record<string, unknown> } = {}) {
-  const { rpc, calls } = fakeRpc(services);
+  const { rpc, calls, gate } = fakeRpc(services);
   const natlang = createEvalNatlang({
     newFunction: testNewFunction(),
     bindings: { rpc, fs: extra.fs ?? {}, ...extra.bindings },
@@ -26,12 +26,20 @@ function setup(services: FakeServices, extra: { fs?: unknown; bindings?: Record<
     expect(lowered.diagnostics).toEqual([]);
     const names = ["nl", "natlang", "__natlang", ...Object.keys(scopeValues)];
     const run = new AsyncFunction(...names, lowered.code);
+    gate.open = false;
     return natlang.runCell(
-      () => run(natlang.ambient.nl, natlang.ambient.natlang, natlang.ambient.__natlang, ...Object.values(scopeValues)),
+      async () => {
+        gate.open = true;
+        try {
+          return await run(natlang.ambient.nl, natlang.ambient.natlang, natlang.ambient.__natlang, ...Object.values(scopeValues));
+        } finally {
+          gate.open = false;
+        }
+      },
       { runId: "run-1", signal }
     );
   }
-  return { natlang, cell, calls, rpc };
+  return { natlang, cell, calls, rpc, gate };
 }
 
 describe("createEvalNatlang", () => {

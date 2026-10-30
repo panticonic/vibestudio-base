@@ -12,7 +12,7 @@ import { EXECUTOR_ENTRY, fakeRpc, testNewFunction, toolCallMessage, type FakeSer
  * `EvalDO.natlang.test.ts` and the managed-instance system test.
  */
 function harness(services: FakeServices, scope: Record<string, unknown> = {}) {
-  const { rpc } = fakeRpc(services);
+  const { rpc, gate } = fakeRpc(services);
   const newFunction = testNewFunction();
   const natlang = createEvalNatlang({
     newFunction,
@@ -29,9 +29,12 @@ function harness(services: FakeServices, scope: Record<string, unknown> = {}) {
     if (lowered.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
       return { lowered, failed: lowered.diagnostics };
     }
+    gate.open = false;
     const { value, calls } = await natlang.runCell(
-      () =>
-        executeSandbox(lowered.code, {
+      async () => {
+        gate.open = true;
+        try {
+          return await executeSandbox(lowered.code, {
           syntax: "typescript",
           bindings: { ...natlang.ambient, scope, rpc, fs: {} },
           moduleMap: {},
@@ -40,7 +43,11 @@ function harness(services: FakeServices, scope: Record<string, unknown> = {}) {
           },
           compileFunction: (argNames, body) => newFunction(body, "eval", ...argNames),
           confinement: "private-global",
-        }),
+        });
+        } finally {
+          gate.open = false;
+        }
+      },
       { runId: "run-1", signal: new AbortController().signal }
     );
     return { lowered, value, calls };

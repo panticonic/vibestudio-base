@@ -55,13 +55,16 @@ export interface FakeServices {
 }
 
 /**
- * An `rpc` that answers the three services the provider talks to (model
+ * An `rpc` (open only while its gate is) that answers the three services the provider talks to (model
  * gateway, model settings, natlang records) the way their durable objects do.
  */
 export function fakeRpc(services: FakeServices) {
   const calls: Array<{ target: string; method: string; args: unknown[] }> = [];
+  /** The eval's `rpc` serves only while a cell is executing; a test closes the gate around `runCell`'s own code. */
+  const gate = { open: true };
   const rpc = {
     async call(target: string, method: { name: string }, args: unknown[], options?: { signal?: AbortSignal }) {
+      if (!gate.open) throw new Error("eval: retained runtime clients require an actively executing eval cell");
       calls.push({ target, method: method.name, args });
       if (target === "main") {
         const [query] = args as [string];
@@ -92,5 +95,5 @@ export function fakeRpc(services: FakeServices) {
       throw new Error(`fake rpc: no ${target} ${method.name}`);
     },
   };
-  return { rpc, calls };
+  return { rpc, calls, gate };
 }

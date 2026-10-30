@@ -100722,8 +100722,8 @@ ${lanes.join("\n")}
             tracker
           ) : type === trueType ? factory.createTrue() : type === falseType && factory.createFalse();
           if (enumResult) return enumResult;
-          const literalValue = type.value;
-          return typeof literalValue === "object" ? factory.createBigIntLiteral(literalValue) : typeof literalValue === "string" ? factory.createStringLiteral(literalValue) : literalValue < 0 ? factory.createPrefixUnaryExpression(41, factory.createNumericLiteral(-literalValue)) : factory.createNumericLiteral(literalValue);
+          const literalValue2 = type.value;
+          return typeof literalValue2 === "object" ? factory.createBigIntLiteral(literalValue2) : typeof literalValue2 === "string" ? factory.createStringLiteral(literalValue2) : literalValue2 < 0 ? factory.createPrefixUnaryExpression(41, factory.createNumericLiteral(-literalValue2)) : factory.createNumericLiteral(literalValue2);
         }
         function createLiteralConstValue(node, tracker) {
           const type = getTypeOfSymbol(getSymbolOfDeclaration(node));
@@ -183012,7 +183012,7 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
         return addReplacementSpans(node.text, node.getStart(sourceFile) + 1, getStringLiteralCompletionsFromModuleNamesWorker(sourceFile, node, program, host, preferences));
       }
       function getStringLiteralCompletionsFromModuleNamesWorker(sourceFile, node, program, host, preferences) {
-        const literalValue = normalizeSlashes(node.text);
+        const literalValue2 = normalizeSlashes(node.text);
         const mode = isStringLiteralLike(node) ? program.getModeForUsageLocation(sourceFile, node) : void 0;
         const scriptPath = sourceFile.path;
         const scriptDirectory = getDirectoryPath(scriptPath);
@@ -183020,7 +183020,7 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
         const typeChecker = program.getTypeChecker();
         const moduleSpecifierResolutionHost = createModuleSpecifierResolutionHost(program, host);
         const extensionOptions = getExtensionOptions(compilerOptions, 1, sourceFile, typeChecker, preferences, mode);
-        return isPathRelativeToScript(literalValue) || !compilerOptions.baseUrl && !compilerOptions.paths && (isRootedDiskPath(literalValue) || isUrl(literalValue)) ? getCompletionEntriesForRelativeModules(literalValue, scriptDirectory, program, host, moduleSpecifierResolutionHost, scriptPath, extensionOptions) : getCompletionEntriesForNonRelativeModules(literalValue, scriptDirectory, mode, program, host, moduleSpecifierResolutionHost, extensionOptions);
+        return isPathRelativeToScript(literalValue2) || !compilerOptions.baseUrl && !compilerOptions.paths && (isRootedDiskPath(literalValue2) || isUrl(literalValue2)) ? getCompletionEntriesForRelativeModules(literalValue2, scriptDirectory, program, host, moduleSpecifierResolutionHost, scriptPath, extensionOptions) : getCompletionEntriesForNonRelativeModules(literalValue2, scriptDirectory, mode, program, host, moduleSpecifierResolutionHost, extensionOptions);
       }
       function getExtensionOptions(compilerOptions, referenceKind, importingSourceFile, typeChecker, preferences, resolutionMode) {
         return {
@@ -183031,12 +183031,12 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
           resolutionMode
         };
       }
-      function getCompletionEntriesForRelativeModules(literalValue, scriptDirectory, program, host, moduleSpecifierResolutionHost, scriptPath, extensionOptions) {
+      function getCompletionEntriesForRelativeModules(literalValue2, scriptDirectory, program, host, moduleSpecifierResolutionHost, scriptPath, extensionOptions) {
         const compilerOptions = program.getCompilerOptions();
         if (compilerOptions.rootDirs) {
           return getCompletionEntriesForDirectoryFragmentWithRootDirs(
             compilerOptions.rootDirs,
-            literalValue,
+            literalValue2,
             scriptDirectory,
             extensionOptions,
             program,
@@ -183046,7 +183046,7 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
           );
         } else {
           return arrayFrom(getCompletionEntriesForDirectoryFragment(
-            literalValue,
+            literalValue2,
             scriptDirectory,
             extensionOptions,
             program,
@@ -216005,6 +216005,15 @@ function uncalledInlineFunctions(file) {
   visit(file);
   return ends;
 }
+function literalValue(node) {
+  if (import_typescript8.default.isStringLiteral(node) || import_typescript8.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (import_typescript8.default.isNumericLiteral(node)) return Number(node.text);
+  if (import_typescript8.default.isPrefixUnaryExpression(node) && node.operator === import_typescript8.default.SyntaxKind.MinusToken && import_typescript8.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
+  if (node.kind === import_typescript8.default.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === import_typescript8.default.SyntaxKind.FalseKeyword) return false;
+  if (import_typescript8.default.isParenthesizedExpression(node)) return literalValue(node.expression);
+  return void 0;
+}
 function compileScopeSnippet(source2, options = {}) {
   if (typeof source2 !== "string") throw new TypeError("scope source must be a string");
   if (options.allowModules) {
@@ -216112,6 +216121,16 @@ function compileScopeSnippet(source2, options = {}) {
           repairs.push({
             code: "invalid-binding",
             message: `Removed redundant self-alias for injected binding ${JSON.stringify(declaration.name.text)}.`,
+            ...location
+          });
+          continue;
+        }
+        if (import_typescript8.default.isIdentifier(declaration.name) && declaration.initializer && options.inputValues && Object.hasOwn(options.inputValues, declaration.name.text) && options.inputBindings?.includes(declaration.name.text) && literalValue(declaration.initializer) === options.inputValues[declaration.name.text]) {
+          const location = span(statement);
+          redundantAliases.push(location);
+          repairs.push({
+            code: "invalid-binding",
+            message: `Removed a declaration of input ${JSON.stringify(declaration.name.text)}: it already holds that value.`,
             ...location
           });
           continue;
@@ -217215,16 +217234,13 @@ function nativeStateConsumerFromInfo(info) {
   if (native?.enabled !== true) return void 0;
   if (typeof native.architecture !== "string" || !native.architecture || ["checkpoint_sha256", "tokenizer_fingerprint", "embedding_weight_sha256"].some((key) => typeof native[key] !== "string" || !/^[0-9a-f]{64}$/.test(native[key])) || native.consumption_modes !== void 0 && (!Array.isArray(native.consumption_modes) || native.consumption_modes.some((mode) => typeof mode !== "string")))
     throw new NeuraleseUnsupportedError("native consumer must declare its model identity and actual state consumption modes");
-  if (native.semantic_adapter_sha256 !== void 0 && (typeof native.semantic_adapter_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(native.semantic_adapter_sha256)))
-    throw new NeuraleseUnsupportedError("semantic consumer must bind its exact trained adapter SHA-256");
   if (!Array.isArray(native.consumption_modes)) return void 0;
   return {
     architecture: native.architecture,
     checkpoint_sha256: native.checkpoint_sha256,
     tokenizer_fingerprint: native.tokenizer_fingerprint,
     embedding_weight_sha256: native.embedding_weight_sha256,
-    consumption_modes: [...native.consumption_modes],
-    ...native.semantic_adapter_sha256 ? { semantic_adapter_sha256: native.semantic_adapter_sha256 } : {}
+    consumption_modes: [...native.consumption_modes]
   };
 }
 function readerDialect(options) {
@@ -217241,11 +217257,9 @@ function dialectBinding(options) {
     blockDialect: (id2) => store.peek?.(id2)?.dialect,
     nativeDefaultCompatible: (id2, source2, target) => {
       const consumer = options.nativeStateConsumer;
-      if (!isNativeStateId(id2) || !consumer || !/^(native|semantic)-state\//.test(source2)) return false;
-      const semantic = consumer.semantic_adapter_sha256 ? `semantic-state/${consumer.semantic_adapter_sha256}` : void 0;
-      if (target !== `native-state/${consumer.architecture}` && target !== semantic) return false;
-      if (consumer.consumption_modes.includes("best-effort-text-retokenization")) return true;
-      return !!semantic && consumer.consumption_modes.includes("learned-semantic-state-deltas") && (!source2.startsWith("semantic-state/") || source2 === semantic);
+      if (!isNativeStateId(id2) || !consumer || !source2.startsWith("native-state/")) return false;
+      if (target !== `native-state/${consumer.architecture}`) return false;
+      return consumer.consumption_modes.includes("best-effort-text-retokenization");
     }
   };
 }
@@ -217711,30 +217725,6 @@ function nativeOptimizerOptions(value) {
 }
 function validateNativeStateDerivation(value) {
   if (value === void 0) return;
-  if (value && ["semantic-encode", "semantic-adapt"].includes(value.kind)) {
-    const item = value;
-    const training = item.training_execution !== void 0 || item.source_adapter_sha256 !== void 0;
-    const expected = [
-      "adapter_sha256",
-      "kind",
-      "origin_state_ids",
-      "parent_state_id",
-      "schema",
-      "source_native_identity",
-      "target_native_identity",
-      ...training ? ["source_adapter_sha256", "training_execution"] : []
-    ].sort().join(",");
-    if (keys2(item) !== expected || item.schema !== DERIVATION || !STATE.test(item.parent_state_id) || !sortedUnique(item.origin_state_ids, STATE) || !item.origin_state_ids.length || !/^[0-9a-f]{64}$/.test(item.adapter_sha256))
-      throw new RangeError("native semantic derivation needs exact origins, source and adapter");
-    for (const identity of [item.source_native_identity, item.target_native_identity]) if (!identity || keys2(identity) !== "architecture,checkpoint_sha256,embedding_weight_sha256,tokenizer_fingerprint" || !identity.architecture || ["checkpoint_sha256", "tokenizer_fingerprint", "embedding_weight_sha256"].some((key) => typeof identity[key] !== "string" || !/^[0-9a-f]{64}$/.test(identity[key])))
-      throw new RangeError("native semantic derivation needs exact source/target model identities");
-    if (training) {
-      const execution = item.training_execution;
-      if (item.kind !== "semantic-adapt" || !execution || keys2(execution) !== "behavior_adapter_sha256,parent_adapter_sha256,parent_checkpoint_sha256,parent_step,schema,step" || execution.schema !== "natlang.native-semantic-policy-execution/1" || [execution.parent_checkpoint_sha256, execution.parent_adapter_sha256, execution.behavior_adapter_sha256].some((value2) => typeof value2 !== "string" || !/^[0-9a-f]{64}$/.test(value2)) || !Number.isSafeInteger(execution.parent_step) || execution.parent_step < 0 || !Number.isSafeInteger(execution.step) || execution.step < execution.parent_step || item.source_adapter_sha256 !== execution.behavior_adapter_sha256 || item.adapter_sha256 !== execution.parent_adapter_sha256 || item.target_native_identity.checkpoint_sha256 !== execution.parent_checkpoint_sha256)
-        throw new RangeError("training semantic derivation needs exact immutable behavior and current decoder execution");
-    }
-    return;
-  }
   if (!value || value.kind !== "optimizer" || keys2(value) !== "arithmetic,gradient_id,kind,optimizer,optimizer_state_parent_id,origin_state_ids,parent_state_id,program_id,schema,step,update_artifact_id,updated_tensor_names" || value.schema !== DERIVATION || value.kind !== "optimizer" || !STATE.test(value.parent_state_id) || !TENSOR.test(value.gradient_id) || !TENSOR.test(value.update_artifact_id) || value.program_id !== null && !TENSOR.test(value.program_id) || value.optimizer_state_parent_id !== null && !TENSOR.test(value.optimizer_state_parent_id) || !Number.isSafeInteger(value.step) || value.step < 1 || !sortedUnique(value.origin_state_ids, STATE) || !value.origin_state_ids.length || !sortedUnique(value.updated_tensor_names, /^layers\.[0-9]+\.(?:raw_k|v|gated_inputs|mixed_qkv|z|b|a)$/) || !value.updated_tensor_names.length)
     throw new RangeError("native optimized state needs its exact origin/update/history contract");
   validateNativeOptimizerBinding(value.optimizer);
@@ -217744,7 +217734,6 @@ function validateNativeStateDerivation(value) {
 }
 function nativeStateDerivationDependencies(value) {
   validateNativeStateDerivation(value);
-  if (value && value.kind !== "optimizer") return [.../* @__PURE__ */ new Set([...value.origin_state_ids, value.parent_state_id])].sort();
   return value ? [.../* @__PURE__ */ new Set([
     ...value.origin_state_ids,
     value.parent_state_id,
@@ -218088,7 +218077,7 @@ function nativeModelIdentityEqual(left, right) {
 }
 function nativeStateBlockMeta(artifact) {
   const embeddings = artifact.tensors.embeddings;
-  const dialect = artifact.metadata.schema === "neuralese.semantic-state/1" ? `semantic-state/${artifact.metadata.adapter_sha256}` : `native-state/${artifact.metadata.architecture}`;
+  const dialect = `native-state/${artifact.metadata.architecture}`;
   return {
     id: artifact.id,
     dialect,
@@ -218353,7 +218342,7 @@ function validateNativeInvocationSourceNames(metadata, actors) {
     throw new RangeError("native invocation source names changed exact packed ownership");
 }
 function validateNativeState(metadata, tensors) {
-  if (!metadata || !["neuralese.native-state/1", "neuralese.semantic-state/1"].includes(metadata.schema) || typeof metadata.text !== "string" || typeof metadata.architecture !== "string" || !metadata.architecture || !SHA256.test(metadata.tokenizer_fingerprint) || !SHA256.test(metadata.checkpoint_sha256) || !SHA256.test(metadata.embedding_weight_sha256) || !Array.isArray(metadata.layer_kinds) || metadata.schema === "neuralese.native-state/1" && !metadata.layer_kinds.length)
+  if (!metadata || metadata.schema !== "neuralese.native-state/1" || typeof metadata.text !== "string" || typeof metadata.architecture !== "string" || !metadata.architecture || !SHA256.test(metadata.tokenizer_fingerprint) || !SHA256.test(metadata.checkpoint_sha256) || !SHA256.test(metadata.embedding_weight_sha256) || !Array.isArray(metadata.layer_kinds) || !metadata.layer_kinds.length)
     throw new RangeError("invalid native-state metadata");
   if (metadata.adapter_binding !== void 0) validateNativeAdapterBinding(metadata.adapter_binding, metadata);
   validateNativeStateDerivation(metadata.derivation);
@@ -218393,14 +218382,6 @@ function validateNativeState(metadata, tensors) {
     }
   };
   finite2("embeddings", tensors.embeddings);
-  if (metadata.schema === "neuralese.semantic-state/1") {
-    if (metadata.layer_kinds.length || typeof metadata.source_model !== "string" || !metadata.source_model || !SHA256.test(metadata.adapter_sha256) || metadata.posterior !== "mean" || !["exact-tokenizer-offsets", "actual-token-decoder-alignment", "actual-token-decoder-text-alignment"].includes(metadata.offset_policy) || !Array.isArray(metadata.offsets) || metadata.offsets.length !== tokenShape[0] || metadata.offsets.some((pair) => !Array.isArray(pair) || pair.length !== 2 || pair.some((value) => !Number.isSafeInteger(value)) || pair[0] < 0 || pair[1] < pair[0] || pair[1] > [...metadata.text].length))
-      throw new RangeError("invalid semantic message metadata or source token offsets");
-    const codeShape = count("code", 2);
-    if (codeShape[0] !== tokenShape[0]) throw new RangeError("semantic message code token count differs");
-    expected.add("code");
-    finite2("code", tensors.code);
-  }
   for (let index = 0; index < metadata.layer_kinds.length; index++) {
     const kind = metadata.layer_kinds[index], prefix = `layers.${index}.`;
     if (kind === "attention") {
@@ -218616,7 +218597,7 @@ function decodeNativeState(bytes2) {
   if (typeof metadataText !== "string" || metaField !== void 0) throw new RangeError("missing canonical native-state metadata");
   const stored = JSON.parse(metadataText);
   const { id: id2, ...metadata } = stored;
-  if (!["neuralese.native-state/1", "neuralese.semantic-state/1"].includes(metadata.schema) || typeof metadata.text !== "string" || typeof metadata.architecture !== "string" || !Array.isArray(metadata.layer_kinds))
+  if (metadata.schema !== "neuralese.native-state/1" || typeof metadata.text !== "string" || typeof metadata.architecture !== "string" || !Array.isArray(metadata.layer_kinds))
     throw new RangeError("unsupported native state metadata");
   const payload = bytes2.subarray(8 + headerSize);
   const tensors = {};
@@ -218749,10 +218730,6 @@ async function verifyNativeStateDerivation(store, artifact, seen = /* @__PURE__ 
   const parent = await store.getNativeState?.(value.parent_state_id);
   if (!parent) throw new RangeError("optimized native state needs its exact archived parent");
   await verifyNativeStateDerivation(store, parent, nested);
-  if (value.kind !== "optimizer") {
-    verifyNativeStateDerivationRecords(artifact, parent, void 0, void 0);
-    return;
-  }
   const gradient = await store.getNativeTensorArtifact?.(value.gradient_id), update = await store.getNativeTensorArtifact?.(value.update_artifact_id);
   const prior = value.optimizer_state_parent_id === null ? void 0 : await store.getNativeTensorArtifact?.(value.optimizer_state_parent_id);
   const program = value.program_id === null ? void 0 : await store.getNativeTensorArtifact?.(value.program_id);
@@ -218765,21 +218742,6 @@ function verifyNativeStateDerivationRecords(artifact, parent, gradient, update, 
   if (parent.id !== value.parent_state_id) throw new RangeError("optimized native state parent binding changed");
   const origin = parent.metadata.derivation?.origin_state_ids ?? [parent.id];
   if (nativeCanonicalJson(origin) !== nativeCanonicalJson(value.origin_state_ids)) throw new RangeError("optimized native state changed its original producer provenance");
-  if (value.kind !== "optimizer") {
-    const identity = (metadata) => ({
-      checkpoint_sha256: metadata.checkpoint_sha256,
-      tokenizer_fingerprint: metadata.tokenizer_fingerprint,
-      embedding_weight_sha256: metadata.embedding_weight_sha256,
-      architecture: metadata.architecture
-    });
-    if (artifact.metadata.text !== parent.metadata.text || nativeCanonicalJson(value.source_native_identity) !== nativeCanonicalJson(identity(parent.metadata)) || nativeCanonicalJson(value.target_native_identity) !== nativeCanonicalJson(identity(artifact.metadata))) throw new RangeError("derived semantic state changed source/target provenance");
-    if (value.kind === "semantic-encode") {
-      if (artifact.metadata.schema !== "neuralese.semantic-state/1" || artifact.metadata.adapter_sha256 !== value.adapter_sha256 || nativeCanonicalJson(identity(artifact.metadata)) !== nativeCanonicalJson(identity(parent.metadata)) || ["token_ids", "positions", "embeddings"].some((name) => !equalTensor(artifact.tensors[name], parent.tensors[name])))
-        throw new RangeError("derived semantic encoding changed tokens, embeddings or adapter");
-    } else if (artifact.metadata.schema !== "neuralese.native-state/1" || parent.metadata.schema === "neuralese.semantic-state/1" && parent.metadata.adapter_sha256 !== (value.source_adapter_sha256 ?? value.adapter_sha256))
-      throw new RangeError("derived semantic decode changed trained adapter or target format");
-    return;
-  }
   const { derivation: _10, ...before } = parent.metadata, { derivation: __, ...after } = artifact.metadata;
   if (nativeCanonicalJson(before) !== nativeCanonicalJson(after)) throw new RangeError("optimized native state changed text, native basis or adapter provenance");
   const expectedBase = parent.metadata.adapter_binding?.base_native_identity ?? {
@@ -223962,7 +223924,7 @@ async function nativeTextOperation(options, operation, body) {
     if (imported.mode === "same-base-adapter-state") {
       const receipt = imported.adapter_state_consumption;
       const index = explicitSegments.findIndex((segment) => segment.id === imported.id && nativeCanonicalJson(segment.receipt) === nativeCanonicalJson(receipt));
-      if (index < 0 || imported.observed_native_state_id !== imported.id || imported.semantic_adaptation || !receipt)
+      if (index < 0 || imported.observed_native_state_id !== imported.id || !receipt)
         return failure("neuralese-native-source-integrity", "adapter-state import must bind its original artifact and exact source-stream receipt");
       validateNativeAdapterStateConsumption(receipt, original, artifact.metadata);
       explicitSegments.splice(index, 1);
@@ -223971,11 +223933,11 @@ async function nativeTextOperation(options, operation, body) {
     if (imported.adapter_state_consumption)
       return failure("neuralese-native-source-integrity", "adapter-state receipt requires its explicit consumption mode");
     if (imported.mode === "best-effort-text-retokenization") {
-      if (imported.observed_native_state_id || imported.semantic_adaptation)
+      if (imported.observed_native_state_id)
         return failure("neuralese-native-source-integrity", "text fallback cannot attest an imported native KV artifact");
       continue;
     }
-    if (!["exact-native-state", "learned-semantic-state-deltas"].includes(imported.mode) || !imported.observed_native_state_id)
+    if (imported.mode !== "exact-native-state" || !imported.observed_native_state_id)
       return failure("neuralese-native-source-integrity", "native import must retain its exact observed state and actual consumption mode");
     const observed = await archiveNativeState(options, imported.observed_native_state_id);
     if (observed.metadata.schema !== "neuralese.native-state/1" || !result.source_capture.segments.some((segment) => segment.kind === "native_state" && segment.id === imported.observed_native_state_id))
@@ -223983,18 +223945,8 @@ async function nativeTextOperation(options, operation, body) {
     for (const key of ["checkpoint_sha256", "tokenizer_fingerprint", "embedding_weight_sha256", "architecture"])
       if (observed.metadata[key] !== result.source_capture.policy[key])
         return failure("neuralese-native-source-integrity", "native import observation differs from the source policy");
-    if (imported.mode === "exact-native-state") {
-      if (imported.id !== imported.observed_native_state_id || imported.semantic_adaptation)
-        return failure("neuralese-native-source-integrity", "exact native import must preserve its original artifact");
-    } else {
-      const adaptation = imported.semantic_adaptation;
-      const adapter = info.native_state.semantic_adapter_sha256;
-      if (!adapter || adaptation?.adapter_sha256 !== adapter || original.metadata.schema === "neuralese.semantic-state/1" && original.metadata.adapter_sha256 !== adapter)
-        return failure("neuralese-native-source-integrity", "learned native import must bind the configured adapter and original message");
-      for (const key of ["checkpoint_sha256", "tokenizer_fingerprint", "embedding_weight_sha256", "architecture"])
-        if (adaptation.source_native_identity[key] !== original.metadata[key] || adaptation.target_native_identity[key] !== observed.metadata[key])
-          return failure("neuralese-native-source-integrity", "learned native import source/target identities differ from their artifacts");
-    }
+    if (imported.id !== imported.observed_native_state_id)
+      return failure("neuralese-native-source-integrity", "exact native import must preserve its original artifact");
   }
   if (explicitSegments.length)
     return failure("neuralese-native-source-integrity", "adapter-state source-stream receipt is missing its import observation");
@@ -224013,7 +223965,7 @@ async function nativeStateWritePort(options) {
   const native = info.native_state;
   if (!native?.enabled || !native.architecture || !serves(info, "native.text-write"))
     return failure("neuralese-native-text-write-unavailable", "configure a native server with forced text producer support");
-  const dialect = native.semantic_adapter_sha256 ? `semantic-state/${native.semantic_adapter_sha256}` : `native-state/${native.architecture}`;
+  const dialect = `native-state/${native.architecture}`;
   return { dialect, async write(text3, extra = {}) {
     return (await nativeTextOperation({ ...options, info }, "write-text", { text: text3, ...extra })).meta;
   } };
@@ -224748,7 +224700,7 @@ async function loadStandardLibrary(bytes2, store) {
   }
   const emptyValue = exports.empty?.value;
   const emptyState = emptyValue?.$neuralese?.id;
-  if (!/^(native|semantic)-state\//.test(dialect) || !emptyState || nativeStates.get(emptyState)?.tensors.token_ids?.shape[0] !== 0)
+  if (!dialect.startsWith("native-state/") || !emptyState || nativeStates.get(emptyState)?.tensors.token_ids?.shape[0] !== 0)
     throw new Error("neuralese-native-empty-unavailable: native libraries must archive their model-bound zero-token identity");
   return { dialect, width, bodies, ...emptyState ? { emptyState } : {}, ...textReadSource ? { textReadSource } : {} };
 }
@@ -224838,7 +224790,7 @@ async function readNeuraleseForCurrentTask(value) {
   return createNeuraleseLibrary(library).read(value);
 }
 function emptyId(library) {
-  if (/^(native|semantic)-state\//.test(library.dialect)) {
+  if (library.dialect.startsWith("native-state/")) {
     if (!library.emptyState) throw new Error("neuralese-native-empty-unavailable: load the native library with its zero-token state");
     return library.emptyState;
   }
@@ -225484,7 +225436,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -225519,6 +225471,7 @@ var init_runtime2 = __esm({
     init_return_errors();
     init_tool_markup();
     init_hash();
+    SELF_CALL_ADVICE = "Do what its instructions ask here. For a judgment, decide it yourself from the inputs and return the answer with return_result; use eval only for exact work the instructions need.";
     oneLine = (value, holder, liveIdentity, untrusted2) => renderValue(value, { holder, budget: 80, liveIdentity, untrusted: untrusted2 });
     DIAGNOSTIC_HINTS = {
       "type-mismatch": "Pass the value itself with the type shown as expected, not wrapped in another object: for boolean use `true`, for number use `42.5`, for string use text, and for a record use an object with exactly its fields. With `nl.with<T>`, T is the child result type; use `nl.with<CaptureRecord, Result>` only when you want to type both the captures and result. The child input is passed separately.",
@@ -226255,7 +226208,7 @@ Invoke this as a separate tool action; it is not callable from eval.`;
         const toolNote = tool2 && NATIVE_TOOLS.includes(tool2) && tool2 !== "return_result" ? `
 ${tool2} is one of your tools: call it as a tool, not from eval code.` : "";
         const bindingNote = tool2 && tool2 === this.lam.functionName ? `
-${tool2} is the call you are executing, not a function in its scope: carry out its instructions here with eval and return the result.` : tool2 && !NATIVE_TOOLS.includes(tool2) ? `
+${tool2} is the call you are executing, not a function in its scope: ${SELF_CALL_ADVICE}` : tool2 && !NATIVE_TOOLS.includes(tool2) ? `
 ${tool2} must be bound in this eval's scope before you use it. Mentioning it in instructions does not declare it.` + // Only an interpolated template can be the cause of the template advice.
         (code.includes("${") ? " JavaScript template interpolation runs when the template is created: create an item-specific template inside the callback or loop that binds the item, or mention a future child parameter by name in literal instructions and pass its value when calling the child." : "") : "";
         const repeatNote = repeated ? "\nThis is the code of your previous eval, and it failed the same way: change it before running it again." : "";
@@ -226867,7 +226820,7 @@ ${declaration}`;
           const own = listCodebase(this.lam.codebase);
           const readable = own.length ? `a function of this program: ${own.join(", ")}` : "a function of this program, and this program has none of its own";
           const inScope = (this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : []).concat(Object.keys(this.lam.captures ?? {}), Object.keys(this.lam.let));
-          const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. Carry them out here with eval and return the result` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : void 0;
+          const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : void 0;
           throw new Reject([{ path: requested, code: "no-such-function", expected: what ? `${readable}. ${what}` : readable }]);
         }
         const view = this.runtime.frame?.task.programView;
@@ -227109,8 +227062,10 @@ ${declaration}`;
         const currentTypes = evalTypeDeclarations(code);
         const persistentTypeNames = [.../* @__PURE__ */ new Set([...Object.keys(visibleTypes), ...Object.keys(currentTypes)])];
         const hooks = this.runtime.hooks;
+        const inputValues = Object.fromEntries(inputNames.map((name) => [name, this.lam.args[name]]).filter((entry) => ["string", "number", "boolean"].includes(typeof entry[1])));
         const compiled2 = compileScopeSnippet(code, {
           inputBindings: inputNames,
+          inputValues,
           localBindings,
           helperBindings: callableNames,
           persistentHelpers: savedHelpers,
@@ -228540,8 +228495,8 @@ var init_agent = __esm({
             if (typeof segment.id !== "string" || !/^nzs1_[a-z2-7]{52}$/.test(segment.id) || segment.source_state_id !== void 0 && (typeof segment.source_state_id !== "string" || !/^nzs1_[a-z2-7]{52}$/.test(segment.source_state_id)) || segment.source_occurrence !== void 0 && typeof segment.source_occurrence !== "string" || segment.stop_gradient !== void 0 && segment.stop_gradient !== true)
               throw new Error("neuralese-native-grad-invalid: captured prompt has an invalid native-state occurrence");
             const sourceBlock = segment.source_state_id ?? segment.id;
-            if (sourceBlock !== segment.id && !segment.semantic_adaptation)
-              throw new Error("neuralese-native-grad-invalid: decoded native prompt lacks its differentiable adaptation receipt");
+            if (sourceBlock !== segment.id)
+              throw new Error("neuralese-native-grad-invalid: captured native input differs from its source state");
             const candidates = remaining.filter((read) => read.block === sourceBlock && read.stop === (segment.stop_gradient === true) && (segment.source_occurrence === void 0 || read.source === segment.source_occurrence));
             if (candidates.length) {
               if (segment.source_occurrence === void 0 && new Set(candidates.map((read) => read.source)).size !== 1)
@@ -234387,7 +234342,7 @@ function checkBlockDialect(id2, wanted, env, path2) {
   if (expected === DEFAULT_DIALECT2) return;
   const stored = env.dialects?.blockDialect?.(id2);
   if (stored === void 0 || stored === expected) return;
-  if (wanted.dialect === DEFAULT_DIALECT2 && id2.startsWith("nzs1_") && /^(native|semantic)-state\//.test(stored) && /^(native|semantic)-state\//.test(expected)) {
+  if (wanted.dialect === DEFAULT_DIALECT2 && id2.startsWith("nzs1_") && stored.startsWith("native-state/") && expected.startsWith("native-state/")) {
     if (env.dialects?.nativeDefaultCompatible?.(id2, stored, expected)) return;
     return reject(
       path2,

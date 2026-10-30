@@ -61,16 +61,9 @@ export type NativeStateMetadata = {
     layer_kinds: string[];
     adapter_binding?: NativeAdapterBinding;
     derivation?: NativeStateDerivation;
-} & ({
+} & {
     schema: 'neuralese.native-state/1';
-} | {
-    schema: 'neuralese.semantic-state/1';
-    source_model: string;
-    adapter_sha256: string;
-    offsets: number[][];
-    posterior: 'mean';
-    offset_policy: 'exact-tokenizer-offsets' | 'actual-token-decoder-alignment' | 'actual-token-decoder-text-alignment';
-});
+};
 export type NativeStateArtifact = {
     id: string;
     metadata: NativeStateMetadata;

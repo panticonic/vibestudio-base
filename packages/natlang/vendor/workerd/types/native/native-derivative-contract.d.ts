@@ -13,25 +13,7 @@ export type NativeStateOptimizationDerivation = {
     updated_tensor_names: string[];
     arithmetic: Record<string, string>;
 };
-export type NativeStateSemanticDerivation = {
-    schema: typeof DERIVATION;
-    kind: 'semantic-encode' | 'semantic-adapt';
-    origin_state_ids: string[];
-    parent_state_id: string;
-    adapter_sha256: string;
-    source_native_identity: Record<string, string>;
-    target_native_identity: Record<string, string>;
-    source_adapter_sha256?: string;
-    training_execution?: {
-        schema: 'natlang.native-semantic-policy-execution/1';
-        parent_checkpoint_sha256: string;
-        parent_adapter_sha256: string;
-        behavior_adapter_sha256: string;
-        parent_step: number;
-        step: number;
-    };
-};
-export type NativeStateDerivation = NativeStateOptimizationDerivation | NativeStateSemanticDerivation;
+export type NativeStateDerivation = NativeStateOptimizationDerivation;
 export declare function validateNativeOptimizerBinding(value: Record<string, string>): void;
 export declare function nativeOptimizerOptions(value: Record<string, string>): Record<string, string | number>;
 export declare function validateNativeStateDerivation(value: NativeStateDerivation | undefined): void;

@@ -7,7 +7,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
-    "./dashboard/*": "./vendor-dashboard/dashboard/*"
+    "./dashboard/*": "./vendor-dashboard/dashboard/*",
+    "./evaluation": {
+      "types": "./vendor-evaluation/evaluation/natlang-evaluation.d.ts"
+    },
+    "./model": {
+      "types": "./vendor-evaluation/evaluation/natlang-evaluation.d.ts"
+    }
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

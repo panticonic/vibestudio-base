@@ -115,7 +115,6 @@ export type NativeStateConsumer = {
     tokenizer_fingerprint: string;
     embedding_weight_sha256: string;
     consumption_modes: string[];
-    semantic_adapter_sha256?: string;
 };
 export declare function nativeStateConsumerFromInfo(info: Record<string, unknown>): NativeStateConsumer | undefined;
 /** Runtime configuration for soft values. */

@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "170ad9ce25fef606e2d62fdbfdac1a78d87f7895",
+  "commit": "8b99c559e41fb990584b82d3aa91ef4aa877cb8b",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "96a3e4a9ba63875fc33db6285eed5182c12f9cd3adcddf6036c785802b59ca18",
+    "workerd/natlang-workerd.js": "9feea9eac7685a4ce04ef6704102849627f1b83ef7e7aa514b00cdc63181b69c",
     "workerd/types/adaptation/program-view.d.ts": "9bb88204b4fe23943e8db1e965c7d9509b4cb6e98258a9a0e9d25e994e67ecfa",
     "workerd/types/adaptation/prompts.d.ts": "0496bb5cb218741889b5a271ecc3f1ab410f0110ed6bb0a40541747e1eb83895",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
@@ -52,10 +52,10 @@
     "workerd/types/native/folder-shell.d.ts": "9499ae6fbc70c81c22c8bd722a7b70c0ca099b80f2670f98e83ba52d7a2d6d00",
     "workerd/types/native/graph.d.ts": "618c071a52de3e99deaa770cdf42e5bd90777eb12694d2dd36935f1558d84139",
     "workerd/types/native/model-recording.d.ts": "6401f62a16f55da37cf2fd47ba02e1a48bf280b571484b4953234f2da337445c",
-    "workerd/types/native/native-derivative-contract.d.ts": "62245d0e2df36c28926dead9923c4891619cc68c3d94fab5df7bc47f3c7ebd66",
+    "workerd/types/native/native-derivative-contract.d.ts": "3739305a6e9356113874e2a6258611cfcff39b9b772fbb3434199f3f50bceac4",
     "workerd/types/native/natlang-command.d.ts": "dc900778c50bb6e533cd899177abe7ee8fe67647f5e9142da75e8764db53f43c",
-    "workerd/types/native/neuralese-store.d.ts": "d7eb7ba55971f4683cecdfe429a8d964c24572cbc0b034d0192e3dbe8d279790",
-    "workerd/types/native/neuralese.d.ts": "cc0b08ee5b80ef85f03cea89a04f5e383154221881d1ce8a361499d49891b6c6",
+    "workerd/types/native/neuralese-store.d.ts": "6530367186af09a9642049fb1186f74b4bdb1b5642f914596cbe960a80c0a9ad",
+    "workerd/types/native/neuralese.d.ts": "5e1ce43770d63065df4e67fcf8aae3e71bad155ca9ff57a26a519ddc15714f3c",
     "workerd/types/native/nz-file.d.ts": "28f8836ccf8208fe67560da5cf28d03fe6a5dd8fe8da268f8386d12aeb74edff",
     "workerd/types/native/pages.d.ts": "bcffc8701ec4ed3740b2bda98fbacc9325f2d389b686c37103db59e6e873f044",
     "workerd/types/native/prompt.d.ts": "e372360afece9ec7c5a500d5a1f101b00d75b7ca749f226d48f9af1e581f71a4",

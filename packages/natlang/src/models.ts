@@ -81,7 +81,12 @@ export function modelsFor(options: {
   gateway: ModelGatewayClient;
   directory: ModelDirectory;
   turnPrefix: string;
-}): { executor: ModelConfig; models: Record<string, ModelConfig> } {
+}): {
+  executor: ModelConfig;
+  /** Name the model the executor role resolved to, for the records of the calls that follow. */
+  pinExecutor(ref: string): void;
+  models: Record<string, ModelConfig>;
+} {
   const driverFor = (model: string): ModelDriver =>
     gatewayDriver({
       gateway: options.gateway,
@@ -89,7 +94,13 @@ export function modelsFor(options: {
       model,
       turnPrefix: `${options.turnPrefix}:${model}`,
     });
-  const executor: ModelConfig = { driver: driverFor(EXECUTOR_ROLE), id: EXECUTOR_ROLE };
+  let executorId: string = EXECUTOR_ROLE;
+  const executor: ModelConfig = {
+    driver: driverFor(EXECUTOR_ROLE),
+    get id() {
+      return executorId;
+    },
+  };
   const named = new Map<string, ModelConfig>([[EXECUTOR_ROLE, executor]]);
   const models = new Proxy({} as Record<string, ModelConfig>, {
     get(_, name) {
@@ -103,5 +114,5 @@ export function modelsFor(options: {
     },
     has: (_, name) => typeof name === "string",
   });
-  return { executor, models };
+  return { executor, pinExecutor: (ref) => void (executorId = ref), models };
 }

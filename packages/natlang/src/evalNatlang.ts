@@ -9,7 +9,7 @@ import type {
   NatlangProviderHost,
 } from "@vibestudio/service-schemas/evalNatlang";
 import * as core from "../vendor/workerd/natlang-workerd.js";
-import type { Platform } from "../vendor/workerd/natlang-workerd.js";
+import type { LiveEvent, Platform } from "../vendor/workerd/natlang-workerd.js";
 import { folderBash } from "./folderTools.js";
 import { natlangHelp } from "./help.js";
 import { ModelDirectory, modelsFor, EXECUTOR_ROLE } from "./models.js";
@@ -26,6 +26,8 @@ const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 interface ActiveRun extends RecordingRun {
   readonly signal: AbortSignal;
   live: LivePublisher | null;
+  /** The cell's preparation, started by its first natlang call. */
+  prepared?: Promise<void>;
 }
 
 function requireBinding<T>(bindings: Readonly<Record<string, unknown>>, name: string): T {
@@ -62,7 +64,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const gateway = createModelGatewayClient(rpc);
   const records = createNatlangRecordsClient(rpc);
   const directory = new ModelDirectory(rpc);
-  const { executor, models } = modelsFor({
+  const { executor, pinExecutor: nameExecutor, models } = modelsFor({
     gateway,
     directory,
     turnPrefix: crypto.randomUUID().slice(0, 8),
@@ -83,12 +85,49 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   let active: ActiveRun | null = null;
   let closed = false;
 
+  /**
+   * Live events go to the records service only while it reports a watcher. Whether it does is known once the
+   * cell is executing, after its ambient task exists, so the task's sink is always this relay.
+   */
+  const relayLive = (event: LiveEvent): void => active?.live?.sink(event);
+
+  /**
+   * Run `work` for a natlang call of the executing cell. The eval's `rpc` serves only while a cell is
+   * executing, so everything that talks to other services happens here, inside it: the cell's preparation
+   * before its first call (the executor role resolves from current readiness; the records service says
+   * whether anything watches live), and, before the call's result reaches the cell, the writes of its record.
+   */
+  async function inCell<T>(work: () => Promise<T>): Promise<T> {
+    const run = active;
+    if (run) await (run.prepared ??= prepare(run));
+    try {
+      return await work();
+    } finally {
+      await run?.live?.drain();
+      await store.flush();
+    }
+  }
+
+  async function prepare(run: ActiveRun): Promise<void> {
+    directory.newEpoch();
+    try {
+      nameExecutor((await directory.resolve(EXECUTOR_ROLE)).ref);
+    } catch (error) {
+      // No usable model fills the role: a call that needs one fails with the reason.
+      store.fail("natlang: the executor role does not resolve", error);
+      nameExecutor(EXECUTOR_ROLE);
+    }
+    run.live = await livePublisher(run.runId);
+  }
+
   const runTask: TaskRunner = (run, task) =>
-    runtime.run(run, {
-      ...task,
-      ...(active ? { signal: active.signal } : {}),
-      ...(active?.live ? { onLive: active.live.sink } : {}),
-    });
+    inCell(() =>
+      runtime.run(run, {
+        ...task,
+        ...(active ? { signal: active.signal } : {}),
+        onLive: relayLive,
+      })
+    );
 
   const loader = new ProgramLoader({ platform, fs, bindings: host.bindings, runTask });
 
@@ -112,17 +151,6 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     help: () => natlangHelp(),
   });
 
-  /** The role resolves from current readiness once per cell; the records name the model it chose. */
-  async function pinExecutor(): Promise<void> {
-    directory.newEpoch();
-    try {
-      executor.id = (await directory.resolve(EXECUTOR_ROLE)).ref;
-    } catch {
-      // No usable model fills the role: a call that needs one fails with the reason.
-      executor.id = EXECUTOR_ROLE;
-    }
-  }
-
   async function livePublisher(runId: string): Promise<LivePublisher | null> {
     try {
       if (!(await records.liveInterest()).subscribed) return null;
@@ -135,8 +163,38 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     );
   }
 
+  /**
+   * `nl` as cells see it. A lowered cell reaches natlang only through `nl.__inline(plan, ...)(args)`; each such
+   * call runs inside the executing cell (`inCell`), and so do the callables `.with(...)` derives from them.
+   */
+  const withinCell = <F extends (...args: never[]) => unknown>(callable: F): F => {
+    const call = (...args: unknown[]) =>
+      inCell(() => (callable as (...values: unknown[]) => Promise<unknown>)(...args));
+    // The natlang callable's own surface (its marker, `iterateOn`, `in`, `with`) stays on the wrapper.
+    for (const key of Reflect.ownKeys(callable)) {
+      if (key === "length" || key === "name" || key === "prototype") continue;
+      const descriptor = Reflect.getOwnPropertyDescriptor(callable, key)!;
+      if (key === "with" && typeof descriptor.value === "function") {
+        const rebind = descriptor.value as (...captures: unknown[]) => F;
+        descriptor.value = (...captures: unknown[]) => withinCell(rebind(...captures));
+      }
+      Object.defineProperty(call, key, descriptor);
+    }
+    Object.defineProperty(call, "name", { value: callable.name });
+    return call as unknown as F;
+  };
+  const inline = (core.nl as unknown as { __inline(...plan: unknown[]): (...args: never[]) => unknown })
+    .__inline;
+  const ambientNl = Object.defineProperties(
+    (...args: unknown[]) => (core.nl as unknown as (...values: unknown[]) => unknown)(...args),
+    {
+      with: { value: core.nl.with, enumerable: true },
+      __inline: { value: (...plan: unknown[]) => withinCell(inline(...plan)) },
+    }
+  );
+
   return {
-    ambient: { nl: core.nl, natlang, __natlang: core.__natlang },
+    ambient: { nl: ambientNl, natlang, __natlang: core.__natlang },
 
     lowerCell(source: string, options: NatlangLowerOptions): NatlangLoweredCell {
       const declared = options.ambientNames
@@ -173,17 +231,15 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
       active = run;
       store.attach(run);
       try {
-        await pinExecutor();
-        run.live = await livePublisher(options.runId);
         const value = await runtime.run(execute, {
           signal: options.signal,
           name: options.runId,
-          ...(run.live ? { onLive: run.live.sink } : {}),
+          onLive: relayLive,
         });
         return { value, calls: run.calls };
       } finally {
-        // Records and live events are durable before the cell reports them.
-        await run.live?.close();
+        // Whatever a detached call still had queued; the calls the cell awaited are durable already.
+        await run.live?.drain();
         await store.flush();
         store.attach(null);
         active = null;
