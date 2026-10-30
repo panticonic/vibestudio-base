@@ -1,7 +1,9 @@
 # Typed recovery
 
 Act on the structured error code and fields. Messages explain; don't parse
-them.
+them. `typedRecovery(error, { operation })` from
+`@workspace-skills/vibestudio-vcs` returns the step below for any code; this
+page is the reasoning it implements, and a test keeps the two equal.
 
 ## Basis and identity
 

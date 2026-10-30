@@ -132,25 +132,56 @@ Managed workspace state is semantic history, not a Git worktree. Tools:
 complete local chain. Merge parents come only from merge decisions, including
 the decision-only conclusion that `concludes` records atomically.
 
+To word the commit or review the local changes, hand the compare result to the typed
+reader (it proposes; you commit):
+
+```ts
+const status = await vcs.status({ contextId: ctx.contextId });
+const compare = await vcs.compare({
+  target: { kind: "event", eventId: status.mainEventId },
+  source: status.workingHead,
+});
+const changes = await natlang.load(
+  "skills/vibestudio-vcs/changes/summarizeChanges.nl",
+);
+const proposal = await changes.commitMessage(compare); // { message, intent, warnings }
+const summary = await changes.summarize(compare); // { headline, units, state, attention, truncated }
+```
+
+`message` is one line of at most 72 characters saying what the changes do. `intent` is
+a reason an author already recorded for the work, copied unchanged, or null: nothing
+here invents a purpose from a diff, so pass `intent` to `commit` only when it is non-null
+and the request does not already make it clear. Read `warnings` (a subject that broke
+its form, a truncated comparison). `summarize` gives a sentence per repository, the
+state (`ready`, `decisions-needed`, `conflicts`) and the conflicting or composed files
+to read before committing; those are exact, read from the comparison.
+
 `vcs({ operation: "push" })` publishes the committed event. It revalidates
 every merge parent by coordinate, runs the protected candidate checks, and
 never includes uncommitted work.
 
 ## Recovery
 
-- `ConflictPresent`: the selected coordinate conflicts and has no resolution.
-  Read its aspects, attributions, allowed resolutions, and both intents.
-- `CoupledGroupIncomplete`: the selection split a structural group. Select the
-  whole group, or omit `coordinates` so the planner picks a valid page.
-- `ScopeTooLarge`: narrow the compare page or selection; never split a coupled
-  group.
-- `IntegrityFailure`: stop. Reachable provenance can't explain the state;
-  don't work around it.
-- `IntegrationIncomplete`: follow the returned merge recipe. Use
-  `allRemaining: ours` to decline the rest of the source, or `current` with a
-  rationale after reviewing a correct combined state.
-- `NoEffect`: inspect current state. Report success only if the requested
-  outcome is already true.
+Act on the typed error's `code` and fields, not its message. Ask the table for
+the next step:
+
+```ts
+import { typedRecovery } from "@workspace-skills/vibestudio-vcs";
+
+const step = typedRecovery(error, { operation: "merge" }); // error is the typed VCS error
+// { code, action, instruction, stop, retry }
+```
+
+`stop: true` means report the error instead of working around it
+(`Unauthorized`, `IntegrityFailure`, an unrecognized code). `retry` says what a
+repeat may be: `"same-command-id"` only for a pending host effect with
+byte-identical arguments, `"new-command-id"` after re-observing, `"none"` when
+repeating cannot help. Passing `operation` matters for `ConflictPresent`, which
+means one thing from a merge and another from a revert. The table covers every
+code the service returns and is the executable form of
+[Typed recovery](references/typed-recovery.md); read that page for the reasoning
+behind each step. `NoEffect`: inspect current state and report success only if
+the requested outcome is already true.
 
 ## Reference map
 

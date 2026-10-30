@@ -3,12 +3,84 @@
   "generatedBy": "scripts/generate-vcs-skill-release.mjs",
   "files": [
     {
+      "path": "DECOMPOSITION.md",
+      "sha256": "bfaac1d869b74056ed867faf5f476ec37726f455f11d1543626640a5c24bc04a"
+    },
+    {
       "path": "SKILL.md",
-      "sha256": "c3ffce3458b4f51e3026864556cbb134ad57dec1dc704924d3555d0dfb3e892e"
+      "sha256": "1a2f92a81f64dbbf1f032e90214a4a51593948578a92f0157525dcbb44320685"
     },
     {
       "path": "agents/openai.yaml",
       "sha256": "5a939a11ed40ec60dc571638c15af3bb2018a06780c8ce8afc5212ee800b881f"
+    },
+    {
+      "path": "changes/DECOMPOSITION.md",
+      "sha256": "cb8bcded0e7956fd816e0464e572a6942fecff7f14fd2ed2c80f533a154e33cb"
+    },
+    {
+      "path": "changes/cases.jsonl",
+      "sha256": "627b1d4344dda1f52c0c3125a5eca338ec260a3d651e436a10ff17ff1e60fb41"
+    },
+    {
+      "path": "changes/digest.test.ts",
+      "sha256": "f8a9a7ec79163d8e0e29778aac1de4a046a82115d3f303d77fc8514375766533"
+    },
+    {
+      "path": "changes/natlang.ts",
+      "sha256": "bfefbdff41e4cdf5e6719aba06c3e4d117adbb3ae741b394a60421b4d3160c06"
+    },
+    {
+      "path": "changes/suite.ts",
+      "sha256": "523dac409e00c6f6c73c596b8e93667a64c69c34ac2a234056df7c345047e23d"
+    },
+    {
+      "path": "changes/summarizeChanges.d.nl.ts",
+      "sha256": "ba6d10bfc9dd7fcb8eb4cf1b74542615a2f576132420bc19a80ca05727b84201"
+    },
+    {
+      "path": "changes/summarizeChanges.nl",
+      "sha256": "5d694d03fd288fcdf5816013280cf0107ca862fc87bbd3f0f6d39ef0bbd0137e"
+    },
+    {
+      "path": "changes/summarizeChanges/commitMessage.ts",
+      "sha256": "206cd15523dfb6e921602ff41651d53fd914d6466be07872c84b1ea2c5adf4aa"
+    },
+    {
+      "path": "changes/summarizeChanges/commitSubject.d.nl.ts",
+      "sha256": "37952d14500a6b6842b58c61c4f5ec621b7f4d4c606673b66f9c9c4e90be946d"
+    },
+    {
+      "path": "changes/summarizeChanges/commitSubject.nl",
+      "sha256": "6e707b53e67614c45df3bc7a85511345460af7c0bd1da37c7be52cf647c3a332"
+    },
+    {
+      "path": "changes/summarizeChanges/describeUnit.d.nl.ts",
+      "sha256": "b35036a4e48178b2d2c552e3c87078571115508ffdcca63a4e5c261398ebfbba"
+    },
+    {
+      "path": "changes/summarizeChanges/describeUnit.nl",
+      "sha256": "6ce0200fb54d83aec366871c09c3c13b6a39750fb7e904214e07a3a64fc5a2a9"
+    },
+    {
+      "path": "changes/summarizeChanges/digest.ts",
+      "sha256": "048d164bd23b3373d39b1b031461ef3ebadad5a89f6a94a6e2498a94f61e2487"
+    },
+    {
+      "path": "changes/summarizeChanges/givesReason.d.nl.ts",
+      "sha256": "fed86ed71690c613d80abba385ee15157a34eae7f65d1fcff0a5dbc40fdb71e5"
+    },
+    {
+      "path": "changes/summarizeChanges/givesReason.nl",
+      "sha256": "ca5ca87671ca01df66aeacb05ecf1f15f2e4eb2ae8ebe8a933401acc7e4a307c"
+    },
+    {
+      "path": "changes/summarizeChanges/summarize.ts",
+      "sha256": "6c322baa5c041cc281c3d2cf958dbc6429c7b46d5c0e9e71306af9f236678f38"
+    },
+    {
+      "path": "changes/types.ts",
+      "sha256": "d959326f6757d8e363b2dcb4a06ad4862001a484c6b269ac82fa2cd93411d08d"
     },
     {
       "path": "evaluations/schema-fixtures.json",
@@ -16,7 +88,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "bf8b90f00a21da2310903dc38dcd832721c470794044bd97e85a0558b835aa03"
+      "sha256": "83c5092963b17aafebd839a5301fd1cea0b7ad55186b969973f03451c151bb70"
     },
     {
       "path": "references/authoring-basics.md",
@@ -72,8 +144,16 @@
     },
     {
       "path": "references/typed-recovery.md",
-      "sha256": "33f68c5eafeda6878f39648650765f482e392fa004c1e7e8b39fee30227f21d8"
+      "sha256": "dfe01c2848725e98da6c213fb4e08aafe59cb67b80e94378214a36b8e48e6f39"
+    },
+    {
+      "path": "typedRecovery.test.ts",
+      "sha256": "00eea0fb37350d768dbe3f9d4ed0e8496bb3d7716f13ef681844234e17540394"
+    },
+    {
+      "path": "typedRecovery.ts",
+      "sha256": "81d18bf544324c35356d6e3ab9dc55271f5e9448d6aabf5ba01a8521430a2877"
     }
   ],
-  "packageDigest": "9ba7db16a5aab0a56376f9af6c282bfeca6d6685820e0facb2a7d1b82b2017bd"
+  "packageDigest": "d3a04d246c14d0a8d3dbc0d7d7c3507ca3661ea7e9531d84d2aaaf78947525e3"
 }
