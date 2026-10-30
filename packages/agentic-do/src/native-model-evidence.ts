@@ -3,7 +3,7 @@ import {
   type JsonRepresentation,
   type JsonValue,
 } from "@panticonic/pi-chord";
-import type { Api, AssistantMessage, Model, Usage } from "@panticonic/pi-ai";
+import type { Api, Model, Usage } from "@panticonic/pi-ai";
 import { canonicalModelRef } from "@workspace/model-catalog/catalog";
 import {
   AssistantEntry,
@@ -217,10 +217,11 @@ export async function prepareNativeModelEvidence(
       outcome.status === "completed" &&
       task.kind === NATIVE_MODEL_HELPER_TASK
     ) {
-      const message = outcome.result as unknown as AssistantMessage;
       call.completedAt = new Date().toISOString();
       call.outcome = "completed";
-      call.usage = recordedUsage(message.usage);
+      call.usage = recordedUsage(
+        (outcome.result as unknown as { usage: Usage }).usage,
+      );
       continue;
     }
     if (outcome.status === "completed" && call.native.purpose === "generation")

@@ -7,6 +7,7 @@ import type {
   SamplingParams,
   ThinkingLevel,
   ToolChoice,
+  Usage,
 } from "@panticonic/pi-ai";
 import {
   copyJson,
@@ -16,6 +17,8 @@ import {
 } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
+  defineDoc,
+  defineDocFamily,
   defineTask,
   type Conversation,
   type EntryId,
@@ -45,7 +48,6 @@ export interface NativeModelHelperOptions {
 export const NATIVE_MODEL_HELPER_TASK = "vibestudio.model-helper";
 type Input = {
   model: JsonRepresentation<Model<Api>>;
-  transcript: JsonRepresentation<ModelContext>;
   options: JsonRepresentation<NativeModelHelperOptions>;
   cutoff: EntryId;
   /** Owner-defined provenance of whoever asked for this turn; retained with the
@@ -53,7 +55,36 @@ type Input = {
   attribution?: JsonValue;
 };
 type Checkpoint = { phase: "request" };
-type Result = JsonRepresentation<AssistantMessage>;
+/** The settled task keeps only what accounting needs; the message itself is `HelperResult`. */
+type Result = { stopReason: string; usage: JsonRepresentation<Usage> };
+
+/**
+ * Pi keeps every task record for the life of its Session and has no deletion for it,
+ * but a document retires with its owner and drops its content. The transcript is the
+ * bulk of a turn's input, so it lives in a task-scoped document that retires when the
+ * task settles, and the reply lives in a session-scoped document its caller retires
+ * once it has been delivered. Only small records outlive a turn.
+ */
+const HelperTranscript = defineDoc<{
+  transcript: JsonRepresentation<ModelContext>;
+}>({
+  kind: "vibestudio.model-helper-transcript",
+  version: 1,
+  scope: "task",
+  initial: () => ({ transcript: { messages: [] } }),
+  checkpointWhen: () => true,
+});
+const HelperResult = defineDocFamily<
+  { message: JsonRepresentation<AssistantMessage> | null },
+  null
+>({
+  kind: "vibestudio.model-helper-result",
+  version: 1,
+  scope: "session",
+  family: true,
+  initial: () => ({ message: null }),
+  checkpointWhen: () => true,
+});
 
 /** The Codex Responses API rejects `temperature`, and its Pi adapter omits `maxTokens`
  * from the request body, so the ceiling is written into the payload. */
@@ -124,7 +155,15 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
   initial: () => ({ phase: "request" }),
   phases: {
     request: async (current, runtime, context) => {
-      const { model, transcript, options, cutoff } = current.input;
+      const { model, options, cutoff } = current.input;
+      const stored = await runtime.snapshot(
+        HelperTranscript,
+        runtime.taskId,
+        context,
+      );
+      if (!stored)
+        throw new Error("Model helper lost its transcript document");
+      const transcript = stored.transcript;
       const response = await runtime.withModelRequest(
         {
           purpose: "generation",
@@ -185,18 +224,25 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
         );
         return;
       }
-      await runtime.commit(
-        () => ({
+      const message = response.result;
+      await runtime.commit(async (tx) => {
+        (await tx.doc(HelperResult, String(runtime.taskId), null)).message =
+          copyJson(message, {
+            omitUndefinedProperties: true,
+          }) as JsonRepresentation<AssistantMessage>;
+        return {
           status: "terminal",
           outcome: {
             status: "completed",
-            result: copyJson(response.result, {
-              omitUndefinedProperties: true,
-            }) as Result,
+            result: {
+              stopReason: message.stopReason,
+              usage: copyJson(message.usage, {
+                omitUndefinedProperties: true,
+              }) as JsonRepresentation<Usage>,
+            },
           },
-        }),
-        context,
-      );
+        };
+      }, context);
     },
   },
   abort: async (_current, runtime, context) => {
@@ -225,15 +271,12 @@ export async function completeNativeModelHelper(
     const marker = await tx.appendEntry(conversation.id, {
       kind: "vibestudio.model-helper-request",
     });
-    return tx.createTask(
+    const id = await tx.createTask(
       NativeModelHelperTask,
       {
         model: copyJson(selected, {
           omitUndefinedProperties: true,
         }) as Input["model"],
-        transcript: copyJson(transcript, {
-          omitUndefinedProperties: true,
-        }) as Input["transcript"],
         options: copyJson(options, {
           omitUndefinedProperties: true,
         }) as Input["options"],
@@ -250,6 +293,10 @@ export async function completeNativeModelHelper(
         abandonOnRestart: true,
       },
     );
+    (await tx.doc(HelperTranscript, id)).transcript = copyJson(transcript, {
+      omitUndefinedProperties: true,
+    }) as JsonRepresentation<ModelContext>;
+    return id;
   }, BACKGROUND_CONTEXT);
   try {
     const settled = await harness.waitForTask(taskId, context);
@@ -260,7 +307,20 @@ export async function completeNativeModelHelper(
       throw new Error(
         outcome.reason ?? `Native model helper ${outcome.status}`,
       );
-    return outcome.result;
+    const reply = await harness.snapshot(
+      HelperResult,
+      String(taskId),
+      BACKGROUND_CONTEXT,
+    );
+    if (!reply?.message)
+      throw new Error("Completed model helper lost its reply document");
+    const message = reply.message as AssistantMessage;
+    // Delivered: the reply document and its content leave storage with this commit.
+    await harness.commit(
+      (tx) => tx.retireDoc(HelperResult, String(taskId)),
+      BACKGROUND_CONTEXT,
+    );
+    return message;
   } catch (error) {
     try {
       await harness.abortTask(taskId, BACKGROUND_CONTEXT);

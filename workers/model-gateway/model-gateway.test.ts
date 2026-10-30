@@ -552,3 +552,64 @@ describe("tool choice", () => {
     expect(() => nativeTurnOptions("faux", { toolChoice: "required" })).toThrow(/cannot be forced/u);
   });
 });
+
+describe("retention", () => {
+  it("keeps neither a settled turn's transcript nor its reply in storage", async () => {
+    const { callAs, sql } = await gateway({
+      VIBESTUDIO_TEST_MODEL_SCRIPT: JSON.stringify({
+        rules: [{ match: "retention", steps: [], reply: "REPLY-MARKER-7f3a" }],
+      }),
+    });
+    const stored = (marker: string) =>
+      (
+        sql
+          .exec(
+            "SELECT COUNT(*) AS n FROM payload_chunks WHERE instr(CAST(data AS TEXT), ?) > 0",
+            marker,
+          )
+          .toArray()[0] as { n: number }
+      ).n;
+    const transcript = `retention TRANSCRIPT-MARKER-91c2 ${"x".repeat(50_000)}`;
+    const result = (await callAs(evalCaller, "turn", {
+      turnId: "k1",
+      model: TEST_MODEL_REF,
+      context: { messages: [userMessage(transcript)] },
+    })) as { message: { content: Array<{ text?: string }> } };
+    expect(result.message.content[0]?.text).toBe("REPLY-MARKER-7f3a");
+    expect(stored("TRANSCRIPT-MARKER-91c2")).toBe(0);
+    expect(stored("REPLY-MARKER-7f3a")).toBe(0);
+  });
+
+  it("drops the transcript of a cancelled turn too", async () => {
+    const gate = await gateway();
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const requested = new Promise<void>((resolve) => {
+      Gateway.observed = async () => {
+        resolve();
+        await hold;
+      };
+    });
+    const pending = gate.callAs(evalCaller, "turn", {
+      turnId: "k2",
+      model: TEST_MODEL_REF,
+      context: { messages: [userMessage("TRANSCRIPT-MARKER-cancel-55d0")] },
+    });
+    await requested;
+    const stored = () =>
+      (
+        gate.sql
+          .exec(
+            "SELECT COUNT(*) AS n FROM payload_chunks WHERE instr(CAST(data AS TEXT), 'TRANSCRIPT-MARKER-cancel-55d0') > 0",
+          )
+          .toArray()[0] as { n: number }
+      ).n;
+    // While the task runs, its transcript is durable; that is what resumption would need.
+    expect(stored()).toBeGreaterThan(0);
+    const cancelled = gate.callAs(evalCaller, "cancel", { turnId: "k2" });
+    release();
+    await cancelled;
+    await pending;
+    expect(stored()).toBe(0);
+  });
+});
