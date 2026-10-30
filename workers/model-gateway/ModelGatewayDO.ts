@@ -11,6 +11,9 @@ import {
 } from "@panticonic/pi-durable";
 import { rpc } from "@vibestudio/rpc";
 import { nativeTurnOptions } from "./toolChoice.js";
+import { scoreItem } from "./scoreItem.js";
+import { softmax } from "@workspace/natlang-pi";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import {
   NativeAgentOwner,
@@ -23,7 +26,6 @@ import {
 import {
   NativeModelHelperTask,
   completeNativeModelHelper,
-  scoreNativeModelHelper,
 } from "@workspace/agentic-do/native-model-helper";
 import {
   observeNativeModelConnection,
@@ -37,11 +39,13 @@ import {
 } from "@workspace/agentic-do/native-model-provider";
 import { createNativeModelRequestPort } from "@workspace/agentic-do/native-model-request-port";
 import {
+  LOCAL_MODELS_EXTENSION_ID,
   LOCAL_PROVIDER_ID,
   MODEL_SETTINGS_SERVICE_PROTOCOL,
   isModelUsable,
   type ModelCatalogEntry,
 } from "@workspace/model-catalog/catalog";
+import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
 import { isModelRole } from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import {
@@ -274,43 +278,40 @@ export class ModelGatewayDO
     attribution: ModelGatewayAttribution,
     controller: AbortController,
   ): Promise<ModelGatewayScoreResult> {
-    const context = withAbortSignal(controller.signal, BACKGROUND_CONTEXT);
     try {
       const { entry, role } = await this.resolveModel(input.model);
       controller.signal.throwIfAborted();
-      // Only a model served by the local-models server has per-token
-      // log-probabilities; a hosted provider returns none to score with.
+      // Only a model served by the local-models extension has per-token
+      // log-probabilities; a hosted provider returns none to score with. The
+      // extension scores with natlang's own serving code over its loopback
+      // server (no endpoint or key reaches this worker).
       if (entry.provider !== LOCAL_PROVIDER_ID)
         throw new Error(
           `${DECISION_UNSUPPORTED}: ${entry.ref} is served by a hosted provider that does not expose prompt log-probabilities`,
         );
-      const model = this.nativeModel(entry);
-      const harness = await this.agentSession(context);
-      const root = await harness.root(context);
-      const scores = await scoreNativeModelHelper(
-        harness,
-        root,
-        model,
-        input.context,
-        input.candidates,
-        context,
-        undefined,
-        {
-          turnId: input.turnId,
-          requested: input.model,
-          model: entry.ref,
-          operation: "score",
-          ...attribution,
-        } as unknown as JsonValue,
+      const results = localModelsExtensionMethods.scoreContinuations.result.parse(
+        await this.rpc.call(
+          "main",
+          mainRpcMethods["extensions.invoke"],
+          [
+            LOCAL_MODELS_EXTENSION_ID,
+            localModelsExtensionMethods.scoreContinuations.method,
+            [entry.ref, [scoreItem(input.context, input.candidates)]],
+          ],
+          { signal: controller.signal },
+        ),
       );
+      const scored = results[0];
+      if (!scored) throw new Error("The local model returned no scores");
+      if (!("log_probs" in scored)) throw new Error((scored as { error: string }).error);
       return {
         status: "completed",
         turnId: input.turnId,
         model: entry.ref,
         ...(role ? { role } : {}),
-        logProbs: scores.logProbs,
-        probabilities: scores.probabilities,
-        ...(scores.tokens ? { tokens: scores.tokens } : {}),
+        logProbs: scored.log_probs,
+        probabilities: softmax(scored.log_probs),
+        tokens: scored.tokens,
         attribution,
       };
     } catch (error) {

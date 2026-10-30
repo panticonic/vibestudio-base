@@ -447,4 +447,14 @@ export const localModelsExtensionMethods = {
     method: "tailServerLogLines",
     result: z.array(z.string()),
   },
+  /** natlang's decision readout: one entry per `{ messages, continuations }` item, in order. */
+  scoreContinuations: {
+    method: "scoreContinuations",
+    result: z.array(
+      z.union([
+        z.object({ log_probs: z.array(z.number()), tokens: z.array(z.number()) }).passthrough(),
+        z.object({ error: z.string() }),
+      ]),
+    ),
+  },
 } as const;

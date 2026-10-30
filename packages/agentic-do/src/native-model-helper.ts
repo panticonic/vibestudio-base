@@ -17,12 +17,6 @@ import {
 } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
-  DecisionUnsupportedError,
-  openAIChatMessages,
-  scoreReplies,
-  type NativeDecisionScores,
-} from "./native-model-score.js";
-import {
   defineDoc,
   defineDocFamily,
   defineTask,
@@ -55,8 +49,6 @@ export const NATIVE_MODEL_HELPER_TASK = "vibestudio.model-helper";
 type Input = {
   model: JsonRepresentation<Model<Api>>;
   options: JsonRepresentation<NativeModelHelperOptions>;
-  /** Present for a scoring request: the finite replies to score instead of a reply to generate. */
-  score?: { candidates: string[] };
   cutoff: EntryId;
   /** Owner-defined provenance of whoever asked for this turn; retained with the
    * task and copied into the native model evidence of its request. */
@@ -83,17 +75,14 @@ const HelperTranscript = defineDoc<{
   checkpointWhen: () => true,
 });
 const HelperResult = defineDocFamily<
-  {
-    message: JsonRepresentation<AssistantMessage> | null;
-    scores: JsonRepresentation<NativeDecisionScores> | null;
-  },
+  { message: JsonRepresentation<AssistantMessage> | null },
   null
 >({
   kind: "vibestudio.model-helper-result",
   version: 1,
   scope: "session",
   family: true,
-  initial: () => ({ message: null, scores: null }),
+  initial: () => ({ message: null }),
   checkpointWhen: () => true,
 });
 
@@ -159,23 +148,6 @@ export async function dispatchHelperTurn(
   } as Parameters<Models["complete"]>[2]);
 }
 
-type HelperReply =
-  | { message: AssistantMessage; scores?: undefined }
-  | { scores: NativeDecisionScores; message?: undefined };
-
-/** Scoring consumes prompt tokens only, at no price (the scorer is a local or flat-rate backend). */
-function scoringUsage(scores: NativeDecisionScores): JsonRepresentation<Usage> {
-  const { input, output } = scores.usage;
-  return {
-    input,
-    output,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: input + output,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
-
 /** One-shot inference is an actual native task, using generation's request port. */
 export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
   name: NATIVE_MODEL_HELPER_TASK,
@@ -183,7 +155,7 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
   initial: () => ({ phase: "request" }),
   phases: {
     request: async (current, runtime, context) => {
-      const { model, options, cutoff, score } = current.input;
+      const { model, options, cutoff } = current.input;
       const stored = await runtime.snapshot(
         HelperTranscript,
         runtime.taskId,
@@ -209,42 +181,15 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
               : { reasoning: options.reasoning }),
           },
         },
-        async (
-          capabilities,
-          signal,
-          prepared,
-        ): Promise<HelperReply> => {
-          const prompt = { ...transcript, messages: prepared.messages };
-          if (!score)
-            return {
-              message: await dispatchHelperTurn(
-                runtime.models,
-                prepared.model,
-                prompt,
-                capabilities,
-                options,
-                signal,
-              ),
-            };
-          // Scoring reads the model server's own log-probabilities through the
-          // invocation's protected, endpoint-bound fetch: loopback or credential
-          // authorization is injected at host egress. A model without such a
-          // transport has no scoring backend.
-          if (!capabilities.fetch)
-            throw new DecisionUnsupportedError(
-              "this model has no scoring backend",
-            );
-          return {
-            scores: await scoreReplies({
-              fetcher: capabilities.fetch,
-              baseUrl: prepared.model.baseUrl,
-              model: prepared.model.id,
-              messages: openAIChatMessages(prompt),
-              candidates: score.candidates,
-              signal,
-            }),
-          };
-        },
+        (capabilities, signal, prepared) =>
+          dispatchHelperTurn(
+            runtime.models,
+            prepared.model,
+            { ...transcript, messages: prepared.messages },
+            capabilities,
+            options,
+            signal,
+          ),
         context,
       );
       if (response.status === "waiting") {
@@ -258,11 +203,9 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
         );
         return;
       }
-      const reply = response.result;
       if (
-        reply.message &&
-        (reply.message.stopReason === "error" ||
-          reply.message.stopReason === "aborted")
+        response.result.stopReason === "error" ||
+        response.result.stopReason === "aborted"
       ) {
         await runtime.commit(
           () => ({
@@ -271,9 +214,9 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
               status: "failed",
               error: {
                 message:
-                  reply.message!.errorMessage ||
-                  `Model request ${reply.message!.stopReason}`,
-                detail: { stopReason: reply.message!.stopReason },
+                  response.result.errorMessage ||
+                  `Model request ${response.result.stopReason}`,
+                detail: { stopReason: response.result.stopReason },
               },
             },
           }),
@@ -281,26 +224,21 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
         );
         return;
       }
+      const message = response.result;
       await runtime.commit(async (tx) => {
-        const stored = await tx.doc(HelperResult, String(runtime.taskId), null);
-        if (reply.message) {
-          stored.message = copyJson(reply.message, {
+        (await tx.doc(HelperResult, String(runtime.taskId), null)).message =
+          copyJson(message, {
             omitUndefinedProperties: true,
           }) as JsonRepresentation<AssistantMessage>;
-        } else
-          stored.scores = copyJson(reply.scores!) as JsonRepresentation<NativeDecisionScores>;
-        const usage = reply.message
-          ? (copyJson(reply.message.usage, {
-              omitUndefinedProperties: true,
-            }) as JsonRepresentation<Usage>)
-          : scoringUsage(reply.scores!);
         return {
           status: "terminal",
           outcome: {
             status: "completed",
             result: {
-              stopReason: reply.message?.stopReason ?? "stop",
-              usage,
+              stopReason: message.stopReason,
+              usage: copyJson(message.usage, {
+                omitUndefinedProperties: true,
+              }) as JsonRepresentation<Usage>,
             },
           },
         };
@@ -326,67 +264,6 @@ export async function completeNativeModelHelper(
   parent?: ToolExecutionApi,
   attribution?: JsonValue,
 ): Promise<AssistantMessage> {
-  const reply = await runNativeModelHelper(
-    harness,
-    conversation,
-    selected,
-    transcript,
-    options,
-    undefined,
-    context,
-    parent,
-    attribution,
-  );
-  if (!reply.message)
-    throw new Error("Completed model helper lost its reply document");
-  return reply.message;
-}
-
-/**
- * Score finite replies with the model's own log-probabilities, as the same native
- * task through the same protected request port. A model whose backend cannot score
- * fails with a `decision-unsupported` message.
- */
-export async function scoreNativeModelHelper(
-  harness: Harness,
-  conversation: Conversation,
-  selected: Model<Api>,
-  transcript: ModelContext,
-  candidates: readonly string[],
-  context: Context,
-  parent?: ToolExecutionApi,
-  attribution?: JsonValue,
-): Promise<NativeDecisionScores> {
-  const reply = await runNativeModelHelper(
-    harness,
-    conversation,
-    selected,
-    transcript,
-    {},
-    { candidates: [...candidates] },
-    context,
-    parent,
-    attribution,
-  );
-  if (!reply.scores)
-    throw new Error("Completed scoring helper lost its scores document");
-  return reply.scores;
-}
-
-async function runNativeModelHelper(
-  harness: Harness,
-  conversation: Conversation,
-  selected: Model<Api>,
-  transcript: ModelContext,
-  options: NativeModelHelperOptions,
-  score: { candidates: string[] } | undefined,
-  context: Context,
-  parent: ToolExecutionApi | undefined,
-  attribution: JsonValue | undefined,
-): Promise<{
-  message?: AssistantMessage;
-  scores?: NativeDecisionScores;
-}> {
   context.abortSignal?.throwIfAborted();
   // Admission completes without caller cancellation so a racing abort cannot
   // strand a committed task whose ID the caller never received.
@@ -403,7 +280,6 @@ async function runNativeModelHelper(
         options: copyJson(options, {
           omitUndefinedProperties: true,
         }) as Input["options"],
-        ...(score ? { score } : {}),
         cutoff: marker.id,
         ...(attribution === undefined
           ? {}
@@ -436,22 +312,15 @@ async function runNativeModelHelper(
       String(taskId),
       BACKGROUND_CONTEXT,
     );
-    if (!reply || (!reply.message && !reply.scores))
+    if (!reply?.message)
       throw new Error("Completed model helper lost its reply document");
-    const delivered = {
-      ...(reply.message
-        ? { message: reply.message as AssistantMessage }
-        : {}),
-      ...(reply.scores
-        ? { scores: reply.scores as NativeDecisionScores }
-        : {}),
-    };
+    const message = reply.message as AssistantMessage;
     // Delivered: the reply document and its content leave storage with this commit.
     await harness.commit(
       (tx) => tx.retireDoc(HelperResult, String(taskId)),
       BACKGROUND_CONTEXT,
     );
-    return delivered;
+    return message;
   } catch (error) {
     try {
       await harness.abortTask(taskId, BACKGROUND_CONTEXT);

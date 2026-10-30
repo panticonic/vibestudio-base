@@ -75,8 +75,8 @@ class Gateway extends ModelGatewayDO {
   static roleResolutions = 0;
   static unusable = false;
   static observed: ((request: ModelRequestTarget) => Promise<void>) | undefined;
-  /** Replaces the invocation's protected fetch, standing in for the model server behind host egress. */
-  static serverFetch: typeof fetch | undefined;
+  /** Stands in for the local-models extension: what `extensions.invoke` answers, given its arguments. */
+  static extension: ((args: unknown[]) => unknown) | undefined;
 
   protected override modelSettings(): Settings {
     const entry = testEntry(Gateway.unusable);
@@ -123,9 +123,7 @@ class Gateway extends ModelGatewayDO {
     // The faux provider never builds an HTTP payload; a real one reports each
     // prepared payload through this hook, which is what records the evidence.
     await observed.options.onPayload?.({}, (api.prepared ?? request).model);
-    return Gateway.serverFetch
-      ? { ...observed, options: { ...observed.options, fetch: Gateway.serverFetch } }
-      : observed;
+    return observed;
   }
 }
 
@@ -135,7 +133,7 @@ afterEach(async () => {
   Gateway.roleResolutions = 0;
   Gateway.unusable = false;
   Gateway.observed = undefined;
-  Gateway.serverFetch = undefined;
+  Gateway.extension = undefined;
   for (const dispose of disposals.splice(0).reverse()) await dispose();
 });
 
@@ -186,6 +184,14 @@ async function host() {
     else if (method === "workspace-state.alarmSourcePublish") result = "accepted";
     else if (method === "localModelRuntime.prepareNativeModel")
       result = { baseUrl: "http://127.0.0.1:43117/v1" };
+    else if (method === "extensions.invoke" && Gateway.extension)
+      try {
+        result = Gateway.extension(
+          (envelope.message as unknown as { args: unknown[] }).args,
+        );
+      } catch (failure) {
+        error = failure;
+      }
     else if (method === "authority.outstandingAcquisitions")
       result = { receipts: [], next: null };
     else if (
@@ -649,37 +655,50 @@ describe("score", () => {
     candidates: ["urgent", "normal"],
   };
 
-  it("scores candidates on a local model through the protected native path and normalizes them", async () => {
-    const requests: string[] = [];
-    Gateway.serverFetch = (async (url: string) => {
-      requests.push(url);
-      return new Response(
-        JSON.stringify({ results: [{ log_probs: [-0.2, -1.8], tokens: [1, 1] }] }),
-      );
-    }) as typeof fetch;
-    const { callAs, call } = await gateway();
+  it("scores candidates on a local model through the local-models extension and normalizes them", async () => {
+    const invoked: unknown[][] = [];
+    Gateway.extension = (args) => {
+      invoked.push(args);
+      return [{ log_probs: [-0.2, -1.8], tokens: [1, 1] }];
+    };
+    const { callAs } = await gateway();
     const result = (await callAs(evalCaller, "score", scored)) as {
       status: string;
       model: string;
       logProbs: number[];
       probabilities: number[];
+      tokens: number[];
       attribution: { callerId: string };
     };
-    expect(requests).toEqual(["http://127.0.0.1:43117/v1/natlang/score"]);
-    expect(result).toMatchObject({ status: "completed", model: "local:lfm3-1.7b" });
+    expect(invoked).toEqual([
+      [
+        "@workspace-extensions/local-models",
+        "scoreContinuations",
+        [
+          "local:lfm3-1.7b",
+          [
+            {
+              messages: [
+                { role: "system", content: "Decide." },
+                { role: "user", content: "urgent?" },
+              ],
+              continuations: ["urgent", "normal"],
+            },
+          ],
+        ],
+      ],
+    ]);
+    expect(result).toMatchObject({ status: "completed", model: "local:lfm3-1.7b", tokens: [1, 1] });
     expect(result.logProbs).toEqual([-0.2, -1.8]);
     expect(result.probabilities[0]! + result.probabilities[1]!).toBeCloseTo(1);
+    expect(result.probabilities[0]).toBeGreaterThan(0.8);
     expect(result.attribution.callerId).toBe(evalCaller.callerId);
-    const evidence = (await call("inspectTurns")) as {
-      calls: Array<{ attribution?: { operation?: string }; outcome?: string }>;
-    };
-    expect(evidence.calls.at(-1)).toMatchObject({
-      outcome: "completed",
-      attribution: { operation: "score" },
-    });
   });
 
-  it("rejects with decision-unsupported for models that cannot score, without a model request", async () => {
+  it("rejects with decision-unsupported for models that cannot score, without asking the extension", async () => {
+    Gateway.extension = () => {
+      throw new Error("the extension must not be asked");
+    };
     const { callAs } = await gateway();
     for (const model of [TEST_MODEL_REF, "openai:hosted"])
       await expect(callAs(evalCaller, "score", { ...scored, model })).rejects.toThrow(
@@ -687,14 +706,11 @@ describe("score", () => {
       );
   });
 
-  it("surfaces a local server without prompt log-probabilities as decision-unsupported", async () => {
-    Gateway.serverFetch = (async (url: string) =>
-      url.endsWith("/natlang/score")
-        ? new Response("{}", { status: 404 })
-        : new Response(JSON.stringify({ choices: [] }))) as typeof fetch;
+  it("surfaces an item the extension could not render as the extension's error", async () => {
+    Gateway.extension = () => [{ error: "the conversation has no user turn" }];
     const { callAs } = await gateway();
     await expect(callAs(evalCaller, "score", scored)).rejects.toThrow(
-      /decision-unsupported/u,
+      /the conversation has no user turn/u,
     );
   });
 });

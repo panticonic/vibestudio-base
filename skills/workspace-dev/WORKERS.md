@@ -803,12 +803,11 @@ combined with `"required"`. A turn that
 fails rejects with the original failure; a cancelled turn rejects with
 `ModelTurnCancelledError`. Turns are returned whole; there is no delta stream.
 `gateway.score({ turnId, model, context, candidates })` scores finite replies
-with the model's own log-probabilities, through the same protected native path
-(no endpoint or key reaches the caller), and returns `logProbs` and normalized
-`probabilities` in candidate order. Only models served by local-models can
-score; any other rejects with `DecisionUnsupportedError` (message prefix
-`decision-unsupported`), as does a local server that returns no log-probabilities.
-Each turn is attributed to the authenticated caller (an agent's eval to its
+with the model's own log-probabilities, through the local-models extension's
+`scoreContinuations` (natlang's own serving code; no endpoint or key reaches the
+caller), and returns `logProbs`, `tokens` and normalized `probabilities` in
+candidate order. Only models served by local-models can score; any other rejects
+with `DecisionUnsupportedError` (message prefix `decision-unsupported`). Each turn is attributed to the authenticated caller (an agent's eval to its
 owning agent) in the gateway's native model evidence. Declare
 `workspace-service:model-gateway` in the caller's authority requests.
 
