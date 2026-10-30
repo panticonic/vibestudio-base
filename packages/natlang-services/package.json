@@ -1,0 +1,18 @@
+{
+  "name": "@workspace/natlang-services",
+  "version": "0.1.0",
+  "description": "Typed eval services for natlang programs: TypeScript declarations generated from the service contracts, and a narrowing selector over eval bindings",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./catalog": "./src/catalog.ts",
+    "./contracts": "./src/contracts.ts"
+  },
+  "dependencies": {
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace/agentic-protocol": "workspace:*",
+    "@workspace/model-catalog": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}
