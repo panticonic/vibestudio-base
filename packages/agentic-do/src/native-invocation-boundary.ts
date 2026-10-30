@@ -65,8 +65,10 @@ export interface NativeInvocationBoundary {
   readonly harness: Harness;
   readonly image: LoadedAgentImage;
   readonly rpc: RpcClient;
-  /** Admission joins the existing ordered publication task chain in this Tx. */
-  readonly enqueueStart: (
+  /** Admission joins the existing ordered publication task chain in this Tx.
+   * An owner with no published trajectory (the model gateway) has no publication
+   * obligation and omits it. */
+  readonly enqueueStart?: (
     tx: Tx,
     publication: NativeInvocationStartPublication,
   ) => Promise<TaskId>;
@@ -162,6 +164,7 @@ async function openInvocation(
         );
       request = copyJson(checkpoint["arguments"]);
     }
+    if (!boundary.enqueueStart) return;
     const publications = await tx.doc(
       InvocationPublications,
       task.conversationId,

@@ -1,5 +1,9 @@
-import { type Context, type JsonRepresentation } from "@panticonic/pi-chord";
-import type { Api, Model, Usage } from "@panticonic/pi-ai";
+import {
+  type Context,
+  type JsonRepresentation,
+  type JsonValue,
+} from "@panticonic/pi-chord";
+import type { Api, AssistantMessage, Model, Usage } from "@panticonic/pi-ai";
 import { canonicalModelRef } from "@workspace/model-catalog/catalog";
 import {
   AssistantEntry,
@@ -18,6 +22,7 @@ import {
 } from "@panticonic/pi-durable";
 
 import { nativeTaskProductContext } from "./native-product-context.js";
+import { NATIVE_MODEL_HELPER_TASK } from "./native-model-helper.js";
 
 const RETAINED_ATTEMPTS = 100;
 type ModelRoute = {
@@ -42,6 +47,8 @@ export type NativeModelAttempt = ModelRoute & {
   startedAt: string;
   completedAt?: string;
   entryId?: EntryId;
+  /** Who asked for this request, when its task carries provenance (model-gateway turns). */
+  attribution?: JsonValue;
   outcome?: "completed" | "failed" | "aborted";
   usage?: JsonRepresentation<Usage>;
   error?: string;
@@ -103,9 +110,18 @@ export async function observeNativeModelConnection(
           );
         await api.commit(async (tx) => {
           const evidence = await tx.doc(ModelEvidence, request.conversationId);
+          const task = await tx.task(request.taskId);
+          const attribution =
+            task?.kind === NATIVE_MODEL_HELPER_TASK &&
+            task.input !== null &&
+            typeof task.input === "object" &&
+            !Array.isArray(task.input)
+              ? task.input["attribution"]
+              : undefined;
           evidence.totalCalls++;
           evidence.calls.push({
             attemptId: evidence.totalCalls,
+            ...(attribution === undefined ? {} : { attribution }),
             ...actual,
             native: {
               conversationId: request.conversationId,
@@ -126,6 +142,27 @@ export async function observeNativeModelConnection(
         }, context);
         return transformed;
       },
+    },
+  };
+}
+
+function recordedUsage(usage: Usage): JsonRepresentation<Usage> {
+  return {
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+    totalTokens: usage.totalTokens,
+    ...(usage.cacheWrite1h === undefined
+      ? {}
+      : { cacheWrite1h: usage.cacheWrite1h }),
+    ...(usage.reasoning === undefined ? {} : { reasoning: usage.reasoning }),
+    cost: {
+      input: usage.cost.input,
+      output: usage.cost.output,
+      cacheRead: usage.cost.cacheRead,
+      cacheWrite: usage.cost.cacheWrite,
+      total: usage.cost.total,
     },
   };
 }
@@ -160,25 +197,7 @@ export async function prepareNativeModelEvidence(
         : message.stopReason === "aborted"
           ? "aborted"
           : "completed";
-    const usage = message.usage;
-    call.usage = {
-      input: usage.input,
-      output: usage.output,
-      cacheRead: usage.cacheRead,
-      cacheWrite: usage.cacheWrite,
-      totalTokens: usage.totalTokens,
-      ...(usage.cacheWrite1h === undefined
-        ? {}
-        : { cacheWrite1h: usage.cacheWrite1h }),
-      ...(usage.reasoning === undefined ? {} : { reasoning: usage.reasoning }),
-      cost: {
-        input: usage.cost.input,
-        output: usage.cost.output,
-        cacheRead: usage.cost.cacheRead,
-        cacheWrite: usage.cost.cacheWrite,
-        total: usage.cost.total,
-      },
-    };
+    call.usage = recordedUsage(message.usage);
     if (message.errorMessage !== undefined) call.error = message.errorMessage;
   }
   for (const task of staged.tasks) {
@@ -192,6 +211,18 @@ export async function prepareNativeModelEvidence(
       );
     if (!call) continue;
     const outcome = task.state.outcome;
+    // A one-shot helper produces no assistant entry; its result is the only
+    // place its usage can be read.
+    if (
+      outcome.status === "completed" &&
+      task.kind === NATIVE_MODEL_HELPER_TASK
+    ) {
+      const message = outcome.result as unknown as AssistantMessage;
+      call.completedAt = new Date().toISOString();
+      call.outcome = "completed";
+      call.usage = recordedUsage(message.usage);
+      continue;
+    }
     if (outcome.status === "completed" && call.native.purpose === "generation")
       continue;
     call.completedAt = new Date().toISOString();

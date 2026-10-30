@@ -30,6 +30,10 @@
     "./native-agent-owner": "./src/native-agent-owner.ts",
     "./native-model-transport": "./src/native-model-transport.ts",
     "./native-model-provider": "./src/native-model-provider.ts",
+    "./native-model-request-port": "./src/native-model-request-port.ts",
+    "./native-model-helper": "./src/native-model-helper.ts",
+    "./native-model-evidence": "./src/native-model-evidence.ts",
+    "./native-invocation-boundary": "./src/native-invocation-boundary.ts",
     "./testing/native-vessel": "./src/testing/native-vessel.ts",
     "./native-agent-session": "./src/native-agent-session.ts",
     "./rpc-contract": "./src/rpc-contract.ts"

@@ -83,6 +83,8 @@ Generated from `runtimeSurface.worker.ts`. Use `await help()` at runtime for the
 | `webhooks` | namespace | `createSubscription`, `listSubscriptions`, `revokeSubscription`, `rotateSecret` | Ergonomic owner-scoped webhook lifecycle, identical in panels, workers, DOs, and agent eval: createSubscription(request), listSubscriptions(), rotateSecret(subscriptionId, secret?), and revokeSubscription(subscriptionId). Each subscription has an explicit maxBodyBytes budget: relay defaults to its 1,500,000-byte transport ceiling, while direct defaults to the operator-configured host ceiling (16 MiB by default). Delivery events currently include rawBodyBase64, so the host ceiling also bounds that in-memory expansion. Agent eval delegates ownership and target-source checks to its host-verified owning runtime. Secrets are redacted from listings. |
 | `extensions` | namespace | `use`, `invoke`, `invokeProvider`, `on`, `status`, `update` |  |
 | `templates` | namespace | `inspect`, `inspectAuthoring`, `authoringParts`, `publishAuthoring` | Exact source inspection and publication through the admitted template receiver. |
+| `web` | namespace | `search`, `fetch`, `read` | Web search, page fetch, and cached-page read: the agent web_search, web_fetch, and web_read tools' implementation, callable from code. search runs up to five queries through DuckDuckGo, or Tavily, Brave, or Exa when a credential is registered (provider requests use the caller's credentialed egress). fetch loads a page through managed Chromium, caches the cleaned markdown in the blobstore, and returns a head excerpt and a digest; session "browser" uses imported cookies and needs approval. read returns a byte range of a cached page by digest. Returned page and result text is untrusted external content. |
+| `memory` | namespace | `recall` | Workspace memory recall (the agent memory_recall tool's implementation): recall({ query, kinds?, limit? }) searches completed conversation messages, committed file content, and commit summaries with provenance. Recall finds things; verify against the source records it points to. |
 | `notifications` | namespace | `show`, `dismiss` |  |
 | `problemReports` | namespace | `usageTransport`, `availability`, `incidents`, `transport`, `importPrepared`, `forConversation`, `collect`, `serverConsent`, `decideServer`, `consent`, `decide`, `create`, `get`, `update`, `appendNarrative`, `patchNarrative`, `prepare`, `send`, `history`, `cancel`, `resume`, `retainExport`, `remoteStatus`, `deleteRemote`, `deleteLocal` | Local problem reports owned by the calling user. create a manual draft, appendNarrative/patchNarrative with host-assigned section IDs and caller-derived authorship, prepare to freeze sanitized bytes (returns { revision, submissionId, digest, bytes }), and send(reportId, revision, digest) to request upload; agent callers wait for a one-time human approval of that exact report. Consent and other trusted-human controls reject agent callers. |
 | `services` | value |  | Portable raw service namespace: services.<svc>.<method>(...) is always the server service <svc>, dispatched through the caller-scoped main service boundary, even when a runtime binding shares the name (services.blobstore is the raw blobstore service, the blobstore binding is the curated client). The client contract is shared by panels, workers, Durable Objects, and eval; Durable Objects bind clients to their own instance RPC. |
@@ -764,6 +766,41 @@ On a running system, including agent eval, test the real object through
 `rpc.call(...)` calls as above. That path exercises workerd, the live
 declaration, the method's `@rpc` contract, and the object's persistent SQLite
 database.
+
+### Running a model turn: the model gateway
+
+Code that needs one model turn without being an agent (a panel, a worker, a
+program running in eval) calls the workspace's model gateway,
+`vibestudio.model-gateway.v1`, through `@workspace/model-gateway`:
+
+```ts
+import { createModelGatewayClient } from "@workspace/model-gateway";
+
+const gateway = createModelGatewayClient(rpc);
+const { message, model, usage } = await gateway.turn(
+  {
+    turnId: crypto.randomUUID(), // names the turn for cancel
+    model: "executor", // a "provider:id" ref, or a model role
+    context: { systemPrompt, messages, tools }, // Pi context JSON
+    options: { temperature: 0, maxTokens: 800 },
+  },
+  { signal }, // aborting the signal cancels the pending turn
+);
+```
+
+A turn runs as a native Pi task through the same protected request port as
+agent generation, so provider credentials are injected at host egress and the
+host's `model.use` and `credential.use` approvals apply; the caller never sees
+a key. `message` is the full assistant message (text, thinking, tool calls,
+stop reason, usage); `model` is the exact ref that ran. The `executor` role
+resolves per call: the local executor model when local-models reports it
+ready, otherwise the lowest-priced usable hosted model, which is billed (the
+role's current resolution is `models.resolveRole("executor")`). A turn that
+fails rejects with the original failure; a cancelled turn rejects with
+`ModelTurnCancelledError`. Turns are returned whole; there is no delta stream.
+Each turn is attributed to the authenticated caller (an agent's eval to its
+owning agent) in the gateway's native model evidence. Declare
+`workspace-service:model-gateway` in the caller's authority requests.
 
 Which methods are exposed is decided by the active provider build,
 not by the source currently in the workspace. After adding or changing an

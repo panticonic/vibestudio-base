@@ -982,6 +982,51 @@ async function discoveryFixture(
   return { ...fixture, calls };
 }
 
+describe("model roles and catalog lookup", () => {
+  it("resolves the executor role to the billed hosted model while the local executor is absent", async () => {
+    TestModelSettingsDO.config = { ...BASE_CONFIG };
+    const { call } = await createTestDO(TestModelSettingsDO);
+    const resolution = (await call("resolveRole", "executor")) as {
+      ref: string | null;
+      source: string;
+    };
+    expect(resolution.source).toBe("hosted");
+    expect(resolution.ref).toMatch(/^(openai|anthropic):/u);
+  });
+
+  it("resolves the executor role to the local model once local-models reports it ready", async () => {
+    TestModelSettingsDO.config = { ...BASE_CONFIG };
+    class LocalExecutorDO extends TestModelSettingsDO {
+      protected override fetchLocalModels() {
+        return Promise.resolve([
+          localEntry({
+            slug: "lfm3-1.7b",
+            displayName: "LFM3 1.7B",
+            baseUrl: "http://127.0.0.1:43117/v1",
+            state: "ready" as const,
+          }),
+        ]);
+      }
+    }
+    const { call } = await createTestDO(LocalExecutorDO);
+    expect(await call("resolveRole", "executor")).toMatchObject({
+      ref: "local:lfm3-1.7b",
+      source: "local",
+    });
+  });
+
+  it("rejects an unknown role", async () => {
+    const { call } = await createTestDO(TestModelSettingsDO);
+    await expect(call("resolveRole", "smart")).rejects.toThrow(/Unknown model role/u);
+  });
+
+  it("returns one catalog entry by ref, or null", async () => {
+    const { call } = await createTestDO(TestModelSettingsDO);
+    expect(await call("getModel", "openai:gpt-5")).toMatchObject({ ref: "openai:gpt-5" });
+    expect(await call("getModel", "openai:nope")).toBeNull();
+  });
+});
+
 describe("model discovery evidence and original failures", () => {
   it("proves optional absence from effective declarations without invoking an undeclared source", async () => {
     const f = await discoveryFixture({ extensions: [] });

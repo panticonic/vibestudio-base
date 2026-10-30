@@ -38,7 +38,11 @@ import { authorityMethods } from "@vibestudio/service-schemas/authority";
 import { nativeInvocationInspectionInputSchema, nativeInvocationSourceSchema, nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import { stableSha256Hex } from "@vibestudio/content-addressing";
-import { inspectNativeInvocationSource } from "./native-invocation-source.js";
+import {
+  bindNativeTrajectory,
+  inspectNativeInvocationSource,
+  type NativeTrajectoryResolver,
+} from "./native-invocation-source.js";
 import { nativeFailureDiagnostic } from "./native-failure-diagnostic.js";
 import type {
   DurableObjectContext,
@@ -118,6 +122,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   }
 
   protected abstract agentOptions(): NativeAgentOptions;
+
+  /** Owners without a channel name their own invocation trajectory; channel
+   * agents keep the default, their conversation's channel. */
+  protected nativeTrajectory(): NativeTrajectoryResolver | undefined {
+    return undefined;
+  }
 
   /** Reconstruct executable product definitions before the durable Session opens. */
   protected async prepareAgentRegistry(): Promise<void> {}
@@ -618,6 +628,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         BACKGROUND_CONTEXT,
       );
       this.traceOwnerStartup("session-open", phaseStartedAt);
+      const trajectory = this.nativeTrajectory();
+      if (trajectory) bindNativeTrajectory(harness, trajectory);
       this.harness = harness;
       this.sessionClosing = false;
       harness.subscribeClose(() => { this.sessionClosing = true; });

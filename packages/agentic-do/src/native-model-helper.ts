@@ -3,11 +3,15 @@ import type {
   AssistantMessage,
   Context as ModelContext,
   Model,
+  SamplingParams,
+  ThinkingLevel,
+  ToolChoice,
 } from "@panticonic/pi-ai";
 import {
   copyJson,
   type Context,
   type JsonRepresentation,
+  type JsonValue,
 } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
@@ -18,18 +22,36 @@ import {
   type ToolExecutionApi,
 } from "@panticonic/pi-durable";
 
+/**
+ * Request controls a one-shot turn may carry. The transcript itself carries the
+ * system prompt, messages and tool declarations; these are the per-request knobs.
+ * `samplingParams` is Pi's pass-through for OpenAI-compatible servers (for example
+ * `tool_choice: "required"`, which Pi's own `toolChoice` does not model).
+ */
+export interface NativeModelHelperOptions {
+  temperature?: number;
+  maxTokens?: number;
+  reasoning?: ThinkingLevel;
+  toolChoice?: ToolChoice;
+  samplingParams?: SamplingParams;
+}
+/** The task's definition name, also how native model evidence recognizes a one-shot turn. */
+export const NATIVE_MODEL_HELPER_TASK = "vibestudio.model-helper";
 type Input = {
   model: JsonRepresentation<Model<Api>>;
   transcript: JsonRepresentation<ModelContext>;
-  options: { temperature?: number; maxTokens?: number };
+  options: JsonRepresentation<NativeModelHelperOptions>;
   cutoff: EntryId;
+  /** Owner-defined provenance of whoever asked for this turn; retained with the
+   * task and copied into the native model evidence of its request. */
+  attribution?: JsonValue;
 };
 type Checkpoint = { phase: "request" };
 type Result = JsonRepresentation<AssistantMessage>;
 
 /** One-shot inference is an actual native task, using generation's request port. */
 export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
-  name: "vibestudio.model-helper",
+  name: NATIVE_MODEL_HELPER_TASK,
   version: 1,
   initial: () => ({ phase: "request" }),
   phases: {
@@ -47,10 +69,13 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
             ...(options.maxTokens === undefined
               ? {}
               : { maxTokens: options.maxTokens }),
+            ...(options.reasoning === undefined
+              ? {}
+              : { reasoning: options.reasoning }),
           },
         },
         (capabilities, signal, prepared) =>
-          runtime.models.complete(
+          runtime.models.completeSimple(
             prepared.model,
             { ...transcript, messages: prepared.messages },
             { ...capabilities, ...options, signal },
@@ -117,9 +142,10 @@ export async function completeNativeModelHelper(
   conversation: Conversation,
   selected: Model<Api>,
   transcript: ModelContext,
-  options: Input["options"],
+  options: NativeModelHelperOptions,
   context: Context,
   parent?: ToolExecutionApi,
+  attribution?: JsonValue,
 ): Promise<AssistantMessage> {
   context.abortSignal?.throwIfAborted();
   // Admission completes without caller cancellation so a racing abort cannot
@@ -141,6 +167,9 @@ export async function completeNativeModelHelper(
           omitUndefinedProperties: true,
         }) as Input["options"],
         cutoff: marker.id,
+        ...(attribution === undefined
+          ? {}
+          : { attribution: copyJson(attribution) }),
       },
       {
         ownership: parent

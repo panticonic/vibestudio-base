@@ -85,6 +85,26 @@ export async function nativeTaskModelSource(
   return source;
 }
 
+/**
+ * The trajectory (host log identity) a conversation's native invocations belong
+ * to. Agents publish on their channel's trajectory, which is the default. An
+ * owner with no channel (the model gateway) registers its own: the host treats a
+ * native owner without an agent binding as its own trajectory, named by its
+ * runtime id.
+ */
+export type NativeTrajectoryResolver = (
+  conversationId: import("@panticonic/pi-durable").ConversationId,
+  context: Context,
+) => Promise<string>;
+const trajectoryResolvers = new WeakMap<Harness, NativeTrajectoryResolver>();
+
+export function bindNativeTrajectory(
+  harness: Harness,
+  resolver: NativeTrajectoryResolver,
+): void {
+  trajectoryResolvers.set(harness, resolver);
+}
+
 export async function nativeInvocationOwner(
   harness: Harness,
   image: LoadedAgentImage,
@@ -92,14 +112,14 @@ export async function nativeInvocationOwner(
   context: Context,
 ): Promise<NativeInvocationSource["owner"]> {
   const executor = await admittedAgentExecutor(harness, image, context);
-  const binding = await retainedNativeConversationChannel(
-    harness,
-    conversationId,
-    context,
-  );
+  const resolver = trajectoryResolvers.get(harness);
+  const channelId = resolver
+    ? await resolver(conversationId, context)
+    : (await retainedNativeConversationChannel(harness, conversationId, context))
+        .channelId;
   return {
     ...executor.owner,
-    channelId: binding.channelId,
+    channelId,
     source: executor.source,
     effectiveVersion: executor.effectiveVersion,
     className: executor.className,

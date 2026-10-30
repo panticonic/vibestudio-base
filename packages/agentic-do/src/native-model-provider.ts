@@ -1,5 +1,7 @@
 import { mainRpcMethod } from "@vibestudio/service-schemas/mainRpc";
-import type { ApiKeyAuth, Provider } from "@panticonic/pi-ai";
+import { createProvider, type ApiKeyAuth, type Provider } from "@panticonic/pi-ai";
+import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
+import type { PiModelSpec } from "@workspace/model-catalog/catalog";
 import { builtinModels } from "@panticonic/pi-ai/providers/all";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import { GenerationTask, LiveDoc } from "@panticonic/pi-durable";
@@ -78,7 +80,49 @@ export function createProtectedNativeModels(
   return models;
 }
 
+/** The owner's protected Pi registry, with the deterministic provider only in host test mode. */
+export function createProtectedNativeModelsForEnv(
+  env: unknown,
+): ReturnType<typeof builtinModels> {
+  const values = env as Record<string, unknown>;
+  const deterministicTestMode = values["VIBESTUDIO_TEST_MODE"] === "1";
+  return createProtectedNativeModels({
+    deterministicTestMode,
+    ...(deterministicTestMode &&
+    typeof values["VIBESTUDIO_TEST_MODEL_SCRIPT"] === "string"
+      ? { modelScript: values["VIBESTUDIO_TEST_MODEL_SCRIPT"] }
+      : {}),
+  });
+}
+
 const LOCAL_PROVIDER = "local";
+
+/** The `local` Pi provider over the local-models extension's descriptors. Endpoint
+ * authentication is attested by host egress; the provider carries only the protected sentinel. */
+export function createLocalNativeModelProvider(
+  models: readonly { readonly spec: PiModelSpec; readonly toolsCapable: boolean }[],
+): Provider {
+  return createProvider({
+    id: LOCAL_PROVIDER,
+    name: "Local models",
+    auth: { apiKey: createProtectedModelAuth() },
+    models: models.map(({ spec, toolsCapable }) => ({
+      id: spec.id,
+      name: spec.name,
+      api: "openai-completions",
+      provider: LOCAL_PROVIDER,
+      baseUrl: spec.baseUrl,
+      reasoning: spec.reasoning,
+      input: spec.input,
+      cost: spec.cost,
+      contextWindow: spec.contextWindow,
+      maxTokens: spec.maxTokens,
+      capabilities: { tools: toolsCapable },
+      compat: { supportsReasoningEffort: false },
+    })),
+    api: openAICompletionsApi(),
+  });
+}
 
 /** The shipping owner supplies its actual host-authenticated task/trajectory boundary, never an inbound caller's authority. */
 export interface NativeModelProviderHost {

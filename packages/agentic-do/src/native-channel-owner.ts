@@ -1,8 +1,5 @@
 import type { RpcCaller } from "@vibestudio/rpc";
-import {
-  canonicalModelRef,
-  TEST_MODEL_PROVIDER_ID,
-} from "@workspace/model-catalog/catalog";
+import { canonicalModelRef } from "@workspace/model-catalog/catalog";
 import type { ChannelEndpoint } from "@workspace/pubsub";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -59,10 +56,10 @@ import {
   type NativeChannelInputPrepare,
 } from "./native-channel-session.js";
 import {
-  createProtectedModelProvider,
-  createProtectedNativeModels,
+  createProtectedNativeModelsForEnv,
   hostProtectedModelProvider,
 } from "./native-model-provider.js";
+import { createNativeModelRequestPort } from "./native-model-request-port.js";
 import { retainedAgentExecutionOwner } from "./native-agent-session.js";
 import { nativeTaskModelSource } from "./native-invocation-source.js";
 import { reprepareNativeCredentialGeneration } from "./native-credential-preparation.js";
@@ -85,17 +82,9 @@ export abstract class NativeChannelOwner<
   Configuration extends NativeChannelConfiguration = NativeChannelConfiguration,
 > extends NativeAgentOwner {
   private readonly nativeRegistry = createRegistry();
-  private readonly nativeModelRegistry = (() => {
-    const env = this.env as Record<string, unknown>;
-    const deterministicTestMode = env["VIBESTUDIO_TEST_MODE"] === "1";
-    return createProtectedNativeModels({
-      deterministicTestMode,
-      ...(deterministicTestMode &&
-      typeof env["VIBESTUDIO_TEST_MODEL_SCRIPT"] === "string"
-        ? { modelScript: env["VIBESTUDIO_TEST_MODEL_SCRIPT"] }
-        : {}),
-    });
-  })();
+  private readonly nativeModelRegistry = createProtectedNativeModelsForEnv(
+    this.env,
+  );
   private readonly nativeDefinitions = new Map<string, Configuration>();
   private readonly nativeChannels = new Map<string, Promise<Conversation>>();
   private readonly nativeChannelClients = new Map<
@@ -414,51 +403,15 @@ export abstract class NativeChannelOwner<
         await this.prepareNativeProductCommit(tx, staged, context);
         await this.nativePublications.prepareCommit(tx, staged);
       },
-      modelRequests: async (request, api, context) => {
-        const bound: { execution?: NativeInvocationExecution } = {};
-        const connection = await createProtectedModelProvider({
-          ...(this.isDeterministicTestMode()
-            ? { deterministicTestProviderId: TEST_MODEL_PROVIDER_ID }
-            : {}),
-          rpcForRequest: async (request, api, context) =>
-            (bound.execution = await this.bindNativeModelExecution(
-              request,
-              api,
-              context,
-            )),
-          egressFetch: fetch,
-          waitForAuthority: (request, api, info, invocation, context) =>
-            this.waitForAgentAuthority(request, api, info, invocation, context),
-        })(request, api, context);
-        if (connection.status !== "ready") return connection;
-        let observed: ModelRequestConnection;
-        try {
-          observed = await this.observeNativeModelConnection(
-            request,
-            api,
-            connection,
-            context,
-          );
-        } catch (error) {
-          try {
-            await connection.close(BACKGROUND_CONTEXT);
-          } catch (cleanup) {
-            throw new AggregateError(
-              [error, cleanup],
-              "Native model observation and provider release failed",
-              { cause: error },
-            );
-          }
-          throw error;
-        }
-        if (request.purpose !== "generation" || request.operation !== "stream")
-          return observed;
-        try {
-          if (!bound.execution) {
-            throw new Error(
-              "Ready native model has no original invocation binding",
-            );
-          }
+      modelRequests: createNativeModelRequestPort({
+        deterministicTestMode: this.isDeterministicTestMode(),
+        bindExecution: (request, api, context) =>
+          this.bindNativeModelExecution(request, api, context),
+        waitForAuthority: (request, api, info, invocation, context) =>
+          this.waitForAgentAuthority(request, api, info, invocation, context),
+        observe: (request, api, connection, context) =>
+          this.observeNativeModelConnection(request, api, connection, context),
+        present: async (request, observed, execution, context) => {
           const { channelId } = await retainedNativeConversationChannel(
             this.admittedAgentSession(),
             request.conversationId,
@@ -479,7 +432,7 @@ export abstract class NativeChannelOwner<
             );
           }
           if (projection.policy === "notify-only") return observed;
-          const invocationId = bound.execution.invocationId;
+          const invocationId = execution.invocationId;
           return observeNativeModelStream(
             {
               harness: this.admittedAgentSession(),
@@ -510,19 +463,8 @@ export abstract class NativeChannelOwner<
             },
             context,
           );
-        } catch (error) {
-          try {
-            await observed.close(BACKGROUND_CONTEXT);
-          } catch (cleanup) {
-            throw new AggregateError(
-              [error, cleanup],
-              "Native stream binding and provider release failed",
-              { cause: error },
-            );
-          }
-          throw error;
-        }
-      },
+        },
+      }),
     };
   }
 

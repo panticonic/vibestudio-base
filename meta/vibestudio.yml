@@ -51,6 +51,8 @@ services:
     source: workers/workspace-presentation
   - name: models
     source: workers/model-settings
+  - name: model-gateway
+    source: workers/model-gateway
   - name: quickfire
     source: workers/quickfire-service
   - name: missions
@@ -73,6 +75,9 @@ singletonObjects:
   - className: ModelSettingsDO
     key: workspace-model-settings
     source: workers/model-settings
+  - className: ModelGatewayDO
+    key: workspace-model-gateway
+    source: workers/model-gateway
   - className: QuickfireSessionsDO
     key: workspace-quickfire
     source: workers/quickfire-service

@@ -1,0 +1,22 @@
+{
+  "name": "@workspace/model-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed contract and client for the model gateway service (vibestudio.model-gateway.v1)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts",
+    "./client": "./src/client.ts"
+  },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@panticonic/pi-ai": "1.2.0-vibestudio.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

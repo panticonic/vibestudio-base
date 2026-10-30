@@ -9,6 +9,7 @@
     "./catalog": "./src/catalog.ts",
     "./localModels": "./src/localModels.ts",
     "./modelRecommendations": "./src/modelRecommendations.ts",
+    "./modelRoles": "./src/modelRoles.ts",
     "./providerConnect": "./src/providerConnect.ts",
     "./testing": "./src/testing.ts",
     "./rpc-contract": "./src/rpc-contract.ts"

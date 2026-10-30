@@ -51,7 +51,7 @@ async function fixture(port: ModelRequestPort) {
     systemPrompt: "Only write the reply",
     messages: [{ role: "user" as const, content: "An email", timestamp: 10 }],
   };
-  const complete = vi.spyOn(models, "complete");
+  const complete = vi.spyOn(models, "completeSimple");
   return {
     harness,
     conversation,

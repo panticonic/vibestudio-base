@@ -20,9 +20,8 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
-import { createProvider, Type, type Api, type Model } from "@panticonic/pi-ai";
+import { Type, type Api, type Model } from "@panticonic/pi-ai";
 import { authorNativeTool } from "@workspace/harness/native-tool-authoring";
-import { openAICompletionsApi } from "@panticonic/pi-ai/api/openai-completions.lazy";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import {
   defineExtension,
@@ -72,7 +71,7 @@ import {
   readCanonicalChannelProviderOutcome,
   readCanonicalChannelProviderTerminal,
 } from "./native-channel-method.js";
-import { notifyModelCredentialChange, createProtectedModelAuth } from "./native-model-provider.js";
+import { notifyModelCredentialChange, createLocalNativeModelProvider } from "./native-model-provider.js";
 import {
   abortQueuedAgentConversations,
   retainedAgentExecutionOwner,
@@ -6420,28 +6419,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       ).values(),
     ];
     if (localModels.length)
-      this.installNativeModelProvider(
-        createProvider({
-          id: LOCAL_PROVIDER_ID,
-          name: "Local models",
-          auth: { apiKey: createProtectedModelAuth() },
-          models: localModels.map(({ spec, toolsCapable }) => ({
-            id: spec.id,
-            name: spec.name,
-            api: "openai-completions",
-            provider: LOCAL_PROVIDER_ID,
-            baseUrl: spec.baseUrl,
-            reasoning: spec.reasoning,
-            input: spec.input,
-            cost: spec.cost,
-            contextWindow: spec.contextWindow,
-            maxTokens: spec.maxTokens,
-            capabilities: { tools: toolsCapable },
-            compat: { supportsReasoningEffort: false },
-          })),
-          api: openAICompletionsApi(),
-        })
-      );
+      this.installNativeModelProvider(createLocalNativeModelProvider(localModels));
     for (const model of models)
       if (!this.nativeModels().getModel(model.spec.provider, model.spec.id))
         throw new Error(

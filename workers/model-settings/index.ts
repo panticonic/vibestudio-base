@@ -48,6 +48,12 @@ import {
 } from "@workspace/model-catalog/providerConnect";
 import { pickRecommendedModelId } from "@workspace/model-catalog/modelRecommendations";
 import {
+  MODEL_ROLES,
+  isModelRole,
+  resolveModelRole,
+  type ModelRoleResolution,
+} from "@workspace/model-catalog/modelRoles";
+import {
   localModelsExtensionMethods,
   type LocalModelEntry,
 } from "@workspace/model-catalog/localModels";
@@ -675,6 +681,42 @@ export class ModelSettingsDO extends DurableObjectBase implements ModelSettingsR
 
   @rpc({
     website: {
+      kind: "eligible",
+      rationale:
+        "A catalog entry is secret-free model metadata; credential use and model use remain separately authorized.",
+    },
+    principals: ["host", "user", "code", "session", "mission", "website"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async getModel(ref: string): Promise<ModelCatalogEntry | null> {
+    const catalog = await this.assembleCatalog();
+    return catalog.models.find((model) => model.ref === ref) ?? null;
+  }
+
+  @rpc({
+    website: {
+      kind: "eligible",
+      rationale:
+        "A role resolution exposes only the chosen model's secret-free catalog metadata and readiness; it grants no model use.",
+    },
+    principals: ["host", "user", "code", "session", "mission", "website"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async resolveRole(role: string): Promise<ModelRoleResolution> {
+    if (!isModelRole(role))
+      throw new Error(
+        `Unknown model role ${JSON.stringify(role)}; roles: ${MODEL_ROLES.join(", ")}`,
+      );
+    const settings = await this.getSettings();
+    return resolveModelRole(role, settings.catalog, settings.defaultModel);
+  }
+
+  @rpc({
+    website: {
       kind: "closed",
       reason:
         "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
@@ -973,7 +1015,7 @@ function parseDefaultAgentConfig(
 export default {
   async fetch() {
     return new Response(
-      "Model Settings service.\nMethods: listCatalog, getSettings, getDefaultModel, inspectModels, setDefaultAgentConfig, initializeDefaultAgentModel.\n",
+      "Model Settings service.\nMethods: listCatalog, getSettings, getDefaultModel, inspectModels, getModel, resolveRole, setDefaultAgentConfig, initializeDefaultAgentModel.\n",
       { headers: { "Content-Type": "text/plain" } },
     );
   },
