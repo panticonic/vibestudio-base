@@ -89,7 +89,7 @@ export type ModelGatewayScoreResult =
       tokens?: number[];
       /** Tokens the candidates evaluate in full (prompt and reply, for each), what a stateless scorer would process,
        * when the backend reports it; the decision's input for usage accounting. */
-      prompt_tokens?: number;
+      promptTokens?: number;
       attribution: ModelGatewayAttribution;
     }
   | { status: "cancelled"; turnId: string };

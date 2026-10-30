@@ -90,7 +90,11 @@ export function gatewayDriver(options: {
       },
       signal ? { signal } : undefined
     );
-    return { log_probs: scored.logProbs, ...(scored.tokens ? { tokens: scored.tokens } : {}) };
+    return {
+      log_probs: scored.logProbs,
+      ...(scored.tokens ? { tokens: scored.tokens } : {}),
+      ...(scored.promptTokens !== undefined ? { prompt_tokens: scored.promptTokens } : {}),
+    };
   };
   return Object.assign(turn, { decide });
 }

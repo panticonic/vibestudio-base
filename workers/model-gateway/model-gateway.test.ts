@@ -692,7 +692,7 @@ describe("score", () => {
       status: "completed",
       model: "local:lfm3-1.7b",
       tokens: [1, 1],
-      prompt_tokens: 412,
+      promptTokens: 412,
     });
     expect(result.logProbs).toEqual([-0.2, -1.8]);
     expect(result.probabilities[0]! + result.probabilities[1]!).toBeCloseTo(1);
