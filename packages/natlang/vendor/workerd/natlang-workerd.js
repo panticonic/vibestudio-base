@@ -1193,9 +1193,9 @@ var require_inspector = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/ts-host/node_modules/typescript/lib/typescript.js
+// node_modules/typescript/lib/typescript.js
 var require_typescript = __commonJS({
-  "../../../../home/werg/natlang/ts-host/node_modules/typescript/lib/typescript.js"(exports, module) {
+  "node_modules/typescript/lib/typescript.js"(exports, module) {
     init_define_NATLANG_TS_LIBS();
     var ts26 = {};
     ((module2) => {
@@ -235270,9 +235270,9 @@ var init_lowered = __esm({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/sprintf-js/src/sprintf.js
+// node_modules/sprintf-js/src/sprintf.js
 var require_sprintf = __commonJS({
-  "../../../../home/werg/natlang/node_modules/sprintf-js/src/sprintf.js"(exports) {
+  "node_modules/sprintf-js/src/sprintf.js"(exports) {
     init_define_NATLANG_TS_LIBS();
     !(function() {
       "use strict";
@@ -235482,9 +235482,9 @@ var require_node_zlib = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Event.js
+// node_modules/@mixmark-io/domino/lib/Event.js
 var require_Event = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Event.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Event.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Event;
@@ -235540,9 +235540,9 @@ var require_Event = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/UIEvent.js
+// node_modules/@mixmark-io/domino/lib/UIEvent.js
 var require_UIEvent = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/UIEvent.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/UIEvent.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var Event = require_Event();
@@ -235563,9 +235563,9 @@ var require_UIEvent = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/MouseEvent.js
+// node_modules/@mixmark-io/domino/lib/MouseEvent.js
 var require_MouseEvent = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/MouseEvent.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/MouseEvent.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var UIEvent = require_UIEvent();
@@ -235625,9 +235625,9 @@ var require_MouseEvent = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DOMException.js
+// node_modules/@mixmark-io/domino/lib/DOMException.js
 var require_DOMException = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DOMException.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/DOMException.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = DOMException2;
@@ -235763,17 +235763,17 @@ var require_DOMException = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/config.js
+// node_modules/@mixmark-io/domino/lib/config.js
 var require_config = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/config.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/config.js"(exports) {
     init_define_NATLANG_TS_LIBS();
     exports.isApiWritable = !globalThis.__domino_frozen__;
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/utils.js
+// node_modules/@mixmark-io/domino/lib/utils.js
 var require_utils = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/utils.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/utils.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var DOMException2 = require_DOMException();
@@ -235887,9 +235887,9 @@ var require_utils = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/EventTarget.js
+// node_modules/@mixmark-io/domino/lib/EventTarget.js
 var require_EventTarget = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/EventTarget.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/EventTarget.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var Event = require_Event();
@@ -236134,9 +236134,9 @@ var require_EventTarget = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/LinkedList.js
+// node_modules/@mixmark-io/domino/lib/LinkedList.js
 var require_LinkedList = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/LinkedList.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/LinkedList.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var utils = require_utils();
@@ -236185,9 +236185,9 @@ var require_LinkedList = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeUtils.js
+// node_modules/@mixmark-io/domino/lib/NodeUtils.js
 var require_NodeUtils = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeUtils.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeUtils.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = {
@@ -236386,9 +236386,9 @@ var require_NodeUtils = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Node.js
+// node_modules/@mixmark-io/domino/lib/Node.js
 var require_Node = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Node.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Node.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Node2;
@@ -236987,9 +236987,9 @@ var require_Node = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeList.es6.js
+// node_modules/@mixmark-io/domino/lib/NodeList.es6.js
 var require_NodeList_es6 = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeList.es6.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeList.es6.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = class NodeList extends Array {
@@ -237008,9 +237008,9 @@ var require_NodeList_es6 = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeList.es5.js
+// node_modules/@mixmark-io/domino/lib/NodeList.es5.js
 var require_NodeList_es5 = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeList.es5.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeList.es5.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     function item(i) {
@@ -237025,9 +237025,9 @@ var require_NodeList_es5 = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeList.js
+// node_modules/@mixmark-io/domino/lib/NodeList.js
 var require_NodeList = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeList.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeList.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var NodeList;
@@ -237040,9 +237040,9 @@ var require_NodeList = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/ContainerNode.js
+// node_modules/@mixmark-io/domino/lib/ContainerNode.js
 var require_ContainerNode = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/ContainerNode.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/ContainerNode.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = ContainerNode;
@@ -237112,9 +237112,9 @@ var require_ContainerNode = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/xmlnames.js
+// node_modules/@mixmark-io/domino/lib/xmlnames.js
 var require_xmlnames = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/xmlnames.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/xmlnames.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     exports.isValidName = isValidName;
@@ -237157,9 +237157,9 @@ var require_xmlnames = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/attributes.js
+// node_modules/@mixmark-io/domino/lib/attributes.js
 var require_attributes = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/attributes.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/attributes.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var utils = require_utils();
@@ -237290,9 +237290,9 @@ var require_attributes = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/FilteredElementList.js
+// node_modules/@mixmark-io/domino/lib/FilteredElementList.js
 var require_FilteredElementList = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/FilteredElementList.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/FilteredElementList.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = FilteredElementList;
@@ -237363,9 +237363,9 @@ var require_FilteredElementList = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DOMTokenList.js
+// node_modules/@mixmark-io/domino/lib/DOMTokenList.js
 var require_DOMTokenList = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DOMTokenList.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/DOMTokenList.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var utils = require_utils();
@@ -237530,9 +237530,9 @@ var require_DOMTokenList = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/select.js
+// node_modules/@mixmark-io/domino/lib/select.js
 var require_select = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/select.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/select.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var window2 = Object.create(null, {
@@ -238265,9 +238265,9 @@ var require_select = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/ChildNode.js
+// node_modules/@mixmark-io/domino/lib/ChildNode.js
 var require_ChildNode = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/ChildNode.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/ChildNode.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var Node2 = require_Node();
@@ -238367,9 +238367,9 @@ var require_ChildNode = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js
+// node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js
 var require_NonDocumentTypeChildNode = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NonDocumentTypeChildNode.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var Node2 = require_Node();
@@ -238395,9 +238395,9 @@ var require_NonDocumentTypeChildNode = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NamedNodeMap.js
+// node_modules/@mixmark-io/domino/lib/NamedNodeMap.js
 var require_NamedNodeMap = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NamedNodeMap.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NamedNodeMap.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = NamedNodeMap;
@@ -238436,9 +238436,9 @@ var require_NamedNodeMap = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Element.js
+// node_modules/@mixmark-io/domino/lib/Element.js
 var require_Element = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Element.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Element.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Element;
@@ -239473,9 +239473,9 @@ var require_Element = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Leaf.js
+// node_modules/@mixmark-io/domino/lib/Leaf.js
 var require_Leaf = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Leaf.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Leaf.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Leaf;
@@ -239515,9 +239515,9 @@ var require_Leaf = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/CharacterData.js
+// node_modules/@mixmark-io/domino/lib/CharacterData.js
 var require_CharacterData = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/CharacterData.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/CharacterData.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = CharacterData;
@@ -239627,9 +239627,9 @@ var require_CharacterData = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Text.js
+// node_modules/@mixmark-io/domino/lib/Text.js
 var require_Text = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Text.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Text.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Text;
@@ -239704,9 +239704,9 @@ var require_Text = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Comment.js
+// node_modules/@mixmark-io/domino/lib/Comment.js
 var require_Comment = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Comment.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Comment.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Comment;
@@ -239752,9 +239752,9 @@ var require_Comment = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DocumentFragment.js
+// node_modules/@mixmark-io/domino/lib/DocumentFragment.js
 var require_DocumentFragment = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DocumentFragment.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/DocumentFragment.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = DocumentFragment;
@@ -239818,9 +239818,9 @@ var require_DocumentFragment = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js
+// node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js
 var require_ProcessingInstruction = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/ProcessingInstruction.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = ProcessingInstruction;
@@ -239871,9 +239871,9 @@ var require_ProcessingInstruction = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeFilter.js
+// node_modules/@mixmark-io/domino/lib/NodeFilter.js
 var require_NodeFilter = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeFilter.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeFilter.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var NodeFilter = {
@@ -239905,9 +239905,9 @@ var require_NodeFilter = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeTraversal.js
+// node_modules/@mixmark-io/domino/lib/NodeTraversal.js
 var require_NodeTraversal = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeTraversal.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeTraversal.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var NodeTraversal = module.exports = {
@@ -239973,9 +239973,9 @@ var require_NodeTraversal = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/TreeWalker.js
+// node_modules/@mixmark-io/domino/lib/TreeWalker.js
 var require_TreeWalker = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/TreeWalker.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/TreeWalker.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = TreeWalker;
@@ -240255,9 +240255,9 @@ var require_TreeWalker = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeIterator.js
+// node_modules/@mixmark-io/domino/lib/NodeIterator.js
 var require_NodeIterator = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NodeIterator.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NodeIterator.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = NodeIterator;
@@ -240428,9 +240428,9 @@ var require_NodeIterator = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/URL.js
+// node_modules/@mixmark-io/domino/lib/URL.js
 var require_URL = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/URL.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/URL.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = URL2;
@@ -240595,9 +240595,9 @@ var require_URL = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/CustomEvent.js
+// node_modules/@mixmark-io/domino/lib/CustomEvent.js
 var require_CustomEvent = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/CustomEvent.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/CustomEvent.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = CustomEvent;
@@ -240611,9 +240611,9 @@ var require_CustomEvent = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/events.js
+// node_modules/@mixmark-io/domino/lib/events.js
 var require_events = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/events.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/events.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = {
@@ -240625,9 +240625,9 @@ var require_events = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/style_parser.js
+// node_modules/@mixmark-io/domino/lib/style_parser.js
 var require_style_parser = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/style_parser.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/style_parser.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -240696,9 +240696,9 @@ var require_style_parser = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js
+// node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js
 var require_CSSStyleDeclaration = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/CSSStyleDeclaration.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var { parse } = require_style_parser();
@@ -240881,9 +240881,9 @@ var require_CSSStyleDeclaration = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/URLUtils.js
+// node_modules/@mixmark-io/domino/lib/URLUtils.js
 var require_URLUtils = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/URLUtils.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/URLUtils.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var URL2 = require_URL();
@@ -241129,9 +241129,9 @@ var require_URLUtils = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/defineElement.js
+// node_modules/@mixmark-io/domino/lib/defineElement.js
 var require_defineElement = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/defineElement.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/defineElement.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var attributes = require_attributes();
@@ -241194,9 +241194,9 @@ var require_defineElement = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/htmlelts.js
+// node_modules/@mixmark-io/domino/lib/htmlelts.js
 var require_htmlelts = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/htmlelts.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/htmlelts.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var Node2 = require_Node();
@@ -242750,9 +242750,9 @@ var require_htmlelts = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/svg.js
+// node_modules/@mixmark-io/domino/lib/svg.js
 var require_svg = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/svg.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/svg.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var Element = require_Element();
@@ -242880,9 +242880,9 @@ var require_svg = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/MutationConstants.js
+// node_modules/@mixmark-io/domino/lib/MutationConstants.js
 var require_MutationConstants = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/MutationConstants.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/MutationConstants.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = {
@@ -242902,9 +242902,9 @@ var require_MutationConstants = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Document.js
+// node_modules/@mixmark-io/domino/lib/Document.js
 var require_Document = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Document.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Document.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = Document;
@@ -243647,9 +243647,9 @@ var require_Document = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DocumentType.js
+// node_modules/@mixmark-io/domino/lib/DocumentType.js
 var require_DocumentType = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DocumentType.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/DocumentType.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = DocumentType;
@@ -243687,9 +243687,9 @@ var require_DocumentType = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/HTMLParser.js
+// node_modules/@mixmark-io/domino/lib/HTMLParser.js
 var require_HTMLParser = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/HTMLParser.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/HTMLParser.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = HTMLParser2;
@@ -251850,9 +251850,9 @@ var require_HTMLParser = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DOMImplementation.js
+// node_modules/@mixmark-io/domino/lib/DOMImplementation.js
 var require_DOMImplementation = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/DOMImplementation.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/DOMImplementation.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     module.exports = DOMImplementation;
@@ -251930,9 +251930,9 @@ var require_DOMImplementation = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Location.js
+// node_modules/@mixmark-io/domino/lib/Location.js
 var require_Location = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Location.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Location.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var URL2 = require_URL();
@@ -251971,9 +251971,9 @@ var require_Location = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NavigatorID.js
+// node_modules/@mixmark-io/domino/lib/NavigatorID.js
 var require_NavigatorID = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/NavigatorID.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/NavigatorID.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var NavigatorID = Object.create(null, {
@@ -251994,9 +251994,9 @@ var require_NavigatorID = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/WindowTimers.js
+// node_modules/@mixmark-io/domino/lib/WindowTimers.js
 var require_WindowTimers = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/WindowTimers.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/WindowTimers.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var WindowTimers = {
@@ -252009,9 +252009,9 @@ var require_WindowTimers = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/impl.js
+// node_modules/@mixmark-io/domino/lib/impl.js
 var require_impl = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/impl.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/impl.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var utils = require_utils();
@@ -252041,9 +252041,9 @@ var require_impl = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Window.js
+// node_modules/@mixmark-io/domino/lib/Window.js
 var require_Window = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/Window.js"(exports, module) {
+  "node_modules/@mixmark-io/domino/lib/Window.js"(exports, module) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var DOMImplementation = require_DOMImplementation();
@@ -252110,9 +252110,9 @@ var require_Window = __commonJS({
   }
 });
 
-// ../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/index.js
+// node_modules/@mixmark-io/domino/lib/index.js
 var require_lib = __commonJS({
-  "../../../../home/werg/natlang/node_modules/@mixmark-io/domino/lib/index.js"(exports) {
+  "node_modules/@mixmark-io/domino/lib/index.js"(exports) {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     var DOMImplementation = require_DOMImplementation();
@@ -254687,17 +254687,17 @@ init_effects();
 // src/native/folder-shell.ts
 init_define_NATLANG_TS_LIBS();
 
-// ../../../../home/werg/natlang/node_modules/just-bash/dist/bundle/browser.js
+// node_modules/just-bash/dist/bundle/browser.js
 init_define_NATLANG_TS_LIBS();
 var import_sprintf_js = __toESM(require_sprintf(), 1);
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/index.js
+// node_modules/minimatch/dist/esm/index.js
 init_define_NATLANG_TS_LIBS();
 
-// ../../../../home/werg/natlang/node_modules/brace-expansion/dist/esm/index.js
+// node_modules/brace-expansion/dist/esm/index.js
 init_define_NATLANG_TS_LIBS();
 
-// ../../../../home/werg/natlang/node_modules/balanced-match/dist/esm/index.js
+// node_modules/balanced-match/dist/esm/index.js
 init_define_NATLANG_TS_LIBS();
 var balanced = (a, b, str) => {
   const ma2 = a instanceof RegExp ? maybeMatch(a, str) : a;
@@ -254751,7 +254751,7 @@ var range = (a, b, str) => {
   return result;
 };
 
-// ../../../../home/werg/natlang/node_modules/brace-expansion/dist/esm/index.js
+// node_modules/brace-expansion/dist/esm/index.js
 var escSlash = "\0SLASH" + Math.random() + "\0";
 var escOpen = "\0OPEN" + Math.random() + "\0";
 var escClose = "\0CLOSE" + Math.random() + "\0";
@@ -254979,7 +254979,7 @@ function expand_(str, max, maxLength, maxDepth, depth2, maxRewrites, isTop) {
   return acc;
 }
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/assert-valid-pattern.js
+// node_modules/minimatch/dist/esm/assert-valid-pattern.js
 init_define_NATLANG_TS_LIBS();
 var MAX_PATTERN_LENGTH = 1024 * 64;
 var assertValidPattern = (pattern2) => {
@@ -254991,10 +254991,10 @@ var assertValidPattern = (pattern2) => {
   }
 };
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/ast.js
+// node_modules/minimatch/dist/esm/ast.js
 init_define_NATLANG_TS_LIBS();
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/brace-expressions.js
+// node_modules/minimatch/dist/esm/brace-expressions.js
 init_define_NATLANG_TS_LIBS();
 var posixClasses = {
   "[:alnum:]": ["\\p{L}\\p{Nl}\\p{Nd}", true],
@@ -255104,7 +255104,7 @@ var parseClass = (glob, position) => {
   return [comb, uflag, endPos - pos, true];
 };
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/unescape.js
+// node_modules/minimatch/dist/esm/unescape.js
 init_define_NATLANG_TS_LIBS();
 var unescape = (s, { windowsPathsNoEscape = false, magicalBraces = true } = {}) => {
   if (magicalBraces) {
@@ -255113,7 +255113,7 @@ var unescape = (s, { windowsPathsNoEscape = false, magicalBraces = true } = {}) 
   return windowsPathsNoEscape ? s.replace(/\[([^/\\{}])\]/g, "$1") : s.replace(/((?!\\).|^)\[([^/\\{}])\]/g, "$1$2").replace(/\\([^/{}])/g, "$1");
 };
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/ast.js
+// node_modules/minimatch/dist/esm/ast.js
 var _a;
 var types2 = /* @__PURE__ */ new Set(["!", "?", "+", "*", "@"]);
 var isExtglobType = (c) => types2.has(c);
@@ -255757,7 +255757,7 @@ var AST = class {
 };
 _a = AST;
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/escape.js
+// node_modules/minimatch/dist/esm/escape.js
 init_define_NATLANG_TS_LIBS();
 var escape = (s, { windowsPathsNoEscape = false, magicalBraces = false } = {}) => {
   if (magicalBraces) {
@@ -255766,7 +255766,7 @@ var escape = (s, { windowsPathsNoEscape = false, magicalBraces = false } = {}) =
   return windowsPathsNoEscape ? s.replace(/[?*()[\]]/g, "[$&]") : s.replace(/[?*()[\]\\]/g, "\\$&");
 };
 
-// ../../../../home/werg/natlang/node_modules/minimatch/dist/esm/index.js
+// node_modules/minimatch/dist/esm/index.js
 var minimatch = (p, pattern2, options = {}) => {
   assertValidPattern(pattern2);
   if (!options.nocomment && pattern2.charAt(0) === "#") {
@@ -256575,13 +256575,13 @@ minimatch.Minimatch = Minimatch;
 minimatch.escape = escape;
 minimatch.unescape = unescape;
 
-// ../../../../home/werg/natlang/node_modules/just-bash/dist/bundle/browser.js
+// node_modules/just-bash/dist/bundle/browser.js
 var import_node_zlib = __toESM(require_node_zlib(), 1);
 
-// ../../../../home/werg/natlang/node_modules/diff/libesm/index.js
+// node_modules/diff/libesm/index.js
 init_define_NATLANG_TS_LIBS();
 
-// ../../../../home/werg/natlang/node_modules/diff/libesm/diff/base.js
+// node_modules/diff/libesm/diff/base.js
 init_define_NATLANG_TS_LIBS();
 var Diff = class {
   diff(oldStr, newStr, options = {}) {
@@ -256784,7 +256784,7 @@ var Diff = class {
   }
 };
 
-// ../../../../home/werg/natlang/node_modules/diff/libesm/diff/line.js
+// node_modules/diff/libesm/diff/line.js
 init_define_NATLANG_TS_LIBS();
 var LineDiff = class extends Diff {
   constructor() {
@@ -256833,7 +256833,7 @@ function tokenize2(value, options) {
   return retLines;
 }
 
-// ../../../../home/werg/natlang/node_modules/diff/libesm/patch/create.js
+// node_modules/diff/libesm/patch/create.js
 init_define_NATLANG_TS_LIBS();
 var INCLUDE_HEADERS = {
   includeIndex: true,
@@ -257014,7 +257014,7 @@ function splitLines(text3) {
   return result;
 }
 
-// ../../../../home/werg/natlang/node_modules/turndown/lib/turndown.es.js
+// node_modules/turndown/lib/turndown.es.js
 init_define_NATLANG_TS_LIBS();
 function extend(destination) {
   for (var i = 1; i < arguments.length; i++) {
@@ -257654,7 +257654,7 @@ function canConvert(input) {
   return input != null && (typeof input === "string" || input.nodeType && (input.nodeType === 1 || input.nodeType === 9 || input.nodeType === 11));
 }
 
-// ../../../../home/werg/natlang/node_modules/just-bash/dist/bundle/browser.js
+// node_modules/just-bash/dist/bundle/browser.js
 var import_node_zlib2 = __toESM(require_node_zlib(), 1);
 var P3 = Object.create;
 var Cc = Object.defineProperty;
