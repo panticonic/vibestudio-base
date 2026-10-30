@@ -110,4 +110,66 @@ describe("web binding", () => {
     expect(call).toHaveBeenCalledWith("main", "chromiumFetch.openBrowser", ["https://example.com/"], undefined);
     await expect(web.fetch({ url: "ftp://example.com/" })).rejects.toThrow("must start with http");
   });
+
+  it("reports outside content to the owning task before returning search results or a page", async () => {
+    const order: string[] = [];
+    const recordIngestion = vi.fn(async (entry: { key: string; via: string }) => {
+      order.push(`ingest ${entry.key} via ${entry.via}`);
+    });
+    const page = "<html><head><title>Spec</title></head><body><article><p>" + "Readable text. ".repeat(60) + "</p></article></body></html>";
+    const call = vi.fn(async (_target: string, method: string) => {
+      if (method === "chromiumFetch.openPublic") {
+        return {
+          responseId: "11111111-1111-4111-8111-111111111111",
+          url: "https://news.example.com/a",
+          status: 200,
+          statusText: "OK",
+          headers: { "content-type": "text/html" },
+          size: page.length,
+        };
+      }
+      if (method === "chromiumFetch.read") {
+        order.push("page bytes read");
+        return { bytesBase64: Buffer.from(page).toString("base64"), done: true };
+      }
+      if (method === "blobstore.putText") order.push("page stored");
+      if (method === "blobstore.putText") return { digest: "c".repeat(64), size: page.length };
+      throw new Error(`unexpected ${method}`);
+    });
+    const web = createWebBinding(
+      schemaRpcMock({ call }) as never,
+      credentialsWith({
+        fetch: async () =>
+          new Response(DDG_LITE, { status: 200, headers: { "content-type": "text/html" } }),
+      }),
+      recordIngestion,
+    );
+    await web.search({ queries: ["q"] });
+    expect(recordIngestion).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "web:example.com", via: "web-search:duckduckgo", classification: "external" }),
+    );
+    await web.fetch({ url: "https://news.example.com/a" });
+    expect(order).toContain("ingest web:news.example.com via web-fetch");
+    // The reset is reported before the page is stored or returned to the task.
+    expect(order.indexOf("ingest web:news.example.com via web-fetch")).toBeGreaterThan(
+      order.indexOf("page bytes read"),
+    );
+    expect(order.indexOf("ingest web:news.example.com via web-fetch")).toBeLessThan(
+      order.indexOf("page stored"),
+    );
+  });
+
+  it("fails the call when the owning task cannot record the content", async () => {
+    const web = createWebBinding(
+      schemaRpcMock({ call: vi.fn() }) as never,
+      credentialsWith({
+        fetch: async () =>
+          new Response(DDG_LITE, { status: 200, headers: { "content-type": "text/html" } }),
+      }),
+      async () => {
+        throw new Error("owner refused");
+      },
+    );
+    await expect(web.search({ queries: ["q"] })).rejects.toThrow("owner refused");
+  });
 });

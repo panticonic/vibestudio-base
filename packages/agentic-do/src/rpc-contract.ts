@@ -33,6 +33,7 @@ type Receiver = Pick<
   | "chatOp"
   | "describeEvalOwner"
   | "listEvalAddressees"
+  | "observeOutsideContent"
   | "initializeAutomation"
   | "onEvalProgress"
   | "canFork"
@@ -70,6 +71,7 @@ const additionalAgentRpcMethods = createReceiverRpcMethods<AdditionalReceiver>([
   "chatOp",
   "describeEvalOwner",
   "listEvalAddressees",
+  "observeOutsideContent",
   "initializeAutomation",
   "canFork",
   "exportChannelKnowledge",

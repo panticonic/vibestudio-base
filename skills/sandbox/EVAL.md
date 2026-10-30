@@ -339,7 +339,9 @@ or import them from `@workspace/runtime`.
   egress, `session: "browser"` still needs approval, and a recall needs
   `workspace.graph.read`. Page and result text is untrusted external content.
   Eval's `web.search` uses DuckDuckGo or a registered Tavily, Brave, or Exa key;
-  Codex-subscription search is the agent tool's backend only. Return only the
+  Codex-subscription search is the agent tool's backend only. In agent eval,
+  fetched or searched content drops the task's standing approvals exactly as
+  the tools do, so the next gated operation asks the person again. Return only the
   small summary you need, never a whole page.
 - **`ctx`**: `{ contextId, objectKey }` for the current eval session.
 - **`scope`**: live notebook scope (see below). `scope.x = …` keeps the same

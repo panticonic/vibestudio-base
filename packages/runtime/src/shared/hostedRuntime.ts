@@ -105,6 +105,16 @@ export interface PanelRuntimePorts {
  * real everywhere.
  */
 export interface RuntimeHost {
+  /**
+   * Report outside content (a web page or search result) entering the task that
+   * owns this runtime, before it is returned. Present only when a task holds
+   * standing authority to give up (an agent-owned eval); see `createWebBinding`.
+   */
+  recordIngestion?: (entry: {
+    key: string;
+    via: string;
+    classification: "external" | "derived";
+  }) => Promise<void>;
   /** Record completed composite operations in the invoking execution's journal. */
   recordOperation?: (entry: OperationJournalEntry) => void;
   id: string;
@@ -386,7 +396,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
       extensions.invoke(name, method, args),
     ),
   );
-  const web = helpfulNamespace("web", createWebBinding(rpc, credentials));
+  const web = helpfulNamespace("web", createWebBinding(rpc, credentials, host.recordIngestion));
   const memory = helpfulNamespace("memory", createMemoryClient(rpc));
   const notifications = helpfulNamespace(
     "notifications",

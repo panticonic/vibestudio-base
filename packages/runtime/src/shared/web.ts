@@ -7,23 +7,33 @@
  * managed Chromium host and the blobstore over the caller's RPC identity, so
  * the browser session keeps its approval gate.
  *
+ * Pages and results are outside content. When the host supplies
+ * `recordIngestion` (an agent-owned eval), each fetch and search reports it
+ * before returning, so the agent drops its standing task authority exactly as
+ * the `web_*` tools do. A runtime with no owning task has nothing to drop.
+ *
  * The web-core module (providers, DOM parsing) loads on first use.
  */
 import type { RpcCaller } from "@vibestudio/rpc";
-import type { WebClient } from "@workspace/web-core";
+import type { WebClient, WebClientDeps } from "@workspace/web-core";
 import type { CredentialClient } from "./credentials.js";
 
 export type { WebClient } from "@workspace/web-core";
 
+/** Reports outside content entering the caller's task (see `RuntimeHost.recordIngestion`). */
+export type WebIngestionRecorder = NonNullable<WebClientDeps["recordIngestion"]>;
+
 export function createWebBinding(
   rpc: RpcCaller,
-  credentials: Pick<CredentialClient, "fetch" | "resolveCredential">
+  credentials: Pick<CredentialClient, "fetch" | "resolveCredential">,
+  recordIngestion?: WebIngestionRecorder
 ): WebClient {
   let client: Promise<WebClient> | undefined;
   const load = () =>
     (client ??= import("@workspace/web-core").then(({ createWebClient }) =>
       createWebClient({
         rpc,
+        ...(recordIngestion ? { recordIngestion } : {}),
         searchFetch: ((input: RequestInfo | URL, init?: RequestInit) =>
           credentials.fetch(
             typeof input === "string" || input instanceof URL ? input : input.url,

@@ -3444,6 +3444,26 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     return this.describeSelf(channelId);
   }
 
+  /** Outside content reached this agent's own eval (a `web` fetch or search),
+   * so the task's standing authority goes, exactly as when the `web_*` tools
+   * ingest it. This only removes authority (a self-denial), so it is classified
+   * read: a read-only eval must still be able to give authority up. */
+  @rpc({
+    website: {
+      kind: "closed",
+      reason:
+        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
+    },
+    principals: ["code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async observeOutsideContent(channelId: string, source: string): Promise<void> {
+    await this.assertOwnEvalCaller(channelId);
+    await this.outsideContentReset(channelId).observe(source);
+  }
+
   /** The `list_addressees` tool's rows for this channel, for the eval `agent`
    * binding. Read-classified for the same reason as describeEvalOwner: listing
    * who can be messaged must stay usable from a read-only eval. */
@@ -4307,6 +4327,12 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     if (existing) return existing;
     const created = createOutsideContentReset({
       resetTaskAuthority: () => this.resetTaskAuthorityForOutsideContent(channelId),
+      onError: (error, source) => {
+        console.warn("[agent] could not drop task authority for outside content", {
+          source,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
     });
     this.outsideContentResets.set(channelId, created);
     return created;
