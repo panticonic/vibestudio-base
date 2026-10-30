@@ -16,6 +16,7 @@ import {
 } from "@panticonic/pi-durable";
 import {
   completeNativeModelHelper,
+  dispatchHelperTurn,
   NativeModelHelperTask,
 } from "./native-model-helper.js";
 
@@ -51,7 +52,7 @@ async function fixture(port: ModelRequestPort) {
     systemPrompt: "Only write the reply",
     messages: [{ role: "user" as const, content: "An email", timestamp: 10 }],
   };
-  const complete = vi.spyOn(models, "completeSimple");
+  const complete = vi.spyOn(models, "complete");
   return {
     harness,
     conversation,
@@ -298,5 +299,56 @@ describe("native one-shot model task", () => {
     });
     expect(f.complete).not.toHaveBeenCalled();
     expect((await f.harness.inspect(context)).tasks).toEqual([]);
+  });
+});
+
+describe("one-shot dispatch options", () => {
+  const signal = new AbortController().signal;
+  const context = { messages: [{ role: "user" as const, content: "x", timestamp: 1 }] };
+  const dispatch = (
+    api: string,
+    options: Parameters<typeof dispatchHelperTurn>[4],
+    capabilities: Parameters<typeof dispatchHelperTurn>[3] = {},
+  ) => {
+    const calls: Array<{ method: string; options: Record<string, unknown> }> = [];
+    const models = {
+      complete: async (_m: unknown, _c: unknown, o: Record<string, unknown>) => {
+        calls.push({ method: "complete", options: o });
+        return {} as never;
+      },
+      completeSimple: async (_m: unknown, _c: unknown, o: Record<string, unknown>) => {
+        calls.push({ method: "completeSimple", options: o });
+        return {} as never;
+      },
+    } as unknown as Parameters<typeof dispatchHelperTurn>[0];
+    const model = { api, provider: "p", id: "m" } as unknown as Parameters<typeof dispatchHelperTurn>[1];
+    return { calls, run: () => dispatchHelperTurn(models, model, context, capabilities, options, signal) };
+  };
+
+  it("passes the provider-native tool-choice word through Pi's native options", async () => {
+    const t = dispatch("anthropic-messages", { toolChoice: "any", temperature: 0, maxTokens: 50 });
+    await t.run();
+    expect(t.calls).toEqual([
+      { method: "complete", options: expect.objectContaining({ toolChoice: "any", temperature: 0, maxTokens: 50, signal }) },
+    ]);
+  });
+
+  it("uses Pi's simplified surface for reasoning and refuses to combine it with a forced tool call", async () => {
+    const simple = dispatch("openai-responses", { reasoning: "low", toolChoice: "auto" });
+    await simple.run();
+    expect(simple.calls[0]).toMatchObject({ method: "completeSimple", options: { reasoning: "low", toolChoice: "auto" } });
+    await expect(dispatch("openai-responses", { reasoning: "low", toolChoice: "required" }).run()).rejects.toThrow(
+      /Reasoning effort cannot be combined/u,
+    );
+  });
+
+  it("omits temperature for Codex Responses and writes the token ceiling into the payload", async () => {
+    const t = dispatch("openai-codex-responses", { temperature: 0, maxTokens: 4 }, {
+      onPayload: async (payload) => ({ ...(payload as object), observed: true }),
+    });
+    await t.run();
+    const options = t.calls[0]!.options as { temperature?: number; onPayload: (p: unknown, m: unknown) => Promise<unknown> };
+    expect(options.temperature).toBeUndefined();
+    await expect(options.onPayload({ input: 1 }, {})).resolves.toEqual({ input: 1, observed: true, max_output_tokens: 16 });
   });
 });

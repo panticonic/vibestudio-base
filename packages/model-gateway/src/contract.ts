@@ -14,15 +14,17 @@ export const MODEL_GATEWAY_SERVICE_PROTOCOL = "vibestudio.model-gateway.v1";
 
 /**
  * Per-request controls. The context carries the system prompt, messages and
- * tool declarations; these are the knobs Pi models. `samplingParams` is Pi's
- * pass-through for OpenAI-compatible servers (for example
- * `{ tool_choice: "required" }`, which `toolChoice` does not model).
+ * tool declarations; these are the knobs Pi models. `toolChoice: "required"`
+ * forces a tool call and is mapped to the model's own API word; a model whose
+ * API cannot force one is refused. `reasoning` cannot be combined with
+ * `"required"`. `samplingParams` is Pi's pass-through for provider sampling
+ * parameters (for example `seed`).
  */
 export interface ModelGatewayTurnOptions {
   temperature?: number;
   maxTokens?: number;
   reasoning?: ThinkingLevel;
-  toolChoice?: ToolChoice;
+  toolChoice?: ToolChoice | "required";
   samplingParams?: SamplingParams;
 }
 
@@ -83,7 +85,7 @@ const turnOptionsSchema = z
     temperature: z.number().finite().optional(),
     maxTokens: z.number().int().positive().optional(),
     reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
-    toolChoice: z.enum(["auto", "none"]).optional(),
+    toolChoice: z.enum(["auto", "required", "none"]).optional(),
     samplingParams: z.record(z.unknown()).optional(),
   })
   .strict();

@@ -10,6 +10,7 @@ import {
   type ModelRequestTarget,
 } from "@panticonic/pi-durable";
 import { rpc } from "@vibestudio/rpc";
+import { nativeTurnOptions } from "./toolChoice.js";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import {
   NativeAgentOwner,
@@ -250,7 +251,7 @@ export class ModelGatewayDO
         root,
         model,
         input.context,
-        input.options ?? {},
+        nativeTurnOptions(model.api, input.options ?? {}),
         context,
         undefined,
         {

@@ -3,6 +3,7 @@ import type {
   AssistantMessage,
   Context as ModelContext,
   Model,
+  Models,
   SamplingParams,
   ThinkingLevel,
   ToolChoice,
@@ -19,20 +20,25 @@ import {
   type Conversation,
   type EntryId,
   type Harness,
+  type ModelRequestCapabilities,
   type ToolExecutionApi,
 } from "@panticonic/pi-durable";
 
 /**
  * Request controls a one-shot turn may carry. The transcript itself carries the
  * system prompt, messages and tool declarations; these are the per-request knobs.
- * `samplingParams` is Pi's pass-through for OpenAI-compatible servers (for example
- * `tool_choice: "required"`, which Pi's own `toolChoice` does not model).
+ *
+ * `toolChoice` is a provider-native word: Pi's neutral choice knows only `auto`
+ * and `none`, while forcing a tool call is `any` (Anthropic, Bedrock, Google) or
+ * `required` (OpenAI family, Mistral). The owner maps its intent to the word for
+ * the model's API. `reasoning` uses Pi's simplified surface, which cannot force a
+ * tool call.
  */
 export interface NativeModelHelperOptions {
   temperature?: number;
   maxTokens?: number;
   reasoning?: ThinkingLevel;
-  toolChoice?: ToolChoice;
+  toolChoice?: ToolChoice | "any" | "required";
   samplingParams?: SamplingParams;
 }
 /** The task's definition name, also how native model evidence recognizes a one-shot turn. */
@@ -48,6 +54,68 @@ type Input = {
 };
 type Checkpoint = { phase: "request" };
 type Result = JsonRepresentation<AssistantMessage>;
+
+/** The Codex Responses API rejects `temperature`, and its Pi adapter omits `maxTokens`
+ * from the request body, so the ceiling is written into the payload. */
+const CODEX_RESPONSES = "openai-codex-responses";
+
+/** One provider call, through Pi's native options (or its simplified surface when
+ * `reasoning` is asked), with per-API handling of temperature and the token ceiling. */
+export async function dispatchHelperTurn(
+  models: Models,
+  model: Model<Api>,
+  context: ModelContext,
+  capabilities: ModelRequestCapabilities,
+  options: NativeModelHelperOptions,
+  signal: AbortSignal,
+): Promise<AssistantMessage> {
+  const forced =
+    options.toolChoice === "any" || options.toolChoice === "required";
+  if (options.reasoning !== undefined && forced)
+    throw new Error(
+      "Reasoning effort cannot be combined with a forced tool call; ask for one or the other",
+    );
+  const codex = model.api === CODEX_RESPONSES;
+  const common = {
+    ...capabilities,
+    ...(options.temperature === undefined || codex
+      ? {}
+      : { temperature: options.temperature }),
+    ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+    ...(options.samplingParams === undefined
+      ? {}
+      : { samplingParams: options.samplingParams }),
+    ...(codex && options.maxTokens !== undefined
+      ? {
+          onPayload: async (payload: unknown, providerModel: Model<Api>) => {
+            const observed = await capabilities.onPayload?.(
+              payload,
+              providerModel,
+            );
+            return {
+              ...((observed ?? payload) as Record<string, unknown>),
+              max_output_tokens: Math.max(options.maxTokens!, 16),
+            };
+          },
+        }
+      : {}),
+    signal,
+  };
+  if (options.reasoning !== undefined)
+    return models.completeSimple(model, context, {
+      ...common,
+      reasoning: options.reasoning,
+      ...(options.toolChoice === undefined
+        ? {}
+        : { toolChoice: options.toolChoice as ToolChoice }),
+    });
+  return models.complete(model, context, {
+    ...common,
+    ...(options.toolChoice === undefined
+      ? {}
+      : { toolChoice: options.toolChoice }),
+  } as Parameters<Models["complete"]>[2]);
+}
 
 /** One-shot inference is an actual native task, using generation's request port. */
 export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
@@ -75,10 +143,13 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
           },
         },
         (capabilities, signal, prepared) =>
-          runtime.models.completeSimple(
+          dispatchHelperTurn(
+            runtime.models,
             prepared.model,
             { ...transcript, messages: prepared.messages },
-            { ...capabilities, ...options, signal },
+            capabilities,
+            options,
+            signal,
           ),
         context,
       );

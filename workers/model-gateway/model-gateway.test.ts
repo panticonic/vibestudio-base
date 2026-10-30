@@ -22,6 +22,7 @@ import {
 } from "@workspace/model-catalog/catalog";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import { ModelGatewayDO } from "./ModelGatewayDO.js";
+import { nativeTurnOptions } from "./toolChoice.js";
 
 const source = "workers/model-gateway";
 const runtimeId = `do:${source}:ModelGatewayDO:test-key`;
@@ -537,5 +538,17 @@ describe("ModelGatewayDO", () => {
     ).rejects.toThrow(/already pending/u);
     release();
     await expect(first).resolves.toMatchObject({ status: "completed" });
+  });
+});
+
+describe("tool choice", () => {
+  it("maps a required tool call to each API's own word, and refuses an API that cannot force one", () => {
+    expect(nativeTurnOptions("anthropic-messages", { toolChoice: "required", temperature: 0 })).toEqual({
+      toolChoice: "any",
+      temperature: 0,
+    });
+    expect(nativeTurnOptions("openai-responses", { toolChoice: "required" })).toEqual({ toolChoice: "required" });
+    expect(nativeTurnOptions("openai-completions", { toolChoice: "auto" })).toEqual({ toolChoice: "auto" });
+    expect(() => nativeTurnOptions("faux", { toolChoice: "required" })).toThrow(/cannot be forced/u);
   });
 });
