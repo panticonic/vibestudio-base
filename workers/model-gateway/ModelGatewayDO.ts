@@ -23,6 +23,7 @@ import {
 import {
   NativeModelHelperTask,
   completeNativeModelHelper,
+  scoreNativeModelHelper,
 } from "@workspace/agentic-do/native-model-helper";
 import {
   observeNativeModelConnection,
@@ -44,7 +45,11 @@ import {
 import { isModelRole } from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import {
+  DECISION_UNSUPPORTED,
+  modelGatewayScoreInputSchema,
   modelGatewayTurnInputSchema,
+  type ModelGatewayScoreInput,
+  type ModelGatewayScoreResult,
   type ModelGatewayAttribution,
   type ModelGatewayCancelResult,
   type ModelGatewayRpc,
@@ -65,7 +70,7 @@ class TurnCancelled extends Error {
 
 interface PendingTurn {
   readonly controller: AbortController;
-  readonly operation: Promise<ModelGatewayTurnResult>;
+  readonly operation: Promise<ModelGatewayTurnResult | ModelGatewayScoreResult>;
 }
 
 const WEBSITE_CLOSED = {
@@ -210,27 +215,108 @@ export class ModelGatewayDO
     sensitivity: "write",
   })
   async turn(input: ModelGatewayTurnInput): Promise<ModelGatewayTurnResult> {
+    const checked = modelGatewayTurnInputSchema.parse(input) as unknown as ModelGatewayTurnInput;
+    return this.admitted(checked.turnId, (attribution, controller) =>
+      this.runTurn(checked, attribution, controller),
+    );
+  }
+
+  @rpc({
+    website: WEBSITE_CLOSED,
+    principals: ["host", "user", "code", "session", "mission"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async score(input: ModelGatewayScoreInput): Promise<ModelGatewayScoreResult> {
+    const checked = modelGatewayScoreInputSchema.parse(input) as unknown as ModelGatewayScoreInput;
+    return this.admitted(checked.turnId, (attribution, controller) =>
+      this.runScore(checked, attribution, controller),
+    );
+  }
+
+  /** One pending operation per caller and id: admitted, cancellable by that caller, joined on retirement. */
+  private async admitted<T>(
+    turnId: string,
+    run: (
+      attribution: ModelGatewayAttribution,
+      controller: AbortController,
+    ) => Promise<T>,
+  ): Promise<T> {
     await this.agentSession();
     this.assertNativeAgentAdmission();
-    const checked = modelGatewayTurnInputSchema.parse(input) as unknown as ModelGatewayTurnInput;
     const attribution = this.attribution();
-    const key = `${attribution.callerId}\u0000${checked.turnId}`;
+    const key = `${attribution.callerId}\u0000${turnId}`;
     if (this.turns.has(key))
-      throw new Error(`Model turn ${checked.turnId} is already pending`);
+      throw new Error(`Model turn ${turnId} is already pending`);
     const inbound = this.rpcAbortSignal;
     const controller = new AbortController();
     // The caller leaving ends the turn it is waiting for.
     const onInbound = () => controller.abort(inbound?.reason);
     inbound?.addEventListener("abort", onInbound, { once: true });
     if (inbound?.aborted) onInbound();
-    const operation = this.runTurn(checked, attribution, controller);
-    const pending = { controller, operation };
+    const operation = run(attribution, controller);
+    const pending: PendingTurn = {
+      controller,
+      operation: operation as Promise<ModelGatewayTurnResult | ModelGatewayScoreResult>,
+    };
     this.turns.set(key, pending);
     try {
       return await operation;
     } finally {
       inbound?.removeEventListener("abort", onInbound);
       if (this.turns.get(key) === pending) this.turns.delete(key);
+    }
+  }
+
+  private async runScore(
+    input: ModelGatewayScoreInput,
+    attribution: ModelGatewayAttribution,
+    controller: AbortController,
+  ): Promise<ModelGatewayScoreResult> {
+    const context = withAbortSignal(controller.signal, BACKGROUND_CONTEXT);
+    try {
+      const { entry, role } = await this.resolveModel(input.model);
+      controller.signal.throwIfAborted();
+      // Only a model served by the local-models server has per-token
+      // log-probabilities; a hosted provider returns none to score with.
+      if (entry.provider !== LOCAL_PROVIDER_ID)
+        throw new Error(
+          `${DECISION_UNSUPPORTED}: ${entry.ref} is served by a hosted provider that does not expose prompt log-probabilities`,
+        );
+      const model = this.nativeModel(entry);
+      const harness = await this.agentSession(context);
+      const root = await harness.root(context);
+      const scores = await scoreNativeModelHelper(
+        harness,
+        root,
+        model,
+        input.context,
+        input.candidates,
+        context,
+        undefined,
+        {
+          turnId: input.turnId,
+          requested: input.model,
+          model: entry.ref,
+          operation: "score",
+          ...attribution,
+        } as unknown as JsonValue,
+      );
+      return {
+        status: "completed",
+        turnId: input.turnId,
+        model: entry.ref,
+        ...(role ? { role } : {}),
+        logProbs: scores.logProbs,
+        probabilities: scores.probabilities,
+        ...(scores.tokens ? { tokens: scores.tokens } : {}),
+        attribution,
+      };
+    } catch (error) {
+      if (controller.signal.reason instanceof TurnCancelled)
+        return { status: "cancelled", turnId: input.turnId };
+      throw error;
     }
   }
 

@@ -56,12 +56,27 @@ function testEntry(unusable: boolean): ModelCatalogEntry {
   });
 }
 
+/** The local executor model as the catalog reports it. */
+function localEntry(): ModelCatalogEntry {
+  return makeTestCatalogEntry({
+    ref: "local:lfm3-1.7b",
+    id: "lfm3-1.7b",
+    name: "LFM3 1.7B",
+    provider: "local",
+    baseUrl: "http://127.0.0.1:43117/v1",
+    auth: "loopback",
+    availability: { state: "ready", detail: "running" },
+  });
+}
+
 /** Test seam: the model-settings resolution and the observation point of a request. */
 class Gateway extends ModelGatewayDO {
   static executorReady = true;
   static roleResolutions = 0;
   static unusable = false;
   static observed: ((request: ModelRequestTarget) => Promise<void>) | undefined;
+  /** Replaces the invocation's protected fetch, standing in for the model server behind host egress. */
+  static serverFetch: typeof fetch | undefined;
 
   protected override modelSettings(): Settings {
     const entry = testEntry(Gateway.unusable);
@@ -79,7 +94,14 @@ class Gateway extends ModelGatewayDO {
                 reason: "No model fills the executor role",
               };
         }
-        if (method === "getModel") return ref === TEST_MODEL_REF ? entry : null;
+        if (method === "getModel")
+          return ref === TEST_MODEL_REF
+            ? entry
+            : ref === "local:lfm3-1.7b"
+              ? localEntry()
+              : ref === "openai:hosted"
+                ? { ...entry, ref, provider: "openai" }
+                : null;
         throw new Error(`Unexpected settings call ${method}`);
       },
     } as unknown as Settings;
@@ -101,7 +123,9 @@ class Gateway extends ModelGatewayDO {
     // The faux provider never builds an HTTP payload; a real one reports each
     // prepared payload through this hook, which is what records the evidence.
     await observed.options.onPayload?.({}, (api.prepared ?? request).model);
-    return observed;
+    return Gateway.serverFetch
+      ? { ...observed, options: { ...observed.options, fetch: Gateway.serverFetch } }
+      : observed;
   }
 }
 
@@ -111,6 +135,7 @@ afterEach(async () => {
   Gateway.roleResolutions = 0;
   Gateway.unusable = false;
   Gateway.observed = undefined;
+  Gateway.serverFetch = undefined;
   for (const dispose of disposals.splice(0).reverse()) await dispose();
 });
 
@@ -159,6 +184,8 @@ async function host() {
     let error: unknown;
     if (method === "workspace-state.entity.resolveActive") result = active;
     else if (method === "workspace-state.alarmSourcePublish") result = "accepted";
+    else if (method === "localModelRuntime.prepareNativeModel")
+      result = { baseUrl: "http://127.0.0.1:43117/v1" };
     else if (method === "authority.outstandingAcquisitions")
       result = { receipts: [], next: null };
     else if (
@@ -611,5 +638,63 @@ describe("retention", () => {
     await cancelled;
     await pending;
     expect(stored()).toBe(0);
+  });
+});
+
+describe("score", () => {
+  const scored = {
+    turnId: "s1",
+    model: "local:lfm3-1.7b",
+    context: { systemPrompt: "Decide.", messages: [userMessage("urgent?")] },
+    candidates: ["urgent", "normal"],
+  };
+
+  it("scores candidates on a local model through the protected native path and normalizes them", async () => {
+    const requests: string[] = [];
+    Gateway.serverFetch = (async (url: string) => {
+      requests.push(url);
+      return new Response(
+        JSON.stringify({ results: [{ log_probs: [-0.2, -1.8], tokens: [1, 1] }] }),
+      );
+    }) as typeof fetch;
+    const { callAs, call } = await gateway();
+    const result = (await callAs(evalCaller, "score", scored)) as {
+      status: string;
+      model: string;
+      logProbs: number[];
+      probabilities: number[];
+      attribution: { callerId: string };
+    };
+    expect(requests).toEqual(["http://127.0.0.1:43117/v1/natlang/score"]);
+    expect(result).toMatchObject({ status: "completed", model: "local:lfm3-1.7b" });
+    expect(result.logProbs).toEqual([-0.2, -1.8]);
+    expect(result.probabilities[0]! + result.probabilities[1]!).toBeCloseTo(1);
+    expect(result.attribution.callerId).toBe(evalCaller.callerId);
+    const evidence = (await call("inspectTurns")) as {
+      calls: Array<{ attribution?: { operation?: string }; outcome?: string }>;
+    };
+    expect(evidence.calls.at(-1)).toMatchObject({
+      outcome: "completed",
+      attribution: { operation: "score" },
+    });
+  });
+
+  it("rejects with decision-unsupported for models that cannot score, without a model request", async () => {
+    const { callAs } = await gateway();
+    for (const model of [TEST_MODEL_REF, "openai:hosted"])
+      await expect(callAs(evalCaller, "score", { ...scored, model })).rejects.toThrow(
+        /^decision-unsupported:/u,
+      );
+  });
+
+  it("surfaces a local server without prompt log-probabilities as decision-unsupported", async () => {
+    Gateway.serverFetch = (async (url: string) =>
+      url.endsWith("/natlang/score")
+        ? new Response("{}", { status: 404 })
+        : new Response(JSON.stringify({ choices: [] }))) as typeof fetch;
+    const { callAs } = await gateway();
+    await expect(callAs(evalCaller, "score", scored)).rejects.toThrow(
+      /decision-unsupported/u,
+    );
   });
 });

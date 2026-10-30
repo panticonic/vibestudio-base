@@ -65,6 +65,35 @@ export type ModelGatewayTurnResult =
     }
   | { status: "cancelled"; turnId: string };
 
+export interface ModelGatewayScoreInput {
+  turnId: string;
+  /** A "provider:id" ref, or a model role such as "executor". */
+  model: string;
+  /** Pi context JSON: `systemPrompt` and `messages`, without tools. */
+  context: Context;
+  /** The finite replies to score, each written as the closed final assistant message. */
+  candidates: string[];
+}
+
+export type ModelGatewayScoreResult =
+  | {
+      status: "completed";
+      turnId: string;
+      model: string;
+      role?: string;
+      /** Summed token log-probability of each candidate after the prefix all candidates share. */
+      logProbs: number[];
+      /** Softmax of `logProbs`: normalized probabilities in candidate order. */
+      probabilities: number[];
+      /** Tokens each candidate spans after the shared prefix, when the backend reports them. */
+      tokens?: number[];
+      attribution: ModelGatewayAttribution;
+    }
+  | { status: "cancelled"; turnId: string };
+
+/** Message prefix of the error a model that cannot score candidates fails with. */
+export const DECISION_UNSUPPORTED = "decision-unsupported";
+
 export interface ModelGatewayCancelResult {
   /** False when the caller has no pending turn with this id (already settled or never admitted). */
   cancelled: boolean;
@@ -72,11 +101,14 @@ export interface ModelGatewayCancelResult {
 
 export interface ModelGatewayRpc {
   turn(input: ModelGatewayTurnInput): Promise<ModelGatewayTurnResult>;
+  /** Score finite replies with the model's own log-probabilities. Rejects with a `decision-unsupported` error for a model that cannot. */
+  score(input: ModelGatewayScoreInput): Promise<ModelGatewayScoreResult>;
   cancel(input: { turnId: string }): Promise<ModelGatewayCancelResult>;
 }
 
 export const modelGatewayRpcMethods = createReceiverRpcMethods<ModelGatewayRpc>([
   "turn",
+  "score",
   "cancel",
 ]);
 
@@ -102,5 +134,19 @@ export const modelGatewayTurnInputSchema = z
       })
       .passthrough(),
     options: turnOptionsSchema.optional(),
+  })
+  .strict();
+
+export const modelGatewayScoreInputSchema = z
+  .object({
+    turnId: z.string().min(1).max(256),
+    model: z.string().min(1),
+    context: z
+      .object({
+        systemPrompt: z.string().optional(),
+        messages: z.array(z.record(z.unknown())),
+      })
+      .passthrough(),
+    candidates: z.array(z.string()).min(1).max(256),
   })
   .strict();
