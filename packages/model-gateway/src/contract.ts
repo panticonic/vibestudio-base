@@ -87,6 +87,9 @@ export type ModelGatewayScoreResult =
       probabilities: number[];
       /** Tokens each candidate spans after the shared prefix, when the backend reports them. */
       tokens?: number[];
+      /** Tokens the candidates evaluate in full (prompt and reply, for each), what a stateless scorer would process,
+       * when the backend reports it; the decision's input for usage accounting. */
+      prompt_tokens?: number;
       attribution: ModelGatewayAttribution;
     }
   | { status: "cancelled"; turnId: string };

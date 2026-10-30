@@ -312,6 +312,7 @@ export class ModelGatewayDO
         logProbs: scored.log_probs,
         probabilities: softmax(scored.log_probs),
         tokens: scored.tokens,
+        ...(scored.prompt_tokens !== undefined ? { prompt_tokens: scored.prompt_tokens } : {}),
         attribution,
       };
     } catch (error) {

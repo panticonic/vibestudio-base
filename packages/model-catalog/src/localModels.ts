@@ -452,7 +452,13 @@ export const localModelsExtensionMethods = {
     method: "scoreContinuations",
     result: z.array(
       z.union([
-        z.object({ log_probs: z.array(z.number()), tokens: z.array(z.number()) }).passthrough(),
+        z
+          .object({
+            log_probs: z.array(z.number()),
+            tokens: z.array(z.number()),
+            prompt_tokens: z.number().optional(),
+          })
+          .passthrough(),
         z.object({ error: z.string() }),
       ]),
     ),

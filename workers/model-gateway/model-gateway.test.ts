@@ -659,7 +659,7 @@ describe("score", () => {
     const invoked: unknown[][] = [];
     Gateway.extension = (args) => {
       invoked.push(args);
-      return [{ log_probs: [-0.2, -1.8], tokens: [1, 1] }];
+      return [{ log_probs: [-0.2, -1.8], tokens: [1, 1], prompt_tokens: 412 }];
     };
     const { callAs } = await gateway();
     const result = (await callAs(evalCaller, "score", scored)) as {
@@ -688,7 +688,12 @@ describe("score", () => {
         ],
       ],
     ]);
-    expect(result).toMatchObject({ status: "completed", model: "local:lfm3-1.7b", tokens: [1, 1] });
+    expect(result).toMatchObject({
+      status: "completed",
+      model: "local:lfm3-1.7b",
+      tokens: [1, 1],
+      prompt_tokens: 412,
+    });
     expect(result.logProbs).toEqual([-0.2, -1.8]);
     expect(result.probabilities[0]! + result.probabilities[1]!).toBeCloseTo(1);
     expect(result.probabilities[0]).toBeGreaterThan(0.8);
