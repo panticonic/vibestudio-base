@@ -43,7 +43,6 @@
   },
   "//": "re2 1.24.1 contains the Node >=22 compatibility fix previously carried as a host-root pnpm patch.",
   "devDependencies": {
-    "typescript": "^7.0.2",
     "typebox": "^1.3.27"
   }
 }

@@ -1,0 +1,27 @@
+{
+  "name": "@workspace/natlang",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Natlang for Vibestudio: natural-language functions as small-model calls inside eval cells and workspace programs",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts",
+    "./dashboard/*": "./vendor-dashboard/dashboard/*"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/model-catalog": "workspace:*",
+    "@workspace/model-gateway": "workspace:*",
+    "@workspace/natlang-records": "workspace:*",
+    "@workspace/natlang-services": "workspace:*",
+    "typescript": "^5.9.3",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

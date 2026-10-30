@@ -1,0 +1,33 @@
+{
+  "schema": "natlang.vendor-pin/1",
+  "commit": "7efd82765d120a2c44f84c9dadab6ca7361fd9c5",
+  "dirty": false,
+  "targets": [
+    "dashboard"
+  ],
+  "toolchain": {
+    "node": "v22.22.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "files": {
+    "dashboard/api.js": "e86a321817267509cbbebebe2240728b079112e0f02c2f182deb4ff2ebdcf19e",
+    "dashboard/arguments.js": "1febf32dfb3cb6fd3279343b4d33739dcc1bc75ae604b5cbc3f26402dd92a1ba",
+    "dashboard/common.js": "664b1e3278034b1c9e20e606ce290e0e896d779ab65ffecaa9935f9c606ee1c2",
+    "dashboard/execution.js": "a86b6caa5586abd36acce990f89048ba62f495600bde5bb0165bd55740c9224d",
+    "dashboard/pages.js": "a9a917bab79274269df0d0198c2e84697250d93577f661f9ec6b6c1341008574",
+    "dashboard/pages/models.js": "f533927f7582cfe5c37e507a447759914a024848953b1c02b2ca1e38e7885070",
+    "dashboard/pages/overview.js": "05aa0e28b1c273f388db4b3f5b5d8c79e66fee5bf715a7a9dd915d265a4127b4",
+    "dashboard/pages/playground.js": "d06e6fdd279e1fd368a9b8c6c004c560b00d9aef31d840c339f61501c5765df6",
+    "dashboard/pages/programs.js": "0fcc59a193f7fc2a2017fd14feb914a3b54af4c6a0b87a6151d02e04556123d8",
+    "dashboard/pages/runs.js": "ce0d35f46f48a975c769f9f0df7ebd1a8a35e333327b6be568e8b29448251daf",
+    "dashboard/pages/system.js": "2931e1e9455959c0c6d01b745453c40f07b121976551c9d68c30d833f97a63ee",
+    "dashboard/pages/traces.js": "fef478d954686fb5abd32b5bc62e4ad84d9a4e1953c00533a9608afe997663dd",
+    "dashboard/parts.js": "f1d355241a76e4cff7620381271de4a83bf7740cb4a1319d6bec4a6fa946fdef",
+    "dashboard/presentation.js": "0d255e6277170adaa099c65f3d580f86af735537680f16bf3107ccd172c31004",
+    "dashboard/providers.js": "f2783ea2c657c11a8072898067bbdb08e3afa5a20bab9eb9d28b6b3bb1a335de",
+    "dashboard/run-host.js": "2d07e8b7e0ba1405f0ee1c8bfc5984587b21a75fd2a59e85ca2cc45210ec097c",
+    "dashboard/style.css": "f4ac437c95409bc9c87d5f702e285f98554e8d0d19712b6fdea9e935c0eb81b6",
+    "dashboard/types.d.ts": "d5481c9875a531005884ce2285856dc6623267ed9696d92756e36601f0faabe2"
+  }
+}
