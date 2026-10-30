@@ -14,4 +14,4 @@ export {
   extractPage,
   type ExtractedPage,
   type ExtractFetcher,
-} from "./web/extract.js";
+} from "@workspace/web-core/extract";

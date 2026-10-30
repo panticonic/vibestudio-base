@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/web-core",
+  "version": "0.1.0",
+  "description": "Web search, page fetch, and cached-page read: the one implementation behind the agent web tools and the eval `web` runtime binding",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./extract": "./src/extract.ts"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "linkedom": "^0.18.13",
+    "unpdf": "^1.8.0",
+    "zod": "^3.25.76"
+  }
+}

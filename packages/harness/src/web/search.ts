@@ -5,15 +5,14 @@ import type {
   ToolExecutionResult,
 } from "@panticonic/pi-durable";
 import { toolDetails } from "../tools/native-tool-json.js";
-import { searchDuckDuckGo } from "./duckduckgo.js";
-import { searchTavily } from "./tavily.js";
-import { searchBrave } from "./brave.js";
-import { searchExa } from "./exa.js";
 import {
-  selectSearchProvider,
+  WEB_SEARCH_MAX_QUERIES,
+  normalizeSearchQueries,
+  recordSearchDomains,
+  searchStandard,
   type CredentialPresenceProbe,
-} from "./provider.js";
-import type { ProviderName, SearchResult } from "./types.js";
+  type ProviderName,
+} from "@workspace/web-core";
 import {
   searchWithCodex,
   type CodexSearchCall,
@@ -22,9 +21,6 @@ import {
   type CodexSearchResult,
   type CodexSearchSession,
 } from "./codex.js";
-
-const DEFAULT_SEARCH_LIMIT = 5;
-const DEFAULT_SEARCH_BATCH_SIZE = 5;
 
 export type WebSearchBackend = "codex" | "standard";
 
@@ -87,8 +83,8 @@ function searchParameters(backend: WebSearchBackend) {
     {
       queries: Type.Array(Type.String({ minLength: 1 }), {
         minItems: 1,
-        maxItems: DEFAULT_SEARCH_BATCH_SIZE,
-        description: `One or more related search queries to run in parallel (max ${DEFAULT_SEARCH_BATCH_SIZE}).`,
+        maxItems: WEB_SEARCH_MAX_QUERIES,
+        description: `One or more related search queries to run in parallel (max ${WEB_SEARCH_MAX_QUERIES}).`,
       }),
       ...(backend === "codex"
         ? {
@@ -138,8 +134,8 @@ export function createWebSearchTool(
     name: "web_search",
     description:
       backend === "codex"
-        ? `Search the web with the configured OpenAI Codex subscription and citations. Batch up to ${DEFAULT_SEARCH_BATCH_SIZE} related queries.`
-        : `Search the web with citations. Batch up to ${DEFAULT_SEARCH_BATCH_SIZE} related queries. Uses DuckDuckGo or a configured Tavily / Brave / Exa provider.`,
+        ? `Search the web with the configured OpenAI Codex subscription and citations. Batch up to ${WEB_SEARCH_MAX_QUERIES} related queries.`
+        : `Search the web with citations. Batch up to ${WEB_SEARCH_MAX_QUERIES} related queries. Uses DuckDuckGo or a configured Tavily / Brave / Exa provider.`,
     parameters: searchParameters(backend),
     execute: async (params, api, context) => {
       const signal = context.abortSignal;
@@ -148,15 +144,7 @@ export function createWebSearchTool(
         search_context_size?: CodexSearchContextSize;
         freshness?: CodexSearchFreshness;
       };
-      const normalizedQueries = Array.isArray(queries)
-        ? queries.map((query) => query.trim()).filter(Boolean)
-        : [];
-      if (normalizedQueries.length === 0)
-        throw new Error("web_search: at least one non-empty query is required");
-      if (normalizedQueries.length > DEFAULT_SEARCH_BATCH_SIZE)
-        throw new Error(
-          `web_search: at most ${DEFAULT_SEARCH_BATCH_SIZE} queries are allowed`,
-        );
+      const normalizedQueries = normalizeSearchQueries(queries, "web_search");
 
       const startedAt = now();
       if (backend === "codex") {
@@ -170,14 +158,7 @@ export function createWebSearchTool(
           onOutput: (delta) => api.output(delta),
         });
       }
-      return runStandardSearch(
-        deps,
-        normalizedQueries,
-        fetcher,
-        signal,
-        startedAt,
-        now,
-      );
+      return runStandardSearch(deps, normalizedQueries, fetcher, signal, now);
     },
   };
 }
@@ -254,11 +235,7 @@ async function runCodexSearch(
     (result): result is WebSearchQueryResult => Boolean(result),
   );
   const failedQueryCount = results.filter((result) => result.error).length;
-  await recordDomains(
-    deps,
-    results.flatMap((result) => result.sources.map((source) => source.url)),
-    "openai-codex",
-  );
+  await recordSearchDomains(deps, results, "openai-codex");
   return {
     output: [
       { type: "text", text: formatNormalizedResults(results, "openai-codex") },
@@ -299,48 +276,36 @@ async function runStandardSearch(
   queries: string[],
   fetcher: typeof fetch,
   signal: AbortSignal | undefined,
-  startedAt: number,
   now: () => number,
 ): Promise<ToolExecutionResult<JsonRepresentation<WebSearchDetails>>> {
-  const provider = await selectSearchProvider(deps.hasCredentialForOrigin);
-  const requestFetcher = bindSignal(fetcher, signal);
-  const results = await Promise.all(
-    queries.map(async (query): Promise<WebSearchQueryResult> => {
-      const sources = await runProvider(
-        provider,
-        query,
-        DEFAULT_SEARCH_LIMIT,
-        requestFetcher,
-      );
-      return {
-        query,
-        text: formatSearchResults(sources, provider, query),
-        sources: sources.map(({ title, url, snippet }) => ({
-          title,
-          url,
-          snippet,
-        })),
-        citations: [],
-        searchCalls: [],
-      };
-    }),
+  const outcome = await searchStandard(
+    {
+      now,
+      ...(deps.recordIngestion ? { recordIngestion: deps.recordIngestion } : {}),
+      ...(deps.hasCredentialForOrigin
+        ? { hasCredentialForOrigin: deps.hasCredentialForOrigin }
+        : {}),
+    },
+    queries,
+    fetcher,
+    signal,
   );
-  await recordDomains(
-    deps,
-    results.flatMap((result) => result.sources.map((source) => source.url)),
-    provider,
-  );
+  const results: WebSearchQueryResult[] = outcome.results.map((result) => ({
+    ...result,
+    citations: [],
+    searchCalls: [],
+  }));
   return {
     output: [
-      { type: "text", text: formatNormalizedResults(results, provider) },
+      { type: "text", text: formatNormalizedResults(results, outcome.provider) },
     ],
     details: toolDetails({
-      provider,
+      provider: outcome.provider,
       api: "search-results",
       queryCount: queries.length,
       failedQueryCount: 0,
       results,
-      elapsedMs: now() - startedAt,
+      elapsedMs: outcome.elapsedMs,
     }),
   };
 }
@@ -385,28 +350,6 @@ function failedQuery(query: string, error: unknown): WebSearchQueryResult {
     searchCalls: [],
     error: error instanceof Error ? error.message : String(error),
   };
-}
-
-async function recordDomains(
-  deps: WebSearchDeps,
-  urls: string[],
-  provider: string,
-): Promise<void> {
-  if (!deps.recordIngestion) return;
-  const domains = [
-    ...new Set(
-      urls.map(hostnameOf).filter((host): host is string => Boolean(host)),
-    ),
-  ];
-  await Promise.all(
-    domains.map((host) =>
-      deps.recordIngestion!({
-        key: `web:${host}`,
-        via: `web-search:${provider}`,
-        classification: "external",
-      }),
-    ),
-  );
 }
 
 function formatNormalizedResults(
@@ -463,54 +406,3 @@ function renderCitations(text: string, citations: WebSearchCitation[]): string {
   return citedText;
 }
 
-async function runProvider(
-  provider: ProviderName,
-  query: string,
-  limit: number,
-  fetcher: typeof fetch,
-): Promise<SearchResult[]> {
-  switch (provider) {
-    case "tavily":
-      return searchTavily(query, limit, fetcher as never);
-    case "brave":
-      return searchBrave(query, limit, fetcher as never);
-    case "exa":
-      return searchExa(query, limit, fetcher as never);
-    case "duckduckgo":
-    default:
-      return searchDuckDuckGo(query, limit, fetcher as never);
-  }
-}
-
-function bindSignal(fetcher: typeof fetch, signal?: AbortSignal): typeof fetch {
-  return ((input: RequestInfo | URL, init?: RequestInit) =>
-    fetcher(input, { ...init, signal })) as typeof fetch;
-}
-
-function formatSearchResults(
-  results: SearchResult[],
-  provider: ProviderName,
-  query: string,
-): string {
-  if (results.length === 0)
-    return `No results for "${query}" (provider: ${provider}).`;
-  const lines: string[] = [
-    `Web search results for "${query}" (provider: ${provider}):`,
-    "",
-  ];
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i]!;
-    lines.push(`${i + 1}. ${result.title}`, `   ${result.url}`);
-    if (result.snippet) lines.push(`   ${result.snippet}`);
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
-function hostnameOf(url: string): string | null {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return null;
-  }
-}
