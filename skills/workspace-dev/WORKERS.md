@@ -793,9 +793,13 @@ agent generation, so provider credentials are injected at host egress and the
 host's `model.use` and `credential.use` approvals apply; the caller never sees
 a key. `message` is the full assistant message (text, thinking, tool calls,
 stop reason, usage); `model` is the exact ref that ran. The `executor` role
-resolves per call: the local executor model when local-models reports it
-ready, otherwise the lowest-priced usable hosted model, which is billed (the
-role's current resolution is `models.resolveRole("executor")`). A turn that
+resolves per call: the local executor model when local-models has it installed
+(running, or loaded on first use), otherwise the lowest-priced usable hosted
+model, which is billed (the role's current resolution is
+`models.resolveRole("executor")`). `options.toolChoice` is `"auto"`, `"none"`
+or `"required"`; required forces a tool call through the model's own API word,
+and a model whose API cannot force one is refused. `reasoning` cannot be
+combined with `"required"`. A turn that
 fails rejects with the original failure; a cancelled turn rejects with
 `ModelTurnCancelledError`. Turns are returned whole; there is no delta stream.
 Each turn is attributed to the authenticated caller (an agent's eval to its

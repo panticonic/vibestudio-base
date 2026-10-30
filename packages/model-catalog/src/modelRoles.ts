@@ -14,7 +14,8 @@ import {
  * separately.
  *
  * `executor` is the small, cheap model that runs high-volume typed work (natlang
- * calls): the local executor model when local-models reports it ready, otherwise
+ * calls): the local executor model when local-models has it installed (running or
+ * loadable on first use), otherwise
  * the user's low-tier hosted model, which is billed.
  */
 export const MODEL_ROLES = ["executor"] as const;
@@ -88,13 +89,18 @@ export function resolveModelRole(
       const local = catalog.models.find(
         (model) => model.ref === EXECUTOR_LOCAL_MODEL.ref,
       );
-      if (local?.availability.state === "ready" && local.capabilities.tools)
+      // Installed counts as ready: local-models loads a `startable` model on its
+      // first use, so requiring it to be already running would mean it never is.
+      if (isModelUsable(local) && local?.capabilities.tools)
         return {
           role,
           ref: local.ref,
           source: "local",
           model: local,
-          reason: "The local executor model is ready.",
+          reason:
+            local.availability.state === "ready"
+              ? "The local executor model is running."
+              : "The local executor model is installed and loads on first use.",
         };
       const hosted = lowTierHostedModel(catalog, defaultModelRef);
       if (hosted)

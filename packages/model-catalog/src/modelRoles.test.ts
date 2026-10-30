@@ -78,7 +78,18 @@ describe("model roles", () => {
     });
   });
 
-  it.each(["startable", "not-installed"] as const)(
+  it("resolves the executor to an installed local model that loads on first use", () => {
+    const catalog = catalogOf(
+      entry("openai", "small", {}, { input: 0.1, output: 0.4 }),
+      localExecutor("startable"),
+    );
+    expect(resolveModelRole("executor", catalog, "openai:small")).toMatchObject({
+      ref: EXECUTOR_LOCAL_MODEL.ref,
+      source: "local",
+    });
+  });
+
+  it.each(["not-installed"] as const)(
     "falls back to the billed low-tier hosted model when the local model is %s",
     (state) => {
       const catalog = catalogOf(
