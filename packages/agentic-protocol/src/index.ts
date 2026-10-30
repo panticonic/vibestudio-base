@@ -193,8 +193,10 @@ export {
   addresseeIsUser,
   boundChannelAddressee,
   defaultAlertRung,
+  formatAddresseeRows,
   isAddresseeError,
   isAlertRung,
+  listAddressees,
   parseAddressee,
   resolveAddressee,
 } from "./addressee.js";
@@ -202,6 +204,7 @@ export type {
   AddresseeDirectoryEntry,
   AddresseeError,
   AddresseeErrorCode,
+  AddresseeRow,
   AddresseeRunEntry,
   AddresseeUserEntry,
   AlertRung,

@@ -978,6 +978,21 @@ describe("AgentVesselBase.chatOp", () => {
     await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(/refusing caller/);
   });
 
+  it("lists the addressees the list_addressees tool lists, only to this agent's own EvalDO", async () => {
+    const vessel = await makeVessel();
+    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(
+      /only this agent's own EvalDO/
+    );
+    vessel.callerIdForTest = null;
+    await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(/refusing caller/);
+
+    vessel.callerIdForTest = await expectedEvalCaller();
+    await expect(vessel.listEvalAddressees(CHANNEL)).resolves.toEqual([
+      { ref: "(omit `to`)", kind: "channel", note: "everyone in this conversation" },
+    ]);
+  });
+
   it("accepts the agent's own EvalDO (key matches the eval service formula)", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();

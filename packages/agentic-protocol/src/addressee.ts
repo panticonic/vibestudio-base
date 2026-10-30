@@ -19,7 +19,12 @@
  */
 
 import type { ParticipantRef } from "./events.js";
-import { isHandleResolutionFailure, resolveHandle } from "./participant-ref.js";
+import {
+  chatClientSurface,
+  chatClientSurfaceLabel,
+  isHandleResolutionFailure,
+  resolveHandle,
+} from "./participant-ref.js";
 
 /** Syntactic shape of a ref, before any roster or directory is consulted. */
 export type ParsedAddressee =
@@ -517,4 +522,56 @@ export function boundChannelAddressee(channelId: string): ResolvedAddressee {
 /** True when the resolved addressee is a person (drives escalation, §4.5). */
 export function addresseeIsUser(resolved: ResolvedAddressee): boolean {
   return resolved.kind === "user";
+}
+
+/** One message recipient the sender can name, with the exact `to` ref for it. */
+export interface AddresseeRow {
+  /** The exact `to` value `notify` accepts for this recipient. */
+  ref: string;
+  /** `channel`, a participant kind, `supervisor`, or `subagent run`. */
+  kind: string;
+  /** A short human description (display name, surface, run status). */
+  note: string;
+}
+
+/**
+ * Who the sender can message in its bound conversation: the channel itself, the
+ * roster (without the sender), the supervisor of a subagent, and its child
+ * runs. This is the READ side of `resolveAddressee`: every row prints a ref the
+ * resolver accepts, so "who can I message" and "how do I message them" are one
+ * answer. The `list_addressees` tool and the eval `agent.addressees()` binding
+ * both render this.
+ */
+export function listAddressees(context: ResolveAddresseeContext): AddresseeRow[] {
+  const rows: AddresseeRow[] = [
+    { ref: "(omit `to`)", kind: "channel", note: "everyone in this conversation" },
+  ];
+  for (const participant of context.roster) {
+    const handle = participant.metadata?.["handle"];
+    const id = participant.participantId ?? participant.id;
+    const surface = chatClientSurface(participant.metadata);
+    rows.push({
+      ref: typeof handle === "string" && handle ? `@${handle}` : `participant:${id}`,
+      kind: participant.kind,
+      note: [participant.displayName, surface ? `(${chatClientSurfaceLabel(surface)})` : ""]
+        .filter(Boolean)
+        .join(" "),
+    });
+  }
+  if (context.parent) {
+    rows.push({ ref: "parent", kind: "supervisor", note: "the agent that spawned you" });
+  }
+  for (const run of context.runs ?? []) {
+    rows.push({
+      ref: `run:${run.runRef}`,
+      kind: "subagent run",
+      note: [run.status, run.taskChannelId].filter(Boolean).join(" · "),
+    });
+  }
+  return rows;
+}
+
+/** The text form of {@link listAddressees}, one `ref  — kind: note` line per row. */
+export function formatAddresseeRows(rows: readonly AddresseeRow[]): string {
+  return rows.map((row) => `${row.ref}  — ${row.kind}${row.note ? `: ${row.note}` : ""}`).join("\n");
 }

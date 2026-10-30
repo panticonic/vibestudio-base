@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ParticipantRef } from "./events.js";
 import {
   defaultAlertRung,
+  formatAddresseeRows,
   isAddresseeError,
+  listAddressees,
   parseAddressee,
   resolveAddressee,
   type ResolveAddresseeContext,
@@ -345,5 +347,46 @@ describe("defaultAlertRung", () => {
     expect(defaultAlertRung([channel])).toBe("none");
     expect(defaultAlertRung([channel, user])).toBe("inbox");
     expect(defaultAlertRung([])).toBe("none");
+  });
+});
+
+describe("listAddressees", () => {
+  it("prints the exact ref the resolver accepts for every row", () => {
+    const context: ResolveAddresseeContext = {
+      channelId: "chan",
+      roster: [
+        agent("helper"),
+        {
+          kind: "user",
+          id: "user:gabriel",
+          participantId: "user:gabriel",
+          displayName: "Gabriel",
+          metadata: { surface: "terminal" },
+        },
+      ],
+      parent: { participantId: "do:parent" },
+      runs: [
+        {
+          runId: "run-1",
+          runRef: "@s1",
+          taskChannelId: "child-channel",
+          status: "running",
+        },
+      ],
+    };
+    const rows = listAddressees(context);
+    expect(rows).toEqual([
+      { ref: "(omit `to`)", kind: "channel", note: "everyone in this conversation" },
+      { ref: "@helper", kind: "agent", note: "" },
+      { ref: "participant:user:gabriel", kind: "user", note: "Gabriel (terminal chat)" },
+      { ref: "parent", kind: "supervisor", note: "the agent that spawned you" },
+      { ref: "run:@s1", kind: "subagent run", note: "running · child-channel" },
+    ]);
+    for (const row of rows.slice(1)) {
+      expect(isAddresseeError(resolveAddressee(row.ref, context))).toBe(false);
+    }
+    expect(formatAddresseeRows(rows.slice(0, 2))).toBe(
+      "(omit `to`)  — channel: everyone in this conversation\n@helper  — agent",
+    );
   });
 });

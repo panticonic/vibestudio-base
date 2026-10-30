@@ -41,10 +41,10 @@ import {
   ALERT_RUNGS,
   RESPOND_POLICIES,
   defaultAlertRung,
+  formatAddresseeRows,
   isAddresseeError,
-  chatClientSurface,
-  chatClientSurfaceLabel,
   isAlertRung,
+  listAddressees,
   resolveAddressee,
   type AddresseeError,
   type ParticipantRef,
@@ -1050,38 +1050,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           additionalProperties: false,
         }),
         execute: async () => {
-          const context = this.conversationAddresseeContext(channelId, execution?.metadata);
-          const lines: string[] = [];
-          const rows: Record<string, unknown>[] = [];
-          const push = (ref: string, kind: string, note: string) => {
-            lines.push(`${ref}  — ${kind}${note ? `: ${note}` : ""}`);
-            rows.push({ ref, kind, note });
-          };
-          push("(omit `to`)", "channel", "everyone in this conversation");
-          for (const participant of context.roster) {
-            const handle = participant.metadata?.["handle"];
-            const id = participant.participantId ?? participant.id;
-            const surface = chatClientSurface(participant.metadata);
-            push(
-              typeof handle === "string" && handle ? `@${handle}` : `participant:${id}`,
-              participant.kind,
-              [participant.displayName, surface ? `(${chatClientSurfaceLabel(surface)})` : ""]
-                .filter(Boolean)
-                .join(" ")
-            );
-          }
-          if (context.parent) {
-            push("parent", "supervisor", "the agent that spawned you");
-          }
-          for (const run of context.runs ?? []) {
-            push(
-              `run:${run.runRef}`,
-              "subagent run",
-              [run.status, run.taskChannelId].filter(Boolean).join(" · ")
-            );
-          }
+          const rows = listAddressees(this.conversationAddresseeContext(channelId, execution?.metadata));
           return {
-            output: [{ type: "text", text: lines.join("\n") }],
+            output: [{ type: "text", text: formatAddresseeRows(rows) }],
             details: copyJson({ addressees: rows }, { omitUndefinedProperties: true }),
           };
         },

@@ -58,6 +58,8 @@ import {
   type WebhookIngressClient,
 } from "./webhooks.js";
 import { createExtensionsClient, type ExtensionsClient } from "./extensions.js";
+import { createMemoryClient, type MemoryClient } from "./memory.js";
+import { createWebBinding, type WebClient } from "./web.js";
 import {
   createNotificationClient,
   type NotificationClient,
@@ -159,6 +161,10 @@ export interface WorkspaceRuntime {
   readonly webhooks: WebhookIngressClient;
   readonly extensions: ExtensionsClient;
   readonly templates: TemplateManagementClient;
+  /** Web search, page fetch, and cached-page read (the agent web tools' implementation). */
+  readonly web: WebClient;
+  /** Workspace memory recall over messages, committed files, and commit summaries. */
+  readonly memory: MemoryClient;
   readonly notifications: NotificationClient;
   readonly workers: WorkerdClient;
   readonly doTargetId: typeof doTargetId;
@@ -380,6 +386,8 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
       extensions.invoke(name, method, args),
     ),
   );
+  const web = helpfulNamespace("web", createWebBinding(rpc, credentials));
+  const memory = helpfulNamespace("memory", createMemoryClient(rpc));
   const notifications = helpfulNamespace(
     "notifications",
     createNotificationClient(rpc),
@@ -416,6 +424,8 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
     webhooks,
     extensions,
     templates,
+    web,
+    memory,
     notifications,
     workers: host.workers,
     doTargetId,

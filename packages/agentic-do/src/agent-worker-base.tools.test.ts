@@ -15,7 +15,10 @@ import {
   executeTool,
   nativeToolContext,
   toolResultDetails,
+  toolText,
 } from "@workspace/harness/testing/native-tool";
+import { formatMemoryRecall } from "@workspace/runtime/memory";
+import type { ToolRegistration } from "@panticonic/pi-durable";
 import { AgentWorkerBase, hasAskableUser } from "./agent-worker-base.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 
@@ -160,6 +163,28 @@ describe("conversation address discovery", () => {
               method === "searchAgentDirectory"
             )
               return await this.search();
+            if (
+              destination ===
+                "do:workers/workspace-source:GadWorkspaceDO:workspace" &&
+              method === "recallMemory"
+            )
+              return {
+                results: [
+                  {
+                    kind: "file",
+                    snippet: "retry with jittered backoff",
+                    score: 2,
+                    logId: null,
+                    head: null,
+                    eventId: "event-1",
+                    path: "skills/retry.md",
+                    contentHash: null,
+                    anchor: null,
+                    actor: null,
+                    appendedAt: "2026-10-01T10:00:00.000Z",
+                  },
+                ],
+              };
             throw new Error(
               `Unexpected discovery RPC ${destination}.${method}`,
             );
@@ -167,6 +192,17 @@ describe("conversation address discovery", () => {
         },
         base.selfId,
       );
+    }
+    memoryRecall(context: Context) {
+      if (!context.abortSignal)
+        throw new Error("Memory unit fixture requires its actual execution signal");
+      return (
+        this as unknown as {
+          createMemoryRecallTool(execution: { rpc: RpcClient }): ToolRegistration;
+        }
+      ).createMemoryRecallTool({
+        rpc: withRpcAbortSignal(this.rpc, context.abortSignal),
+      });
     }
     discovery(context: Context) {
       if (!context.abortSignal)
@@ -218,6 +254,39 @@ describe("conversation address discovery", () => {
       properties: {},
       additionalProperties: false,
     });
+  });
+
+  it("recalls memory through the same client and text the eval memory binding uses", async () => {
+    const f = await tools();
+    const tool = f.instance.memoryRecall(nativeToolContext(f.signal));
+    const result = await executeTool(
+      tool,
+      { query: " retry backoff ", kinds: ["file"], limit: 3 },
+      { signal: f.signal },
+    );
+    expect(f.instance.rpcCalls.at(-1)).toMatchObject({
+      method: "recallMemory",
+      args: [{ query: "retry backoff", kinds: ["file"], limit: 3 }],
+    });
+    expect(toolText(result)).toBe(
+      formatMemoryRecall([
+        {
+          kind: "file",
+          snippet: "retry with jittered backoff",
+          where: "skills/retry.md",
+          appendedAt: "2026-10-01T10:00:00.000Z",
+          path: "skills/retry.md",
+          eventId: "event-1",
+          logId: null,
+          head: null,
+          contentHash: null,
+          score: 2,
+        },
+      ]),
+    );
+    await expect(
+      executeTool(tool, { query: "  " }, { signal: f.signal }),
+    ).rejects.toThrow("memory_recall requires a non-empty query");
   });
 
   it("uses an explicit purpose search to discover an agent elsewhere", async () => {

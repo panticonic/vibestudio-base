@@ -158,12 +158,14 @@ import {
   resolveShouldRespond,
   resolveHandle,
   isHandleResolutionFailure,
+  listAddressees,
   type ActorRef,
   type AgenticEvent,
   type AutomationDefinitionSnapshot,
   type CustomMessageDisplayMode,
   type ParticipantRef,
   type AddresseeDirectoryEntry,
+  type AddresseeRow,
   type AddresseeUserEntry,
   type ResolveAddresseeContext,
 } from "@workspace/agentic-protocol";
@@ -240,6 +242,11 @@ import type {
   ConnectCredentialRequest,
   StoredCredentialSummary as ModelCredentialSummary,
 } from "@workspace/runtime/credentials";
+import {
+  createMemoryClient,
+  formatMemoryRecall,
+  type MemoryRecallInput,
+} from "@workspace/runtime/memory";
 import { DOIdentity } from "./identity.js";
 import { SubscriptionManager, type PreparedChannelSubscription } from "./subscription-manager.js";
 import { createNativeChannelBootstrap } from "./native-channel-bootstrap.js";
@@ -1806,29 +1813,19 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           throw new Error("memory_recall requires a non-empty query");
         }
         if (!execution) throw new Error("memory_recall requires an admitted native invocation");
-        const recall = await this.callGadWith(execution.rpc, "recallMemory", {
+        const recall = await createMemoryClient(execution.rpc).recall({
           query: input.query,
-          kinds: Array.isArray(input.kinds)
-            ? input.kinds.filter((kind): kind is string => typeof kind === "string")
-            : null,
-          limit: typeof input.limit === "number" ? input.limit : null,
-        });
-        const lines = recall.results.map((result) => {
-          const where =
-            result.path ??
-            (result.actor && typeof result.actor === "object" && "id" in result.actor
-              ? String((result.actor as { id: unknown }).id)
-              : (result.eventId ?? "unknown"));
-          const when = result.appendedAt ? ` @ ${result.appendedAt}` : "";
-          return `[${result.kind}] ${where}${when}\n${result.snippet}`;
+          ...(Array.isArray(input.kinds)
+            ? {
+                kinds: input.kinds.filter(
+                  (kind): kind is string => typeof kind === "string"
+                ) as MemoryRecallInput["kinds"],
+              }
+            : {}),
+          ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
         });
         return {
-          output: [
-            {
-              type: "text" as const,
-              text: lines.length > 0 ? lines.join("\n\n") : "No memory matched the query.",
-            },
-          ],
+          output: [{ type: "text" as const, text: formatMemoryRecall(recall.results) }],
           details: { resultCount: recall.results.length },
         };
       },
@@ -3445,6 +3442,25 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   async describeEvalOwner(channelId: string): Promise<Record<string, unknown>> {
     await this.assertOwnEvalCaller(channelId);
     return this.describeSelf(channelId);
+  }
+
+  /** The `list_addressees` tool's rows for this channel, for the eval `agent`
+   * binding. Read-classified for the same reason as describeEvalOwner: listing
+   * who can be messaged must stay usable from a read-only eval. */
+  @rpc({
+    website: {
+      kind: "closed",
+      reason:
+        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
+    },
+    principals: ["code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async listEvalAddressees(channelId: string): Promise<AddresseeRow[]> {
+    await this.assertOwnEvalCaller(channelId);
+    return listAddressees(this.conversationAddresseeContext(channelId));
   }
 
   /** Launch the canonical mission first, then publish its idempotent running
