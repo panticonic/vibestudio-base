@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workerdPlatform } from "../vendor/core/natlang-core.js";
+import { workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import {
   NatlangProgramError,

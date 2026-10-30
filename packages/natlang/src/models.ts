@@ -7,7 +7,7 @@ import {
 } from "@workspace/model-catalog/catalog";
 import { isModelRole } from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
-import type { ModelConfig, ModelDriver } from "../vendor/core/natlang-core.js";
+import type { ModelConfig, ModelDriver } from "../vendor/workerd/natlang-workerd.js";
 import { gatewayDriver, type ModelResolver } from "./driver.js";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 

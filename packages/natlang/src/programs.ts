@@ -1,12 +1,12 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import * as core from "../vendor/core/natlang-core.js";
+import * as core from "../vendor/workerd/natlang-workerd.js";
 import {
   compileVirtualProject,
   formatDiagnostics,
   loadVirtualCallables,
   loadVirtualNatlang,
   type Platform,
-} from "../vendor/core/natlang-core.js";
+} from "../vendor/workerd/natlang-workerd.js";
 import { declarationsFor, declaredServiceNames, servicesFor } from "./services.js";
 
 /** The parts of the eval `fs` binding program loading reads. */

@@ -8,7 +8,9 @@ import type {
   NatlangLoweredCell,
   NatlangProviderHost,
 } from "@vibestudio/service-schemas/evalNatlang";
-import * as core from "../vendor/core/natlang-core.js";
+import * as core from "../vendor/workerd/natlang-workerd.js";
+import type { Platform } from "../vendor/workerd/natlang-workerd.js";
+import { folderBash } from "./folderTools.js";
 import { natlangHelp } from "./help.js";
 import { ModelDirectory, modelsFor, EXECUTOR_ROLE } from "./models.js";
 import { ProgramLoader, type TaskRunner, type WorkspaceFs } from "./programs.js";
@@ -66,10 +68,10 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     turnPrefix: crypto.randomUUID().slice(0, 8),
   });
   const store = new RecordsStore(records, host.owner, (message) => console.error(message));
-  const platform = core.workerdPlatform({
-    realm: confinedRealm(host.newFunction),
-    callStore: () => store,
-  });
+  const platform: Platform = {
+    ...core.workerdPlatform({ realm: confinedRealm(host.newFunction), callStore: () => store }),
+    runFolderBash: folderBash,
+  };
   const runtime = core.createNatlangRuntime({
     platform,
     model: executor,

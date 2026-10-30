@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { workerdPlatform } from "../vendor/core/natlang-core.js";
+import { workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
 import { compileProgram, readProjectFiles, type WorkspaceFs } from "./programs.js";
 
 /**

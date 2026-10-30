@@ -1,6 +1,6 @@
 import type { NatlangRecordsClient } from "@workspace/natlang-records/client";
 import type { NatlangOwner, CallRecordJson, LiveEventJson } from "@workspace/natlang-records/contract";
-import type { CallStoreLike, LiveEvent } from "../vendor/core/natlang-core.js";
+import type { CallStoreLike, LiveEvent } from "../vendor/workerd/natlang-workerd.js";
 import type { EvalNatlangCallSummary } from "@vibestudio/service-schemas/eval";
 
 type CallStoreSettings = ReturnType<CallStoreLike["settings"]>;

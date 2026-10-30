@@ -18,10 +18,10 @@
     "@workspace/model-gateway": "workspace:*",
     "@workspace/natlang-records": "workspace:*",
     "@workspace/natlang-services": "workspace:*",
-    "typescript": "^5.9.3",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@panticonic/pi-ai": "1.2.0-vibestudio.3",
     "vitest": "^3.2.7"
   }
 }

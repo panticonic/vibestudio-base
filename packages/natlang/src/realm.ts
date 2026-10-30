@@ -1,5 +1,5 @@
 import { createPrivateGuestGlobal } from "@vibestudio/shared/evalConfinement";
-import type { Realm } from "../vendor/core/natlang-core.js";
+import type { Realm } from "../vendor/workerd/natlang-workerd.js";
 
 /** The host's string-to-function constructor: workerd's `UNSAFE_EVAL.newFunction`. */
 export type NewFunction = (

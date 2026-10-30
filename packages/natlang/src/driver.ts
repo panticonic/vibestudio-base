@@ -7,7 +7,7 @@ import {
   toPiContext,
   type ModelDriver,
   type ModelTurnRequest,
-} from "../vendor/core/natlang-core.js";
+} from "../vendor/workerd/natlang-workerd.js";
 
 /** What the driver needs of the model settings service. */
 export interface ModelResolver {

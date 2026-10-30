@@ -537,6 +537,9 @@ The `eval` tool returns
   [browser receipts](../workspace-dev/BROWSER.md#page-surface) for assertions
   and recovery. Never repeat a mutation just to fill in a journal.
 - `scopeKeys`: the keys currently in the live notebook `scope`.
+- `natlang`: present when the cell made natlang calls (`nl`, `natlang.load`):
+  one entry per root call with its name, outcome, model, turns, tokens and
+  record id. Read a call's full trace with `await natlang.trace(callId)`.
 - `kernel`: notebook kernel metadata: the kernel instance ID, start time,
   current idle-lease deadline, and, on the first result after a start, a
   `started` or `restarted` event listing exactly which keys were restored or
@@ -1068,6 +1071,34 @@ package exports. For workspace skill or package functions, read that package's
 skill or API reference and its exported types, then import the documented API.
 If `help` does not know a name, that does not mean a documented package is
 unavailable.
+
+## Natlang: `nl` and `natlang`
+
+`nl` and `natlang` are ambient in every eval (no import). A natlang function is
+a typed task a small model performs; reach for it for a judgment (classify,
+extract, summarize, choose among options) and keep exact work in ordinary code.
+`await help("natlang")` is the authoritative reference.
+
+```ts
+const verdict: "urgent" | "normal" = await nl`Decide whether ${ticket} is urgent.`(ticket);
+const brief = await natlang.load("skills/server-logs/brief.nl"); // type-checked once per content
+await brief({ since });
+```
+
+- A cell that mentions `nl` is lowered first: its `nl` expressions are typed
+  against the current `scope`, and a cell natlang cannot plan fails with
+  `line:column` diagnostics before anything runs. Annotate the result type or
+  write `nl<T>`.
+- An inline `nl` call has no services and no access to your bindings. It sees
+  only its arguments, the values its instructions mention, and what you hand
+  over with `` nl`...`.with({ name: value }) ``.
+- A program loaded with `natlang.load` receives exactly the services its
+  `services.d.ts` declares (or its modules import from `natlang:services`), each
+  a narrowed view of your own binding, so your approvals still apply. It returns
+  proposals for consequential effects; you commit them.
+- Calls run on the `executor` model role (the local executor model when ready,
+  otherwise a billed low-tier hosted model); the result names the model that ran.
+- Cancelling the run stops its natlang calls.
 
 ## Worker Management
 
