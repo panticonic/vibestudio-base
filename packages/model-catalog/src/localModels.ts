@@ -11,7 +11,7 @@ import { z } from "zod";
 export type GpuVendor = "nvidia" | "amd" | "intel" | "apple";
 export type EngineBackend =
   | "cuda-12.4"
-  | "cuda-13.3"
+  | "cuda-13.4"
   | "vulkan"
   | "rocm"
   | "metal"
@@ -47,9 +47,11 @@ export interface HardwareProfile {
   notes: string[];
 }
 
+/** A release of natlang's llama.cpp fork: its tag, and the SHA-256 of the `natlang-runtime.json` manifest that lists
+ * every archive's size and digest. */
 export interface EnginePin {
   buildTag: string;
-  checksums: Record<string, string>;
+  manifestSha256: string;
 }
 
 export interface InstalledEngine {
@@ -287,7 +289,7 @@ export const localModelEntrySchema: z.ZodType<LocalModelEntry> = z.object({
 
 const engineBackendSchema = z.enum([
   "cuda-12.4",
-  "cuda-13.3",
+  "cuda-13.4",
   "vulkan",
   "rocm",
   "metal",
@@ -366,7 +368,7 @@ export const localModelsStatusSchema: z.ZodType<LocalModelsStatus> = z.object({
     .object({
       pin: z.object({
         buildTag: z.string(),
-        checksums: z.record(z.string(), z.string()),
+        manifestSha256: z.string(),
       }),
       cpu: installedEngineSchema.nullable(),
       gpu: installedEngineSchema.nullable(),
