@@ -23,11 +23,11 @@ export declare function coalescingScorer(base: DecisionScorer, options?: {
  * The explicit-batch scoring contract (optional endpoint, capability-gated; plans/BATCHED_EXECUTION.md step 2):
  *
  *   POST {url}  { items: [{ messages, continuations: string[], adapters?, ...itemExtra }], ...extra }
- *   200         { results: [{ log_probs: number[], tokens?: number[] } | { error: string }] }
+ *   200         { results: [{ log_probs: number[], tokens?: number[], prompt_tokens?: number } | { error: string }] }
  *
  * `continuations[k]` is the k-th option written as the closed final assistant message after `messages`. The server
  * prefills each item's prompt once and scores its K continuations from it. `log_probs[k]` and `tokens[k]` mean what
- * they mean in `DecisionScores`. 404, 405 and 501 mean the server has no such endpoint; the caller then falls back to concurrent scoring.
+ * they mean in `DecisionScores`, as does `prompt_tokens` (the tokens the item's continuations evaluate in full). 404, 405 and 501 mean the server has no such endpoint; the caller then falls back to concurrent scoring.
  */
 export type ExplicitBatchOptions = {
     url: string;

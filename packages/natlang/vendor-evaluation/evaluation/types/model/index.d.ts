@@ -12,6 +12,9 @@ export type { LlamaRuntimeArtifact, LlamaRuntimeRelease, LlamaServerInspection, 
 export { executorIdentityForChoice } from './config.js';
 export { createScheduler, schedulerForSettings, prefixKey } from './scheduler.js';
 export type { Scheduler, SchedulerOptions, BatchingMode, BackendCapabilities, ScheduleInfo, OccupancySummary } from './scheduler.js';
+export { wrapDriver, remoteDriver } from '../runtime/driver.js';
+export type { DriverCall } from '../runtime/driver.js';
+export { sessionDriver } from './driver.js';
 export { coalescingScorer, concurrentScoreMany, explicitBatchScoreMany, postExplicitBatch, ScoreEndpointMissing } from './scoring.js';
 export { planServerSlots } from '../llama/slots.js';
 export type { SlotPlan } from '../llama/slots.js';

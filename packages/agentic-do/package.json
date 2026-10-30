@@ -45,6 +45,7 @@
     "@vibestudio/content-addressing": "workspace:*",
     "@vibestudio/rpc": "workspace:*",
     "@vibestudio/trajectory-identity": "workspace:*",
+    "@workspace/natlang-pi": "workspace:*",
     "@workspace/agentic-core": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/agentic-protocol": "workspace:*",

@@ -9,9 +9,9 @@ export declare const LLAMA_RUNTIME_RELEASE: Readonly<{
     };
     artifacts: ({
         key: string;
-        platform: "linux";
+        platform: "darwin";
         arch: string;
-        backend: "cpu";
+        backend: "metal";
         archive: "tar.gz";
         url: string;
         bytes: number;
@@ -20,7 +20,16 @@ export declare const LLAMA_RUNTIME_RELEASE: Readonly<{
         key: string;
         platform: "darwin";
         arch: string;
-        backend: "metal";
+        backend: "cpu";
+        archive: "tar.gz";
+        url: string;
+        bytes: number;
+        sha256: string;
+    } | {
+        key: string;
+        platform: "linux";
+        arch: string;
+        backend: "cpu";
         archive: "tar.gz";
         url: string;
         bytes: number;

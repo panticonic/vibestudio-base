@@ -157,6 +157,57 @@ describe("createEvalNatlang", () => {
     expect(lastToolText(shown)).toContain("object,undefined,undefined");
   });
 
+  /** A workspace program with one `readout: decision` function, `skills/triage/judge.nl`. */
+  const decisionProgram = () => {
+    const files: Record<string, string> = {
+      "skills/triage/judge.nl":
+        "---\nargs:\n  note: string\nreturns: '\"urgent\" | \"normal\"'\nreadout: decision\n---\nDecide whether note is urgent.\n",
+    };
+    return {
+      readFile: async (path: string) => files[path]!,
+      readdir: async (path: string) =>
+        Object.keys(files)
+          .filter((file) => file.startsWith(`${path}/`))
+          .map((file) => ({ name: file.slice(path.length + 1), isDirectory: () => false })),
+      stat: async (path: string) => ({ isDirectory: () => !path.endsWith(".nl") }),
+    };
+  };
+
+  it("answers a decision-readout call by scoring the replies through the gateway, with no tool loop", async () => {
+    const scored: any[] = [];
+    let turns = 0;
+    const { cell } = setup(
+      {
+        turn: async () => (turns += 1, toolCallMessage("return_result", { status: "success", value: "normal" })),
+        score: async (input) => (scored.push(input), [-0.2, -3]),
+      },
+      { fs: decisionProgram() }
+    );
+    const { value, calls } = await cell(
+      "const judge = await natlang.load('skills/triage/judge.nl');\nreturn await judge('The site is down.');"
+    );
+    expect(value).toBe("urgent");
+    expect(turns).toBe(0);
+    expect(scored).toHaveLength(1);
+    expect(scored[0]).toMatchObject({ model: EXECUTOR_ENTRY.ref, candidates: [expect.any(String), expect.any(String)] });
+    expect(scored[0].context.tools).toBeUndefined();
+    expect(JSON.stringify(scored[0].context)).toContain("The site is down.");
+    expect(calls).toMatchObject([{ name: "judge", outcome: "done" }]);
+  });
+
+  it("falls back to the tool loop when the model cannot score", async () => {
+    let turns = 0;
+    const { cell } = setup(
+      { turn: async () => (turns += 1, toolCallMessage("return_result", { status: "success", value: "normal" })) },
+      { fs: decisionProgram() }
+    );
+    const { value } = await cell(
+      "const judge = await natlang.load('skills/triage/judge.nl');\nreturn await judge('Nothing happened.');"
+    );
+    expect(value).toBe("normal");
+    expect(turns).toBeGreaterThan(0);
+  });
+
   it("cancels the pending gateway turn when the run is aborted", async () => {
     const controller = new AbortController();
     let seen: AbortSignal | undefined;

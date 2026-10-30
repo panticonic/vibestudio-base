@@ -223162,6 +223162,14 @@ var init_native_xml_calls = __esm({
   }
 });
 
+// src/model/decision-scoring.ts
+var init_decision_scoring = __esm({
+  "src/model/decision-scoring.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+  }
+});
+
 // src/model/native-xml-policy.ts
 var NATIVE_XML_POLICY_SHA256;
 var init_native_xml_policy = __esm({
@@ -223530,6 +223538,7 @@ var init_chat_completion = __esm({
     init_neuralese2();
     init_tool_markup();
     init_native_xml_calls();
+    init_decision_scoring();
     init_native_xml_policy();
     init_tool_markup();
     LeakedCall = class extends Error {
@@ -223545,6 +223554,7 @@ var init_scoring = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_chat_completion();
+    init_decision_scoring();
   }
 });
 
@@ -228946,7 +228956,7 @@ var init_agent = __esm({
        * Answer a finite-typed call by scoring each allowed value as the reply to its opening (native/decision.ts).
        * Returns false when the readout does not apply, so the tool loop runs; a string is a failure, as from run.
        */
-      async decisionReadout(session, opening) {
+      async decisionReadout(session, opening, guidance) {
         const lam = session.lam;
         const wanted = lam.readout === "decision" || this.options.decisionReadout === "finite-returns";
         if (!wanted || lam.type.kind !== "lambda" || lam.subtype !== "function" || lam.projectTransaction) return false;
@@ -228962,8 +228972,7 @@ var init_agent = __esm({
           return false;
         }
         const replies = values.map((value) => JSON.stringify(value));
-        const inherited = typeof opening[0]?.content === "string" ? opening[0].content : "";
-        const system = (this.options.decisionSystemPrompt?.() ?? DECISION_SYSTEM_PROMPT) + "\n\n" + inherited;
+        const system = (this.options.decisionSystemPrompt?.() ?? DECISION_SYSTEM_PROMPT) + guidance;
         const messages = [{ role: "system", content: system }, ...opening.slice(1), { role: "user", content: decisionPrompt(replies) }];
         const encoded = encodeMessages(this.softened(renderPromptMessages(messages, this.options.promptRendering)));
         const training = this.options.trainingGuidance;
@@ -229098,7 +229107,7 @@ var init_agent = __esm({
         const budget = this.options.contextTokens === void 0 ? await defaultContextBudget(this.driver) : this.options.contextTokens;
         session.pages.budget = shownCharsFor(budget);
         let adaptedSystem;
-        const nativeGuidance = await this.runtimeProgramGuidance();
+        const guidance = renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance();
         const systemPrompt = () => {
           if (adaptedSystem !== void 0) return adaptedSystem;
           const base = typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? TOOLS_PROMPT;
@@ -229107,7 +229116,7 @@ var init_agent = __esm({
             this.options.fileTools,
             allowAdHoc,
             session.lam.projectTransaction.folder.access !== "read"
-          ) : "") + renderAuthoredTextGuidance(this.options.authoredTextGuidance) + nativeGuidance;
+          ) : "") + guidance;
           if (this.options.programGuidance !== void 0 || this.options.authoredTextGuidance !== void 0) adaptedSystem = composed;
           return composed;
         };
@@ -229172,7 +229181,7 @@ var init_agent = __esm({
         const guidancePolicy = trainingGuidance?.policyOf(session.lam, session.runtime.currentCallId ?? null);
         const guidanceConsumer = !!trainingGuidance && !guidancePolicy && !trainingGuidance.insidePolicy(session);
         let guidanceRequest, guidanceReady = false;
-        const decided = await this.decisionReadout(session, messages);
+        const decided = await this.decisionReadout(session, messages, guidance);
         if (decided !== false) return decided;
         const openingLength = messages.length;
         let tokensPerChar = 1 / 3.5;

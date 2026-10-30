@@ -169,14 +169,18 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
    */
   const withinCell = <F extends (...args: never[]) => unknown>(callable: F): F => {
     const call = (...args: unknown[]) =>
-      inCell(() => (callable as (...values: unknown[]) => Promise<unknown>)(...args));
+      inCell(() => (callable as unknown as (...values: unknown[]) => Promise<unknown>)(...args));
     // The natlang callable's own surface (its marker, `iterateOn`, `in`, `with`) stays on the wrapper.
     for (const key of Reflect.ownKeys(callable)) {
       if (key === "length" || key === "name" || key === "prototype") continue;
       const descriptor = Reflect.getOwnPropertyDescriptor(callable, key)!;
       if (key === "with" && typeof descriptor.value === "function") {
         const rebind = descriptor.value as (...captures: unknown[]) => F;
-        descriptor.value = (...captures: unknown[]) => withinCell(rebind(...captures));
+        Object.defineProperty(call, key, {
+          ...descriptor,
+          value: (...captures: unknown[]) => withinCell(rebind(...captures)),
+        });
+        continue;
       }
       Object.defineProperty(call, key, descriptor);
     }

@@ -383,7 +383,7 @@ describe("ModelSettingsDO", () => {
     expect(sol).toMatchObject({
       id: "gpt-6.1-sol",
       provider: "openai-codex",
-      contextWindow: 272_000,
+      contextWindow: 500_000,
       thinkingLevels: ["minimal", "low", "medium", "high", "xhigh", "max"],
       modelSpec: {
         serviceTiers: ["priority"],

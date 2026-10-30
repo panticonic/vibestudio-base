@@ -1,4 +1,12 @@
 import type { Context as ModelContext, Message } from "@panticonic/pi-ai";
+import {
+  batchScoreItem,
+  promptLogprobRequest,
+  scoresFromBatchResult,
+  scoresFromPromptLogprobs,
+  softmax,
+  type PromptLogprobResponse,
+} from "@workspace/natlang-pi";
 
 /** Scores of finite replies, in candidate order. `probabilities` is the softmax of `logProbs`. */
 export interface NativeDecisionScores {
@@ -73,21 +81,12 @@ function textOf(
     .join("");
 }
 
-export function softmax(logProbs: readonly number[]): number[] {
-  const max = Math.max(...logProbs);
-  const weights = logProbs.map((value) => Math.exp(value - max));
-  const total = weights.reduce((sum, value) => sum + value, 0);
-  return weights.map((value) => value / total);
-}
-
-type ScoreRow = { id: string; logprob: number } | null;
-
 /**
- * Score finite replies through the model server's own `prompt_logprobs`: each reply
- * is written as the closed final assistant message and its tokens' log-probabilities
- * summed after the prefix shared by all replies (natlang's `promptLogprobDecider`
- * contract). Where the server has the explicit-batch endpoint it scores every reply
- * from one prefill; a server without it is asked per reply. `fetcher` is the
+ * Score finite replies through the model server's own log-probabilities. The
+ * requests and the arithmetic are natlang's (`@workspace/natlang-pi`, the code
+ * its OpenAI-compatible driver scores with): where the server has the
+ * explicit-batch endpoint it scores every reply from one prefill; a server
+ * without it is asked per reply through `prompt_logprobs`. `fetcher` is the
  * invocation's protected, endpoint-bound fetch: it carries the credential or
  * loopback authorization, which this code never sees.
  */
@@ -104,100 +103,70 @@ export async function scoreReplies(input: {
     throw new Error("A decision needs at least one candidate");
   const root = input.baseUrl.replace(/\/+$/u, "");
   const usage = { input: 0, output: 0 };
-  const batch = await input
-    .fetcher(`${root}/natlang/score`, {
-      method: "POST",
-      signal,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: input.model,
-        items: [{ messages: input.messages, continuations: candidates }],
-      }),
-    })
-    .catch((error: unknown) => {
-      signal.throwIfAborted();
-      throw error;
-    });
+  const post = (path: string, body: unknown) =>
+    input
+      .fetcher(`${root}${path}`, {
+        method: "POST",
+        signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      .catch((error: unknown) => {
+        signal.throwIfAborted();
+        throw error;
+      });
+  const batch = await post("/natlang/score", {
+    model: input.model,
+    items: [
+      batchScoreItem({ messages: input.messages, options: [...candidates] }),
+    ],
+  });
   if (batch.ok) {
-    const body = (await batch.json()) as {
-      results?: Array<{ log_probs?: number[]; tokens?: number[]; error?: string }>;
-    };
-    const result = body.results?.[0];
-    if (
-      !result ||
-      typeof result.error === "string" ||
-      !Array.isArray(result.log_probs) ||
-      result.log_probs.length !== candidates.length
-    )
-      throw new Error(
-        result?.error ?? "The scoring endpoint returned no scores for the decision",
-      );
+    const body = (await batch.json()) as { results?: Parameters<typeof scoresFromBatchResult>[0][] };
+    const scores = scoresFromBatchResult(body.results?.[0], candidates.length);
     return {
-      logProbs: result.log_probs,
-      probabilities: softmax(result.log_probs),
-      ...(result.tokens ? { tokens: result.tokens } : {}),
+      logProbs: scores.log_probs,
+      probabilities: softmax(scores.log_probs),
+      ...(scores.tokens ? { tokens: scores.tokens } : {}),
       usage,
     };
   }
   await batch.body?.cancel();
   if (![404, 405, 501].includes(batch.status))
     throw new Error(`Scoring endpoint failed with HTTP ${batch.status}`);
-  const sequences = await Promise.all(
-    candidates.map(async (reply) => {
-      const response = await input.fetcher(`${root}/chat/completions`, {
-        method: "POST",
-        signal,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+  const responses = await Promise.all(
+    candidates.map(async (reply): Promise<PromptLogprobResponse> => {
+      const response = await post(
+        "/chat/completions",
+        promptLogprobRequest(input.messages, reply, {
           model: input.model,
-          messages: [...input.messages, { role: "assistant", content: reply }],
-          add_generation_prompt: false,
-          continue_final_message: false,
-          prompt_logprobs: 0,
-          max_tokens: 1,
           stream: false,
         }),
-      });
+      );
       if (!response.ok)
         throw new Error(`Scoring request failed with HTTP ${response.status}`);
-      const body = (await response.json()) as {
-        prompt_logprobs?: unknown;
+      const body = (await response.json()) as PromptLogprobResponse & {
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
       usage.input += body.usage?.prompt_tokens ?? 0;
       usage.output += body.usage?.completion_tokens ?? 0;
-      if (!Array.isArray(body.prompt_logprobs))
-        throw new DecisionUnsupportedError(
-          "the server returned no prompt_logprobs",
-        );
-      // Each row maps token id to its entry; with prompt_logprobs 0 the prompt's
-      // own token is the only (first) key.
-      return body.prompt_logprobs.map((row): ScoreRow => {
-        if (!row || typeof row !== "object") return null;
-        const [id, entry] =
-          Object.entries(row as Record<string, { logprob?: number }>)[0] ?? [];
-        return id === undefined || typeof entry?.logprob !== "number"
-          ? null
-          : { id, logprob: entry.logprob };
-      });
+      return body;
     }),
   );
-  let shared = 0;
-  const shortest = Math.min(...sequences.map((sequence) => sequence.length));
-  while (
-    shared < shortest &&
-    sequences.every((sequence) => sequence[shared]?.id === sequences[0]![shared]?.id)
-  )
-    shared++;
-  // With one reply nothing differs; its score is the whole reply after the prompt.
-  if (candidates.length === 1) shared = 0;
-  const logProbs = sequences.map((sequence) =>
-    sequence.slice(shared).reduce((sum, row) => sum + (row?.logprob ?? 0), 0),
-  );
+  let scores;
+  try {
+    scores = scoresFromPromptLogprobs(responses);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("decision-unsupported"))
+      throw new DecisionUnsupportedError(
+        error.message.slice("decision-unsupported: ".length),
+      );
+    throw error;
+  }
   return {
-    logProbs,
-    probabilities: softmax(logProbs),
-    tokens: sequences.map((sequence) => sequence.length - shared),
+    logProbs: scores.log_probs,
+    probabilities: softmax(scores.log_probs),
+    ...(scores.tokens ? { tokens: scores.tokens } : {}),
     usage,
   };
 }

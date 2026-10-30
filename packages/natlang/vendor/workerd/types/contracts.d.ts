@@ -225,6 +225,8 @@ export type DecisionRequest = {
 export type DecisionScores = {
     log_probs: number[];
     tokens?: number[];
+    /** The prompt tokens the scorer processed for this readout, when the backend reports them (usage accounting). */
+    prompt_tokens?: number;
     /** Set only by an RL collection scorer that samples the readout for exploration: the option the call returns
      * instead of the most probable one (its sampling receipt is recorded with the capture). */
     chosen?: number;

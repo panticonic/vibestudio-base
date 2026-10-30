@@ -1,0 +1,13 @@
+{
+  "name": "@workspace/natlang-pi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Natlang's Pi translation and decision scoring: pure functions, vendored from a pinned natlang commit, for code that runs model calls through the model gateway",
+  "exports": {
+    ".": {
+      "types": "./vendor/pi/natlang-pi.d.ts",
+      "default": "./vendor/pi/natlang-pi.js"
+    }
+  }
+}

@@ -22,6 +22,7 @@
     "@vibestudio/shared": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
     "@workspace/model-gateway": "workspace:*",
+    "@workspace/natlang-pi": "workspace:*",
     "@workspace/natlang-records": "workspace:*",
     "@workspace/natlang-services": "workspace:*",
     "yaml": "^2.9.0"

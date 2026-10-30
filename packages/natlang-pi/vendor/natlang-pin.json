@@ -1,0 +1,21 @@
+{
+  "schema": "natlang.vendor-pin/1",
+  "commit": "bb44ec9212bf1b0dee810529bc08d510293ac0f5",
+  "dirty": false,
+  "targets": [
+    "pi"
+  ],
+  "toolchain": {
+    "node": "v22.22.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "files": {
+    "pi/natlang-pi.d.ts": "59392afc1ccbd11483a9091a0b59ace6149df26eb707bd090a7205eb6fc569f9",
+    "pi/natlang-pi.js": "6979cbffc20c8f25bc49066925559bd9e67f0418f8c634850eefb12bcfd57ade",
+    "pi/types/contracts.d.ts": "39bde953373aa789d01cece46a114ea385adc410a500c0b866ced3e35edb7402",
+    "pi/types/entry/pi.d.ts": "aefe494840bab1f206c1f901f0d80a0810f3732c99a640fa315b036355347735",
+    "pi/types/model/decision-scoring.d.ts": "834920f02143481d448ea1bccee2807f60940a447c61dca90b467613701431a7",
+    "pi/types/model/pi-translation.d.ts": "f911ab3fa0c4566fe13181a2176a516365f4dce4a9843f2cc38ef05db7c5c99d"
+  }
+}

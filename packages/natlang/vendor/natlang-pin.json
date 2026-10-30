@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "8b99c559e41fb990584b82d3aa91ef4aa877cb8b",
+  "commit": "bb44ec9212bf1b0dee810529bc08d510293ac0f5",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "9feea9eac7685a4ce04ef6704102849627f1b83ef7e7aa514b00cdc63181b69c",
+    "workerd/natlang-workerd.js": "16403329a0c39feaca4c8b94cd8edc42745bccabf755f5dbdfca275e10b2745c",
     "workerd/types/adaptation/program-view.d.ts": "9bb88204b4fe23943e8db1e965c7d9509b4cb6e98258a9a0e9d25e994e67ecfa",
     "workerd/types/adaptation/prompts.d.ts": "0496bb5cb218741889b5a271ecc3f1ab410f0110ed6bb0a40541747e1eb83895",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
@@ -38,7 +38,7 @@
     "workerd/types/compiler/rewrites.d.ts": "4d8f1a091d11e89583cbff7770f9012a477874cfd26761e49493401defcdc50f",
     "workerd/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "workerd/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
-    "workerd/types/contracts.d.ts": "9dde0725b9c3e4dee68ea0ab2341089e66df38ab06e465fc48e915ad9b59c5d3",
+    "workerd/types/contracts.d.ts": "39bde953373aa789d01cece46a114ea385adc410a500c0b866ced3e35edb7402",
     "workerd/types/core/index.d.ts": "c24e20a4c6ff1597015ee39830ca0d8191b34907bc03211130328ef3549bcb9a",
     "workerd/types/core/workerd-bundle.d.ts": "4a40511caffe0ea52c76599f739f6eb52a8848aec79695aac0184450fb359275",
     "workerd/types/core/workerd.d.ts": "e2f6ed23cfa7e3843720b07d627571e656c727f5e950ef904ad39587c242c896",

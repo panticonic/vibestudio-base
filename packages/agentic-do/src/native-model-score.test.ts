@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { softmax } from "@workspace/natlang-pi";
 import {
   DecisionUnsupportedError,
   openAIChatMessages,
   scoreReplies,
-  softmax,
 } from "./native-model-score.js";
 
 const signal = new AbortController().signal;
@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
 
 describe("scoring finite replies", () => {
-  it("normalizes log-probabilities", () => {
+  it("normalizes log-probabilities with natlang's softmax", () => {
     const probabilities = softmax([Math.log(0.2), Math.log(0.6), Math.log(0.2)]);
     expect(probabilities.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
     expect(probabilities[1]).toBeCloseTo(0.6);

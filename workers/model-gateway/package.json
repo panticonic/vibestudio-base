@@ -111,6 +111,7 @@
     "@workspace/agentic-do": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
     "@workspace/model-gateway": "workspace:*",
+    "@workspace/natlang-pi": "workspace:*",
     "@workspace/runtime": "workspace:*"
   },
   "devDependencies": {
