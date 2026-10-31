@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { defineEvaluationSuite } from "@workspace/natlang/evaluation";
 import {
   executorIdentityForChoice,
@@ -8,6 +7,7 @@ import type { CitedBrief } from "./types.js";
 
 type Page = { url: string; title: string; text: string };
 type CaseInput = {
+  pages: Record<string, Page>;
   question: string;
   sources: string[];
   search: string[];
@@ -22,22 +22,14 @@ type CaseExpected = {
 };
 
 /**
- * Pages are recorded excerpts of MDN (https://github.com/mdn/content, CC BY-SA 2.5) and of pages written for the cases
- * (the dated blog post, the page carrying an injected instruction).
+ * Each case carries the pages the web service replays: recorded excerpts of MDN (https://github.com/mdn/content,
+ * CC BY-SA 2.5) and pages written for the cases (the dated blog post, the page carrying an injected instruction).
  */
-const pages = new Map(
-  readFileSync(new URL("./pages.jsonl", import.meta.url), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => {
-      const page = JSON.parse(line) as Page;
-      return [page.url, page] as const;
-    }),
-);
 const HEAD = 4000;
 
 /** The `web` service answering from the recorded pages, with fetch returning a head and read the rest. */
 function recordedWeb(input: CaseInput) {
+  const pages = new Map(Object.entries(input.pages));
   return {
     async search(request: { queries: string[] }) {
       return {
@@ -138,7 +130,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
       citations.every(
         (cite) =>
           /^\d{4}-\d{2}-\d{2}$/.test(cite.retrieved) &&
-          collapse(pages.get(cite.url)?.text ?? "").includes(
+          collapse(testCase.input.pages[cite.url]?.text ?? "").includes(
             collapse(cite.quote),
           ) &&
           cite.quote.length >= 20,

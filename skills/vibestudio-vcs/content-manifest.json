@@ -27,12 +27,12 @@
       "sha256": "f8a9a7ec79163d8e0e29778aac1de4a046a82115d3f303d77fc8514375766533"
     },
     {
-      "path": "changes/natlang.json",
-      "sha256": "5ccc5be294fa47c07a17c749432dedea9a8c3718d241cf2f9f20ee289594d517"
-    },
-    {
       "path": "changes/natlang.ts",
       "sha256": "bfefbdff41e4cdf5e6719aba06c3e4d117adbb3ae741b394a60421b4d3160c06"
+    },
+    {
+      "path": "changes/package.json",
+      "sha256": "609158e6c5fbc237939fa3ddf7faab80ab690bdc0c8d584414a885130103c4e8"
     },
     {
       "path": "changes/suite.ts",
@@ -159,5 +159,5 @@
       "sha256": "81d18bf544324c35356d6e3ab9dc55271f5e9448d6aabf5ba01a8521430a2877"
     }
   ],
-  "packageDigest": "990e9f0b58786a74dd9fae2a8eaab8620be4a846d22c66cf4d096c4e74149467"
+  "packageDigest": "f90c5d6255c8d1c033b3611491c6f5fc9044a85563a5ee11969ee221ffc10bef"
 }

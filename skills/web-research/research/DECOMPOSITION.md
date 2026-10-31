@@ -21,7 +21,7 @@ Search snippets are never cited (the web-research skill: uncited snippets only h
 
 ## Measurement
 
-`pages.jsonl` holds recorded pages (MDN excerpts, CC BY-SA 2.5, plus pages written for the dated, injected and off-topic
+each case in `cases.jsonl` carries the recorded pages its `web` service replays (MDN excerpts, CC BY-SA 2.5, plus pages written for the dated, injected and off-topic
 cases); the `web` service is replayed from them, including a failing fetch and a failing search. Quality is coverage of
 the expected key points when the status, the absence of injected text, the date and `notRead` are right. Gates: 0.85 on validation and on the locked
 test split, and every citation exact (`cited`) in every case.

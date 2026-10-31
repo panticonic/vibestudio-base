@@ -36,7 +36,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
   fixture: {
     async create(testCase, context) {
       const app = (await context.loadFreshProgram()) as {
-        resolveAddressee(utterance: string): Promise<Resolution>;
+        resolveAddressee: { resolve(utterance: string): Promise<Resolution> };
       };
       const services = {
         addressees: recordedAddressees(testCase.input.roster),
@@ -44,7 +44,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
       return {
         execute: () =>
           context.runtime.run(
-            () => app.resolveAddressee(testCase.input.utterance),
+            () => app.resolveAddressee.resolve(testCase.input.utterance),
             { services },
           ),
       };
