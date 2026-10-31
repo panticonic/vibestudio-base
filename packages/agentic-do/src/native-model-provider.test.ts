@@ -1,5 +1,7 @@
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcWireCaller } from "@vibestudio/rpc/internal";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -231,6 +233,56 @@ describe("the local native model provider", () => {
       chat_template_kwargs: { preserve_thinking: true },
     });
     expect(models.getModel("local", "plain")?.samplingParams).toBeUndefined();
+  });
+
+  it("puts the serving request, with the call's own fork fields, in the request body", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const server = createServer((request, response) => {
+      let raw = "";
+      request.on("data", (chunk) => (raw += chunk));
+      request.on("end", () => {
+        bodies.push(JSON.parse(raw) as Record<string, unknown>);
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.end(
+          `data: ${JSON.stringify({ id: "1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      const provider = createLocalNativeModelProvider([
+        {
+          spec: {
+            ...TEST_MODEL_SPEC,
+            id: "lfm3-1.7b",
+            provider: "local",
+            api: "openai-completions" as const,
+            input: ["text" as const],
+            baseUrl: `http://127.0.0.1:${port}/v1`,
+            samplingParams: { temperature: 0, chat_template_kwargs: { preserve_thinking: true } },
+          },
+          toolsCapable: true,
+        },
+      ]);
+      const model = provider.getModels()[0]!;
+      await provider
+        .stream(
+          model,
+          { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+          { apiKey: "sentinel", samplingParams: { guidance: true, seed: 7 } },
+        )
+        .result();
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toMatchObject({
+        temperature: 0,
+        chat_template_kwargs: { preserve_thinking: true },
+        guidance: true,
+        seed: 7,
+      });
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 
