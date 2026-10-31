@@ -1,0 +1,5 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vcs-changes",
+  "version": "0.1.0"
+}

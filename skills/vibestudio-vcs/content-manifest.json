@@ -27,6 +27,10 @@
       "sha256": "f8a9a7ec79163d8e0e29778aac1de4a046a82115d3f303d77fc8514375766533"
     },
     {
+      "path": "changes/natlang.json",
+      "sha256": "5ccc5be294fa47c07a17c749432dedea9a8c3718d241cf2f9f20ee289594d517"
+    },
+    {
       "path": "changes/natlang.ts",
       "sha256": "bfefbdff41e4cdf5e6719aba06c3e4d117adbb3ae741b394a60421b4d3160c06"
     },
@@ -36,7 +40,7 @@
     },
     {
       "path": "changes/summarizeChanges.d.nl.ts",
-      "sha256": "ba6d10bfc9dd7fcb8eb4cf1b74542615a2f576132420bc19a80ca05727b84201"
+      "sha256": "69caaa5989eddf765f7dddc04cd190e7059198b6c7ce0aaeebd017ae3a7c3baf"
     },
     {
       "path": "changes/summarizeChanges.nl",
@@ -155,5 +159,5 @@
       "sha256": "81d18bf544324c35356d6e3ab9dc55271f5e9448d6aabf5ba01a8521430a2877"
     }
   ],
-  "packageDigest": "d3a04d246c14d0a8d3dbc0d7d7c3507ca3661ea7e9531d84d2aaaf78947525e3"
+  "packageDigest": "990e9f0b58786a74dd9fae2a8eaab8620be4a846d22c66cf4d096c4e74149467"
 }
