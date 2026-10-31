@@ -1,7 +1,7 @@
 import type { Context } from "@panticonic/pi-ai";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 import type { ModelGatewayTurnOptions } from "@workspace/model-gateway/contract";
-import type { ModelCatalogEntry } from "@workspace/model-catalog/catalog";
+import { LOCAL_PROVIDER_ID, type ModelCatalogEntry } from "@workspace/model-catalog/catalog";
 import {
   piAssistantToTurn,
   toPiContext,
@@ -50,7 +50,7 @@ export function gatewayDriver(options: {
         turnId: nextTurnId(),
         model: entry.ref,
         context: context as unknown as Context,
-        options: turnOptions(request),
+        options: turnOptions(request, entry),
       },
       signal ? { signal } : undefined
     );
@@ -104,10 +104,19 @@ export function gatewayDriver(options: {
  * tool asks the gateway for `toolChoice: "required"`, which it maps to the
  * model's own API word (and refuses for an API that cannot force one).
  */
-function turnOptions(request: ModelTurnRequest): ModelGatewayTurnOptions {
+function turnOptions(request: ModelTurnRequest, entry: ModelCatalogEntry): ModelGatewayTurnOptions {
+  // Natlang's llama.cpp fork reads two more request fields natlang sets per turn: guided generation of tool calls
+  // and the call's seed. The model's own serving settings (temperature, template arguments) come with the model.
+  const forkFields = {
+    ...(request.guidance ? { guidance: request.guidance } : {}),
+    ...(request.seed !== null && request.seed !== undefined ? { seed: request.seed } : {}),
+  };
   return {
     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     ...(request.max_tokens ? { maxTokens: request.max_tokens } : {}),
     ...(request.tool_choice === "required" ? { toolChoice: "required" as const } : {}),
+    ...(entry.provider === LOCAL_PROVIDER_ID && Object.keys(forkFields).length > 0
+      ? { samplingParams: forkFields }
+      : {}),
   };
 }

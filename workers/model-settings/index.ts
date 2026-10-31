@@ -207,6 +207,7 @@ export function localEntryToCatalogEntry(
       contextWindow: entry.contextWindow,
       maxTokens: entry.maxTokens,
       compat: { ...LLAMA_SERVER_COMPAT },
+      ...(entry.servingRequest ? { samplingParams: { ...entry.servingRequest } } : {}),
     },
     capabilities: { tools: entry.toolsCapable },
   };

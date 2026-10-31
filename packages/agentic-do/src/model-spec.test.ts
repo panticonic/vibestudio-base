@@ -31,6 +31,26 @@ describe("local model materialization", () => {
     });
   });
 
+  it("carries a stock model's serving request as the spec's sampling parameters", () => {
+    const entry: LocalModelDescriptor = {
+      slug: "lfm3-1.7b",
+      displayName: "LFM3 1.7B",
+      baseUrl: "http://127.0.0.1:1234/v1",
+      contextWindow: 32_768,
+      maxTokens: 32_768,
+      toolsCapable: true,
+      reasoningCapable: true,
+      servingRequest: { temperature: 0, chat_template_kwargs: { preserve_thinking: true } },
+    };
+    expect(materializeModel("local", entry.slug, entry)?.spec.samplingParams).toEqual(
+      entry.servingRequest,
+    );
+    expect(
+      materializeModel("local", "plain", { ...entry, slug: "plain", servingRequest: undefined })
+        ?.spec,
+    ).not.toHaveProperty("samplingParams");
+  });
+
   it("preserves GGUF-declared reasoning support", () => {
     const entry: LocalModelDescriptor = {
       slug: "reasoning-model",

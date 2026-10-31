@@ -34,6 +34,7 @@ import {
 import type { StoredCredentialSummary } from "@workspace/runtime/credentials";
 import { openBoundAgentSession } from "./native-agent-session.js";
 import {
+  createLocalNativeModelProvider,
   createProtectedModelProvider,
   notifyModelCredentialChange,
   type NativeModelProviderHost,
@@ -202,6 +203,36 @@ async function waiting(
     ? (await harness.getTask(live.run.taskId, context))?.state
     : undefined;
 }
+
+describe("the local native model provider", () => {
+  it("sends a stock model's serving request with every request to it", () => {
+    const spec = {
+      ...TEST_MODEL_SPEC,
+      id: "lfm3-1.7b",
+      provider: "local",
+      api: "openai-completions" as const,
+      input: ["text" as const],
+    };
+    const models = createModels();
+    models.setProvider(
+      createLocalNativeModelProvider([
+        {
+          spec: {
+            ...spec,
+            samplingParams: { temperature: 0, chat_template_kwargs: { preserve_thinking: true } },
+          },
+          toolsCapable: true,
+        },
+        { spec: { ...spec, id: "plain" }, toolsCapable: true },
+      ]),
+    );
+    expect(models.getModel("local", "lfm3-1.7b")?.samplingParams).toEqual({
+      temperature: 0,
+      chat_template_kwargs: { preserve_thinking: true },
+    });
+    expect(models.getModel("local", "plain")?.samplingParams).toBeUndefined();
+  });
+});
 
 describe("native protected model provider", () => {
   it("runs the explicit deterministic Pi model without resolving credentials", async () => {

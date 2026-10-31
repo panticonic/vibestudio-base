@@ -148,6 +148,8 @@ export interface PiModelSpec {
   thinkingLevelMap?: Record<string, unknown>;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
+  /** Request-body fields sent with every request to the model (Pi merges them into the provider payload). */
+  samplingParams?: Record<string, unknown>;
 }
 
 /** Structural pi-ai model input used by the catalog and runtime materializers. */

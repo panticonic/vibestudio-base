@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { LOCAL_PROVIDER_ID } from "@workspace/model-catalog/catalog";
+import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import { SERVICE_CATALOG } from "@workspace/natlang-services";
 import { createEvalNatlang } from "./evalNatlang.js";
 import { EXECUTOR_ENTRY, fakeRpc, testNewFunction, toolCallMessage, type FakeServices } from "./testSupport.js";
@@ -261,5 +263,36 @@ describe("createEvalNatlang", () => {
     expect(help).toContain("natlang.load");
     expect(help).toContain("NO services");
     expect(help).toContain("serverLog");
+  });
+});
+
+describe("serving a local model", () => {
+  const LOCAL_ENTRY = makeTestCatalogEntry({
+    ref: "local:lfm3-1.7b",
+    id: "lfm3-1.7b",
+    name: "LFM3 1.7B",
+    provider: LOCAL_PROVIDER_ID,
+    baseUrl: "http://127.0.0.1:1/v1",
+  });
+
+  it("asks a local model for guided generation and the call's seed, and a hosted model for neither", async () => {
+    for (const [entry, local] of [[LOCAL_ENTRY, true], [EXECUTOR_ENTRY, false]] as const) {
+      const turns: any[] = [];
+      const { cell } = setup({
+        roleResolution: { model: entry },
+        turn: async (input) => {
+          turns.push(input);
+          return toolCallMessage("return_result", { status: "success", value: "ok" });
+        },
+      });
+      await cell("return await nl<string>`Say ok.`();");
+      expect(turns).toHaveLength(1);
+      expect(turns[0].model).toBe(entry.ref);
+      if (local) {
+        expect(turns[0].options.samplingParams).toMatchObject({ guidance: true, seed: expect.any(Number) });
+      } else {
+        expect(turns[0].options?.samplingParams).toBeUndefined();
+      }
+    }
   });
 });

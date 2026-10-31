@@ -1,6 +1,7 @@
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import type { RpcCallerLike } from "@vibestudio/shared/workspaceServiceRpc";
 import {
+  LOCAL_PROVIDER_ID,
   MODEL_SETTINGS_SERVICE_PROTOCOL,
   isModelUsable,
   type ModelCatalogEntry,
@@ -8,6 +9,7 @@ import {
 import { isModelRole } from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import type { ModelConfig, ModelDriver } from "../vendor/workerd/natlang-workerd.js";
+import type { ExecutorIdentity } from "./executorIdentity.js";
 import { gatewayDriver, type ModelResolver } from "./driver.js";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 
@@ -83,22 +85,53 @@ export function modelsFor(options: {
   turnPrefix: string;
 }): {
   executor: ModelConfig;
+  /** What the runtime records as the executor: the model the role resolved to and how it is served. */
+  executorIdentity: ExecutorIdentity;
   /** Name the model the executor role resolved to, for the records of the calls that follow. */
-  pinExecutor(ref: string): void;
+  pinExecutor(entry: ModelCatalogEntry | null): void;
   models: Record<string, ModelConfig>;
 } {
-  const driverFor = (model: string): ModelDriver =>
-    gatewayDriver({
+  /**
+   * Natlang's guided generation is a feature of its llama.cpp fork, which serves every local model. Natlang asks
+   * for it when the model config wants it (`guidance`) and the driver can do it (`driver.guidance`); both follow
+   * the one predicate, so a model is guided exactly when it is served locally.
+   */
+  const driverFor = (model: string, guided: () => boolean): ModelDriver => {
+    const driver = gatewayDriver({
       gateway: options.gateway,
       resolver: options.directory,
       model,
       turnPrefix: `${options.turnPrefix}:${model}`,
     });
-  let executorId: string = EXECUTOR_ROLE;
+    Object.defineProperty(driver, "guidance", { get: () => (guided() ? true : undefined), enumerable: true });
+    return driver;
+  };
+  let pinned: ModelCatalogEntry | null = null;
+  const executorGuided = () => pinned?.provider === LOCAL_PROVIDER_ID;
   const executor: ModelConfig = {
-    driver: driverFor(EXECUTOR_ROLE),
+    driver: driverFor(EXECUTOR_ROLE, executorGuided),
     get id() {
-      return executorId;
+      return pinned?.ref ?? EXECUTOR_ROLE;
+    },
+    get guidance() {
+      return executorGuided() ? true : undefined;
+    },
+  };
+  /**
+   * The identity a call's record and an adaptation artifact bind to, in natlang's shape: what ran and how it is
+   * served. `request` is the model's own serving settings from the catalog (for a natlang stock model the very
+   * request natlang's server serves it with, so a suite measured there describes what the gateway runs).
+   */
+  const executorIdentity: ExecutorIdentity = {
+    get id() {
+      return `gateway:${pinned?.ref ?? EXECUTOR_ROLE}`;
+    },
+    get configuration() {
+      return {
+        model: pinned?.ref ?? EXECUTOR_ROLE,
+        request: pinned?.modelSpec.samplingParams ?? {},
+        ...(executorGuided() ? { guidance: true } : {}),
+      };
     },
   };
   const named = new Map<string, ModelConfig>([[EXECUTOR_ROLE, executor]]);
@@ -107,12 +140,13 @@ export function modelsFor(options: {
       if (typeof name !== "string") return undefined;
       let config = named.get(name);
       if (!config) {
-        config = { driver: driverFor(name), id: name };
+        const guided = name.startsWith(`${LOCAL_PROVIDER_ID}:`);
+        config = { driver: driverFor(name, () => guided), id: name, ...(guided ? { guidance: true } : {}) };
         named.set(name, config);
       }
       return config;
     },
     has: (_, name) => typeof name === "string",
   });
-  return { executor, pinExecutor: (ref) => void (executorId = ref), models };
+  return { executor, executorIdentity, pinExecutor: (entry) => void (pinned = entry), models };
 }

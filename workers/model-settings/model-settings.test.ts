@@ -302,6 +302,14 @@ describe("ModelSettingsDO", () => {
     ).rejects.toThrow(/receiver is closed to websites/);
   });
 
+  it("serves a stock local model with its serving request as sampling parameters", () => {
+    const servingRequest = { temperature: 0, chat_template_kwargs: { preserve_thinking: true } };
+    expect(localEntryToCatalogEntry(localEntry({ servingRequest })).modelSpec.samplingParams).toEqual(
+      servingRequest,
+    );
+    expect(localEntryToCatalogEntry(localEntry()).modelSpec).not.toHaveProperty("samplingParams");
+  });
+
   it("treats an absent local model as setup-required", () => {
     expect(
       localEntryToCatalogEntry(

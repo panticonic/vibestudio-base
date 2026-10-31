@@ -119,6 +119,7 @@ export function createLocalNativeModelProvider(
       maxTokens: spec.maxTokens,
       capabilities: { tools: toolsCapable },
       compat: { supportsReasoningEffort: false },
+      ...(spec.samplingParams ? { samplingParams: spec.samplingParams } : {}),
     })),
     api: openAICompletionsApi(),
   });

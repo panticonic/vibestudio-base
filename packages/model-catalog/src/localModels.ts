@@ -205,6 +205,11 @@ export interface LocalModelEntry {
   maxTokens: number;
   toolsCapable: boolean;
   reasoningCapable: boolean;
+  /**
+   * Request fields the model is served with, for a model of natlang's stock list: its own release record's
+   * (greedy decoding, template arguments). The catalog carries them as the model's sampling parameters.
+   */
+  servingRequest?: Record<string, unknown>;
   fit: FitEstimate;
   measuredTokensPerSec: number | null;
   state:
@@ -260,6 +265,7 @@ export const localModelEntrySchema: z.ZodType<LocalModelEntry> = z.object({
   maxTokens: z.number().positive(),
   toolsCapable: z.boolean(),
   reasoningCapable: z.boolean(),
+  servingRequest: z.record(z.string(), z.unknown()).optional(),
   fit: z.object({
     fit: z.enum(["full-gpu", "partial-offload", "cpu-only", "too-big"]),
     estTokensPerSec: z.number().nullable(),

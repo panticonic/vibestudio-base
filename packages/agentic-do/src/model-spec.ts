@@ -52,6 +52,7 @@ export interface LocalModelDescriptor {
   maxTokens: number;
   toolsCapable: boolean;
   reasoningCapable: boolean;
+  servingRequest?: Record<string, unknown>;
 }
 
 type PiModelLike = PiModelInput;
@@ -69,6 +70,7 @@ export function localEntryToSpec(entry: LocalModelDescriptor): PiModelSpec {
     contextWindow: entry.contextWindow,
     maxTokens: entry.maxTokens,
     compat: { ...LLAMA_SERVER_COMPAT },
+    ...(entry.servingRequest ? { samplingParams: { ...entry.servingRequest } } : {}),
   };
 }
 

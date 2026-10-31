@@ -64,7 +64,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const gateway = createModelGatewayClient(rpc);
   const records = createNatlangRecordsClient(rpc);
   const directory = new ModelDirectory(rpc);
-  const { executor, pinExecutor: nameExecutor, models } = modelsFor({
+  const { executor, executorIdentity, pinExecutor: nameExecutor, models } = modelsFor({
     gateway,
     directory,
     turnPrefix: crypto.randomUUID().slice(0, 8),
@@ -77,6 +77,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const runtime = core.createNatlangRuntime({
     platform,
     model: executor,
+    executorIdentity,
     models,
     calls: store,
     network: false,
@@ -111,11 +112,11 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   async function prepare(run: ActiveRun): Promise<void> {
     directory.newEpoch();
     try {
-      nameExecutor((await directory.resolve(EXECUTOR_ROLE)).ref);
+      nameExecutor(await directory.resolve(EXECUTOR_ROLE));
     } catch (error) {
       // No usable model fills the role: a call that needs one fails with the reason.
       store.fail("natlang: the executor role does not resolve", error);
-      nameExecutor(EXECUTOR_ROLE);
+      nameExecutor(null);
     }
     run.live = await livePublisher(run.runId);
   }
