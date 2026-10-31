@@ -961,6 +961,9 @@ export function listModels(): Promise<{
   maxTokens: number;
   toolsCapable: boolean;
   reasoningCapable: boolean;
+  servingRequest?: {
+    [key: string]: unknown;
+  };
   fit: {
     fit: "full-gpu" | "partial-offload" | "cpu-only" | "too-big";
     estTokensPerSec: number | null;
