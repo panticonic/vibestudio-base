@@ -11,6 +11,7 @@ import {
   type LifecyclePrepareInput,
 } from "@workspace/runtime/worker/kernel";
 import {
+  NATLANG_EVALUATION_MAX_BYTES,
   NATLANG_LIST_LIMIT_DEFAULT,
   natlangAnnotateInputSchema,
   natlangBeginInputSchema,
@@ -20,8 +21,10 @@ import {
   natlangGetValueInputSchema,
   natlangImportExamplesInputSchema,
   natlangListCallsFilterSchema,
+  natlangListEvaluationsInputSchema,
   natlangProgressInputSchema,
   natlangPublishLiveInputSchema,
+  natlangRecordEvaluationInputSchema,
   natlangRecordInputSchema,
   natlangSubscribeLiveInputSchema,
   natlangTuneExamplesInputSchema,
@@ -33,18 +36,23 @@ import {
   type NatlangAnnotateInput,
   type NatlangBeginInput,
   type NatlangDiscardInput,
+  type NatlangEvaluation,
+  type NatlangEvaluationRecord,
   type NatlangFeedbackInput,
   type NatlangFeedbackResult,
   type NatlangGetCallInput,
   type NatlangGetValueInput,
   type NatlangImportExamplesInput,
   type NatlangListCallsFilter,
+  type NatlangListEvaluationsInput,
   type NatlangLiveDelivery,
   type NatlangLiveFilter,
   type NatlangProgressInput,
   type NatlangPublishLiveInput,
+  type NatlangRecordEvaluationInput,
   type NatlangRecordInput,
   type NatlangRecordResult,
+  type NatlangStoreStats,
   type NatlangRecordsRpc,
   type NatlangTuneExamplesInput,
   type NatlangTuneExamplesResult,
@@ -186,11 +194,20 @@ export class NatlangRecordsDO
         protected INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (program_root, function, input_key)
       );
+      CREATE TABLE evaluations (
+        evaluation_id TEXT PRIMARY KEY,
+        ran_at TEXT NOT NULL,
+        program TEXT NOT NULL,
+        suite_id TEXT NOT NULL,
+        split TEXT NOT NULL,
+        evaluation_json TEXT NOT NULL
+      );
+      CREATE INDEX evaluations_program ON evaluations(program, suite_id, split, ran_at);
     `);
   }
 
   protected override requiredTables(): readonly string[] {
-    return ["blobs", "calls", "call_blobs", "annotations", "tune_examples"];
+    return ["blobs", "calls", "call_blobs", "annotations", "tune_examples", "evaluations"];
   }
 
   /** The blob size bound; a seam so eviction is testable without 256 MiB. */
@@ -624,6 +641,110 @@ export class NatlangRecordsDO
       jsonl: rows.length ? `${rows.map((row) => row["line_json"] as string).join("\n")}\n` : "",
       count: rows.length,
     };
+  }
+
+  /** What the store holds, for a status display. */
+  @rpc({
+    website: WEBSITE_CLOSED,
+    principals: ["host", "user", "code", "session", "mission"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async stats(): Promise<NatlangStoreStats> {
+    const count = (query: string) => Number(this.one(query)?.["n"] ?? 0);
+    return {
+      calls: count(`SELECT COUNT(*) AS n FROM calls WHERE outcome != 'running'`),
+      running: count(`SELECT COUNT(*) AS n FROM calls WHERE outcome = 'running'`),
+      evaluations: count(`SELECT COUNT(*) AS n FROM evaluations`),
+      blobBytes: this.storedBytes(),
+      blobBudgetBytes: this.blobBudgetBytes(),
+    };
+  }
+
+  // ── Evaluations ───────────────────────────────────────────────────────────
+
+  /**
+   * Keep the summary of an evaluation-suite run (`pnpm natlang:eval --instance`). Evaluations are results a person
+   * compares over time, not data the store may evict, so they live in their own table outside the blob budget.
+   */
+  @rpc({
+    website: WEBSITE_CLOSED,
+    principals: ["host", "user", "code", "session", "mission"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async recordEvaluation(input: NatlangRecordEvaluationInput): Promise<{ evaluationId: string }> {
+    const { evaluation, ranAt } = natlangRecordEvaluationInputSchema.parse(input);
+    const json = JSON.stringify(evaluation);
+    if (byteLength(json) > NATLANG_EVALUATION_MAX_BYTES)
+      throw new Error(
+        `An evaluation record is at most ${NATLANG_EVALUATION_MAX_BYTES} bytes; send the summary, not the rollouts`,
+      );
+    const evaluationId = crypto.randomUUID();
+    const slash = evaluation.suite.path.lastIndexOf("/");
+    const program = slash < 0 ? "." : evaluation.suite.path.slice(0, slash);
+    this.sql.exec(
+      `INSERT INTO evaluations (evaluation_id, ran_at, program, suite_id, split, evaluation_json)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      evaluationId,
+      ranAt ?? new Date().toISOString(),
+      program,
+      evaluation.suite.id,
+      evaluation.split,
+      json,
+    );
+    return { evaluationId };
+  }
+
+  /** Recorded evaluations, newest first; `latest` keeps the most recent per program, suite and split. */
+  @rpc({
+    website: WEBSITE_CLOSED,
+    principals: ["host", "user", "code", "session", "mission"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async listEvaluations(input: NatlangListEvaluationsInput): Promise<NatlangEvaluationRecord[]> {
+    const filter = natlangListEvaluationsInputSchema.parse(input ?? {});
+    const where: string[] = [];
+    const bindings: unknown[] = [];
+    for (const [column, value] of [
+      ["program", filter.program],
+      ["suite_id", filter.suiteId],
+      ["split", filter.split],
+    ] as const) {
+      if (value === undefined) continue;
+      where.push(`${column} = ?`);
+      bindings.push(value);
+    }
+    const rows = this.sql
+      .exec(
+        `SELECT evaluation_id, ran_at, program, evaluation_json FROM evaluations
+         ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+         ORDER BY ran_at DESC, rowid DESC`,
+        ...bindings,
+      )
+      .toArray();
+    const seen = new Set<string>();
+    const records: NatlangEvaluationRecord[] = [];
+    for (const row of rows) {
+      const evaluation = JSON.parse(row["evaluation_json"] as string) as NatlangEvaluation;
+      if (filter.latest) {
+        const key = JSON.stringify([row["program"], evaluation.suite.id, evaluation.split]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      records.push({
+        evaluationId: row["evaluation_id"] as string,
+        ranAt: row["ran_at"] as string,
+        program: row["program"] as string,
+        evaluation,
+      });
+      if (records.length >= (filter.limit ?? NATLANG_LIST_LIMIT_DEFAULT)) break;
+    }
+    return records;
   }
 
   // ── Live events ───────────────────────────────────────────────────────────

@@ -361,6 +361,98 @@ export type NatlangPublishLiveInput = Omit<
   "events"
 > & { events: LiveEventJson[] };
 
+/** What the store holds: calls and evaluations, and the bytes of the values and traces behind them. */
+export interface NatlangStoreStats {
+  calls: number;
+  /** Calls still running (not yet recorded). */
+  running: number;
+  evaluations: number;
+  /** Bytes of stored values, event streams and call records. */
+  blobBytes: number;
+  /** The size bound; the oldest unpinned data is evicted past it. */
+  blobBudgetBytes: number;
+}
+
+// ── Evaluation results ──────────────────────────────────────────────────────
+
+/** Largest evaluation record the service accepts, as JSON text. */
+export const NATLANG_EVALUATION_MAX_BYTES = 256 * 1024;
+
+/**
+ * The summary of one natlang evaluation-suite run (`pnpm natlang:eval`'s `vibestudio.natlang-eval/1` record without its
+ * per-case rollouts): what ran, on which executor, how it scored, and whether the suite's gates passed. The service keeps
+ * it so the panel can show the latest result per program with its gates; the full result stays with the run's own output.
+ */
+export const natlangEvaluationSchema = z
+  .object({
+    template: z.string().min(1),
+    suite: z
+      .object({
+        id: z.string().min(1),
+        /** Workspace path of the suite file; its folder is the program. */
+        path: z.string().min(1),
+        hash: z.string(),
+        cases: z.record(z.number()),
+      })
+      .strict(),
+    split: z.enum(["train", "validation", "test"]),
+    /** The adaptation artifact the run used, if any. */
+    artifact: z.string().nullable(),
+    natlang: z.object({ commit: z.string() }).strict(),
+    /** The model under test (natlang's executor identity, as run). */
+    executorIdentity: z.unknown(),
+    summary: z
+      .object({
+        quality: z.number().nullable(),
+        cases: z.number(),
+        gatesPassed: z.boolean(),
+        modelCalls: z.number(),
+        meanLatencyMs: z.number().nullable(),
+      })
+      .passthrough(),
+    cases: z.array(
+      z
+        .object({
+          caseId: z.string(),
+          status: z.string(),
+          quality: z.number().nullable(),
+        })
+        .strict()
+    ),
+    budget: z.unknown(),
+  })
+  .strict();
+export type NatlangEvaluation = z.infer<typeof natlangEvaluationSchema>;
+
+export const natlangRecordEvaluationInputSchema = z
+  .object({
+    evaluation: natlangEvaluationSchema,
+    /** When the run finished (ISO time); the service's clock when absent. */
+    ranAt: z.string().optional(),
+  })
+  .strict();
+export type NatlangRecordEvaluationInput = z.infer<typeof natlangRecordEvaluationInputSchema>;
+
+export interface NatlangEvaluationRecord {
+  evaluationId: string;
+  ranAt: string;
+  /** The suite's folder: the program the suite evaluates. */
+  program: string;
+  evaluation: NatlangEvaluation;
+}
+
+export const natlangListEvaluationsInputSchema = z
+  .object({
+    program: z.string().optional(),
+    suiteId: z.string().optional(),
+    split: z.enum(["train", "validation", "test"]).optional(),
+    /** One record per program, suite and split: the most recent. */
+    latest: z.boolean().optional(),
+    limit: z.number().int().positive().max(NATLANG_LIST_LIMIT_MAX).optional(),
+  })
+  .strict();
+export type NatlangListEvaluationsInput = z.infer<typeof natlangListEvaluationsInputSchema>;
+
 // ── Receiver contract ───────────────────────────────────────────────────────
 
 export interface NatlangRecordsRpc {
@@ -385,6 +477,9 @@ export interface NatlangRecordsRpc {
   unsubscribeLive(input: NatlangUnsubscribeLiveInput): Promise<void>;
   liveInterest(): Promise<{ subscribed: boolean }>;
   publishLive(input: NatlangPublishLiveInput): Promise<{ delivered: number }>;
+  stats(): Promise<NatlangStoreStats>;
+  recordEvaluation(input: NatlangRecordEvaluationInput): Promise<{ evaluationId: string }>;
+  listEvaluations(input: NatlangListEvaluationsInput): Promise<NatlangEvaluationRecord[]>;
 }
 
 export const natlangRecordsRpcMethods = createReceiverRpcMethods<NatlangRecordsRpc>([
@@ -403,4 +498,7 @@ export const natlangRecordsRpcMethods = createReceiverRpcMethods<NatlangRecordsR
   "unsubscribeLive",
   "liveInterest",
   "publishLive",
+  "stats",
+  "recordEvaluation",
+  "listEvaluations",
 ]);

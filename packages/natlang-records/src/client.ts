@@ -11,14 +11,18 @@ import {
   type NatlangBeginInput,
   type NatlangFeedbackInput,
   type NatlangFeedbackResult,
+  type NatlangEvaluationRecord,
   type NatlangImportExamplesInput,
   type NatlangListCallsFilter,
+  type NatlangListEvaluationsInput,
   type NatlangLiveDelivery,
   type NatlangLiveFilter,
   type NatlangLiveSubscribed,
   type NatlangPublishLiveInput,
+  type NatlangRecordEvaluationInput,
   type NatlangRecordInput,
   type NatlangRecordResult,
+  type NatlangStoreStats,
   type NatlangTuneExamplesInput,
   type NatlangTuneExamplesResult,
 } from "./contract.js";
@@ -56,6 +60,10 @@ export interface NatlangRecordsClient {
   /** Whether anything subscribes: ask once per eval cell, publish live events only when true. */
   liveInterest(): Promise<{ subscribed: boolean }>;
   publishLive(input: NatlangPublishLiveInput): Promise<{ delivered: number }>;
+  stats(): Promise<NatlangStoreStats>;
+  /** Keep the summary of an evaluation-suite run. */
+  recordEvaluation(input: NatlangRecordEvaluationInput): Promise<{ evaluationId: string }>;
+  listEvaluations(input?: NatlangListEvaluationsInput): Promise<NatlangEvaluationRecord[]>;
   subscribeLive(
     filter?: NatlangLiveFilter,
     options?: { signal?: AbortSignal },
@@ -83,6 +91,9 @@ export function createNatlangRecordsClient(rpc: NatlangRecordsRpcCaller): Natlan
     tuneExamples: (input) => service.call("tuneExamples", input ?? {}),
     liveInterest: () => service.call("liveInterest"),
     publishLive: (input) => service.call("publishLive", input),
+    stats: () => service.call("stats"),
+    recordEvaluation: (input) => service.call("recordEvaluation", input),
+    listEvaluations: (input) => service.call("listEvaluations", input ?? {}),
     async subscribeLive(filter, options) {
       if (!rpc.streamReadable)
         throw new Error("Live subscriptions need an RPC caller with streamReadable");

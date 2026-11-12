@@ -136,4 +136,24 @@ describe("createNatlangRecordsClient", () => {
     expect(await client.liveInterest()).toEqual({ subscribed: false });
     await expect(client.subscribeLive()).rejects.toThrow(/streamReadable/);
   });
+
+  it("records and lists evaluation summaries", async () => {
+    const { rpc } = await connect();
+    const client = createNatlangRecordsClient(rpc);
+    const { evaluationId } = await client.recordEvaluation({
+      evaluation: {
+        template: "base",
+        suite: { id: "triage", path: "skills/triage/suite.ts", hash: "h", cases: { validation: 2 } },
+        split: "validation",
+        artifact: null,
+        natlang: { commit: "c" },
+        executorIdentity: { id: "gateway:local:lfm3" },
+        summary: { quality: 1, cases: 2, gatesPassed: true, modelCalls: 2, meanLatencyMs: 10 },
+        cases: [{ caseId: "a", status: "scored", quality: 1 }],
+        budget: {},
+      },
+    });
+    const listed = await client.listEvaluations({ latest: true });
+    expect(listed.map((entry) => [entry.evaluationId, entry.program])).toEqual([[evaluationId, "skills/triage"]]);
+  });
 });

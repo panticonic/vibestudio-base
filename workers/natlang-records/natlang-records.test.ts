@@ -617,6 +617,74 @@ describe("retention bound", () => {
   });
 });
 
+const evaluation = (overrides: { id?: string; path?: string; split?: "train" | "validation" | "test"; quality?: number | null; gatesPassed?: boolean } = {}) => ({
+  template: "base",
+  suite: { id: overrides.id ?? "triage", path: overrides.path ?? "skills/triage/suite.ts", hash: "h1", cases: { train: 3, validation: 2 } },
+  split: overrides.split ?? ("validation" as const),
+  artifact: null,
+  natlang: { commit: "c5740cf" },
+  executorIdentity: { id: "gateway:local:lfm3", configuration: { model: "local:lfm3" } },
+  summary: {
+    quality: overrides.quality === undefined ? 0.75 : overrides.quality,
+    cases: 2,
+    gatesPassed: overrides.gatesPassed ?? true,
+    modelCalls: 5,
+    meanLatencyMs: 1200,
+  },
+  cases: [
+    { caseId: "a", status: "scored", quality: 1 },
+    { caseId: "b", status: "scored", quality: 0.5 },
+  ],
+  budget: { limits: { maxRollouts: 10 }, ledger: { rollouts: 2 } },
+});
+
+describe("evaluations", () => {
+  it("keeps the summary of a suite run and lists the latest per program, suite and split", async () => {
+    const records = await create();
+    await records.recordEvaluation({ evaluation: evaluation({ quality: 0.5 }), ranAt: "2026-11-01T10:00:00.000Z" });
+    await records.recordEvaluation({ evaluation: evaluation({ quality: 0.9 }), ranAt: "2026-11-02T10:00:00.000Z" });
+    await records.recordEvaluation({ evaluation: evaluation({ split: "test", gatesPassed: false }), ranAt: "2026-11-02T11:00:00.000Z" });
+    await records.recordEvaluation({ evaluation: evaluation({ id: "other", path: "skills/other/suite.ts" }), ranAt: "2026-11-03T10:00:00.000Z" });
+
+    const all = await records.listEvaluations({});
+    expect(all.map((entry) => [entry.program, entry.evaluation.split, entry.evaluation.summary.quality])).toEqual([
+      ["skills/other", "validation", 0.75],
+      ["skills/triage", "test", 0.75],
+      ["skills/triage", "validation", 0.9],
+      ["skills/triage", "validation", 0.5],
+    ]);
+
+    const latest = await records.listEvaluations({ latest: true });
+    expect(latest.map((entry) => [entry.program, entry.evaluation.split, entry.evaluation.summary.quality])).toEqual([
+      ["skills/other", "validation", 0.75],
+      ["skills/triage", "test", 0.75],
+      ["skills/triage", "validation", 0.9],
+    ]);
+    expect(latest[1]!.evaluation.summary.gatesPassed).toBe(false);
+    expect((await records.listEvaluations({ program: "skills/triage", split: "validation", limit: 1 })).map((entry) => entry.ranAt)).toEqual([
+      "2026-11-02T10:00:00.000Z",
+    ]);
+  });
+
+  it("reports what the store holds", async () => {
+    const records = await create();
+    await records.record(makeRecord({ callId: "done-1" }));
+    await begin(records, "running-1");
+    await records.recordEvaluation({ evaluation: evaluation() });
+    const stats = await records.stats();
+    expect(stats).toMatchObject({ calls: 1, running: 1, evaluations: 1, blobBudgetBytes: Number.MAX_SAFE_INTEGER });
+    expect(stats.blobBytes).toBeGreaterThan(0);
+  });
+
+  it("refuses a record that is not a summary", async () => {
+    const records = await create();
+    await expect(records.recordEvaluation({ evaluation: { ...evaluation(), extra: 1 } as never })).rejects.toThrow();
+    await expect(
+      records.recordEvaluation({ evaluation: { ...evaluation(), budget: "x".repeat(300 * 1024) } }),
+    ).rejects.toThrow(/at most 262144 bytes/);
+  });
+});
+
 describe("contract and authority", () => {
   it("exposes exactly the contract's methods, each closed to websites and open to the same principals", async () => {
     const { instance } = await createTestDO(Records);
@@ -634,9 +702,9 @@ describe("contract and authority", () => {
       });
     }
     const sensitivity = (method: string) => rpcMethodAuthority(instance, method)?.sensitivity;
-    for (const method of ["listCalls", "getCall", "getValue", "tuneExamples", "liveInterest", "subscribeLive"])
+    for (const method of ["listCalls", "getCall", "getValue", "tuneExamples", "liveInterest", "subscribeLive", "listEvaluations", "stats"])
       expect(sensitivity(method), method).toBe("read");
-    for (const method of ["begin", "progress", "discard", "record", "annotate", "feedback", "importExamples", "publishLive", "unsubscribeLive"])
+    for (const method of ["begin", "progress", "discard", "record", "annotate", "feedback", "importExamples", "publishLive", "unsubscribeLive", "recordEvaluation"])
       expect(sensitivity(method), method).toBe("write");
   });
 });
