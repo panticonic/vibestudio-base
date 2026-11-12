@@ -41,6 +41,24 @@
           "evidence": "bounded-dynamic"
         },
         {
+          "capability": "credential.use",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "network.response.read",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
           "capability": "server-logs.read",
           "resource": {
             "kind": "prefix",
