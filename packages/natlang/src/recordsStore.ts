@@ -60,6 +60,9 @@ export class RecordsStore implements CallStoreLike {
     private readonly report: (message: string) => void
   ) {}
 
+  /** The workspace folder of the program each running task executes, by task id. */
+  readonly programRoots = new Map<string, string>();
+
   /** Attribute the records that arrive from now on to `run`. */
   attach(run: RecordingRun | null): void {
     this.run = run;
@@ -97,7 +100,7 @@ export class RecordsStore implements CallStoreLike {
         parentActionIndex: row.parentActionIndex,
         taskId: row.taskId,
         programId: row.programId,
-        programRoot: row.programRoot,
+        programRoot: row.programRoot ?? this.programRoots.get(row.taskId) ?? null,
         definition: row.definition,
         modelId: row.modelId,
         startedAt: row.startedAt,
@@ -135,6 +138,8 @@ export class RecordsStore implements CallStoreLike {
     events?: string
   ): void {
     this.latestProgress.delete(record.call_id);
+    const programRoot = record.program_root ?? this.programRoots.get(record.task_id) ?? null;
+    if (programRoot !== record.program_root) record = { ...record, program_root: programRoot };
     const run = this.run;
     const summary = run && record.parent_call_id === null ? summarize(record) : undefined;
     if (summary) run!.calls.push(summary);

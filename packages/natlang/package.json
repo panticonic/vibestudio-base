@@ -8,7 +8,12 @@
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
     "./describe-types": "./src/describeTypes.ts",
-    "./dashboard/*": "./vendor-dashboard/dashboard/*",
+    "./dashboard/pages.js": "./vendor-dashboard/dashboard/pages.js",
+    "./dashboard/common.js": "./vendor-dashboard/dashboard/common.js",
+    "./dashboard/style.css": "./vendor-dashboard/dashboard/style.css",
+    "./dashboard/types.js": {
+      "types": "./vendor-dashboard/dashboard/types.d.ts"
+    },
     "./evaluation": {
       "types": "./vendor-evaluation/evaluation/natlang-evaluation.d.ts"
     },

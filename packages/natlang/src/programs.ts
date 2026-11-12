@@ -153,7 +153,12 @@ export function compileProgram(options: {
 /** Runs one call of a program as a task of its own, with the program's services. */
 export type TaskRunner = <T>(
   run: () => Promise<T>,
-  task: { services: Record<string, object>; serviceDeclarations: Record<string, string> }
+  task: {
+    services: Record<string, object>;
+    serviceDeclarations: Record<string, string>;
+    /** The workspace folder of the program the task runs: recorded with each of its calls. */
+    programRoot?: string;
+  }
 ) => Promise<T>;
 
 /**
@@ -233,11 +238,11 @@ export class ProgramLoader {
 
   async load(specifier: string): Promise<unknown> {
     const { bindings, runTask } = this.options;
-    const { path, program } = await this.compiledProgram(specifier);
+    const { path, root, program } = await this.compiledProgram(specifier);
     const services = servicesFor(path, program.services, bindings);
     return bindProgram(
       program.value,
-      { services, serviceDeclarations: declarationsFor(program.services) },
+      { services, serviceDeclarations: declarationsFor(program.services), programRoot: root },
       runTask
     );
   }

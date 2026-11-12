@@ -159,6 +159,38 @@ describe("createEvalNatlang", () => {
     expect(lastToolText(shown)).toContain("object,undefined,undefined");
   });
 
+  it("records the program's folder with each call of a loaded program, and none for an inline call", async () => {
+    const begun: any[] = [];
+    const recorded: any[] = [];
+    const reply = async () => toolCallMessage("return_result", { status: "success", value: "ok" });
+    const { cell } = setup(
+      {
+        turn: reply,
+        records: {
+          begin: (input) => void begun.push(input),
+          record: (input) => (recorded.push(input.record), { recordId: input.record.call_id }),
+        },
+      },
+      { fs: decisionProgramFiles({ "skills/logs/probe.nl": "---\nargs: {}\nreturns: string\n---\nSay ok.\n" }) }
+    );
+    await cell("const probe = await natlang.load('skills/logs/probe.nl');\nawait probe();\nreturn await nl<string>`Say ok.`();");
+    const program = recorded.filter((record) => record.definition.name === "probe");
+    const inline = recorded.filter((record) => record.definition.name !== "probe");
+    expect(program.map((record) => record.program_root)).toEqual(["skills/logs"]);
+    expect(begun.find((row) => row.definition.name === "probe")?.programRoot).toBe("skills/logs");
+    expect(inline.map((record) => record.program_root)).toEqual([null]);
+  });
+
+  /** The `fs` of an in-memory workspace. */
+  const decisionProgramFiles = (files: Record<string, string>) => ({
+    readFile: async (path: string) => files[path]!,
+    readdir: async (path: string) =>
+      Object.keys(files)
+        .filter((file) => file.startsWith(`${path}/`))
+        .map((file) => ({ name: file.slice(path.length + 1), isDirectory: () => false })),
+    stat: async (path: string) => ({ isDirectory: () => !path.endsWith(".nl") }),
+  });
+
   /** A workspace program with one `readout: decision` function, `skills/triage/judge.nl`. */
   const decisionProgram = () => {
     const files: Record<string, string> = {

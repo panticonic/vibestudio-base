@@ -121,14 +121,30 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     run.live = await livePublisher(run.runId);
   }
 
-  const runTask: TaskRunner = (run, task) =>
-    inCell(() =>
-      runtime.run(run, {
-        ...task,
-        ...(active ? { signal: active.signal } : {}),
-        onLive: relayLive,
-      })
-    );
+  const runTask: TaskRunner = async (run, { programRoot, ...task }) => {
+    let taskId: string | undefined;
+    try {
+      return await inCell(() =>
+        runtime.run(
+          () => {
+            // Natlang records the program's directory only when the runtime is made for one program; this runtime
+            // serves every program the owner loads, so each task names its own, for the records of its calls.
+            taskId = core.currentFrame()?.task.id;
+            if (taskId && programRoot) store.programRoots.set(taskId, programRoot);
+            return run();
+          },
+          {
+            ...task,
+            ...(active ? { signal: active.signal } : {}),
+            onLive: relayLive,
+          }
+        )
+      );
+    } finally {
+      // `inCell` has flushed the task's records: the name is no longer needed.
+      if (taskId) store.programRoots.delete(taskId);
+    }
+  };
 
   const loader = new ProgramLoader({ platform, fs, bindings: host.bindings, runTask });
 
