@@ -107,7 +107,7 @@ export class ObservedRuns {
 
   async list(): Promise<RunRecord[]> {
     const rows = await this.deps.records.listCalls({ parentCallId: null, limit: ROOTS });
-    return this.groups(rows).map(toRecord);
+    return this.groups(rows).map((group) => toRecord(group));
   }
 
   /** Follow every owner's live events while a list is watched: the subscription lives exactly that long. */

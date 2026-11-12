@@ -122,13 +122,13 @@
     "@workspace/model-catalog": "workspace:*",
     "@workspace/natlang": "workspace:*",
     "@workspace/natlang-records": "workspace:*",
+    "@workspace/natlang-services": "workspace:*",
     "@workspace/react": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@workspace/natlang-services": "workspace:*",
     "vitest": "^3.2.7"
   }
 }

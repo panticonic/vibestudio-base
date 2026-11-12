@@ -38,6 +38,12 @@ export interface ServiceCatalogEntry {
   readonly summary: string;
   readonly contract: ContractOrigin;
   readonly methods: readonly DeclaredMethod[];
+  /**
+   * The service is the view of one agent's conversation (its roster, its supervisor, its runs): it exists only in an
+   * agent's eval, and a user-initiated run (a panel, a CLI) has nothing to give it. A program that declares it is an
+   * agent's program; a host that runs programs for a user reports that instead of failing at the call.
+   */
+  readonly requiresAgent?: true;
 }
 
 const GAD_INSPECTORS = [
@@ -168,6 +174,7 @@ export const SERVICE_CATALOG = [
       table: "addresseesMethods",
     },
     methods: [{ name: "list", params: [] }],
+    requiresAgent: true,
   },
   {
     name: "systemTests",

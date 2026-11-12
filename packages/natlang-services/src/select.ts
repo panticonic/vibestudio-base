@@ -21,8 +21,10 @@ function entryFor(name: ServiceName) {
 function requireBinding(service: ServiceName, bindings: ServiceBindings, binding: string): unknown {
   const value = bindings[binding];
   if (value === undefined || value === null) {
+    const needsAgent = "requiresAgent" in entryFor(service);
     throw new Error(
-      `natlang service "${service}" needs the eval binding \`${binding}\`, which is not available in this eval`
+      `natlang service "${service}" needs the eval binding \`${binding}\`, which is not available in this eval` +
+        (needsAgent ? `: ${service} is the view of an agent's conversation, and only an agent's eval has one` : "")
     );
   }
   return value;

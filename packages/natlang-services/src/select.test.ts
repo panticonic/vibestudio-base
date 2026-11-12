@@ -108,7 +108,7 @@ describe("selectServices", () => {
   it("explains which eval binding a service needs when it is missing", () => {
     const { agent: _agent, ...withoutAgent } = evalBindings();
     expect(() => selectServices(withoutAgent, ["addressees"])).toThrow(
-      /natlang service "addressees" needs the eval binding `agent`/
+      /natlang service "addressees" needs the eval binding `agent`.*an agent's conversation, and only an agent's eval has one/
     );
     expect(() => selectServices({}, ["vcs"])).toThrow(/needs the eval binding `vcs`/);
     expect(() => selectServices({ services: {} }, ["serverLog"])).toThrow(
