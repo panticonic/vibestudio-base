@@ -8,7 +8,7 @@
     },
     {
       "path": "SKILL.md",
-      "sha256": "1a2f92a81f64dbbf1f032e90214a4a51593948578a92f0157525dcbb44320685"
+      "sha256": "b63141d9fde609729654197cdce2ebaccf3a18a579e7455254e503b75b54b334"
     },
     {
       "path": "agents/openai.yaml",
@@ -16,7 +16,7 @@
     },
     {
       "path": "changes/DECOMPOSITION.md",
-      "sha256": "cb8bcded0e7956fd816e0464e572a6942fecff7f14fd2ed2c80f533a154e33cb"
+      "sha256": "dcd7c3ebe93fcca0d7f016518c2d45d050839e7ef2b960e55ca336aa27d3936e"
     },
     {
       "path": "changes/cases.jsonl",
@@ -36,7 +36,7 @@
     },
     {
       "path": "changes/suite.ts",
-      "sha256": "523dac409e00c6f6c73c596b8e93667a64c69c34ac2a234056df7c345047e23d"
+      "sha256": "09d7a36727147f5a7761fca1527a3b9ac3d0eb667e74d4221d22414e84ea70d5"
     },
     {
       "path": "changes/summarizeChanges.d.nl.ts",
@@ -159,5 +159,5 @@
       "sha256": "81d18bf544324c35356d6e3ab9dc55271f5e9448d6aabf5ba01a8521430a2877"
     }
   ],
-  "packageDigest": "f90c5d6255c8d1c033b3611491c6f5fc9044a85563a5ee11969ee221ffc10bef"
+  "packageDigest": "fe1adb23b83fd737f6762e97d43210f0b96e1d46a38924c3f679c50d35e9c957"
 }

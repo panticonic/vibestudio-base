@@ -132,30 +132,6 @@ Managed workspace state is semantic history, not a Git worktree. Tools:
 complete local chain. Merge parents come only from merge decisions, including
 the decision-only conclusion that `concludes` records atomically.
 
-To word the commit or review the local changes, hand the compare result to the typed
-reader (it proposes; you commit):
-
-```ts
-const status = await vcs.status({ contextId: ctx.contextId });
-const compare = await vcs.compare({
-  target: { kind: "event", eventId: status.mainEventId },
-  source: status.workingHead,
-});
-const changes = await natlang.load(
-  "skills/vibestudio-vcs/changes/summarizeChanges.nl",
-);
-const proposal = await changes.commitMessage(compare); // { message, intent, warnings }
-const summary = await changes.summarize(compare); // { headline, units, state, attention, truncated }
-```
-
-`message` is one line of at most 72 characters saying what the changes do. `intent` is
-a reason an author already recorded for the work, copied unchanged, or null: nothing
-here invents a purpose from a diff, so pass `intent` to `commit` only when it is non-null
-and the request does not already make it clear. Read `warnings` (a subject that broke
-its form, a truncated comparison). `summarize` gives a sentence per repository, the
-state (`ready`, `decisions-needed`, `conflicts`) and the conflicting or composed files
-to read before committing; those are exact, read from the comparison.
-
 `vcs({ operation: "push" })` publishes the committed event. It revalidates
 every merge parent by coordinate, runs the protected candidate checks, and
 never includes uncommitted work.

@@ -25,3 +25,13 @@ each case in `cases.jsonl` carries the recorded pages its `web` service replays 
 cases); the `web` service is replayed from them, including a failing fetch and a failing search. Quality is coverage of
 the expected key points when the status, the absence of injected text, the date and `notRead` are right. Gates: 0.85 on validation and on the locked
 test split, and every citation exact (`cited`) in every case.
+
+## Status: not ported
+
+SKILL.md does not call this function: the gates are not met. Evidence, on the executor (LFM3 1.7B Q8_0, `pnpm natlang:eval`):
+the first sampled case (`all-resolved:summary`, suite settings 4 turns, 192 tokens per turn) failed in `describeUnit` with
+"quiesced: episode turn, token, or wall-clock budget exhausted" and took 20 minutes on the shared server, so quality 0 on it. A full
+validation run (8 cases) did not complete: with the case watchdog removed it stalled with no request in flight after 85 minutes
+(root cause not found), and full runs on the shared machine were not feasible afterwards. The research suite was not run on the executor at all. The suite, cases and
+checks stay; a later run on a quieter machine, or an instruction that lets the model finish in few turns, decides whether it ports. Until then the agent
+performs this procedure itself.

@@ -23,3 +23,13 @@ scenario is a comparison captured from a live instance (`live-capture`: an added
 the others are built in the same shape from repository paths and commit-style intents. Commit quality: one line of at most 72
 characters, naming the change, and the right `intent` (verbatim reason or null). Summary quality: exact `state` and
 `attention`, and sentences that name the repository or its files. Gates: 0.85 on validation and on the locked test split, per function.
+
+## Status: not ported
+
+SKILL.md does not call this function: the gates are not met. Evidence, on the executor (LFM3 1.7B Q8_0, `pnpm natlang:eval`):
+the first sampled case (`all-resolved:summary`, suite settings 4 turns, 192 tokens per turn) failed in `describeUnit` with
+"quiesced: episode turn, token, or wall-clock budget exhausted" and took 20 minutes on the shared server, so quality 0 on it. A full
+validation run (8 cases) did not complete: with the case watchdog removed it stalled with no request in flight after 85 minutes
+(root cause not found), and full runs on the shared machine were not feasible afterwards. The recorded failure is for the generated-text functions (`commitSubject`, `describeUnit`); the exact digest and its tests stand. The suite, cases and
+checks stay; a later run on a quieter machine, or an instruction that lets the model finish in few turns, decides whether it ports. Until then the agent
+performs this procedure itself.
