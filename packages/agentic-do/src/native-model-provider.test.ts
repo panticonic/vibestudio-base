@@ -11,6 +11,7 @@ import {
   fauxAssistantMessage,
   fauxProvider,
 } from "@panticonic/pi-ai";
+import { normalizeContext } from "@panticonic/pi-ai/utils/transcript";
 import {
   TEST_MODEL_ID,
   TEST_MODEL_PROVIDER_ID,
@@ -269,7 +270,7 @@ describe("the local native model provider", () => {
       await provider
         .stream(
           model,
-          { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+          normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
           { apiKey: "sentinel", samplingParams: { guidance: true, seed: 7 } },
         )
         .result();
