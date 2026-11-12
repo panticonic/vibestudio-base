@@ -40,13 +40,12 @@ export function evaluationsPage(ports: Pick<NatlangPanelPorts, "records">): Page
               {},
               h(
                 "span",
-                { class: "function-title" },
+                { style: "display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px" },
                 h("strong", {}, evaluation.suite.id),
-                h("span", { class: "small muted" }, ` ${entry.program} · ${evaluation.split} split`)
-              ),
-              " ",
-              pill(summary.gatesPassed ? "gates passed" : "gates failed", summary.gatesPassed ? "ok" : "bad"),
-              h("span", { class: "small muted" }, `  quality ${quality(summary.quality)} · ${summary.cases} cases · ${ago(entry.ranAt)}`)
+                h("span", { class: "small muted" }, `${entry.program} · ${evaluation.split} split`),
+                pill(summary.gatesPassed ? "gates passed" : "gates failed", summary.gatesPassed ? "ok" : "bad"),
+                h("span", { class: "small muted" }, `quality ${quality(summary.quality)} · ${summary.cases} cases · ${ago(entry.ranAt)}`)
+              )
             ),
             h(
               "div",
