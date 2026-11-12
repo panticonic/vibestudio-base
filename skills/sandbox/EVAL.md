@@ -621,7 +621,7 @@ eval({ code: `
 
 <!-- BEGIN GENERATED: eval-importable -->
 
-Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `web`, `memory`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
+Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
 
 <!-- END GENERATED: eval-importable -->
 
@@ -1112,6 +1112,9 @@ await brief({ since });
   `services.d.ts` declares (or its modules import from `natlang:services`), each
   a narrowed view of your own binding, so your approvals still apply. It returns
   proposals for consequential effects; you commit them.
+- `await natlang.describe("skills/server-logs")` returns the program's functions
+  with their typed signatures as data (the same compilation `load` runs; nothing
+  runs). Editors and dashboards draw typed forms from it.
 - Calls run on the `executor` model role (the local executor model when ready,
   otherwise a billed low-tier hosted model); the result names the model that ran.
 - Cancelling the run stops its natlang calls.

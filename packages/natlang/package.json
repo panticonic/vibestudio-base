@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts",
+    "./describe-types": "./src/describeTypes.ts",
     "./dashboard/*": "./vendor-dashboard/dashboard/*",
     "./evaluation": {
       "types": "./vendor-evaluation/evaluation/natlang-evaluation.d.ts"

@@ -194,6 +194,49 @@ describe("ProgramLoader", () => {
     expect(Object.keys(value as object).sort()).toEqual(["brief", "other"]);
   });
 
+  it("describes a program's functions with typed, expanded signatures and field docs", async () => {
+    const files: Record<string, string> = {
+      "skills/s/types.ts": "export type Ticket = {\n  /** What the customer wrote. */\n  text: string;\n  tags?: string[];\n};\nexport type Verdict = 'urgent' | 'normal';\n",
+      "skills/s/triage.nl": "---\ndescription: Decide whether a ticket is urgent.\nargs:\n  ticket: Ticket\n  limit?: number\nreturns: Verdict\n---\nDecide whether ticket is urgent.\n",
+      "skills/s/triage/helper.nl": BRIEF,
+      "skills/s/services.d.ts": SERVICES_DTS,
+    };
+    const loader = new ProgramLoader({ platform: platform(), fs: memoryFs(files), bindings: {}, runTask: (run) => run() });
+    const description = await loader.describe("skills/s");
+    expect(description.root).toBe("skills/s");
+    expect(description.services).toEqual(["gad", "serverLog"]);
+    const triage = description.functions.find((fn) => fn.name === "triage")!;
+    expect(triage).toMatchObject({
+      source: "triage.nl",
+      description: "Decide whether a ticket is urgent.",
+      params: ["ticket: Ticket", "limit?: number"],
+      returns: "Verdict",
+    });
+    expect(triage.fields.map((field) => [field.name, field.required])).toEqual([["ticket", true], ["limit", false]]);
+    expect(triage.fields[0]!.tree).toMatchObject({
+      kind: "record",
+      alias: "Ticket",
+      fields: [
+        { name: "text", doc: "What the customer wrote.", type: { kind: "prim", name: "string" } },
+        { name: "tags", optional: true, type: { kind: "list" } },
+      ],
+    });
+    expect(triage.result.tree).toMatchObject({ kind: "union", alias: "Verdict" });
+    expect(description.functions.map((fn) => fn.source)).toContain("triage/helper.nl");
+    // A single file describes the file's folder as its root.
+    expect((await loader.describe("skills/s/triage.nl")).root).toBe("skills/s");
+  });
+
+  it("describes nothing for a program that does not compile, with its diagnostics", async () => {
+    const loader = new ProgramLoader({
+      platform: platform(),
+      fs: memoryFs({ "skills/bad/main.ts": "export const x: number = 'no';\n" }),
+      bindings: {},
+      runTask: (run) => run(),
+    });
+    await expect(loader.describe("skills/bad")).rejects.toThrow(/skills\/bad does not compile/);
+  });
+
   it("rejects a path that is not a program", async () => {
     await expect(load({ "skills/s/notes.md": "x" }, {}, "skills/s/notes.md")).rejects.toThrow(/takes a \.nl file/);
   });

@@ -7,6 +7,8 @@ import {
   loadVirtualNatlang,
   type Platform,
 } from "../vendor/workerd/natlang-workerd.js";
+import { describeProgram } from "./describe.js";
+import type { ProgramDescription } from "./describeTypes.js";
 import { declarationsFor, declaredServiceNames, servicesFor } from "./services.js";
 
 /** The parts of the eval `fs` binding program loading reads. */
@@ -198,8 +200,13 @@ export class ProgramLoader {
     }
   ) {}
 
-  async load(specifier: string): Promise<unknown> {
-    const { fs, platform, bindings, runTask } = this.options;
+  /** The program a specifier names, compiled (a cache hit when its files are unchanged). */
+  private async compiledProgram(specifier: string): Promise<{
+    path: string;
+    root: string;
+    program: CompiledProgram;
+  }> {
+    const { fs, platform } = this.options;
     const path = workspacePath(specifier);
     if (!path) throw new NatlangProgramError("natlang.load needs a workspace path");
     const directory = (await fs.stat(path)).isDirectory();
@@ -221,11 +228,26 @@ export class ProgramLoader {
         this.compiled.delete(this.compiled.keys().next().value as string);
       }
     }
+    return { path, root, program };
+  }
+
+  async load(specifier: string): Promise<unknown> {
+    const { bindings, runTask } = this.options;
+    const { path, program } = await this.compiledProgram(specifier);
     const services = servicesFor(path, program.services, bindings);
     return bindProgram(
       program.value,
       { services, serviceDeclarations: declarationsFor(program.services) },
       runTask
     );
+  }
+
+  /**
+   * `natlang.describe`: the functions a program defines with their typed signatures, from the same compilation
+   * `load` runs (so a program that does not type-check fails here with the same diagnostics). Nothing is bound or run.
+   */
+  async describe(specifier: string): Promise<ProgramDescription> {
+    const { root, program } = await this.compiledProgram(specifier);
+    return describeProgram(program.value, root, program.services);
   }
 }

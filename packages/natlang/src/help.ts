@@ -20,6 +20,7 @@ export function natlangHelp(): string {
     "  const brief = await natlang.load('skills/server-logs/brief.nl');   // a .nl file",
     "  const tools = await natlang.load('skills/server-logs');            // a folder: a record of callables",
     "  await brief({ since });",
+    "  const shape = await natlang.describe('skills/server-logs');        // its functions with typed signatures (data, nothing runs)",
     "  A program is type-checked when loaded (and re-checked only when its files change). It gets exactly the",
     "  services its services.d.ts declares (declare module 'natlang:services' { export const serverLog: ... })",
     "  or its TypeScript modules import from 'natlang:services', each a narrowed view of your own binding: your",

@@ -135,6 +135,8 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const natlang = Object.freeze({
     /** Load a workspace natlang program (a `.nl` file, a `.ts` module, or a folder). */
     load: (path: string) => loader.load(path),
+    /** A workspace program's functions with their typed signatures (from the compilation `load` runs). */
+    describe: (path: string) => loader.describe(path),
     /** A recorded call's record and trace. */
     async trace(callId: string) {
       const detail = await records.getCall(callId);
