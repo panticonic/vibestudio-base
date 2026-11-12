@@ -1,0 +1,106 @@
+{
+  "name": "@workspace-panels/natlang",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Natlang",
+    "icon": "./assets/icon.svg",
+    "entry": "index.tsx",
+    "exposeModules": [
+      "react",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "@workspace/runtime",
+      "@workspace/react"
+    ],
+    "authority": {
+      "provides": [],
+      "serviceRequests": [
+        {
+          "protocol": "vibestudio.natlang.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.models.v1",
+          "availability": "required"
+        },
+        {
+          "protocol": "vibestudio.model-gateway.v1",
+          "availability": "required"
+        }
+      ],
+      "requests": [
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "subagents.create",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:model-gateway",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:models",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace-service:natlang-records",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace.runtime-state.manage",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/model-catalog": "workspace:*",
+    "@workspace/natlang": "workspace:*",
+    "@workspace/natlang-records": "workspace:*",
+    "@workspace/react": "workspace:*",
+    "@workspace/runtime": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}
