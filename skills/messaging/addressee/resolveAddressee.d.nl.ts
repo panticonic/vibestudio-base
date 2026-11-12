@@ -10,7 +10,6 @@ type AddresseeRow = {
   /** A short description: a display name with the chat surface in parentheses, or a run status. */
   note: string;
 };
-type Fit = "yes" | "maybe" | "no";
 type Resolved = { kind: "ref"; ref: string; note: string };
 type Ambiguous = {
   kind: "ambiguous";
@@ -18,5 +17,5 @@ type Ambiguous = {
   candidates: AddresseeRow[];
 };
 type Resolution = Resolved | Ambiguous;
-declare const fn: NatlangFunction<[utterance: string], Resolution> & { readonly decide: ((rows: readonly AddresseeRow[], fits: readonly Fit[]) => Resolution) & {  }; readonly resolve: ((utterance: string) => Promise<Resolution>) & {  }; readonly rowFit: NatlangFunction<[utterance: string, row: AddresseeRow], Fit> };
+declare const fn: NatlangFunction<[utterance: string], Resolution> & { readonly lexical: ((utterance: string, rows: readonly AddresseeRow[]) => number[]) & {  }; readonly resolve: ((utterance: string) => Promise<Resolution>) & {  } };
 export default fn;

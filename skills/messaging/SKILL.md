@@ -64,10 +64,12 @@ const who = await resolver.resolve("Tell Maria the build passed");
 // { kind: "ambiguous", reason: "several" | "none", candidates: [...] }
 ```
 
-A small model judges each addressee against what the user said; an exact rule
-returns a ref only when one row fits and no other might. An ambiguity comes back
-as data with the competing rows, never as a guess: ask the user which one, and
-hold the note unsent. The resolver does not send; you call `notify` with the
+The resolver reads the roster and takes the row the user names in so many words
+(a name, handle, chat surface, run state or role such as the supervisor). It never
+guesses between rows it names equally well: an ambiguity comes back as data with the
+competing rows, and a name that matches nothing returns the whole roster. Ask the
+user which one, or choose from the roster yourself when the user described the
+recipient some other way; hold the note unsent until then. The resolver does not send; you call `notify` with the
 returned `ref`. It resolves one recipient per call (resolve each name for a list).
 
 **Unresolvable refs fail the call.** A misspelled handle returns suggestions

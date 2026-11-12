@@ -8,9 +8,6 @@ export type AddresseeRow = {
   note: string;
 };
 
-/** How well one addressee fits the recipient the user named. */
-export type Fit = "yes" | "maybe" | "no";
-
 /** The recipient the user meant: one exact ref, ready for `notify`'s `to`. */
 export type Resolved = { kind: "ref"; ref: string; note: string };
 

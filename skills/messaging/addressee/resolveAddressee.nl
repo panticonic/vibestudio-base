@@ -5,4 +5,5 @@ args:
 returns: Resolution
 ---
 Call resolve with utterance and return its result unchanged, from eval, so the ref stays exact. resolve lists who
-can be messaged, judges how well each one fits what the user said, and answers with one ref or an ambiguity.
+can be messaged and takes the one the user names in so many words; it never guesses between equally named ones,
+and when none is named it returns the whole roster for you to choose from.
