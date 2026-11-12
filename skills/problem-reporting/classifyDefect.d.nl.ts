@@ -59,5 +59,12 @@ type Draft = {
   destination: string;
   narrativeLimitBytes: number;
 };
+type Facts = {
+  destination: string;
+  /** Plain lines taken from the diagnostic: the invocation's status and terminal outcome. Empty when none was fetched. */
+  diagnostic: string;
+  /** Evidence that could not be collected, with the reason. */
+  gaps: string[];
+};
 declare const fn: NatlangFunction<[evidence: Evidence], DefectClass>;
 export default fn;

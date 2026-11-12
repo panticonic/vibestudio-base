@@ -76,3 +76,12 @@ export type Draft = {
   destination: string;
   narrativeLimitBytes: number;
 };
+
+/** What the drafter reads from the platform: where the report would go, one invocation diagnostic, and what could not be read. */
+export type Facts = {
+  destination: string;
+  /** Plain lines taken from the diagnostic: the invocation's status and terminal outcome. Empty when none was fetched. */
+  diagnostic: string;
+  /** Evidence that could not be collected, with the reason. */
+  gaps: string[];
+};

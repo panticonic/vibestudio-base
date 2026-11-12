@@ -1,6 +1,5 @@
 /** Build the draft from the redacted evidence and the facts read from the platform. Every word is the user's or the platform's. */
-import type { Draft, DraftSection, Evidence } from "../types.js";
-import type { Facts } from "./facts.js";
+import type { Draft, DraftSection, Evidence, Facts } from "../types.js";
 
 /** The narrative budget of a report, counted in UTF-8 bytes, separately from evidence and attachments. */
 const NARRATIVE_LIMIT_BYTES = 128 * 1024;
