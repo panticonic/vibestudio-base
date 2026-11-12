@@ -59,7 +59,7 @@ Gates: mean quality of at least 0.85 on validation and on the locked test split.
 | | test (4) | 0.458 (status right in 2 of 4) | not met |
 | `summarizeChannel` with `needsUserReply` and `topic` | validation (4) | 0.875 (1 wrong state) | met |
 | | test (4) | 0.750 (2 wrong states, both an offer read as a request) | not met |
-| both, crisp (this version) | validation, test | see the suite: deterministic, every gate met | met |
+| both, crisp (this version) | validation (8), test (8) | 1.00 and 1.00 through `pnpm natlang:eval`, no model call, every gate met | met |
 
 Reference model (the agent's own): not measured; no agent-class model is available in the harness. Labels were written
 by the author from `DIAGNOSTICS.md`.

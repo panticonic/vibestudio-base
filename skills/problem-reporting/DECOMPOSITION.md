@@ -45,11 +45,12 @@ and on the locked test split with no false `platform`; `draftProblemReport` ever
 
 | Function | Split | Result | Gate |
 |---|---|---|---|
-| `classifyDefect` | validation (4) | 0.50; a user-code `ReferenceError` and a dismissed approval both read as `platform` | not met |
+| `classifyDefect` | validation (4) | 0.50 (also through `pnpm natlang:eval`); a user-code `ReferenceError` and a dismissed approval both read as `platform` | not met |
+| | test (4) | 0.25 (`pnpm natlang:eval`): 3 of 4 wrong, including a `SyntaxError` in a user's worker and a path-escape refusal | not met |
 | `classifyDefect`, rules in first-match order (written against the train split) | train (first 8 of 10) | 3 of 8 | not met |
 | | two cases, options reordered | the answer follows the order of the options. With `platform` first it won on both (probability 1.0 on a plain `TypeError`, 0.996 on a denied push). With `user-code` first the same `TypeError` is `user-code` at 0.999 and the denied push is `user-code` at 0.81. With `refusal`, `transient`, `user-code`, `platform` the `TypeError` is `transient` at 0.993 | |
 | `draftProblemReport`, model-written narrative | validation (4) | not finished: the first case ran 35 minutes (8 turns of up to 1024 tokens at 6-8 tokens/s) and was stopped | not met |
-| `draftProblemReport`, crisp (this version) | validation (4), test (4) | quality 1.00, every gate on every case; no model call | met |
+| `draftProblemReport`, crisp (this version) | validation (4), test (4) | quality 1.00, every gate on every case (`pnpm natlang:eval`); no model call | met |
 
 `classifyDefect` is therefore not a usable decision on this executor: its probabilities are overconfident and ordered by
 position, not by the evidence. That is a property of the readout on LFM3-1.7B for this task, not of the cases; the
