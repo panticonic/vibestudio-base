@@ -45,6 +45,8 @@ export type NativeResult = {
     value?: Value;
     codes?: string[];
     entry?: number;
+    /** The full texts of outputs this result shows cut off (the learned compaction operator reads them; agent.ts). */
+    cutOff?: string[];
 };
 export type NativeAgent = (session: NativeSession) => Promise<string | void> | string | void;
 export type NativeRuntimeOptions = {
@@ -98,6 +100,8 @@ export type NativeRuntimeOptions = {
         limit?: number;
         used: number;
     };
+    /** Producer custody shared with the actual parent trace, independently of task budgets. */
+    sharedProducerScope?: object;
     /** Wording of return_result's value rejections (native/return-errors.ts); default the platform's (Node: NATLANG_RETURN_ERROR_TEXT), then the adopted one. */
     returnErrorText?: ReturnErrorText;
     seedPolicy?: {
@@ -194,6 +198,7 @@ export declare class NativeRuntime {
             node: string;
             port?: string;
         }[];
+        typeAliases?: Record<string, string>;
         resultPath?: (string | number)[];
         argumentName?: string;
     }): Promise<Value>;
@@ -337,6 +342,8 @@ export declare class NativeSession {
      * A final reply's text as the result when the declared return type accepts it. Neuralese<string> text goes through
      * the typed block writer; a bare "done" asks for the already staged value.
      */
+    /** Whether a plain, complete reply would be this call's result (a text-typed call with nothing staged). */
+    takesTextResult(): boolean;
     acceptTextResult(text: string): Promise<boolean>;
     /** Complete the invocation if an eval has returned a value of the declared type. */
     finish(): boolean;
@@ -346,6 +353,8 @@ export declare class NativeSession {
     private showValue;
     private record;
     private actionLimitReached;
+    /** Record an agent-owned control action under the same action and transcript custody as other tools. */
+    hostAction(name: string, args: Record<string, unknown>, execute: () => NativeResult, toolCallId?: string): NativeResult;
     /** The session's callable tree, rebuilt when a codebase edit publishes a new revision. */
     callables(): Record<string, unknown>;
     private writeNeuraleseResult;

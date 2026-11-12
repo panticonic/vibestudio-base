@@ -67,6 +67,8 @@ export type LambdaNode = {
     /** `decision`: answer by scoring the finite result values in one pass (native/decision.ts). `template`: the first
      * turn's reply is forced to `return_result` with the value written as a block (a Neuralese result) or decoded. */
     readout?: 'decision' | 'template';
+    /** Tools this call is not offered: its definition's `withhold:` frontmatter (runtime/loader.ts WITHHOLDABLE_TOOLS). */
+    withheldTools?: string[];
 };
 export type Pending = LambdaNode;
 /** `text`, when set, is the whole model-facing line (a sentence without the `path: code` prefix); `code` stays for traces. */

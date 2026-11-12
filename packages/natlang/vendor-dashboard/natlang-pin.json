@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "c5740cf93405e368d1fd4b59cf17b97f0a9d7872",
+  "commit": "80906ffba605a1d9955240e2bc59960d6bb41217",
   "dirty": false,
   "targets": [
     "dashboard"
@@ -11,7 +11,7 @@
     "typescript": "5.9.3"
   },
   "files": {
-    "dashboard/api.js": "e86a321817267509cbbebebe2240728b079112e0f02c2f182deb4ff2ebdcf19e",
+    "dashboard/api.js": "a339272bf791f67ce1a5e82c8dc9b04a32faa628e89831ad897c6329511d4520",
     "dashboard/arguments.js": "1febf32dfb3cb6fd3279343b4d33739dcc1bc75ae604b5cbc3f26402dd92a1ba",
     "dashboard/common.js": "664b1e3278034b1c9e20e606ce290e0e896d779ab65ffecaa9935f9c606ee1c2",
     "dashboard/execution.js": "a86b6caa5586abd36acce990f89048ba62f495600bde5bb0165bd55740c9224d",
@@ -23,11 +23,11 @@
     "dashboard/pages/runs.js": "ce0d35f46f48a975c769f9f0df7ebd1a8a35e333327b6be568e8b29448251daf",
     "dashboard/pages/system.js": "2931e1e9455959c0c6d01b745453c40f07b121976551c9d68c30d833f97a63ee",
     "dashboard/pages/traces.js": "fef478d954686fb5abd32b5bc62e4ad84d9a4e1953c00533a9608afe997663dd",
-    "dashboard/parts.js": "f1d355241a76e4cff7620381271de4a83bf7740cb4a1319d6bec4a6fa946fdef",
+    "dashboard/parts.js": "b4d8cac7018f99904bf4a99d37d0e5c8e0b462b3acb7626cf8e51a282ebe64fc",
     "dashboard/presentation.js": "0d255e6277170adaa099c65f3d580f86af735537680f16bf3107ccd172c31004",
     "dashboard/providers.js": "f2783ea2c657c11a8072898067bbdb08e3afa5a20bab9eb9d28b6b3bb1a335de",
     "dashboard/run-host.js": "2d07e8b7e0ba1405f0ee1c8bfc5984587b21a75fd2a59e85ca2cc45210ec097c",
     "dashboard/style.css": "f4ac437c95409bc9c87d5f702e285f98554e8d0d19712b6fdea9e935c0eb81b6",
-    "dashboard/types.d.ts": "d5481c9875a531005884ce2285856dc6623267ed9696d92756e36601f0faabe2"
+    "dashboard/types.d.ts": "b69e7bb1478d27f8ec680a597a0d57c35e00ed7cfcf3039faca27c9cc29f42dc"
   }
 }

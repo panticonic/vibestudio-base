@@ -1,14 +1,17 @@
-import type { AuthoredTextGuidance, NativeProgramGuidance } from '../adaptation/prompts.js';
+import { type AuthoredTextGuidance, type ProgramGuidance } from '../guidance/program.js';
+import type { Type, TypeEnv } from './types.js';
 import type { Value } from './values.js';
 import { type NativeSession } from './runtime.js';
 import type { DecisionScorer, ModelTurn, ModelTurnDelta, ModelTurnOptions, ModelTurnRequest } from '../contracts.js';
 import { type FileToolSurface } from './prompt.js';
 import { type Folder } from './scoped-fs.js';
 import type { TrainingGuidance } from './training-guidance.js';
+import { type PluggableSetting } from '../runtime/pluggable.js';
 import { type UntrustedRegistry } from './untrusted.js';
 import { type NeuraleseRuntimeOptions } from './neuralese.js';
 import { type RefinementChecker, type RefinementFailure, type RefinementJudge } from './refinement.js';
 import { type PromptRendering } from './system-prompts.js';
+import type { ModelBudget } from './model-budget.js';
 /** The code tools, as offered. Kept here so data collected under earlier wording can be migrated to it exactly. */
 export declare const READ_CODE_DESCRIPTION: string;
 export declare const EDIT_CODE_DESCRIPTION: string;
@@ -34,11 +37,8 @@ export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSigna
     readonly requiresResultContract?: boolean;
     /** Optional decision readout (contracts.ts `DecisionRequest`); without it the call runs the tool loop. */
     decide?: DecisionScorer;
+    neuraleseRuntime?: () => Promise<NeuraleseRuntimeOptions | undefined>;
 };
-/**
- * The call's arguments as its caller gave them, as the opening eval's result shows them (read_inputs() returns
- * the same values in eval). A long value is cut off, and its name holds all of it; an argument the caller left out is undefined.
- */
 export declare function inputsListing(session: NativeSession, views?: Readonly<Record<string, string>>): string;
 /**
  * The prompt size and context window a server states when it refuses a request as longer than its context, for the
@@ -56,6 +56,7 @@ export declare function defaultContextBudget(driver: unknown): Promise<number>;
  * value the model stored is still in eval's scope. Returns how many messages were removed.
  */
 export declare function collapseHistory(messages: Record<string, unknown>[], keptStart: number): number;
+export declare function schemaOf(type: Type, env: TypeEnv, depth?: number): Record<string, unknown>;
 /**
  * The one way a value is shown to the model: a TypeScript literal cut at item and field boundaries when it is long
  * (scopeExpression), or a preview when it has no literal form (live values). `holder` is where all of it is.
@@ -76,17 +77,43 @@ export declare class NativeToolAgent {
         maxTurns?: number;
         maxTokens?: number;
         turnTokens?: number;
+        actor?: {
+            id: string;
+            revision: string | null;
+        };
+        fallbacks?: {
+            name: string;
+            id: string;
+            revision?: string;
+            driver: NativeModelDriver;
+            promptRendering?: PromptRendering;
+            temperature?: number;
+            turnTokens?: number;
+            contextTokens?: number | null;
+            guidance?: boolean | {
+                repeat?: number;
+                syntax?: boolean;
+                retries?: number;
+                tools?: string[];
+            };
+        }[];
+        modelBudget?: ModelBudget;
         temperature?: number;
         maxSeconds?: number;
         promptRendering?: PromptRendering;
         systemPrompt?: string | (() => string);
-        programGuidance?: NativeProgramGuidance;
+        /** Stored program guidance: one binding, or a scoped set from which each call imports its function's binding,
+         * else the program-wide one (guidance/program.ts guidanceForCall). */
+        programGuidance?: ProgramGuidance;
         authoredTextGuidance?: AuthoredTextGuidance;
         maxFailureRepairs?: number;
         /** The readout's system prompt (default DECISION_SYSTEM_PROMPT; the kernel adds iteration addenda). */
         decisionSystemPrompt?: () => string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
+        /** `direct`: a leaf call (see `leafOpening`) answers from LEAF_SYSTEM_PROMPT and an opening that shows its arguments,
+         * with only return_result offered; `tools` (default): every call gets the full interpreter surface. */
+        leafCalls?: 'direct' | 'tools';
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -120,6 +147,14 @@ export declare class NativeToolAgent {
         };
         /** Tensor store and write port for soft values (S0 §3). */
         neuralese?: NeuraleseRuntimeOptions;
+        /**
+         * How values the runtime would cut off are shown (a pluggable part, runtime/pluggable.ts): `crisp` keeps the text
+         * cut; `nl` also shows the learned Neuralese operator's state of the whole value (cut-off tool outputs and
+         * argument listings) and carries a compacted history state with `compact_history` notes, when the driver reads
+         * Neuralese and `neuralese.compactor` is configured. Default `crisp` until the live measurement
+         * (plans/MODEL_FACING_CHANGES.md 2026-11-03) adopts the learned path; env NATLANG_NEURALESE_COMPACTION overrides.
+         */
+        compaction?: PluggableSetting;
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -137,17 +172,43 @@ export declare class NativeToolAgent {
         maxTurns?: number;
         maxTokens?: number;
         turnTokens?: number;
+        actor?: {
+            id: string;
+            revision: string | null;
+        };
+        fallbacks?: {
+            name: string;
+            id: string;
+            revision?: string;
+            driver: NativeModelDriver;
+            promptRendering?: PromptRendering;
+            temperature?: number;
+            turnTokens?: number;
+            contextTokens?: number | null;
+            guidance?: boolean | {
+                repeat?: number;
+                syntax?: boolean;
+                retries?: number;
+                tools?: string[];
+            };
+        }[];
+        modelBudget?: ModelBudget;
         temperature?: number;
         maxSeconds?: number;
         promptRendering?: PromptRendering;
         systemPrompt?: string | (() => string);
-        programGuidance?: NativeProgramGuidance;
+        /** Stored program guidance: one binding, or a scoped set from which each call imports its function's binding,
+         * else the program-wide one (guidance/program.ts guidanceForCall). */
+        programGuidance?: ProgramGuidance;
         authoredTextGuidance?: AuthoredTextGuidance;
         maxFailureRepairs?: number;
         /** The readout's system prompt (default DECISION_SYSTEM_PROMPT; the kernel adds iteration addenda). */
         decisionSystemPrompt?: () => string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
+        /** `direct`: a leaf call (see `leafOpening`) answers from LEAF_SYSTEM_PROMPT and an opening that shows its arguments,
+         * with only return_result offered; `tools` (default): every call gets the full interpreter surface. */
+        leafCalls?: 'direct' | 'tools';
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -181,6 +242,14 @@ export declare class NativeToolAgent {
         };
         /** Tensor store and write port for soft values (S0 §3). */
         neuralese?: NeuraleseRuntimeOptions;
+        /**
+         * How values the runtime would cut off are shown (a pluggable part, runtime/pluggable.ts): `crisp` keeps the text
+         * cut; `nl` also shows the learned Neuralese operator's state of the whole value (cut-off tool outputs and
+         * argument listings) and carries a compacted history state with `compact_history` notes, when the driver reads
+         * Neuralese and `neuralese.compactor` is configured. Default `crisp` until the live measurement
+         * (plans/MODEL_FACING_CHANGES.md 2026-11-03) adopts the learned path; env NATLANG_NEURALESE_COMPACTION overrides.
+         */
+        compaction?: PluggableSetting;
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -199,11 +268,22 @@ export declare class NativeToolAgent {
      * representation, its instructions the receiving call's (prompt.ts `listingViewInstructions`). Only plain data is
      * viewed; a failed view keeps the preview.
      */
+    /**
+     * The learned operator's state of one site (`compaction: nl`, native/operator-frames.ts), or undefined to keep the crisp
+     * text cut. A failed operator keeps the cut and is traced; it never fails the call.
+     */
+    private compactRef;
+    /** The call's instructions as an operator's purpose text (bounded). */
+    private purpose;
     private views;
     /** Messages with the runtime's prompt pieces in their soft forms, when a bank is configured and the driver is Neuralese. */
     private softened;
+    /** Re-encode foreign soft values from their authenticated source text, never their tensors or adapters. */
+    private handoffText;
     /** Record only actually completed native writes, even when the containing turn failed. */
     private nativeWriteOrigins;
+    /** A foreign actor's output crosses back into this invocation as source text, not foreign KV state. */
+    private handoffOutput;
     /**
      * Turn the Neuralese content of a reply into conversation text: blocks a backend wrote (content parts) and literals
      * written as marker text (stored through the write port) become block markers in the reply and call arguments.
@@ -217,6 +297,15 @@ export declare class NativeToolAgent {
     private modelTurnNode;
     private toolsScope;
     tools(session: NativeSession): unknown[];
+    /** The call's signature line, the type aliases it references, and its instructions. */
+    private callHeading;
+    /**
+     * The opening of a leaf call, or undefined when the call needs the interpreter: a plain function call (no folder,
+     * handoff or skills, no escalation tool) with no callable functions or services, whose parameter and result types hold
+     * only data (no files, folders, blobs, functions, host objects or Neuralese), and whose arguments and read-only
+     * captures are plain data shown whole. Such a call has nothing to run code on, so it answers from the shown values.
+     */
+    private leafOpening;
     private scopeOpening;
     /** Ambient TypeScript declarations for the functions this call can use, with the aliases they reference. */
     private callableDeclarations;

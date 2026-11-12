@@ -10,20 +10,21 @@ export type NumericListFieldSpec = {
     separator: '; ';
     empty_value: 'none';
 };
+export type SemanticStructuredComparisonSpec = {
+    schema_version: string;
+    unordered_paths: string[];
+    prose_paths: string[];
+    ordered_paths?: string[];
+    witness_review_required?: boolean;
+    witness_policy?: string;
+    prose_policy?: string;
+};
 export type OracleSpec = OracleLevel | {
     level: OracleLevel;
     alternates?: unknown[];
     threshold?: number;
     normalization?: 'qa' | 'qa-string-map' | 'named-tree' | 'json-string-record' | (string & {});
-    comparison_spec?: {
-        schema_version: string;
-        unordered_paths: string[];
-        prose_paths: string[];
-        ordered_paths?: string[];
-        witness_review_required?: boolean;
-        witness_policy?: string;
-        prose_policy?: string;
-    };
+    comparison_spec?: SemanticStructuredComparisonSpec;
     /** Explicit answer-map keys whose string values are exact decimal quantities. */
     numeric_keys?: string[];
     /** Explicit answer-map keys whose values are ordered exact unsigned integer lists. */
@@ -75,12 +76,17 @@ export declare function agreement(actual: unknown, expected: unknown): number;
 export declare const DATA_QUALITY_VERSION = 3;
 export declare const FILE_CONTENT_COMPARISON_VERSION = "json-content/2";
 export type FilesOracle = {
-    compare?: 'content' | 'exact' | 'moves' | 'rewrite' | 'csv' | 'counts' | 'json-string-record' | 'qa-string-map' | 'markdown-terminal-newline' | (string & {});
+    compare?: 'content' | 'exact' | 'moves' | 'rewrite' | 'csv' | 'counts' | 'json-string-record' | 'qa-string-map' | 'json-semantic-structured' | 'markdown-terminal-newline' | (string & {});
     threshold?: number;
     span?: number;
     total?: number;
     rubric?: string;
     alternates?: Record<string, string[]>;
+    /** JSON outputs whose prose-only fields may vary while all other structure remains exact. */
+    json_report_paths?: string[];
+    comparison_spec?: SemanticStructuredComparisonSpec;
+    /** Source files bound into the prose judge context for JSON reports. */
+    rationale_context_paths?: string[];
     /** Explicit answer file for return-value consistency when the default answers.json names do not apply. */
     return_path?: string;
     /** Explicit answer-map keys whose string values are exact decimal quantities. */

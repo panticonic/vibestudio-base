@@ -27,6 +27,7 @@ export function httpDashboardApi({ baseUrl = '', token, fetch: fetchImplementati
       modelServer: () => get('/api/model-server'),
       loadModel: profile => request('POST', '/api/model-server', { profile }),
       unloadModel: () => request('DELETE', '/api/model-server'),
+      stopModel: key => request('POST', '/api/model-server/stop', { key }),
       providers: () => get('/api/providers'),
       providerModels: (provider, { refresh = false } = {}) => get(`/api/providers/${id(provider)}/models${refresh ? '?refresh=1' : ''}`),
       startLogin: (provider, type) => request('POST', `/api/providers/${id(provider)}/login`, { type }),

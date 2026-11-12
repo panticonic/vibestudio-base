@@ -131,6 +131,7 @@ export declare class CallCapture {
         };
         error?: string;
         seq?: number;
+        graph_order?: number;
     }, by?: 'agent' | 'crisp'): void;
     /** Effects that completed so far, in the order they started. */
     completedEffects(by?: 'agent' | 'crisp'): EffectRecord[];
@@ -141,6 +142,7 @@ export declare class CallCapture {
         output?: unknown;
         hasOutput: boolean;
         events: readonly Record<string, unknown>[];
+        graphChildren?: string[];
     }): CallRecord | undefined;
 }
 export type { ExecutorKind };

@@ -20,6 +20,7 @@ export type ValueRef = {
 /** One service call made during a call (by the agent's eval code, or by a crisp case). */
 export type EffectRecord = {
     order: number;
+    graph_order?: number;
     service: string;
     method: string;
     args: ValueRef;
@@ -125,6 +126,13 @@ export type CallRecord = {
     started_at: string;
     ended_at: string;
     effects: EffectRecord[];
+    /** Complete observed child inventory and task-wide effect-order identity, when captured by the current recorder. */
+    graph_custody?: {
+        schema: 'natlang.call-graph-chronology/1';
+        task_id: string;
+        child_call_ids: string[];
+        sha256: string;
+    };
     folder: FolderRecord | null;
     /** The eval programs the agent ran, in order (successful and failed), and the hash of their normalized form. */
     approach: {

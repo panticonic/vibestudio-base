@@ -28,7 +28,7 @@ export type ModelProfile = {
     /** A natlang-owned native reference server for a pinned native checkpoint (model/native-managed.ts): started on the
      * first turn, or reused when one already serves that checkpoint. Written by `natlang setup --native SOURCE`. */
     native?: NativeModelSettings;
-    /** Profile that answers a call this profile's model fails (`natlang run|call|ask`; calls/tiers.ts tier 0). */
+    /** Next explicitly configured profile for a live invocation handoff (`natlang run|call|ask`). */
     escalate?: string;
     /** The endpoint is a vLLM server with LoRA enabled: each tuned call is routed to its whole-stack LoRA by name. */
     vllm?: boolean;

@@ -14,25 +14,31 @@ export async function profileSelect(ctx, id, value = '') {
   return select;
 }
 
-/** The model the host keeps loaded for every natlang command on its machine (one server, warm slots, no load time). */
+/** The shared model servers on this machine: every run of a matching model uses one, and it stops when unused. */
 export async function keptModelPanel(ctx) {
   const { h, fill, api } = ctx, { pill, kv } = widgets(ctx);
   const [state, config] = await Promise.all([api.models.modelServer(), ctx.config()]);
   const local = Object.entries(config.profiles).filter(([, entry]) => entry.kind === 'managed-local').map(([name]) => name);
   const choose = h('select', { id: 'kept-profile' }, h('option', { value: '' }, 'built-in LFM3 1.7B'),
-    local.map(name => h('option', { value: name, selected: name === state.profile }, name)));
+    local.map(name => h('option', { value: name, selected: name === state.kept?.profile }, name)));
   const panel = h('section', { class: 'panel' });
   const busy = label => ctx.attempt(async action => { fill(panel, h('div', { class: 'muted' }, label)); await action(); });
-  const start = () => busy('Loading the model…')(async () => { await api.models.loadModel(choose.value || undefined); ctx.toast('Model kept loaded'); ctx.reload(); });
-  const stop = () => busy('Stopping…')(async () => { await api.models.unloadModel(); ctx.toast('Model unloaded'); ctx.reload(); });
-  const server = state.server;
-  fill(panel, h('div', { class: 'row', style: 'justify-content: space-between' }, h('h2', {}, 'Keep the model loaded'),
-      state.running ? h('div', { class: 'row' }, pill('loaded', 'ok'), h('button', { onclick: stop }, 'Unload')) :
-        h('div', { class: 'row' }, choose, h('button', { class: 'primary', onclick: start }, 'Load'))),
-    h('div', { class: 'small muted' }, 'One llama.cpp server for every run, call and terminal command on this machine whose model matches: no load time per run, warm slots, and one copy of the model in memory.'),
-    server ? kv([['Model', `${server.model} (profile ${server.profile})`], ['Server', `${server.endpoint} · ${server.slots} slots of ${tokens(server.contextPerSlot)} tokens`],
-      ['Since', ago(server.startedAt)]]) : state.other ? h('div', { class: 'small' }, `Another natlang process (pid ${state.other.pid}) keeps ${state.other.model} loaded at ${state.other.endpoint}.`) : null,
-    state.log?.length ? h('details', { class: 'value-disclosure' }, h('summary', {}, 'Model notices'), ...state.log.slice(-4).map(message => problemView(h, message))) : null);
+  const keep = () => busy('Loading the model…')(async () => { await api.models.loadModel(choose.value || undefined); ctx.toast('Model kept loaded'); ctx.reload(); });
+  const release = () => busy('Releasing…')(async () => { await api.models.unloadModel(); ctx.toast('No longer kept loaded'); ctx.reload(); });
+  const stop = server => busy('Stopping…')(async () => { await api.models.stopModel(server.key); ctx.toast('Model server stopped'); ctx.reload(); });
+  const servers = state.servers ?? [];
+  fill(panel, h('div', { class: 'row', style: 'justify-content: space-between' }, h('h2', {}, 'Loaded models'),
+      state.kept ? h('div', { class: 'row' }, pill('kept loaded', 'ok'), h('button', { onclick: release }, 'Stop keeping')) :
+        h('div', { class: 'row' }, choose, h('button', { class: 'primary', onclick: keep }, 'Keep loaded'))),
+    h('div', { class: 'small muted' }, 'Runs, calls and terminal commands share one llama.cpp server per model: no load time per run, warm slots, one copy of the model in memory. A server stops after a few idle minutes with no run using it, unless it is kept loaded here.'),
+    servers.length ? servers.map(server => h('div', { class: 'stack' }, kv([['Model', server.model + (server.adapters?.length || server.states?.length ?
+      ` + ${server.adapters.length} tuned adapter${server.adapters.length === 1 ? '' : 's'}, ${server.states.length} native state${server.states.length === 1 ? '' : 's'}` : '')],
+      ['Server', `${server.endpoint} · ${server.slots} slots of ${tokens(server.contextPerSlot)} tokens`],
+      ['In use by', `${server.users} natlang process${server.users === 1 ? '' : 'es'}${server.kept ? ' (kept loaded here)' : ''}`],
+      ['Since', ago(server.startedAt)], ['Stops', `after ${server.idleSeconds} s unused`]]),
+      h('div', { class: 'row' }, h('button', { onclick: () => stop(server) }, 'Stop now')))) :
+      h('div', { class: 'small muted' }, 'No model is loaded.'),
+    state.kept?.log?.length ? h('details', { class: 'value-disclosure' }, h('summary', {}, 'Model notices'), ...state.kept.log.slice(-4).map(message => problemView(h, message))) : null);
   return panel;
 }
 

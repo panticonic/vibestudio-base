@@ -54,6 +54,8 @@ export type NatlangRecord = {
      * from the package root. Each is in `codebase` under its base name.
      */
     uses?: string[];
+    /** `withhold: [delegate]` in the frontmatter: tools this function's own calls are not offered (WITHHOLDABLE_TOOLS). */
+    withhold?: string[];
     /**
      * Data entries of the companion folder bound by default (S0 §7): each `.nz` file's exports under the file's name,
      * as loaded (Neuralese references, data, soft-function specs). Its blocks are registered as imported blocks.
@@ -90,6 +92,9 @@ export declare const nodeKey: (record: NatlangRecord | ModuleRecord) => string;
 export declare function registerFileRecords(codebase: Record<string, ItemRecord> | ItemRecord): void;
 /** Whether an executable node and all its children come from files. */
 export declare function isFileRecord(record: ItemRecord): boolean;
+/** Optional tools a `.nl` function may withhold from its own calls (`withhold:` frontmatter). eval, return_result,
+ * read_page, compact_history and read_code are the call protocol itself and always offered. */
+export declare const WITHHOLDABLE_TOOLS: readonly string[];
 /**
  * `.nl` frontmatter. `args`, `types`, `generic` and `returns` hold TypeScript type text, read verbatim rather than as YAML, so types
  * need no quoting: `names: string[]`, `rows: { title: string }[]`, `f: (x: string) => number`. A value wrapped entirely

@@ -1,5 +1,6 @@
 import { type EvalEnvironment, type EnvironmentMode } from '../native/evaluator.js';
 import type { NatlangRuntimeOptions } from './runtime.js';
+import type { Frame } from './context.js';
 import type { Platform } from './platform.js';
 import { type PythonHost } from '../native/folder-python.js';
 import { type FolderBashOptions, type FolderBashResult } from '../native/folder-shell.js';
@@ -15,7 +16,41 @@ export declare function nodePlatform(): Platform;
 export declare function runFolderPython(folder: Folder, source: string, host?: PythonHost, timeoutMs?: number): Promise<import("../native/folder-python.js").PythonResult>;
 /** Run a shell command over `folder`; its Python cells are bounded by the Node watchdog unless `options.python` brings another. */
 export declare function runFolderBash(folder: Folder, command: string, options?: FolderBashOptions): Promise<FolderBashResult>;
-export declare const createNatlangRuntime: (options?: NatlangRuntimeOptions) => import("./runtime.js").NatlangRuntime, compileVirtualProject: (project: import("./virtual-project.js").VirtualProject, runtime: Record<string, unknown>, options?: Omit<import("./virtual-project.js").VirtualProjectOptions, "platform"> & {
+export declare const __natlang: Readonly<{
+    named: (name: string, record: import("./loader.js").NatlangRecord) => import("./callable.js").NatlangCallable;
+    fuseSite<A extends unknown[], R>(site: string, call: (...args: A) => R, ...args: A): R;
+    rebindInlineCallable(value: unknown, captures: Record<string, unknown>, origin?: import("./lowered.js").InlineInstructionOrigin, sources?: Record<string, "input" | "local" | "block" | "handle">): import("./callable.js").NatlangCallable;
+    readNeuraleseIfReference(value: unknown): Promise<unknown>;
+    concatNeuralese(receiver: unknown, method: (...values: unknown[]) => unknown, values: readonly unknown[], read: (value: unknown) => Promise<unknown>): Promise<string>;
+    mapNeuraleseReadout(receiver: unknown, method: unknown, args: readonly unknown[]): Promise<unknown[]>;
+    invokeWithReceiver(method: unknown, receiver: unknown, args: readonly unknown[]): unknown;
+    joinNeuralese(receiver: unknown, method: unknown, args: readonly unknown[], read: (value: unknown) => Promise<unknown>): Promise<{
+        value: unknown;
+    }>;
+    arrayToStringNeuralese(receiver: unknown, method: unknown, args: readonly unknown[], read: (value: unknown) => Promise<unknown>): Promise<{
+        value: unknown;
+    }>;
+    targetType(target: import("../compiler/targets.js").TargetDescriptor): string;
+    planDefinition(plan: import("../compiler/inline.js").InlineLambdaPlan, codebase?: Record<string, unknown>): import("./kernel.js").CallableDefinition;
+    interpolate(strings: readonly string[], values: readonly unknown[]): string;
+    inline(plan: import("../compiler/inline.js").InlineLambdaPlan, values: readonly unknown[], accessors: import("./lowered.js").CaptureAccessors, context?: Record<string, unknown>, version?: number, bound?: import("./context.js").Frame, origin?: import("./lowered.js").InlineInstructionOrigin): import("./callable.js").NatlangCallable;
+    inlineSelected(plan: import("../compiler/inline.js").InlineLambdaPlan, values: readonly unknown[], accessors: Record<string, unknown>, context?: Record<string, unknown>, version?: number, bound?: import("./context.js").Frame, origin?: import("./lowered.js").InlineInstructionOrigin): Promise<import("./callable.js").NatlangCallable>;
+    instantiate(fn: unknown, representation: import("./index.js").Representation, site: string): (...args: unknown[]) => Promise<unknown>;
+    registerCrisp(table: unknown, source?: string): void;
+    folder(codebase: Record<string, import("./loader.js").ItemRecord>): Record<string, unknown>;
+    nzModule(base64: string): Record<string, unknown>;
+    numericProgress(initial: number, bound: number, upward: boolean): (current: number) => void;
+    finite<T>(source: Iterable<T>, label?: string): Iterable<T>;
+    finiteArrayIterator<T>(source: unknown, method: "entries" | "keys" | "values", label?: string): Iterable<T>;
+    finiteAsync<T>(source: unknown, label?: string): AsyncIterable<T> | Iterable<T>;
+    site<T>(id: string, iteration: T): T;
+    service(name: string): object;
+    selectedService(name: string): object;
+    uncompiled(): never;
+    guard: typeof import("./context.js").guard;
+    readNeuralese: typeof import("../neuralese/combinators.js").readNeuraleseForCurrentTask;
+    importedNativeArtifacts: typeof import("./index.js").importedNativeArtifacts;
+}>, createNatlangRuntime: (options?: NatlangRuntimeOptions) => import("./runtime.js").NatlangRuntime, compileVirtualProject: (project: import("./virtual-project.js").VirtualProject, runtime: Record<string, unknown>, options?: Omit<import("./virtual-project.js").VirtualProjectOptions, "platform"> & {
     platform?: Platform;
 }) => import("./virtual-project.js").CompiledProject, projectEntry: (files: Record<string, string>, path: string, runtimeNamespace?: Record<string, unknown>, platform?: Platform) => (inputs: Record<string, unknown>) => Promise<unknown>, loadVirtualNatlang: (files: Record<string, string>, path: string, root?: string, platform?: Platform) => import("./callable.js").NatlangCallable, loadVirtualCallables: (files: Record<string, string>, dir?: string, root?: string, platform?: Platform) => Record<string, unknown>;
 /**

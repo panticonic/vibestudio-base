@@ -1,7 +1,7 @@
 import type { WeightBinding } from '../adaptation/weights/binding.js';
 import { ProgramView } from '../adaptation/program-view.js';
 import type { ProgramDescriptor, AdaptationBinding, ExecutorIdentity } from '../adaptation/types.js';
-import type { MemeticGuidanceBinding, NativeProgramGuidance } from '../adaptation/prompts.js';
+import type { ProgramGuidance, ProgramGuidanceInput } from '../guidance/program.js';
 import type { EvalEnvironment } from '../native/evaluator.js';
 import type { DecisionScorer, ModelTurn, ModelTurnDelta, ModelTurnOptions, ModelTurnRequest } from '../contracts.js';
 import { type Frame } from './context.js';
@@ -10,6 +10,7 @@ import type { IterationStatisticsStore, ProgressJudgeFunction } from './iterate.
 import type { CallStoreLike } from '../calls/recorder.js';
 import { CompilationCache } from '../calls/compilations.js';
 import { RefinementChecker, type RefinementJudge, type RefinementSettings, type VerdictCache } from '../native/refinement.js';
+import { ModelBudget } from '../native/model-budget.js';
 /** How far stored compilations may serve calls: not at all, compared in the background only, or served. */
 export type SpecializationMode = 'off' | 'shadow' | 'on';
 export type ModelDriver = ((request: ModelTurnRequest, signal?: AbortSignal, options?: ModelTurnOptions) => Promise<ModelTurn> | ModelTurn) & {
@@ -39,6 +40,10 @@ export type ModelConfig = {
     /** `finite-returns`: every call with a finite result type uses the decision readout when the driver can score
      * replies; `declared` (default): only functions whose frontmatter says `readout: decision`. */
     decisionReadout?: 'declared' | 'finite-returns';
+    /** `direct`: leaf calls (no callable functions, services, files, folders or Neuralese; arguments shown whole) answer
+     * from a short system prompt with only return_result offered, instead of the full interpreter surface (native/agent.ts
+     * `leafOpening`). `tools` (default): every call gets the interpreter. */
+    leafCalls?: 'direct' | 'tools';
     /** Guided generation (the `guidance` request field) on natlang's reference server and the llama.cpp fork (managed and in
      * the page). A configured runtime (`natlang run`, natlangRuntime()) turns it on for those backends unless the profile's
      * `runtime.guidance` says otherwise; set directly, it is off unless given. Other backends ignore the field. */
@@ -114,6 +119,9 @@ export type NatlangLimits = {
     maxDepth?: number;
     maxActions?: number;
     maxToolCalls?: number;
+    /** Total model requests and completion tokens across this task's complete invocation graph. */
+    maxModelRequests?: number;
+    maxModelTokens?: number;
     /** Wall-clock limit for one task. */
     timeoutMs?: number;
 };
@@ -126,8 +134,9 @@ export type NatlangRuntimeOptions = {
     /** Tuned weight releases (`natlang tune`), one per program. A function is read at each task creation, so a newly
      * activated release serves new tasks while running tasks finish on the one they pinned. */
     weights?: readonly WeightBinding[] | (() => readonly WeightBinding[]);
-    /** Exact stored native guidance binding emitted by the memetic guidance exporter. */
-    nativeProgramGuidance?: MemeticGuidanceBinding;
+    /** Exact stored native guidance emitted by the memetic guidance exporter: one binding, or a list of scoped bindings
+     * of one program (each call imports its function's binding, else the program-wide one). */
+    nativeProgramGuidance?: ProgramGuidanceInput;
     executorIdentity?: ExecutorIdentity;
     isolateModules?: boolean;
     signal?: AbortSignal;
@@ -143,6 +152,11 @@ export type NatlangRuntimeOptions = {
      * for judgments, a large one for authoring); without an entry of that name it runs on `model`.
      */
     models?: Record<string, ModelDriver | ModelConfig>;
+    /** Ordered, explicitly named model profiles available for a live invocation handoff. */
+    escalation?: {
+        models: string[];
+        enabled?: boolean;
+    };
     /** Drive interpreter sessions directly instead of through a model (fixtures, replay, tests). */
     agent?: import('../native/runtime.js').NativeAgent;
     /** Typed host services, available to callable-folder code via `natlang:services` and to eval as named bindings. */
@@ -229,7 +243,7 @@ export type TaskOptions = {
     weights?: readonly WeightBinding[];
     services?: Services;
     serviceDeclarations?: Record<string, string>;
-    nativeProgramGuidance?: MemeticGuidanceBinding;
+    nativeProgramGuidance?: ProgramGuidanceInput;
     serviceScopes?: Record<string, string[]>;
     signal?: AbortSignal;
     trace?: TraceSink;
@@ -258,12 +272,13 @@ export declare class NatlangTask {
         limit?: number;
         used: number;
     };
+    readonly modelBudget: ModelBudget;
     readonly traces: InvocationTrace[];
     private readonly executionOccurrenceCounts;
     readonly programView: ProgramView;
     /** The weight releases pinned at creation; every call of this task, inner calls included, resolves from these. */
     readonly weights: readonly WeightBinding[];
-    readonly nativeProgramGuidance?: NativeProgramGuidance;
+    readonly nativeProgramGuidance?: ProgramGuidance;
     readonly specialization?: SpecializationMode;
     readonly auditOf?: string;
     /** The last failed call per caller and definition revision, so a retry can be recorded against it. */
@@ -285,6 +300,13 @@ export declare class NatlangTask {
     drain(): Promise<void>;
     private readonly abort;
     private callSequence;
+    private effectSequence;
+    private readonly graphChildrenByParent;
+    /** Allocate a task-wide order at the actual service request boundary. */
+    nextGraphEffectOrder(): number;
+    registerGraphCall(callId: string, parentId: string | null | undefined): void;
+    discardGraphCall(callId: string, parentId: string | null | undefined): void;
+    graphChildren(callId: string): string[];
     private readonly definitionCalls;
     private readonly taskOrdinal;
     definitionSeedId(key: string): string;

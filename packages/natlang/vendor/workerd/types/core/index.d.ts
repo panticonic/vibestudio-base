@@ -26,4 +26,6 @@ export * from '../model/pi-translation.js';
 export type { CallStoreLike } from '../calls/recorder.js';
 export { TypeEnv, TypeSyntaxError, parseType, formatType, fitsType } from '../native/types.js';
 export type { Type as NatlangType } from '../native/types.js';
+export { expandType } from '../native/expand-type.js';
+export type { ExpandedType } from '../native/expand-type.js';
 export { ONCE_EFFECTS } from '../native/effects.js';

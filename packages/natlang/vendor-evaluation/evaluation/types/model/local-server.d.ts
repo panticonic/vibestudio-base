@@ -46,6 +46,9 @@ export type ManagedModelSession = {
     decide(request: DecisionRequest, signal?: AbortSignal): Promise<DecisionScores>;
     /** The model's context window as its server reports it (undefined when it does not say). */
     contextWindow(): Promise<number | undefined>;
+    /** Managed llama.cpp only: start the server and warm the prompt opening this request would send (llama/warm.ts),
+     * without generating. `natlang setup` uses it so the first runs start warm. */
+    warm?(request: ModelTurnRequest): Promise<WarmPrefix[]>;
     status(): ManagedModelStatus;
     close(): Promise<void>;
     /** The session's model scheduler (undefined for Pi provider backends): queue, batch records and occupancy. */

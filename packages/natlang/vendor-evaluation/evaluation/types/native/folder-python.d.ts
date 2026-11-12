@@ -13,4 +13,6 @@ export type PythonResult = {
     changedPaths: string[];
 };
 /** Run a policy-checked cell. Calls share an interpreter but keep separate folders and Python globals. */
-export declare function runFolderPython(folder: Folder, source: string, host?: PythonHost, timeoutMs?: number): Promise<PythonResult>;
+export declare function runFolderPython(folder: Folder, source: string, host?: PythonHost, timeoutMs?: number, 
+/** The directory the cell starts in: absolute under /workspace, or relative to it (default /workspace). */
+cwd?: string): Promise<PythonResult>;

@@ -7,6 +7,10 @@ export type WarmPrefix = {
     file: string;
     restoredSlots: number;
     created: boolean;
+    /** Tokens actually prefilled when the state was created (fewer than `tokens` when a saved base was restored first). */
+    prefilled?: number;
+    /** The shared base state (llama/warm.ts) this opening was built on. */
+    base?: string;
 };
 export type WarmCaseResult = {
     name: string;

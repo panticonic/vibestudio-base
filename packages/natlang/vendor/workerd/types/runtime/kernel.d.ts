@@ -31,6 +31,8 @@ export type CallableDefinition = {
     readout?: 'decision' | 'template';
     /** The runtime's model this definition runs on (`models`); the default model when absent or not configured. */
     model?: string;
+    /** Tools this definition's own calls are not offered (`withhold:` frontmatter; loader WITHHOLDABLE_TOOLS). */
+    withhold?: readonly string[];
     revision?: string;
     description?: string;
     /** Source path for named definitions. */

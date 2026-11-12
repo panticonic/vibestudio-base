@@ -1,4 +1,5 @@
 import { TypeEnv, type Type } from '../native/types.js';
+import { type ExpandedType } from '../native/expand-type.js';
 export type TargetArgument = {
     name: string;
     type: string;
@@ -7,11 +8,7 @@ export type TargetArgument = {
     default?: unknown;
     path?: 'file' | 'folder';
 };
-/** A type expanded for an editor: aliases inlined (named by `alias`), record fields with their `types.ts` doc comments,
- * and a recursive or unknown name left as `{ kind: 'name' }` for the general value editor. */
-export type ExpandedType = Type & {
-    alias?: string;
-};
+/** An argument as the dashboard's form needs it: its type expanded for an editor (`expandType`). */
 export type ArgumentDescription = TargetArgument & {
     required: boolean;
     text: string;
@@ -32,8 +29,6 @@ export declare function programTypes(root: string): {
     env: TypeEnv;
     docs: Record<string, Record<string, string>>;
 };
-/** `type` with aliases inlined for an editor; a name seen again on its own path (recursion) stays a name. */
-export declare function expandType(type: Type, env: TypeEnv, docs?: Record<string, Record<string, string>>, path?: string[]): ExpandedType;
 /** Whether values of `type` are strings only, so the command line writes them as they are. */
 export declare function spelling(type: Type, env: TypeEnv): 'text' | 'json';
 /** The arguments of a target as the dashboard's form needs them. A type that does not resolve carries its `problem`. */

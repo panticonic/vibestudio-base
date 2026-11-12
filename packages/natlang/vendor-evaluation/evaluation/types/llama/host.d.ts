@@ -63,7 +63,7 @@ export type LlamaLog = {
 export type LlamaHost = {
     /**
      * The settings the package reads (`NATLANG_MODEL_PATH`, `NATLANG_TEMPLATE`, `NATLANG_LLAMA_SERVER`,
-     * `NATLANG_WARM_PREFIXES`, `NATLANG_SHARED_SERVER`, `NATLANG_MODEL_START_TIMEOUT_MS`, `NATLANG_MODEL`,
+     * `NATLANG_WARM_PREFIXES`, `NATLANG_SHARED_SERVER`, `NATLANG_SHARED_SERVER_IDLE_S`, `NATLANG_MODEL_START_TIMEOUT_MS`, `NATLANG_MODEL`,
      * `NATLANG_MODEL_KV_BYTES_PER_TOKEN`, `NATLANG_MODEL_MEMORY_BUDGET_MIB`) and the environment child processes run in
      * (`PATH`, `PATHEXT`).
      */
@@ -72,6 +72,9 @@ export type LlamaHost = {
     processes: LlamaProcesses;
     /** Network access: model and runtime downloads, health checks, slot and warm-state requests. */
     fetch: typeof fetch;
+    /** Start a detached supervisor for a shared server (llama/shared.ts) and return its pid. A host without it still uses
+     * servers other processes share, and starts a private server when none runs. */
+    supervise?(server: import('./shared.js').SupervisedServer): number;
     /** Progress and notices ("starting managed model ...", download progress). */
     log: LlamaLog;
 };

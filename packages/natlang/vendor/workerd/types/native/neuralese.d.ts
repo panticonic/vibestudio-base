@@ -21,6 +21,7 @@ export type NeuraleseRef = {
         readonly id: string;
         readonly stop_gradient?: true;
         readonly source_occurrence?: string;
+        readonly teacher_text?: true;
     };
 };
 /** Opaque reference to a named native coefficient artifact, never a flat Neuralese value block. */
@@ -51,9 +52,16 @@ export type NativeStateContentPart = {
     stop_gradient?: true;
     source_occurrence?: string;
 };
-export type ContentPart = NeuraleseTextPart | NativeStateContentPart;
+export type TeacherTextContentPart = {
+    type: 'teacher_text';
+    id: string;
+    value_type?: string;
+    source_occurrence?: string;
+};
+export type ContentPart = NeuraleseTextPart | NativeStateContentPart | TeacherTextContentPart;
 export type RuntimeContentPart = ContentPart;
 export declare function isNativeTensorArtifactId(value: unknown): value is string;
+export declare function isTeacherTextNeuraleseId(value: unknown): value is string;
 export declare function isNativeStateId(value: unknown): value is string;
 export declare function nativeStateSentinel(id: string, stopGradient?: boolean, sourceOccurrence?: string): string;
 export declare function nativeStateSentinelIds(text: string): string[];
@@ -61,7 +69,7 @@ export declare function runtimePartsToText(parts: readonly RuntimeContentPart[])
 export declare function runtimeTextToParts(text: string): RuntimeContentPart[];
 export declare function nativeStateTextToParts(text: string): RuntimeContentPart[];
 export declare function isNeuraleseId(value: unknown): value is string;
-export declare function neuraleseRef(type: string, id: string, stopGradient?: boolean, sourceOccurrence?: string): NeuraleseRef;
+export declare function neuraleseRef(type: string, id: string, stopGradient?: boolean, sourceOccurrence?: string, teacherText?: boolean): NeuraleseRef;
 export declare function isNeuraleseRef(value: unknown): value is NeuraleseRef;
 /** The conversation-text marker for a block. */
 export declare function neuraleseSentinel(id: string, stopGradient?: boolean, sourceOccurrence?: string): string;
@@ -73,6 +81,7 @@ export declare function soleSentinelUse(text: string): {
     id: string;
     stop_gradient?: true;
     source_occurrence?: string;
+    teacher_text?: true;
 } | undefined;
 export declare const hasNeuraleseSentinel: (text: string) => boolean;
 /** Block IDs a text refers to. */
@@ -120,6 +129,20 @@ export declare function nativeStateConsumerFromInfo(info: Record<string, unknown
 /** Runtime configuration for soft values. */
 export type NeuraleseRuntimeOptions = {
     store: NeuraleseStore;
+    /** Case-local exact-text sidecar for explicit teacher-only provider emulation; it contains no tensors. */
+    teacherText?: {
+        get(id: string): {
+            id: string;
+            type: string;
+            dialect: 'nd:teacher-text/1';
+            body: string;
+            body_sha256: string;
+            producer_call_id: string;
+            writer_node?: string;
+            type_aliases?: Record<string, string>;
+        } | undefined;
+        recordWriter(id: string, node: string): void;
+    };
     nativeStateConsumer?: NativeStateConsumer;
     /** Refresh a server-backed reader identity before binding state to a model prompt. */
     nativeStateConsumerForCall?: () => Promise<NativeStateConsumer | undefined>;
@@ -144,10 +167,26 @@ export type NeuraleseRuntimeOptions = {
      * listing shows a view of each argument it would cut off, written for the receiving call's instructions
      * (prompt.ts `listingViewInstructions`), while the variable keeps the whole value.
      */
-    view?: (site: {
+    view?: ((site: {
         value: string;
         instructions?: string;
-    }) => Promise<NeuraleseRef | undefined>;
+    }, budget?: {
+        maxRequests: number | null;
+        maxTokens: number | null;
+        onUsage: (usage: {
+            requests: number;
+            tokens: number;
+        }) => void;
+    }) => Promise<NeuraleseRef | undefined>) & {
+        budgeted?: true;
+    };
+    /**
+     * The learned Neuralese operators of the native server (model/native-operator.ts `serverCompactor`): compacted cut-off
+     * values, argument listings and history carry, used when the agent's `compaction` setting selects them.
+     */
+    compactor?: import('./operator-frames.js').Compactor;
+    /** The agent's `compaction` setting for hosts that configure the runtime through these options (agent.ts). */
+    compaction?: import('../runtime/pluggable.js').PluggableSetting;
 };
 /**
  * The dialect a runtime with these options reads (DECISIONS.md 2026-10-09: dialects are static facts): the declared

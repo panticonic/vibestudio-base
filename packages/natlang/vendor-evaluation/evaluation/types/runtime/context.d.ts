@@ -18,6 +18,8 @@ export type DecisionReadout = {
 };
 export type Frame = Readonly<{
     task: NatlangTask;
+    /** Type aliases visible in this invocation's authored program, inherited by runtime-created typed readers. */
+    typeAliases?: Readonly<Record<string, string>>;
     /** Call identities of the natural-language definitions that are currently active above this point. */
     chain: readonly string[];
     /** The authored TypeScript functions currently active above this point, innermost first. */

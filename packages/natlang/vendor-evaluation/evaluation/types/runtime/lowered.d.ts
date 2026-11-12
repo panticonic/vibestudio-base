@@ -68,7 +68,7 @@ export declare function inlineSelected(plan: InlineLambdaPlan, values: readonly 
  */
 export declare function instantiate(fn: unknown, representation: Representation, site: string): (...args: unknown[]) => Promise<unknown>;
 /** A named `.nl` import compiled into a module: the definition record embedded at build time. */
-export declare function named(name: string, record: NatlangRecord): NatlangCallable;
+export declare function named(name: string, record: NatlangRecord, home?: import('./platform.js').Platform): NatlangCallable;
 /**
  * Register the crisp checkers a program's `refinements.ts` exports (compiled `.nl` modules call this when the program
  * has such a module). Keys are normalized predicates. The same predicate with different code is an error, because the

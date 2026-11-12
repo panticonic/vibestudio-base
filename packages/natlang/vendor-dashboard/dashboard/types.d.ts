@@ -99,10 +99,11 @@ export interface ModelsApi {
   setDefault(name: string | null): Promise<{ ok: true }>;
   stock(): Promise<StockModel[]>;
   downloadStock(id: string): Promise<{ started: boolean; download: Json }>;
-  /** The model the host keeps loaded for every natlang command on its machine. */
-  modelServer(): Promise<{ running: boolean; profile?: string; server?: Json; other?: Json; log?: string[] }>;
+  /** The shared model servers on this machine (llama/shared.ts), and the one the dashboard keeps loaded. */
+  modelServer(): Promise<{ servers: (Json & { key: string; users: number; kept: boolean })[]; kept?: { profile: string; log: string[] } }>;
   loadModel(profile?: string): Promise<Json>;
   unloadModel(): Promise<Json>;
+  stopModel(key: string): Promise<Json>;
   providers(): Promise<Provider[]>;
   providerModels(id: string, options?: { refresh?: boolean }): Promise<{ id: string; name: string; reasoning: boolean | null; contextWindow: number | null; recommended: boolean; family: 'luna' | 'haiku' | null }[]>;
   startLogin(provider: string, type: 'oauth' | 'api_key'): Promise<Login>;

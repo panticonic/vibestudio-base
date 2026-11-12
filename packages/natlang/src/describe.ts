@@ -52,58 +52,6 @@ function fieldDocs(types: Readonly<Record<string, string>>): Record<string, Reco
   return docs;
 }
 
-/**
- * `type` with aliases inlined for an editor (named by `alias`), record fields carrying their doc comments. A name seen
- * again on its own path (a recursive type) or one the program does not define stays a name, which the dashboard edits
- * as a general value. This is natlang's `expandType` (ts-host/src/runtime/target-arguments.ts), which that package does
- * not export from its workerd bundle.
- */
-function expandType(
-  type: Type,
-  env: Environment,
-  docs: Record<string, Record<string, string>>,
-  path: string[] = []
-): NatlangTypeTree {
-  const child = (inner: Type) => expandType(inner, env, docs, path);
-  const t = type as Type & Record<string, any>;
-  switch (type.kind) {
-    case "name": {
-      const found = env.lookup(type.name);
-      if (!found || path.includes(type.name) || path.length > 12) return type;
-      const inner = expandType(found, env, docs, [...path, type.name]);
-      if (inner.kind === "record" && docs[type.name]) {
-        return {
-          ...inner,
-          alias: type.name,
-          fields: (inner["fields"] as { name: string }[]).map((field) =>
-            docs[type.name]![field.name] ? { ...field, doc: docs[type.name]![field.name] } : field
-          ),
-        };
-      }
-      return { ...inner, alias: inner["alias"] ?? type.name };
-    }
-    case "record":
-      return { ...type, fields: type.fields.map((field) => ({ ...field, type: child(field.type) })) };
-    case "list":
-    case "dict":
-      return { ...type, element: child(type.element) };
-    case "union":
-      return { ...type, members: type.members.map(child) };
-    case "refined":
-    case "untrusted":
-      return { ...t, base: child(t["base"]) } as NatlangTypeTree;
-    case "intersection":
-    case "index":
-      try {
-        return child(env.resolve(type));
-      } catch {
-        return type;
-      }
-    default:
-      return type;
-  }
-}
-
 function describeType(
   name: string,
   typeText: string,
@@ -131,7 +79,7 @@ function describeType(
     problem = error instanceof Error ? error.message : String(error);
   }
   const text = core.formatType(type);
-  return { name, type: text, text, required, tree: expandType(type, env, docs), ...(problem ? { problem } : {}) };
+  return { name, type: text, text, required, tree: core.expandType(type, env, docs) as NatlangTypeTree, ...(problem ? { problem } : {}) };
 }
 
 function describeFunction(definition: Definition, source: string): FunctionDescription {

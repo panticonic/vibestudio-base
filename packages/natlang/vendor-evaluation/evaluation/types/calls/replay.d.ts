@@ -29,16 +29,28 @@ export type ObservedEffect = {
 };
 /** Deep equality of JSON data, ignoring key order. */
 export declare const sameData: (left: unknown, right: unknown) => boolean;
-/** The recorded effects of a call and of every call below it, in the order they started. */
-export declare function subtreeEffects(store: ValueSource, record: CallRecord, depth?: number): RecordedEffect[];
+/** Gather the complete recorded subtree and reconstruct only authenticated request chronology. */
+export declare function subtreeEffects(store: ValueSource, record: CallRecord): RecordedEffect[];
+/** Explicit, source-bound claim that independent exact lookup is valid for these methods. */
+export type IndependentReplayContract = {
+    schema: 'natlang.independent-service-replay/1';
+    semantics: 'stateless-independent';
+    methods: string[];
+    effects_sha256: string;
+    sha256: string;
+};
 /** Services that answer from recorded effects. Each recorded effect answers at most one call. */
 export declare class ReplayServices {
     readonly effects: readonly RecordedEffect[];
+    private readonly options;
     readonly services: Record<string, object>;
     readonly observed: ObservedEffect[];
     readonly divergences: string[];
     private readonly used;
-    constructor(effects: readonly RecordedEffect[], names?: readonly string[]);
+    constructor(effects: readonly RecordedEffect[], names?: readonly string[], options?: {
+        mode?: 'ordered-exact' | 'independent-exact';
+        contract?: IndependentReplayContract;
+    });
     private answer;
     /** Recorded effects no replayed call used. */
     unused(): RecordedEffect[];
@@ -65,6 +77,8 @@ export type ReplayOutcome = {
 export declare function replay(runtime: NatlangRuntime, run: (args: Record<string, unknown>) => unknown, args: Record<string, unknown>, effects: readonly RecordedEffect[], options?: {
     serviceNames?: string[];
     captureNames?: string[];
+    replayMode?: 'ordered-exact' | 'independent-exact';
+    contract?: IndependentReplayContract;
     taskOptions?: {
         auditOf?: string;
         name?: string;

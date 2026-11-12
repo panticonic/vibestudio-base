@@ -1197,7 +1197,7 @@ var require_inspector = __commonJS({
 var require_typescript = __commonJS({
   "node_modules/typescript/lib/typescript.js"(exports, module) {
     init_define_NATLANG_TS_LIBS();
-    var ts26 = {};
+    var ts27 = {};
     ((module2) => {
       "use strict";
       var __defProp2 = Object.defineProperty;
@@ -6347,13 +6347,13 @@ ${lanes.join("\n")}
         }
       }
       var nullTimer = { enter: noop, exit: noop };
-      var enabled = false;
+      var enabled2 = false;
       var timeorigin = timestamp();
       var marks = /* @__PURE__ */ new Map();
       var counts = /* @__PURE__ */ new Map();
       var durations = /* @__PURE__ */ new Map();
       function mark(markName) {
-        if (enabled) {
+        if (enabled2) {
           const count = counts.get(markName) ?? 0;
           counts.set(markName, count + 1);
           marks.set(markName, timestamp());
@@ -6364,7 +6364,7 @@ ${lanes.join("\n")}
         }
       }
       function measure(measureName, startMarkName, endMarkName) {
-        if (enabled) {
+        if (enabled2) {
           const end = (endMarkName !== void 0 ? marks.get(endMarkName) : void 0) ?? timestamp();
           const start = (startMarkName !== void 0 ? marks.get(startMarkName) : void 0) ?? timeorigin;
           const previousDuration = durations.get(measureName) || 0;
@@ -6400,12 +6400,12 @@ ${lanes.join("\n")}
         performanceImpl == null ? void 0 : performanceImpl.clearMarks(name);
       }
       function isEnabled() {
-        return enabled;
+        return enabled2;
       }
       function enable(system = sys) {
         var _a3;
-        if (!enabled) {
-          enabled = true;
+        if (!enabled2) {
+          enabled2 = true;
           perfHooks || (perfHooks = tryGetNativePerformanceHooks());
           if (perfHooks == null ? void 0 : perfHooks.performance) {
             timeorigin = perfHooks.performance.timeOrigin;
@@ -6417,12 +6417,12 @@ ${lanes.join("\n")}
         return true;
       }
       function disable() {
-        if (enabled) {
+        if (enabled2) {
           marks.clear();
           counts.clear();
           durations.clear();
           performanceImpl = void 0;
-          enabled = false;
+          enabled2 = false;
         }
       }
       var tracing;
@@ -117748,11 +117748,11 @@ ${lanes.join("\n")}
           return acc === void 0 ? decoded : acc + " " + decoded;
         }
         function decodeEntities(text3) {
-          return text3.replace(/&((#((\d+)|x([\da-fA-F]+)))|(\w+));/g, (match2, _all, _number, _digits, decimal, hex, word) => {
+          return text3.replace(/&((#((\d+)|x([\da-fA-F]+)))|(\w+));/g, (match2, _all, _number, _digits, decimal, hex2, word) => {
             if (decimal) {
               return utf16EncodeAsString(parseInt(decimal, 10));
-            } else if (hex) {
-              return utf16EncodeAsString(parseInt(hex, 16));
+            } else if (hex2) {
+              return utf16EncodeAsString(parseInt(hex2, 16));
             } else {
               const ch2 = entities.get(word);
               return ch2 ? utf16EncodeAsString(ch2) : match2;
@@ -211925,9 +211925,9 @@ Additional information: BADCLIENT: Bad error code, ${badCode} not found in range
         };
       }
     })({ get exports() {
-      return ts26;
+      return ts27;
     }, set exports(v10) {
-      ts26 = v10;
+      ts27 = v10;
       if (typeof module !== "undefined" && module.exports) {
         module.exports = v10;
       }
@@ -213438,12 +213438,12 @@ var init_decision = __esm({
   }
 });
 
-// src/adaptation/prompts.ts
+// src/guidance/program.ts
 function nativeProgramGuidance(input, programId) {
   if (typeof input !== "string") {
     const b = input;
     const identity = b?.student;
-    if (b?.schema !== "natlang.memetic-program-guidance/1" || typeof b.program_id !== "string" || !b.program_id || typeof b.text !== "string" || !b.text.trim() || !identity || typeof identity.architecture !== "string" || !identity.architecture || ![identity.checkpoint_sha256, identity.tokenizer_fingerprint, identity.embedding_weight_sha256].every((value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value)) || !/^nzs1_[a-z2-7]{52}$/.test(b.native_state_id) || !b.native_state_artifact || typeof b.native_state_artifact.path !== "string" || !b.native_state_artifact.path.startsWith("/") || typeof b.native_state_artifact.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(b.native_state_artifact.sha256) || !Number.isSafeInteger(b.native_state_artifact.bytes) || b.native_state_artifact.bytes < 1 || b.program_guidance !== `\uE002${b.native_state_id}\uE003`)
+    if (b?.schema !== "natlang.memetic-program-guidance/1" || typeof b.program_id !== "string" || !b.program_id || typeof b.text !== "string" || !b.text.trim() || !identity || typeof identity.architecture !== "string" || !identity.architecture || ![identity.checkpoint_sha256, identity.tokenizer_fingerprint, identity.embedding_weight_sha256].every((value) => typeof value === "string" && /^[0-9a-f]{64}$/.test(value)) || !/^nzs1_[a-z2-7]{52}$/.test(b.native_state_id) || !b.native_state_artifact || typeof b.native_state_artifact.path !== "string" || !b.native_state_artifact.path.startsWith("/") || typeof b.native_state_artifact.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(b.native_state_artifact.sha256) || !Number.isSafeInteger(b.native_state_artifact.bytes) || b.native_state_artifact.bytes < 1 || b.program_guidance !== `\uE002${b.native_state_id}\uE003` || b.function !== void 0 && (typeof b.function !== "string" || !FUNCTION_NAME.test(b.function)))
       throw new TypeError("invalid natlang.memetic-program-guidance/1 binding");
     return Object.freeze({ kind: "native-program-guidance", text: b.text, binding: structuredClone(b) });
   }
@@ -213451,6 +213451,46 @@ function nativeProgramGuidance(input, programId) {
   if (typeof text3 !== "string" || !text3.trim() || typeof programId !== "string" || !programId)
     throw new TypeError("native program guidance text and program identity must be nonempty");
   return Object.freeze({ kind: "native-program-guidance", text: text3, program_id: programId });
+}
+function programGuidance(input) {
+  if (!Array.isArray(input)) {
+    const single = nativeProgramGuidance(input);
+    return single.binding?.function === void 0 ? single : programGuidance([input]);
+  }
+  if (!input.length) throw new TypeError("scoped program guidance needs at least one binding");
+  const guidance = input.map((binding) => nativeProgramGuidance(binding));
+  const programId = guidance[0].binding.program_id;
+  let program;
+  const functions = {};
+  for (const item of guidance) {
+    const binding = item.binding;
+    if (binding.program_id !== programId) throw new TypeError("scoped program guidance bindings belong to different programs");
+    if (binding.function === void 0) {
+      if (program) throw new TypeError("scoped program guidance has more than one program-wide binding");
+      program = item;
+    } else {
+      if (Object.hasOwn(functions, binding.function))
+        throw new TypeError(`scoped program guidance has more than one binding for function ${binding.function}`);
+      functions[binding.function] = item;
+    }
+  }
+  return Object.freeze({
+    kind: "native-program-guidance-set",
+    program_id: programId,
+    ...program ? { program } : {},
+    functions: Object.freeze(functions),
+    bindings: Object.freeze(guidance.map((item) => item.binding))
+  });
+}
+function programGuidanceProgram(guidance) {
+  return !guidance ? void 0 : guidance.kind === "native-program-guidance-set" ? guidance.program_id : guidance.binding?.program_id ?? guidance.program_id;
+}
+function guidanceForCall(guidance, functionName) {
+  if (!guidance) return void 0;
+  if (guidance.kind === "native-program-guidance-set")
+    return (functionName && Object.hasOwn(guidance.functions, functionName) ? guidance.functions[functionName] : void 0) ?? guidance.program;
+  const scope = guidance.binding?.function;
+  return scope === void 0 || scope === functionName ? guidance : void 0;
 }
 function authoredTextGuidance(text3, programId) {
   if (typeof text3 !== "string" || !text3.trim() || typeof programId !== "string" || !programId)
@@ -213463,10 +213503,12 @@ function renderAuthoredTextGuidance(guidance) {
     throw new TypeError("invalid authored text guidance");
   return "\n\n<natlang_program_guidance>\n" + guidance.text + "\n</natlang_program_guidance>\n";
 }
-var init_prompts = __esm({
-  "src/adaptation/prompts.ts"() {
+var FUNCTION_NAME;
+var init_program = __esm({
+  "src/guidance/program.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    FUNCTION_NAME = /^[A-Za-z_$][\w$]*$/;
   }
 });
 
@@ -213498,8 +213540,9 @@ function nativeProtocolFailure(response) {
     throw new Error("neuralese-native-protocol-integrity: failed turn changed its sampled/fed boundary");
   return structuredClone(failure2);
 }
-function nativeProtocolFeedback(failure2) {
-  return `${failure2.code}: Return a complete native value or the declared ordinary result; this reply has an incomplete or misplaced native-state delimiter.`;
+function nativeProtocolFeedback(failure2, templatedWrite = false) {
+  if (templatedWrite) return `${failure2.code}: The typed native writer already opened a producer span. Write its body, then emit the single dedicated <|/neuralese_produce|> special token before ending the reply. Ordinary text spelling those characters does not close the span. Do not emit an end-of-turn token while the producer span is open.`;
+  return `${failure2.code}: This reply has an incomplete or misplaced Neuralese delimiter. Rewrite the complete reply. If this function returns Neuralese<T>, return the ordinary value of T directly: plain text for string, or JSON for an object. The runtime writes that value as Neuralese; do not put Neuralese delimiters inside the returned string. Invoke offered tools as actual tool calls, not tool-call markup printed as text. For a producer span embedded elsewhere, close every span before ending the reply.`;
 }
 var record, integer, codes, keys;
 var init_native_protocol = __esm({
@@ -213538,10 +213581,11 @@ function fileToolNames(surface = "all") {
 function scopedFileToolNames(surface = "all", writable = true) {
   return fileToolNames(surface).filter((name) => writable || !MUTATING_FILE_TOOLS.has(name));
 }
-function directoryReducerPrompt(surface = "all", allowAdHoc = true, writable = true) {
+function directoryReducerPrompt(surface = "all", allowAdHoc = true, writable = true, withheld = []) {
   const order = ["bash", "python", "delegate", "editor", "list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"];
   const names = new Set(scopedFileToolNames(surface, writable));
   if (!allowAdHoc) names.delete("delegate");
+  for (const name of withheld) names.delete(name);
   return `
 ${DIRECTORY_REDUCER_DECLARATION}
 Paths are relative POSIX paths such as "notes/todo.md".
@@ -213573,21 +213617,22 @@ function promptAtNlDepthLimit(prompt) {
   if (!prompt.includes(TOOLS_PROMPT)) return prompt + "\n\n" + NL_DEPTH_LIMIT_NOTICE;
   return prompt.replace(TOOLS_PROMPT, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT).replace(GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT).replace(APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT);
 }
-var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
+var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, LEAF_SYSTEM_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
 var init_prompt = __esm({
   "src/native/prompt.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     SEMANTIC_RESULT_PROMPT = `When finishing a semantic answer, reply with the declared string as plain text, or with a JSON value of the declared type. Your final reply is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. To use return_result, invoke the tool. When the declared result is a string and the task asks you to save JSON and return it, return exactly the JSON text saved in the file as that string. You may reply with the typed string directly or send it as the value in an actual return_result tool call; do not print a pseudo invocation, status envelope, explanation, or code fence as the result. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. A successful finish:true eval ends this call immediately; include every required predicate in that final expression and do not send another conflicting final action. Never present code as though it had run. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
 
-At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. A Neuralese marker body is literal payload written before eval runs: \${...} inside it is not JavaScript interpolation. Use a marker when its body is literal text; for computed Neuralese<string> output, return the computed string.
+At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. A Neuralese marker body is literal payload written before eval runs: \${...} inside it is not JavaScript interpolation. Use a marker only for a literal body. Never concatenate marker strings around a computed value; return the computed string or structured value according to T.
 
 `;
-    SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. Delegate a distinct subproblem or a smaller part when that helps, then combine its result here; when the evidence is already available, return the declared value directly.
+    SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. This applies to inline nl children: when the child's inputs and captured context are enough to judge its assigned question, return that declared typed answer directly. Nest another nl call only for a genuinely distinct subproblem needed to complete this assignment, not a near-identical re-ask. When the evidence is already available, return the declared value directly.
 
 `;
-    TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without tools ends your turn and is taken as your answer.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows their types, not their contents. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval will also stage that value as your response. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position. When the result type is string, you can also just reply with the text.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
-    FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code and fix it with edit_code.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
+    LEAF_SYSTEM_PROMPT = `You are running one call of a natural-language function. Carry out its instructions yourself for the argument values shown. Your reply is the function's return value: for a string result, the text itself; for any other result, one JSON value of the declared type. Reply with that value alone. When the instructions define a result for missing information or no match, that result is a successful answer. When required information is missing and the instructions define no such result, call return_result with status "blocked" and what is missing; call it with status "failed" when the instructions cannot be carried out.`;
+    TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without tools ends your turn and is taken as your answer.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows their types, not their contents. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) already supplies stepFn; never pass the callable again as the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval will also stage that value as your response. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position. When the result type is string, you can also just reply with the text.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
+    FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code and fix it with edit_code.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
     FILE_TOOL_SURFACES = ["all", "editor", "files"];
     FILE_TOOL_LINES = {
       bash: "- bash(command) runs shell pipelines in this folder, including ls, cat, rg, sed, awk, jq and CSV tools.",
@@ -213867,7 +213912,29 @@ function recordingServices(services, emit3) {
             if (key !== void 0 && !results) onceResults.set(object2, results = /* @__PURE__ */ new Map());
             if (key !== void 0 && results.has(key)) {
               const earlier = results.get(key);
-              emit3({ phase: "completed", service: label, method: property, result: "the result of the earlier identical call (this effect happens once)", seq });
+              if (earlier && typeof earlier.then === "function")
+                return Promise.resolve(earlier).then((resolved) => {
+                  emit3({
+                    phase: "completed",
+                    service: label,
+                    method: property,
+                    result: preview4(resolved),
+                    seq,
+                    exact: { result: resolved, async: true }
+                  });
+                  return resolved;
+                }, (error) => {
+                  emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
+                  throw error;
+                });
+              emit3({
+                phase: "completed",
+                service: label,
+                method: property,
+                result: preview4(earlier),
+                seq,
+                exact: { result: earlier, async: false }
+              });
               return earlier;
             }
             try {
@@ -215908,6 +215975,34 @@ function portableAnnotation(node, file) {
   }
   return;
 }
+function unsupportedUtilityAnnotation(node, file) {
+  const names = /* @__PURE__ */ new Set([
+    "Awaited",
+    "ReturnType",
+    "Parameters",
+    "ConstructorParameters",
+    "InstanceType",
+    "Partial",
+    "Required",
+    "Readonly",
+    "Pick",
+    "Omit",
+    "Exclude",
+    "Extract",
+    "NonNullable"
+  ]);
+  let unsupported;
+  const visit = (current) => {
+    if (unsupported) return;
+    if (import_typescript8.default.isTypeReferenceNode(current) && import_typescript8.default.isIdentifier(current.typeName) && names.has(current.typeName.text) && (current.typeArguments?.length ?? 0) > 0) {
+      unsupported = current;
+      return;
+    }
+    import_typescript8.default.forEachChild(current, visit);
+  };
+  visit(node);
+  return unsupported?.getText(file);
+}
 function isPropertyName2(node) {
   const parent = node.parent;
   return import_typescript8.default.isPropertyAccessExpression(parent) && parent.name === node || // `typeof task.passes`: the right side of a qualified name in a type query is a property, not a variable.
@@ -216014,7 +216109,38 @@ function literalValue(node) {
   if (import_typescript8.default.isParenthesizedExpression(node)) return literalValue(node.expression);
   return void 0;
 }
+function foreignCodeHint(source2) {
+  const lines = source2.split("\n");
+  const at = (index, message2) => {
+    const start = lines.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0);
+    return { code: "typescript-syntax", message: message2, start, end: start + lines[index].length, line: index + 1, column: 1 };
+  };
+  const first = lines.findIndex((line) => line.trim() !== "");
+  if (first >= 0 && PYTHON_IMPORT_LINE.test(lines[first]))
+    return at(first, TYPESCRIPT_ONLY + "Python is not available: the inputs, services, functions and built-ins such as nl are already in scope, so use them by name, and write judgment as `await nl(...)`.");
+  const python = lines.findIndex((line) => PYTHON_SYNTAX_LINES.some((pattern2) => pattern2.test(line)));
+  if (python >= 0)
+    return at(python, TYPESCRIPT_ONLY + "Declare with const or let, use braces for blocks and true/false/null, and inspect a value by ending the code with it.");
+  const prose = lines.findIndex((line, index) => {
+    const text3 = (index === first ? line.replace(/^\s*import\b[^'"\n]*['"][^'"\n]*['"]\s*[;?]?/, "") : line).trim();
+    return PROSE_RUN.test(text3) && !JS_KEYWORDS.has(text3.split(/\s+/)[0].replace(/[:,]$/, ""));
+  });
+  if (prose >= 0)
+    return at(prose, TYPESCRIPT_ONLY + "This line is not code: put only statements in the code argument, and any explanation in // comments or in your reply outside the call.");
+  return void 0;
+}
 function compileScopeSnippet(source2, options = {}) {
+  const result = compileScopeSnippetUnhinted(source2, options);
+  if (!result.ok && typeof source2 === "string") {
+    const parsed = import_typescript8.default.createSourceFile("eval-source.ts", source2, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
+    if ((parsed.parseDiagnostics ?? []).length) {
+      const hint = foreignCodeHint(source2);
+      if (hint) result.diagnostics.splice(0, result.diagnostics.length, hint, ...result.diagnostics.slice(0, 4));
+    }
+  }
+  return result;
+}
+function compileScopeSnippetUnhinted(source2, options = {}) {
   if (typeof source2 !== "string") throw new TypeError("scope source must be a string");
   if (options.allowModules) {
     const module = import_typescript8.default.createSourceFile("imports.ts", source2, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
@@ -216040,7 +216166,7 @@ function compileScopeSnippet(source2, options = {}) {
         }
         lowered = lowered.slice(0, statement.getStart(module)) + text3 + lowered.slice(statement.end);
       }
-      return compileScopeSnippet(lowered, options);
+      return compileScopeSnippetUnhinted(lowered, options);
     }
   }
   const snippetSource = source2;
@@ -216054,7 +216180,7 @@ function compileScopeSnippet(source2, options = {}) {
   if (uncalled.length) {
     let called = snippetSource;
     for (const end of uncalled.sort((a, b) => b - a)) called = called.slice(0, end - userStart) + "()" + called.slice(end - userStart);
-    return compileScopeSnippet(called, options);
+    return compileScopeSnippetUnhinted(called, options);
   }
   const fn = file.statements.find(import_typescript8.default.isFunctionDeclaration);
   if (!fn?.body) throw new Error("internal scope compiler wrapper failure");
@@ -216088,6 +216214,21 @@ function compileScopeSnippet(source2, options = {}) {
     diagnostics.push({ code, message: message2, ...span(node) });
   };
   const parseDiagnostics = file.parseDiagnostics ?? [];
+  if (parseDiagnostics.length) {
+    const scanner = import_typescript8.default.createScanner(import_typescript8.default.ScriptTarget.Latest, true, import_typescript8.default.LanguageVariant.Standard, file.text);
+    const errorStarts = new Set(parseDiagnostics.map((diagnostic) => diagnostic.start));
+    let previous = import_typescript8.default.SyntaxKind.Unknown;
+    for (let token = scanner.scan(); token !== import_typescript8.default.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+      if ((previous === import_typescript8.default.SyntaxKind.ConstKeyword || previous === import_typescript8.default.SyntaxKind.LetKeyword || previous === import_typescript8.default.SyntaxKind.VarKeyword) && token >= import_typescript8.default.SyntaxKind.FirstKeyword && token <= import_typescript8.default.SyntaxKind.LastReservedWord && errorStarts.has(scanner.getTokenPos())) {
+        diagnostics.push({
+          code: "typescript-syntax",
+          message: `Reserved word ${JSON.stringify(scanner.getTokenText())} cannot be a variable name. Choose a different name and use it consistently in this eval.`,
+          ...span(scanner.getTokenPos(), scanner.getTokenText().length)
+        });
+      }
+      previous = token;
+    }
+  }
   for (const diagnostic of parseDiagnostics) {
     if (diagnostic.start === void 0) continue;
     diagnostics.push({
@@ -216125,12 +216266,14 @@ function compileScopeSnippet(source2, options = {}) {
           });
           continue;
         }
-        if (import_typescript8.default.isIdentifier(declaration.name) && declaration.initializer && options.inputValues && Object.hasOwn(options.inputValues, declaration.name.text) && options.inputBindings?.includes(declaration.name.text) && literalValue(declaration.initializer) === options.inputValues[declaration.name.text]) {
+        const bound = import_typescript8.default.isIdentifier(declaration.name) ? declaration.name.text : "";
+        const role = options.inputBindings?.includes(bound) ? "input" : captureNames.includes(bound) ? "captured value" : void 0;
+        if (role && declaration.initializer && options.boundValues && Object.hasOwn(options.boundValues, bound) && literalValue(declaration.initializer) === options.boundValues[bound]) {
           const location = span(statement);
           redundantAliases.push(location);
           repairs.push({
             code: "invalid-binding",
-            message: `Removed a declaration of input ${JSON.stringify(declaration.name.text)}: it already holds that value.`,
+            message: `Removed a declaration of ${role} ${JSON.stringify(bound)}: it already holds that value.`,
             ...location
           });
           continue;
@@ -216139,6 +216282,13 @@ function compileScopeSnippet(source2, options = {}) {
       const flags = statement.declarationList.flags;
       const kind = flags & import_typescript8.default.NodeFlags.Const ? "const" : flags & import_typescript8.default.NodeFlags.Let ? "let" : "var";
       for (const declaration of statement.declarationList.declarations) for (const name of namesOf(declaration.name)) {
+        const annotation2 = import_typescript8.default.isIdentifier(declaration.name) && declaration.type ? portableAnnotation(declaration.type, file) : void 0;
+        const unsupportedAnnotation = import_typescript8.default.isIdentifier(declaration.name) && declaration.type && !annotation2 ? unsupportedUtilityAnnotation(declaration.type, file) : void 0;
+        if (unsupportedAnnotation) diagnostics.push({
+          ...span(declaration.type),
+          code: "unsupported-type-annotation",
+          message: `Eval cannot type-check the TypeScript utility annotation ${JSON.stringify(unsupportedAnnotation)}. Remove this local annotation and let the value expression infer its type, for example \`const rows = await service.getRows()\`. Use a structural record or array type only when an explicit local annotation is needed; ordinary \`const\` inference usually makes \`as const\` unnecessary.`
+        });
         const initializerText = declaration.initializer?.getText(file);
         const bindingInitializer = declaration.initializer && initializerText ? import_typescript8.default.isIdentifier(declaration.name) ? initializerText : bindingInitializerProjections(declaration.name, initializerText).get(name.text) : void 0;
         let initial = declaration.initializer;
@@ -216150,7 +216300,7 @@ function compileScopeSnippet(source2, options = {}) {
           kind,
           mutable: kind !== "const",
           ...transient ? { transient: true } : {},
-          ...import_typescript8.default.isIdentifier(declaration.name) && declaration.type && portableAnnotation(declaration.type, file) ? { annotation: portableAnnotation(declaration.type, file) } : {},
+          ...annotation2 ? { annotation: annotation2 } : {},
           ...bindingInitializer ? { initializer: bindingInitializer } : {},
           start: span(name).start,
           end: span(name).end
@@ -216441,11 +216591,8 @@ function compileScopeSnippet(source2, options = {}) {
   }));
   const rebindAt = new Map(rebinds.map((site2) => [`${site2.start}:${site2.end}`, site2]));
   const instantiationAt = new Map(instantiations.map((site2) => [`${site2.start}:${site2.end}`, site2]));
-  for (const readout of readouts) if (!readout.kind) primitive.push({
-    start: readout.start,
-    end: readout.end,
-    text: `(await __live.${readout.conditional ? "readNeuraleseIfReference" : "readNeuralese"}((${analysisSource.slice(readout.start, readout.end)})))`
-  });
+  const valueReadouts = new Map(readouts.filter((readout) => !readout.kind).map((readout) => [`${readout.start}:${readout.end}`, readout]));
+  const loweringValueReadouts = /* @__PURE__ */ new Set();
   const joins = new Set(readouts.filter((readout) => readout.kind === "join").map((readout) => `${readout.start}:${readout.end}`));
   const arrayStrings = new Set(readouts.filter((readout) => readout.kind === "array-string").map((readout) => `${readout.start}:${readout.end}`));
   const concats = new Set(readouts.filter((readout) => readout.kind === "concat").map((readout) => `${readout.start}:${readout.end}`));
@@ -216457,6 +216604,19 @@ function compileScopeSnippet(source2, options = {}) {
   const arrayMapReadouts = new Map(readouts.filter((readout) => readout.kind === "array-map").map((readout) => [`${readout.start}:${readout.end}`, readout]));
   const asyncMapCallbacks = new Set([...arrayMapReadouts.values()].flatMap((readout) => readout.callback ? [`${readout.callback.start}:${readout.callback.end}`] : []));
   const lowerNodes = (node) => {
+    const location = rel(node), valueKey = `${location.start}:${location.end}`;
+    const valueReadout = valueReadouts.get(valueKey);
+    if (valueReadout && !loweringValueReadouts.has(valueKey)) {
+      loweringValueReadouts.add(valueKey);
+      lowerNodes(node);
+      loweringValueReadouts.delete(valueKey);
+      primitive.push({
+        ...location,
+        composed: true,
+        text: `(await __live.${valueReadout.conditional ? "readNeuraleseIfReference" : "readNeuralese"}((${lowerSpan(location.start, location.end)})))`
+      });
+      return;
+    }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && arrayMapReadouts.has(`${rel(node).start}:${rel(node).end}`) && node.arguments[0]) {
       const readout = arrayMapReadouts.get(`${rel(node).start}:${rel(node).end}`);
       lowerNodes(node.expression.expression);
@@ -216489,7 +216649,7 @@ function compileScopeSnippet(source2, options = {}) {
       const methodName = `__natlang_replace_method_${rel(node).start}`;
       const argsName = `__natlang_replace_args_${rel(node).start}`;
       const reader = readout.conditional ? "readNeuraleseIfReference" : "readNeuralese";
-      primitive.push({ ...rel(node), text: `(await (async (${receiverName}: any) => { const ${textName} = await __live.${reader}(${receiverName}); const ${methodName} = ${textName}.replace; const ${argsName} = [${args}]; return { value: __live.invokeWithReceiver(${methodName}, ${textName}, ${argsName}) }; })(${receiver})).value` });
+      primitive.push({ ...rel(node), composed: true, text: `(await (async (${receiverName}: any) => { const ${textName} = await __live.${reader}(${receiverName}); const ${methodName} = ${textName}.replace; const ${argsName} = [${args}]; return { value: __live.invokeWithReceiver(${methodName}, ${textName}, ${argsName}) }; })(${receiver})).value` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && scalarConversions.has(`${rel(node).start}:${rel(node).end}`) && node.arguments.length) {
@@ -216502,7 +216662,7 @@ function compileScopeSnippet(source2, options = {}) {
       const argsName = `__natlang_scalar_args_${rel(node).start}`;
       const index = readout.argument ?? 0;
       const reader = readout.conditional ? "readNeuraleseIfReference" : "readNeuralese";
-      primitive.push({ ...rel(node), text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${calleeName}(...${argsName}); })([${args}]))(${callee}))` });
+      primitive.push({ ...rel(node), composed: true, text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${calleeName}(...${argsName}); })([${args}]))(${callee}))` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
@@ -216525,7 +216685,7 @@ function compileScopeSnippet(source2, options = {}) {
       const argsName = `__natlang_text_args_${rel(node).start}`;
       const index = readout.argument ?? 0;
       const reader = readout.conditional ? "readNeuraleseIfReference" : "readNeuralese";
-      primitive.push({ ...rel(node), text: `(await ((${receiverName}: any) => ((${methodName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${methodName}.call(${receiverName}, ...${argsName}); })([${args}]))(${receiverName}.${node.expression.name.text}))(${receiver}))` });
+      primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => ((${methodName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${methodName}.call(${receiverName}, ...${argsName}); })([${args}]))(${receiverName}.${node.expression.name.text}))(${receiver}))` });
       return;
     }
     if ((import_typescript8.default.isCallExpression(node) || import_typescript8.default.isNewExpression(node)) && node.arguments?.length && errorReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
@@ -216537,7 +216697,7 @@ function compileScopeSnippet(source2, options = {}) {
       const argsName = `__natlang_error_args_${rel(node).start}`;
       const reader = readout.conditional ? "readNeuraleseIfReference" : "readNeuralese";
       const invoke = import_typescript8.default.isNewExpression(node) ? `new ${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))` : `${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))`;
-      primitive.push({ ...rel(node), text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => ${invoke})([${args}]))(${callee}))` });
+      primitive.push({ ...rel(node), composed: true, text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => ${invoke})([${args}]))(${callee}))` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && jsonReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
@@ -216554,14 +216714,14 @@ function compileScopeSnippet(source2, options = {}) {
       const receiverName = fresh(`__natlang_json_receiver_${rel(node).start}`);
       const callName = fresh(`__natlang_json_call_${rel(node).start}`);
       const argsName = fresh(`__natlang_json_args_${rel(node).start}`);
-      primitive.push({ ...rel(node), text: `(await ((${receiverName}: any) => (async (${callName}: [any, any], ${argsName}: any[]) => ${callName}[1].call(${callName}[0], await __live.${reader}(${argsName}[0])${args.slice(1).map((_arg, index) => `, ${argsName}[${index + 1}]`).join("")}))([${receiverName}, ${receiverName}.stringify], [${args.join(", ")}]))(${receiver}))` });
+      primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${callName}: [any, any], ${argsName}: any[]) => ${callName}[1].call(${callName}[0], await __live.${reader}(${argsName}[0])${args.slice(1).map((_arg, index) => `, ${argsName}[${index + 1}]`).join("")}))([${receiverName}, ${receiverName}.stringify], [${args.join(", ")}]))(${receiver}))` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && concats.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = lowerSpan(rel(node.expression.expression).start, rel(node.expression.expression).end);
       const values = node.arguments.map((argument) => lowerSpan(rel(argument).start, rel(argument).end)).join(", ");
       const temp = `__natlang_concat_receiver_${rel(node).start}`;
-      primitive.push({ ...rel(node), text: `await ((${temp}: any) => { const __method = ${temp}.concat; const __values = [${values}]; return __live.concatNeuralese(${temp}, __method, __values, async (__value: any) => await __live.readNeuralese(__value)); })(${receiver})` });
+      primitive.push({ ...rel(node), composed: true, text: `await ((${temp}: any) => { const __method = ${temp}.concat; const __values = [${values}]; return __live.concatNeuralese(${temp}, __method, __values, async (__value: any) => await __live.readNeuralese(__value)); })(${receiver})` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && arrayStrings.has(`${rel(node).start}:${rel(node).end}`)) {
@@ -216572,7 +216732,7 @@ function compileScopeSnippet(source2, options = {}) {
       const methodName = `__natlang_array_string_method_${rel(node).start}`;
       const argsName = `__natlang_array_string_args_${rel(node).start}`;
       const args = node.arguments.map((argument) => lowerSpan(rel(argument).start, rel(argument).end)).join(", ");
-      primitive.push({ ...rel(node), text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.arrayToStringNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_array_string_value: any) => await __live.readNeuralese(__natlang_array_string_value))).value)(${receiverName}.toString, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
+      primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.arrayToStringNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_array_string_value: any) => await __live.readNeuralese(__natlang_array_string_value))).value)(${receiverName}.toString, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && joins.has(`${rel(node).start}:${rel(node).end}`)) {
@@ -216583,7 +216743,7 @@ function compileScopeSnippet(source2, options = {}) {
       const methodName = `__natlang_join_method_${rel(node).start}`;
       const argsName = `__natlang_join_args_${rel(node).start}`;
       const args = node.arguments.map((argument) => lowerSpan(rel(argument).start, rel(argument).end)).join(", ");
-      primitive.push({ ...rel(node), text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.joinNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_join_value: any) => await __live.readNeuralese(__natlang_join_value))).value)(${receiverName}.join, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
+      primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.joinNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_join_value: any) => await __live.readNeuralese(__natlang_join_value))).value)(${receiverName}.join, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
       return;
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with" && import_typescript8.default.isTaggedTemplateExpression(node.expression.expression)) {
@@ -216640,12 +216800,37 @@ function compileScopeSnippet(source2, options = {}) {
         return;
       }
     }
+    const chainedMethodCall = import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.parent) && node.parent.expression === node && import_typescript8.default.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent;
+    const iterateOnCall = import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn";
     const instance = import_typescript8.default.isCallExpression(node) ? instantiationAt.get(`${rel(node).start}:${rel(node).end}`) : void 0;
+    const inIterateOnChain = (call) => {
+      let expression = call.expression;
+      while (true) {
+        if (import_typescript8.default.isPropertyAccessExpression(expression)) expression = expression.expression;
+        else if (import_typescript8.default.isCallExpression(expression)) {
+          if (import_typescript8.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "iterateOn") return true;
+          expression = expression.expression;
+        } else return false;
+      }
+    };
+    const promiseConstruction = import_typescript8.default.isNewExpression(node) && import_typescript8.default.isIdentifier(node.expression) && node.expression.text === "Promise";
+    if (import_typescript8.default.isCallExpression(node) && !instance && !chainedMethodCall && !iterateOnCall && !inIterateOnChain(node) || promiseConstruction) {
+      const at = rel(node);
+      primitive.push(
+        { start: at.start, end: at.start, text: "__natlang_own((", owner: at },
+        { start: at.end, end: at.end, text: "))", owner: at }
+      );
+    }
     if (instance && import_typescript8.default.isCallExpression(node)) {
       const callee = rel(node.expression);
       primitive.push(
-        { start: callee.start, end: callee.start, text: "__live.instantiate(" },
-        { start: callee.end, end: callee.end, text: `, ${JSON.stringify(instance.representation)}, ${JSON.stringify(`eval line ${instance.line}`)})` }
+        { start: callee.start, end: callee.start, text: "__live.instantiate(", owner: callee },
+        { start: callee.end, end: callee.end, text: `, ${JSON.stringify(instance.representation)}, ${JSON.stringify(`eval line ${instance.line}`)})`, owner: callee }
+      );
+      const at = rel(node);
+      primitive.push(
+        { start: at.start, end: at.start, text: "__natlang_own((", owner: at },
+        { start: at.end, end: at.end, text: "))", owner: at }
       );
     }
     if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript8.default.isTaggedTemplateExpression(node.expression.expression)) {
@@ -216664,14 +216849,18 @@ function compileScopeSnippet(source2, options = {}) {
         const method = iterableExpression.expression.name.text;
         const receiver = iterableExpression.expression.expression;
         lowerNodes(receiver);
-        primitive.push({ ...at, text: `__natlang_finiteArrayIterator(${lowerSpan(rel(receiver).start, rel(receiver).end)}, ${JSON.stringify(method)}, ${JSON.stringify(loopLabel(analysisSource.slice(at.start, at.end)))})` });
+        primitive.push({ ...at, composed: true, text: `__natlang_finiteArrayIterator(${lowerSpan(rel(receiver).start, rel(receiver).end)}, ${JSON.stringify(method)}, ${JSON.stringify(loopLabel(analysisSource.slice(at.start, at.end)))})` });
         lowerNodes(node.statement);
         return;
       }
-      primitive.push(
-        { start: at.start, end: at.start, text: node.awaitModifier ? "__natlang_finiteAsync(" : "__natlang_finite(" },
-        { start: at.end, end: at.end, text: `, ${JSON.stringify(loopLabel(analysisSource.slice(at.start, at.end)))})` }
-      );
+      lowerNodes(node.expression);
+      primitive.push({
+        ...at,
+        composed: true,
+        text: `${node.awaitModifier ? "__natlang_finiteAsync" : "__natlang_finite"}(${lowerSpan(at.start, at.end)}, ${JSON.stringify(loopLabel(analysisSource.slice(at.start, at.end)))})`
+      });
+      lowerNodes(node.statement);
+      return;
     }
     if (import_typescript8.default.isForStatement(node) && node.initializer && import_typescript8.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
       const declaration = node.initializer.declarations[0];
@@ -216714,8 +216903,8 @@ function compileScopeSnippet(source2, options = {}) {
   };
   const lowerSpan = (start, end) => {
     let text3 = analysisSource.slice(start, end);
-    const contained = primitive.filter((edit) => edit.start >= start && edit.end <= end);
-    const inside = contained.filter((edit) => !contained.some((parent) => parent.composed && parent !== edit && parent.start <= edit.start && parent.end >= edit.end && (parent.start < edit.start || parent.end > edit.end)));
+    const contained = primitive.filter((edit) => edit.start >= start && edit.end <= end && (!edit.owner || edit.owner.start >= start && edit.owner.end <= end));
+    const inside = contained.filter((edit) => !contained.some((parent) => parent.composed && parent !== edit && parent.start <= (edit.owner ?? edit).start && parent.end >= (edit.owner ?? edit).end && (parent.start < (edit.owner ?? edit).start || parent.end > (edit.owner ?? edit).end)));
     for (const edit of [...inside].sort((a, b) => b.start - a.start || b.end - a.end))
       text3 = text3.slice(0, edit.start - start) + edit.text + text3.slice(edit.end - start);
     return text3;
@@ -216754,7 +216943,7 @@ function compileScopeSnippet(source2, options = {}) {
     end: repair.end + helperPrefix.length,
     text: ""
   });
-  const topPrimitive = primitive.filter((edit) => !primitive.some((parent) => parent.composed && parent !== edit && parent.start <= edit.start && parent.end >= edit.end && (parent.start < edit.start || parent.end > edit.end)));
+  const topPrimitive = primitive.filter((edit) => !primitive.some((parent) => parent.composed && parent !== edit && parent.start <= (edit.owner ?? edit).start && parent.end >= (edit.owner ?? edit).end && (parent.start < (edit.owner ?? edit).start || parent.end > (edit.owner ?? edit).end)));
   const edits = [...containers, ...topPrimitive.filter((edit) => !containers.some((container) => edit.start >= container.start && edit.end <= container.end && container.text !== ""))];
   let body = analysisSource;
   for (const edit of edits.sort((a, b) => b.start - a.start || b.end - a.end))
@@ -216786,12 +216975,12 @@ function compileScopeSnippet(source2, options = {}) {
     ...helperNames.map((name) => `const ${name} = __natlang_callable(${JSON.stringify(name)});`),
     ...serviceNames.map((name) => `const ${name} = __live.services[${JSON.stringify(name)}];`),
     `const __natlang_present = (value: Record<string, unknown>) => Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));`,
-    `const __natlang_finish = async (__natlang_result: unknown, __natlang_bindings: Record<string, unknown> = ${capture}, __natlang_returned = false) => { const __natlang_settled = await __natlang_settle({ result: __natlang_result, bindings: __natlang_bindings }); return __natlang_output({ result: __natlang_settled.result === undefined ? null : __natlang_settled.result, returned: __natlang_returned, bindings: __natlang_present(__natlang_settled.bindings)${mutableCaptures.length ? `, captures: { ${mutableCaptures.join(", ")} }` : ""} }); };`
+    `const __natlang_finish = async (__natlang_result: unknown, __natlang_bindings: Record<string, unknown> = ${capture}, __natlang_returned = false) => { const __natlang_settled = await __natlang_settle({ result: __natlang_result, bindings: __natlang_bindings }); return __natlang_output({ result: __natlang_settled.result === undefined ? null : __natlang_settled.result, returned: __natlang_returned, bindings: __natlang_present(__natlang_settled.bindings)${mutableCaptures.length ? `, captures: { ${mutableCaptures.join(", ")} }` : ""}, ...(__natlang_settled.result === undefined ? { valueless: true } : {}) }); };`
   ].filter(Boolean).join("\n");
   const typescript = `async function ${ENTRYPOINT}(__inputs: Readonly<Record<string, unknown>>, __locals: Readonly<Record<string, unknown>>, __captures: Readonly<Record<string, unknown>>) {
 ${prologue}
 ${body}
-return __natlang_finish(null);
+return __natlang_finish(undefined);
 }
 `;
   const emitted = import_typescript8.default.transpileModule(typescript, {
@@ -216823,7 +217012,7 @@ return __natlang_finish(null);
   result.program = emitted.outputText;
   return result;
 }
-var import_typescript8, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES;
+var import_typescript8, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, TYPESCRIPT_ONLY;
 var init_scope_compiler = __esm({
   "src/scope-compiler.ts"() {
     "use strict";
@@ -216850,6 +217039,14 @@ const read = __live.readNeuralese;
 const __natlang_output = (value: unknown) => { __live.finish(value); return null; };
 const __natlang_thenable = (value: any) => !!value && (typeof value === 'object' || typeof value === 'function') &&
   typeof value.then === 'function';
+// Eval owns async work started by its code. Attach a rejection observer without replacing the
+// promise: callers that await it still receive the original rejection and identity checks keep
+// working, while a deliberately dropped authored async call cannot become a process-level
+// unhandled rejection (notably when a later guarded recursive call rejects).
+const __natlang_own = <T>(value: T): T => {
+  if (value instanceof Promise) void value.catch(() => {});
+  return value;
+};
 const __natlang_pending = (value: any, depth = 0): boolean => __natlang_thenable(value) || depth < 4 &&
   (Array.isArray(value) || __natlang_plain(value)) && Object.values(value).some(item => __natlang_pending(item, depth + 1));
 // What an eval leaves unawaited (a promise, or data holding promises) is awaited before it is kept, as \`await\` would.
@@ -216946,6 +217143,50 @@ const __natlang_iterate = (step: any, ...rest: any[]) =>
       "ArrayBuffer",
       "Promise"
     ]);
+    JS_KEYWORDS = /* @__PURE__ */ new Set([
+      "const",
+      "let",
+      "var",
+      "function",
+      "return",
+      "await",
+      "if",
+      "else",
+      "for",
+      "while",
+      "try",
+      "catch",
+      "throw",
+      "new",
+      "import",
+      "export",
+      "class",
+      "type",
+      "interface",
+      "async",
+      "yield",
+      "do",
+      "switch",
+      "case",
+      "default",
+      "break",
+      "continue",
+      "typeof",
+      "delete",
+      "void",
+      "in",
+      "of"
+    ]);
+    PYTHON_IMPORT_LINE = /^\s*(?:import\s+[\w.]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w.]+(?:\s+as\s+\w+)?)*|from\s+[\w.]+\s+import\s+[^'"]+)\s*;?\s*$/;
+    PYTHON_SYNTAX_LINES = [
+      /^\s*def\s+\w+\s*\(.*\)\s*(?:->[^:]*)?:\s*$/,
+      /^\s*(?:if|elif|else|for|while|with|try|except|finally|class)\b[^{;]*:\s*(?:#.*)?$/,
+      /(?<![\w.$])print\s*\(/,
+      /^\s*#(?:\s|$)/,
+      /(?<![\w.$'"])(?:True|False|None)\b(?!['"])/
+    ];
+    PROSE_RUN = /^[A-Za-z][A-Za-z'’,;:.!?-]*(?:\s+[A-Za-z'’,;:.!?-]+){3,}\s*$/;
+    TYPESCRIPT_ONLY = "The code argument is run as TypeScript in this call's scope. ";
   }
 });
 
@@ -217091,7 +217332,9 @@ function nlCallEdits(file, accept = () => true) {
       else if (import_typescript9.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
       const open = node.arguments.pos - 1;
       if (template !== void 0 && template.length === argument.getText(file).length && source2[open] === "(") {
-        edits.push({ start: open, end: node.getEnd(), text: `${template}()` });
+        const applied = import_typescript9.default.isCallExpression(node.parent) && node.parent.expression === node;
+        edits.push({ start: open, end: node.getEnd(), text: applied ? `${template}  ` : `${template}()` });
+        if (applied) for (const outer of node.parent.arguments) visit(outer);
         return;
       }
     }
@@ -217123,6 +217366,9 @@ function nativeTensorRef(id2, kind) {
 function isNativeTensorArtifactId(value) {
   return typeof value === "string" && NATIVE_TENSOR_ID.test(value);
 }
+function isTeacherTextNeuraleseId(value) {
+  return typeof value === "string" && TEACHER_TEXT_ID.test(value);
+}
 function isNativeStateId(value) {
   return typeof value === "string" && NATIVE_STATE_ID.test(value);
 }
@@ -217135,41 +217381,49 @@ function nativeStateSentinelIds(text3) {
   return [...text3.matchAll(NATIVE_SENTINEL)].map((match2) => match2[1]);
 }
 function runtimePartsToText(parts) {
-  return parts.map((part) => part.type === "text" ? part.text : nativeStateSentinel(part.id, part.stop_gradient, part.source_occurrence)).join("");
+  return parts.map((part) => part.type === "text" ? part.text : part.type === "teacher_text" ? neuraleseSentinel(part.id, false, part.source_occurrence) : nativeStateSentinel(part.id, part.stop_gradient, part.source_occurrence)).join("");
 }
 function runtimeTextToParts(text3) {
   const parts = [];
-  const markers = [...text3.matchAll(/(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?/g)];
-  let last = 0;
-  for (const match2 of markers) {
-    if (match2.index > last) parts.push({ type: "text", text: text3.slice(last, match2.index) });
-    parts.push({
+  const markers = [];
+  for (const match2 of text3.matchAll(/(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?/g))
+    markers.push({ index: match2.index, end: match2.index + match2[0].length, part: {
       type: "native_state",
       id: match2[1],
       ...match2[2] ? { stop_gradient: true } : {},
       ...match2[3] ? { source_occurrence: decodeURIComponent(match2[3]) } : {}
-    });
-    last = match2.index + match2[0].length;
+    } });
+  for (const match2 of text3.matchAll(/(nzt1_[a-z2-7]{52})(?:@([^]+))?/g))
+    markers.push({ index: match2.index, end: match2.index + match2[0].length, part: {
+      type: "teacher_text",
+      id: match2[1],
+      ...match2[2] ? { source_occurrence: decodeURIComponent(match2[2]) } : {}
+    } });
+  markers.sort((a, b) => a.index - b.index);
+  let last = 0;
+  for (const marker of markers) {
+    if (marker.index < last) continue;
+    if (marker.index > last) parts.push({ type: "text", text: text3.slice(last, marker.index) });
+    parts.push(marker.part);
+    last = marker.end;
   }
   if (last < text3.length || !parts.length) parts.push({ type: "text", text: text3.slice(last) });
   return parts;
 }
-function isNeuraleseId(value) {
-  return isNativeStateId(value);
-}
-function neuraleseRef(type, id2, stopGradient = false, sourceOccurrence) {
-  if (!isNeuraleseId(id2)) throw new TypeError(`not a Neuralese block ID: ${JSON.stringify(id2)}`);
+function neuraleseRef(type, id2, stopGradient = false, sourceOccurrence, teacherText = false) {
+  if (!(isNativeStateId(id2) || teacherText && isTeacherTextNeuraleseId(id2))) throw new TypeError(`not a Neuralese block ID: ${JSON.stringify(id2)}`);
   if (sourceOccurrence !== void 0 && (typeof sourceOccurrence !== "string" || !sourceOccurrence)) throw new TypeError("native source occurrence must be a nonempty string");
-  return Object.freeze({ $neuralese: Object.freeze({ type, id: id2, ...stopGradient ? { stop_gradient: true } : {}, ...sourceOccurrence ? { source_occurrence: sourceOccurrence } : {} }) });
+  return Object.freeze({ $neuralese: Object.freeze({ type, id: id2, ...stopGradient ? { stop_gradient: true } : {}, ...sourceOccurrence ? { source_occurrence: sourceOccurrence } : {}, ...teacherText ? { teacher_text: true } : {} }) });
 }
 function isNeuraleseRef(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const keys3 = Object.keys(value);
   if (keys3.length !== 1 || keys3[0] !== "$neuralese") return false;
   const body = value.$neuralese;
-  return !!body && typeof body === "object" && typeof body.type === "string" && isNeuraleseId(body.id) && (body.stop_gradient === void 0 || body.stop_gradient === true) && (body.source_occurrence === void 0 || typeof body.source_occurrence === "string" && !!body.source_occurrence) && Object.keys(body).every((key) => key === "type" || key === "id" || key === "stop_gradient" || key === "source_occurrence");
+  return !!body && typeof body === "object" && typeof body.type === "string" && (isNativeStateId(body.id) && body.teacher_text === void 0 || isTeacherTextNeuraleseId(body.id) && body.teacher_text === true) && (body.stop_gradient === void 0 || body.stop_gradient === true) && (body.source_occurrence === void 0 || typeof body.source_occurrence === "string" && !!body.source_occurrence) && Object.keys(body).every((key) => key === "type" || key === "id" || key === "stop_gradient" || key === "source_occurrence" || key === "teacher_text");
 }
 function neuraleseSentinel(id2, stopGradient = false, sourceOccurrence) {
+  if (isTeacherTextNeuraleseId(id2)) return `\uE000${id2}${sourceOccurrence ? "@" + encodeURIComponent(sourceOccurrence) : ""}\uE001`;
   if (isNativeTensorArtifactId(id2)) throw new Error("neuralese-native-tensor-as-state: named tensor artifacts are not communication state; use NativeTensor for portable tensor references and NativeAdapter only for coefficient actors");
   return nativeStateSentinel(id2, stopGradient, sourceOccurrence);
 }
@@ -217178,11 +217432,9 @@ function neuraleseRefSentinel(ref) {
 }
 function soleSentinelUse(text3) {
   const match2 = /^(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?$/.exec(text3);
-  return match2 ? {
-    id: match2[1],
-    ...match2[2] ? { stop_gradient: true } : {},
-    ...match2[3] ? { source_occurrence: decodeURIComponent(match2[3]) } : {}
-  } : void 0;
+  if (match2) return { id: match2[1], ...match2[2] ? { stop_gradient: true } : {}, ...match2[3] ? { source_occurrence: decodeURIComponent(match2[3]) } : {} };
+  const teacher = /^(nzt1_[a-z2-7]{52})(?:@([^]+))?$/.exec(text3);
+  return teacher ? { id: teacher[1], teacher_text: true, ...teacher[2] ? { source_occurrence: decodeURIComponent(teacher[2]) } : {} } : void 0;
 }
 function textToParts(text3) {
   return runtimeTextToParts(text3);
@@ -217219,11 +217471,11 @@ async function writeLiterals(text3, port, producer = {}) {
     const close = body.indexOf(NEURALESE_CLOSE);
     const inner = close < 0 ? body : body.slice(0, close);
     const block = await port.write(inner, { producer, truncated: close < 0 });
-    if (!isNativeStateId(block.id))
-      throw new NeuraleseUnsupportedError("the configured write port must return an archived nzs1 native state");
+    if (!isNativeStateId(block.id) && !(isTeacherTextNeuraleseId(block.id) && block.producer?.kind === "teacher-text-emulation"))
+      throw new NeuraleseUnsupportedError("the configured write port must return an archived native state or an explicitly enabled teacher-text artifact");
     blocks.push(block);
     out += neuraleseSentinel(block.id);
-    parts.push({ type: "native_state", id: block.id });
+    parts.push(isTeacherTextNeuraleseId(block.id) ? { type: "teacher_text", id: block.id, ...typeof producer.result_type === "string" ? { value_type: producer.result_type } : {} } : { type: "native_state", id: block.id });
     if (close < 0) break;
     rest = body.slice(close + NEURALESE_CLOSE.length);
   }
@@ -217335,11 +217587,11 @@ async function decodeTurnValue(value, port, producer, written, expected, nativeS
     if (!valueBoundary) return decodeTurnValue(partsToText(value), port, producer, written);
     const hasNonText = value.some((part) => part.type !== "text");
     if (!hasNonText) return value.map((part) => part.text).join("");
-    const onlyStateReferences = value.length > 0 && value.every((part) => part.type === "native_state");
+    const onlyStateReferences = value.length > 0 && value.every((part) => part.type === "native_state" || part.type === "teacher_text");
     if (onlyStateReferences && acceptsNativeStateParts(expected)) {
       if (acceptsNativeStateList(expected))
-        return value.map((part) => nativeStateSentinel(part.id, part.stop_gradient, part.source_occurrence));
-      return value.map((part) => ({ ...part }));
+        return value.map((part) => part.type === "teacher_text" ? neuraleseSentinel(part.id, false, part.source_occurrence) : nativeStateSentinel(part.id, part.stop_gradient, part.source_occurrence));
+      return value.map((part) => part.type === "teacher_text" ? neuraleseRef(part.value_type ?? "Neuralese<unknown>", part.id, false, part.source_occurrence, true) : { ...part });
     }
     if (value.some((part) => part.type === "native_state") && expected && nativeStateText) {
       const text3 = [];
@@ -217366,7 +217618,7 @@ async function decodeTurnValue(value, port, producer, written, expected, nativeS
   }
   return value;
 }
-var NEURALESE_OPEN, NEURALESE_CLOSE, isNativeAdapterRef, NATIVE_TENSOR_REF_KINDS, isNativeTensorRef, NATIVE_SENTINEL_OPEN, NATIVE_SENTINEL_CLOSE, NATIVE_STATE_ID, NATIVE_TENSOR_ID, NATIVE_SENTINEL, hasNeuraleseSentinel, isContentParts, NeuraleseUnsupportedError, NeuraleseDialectError, supportsNeuralese, supportsGuidance;
+var NEURALESE_OPEN, NEURALESE_CLOSE, isNativeAdapterRef, NATIVE_TENSOR_REF_KINDS, isNativeTensorRef, NATIVE_SENTINEL_OPEN, NATIVE_SENTINEL_CLOSE, NATIVE_STATE_ID, NATIVE_TENSOR_ID, TEACHER_TEXT_ID, NATIVE_SENTINEL, hasNeuraleseSentinel, isContentParts, NeuraleseUnsupportedError, NeuraleseDialectError, supportsNeuralese, supportsGuidance;
 var init_neuralese2 = __esm({
   "src/native/neuralese.ts"() {
     "use strict";
@@ -217389,9 +217641,10 @@ var init_neuralese2 = __esm({
     NATIVE_SENTINEL_CLOSE = "\uE003";
     NATIVE_STATE_ID = /^nzs1_[a-z2-7]{52}$/;
     NATIVE_TENSOR_ID = /^nnt1_[a-z2-7]{52}$/;
+    TEACHER_TEXT_ID = /^nzt1_[a-z2-7]{52}$/;
     NATIVE_SENTINEL = /(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?/g;
-    hasNeuraleseSentinel = (text3) => text3.includes(NATIVE_SENTINEL_OPEN);
-    isContentParts = (value) => Array.isArray(value) && value.length > 0 && value.every((part) => part && typeof part === "object" && (part.type === "text" && typeof part.text === "string" || part.type === "native_state" && isNativeStateId(part.id) && (part.stop_gradient === void 0 || part.stop_gradient === true) && (part.source_occurrence === void 0 || typeof part.source_occurrence === "string" && !!part.source_occurrence)));
+    hasNeuraleseSentinel = (text3) => text3.includes(NATIVE_SENTINEL_OPEN) || /nzt1_[a-z2-7]{52}/.test(text3);
+    isContentParts = (value) => Array.isArray(value) && value.length > 0 && value.every((part) => part && typeof part === "object" && (part.type === "text" && typeof part.text === "string" || part.type === "native_state" && isNativeStateId(part.id) && (part.stop_gradient === void 0 || part.stop_gradient === true) && (part.source_occurrence === void 0 || typeof part.source_occurrence === "string" && !!part.source_occurrence) || part.type === "teacher_text" && isTeacherTextNeuraleseId(part.id) && (part.source_occurrence === void 0 || typeof part.source_occurrence === "string" && !!part.source_occurrence)));
     NeuraleseUnsupportedError = class extends Error {
       code = "neuralese-unsupported-backend";
       constructor(detail) {
@@ -217421,12 +217674,21 @@ function setLexicalSoftStateSource(next2) {
 function setLexicalNativeAdapterSource(next2) {
   lexicalAdapterSource = next2;
 }
-var source, lexicalAdapterSource, lexicalSoftStateSource;
+function activeNativeAdapters() {
+  const lexical = lexicalAdapterSource(), explicit = nativeAdapterSource();
+  return lexical?.length ? explicit?.length ? [...lexical, ...explicit] : lexical : explicit ?? [];
+}
+function activeNativeStates() {
+  return nativeStateSource() ?? [];
+}
+var source, nativeAdapterSource, nativeStateSource, lexicalAdapterSource, lexicalSoftStateSource;
 var init_model_recording = __esm({
   "src/native/model-recording.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     source = () => void 0;
+    nativeAdapterSource = () => void 0;
+    nativeStateSource = () => void 0;
     lexicalAdapterSource = () => void 0;
     lexicalSoftStateSource = () => void 0;
   }
@@ -218175,9 +218437,9 @@ function nativeStateArtifactDependencies(artifact) {
     ...nativeStateDerivationDependencies(artifact.metadata.derivation)
   ])];
 }
-async function archiveNativeArtifactFrom(remote, archive, id2, active = /* @__PURE__ */ new Set()) {
-  if (active.has(id2)) throw new Error("neuralese-native-artifact-cycle: exact native dependencies must form a DAG");
-  const nested = new Set(active);
+async function archiveNativeArtifactFrom(remote, archive, id2, active2 = /* @__PURE__ */ new Set()) {
+  if (active2.has(id2)) throw new Error("neuralese-native-artifact-cycle: exact native dependencies must form a DAG");
+  const nested = new Set(active2);
   nested.add(id2);
   if (id2.startsWith("nzs1_")) {
     if (!archive.getNativeState || !archive.putNativeState) throw new Error("neuralese-native-archive-unavailable: configure a native state archive");
@@ -218204,15 +218466,15 @@ async function archiveNativeTensorFrom(remote, archive, id2) {
   return await archiveNativeArtifactFrom(remote, archive, id2);
 }
 async function importNativeArtifactBundle(store, states, tensors) {
-  const done = /* @__PURE__ */ new Set(), active = /* @__PURE__ */ new Set();
+  const done = /* @__PURE__ */ new Set(), active2 = /* @__PURE__ */ new Set();
   const restore = async (id2) => {
     if (done.has(id2)) return;
-    if (active.has(id2)) throw new RangeError("native artifact dependencies must form a finite DAG");
-    active.add(id2);
+    if (active2.has(id2)) throw new RangeError("native artifact dependencies must form a finite DAG");
+    active2.add(id2);
     const state = states.get(id2), tensor = tensors.get(id2);
     if (!state && !tensor) {
       if (await store.has(id2)) {
-        active.delete(id2);
+        active2.delete(id2);
         done.add(id2);
         return;
       }
@@ -218230,7 +218492,7 @@ async function importNativeArtifactBundle(store, states, tensors) {
         if ((await store.putNativeTensorArtifact(input)).id !== id2) throw new RangeError("native bundle tensor identity changed");
       }
     }
-    active.delete(id2);
+    active2.delete(id2);
     done.add(id2);
   };
   for (const id2 of [...states.keys(), ...tensors.keys()]) await restore(id2);
@@ -218864,11 +219126,11 @@ function decodeNz(bytes2) {
   }
   for (const artifact of [...nativeTensors.values(), ...nativeStates.values()]) for (const dependency of artifact.id.startsWith("nnt1_") ? nativeTensorArtifactDependencies(artifact) : nativeStateArtifactDependencies(artifact))
     if (!nativeTensors.has(dependency) && !nativeStates.has(dependency)) throw new NzFileError("neuralese-unknown-block", `native artifact lacks dependency ${dependency}`);
-  const verified = /* @__PURE__ */ new Set(), active = /* @__PURE__ */ new Set();
+  const verified = /* @__PURE__ */ new Set(), active2 = /* @__PURE__ */ new Set();
   const verify = (id2) => {
     if (verified.has(id2)) return;
-    if (active.has(id2)) throw new NzFileError("neuralese-file-format", "native derivations must form a DAG");
-    active.add(id2);
+    if (active2.has(id2)) throw new NzFileError("neuralese-file-format", "native derivations must form a DAG");
+    active2.add(id2);
     const state = nativeStates.get(id2), value = state?.metadata.derivation;
     if (state && value) {
       verify(value.parent_state_id);
@@ -218884,7 +219146,7 @@ function decodeNz(bytes2) {
       );
       else verifyNativeStateDerivationRecords(state, parent, void 0, void 0);
     }
-    active.delete(id2);
+    active2.delete(id2);
     verified.add(id2);
   };
   for (const id2 of nativeStates.keys()) verify(id2);
@@ -219369,6 +219631,8 @@ function parseNatlang(path2, text3, inherited, files2) {
     throw new NatlangSourceError(path2, "model must name one of the runtime's models, such as small");
   if (meta.uses !== void 0 && (!Array.isArray(meta.uses) || meta.uses.some((item) => typeof item !== "string" || !/^[A-Za-z_$][\w$]*(\/[A-Za-z_$][\w$]*)*$/.test(item))))
     throw new NatlangSourceError(path2, "uses must list package items by path from the package root, such as [harness/cut]");
+  if (meta.withhold !== void 0 && (!Array.isArray(meta.withhold) || meta.withhold.some((item) => typeof item !== "string" || !WITHHOLDABLE_TOOLS.includes(item))))
+    throw new NatlangSourceError(path2, `withhold lists tools this function's calls are not offered, from: ${WITHHOLDABLE_TOOLS.join(", ")}`);
   if (meta.readout === "decision") {
     const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name2, text4]) => [name2, parseType(text4)])));
     if ((finiteValues(parseType(returns), env)?.length ?? 0) < 2)
@@ -219392,7 +219656,8 @@ function parseNatlang(path2, text3, inherited, files2) {
     ...generic ? { generic } : {},
     ...meta.readout === "decision" || meta.readout === "template" ? { readout: meta.readout } : {},
     ...typeof meta.model === "string" ? { model: meta.model } : {},
-    ...Array.isArray(meta.uses) && meta.uses.length ? { uses: meta.uses } : {}
+    ...Array.isArray(meta.uses) && meta.uses.length ? { uses: meta.uses } : {},
+    ...Array.isArray(meta.withhold) && meta.withhold.length ? { withhold: [...new Set(meta.withhold)] } : {}
   };
 }
 function packageRoot(dir, files2) {
@@ -219743,7 +220008,7 @@ function findApplicationContext(start, files2) {
     dir = parent;
   }
 }
-var import_typescript11, NatlangSourceError, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
+var import_typescript11, NatlangSourceError, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
 var init_loader = __esm({
   "src/runtime/loader.ts"() {
     "use strict";
@@ -219769,7 +220034,21 @@ var init_loader = __esm({
     nodeKey = (record3) => `${record3.kind}:${record3.id}@${record3.revision}`;
     IDENTIFIER4 = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
     FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
-    NL_KEYS = /* @__PURE__ */ new Set(["description", "args", "returns", "generic", "types", "kind", "readout", "model", "uses"]);
+    NL_KEYS = /* @__PURE__ */ new Set(["description", "args", "returns", "generic", "types", "kind", "readout", "model", "uses", "withhold"]);
+    WITHHOLDABLE_TOOLS = [
+      "edit_code",
+      "diff_code",
+      "list_files",
+      "search_files",
+      "read_file",
+      "write_file",
+      "edit_file",
+      "diff_files",
+      "bash",
+      "python",
+      "delegate",
+      "editor"
+    ];
     revisionOf = (text3) => hexDigest(text3).slice(0, 16);
     TYPE_KEYS = /^(args|types|generic|returns):(.*)$/;
     ATTACHING = [];
@@ -220929,7 +221208,7 @@ var init_program_view = __esm({
     init_define_NATLANG_TS_LIBS();
     init_identity();
     init_inventory();
-    init_prompts();
+    init_program();
     ProgramView = class {
       constructor(program, binding) {
         this.program = program;
@@ -221790,6 +222069,123 @@ ${failures.map((failure2) => `${failure2.code}: ${failure2.message}`).join("\n")
   }
 });
 
+// src/native/model-budget.ts
+var ModelBudget;
+var init_model_budget = __esm({
+  "src/native/model-budget.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    ModelBudget = class {
+      constructor(maxRequests, maxTokens) {
+        this.maxRequests = maxRequests;
+        this.maxTokens = maxTokens;
+        for (const [name, value] of [["maxModelRequests", maxRequests], ["maxModelTokens", maxTokens]])
+          if (value !== void 0 && (!Number.isSafeInteger(value) || value < 0))
+            throw new RangeError(`${name} must be a non-negative safe integer`);
+      }
+      maxRequests;
+      maxTokens;
+      requests = 0;
+      tokens = 0;
+      reservedRequests = 0;
+      reservedTokens = 0;
+      requestsUnknown = false;
+      tokensUnknown = false;
+      waiters = /* @__PURE__ */ new Set();
+      async wait(signal) {
+        await new Promise((resolve2, reject2) => {
+          const wake = () => {
+            this.waiters.delete(wake);
+            signal?.removeEventListener("abort", abort);
+            resolve2();
+          };
+          const abort = () => {
+            this.waiters.delete(wake);
+            reject2(signal?.reason ?? new Error("model budget wait aborted"));
+          };
+          if (signal?.aborted) return abort();
+          this.waiters.add(wake);
+          signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
+      wake() {
+        for (const wake of this.waiters) wake();
+      }
+      hasRemaining() {
+        return (this.maxRequests === void 0 || this.requests < this.maxRequests) && (this.maxTokens === void 0 || this.tokens < this.maxTokens);
+      }
+      /** Null records unavailable usage; zero always means a measured zero. */
+      usage() {
+        return { requests: this.requestsUnknown ? null : this.requests, tokens: this.tokensUnknown ? null : this.tokens };
+      }
+      /** A forced source-text writer performs a request but samples no completion tokens. */
+      async reserveForcedText(signal) {
+        while (this.maxRequests !== void 0 && this.requests + this.reservedRequests >= this.maxRequests) {
+          if (this.requests >= this.maxRequests) return false;
+          await this.wait(signal);
+        }
+        this.requests++;
+        return true;
+      }
+      /** Reserve one request and its maximum completion tokens. */
+      async reserve(requested, signal) {
+        while (true) {
+          if (!this.hasRemaining()) return;
+          const requests = this.maxRequests === void 0 ? null : this.maxRequests - this.requests - this.reservedRequests;
+          const tokens2 = this.maxTokens === void 0 ? null : this.maxTokens - this.tokens - this.reservedTokens;
+          if ((requests === null || requests > 0) && (tokens2 === null || tokens2 > 0)) break;
+          await this.wait(signal);
+        }
+        const remaining = this.maxTokens === void 0 ? null : this.maxTokens - this.tokens - this.reservedTokens;
+        const limit = remaining === null ? requested : requested === null ? remaining : Math.min(requested, remaining);
+        if (limit !== null && limit <= 0) return;
+        this.requests++;
+        const held = this.maxTokens === void 0 ? 0 : limit;
+        this.reservedTokens += held;
+        let finished = false;
+        return { limit, finish: (used) => {
+          if (finished) throw new Error("model budget reservation finished twice");
+          finished = true;
+          this.reservedTokens -= held;
+          const valid2 = used !== void 0 && Number.isSafeInteger(used) && used >= 0;
+          if (!valid2) this.tokensUnknown = true;
+          this.tokens += valid2 ? used : held;
+          this.wake();
+        } };
+      }
+      /** Reserve the remaining graph allowance for a multi-write operation such as native view. */
+      async reserveBatch(signal) {
+        while (true) {
+          if (!this.hasRemaining()) return;
+          const requests = this.maxRequests === void 0 ? null : this.maxRequests - this.requests - this.reservedRequests;
+          const tokens2 = this.maxTokens === void 0 ? null : this.maxTokens - this.tokens - this.reservedTokens;
+          if ((requests === null || requests > 0) && (tokens2 === null || tokens2 > 0)) {
+            const heldRequests = requests ?? 0, heldTokens = tokens2 ?? 0;
+            this.reservedRequests += heldRequests;
+            this.reservedTokens += heldTokens;
+            let finished = false;
+            return { maxRequests: requests, maxTokens: tokens2, finish: (usage) => {
+              if (finished) throw new Error("model budget reservation finished twice");
+              finished = true;
+              this.reservedRequests -= heldRequests;
+              this.reservedTokens -= heldTokens;
+              const valid2 = usage && Number.isSafeInteger(usage.requests) && usage.requests >= 0 && Number.isSafeInteger(usage.tokens) && usage.tokens >= 0;
+              if (!valid2) {
+                this.requestsUnknown = true;
+                this.tokensUnknown = true;
+              }
+              this.requests += valid2 ? usage.requests : heldRequests;
+              this.tokens += valid2 ? usage.tokens : heldTokens;
+              this.wake();
+            } };
+          }
+          await this.wait(signal);
+        }
+      }
+    };
+  }
+});
+
 // src/runtime/runtime.ts
 var runtime_exports = {};
 __export(runtime_exports, {
@@ -221828,7 +222224,7 @@ var init_runtime = __esm({
     init_define_NATLANG_TS_LIBS();
     init_model_recording();
     init_program_view();
-    init_prompts();
+    init_program();
     init_compatibility();
     init_identity();
     init_external();
@@ -221838,6 +222234,7 @@ var init_runtime = __esm({
     init_decision();
     init_neuralese2();
     init_refinement();
+    init_model_budget();
     init_effects();
     MODE_RANK = { off: 0, shadow: 1, on: 2 };
     NatlangPlatformUnavailableError = class extends Error {
@@ -221871,12 +222268,12 @@ var init_runtime = __esm({
         let binding = options.adaptation === void 0 ? runtime.options.adaptation : options.adaptation;
         const program = options.program ?? runtime.options.program ?? binding?.program;
         const guidanceBinding = options.nativeProgramGuidance ?? runtime.options.nativeProgramGuidance;
-        if (guidanceBinding) {
+        this.nativeProgramGuidance = guidanceBinding ? programGuidance(guidanceBinding) : void 0;
+        if (this.nativeProgramGuidance) {
           if (!program) throw new Error("native program guidance requires its exact program descriptor");
-          if (guidanceBinding.program_id !== program.id)
+          if (programGuidanceProgram(this.nativeProgramGuidance) !== program.id)
             throw new Error("native program guidance binding belongs to a different program");
         }
-        this.nativeProgramGuidance = guidanceBinding ? nativeProgramGuidance(guidanceBinding) : void 0;
         if (binding) {
           const artifact = binding.artifact;
           if (!isAdaptationBinding(binding)) {
@@ -221922,6 +222319,7 @@ var init_runtime = __esm({
         const externalSignal = options.signal ?? runtime.options.signal;
         this.signal = externalSignal ? AbortSignal.any([externalSignal, this.abort.signal]) : this.abort.signal;
         this.episodeBudget = { limit: runtime.options.limits?.maxEpisodes, used: 0 };
+        this.modelBudget = new ModelBudget(runtime.options.limits?.maxModelRequests, runtime.options.limits?.maxModelTokens);
         const timeout = runtime.options.limits?.timeoutMs;
         if (timeout !== void 0) this.timer = setTimeout(() => this.cancel(new Error("natlang task timed out")), timeout);
         this.traceSink = options.trace;
@@ -221942,6 +222340,7 @@ var init_runtime = __esm({
       serviceScopes;
       signal;
       episodeBudget;
+      modelBudget;
       traces = [];
       executionOccurrenceCounts = /* @__PURE__ */ new Map();
       programView;
@@ -222005,6 +222404,26 @@ var init_runtime = __esm({
       }
       abort = new AbortController();
       callSequence = 0;
+      effectSequence = 0;
+      graphChildrenByParent = /* @__PURE__ */ new Map();
+      /** Allocate a task-wide order at the actual service request boundary. */
+      nextGraphEffectOrder() {
+        return this.effectSequence++;
+      }
+      registerGraphCall(callId, parentId) {
+        if (!parentId) return;
+        const children2 = this.graphChildrenByParent.get(parentId) ?? [];
+        children2.push(callId);
+        this.graphChildrenByParent.set(parentId, children2);
+      }
+      discardGraphCall(callId, parentId) {
+        if (!parentId) return;
+        const children2 = this.graphChildrenByParent.get(parentId);
+        if (children2) this.graphChildrenByParent.set(parentId, children2.filter((id2) => id2 !== callId));
+      }
+      graphChildren(callId) {
+        return [...this.graphChildrenByParent.get(callId) ?? []];
+      }
       definitionCalls = /* @__PURE__ */ new Map();
       taskOrdinal;
       definitionSeedId(key) {
@@ -222083,7 +222502,7 @@ var init_runtime = __esm({
         const judgeOf = (name, config) => {
           if (!config) return void 0;
           const id2 = config.id ?? config.driver.model ?? (config.driver.name || "model");
-          const scorer = decisionScorer(config.driver);
+          const scorer = this.modelBudget.maxRequests === void 0 && this.modelBudget.maxTokens === void 0 ? decisionScorer(config.driver) : void 0;
           if (scorer) return decisionJudge(scorer, { id: id2 });
           return frame ? callJudge(async (value, predicate, signal) => {
             const { invokeDefinition: invokeDefinition2 } = await Promise.resolve().then(() => (init_kernel(), kernel_exports));
@@ -222233,7 +222652,7 @@ var init_runtime = __esm({
 // src/calls/dispatch.ts
 function admit(compilation, args, mode, provided = () => true) {
   const shadows = [], guardErrors = [];
-  let active;
+  let active2;
   for (const item of compilation.cases) {
     if (item.tier !== "active" && item.tier !== "shadow") continue;
     if (!(item.services ?? []).every(provided)) continue;
@@ -222249,10 +222668,10 @@ function admit(compilation, args, mode, provided = () => true) {
       guardErrors.push({ hash: item.hash, error: error instanceof Error ? error.message : String(error) });
     }
     if (!admitted) continue;
-    if (item.tier === "active" && mode === "on" && !active) active = item;
+    if (item.tier === "active" && mode === "on" && !active2) active2 = item;
     else if (item.tier === "shadow" || item.tier === "active" && mode === "shadow") shadows.push(item);
   }
-  return { active, shadows, guardErrors };
+  return { active: active2, shadows, guardErrors };
 }
 function handoffNote(input) {
   const done = [
@@ -223471,24 +223890,24 @@ function chatCompletionModelTurn(transport, options = {}) {
           if (!wireName) throw new Error(`tool call ${index} has no function name`);
           return [reverse[wireName] ?? wireName, decodeArguments(fn?.arguments)];
         });
-        const replyText = contentText(message2?.content);
+        const replyText2 = contentText(message2?.content);
         let parsedNative = false;
-        if (!calls.length && TOOL_MARKUP.test(replyText)) {
+        if (!calls.length && TOOL_MARKUP.test(replyText2)) {
           if (responseTools && !truncated) {
             try {
-              calls.push(...parseNativeXmlCalls(replyText, responseTools).map(([name, args]) => [reverse[name] ?? name, args]));
+              calls.push(...parseNativeXmlCalls(replyText2, responseTools).map(([name, args]) => [reverse[name] ?? name, args]));
               parsedNative = true;
             } catch {
               throw new LeakedCall("the tool call came back as invalid native XML");
             }
           } else throw new LeakedCall("the tool call came back as text");
         }
-        const written = calls.length ? void 0 : callWrittenAsText(replyText, tools);
+        const written = calls.length ? void 0 : callWrittenAsText(replyText2, tools);
         if (written) calls.push([reverse[written[0]] ?? written[0], written[1]]);
         const reasoning = message2?.reasoning_content ?? message2?.reasoning;
         return finish({
           calls,
-          text: parsedNative ? "" : replyText,
+          text: parsedNative ? "" : replyText2,
           raw_calls: rawCalls,
           ...parsedNative ? { tool_parse: { schema: "natlang.native-xml-tool-parse/1", source: "assistant-content", schema_custody: "response_tools", policy_sha256: NATIVE_XML_POLICY_SHA256, wire_tool_aliases: structuredClone(forward) } } : {},
           ...typeof reasoning === "string" && reasoning.trim() ? { reasoning } : {},
@@ -223822,6 +224241,49 @@ var init_neuralese_server = __esm({
   }
 });
 
+// src/model/native-operator.ts
+var native_operator_exports = {};
+__export(native_operator_exports, {
+  OPERATOR_CAPABILITY: () => OPERATOR_CAPABILITY,
+  serverCompactor: () => serverCompactor
+});
+function serverCompactor(options) {
+  const base = options.endpoint.replace(/\/$/, "");
+  return async (site2) => {
+    if (!serves(options.info, OPERATOR_CAPABILITY))
+      throw Object.assign(
+        new Error("neuralese-operator-unavailable: the server does not serve learned operators"),
+        { code: "neuralese-operator-unavailable" }
+      );
+    if (!options.store.putNativeState || !options.store.getNativeState)
+      throw new Error("neuralese-native-archive-unavailable: learned operators need a native-capable archive");
+    const body = site2.operator === "compact-history" ? { operator: site2.operator, messages: site2.messages, context: site2.context ?? [], tools: site2.tools, note: site2.note ?? "" } : { operator: site2.operator, instructions: site2.instructions, value: site2.value, note: site2.note ?? "" };
+    const response = await fetchModel(`${base}/v1/neuralese/operator`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...options.headers },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error(`native operator failed (${response.status}): ${(await response.text()).slice(0, 1e3)}`);
+    const result = await response.json();
+    if (typeof result.id !== "string" || result.operator?.name !== site2.operator)
+      throw new Error("neuralese-operator-integrity: the server did not return this operator's native state");
+    await archiveNativeState({ endpoint: options.endpoint, headers: options.headers, store: options.store }, result.id);
+    return neuraleseRef("Neuralese<string>", result.id);
+  };
+}
+var OPERATOR_CAPABILITY;
+var init_native_operator = __esm({
+  "src/model/native-operator.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_neuralese2();
+    init_chat_completion();
+    init_neuralese_info();
+    init_native_state_client();
+    OPERATOR_CAPABILITY = "operator/1";
+  }
+});
+
 // src/model/native-state-client.ts
 async function nativeStateRuntimeOptions(options, settings = {}) {
   const info = options.info ?? await neuraleseServerInfo(options.endpoint, { headers: options.headers });
@@ -223838,12 +224300,15 @@ async function nativeStateRuntimeOptions(options, settings = {}) {
   const nativeStateConsumer = nativeStateConsumerFromInfo(info);
   if (!nativeStateConsumer)
     return failure("neuralese-native-state-unavailable", "the server must declare native identity and consumption modes");
+  const { serverCompactor: serverCompactor2, OPERATOR_CAPABILITY: OPERATOR_CAPABILITY2 } = await Promise.resolve().then(() => (init_native_operator(), native_operator_exports));
+  const compactor = serves(info, OPERATOR_CAPABILITY2) ? serverCompactor2({ ...options, info }) : void 0;
   return {
     store: options.store,
     dialect,
     nativeStateConsumer,
     nativeStateConsumerForCall: async () => nativeStateConsumerFromInfo(await neuraleseServerInfo(options.endpoint, { headers: options.headers })),
-    ...port ? { port } : {}
+    ...port ? { port } : {},
+    ...compactor ? { compactor } : {}
   };
 }
 async function archiveNativeState(options, id2) {
@@ -223905,6 +224370,8 @@ async function nativeTextOperation(options, operation, body) {
   if (!/^nzs1_[a-z2-7]{52}$/.test(result.id)) return failure("neuralese-block-integrity", "native writer returned no native content address");
   const artifact = await archiveNativeState(options, result.id);
   validateSource(result, artifact, body.text, info);
+  if (operation === "write-text" && nativeCanonicalJson(result.source_capture.adapter_binding ?? null) !== nativeCanonicalJson(artifact.metadata.adapter_binding ?? null))
+    return failure("neuralese-native-source-integrity", "text writer actor binding differs from its archived state");
   let logicalPosition = 0;
   const explicitSegments = [];
   for (const segment of result.source_capture.segments) {
@@ -223976,7 +224443,7 @@ async function nativeStateWritePort(options) {
   if (!native?.enabled || !native.architecture || !serves(info, "native.text-write"))
     return failure("neuralese-native-text-write-unavailable", "configure a native server with forced text producer support");
   const dialect = `native-state/${native.architecture}`;
-  return { dialect, async write(text3, extra = {}) {
+  return { dialect, forcedText: true, async write(text3, extra = {}) {
     return (await nativeTextOperation({ ...options, info }, "write-text", { text: text3, ...extra })).meta;
   } };
 }
@@ -224099,10 +224566,10 @@ function dataDigest(value) {
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, dataDigest(item)]));
   return value;
 }
-function snapshotContextValue(value, active = /* @__PURE__ */ new WeakSet()) {
+function snapshotContextValue(value, active2 = /* @__PURE__ */ new WeakSet()) {
   if (!value || typeof value !== "object") return value;
   if (value instanceof Context || isLiveCapture(value)) return value;
-  if (isNeuraleseRef(value)) return neuraleseRef(value.$neuralese.type, value.$neuralese.id, value.$neuralese.stop_gradient, value.$neuralese.source_occurrence);
+  if (isNeuraleseRef(value)) return neuraleseRef(value.$neuralese.type, value.$neuralese.id, value.$neuralese.stop_gradient, value.$neuralese.source_occurrence, value.$neuralese.teacher_text === true);
   if (value instanceof ArrayBuffer) return value.slice(0);
   if (ArrayBuffer.isView(value)) {
     const buffer = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
@@ -224111,18 +224578,18 @@ function snapshotContextValue(value, active = /* @__PURE__ */ new WeakSet()) {
     return new TypedArray(buffer);
   }
   if (Array.isArray(value)) {
-    if (active.has(value)) throw new TypeError("context JSON data must not contain cycles");
-    active.add(value);
-    const copy2 = value.map((item) => snapshotContextValue(item, active));
-    active.delete(value);
+    if (active2.has(value)) throw new TypeError("context JSON data must not contain cycles");
+    active2.add(value);
+    const copy2 = value.map((item) => snapshotContextValue(item, active2));
+    active2.delete(value);
     return Object.freeze(copy2);
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return value;
-  if (active.has(value)) throw new TypeError("context JSON data must not contain cycles");
-  active.add(value);
-  const copy = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshotContextValue(item, active)]));
-  active.delete(value);
+  if (active2.has(value)) throw new TypeError("context JSON data must not contain cycles");
+  active2.add(value);
+  const copy = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshotContextValue(item, active2)]));
+  active2.delete(value);
   return Object.freeze(copy);
 }
 function snapshotContextData(data) {
@@ -224494,6 +224961,43 @@ var init_contexts = __esm({
   }
 });
 
+// src/model/teacher-text-neuralese.ts
+function validateTeacherTextReadBinding(value, block) {
+  if (!isNeuraleseRef(value) || !isTeacherTextNeuraleseId(value.$neuralese.id) || value.$neuralese.teacher_text !== true || !block)
+    throw new Error("teacher-text read needs a case-local typed reference");
+  const ref = value.$neuralese;
+  if (!block.writer_node || block.id !== ref.id || block.type !== ref.type || ref.source_occurrence !== block.writer_node || block.dialect !== TEACHER_TEXT_NEURALESE_DIALECT || !/^[0-9a-f]{64}$/.test(block.body_sha256) || hex(block.body) !== block.body_sha256 || typeof block.producer_call_id !== "string" || !block.producer_call_id || block.type_aliases && Object.values(block.type_aliases).some((source2) => typeof source2 !== "string"))
+    throw new Error("teacher-text read does not match its typed body, writer occurrence, or source digest");
+  return block;
+}
+function mergeTeacherTextTypeAliases(readScope = {}, writerScope = {}) {
+  const canonical4 = (name, source2) => {
+    try {
+      return formatType(parseType(source2));
+    } catch {
+      throw new Error(`teacher-text read has invalid type alias ${name}`);
+    }
+  };
+  for (const [name, source2] of Object.entries(writerScope)) {
+    if (Object.hasOwn(readScope, name) && canonical4(name, readScope[name]) !== canonical4(name, source2))
+      throw new Error(`teacher-text read has conflicting type alias ${name}`);
+  }
+  return { ...readScope, ...writerScope };
+}
+var TEACHER_TEXT_NEURALESE_DIALECT, hex;
+var init_teacher_text_neuralese = __esm({
+  "src/model/teacher-text-neuralese.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    init_neuralese_store();
+    init_neuralese2();
+    init_types();
+    TEACHER_TEXT_NEURALESE_DIALECT = "nd:teacher-text/1";
+    hex = hexDigest;
+  }
+});
+
 // src/neuralese/text-init.ts
 var text_init_exports = {};
 __export(text_init_exports, {
@@ -224787,6 +225291,71 @@ async function readNeuraleseForCurrentTask(value) {
   if (typeof value === "string") return value;
   if (!isNeuraleseRef(value)) throw new TypeError("typed Neuralese readout requires a Neuralese reference");
   const task = currentFrame()?.task;
+  const frame = currentFrame();
+  const ref = value.$neuralese;
+  if (isTeacherTextNeuraleseId(ref.id) || ref.teacher_text === true) {
+    const transport = task?.runtime.options.neuralese?.teacherText;
+    let block;
+    try {
+      block = validateTeacherTextReadBinding(value, transport?.get(ref.id));
+    } catch (error) {
+      throw new NeuraleseReadoutCapabilityError(error instanceof Error ? error.message : String(error));
+    }
+    if (!frame) throw new NeuraleseReadoutCapabilityError("the teacher-text read has no active task call");
+    let declared2;
+    try {
+      declared2 = parseType(ref.type);
+    } catch {
+      throw new NeuraleseReadoutCapabilityError("the teacher-text reference has an invalid declared type");
+    }
+    if (declared2.kind !== "neuralese")
+      throw new NeuraleseReadoutCapabilityError("the teacher-text reference does not declare Neuralese<T>");
+    const writerNode = block.writer_node;
+    let typeAliases;
+    try {
+      typeAliases = mergeTeacherTextTypeAliases(frame.typeAliases, block.type_aliases);
+    } catch (error) {
+      throw new NeuraleseReadoutCapabilityError(error instanceof Error ? error.message : String(error));
+    }
+    const typeAliasesSha256 = hexDigest(JSON.stringify(Object.fromEntries(Object.entries(typeAliases).sort(([a], [b]) => a.localeCompare(b)))));
+    graphNode(
+      traceFor(frame.parentCallId),
+      "readout",
+      {
+        type: formatType(declared2.element),
+        call_id: frame.parentCallId ?? null,
+        transport: "teacher-text-model-read/1",
+        block: ref.id,
+        type_aliases_sha256: typeAliasesSha256
+      },
+      [{ node: writerNode, port: "args", block: ref.id }]
+    );
+    const { invokeDefinition: invokeDefinition2 } = await Promise.resolve().then(() => (init_kernel(), kernel_exports));
+    const elementType = formatType(declared2.element);
+    return invokeDefinition2(frame, {
+      id: "natlang:teacher-text-read/1",
+      name: "natlang.read",
+      body: "Read the supplied Neuralese value. Return exactly the value it contains in its declared element type. Preserve its content and structure; do not summarize, add fields, or add commentary.",
+      params: [{ name: "value", type: ref.type }],
+      returns: elementType,
+      types: typeAliases,
+      codebase: {},
+      subtype: "function",
+      readout: "template",
+      revision: "teacher-text-model-read/1"
+    }, [value], { manifest: {
+      internal: true,
+      adHoc: false,
+      teacher_text_readout: {
+        schema: "natlang.teacher-text-model-read/1",
+        block: ref.id,
+        type: ref.type,
+        writer_node: writerNode,
+        body_sha256: block.body_sha256,
+        producer_call_id: block.producer_call_id
+      }
+    } });
+  }
   const library = task?.services?.neuralese;
   if (!library?.bodies?.read) throw new NeuraleseReadoutCapabilityError("services.neuralese is missing or has no read body");
   const store = task?.runtime.options.neuralese?.store;
@@ -224823,6 +225392,8 @@ var init_combinators = __esm({
     init_neuralese_server();
     init_chat_completion();
     init_hash();
+    init_types();
+    init_teacher_text_neuralese();
     COMBINATORS = {
       map: {
         type: "(v: Neuralese<unknown>, f: unknown) => Neuralese<unknown>",
@@ -224957,7 +225528,117 @@ var init_return_errors = __esm({
   }
 });
 
+// src/native/staged-result.ts
+var RESULT_PREFIX, STAGED_RESULT_NOTICE, RECORDED_RESULT_NOTICE, escapeRegex, noticePatterns;
+var init_staged_result = __esm({
+  "src/native/staged-result.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    RESULT_PREFIX = ' as the result. If this is the result of the task you were given and you are satisfied with it, reply done to return exactly this value without a tool call, or call return_result with status "success" and omit value to finish using this exact stored result. ';
+    STAGED_RESULT_NOTICE = RESULT_PREFIX + "A JavaScript `return` in eval only stages this value; it does not end this invocation. To complete a child step or iteration transition, finish it now so its caller receives this state and continues. You can keep working and return a different value later only when more work belongs in this same invocation.";
+    RECORDED_RESULT_NOTICE = RESULT_PREFIX + "You can keep working and return a different value later.";
+    escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    noticePatterns = [STAGED_RESULT_NOTICE, RECORDED_RESULT_NOTICE].map((notice) => new RegExp("(?:^|\\n)Staged ([\\s\\S]+)" + escapeRegex(notice) + "$"));
+  }
+});
+
+// src/runtime/model-facing.ts
+function enabled() {
+  const raw = (typeof process === "undefined" ? "" : process.env.NATLANG_MODEL_FACING ?? "").trim();
+  if (!raw) return new Set(ADOPTED2);
+  if (raw === "none") return /* @__PURE__ */ new Set();
+  if (raw === "combined") return new Set(MODEL_FACING_VARIANTS);
+  return new Set(raw.split(",").map((name) => name.trim()).filter(Boolean));
+}
+var MODEL_FACING_VARIANTS, ADOPTED2, active, modelFacing;
+var init_model_facing = __esm({
+  "src/runtime/model-facing.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    MODEL_FACING_VARIANTS = ["effect-receipt", "read-file-binding", "reply-text-with-calls"];
+    ADOPTED2 = ["effect-receipt", "read-file-binding"];
+    active = enabled();
+    modelFacing = (name) => active.has(name);
+  }
+});
+
 // src/native/runtime.ts
+function typeAliasesFromEnv(env) {
+  const chain = [];
+  for (let current = env; current; current = current.parent) chain.unshift(current);
+  const aliases = {};
+  for (const current of chain) for (const [name, type] of Object.entries(current.names)) aliases[name] = formatType(type);
+  return aliases;
+}
+function computedNeuraleseMarkerConcatenation(code, codebase, isNeuraleseType, neuraleseResult) {
+  const source2 = import_typescript17.default.createSourceFile("natlang-eval.ts", code, import_typescript17.default.ScriptTarget.Latest, true, import_typescript17.default.ScriptKind.TS);
+  const partsOf2 = (expression) => import_typescript17.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript17.default.SyntaxKind.PlusToken ? [...partsOf2(expression.left), ...partsOf2(expression.right)] : [expression];
+  const hasComputedMarker = (expression) => {
+    if (import_typescript17.default.isTemplateExpression(expression)) {
+      const templateText = expression.head.text + expression.templateSpans.map((span) => span.literal.text).join("");
+      return expression.templateSpans.length > 0 && templateText.includes("<|neuralese|>") && templateText.includes("<|/neuralese|>");
+    }
+    const parts = partsOf2(expression);
+    const literalText = parts.filter(import_typescript17.default.isStringLiteralLike).map((part) => part.text);
+    const hasOpen = literalText.some((text3) => text3.includes("<|neuralese|>"));
+    const hasClose = literalText.some((text3) => text3.includes("<|/neuralese|>"));
+    const hasComputedPart = parts.some((part) => !import_typescript17.default.isStringLiteralLike(part) && !import_typescript17.default.isNoSubstitutionTemplateLiteral(part));
+    return hasOpen && hasClose && hasComputedPart;
+  };
+  const expressionPath = (expression) => {
+    if (import_typescript17.default.isIdentifier(expression)) return [expression.text];
+    if (import_typescript17.default.isPropertyAccessExpression(expression)) {
+      const base = expressionPath(expression.expression);
+      return base ? [...base, expression.name.text] : void 0;
+    }
+    return void 0;
+  };
+  const callableArgumentTypes = (expression) => {
+    const path2 = expressionPath(expression);
+    if (!path2) return void 0;
+    let items = codebase;
+    let item;
+    for (let index = 0; index < path2.length; index++) {
+      item = items[path2[index]];
+      if (!item) return void 0;
+      const next2 = path2[index + 1];
+      if (item.kind === "module" && next2 && item.exports[next2]?.kind === "function")
+        return Object.values(item.exports[next2].args);
+      if (index + 1 === path2.length) return item.kind === "natlang" ? Object.values(item.args) : void 0;
+      items = item.codebase;
+    }
+    return void 0;
+  };
+  let found;
+  const computedVariables = /* @__PURE__ */ new Set();
+  const collectComputedVariables = (node) => {
+    if (import_typescript17.default.isVariableDeclaration(node) && import_typescript17.default.isIdentifier(node.name) && node.initializer && hasComputedMarker(node.initializer))
+      computedVariables.add(node.name.text);
+    import_typescript17.default.forEachChild(node, collectComputedVariables);
+  };
+  collectComputedVariables(source2);
+  const visit = (node) => {
+    if (found) return;
+    if (import_typescript17.default.isReturnStatement(node) && node.expression && neuraleseResult && (hasComputedMarker(node.expression) || import_typescript17.default.isIdentifier(node.expression) && computedVariables.has(node.expression.text))) {
+      found = node.expression;
+      return;
+    }
+    if (import_typescript17.default.isVariableDeclaration(node) && node.type && isNeuraleseType(node.type.getText(source2)) && node.initializer && hasComputedMarker(node.initializer)) {
+      found = node.initializer;
+      return;
+    }
+    if (import_typescript17.default.isCallExpression(node)) {
+      const parameters = callableArgumentTypes(node.expression);
+      for (const [index, argument] of node.arguments.entries()) if (parameters?.[index] && isNeuraleseType(parameters[index]) && (hasComputedMarker(argument) || import_typescript17.default.isIdentifier(argument) && computedVariables.has(argument.text))) {
+        found = argument;
+        return;
+      }
+    }
+    import_typescript17.default.forEachChild(node, visit);
+  };
+  visit(source2);
+  return found;
+}
 function diagnosticValue(value, holder, liveIdentity) {
   if (portableSizeAtMost(value, TRANSCRIPT_VALUE_CHARS) && !containsLive(value)) return dump(value);
   return { $diagnostic_preview: oneLine(value, holder, liveIdentity), complete: false, holder };
@@ -224977,19 +225658,19 @@ hint: ${hint}` : ""}`,
     codes: error.diagnostics.map((diagnostic) => diagnostic.code)
   };
 }
-function jsonSerializableType(type, env, active = /* @__PURE__ */ new Set()) {
+function jsonSerializableType(type, env, active2 = /* @__PURE__ */ new Set()) {
   const resolved = env.resolve(type);
-  if (active.has(resolved)) return false;
+  if (active2.has(resolved)) return false;
   if (resolved.kind === "prim") return ["string", "number", "boolean", "null"].includes(resolved.name);
   if (resolved.kind === "lit") return typeof resolved.value === "string" || typeof resolved.value === "number" && Number.isFinite(resolved.value);
-  active.add(resolved);
+  active2.add(resolved);
   try {
-    if (resolved.kind === "union") return resolved.members.length > 0 && resolved.members.every((member) => jsonSerializableType(member, env, active));
-    if (resolved.kind === "list" || resolved.kind === "dict") return jsonSerializableType(resolved.element, env, active);
-    if (resolved.kind === "record") return resolved.fields.every((field) => jsonSerializableType(field.type, env, active));
+    if (resolved.kind === "union") return resolved.members.length > 0 && resolved.members.every((member) => jsonSerializableType(member, env, active2));
+    if (resolved.kind === "list" || resolved.kind === "dict") return jsonSerializableType(resolved.element, env, active2);
+    if (resolved.kind === "record") return resolved.fields.every((field) => jsonSerializableType(field.type, env, active2));
     return false;
   } finally {
-    active.delete(resolved);
+    active2.delete(resolved);
   }
 }
 function coerceCompleteJson(value, type, env, path2) {
@@ -225125,7 +225806,7 @@ function applyTypedTextRefs(value, plans, refs) {
   return rewrite(value, root2);
 }
 function typedJsonSource(value) {
-  const active = /* @__PURE__ */ new Set();
+  const active2 = /* @__PURE__ */ new Set();
   const encode2 = (item) => {
     if (item === null) return "null";
     if (typeof item === "string") return JSON.stringify(item);
@@ -225135,22 +225816,22 @@ function typedJsonSource(value) {
       return Object.is(item, -0) ? "-0" : String(item);
     }
     if (Array.isArray(item)) {
-      if (active.has(item)) throw new TypeError("cyclic JSON value");
-      active.add(item);
+      if (active2.has(item)) throw new TypeError("cyclic JSON value");
+      active2.add(item);
       try {
         return `[${item.map(encode2).join(",")}]`;
       } finally {
-        active.delete(item);
+        active2.delete(item);
       }
     }
     if (item && typeof item === "object") {
-      if (active.has(item)) throw new TypeError("cyclic JSON value");
-      active.add(item);
+      if (active2.has(item)) throw new TypeError("cyclic JSON value");
+      active2.add(item);
       try {
         const record3 = item;
         return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${encode2(record3[key])}`).join(",")}}`;
       } finally {
-        active.delete(item);
+        active2.delete(item);
       }
     }
     throw new TypeError("value is not JSON-representable");
@@ -225446,7 +226127,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript17, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -225479,7 +226160,10 @@ var init_runtime2 = __esm({
     init_introspection();
     init_tool_surface();
     init_return_errors();
+    init_staged_result();
+    init_model_facing();
     init_tool_markup();
+    import_typescript17 = __toESM(require_typescript(), 1);
     init_hash();
     SELF_CALL_ADVICE = "Do what its instructions ask here. For a judgment, decide it yourself from the inputs and return the answer with return_result; use eval only for exact work the instructions need.";
     oneLine = (value, holder, liveIdentity, untrusted2) => renderValue(value, { holder, budget: 80, liveIdentity, untrusted: untrusted2 });
@@ -225592,7 +226276,7 @@ reading it through, and rather than repeating work.`
     };
     JSON_STRING_TYPE = { kind: "prim", name: "string" };
     stagedMessage = (value, liveIdentity, untrusted2) => `
-Staged ${stagedText(value, liveIdentity, untrusted2)} as the result. If this is the result of the task you were given and you are satisfied with it, reply done to return exactly this value without a tool call, or call return_result with status "success" and omit value to finish using this exact stored result. You can keep working and return a different value later.`;
+Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
     isHandle = (value) => value instanceof Folder || value instanceof FolderHandle || value instanceof FileHandle;
     itemRef = (container, key, type, env, path2, deny = "") => ({
       path: path2,
@@ -225665,7 +226349,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)} as the result. If this is 
           coverage: "natlang-state-and-observed-host-effects",
           ...options.manifest ?? {}
         });
-        bindTraceScope(this.trace, this.episodeBudget);
+        bindTraceScope(this.trace, options.sharedProducerScope ?? this.episodeBudget);
         this.exactHostTraceCapture = options.exactHostTraceCapture;
         const capture = this.exactHostTraceCapture;
         if (capture && (!Number.isSafeInteger(capture.maxBytes) || capture.maxBytes < 1 || capture.maxBytes > 8e6 || !Array.isArray(capture.definitionSources) || !capture.definitionSources.length && capture.captureAllOutputs !== true || capture.captureAllOutputs !== void 0 && typeof capture.captureAllOutputs !== "boolean" || capture.definitionSources.some((source2) => typeof source2 !== "string" || !source2.endsWith(".nl")) || !Array.isArray(capture.inputArguments) || capture.inputArguments.some((name) => typeof name !== "string" || !name)))
@@ -225729,7 +226413,8 @@ Staged ${stagedText(value, liveIdentity, untrusted2)} as the result. If this is 
             source: "call-argument",
             markerContext: "typed-argument",
             argumentName: parameter.name,
-            inputs: [callerInput]
+            inputs: [callerInput],
+            typeAliases: Object.fromEntries(Object.entries(aliases).map(([name, alias]) => [name, formatType(alias)]))
           });
         }
         return normalized;
@@ -225754,12 +226439,16 @@ Staged ${stagedText(value, liveIdentity, untrusted2)} as the result. If this is 
           call_id: callId,
           ...metadata.argumentName ? { argument_type: type } : { result_type: type },
           text_body_sha256: bodySha,
+          ...this.neuralese?.teacherText && metadata.typeAliases ? { type_aliases: metadata.typeAliases } : {},
           ...metadata.resultPath ? { result_path: metadata.resultPath } : {},
           ...metadata.argumentName ? { argument_name: metadata.argumentName } : {}
         };
         const block = await port.write(text3, { type, producer });
+        const teacherText = isTeacherTextNeuraleseId(block.id) && block.producer?.kind === "teacher-text-emulation";
+        if (isTeacherTextNeuraleseId(block.id) && (!teacherText || !this.neuralese?.teacherText?.get(block.id)))
+          throw new NeuraleseUnsupportedError("teacher-text artifact has no exact case-local body store");
         const sourceTurn = metadata.inputs.find((input) => /#turn\d+$/.test(input.node))?.node ?? "";
-        graphNode(this.trace, "block_write", {
+        const writerNode = graphNode(this.trace, "block_write", {
           call_id: callId,
           block: block.id,
           length: block.length,
@@ -225774,6 +226463,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)} as the result. If this is 
           text_body_sha256: bodySha,
           ...producer.result_path ? { result_path: producer.result_path } : {},
           ...producer.argument_name ? { argument_name: producer.argument_name } : {},
+          ...teacherText ? { format: "teacher-text", producer: "teacher-text-emulation", learned_vectors: false, tokenizer_ids: false } : {},
           ...block.native_state ? {
             format: "native-state",
             native_identity: {
@@ -225785,7 +226475,8 @@ Staged ${stagedText(value, liveIdentity, untrusted2)} as the result. If this is 
             source_capture: block.producer?.native_source_capture
           } : {}
         }, metadata.inputs);
-        return neuraleseRef(type, block.id);
+        if (teacherText && writerNode) this.neuralese?.teacherText?.recordWriter(block.id, writerNode);
+        return neuraleseRef(type, block.id, false, writerNode, teacherText);
       }
       async evaluate(node, code, scope, live2, timeoutMs, signal) {
         this.checkInterruption();
@@ -226235,6 +226926,13 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
        * A final reply's text as the result when the declared return type accepts it. Neuralese<string> text goes through
        * the typed block writer; a bare "done" asks for the already staged value.
        */
+      /** Whether a plain, complete reply would be this call's result (a text-typed call with nothing staged). */
+      takesTextResult() {
+        if (this.lam.type.kind !== "lambda" || this.lam.return !== MISSING) return false;
+        const resolved = this.env.resolve(this.lam.type.returns);
+        const element = resolved.kind === "neuralese" ? this.env.resolve(resolved.element) : resolved;
+        return element.kind === "prim" && element.name === "string";
+      }
       async acceptTextResult(text3) {
         const answer = text3.trim();
         if (this.lam.type.kind !== "lambda" || this.lam.return !== MISSING || !answer || /^done[.!]?$/i.test(answer)) return false;
@@ -226335,6 +227033,7 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
           diagnostics: result.codes ?? []
         });
         const output = this.cuts.reduce((text3, cut) => text3.replace(cut.shown, cut.full), result.text);
+        const cutOff = this.cuts.filter((cut) => result.text.includes(cut.shown)).map((cut) => cut.full);
         this.cuts = [];
         const entry = this.transcript.length, detail = name === "eval" ? this.evalDetail : void 0;
         this.evalDetail = void 0;
@@ -226359,10 +227058,20 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
           output
         });
         this.runtime.observeState("after-action");
-        return { ...result, entry };
+        return { ...result, entry, ...cutOff.length ? { cutOff } : {} };
       }
       actionLimitReached() {
         return this.runtime.options.maxActions !== void 0 && this.actions >= this.runtime.options.maxActions || this.runtime.options.maxToolCalls !== void 0 && this.toolCalls >= this.runtime.options.maxToolCalls;
+      }
+      /** Record an agent-owned control action under the same action and transcript custody as other tools. */
+      hostAction(name, args, execute, toolCallId) {
+        this.runtime.checkInterruption();
+        if (this.completed) return this.record(name, args, { kind: "error", text: "the task has already finished" }, toolCallId);
+        if (this.actionLimitReached()) return this.record(name, args, { kind: "budget", text: "action or tool-call budget exhausted" }, toolCallId);
+        this.toolCalls++;
+        this.actions++;
+        this.lam.steps++;
+        return this.record(name, args, execute(), toolCallId);
       }
       /** The session's callable tree, rebuilt when a codebase edit publishes a new revision. */
       callables() {
@@ -226374,11 +227083,13 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
         const callId = this.runtime.currentCallId ?? this.runtime.options.runId;
         const sourceEvent = [...this.runtime.trace.events].reverse().find((event) => event.kind === "model_turn" && event.call_id === callId && typeof event.node === "string");
         const input = sourceEvent ? { node: sourceEvent.node, port: "result-source" } : { node: invocationNodeId(this.runtime.options.runId), port: "typed-result-source" };
+        const reencoded = sourceEvent ? this.runtime.trace.events.filter((event) => event.kind === "literal" && event.source_kind === "cross-model-output-source-text" && event.turn === sourceEvent.node && event.text_sha256 === hexDigest(text3) && typeof event.node === "string") : [];
         const ref = await this.runtime.writeNeuraleseText(text3, wanted, {
           sourceKind,
           source: source2,
           markerContext: "return-result",
-          inputs: [input],
+          inputs: [input, ...reencoded.map((event) => ({ node: event.node, port: "reencoded-source" }))],
+          typeAliases: typeAliasesFromEnv(this.env),
           ...resultPath ? { resultPath: ["return", ...resultPath] } : {}
         });
         return coerce(ref, wanted, this.env, "return");
@@ -226461,6 +227172,8 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
         if (this.completed) return this.record(name, args, { kind: "error", text: "the task has already finished" });
         if (!NATIVE_TOOLS.includes(name))
           return this.record(name, args, rejected(new Reject([{ path: name, code: "bad-action", expected: "a scope-eval tool" }])));
+        if (this.lam.withheldTools?.includes(name))
+          return this.record(name, args, rejected(new Reject([{ path: name, code: "withheld-tool", text: `${name} is withheld from calls of ${this.lam.functionName || "this function"} by its definition; do this step with the tools this call offers` }])));
         if (this.actionLimitReached()) return this.record(name, args, { kind: "budget", text: "action or tool-call budget exhausted" });
         this.toolCalls++;
         this.actions++;
@@ -226830,7 +227543,10 @@ ${declaration}`;
           const own = listCodebase(this.lam.codebase);
           const readable = own.length ? `a function of this program: ${own.join(", ")}` : "a function of this program, and this program has none of its own";
           const inScope = (this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : []).concat(Object.keys(this.lam.captures ?? {}), Object.keys(this.lam.let));
-          const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : void 0;
+          const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : (
+            // A text-typed call with no functions of its own (a writer) has nothing to read: its reply is its result.
+            !own.length && this.takesTextResult() ? "This call returns text: reply with the result itself, without a tool call" : void 0
+          );
           throw new Reject([{ path: requested, code: "no-such-function", expected: what ? `${readable}. ${what}` : readable }]);
         }
         const view = this.runtime.frame?.task.programView;
@@ -226917,7 +227633,9 @@ ${declaration}`;
         } else if (name === "edit_file") value = await folder2.editText(path2, String(args.find ?? ""), String(args.replace_with ?? ""), args.fuzzy === true);
         else value = folder2.diffSync(path2);
         const text3 = name === "diff_files" ? fileDiffPreview(value) : name === "list_files" ? fileListingText(value) : typeof value === "string" ? value : JSON.stringify(value, null, 1);
-        return { kind: "ok", text: this.show(text3), value };
+        const binding = name === "read_file" && modelFacing("read-file-binding") ? `
+(in eval: const text = await folder.file(${JSON.stringify(path2)}).readText())` : "";
+        return { kind: "ok", text: this.show(text3) + binding, value };
       }
       inferScopeType(value) {
         return inferValueType(value);
@@ -227034,6 +227752,33 @@ ${declaration}`;
       /** Execute one eval action as an atomic scope transaction. */
       async evaluate(written, timeoutMs, complete = false, toolCallId) {
         if (!written.trim()) throw new Reject([{ path: "code", code: "bad-action", expected: "a TypeScript statement or expression" }]);
+        const declaredResult = this.lam.type.kind === "lambda" ? this.env.resolve(this.lam.type.returns) : void 0;
+        const neuraleseElement = declaredResult?.kind === "neuralese" ? this.env.resolve(declaredResult.element) : void 0;
+        const isNeuraleseType = (source3) => {
+          try {
+            return this.env.resolve(parseType(source3)).kind === "neuralese";
+          } catch {
+            return false;
+          }
+        };
+        const hasUnsupportedMarkerExpression = computedNeuraleseMarkerConcatenation(
+          written,
+          this.lam.codebase,
+          isNeuraleseType,
+          declaredResult?.kind === "neuralese"
+        );
+        if (hasUnsupportedMarkerExpression && declaredResult?.kind === "neuralese")
+          throw new Reject([{
+            path: "code",
+            code: "computed-neuralese-marker-concatenation",
+            expected: `This function returns ${formatType(declaredResult)}. Marker bodies are literal and do not evaluate JavaScript concatenation. Return the computed value directly according to its declared type, without marker strings.`
+          }]);
+        if (hasUnsupportedMarkerExpression)
+          throw new Reject([{
+            path: "code",
+            code: "computed-neuralese-marker-concatenation",
+            expected: "This argument is declared Neuralese<T>. Marker bodies are literal and do not evaluate JavaScript concatenation. Return the computed typed value directly, without marker strings."
+          }]);
         const code = desugarNlCalls(sourceWithLiteralCalls(written));
         const scopeBefore = this.scopeSnapshot(), traceMark = this.runtime.trace.events.length;
         const inputNames = this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : [];
@@ -227072,10 +227817,10 @@ ${declaration}`;
         const currentTypes = evalTypeDeclarations(code);
         const persistentTypeNames = [.../* @__PURE__ */ new Set([...Object.keys(visibleTypes), ...Object.keys(currentTypes)])];
         const hooks = this.runtime.hooks;
-        const inputValues = Object.fromEntries(inputNames.map((name) => [name, this.lam.args[name]]).filter((entry) => ["string", "number", "boolean"].includes(typeof entry[1])));
+        const boundValues = Object.fromEntries([...Object.entries(captureRead), ...inputNames.map((name) => [name, this.lam.args[name]])].filter((entry) => ["string", "number", "boolean"].includes(typeof entry[1])));
         const compiled2 = compileScopeSnippet(code, {
           inputBindings: inputNames,
-          inputValues,
+          boundValues,
           localBindings,
           helperBindings: callableNames,
           persistentHelpers: savedHelpers,
@@ -227230,12 +227975,12 @@ ${declaration}`;
               this.activeScopeLocals?.set(capture.name, accessor);
               bound[capture.name] = [
                 () => {
-                  const active = this.activeScopeLocals?.get(capture.name);
-                  return active ? active[0]() : this.lam.let[capture.name];
+                  const active2 = this.activeScopeLocals?.get(capture.name);
+                  return active2 ? active2[0]() : this.lam.let[capture.name];
                 },
                 (value) => {
-                  const active = this.activeScopeLocals?.get(capture.name);
-                  if (active?.[1]) return active[1](value);
+                  const active2 = this.activeScopeLocals?.get(capture.name);
+                  if (active2?.[1]) return active2[1](value);
                   else this.lam.let[capture.name] = coerce(value, this.lam.letTypes[capture.name], this.env, `let/${capture.name}`);
                 }
               ];
@@ -227391,10 +228136,20 @@ This is not the result: ${refinementFailure.code}: ${refinementFailure.message}`
             this.failureDebug = void 0;
           }
           this.evalDetail = { value: output.result ?? null, console: (evaluated.logs ?? []).join("\n") };
-          const rendered = isLive(output.result) || isHandle(output.result) ? livePreview(output.result, this.runtime.displayLiveId) : this.showValue(output.result ?? null);
+          const rendered = isLive(output.result) || isHandle(output.result) ? livePreview(output.result, this.runtime.displayLiveId) : raw.valueless === true && !isHandle(output.result) ? "undefined" : this.showValue(output.result ?? null);
           const status = functionResult !== void 0 ? stagedMessage(functionResult, this.runtime.displayLiveId, this.runtime.untrusted) : notResult;
           const stored = changed.map(([name, , value]) => `local ${name} = ${oneLine(value, name, this.runtime.displayLiveId, this.runtime.untrusted)}`);
-          const storedStatus = (stored.length ? `
+          const performed = /* @__PURE__ */ new Map();
+          if (modelFacing("effect-receipt")) {
+            for (const event of this.runtime.trace.events.slice(traceMark))
+              if (event.kind === "effect" && event.phase === "completed") {
+                const name = String(event.capability ?? "service call");
+                performed.set(name, (performed.get(name) ?? 0) + 1);
+              }
+          }
+          const effectStatus = performed.size ? `
+Service calls completed by this eval (not undone; do not repeat a write): ${[...performed].map(([name, count]) => count > 1 ? `${name} x${count}` : name).join(", ")}.` : "";
+          const storedStatus = effectStatus + (stored.length ? `
 Stored ${stored.join("; ")}.` : "") + (compiled2.transientHelpers?.length ?? 0 ? `
 ${compiled2.transientHelpers.map((helper) => `${helper.name} is available only in this eval because ${helper.reason}; use it here or move its dependencies into persistent scope.`).join("\n")}` : "");
           const unset = compiled2.bindings.filter((binding) => binding.mutable && !binding.initializer).map((binding) => binding.name).filter((name) => output.bindings[name] === void 0 && !Object.hasOwn(this.lam.let, name));
@@ -227554,25 +228309,45 @@ ${requested.tool}: ${refused.text}` };
   }
 });
 
+// src/native/operator-frames.ts
+function framedState(operator, ref) {
+  const frame = OPERATOR_FRAMES[operator];
+  return frame.open + neuraleseRefSentinel(ref) + frame.close;
+}
+var OPERATOR_FRAMES;
+var init_operator_frames = __esm({
+  "src/native/operator-frames.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_neuralese2();
+    OPERATOR_FRAMES = {
+      "compact-value": { open: "Compacted value: ", close: "\n\n" },
+      "compact-params": { open: "Compacted argument: ", close: "\n\n" },
+      "compact-history": { open: "Earlier steps of this session, compacted: ", close: "\n\nContinue from the most recent steps." },
+      "extract": { open: "Extracts from the documents, one per document:\n", close: "\n\n" }
+    };
+  }
+});
+
 // src/native/pseudo-call.ts
 function literal2(node) {
-  if (import_typescript17.default.isParenthesizedExpression(node)) return literal2(node.expression);
-  if (import_typescript17.default.isStringLiteral(node) || import_typescript17.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (import_typescript17.default.isNumericLiteral(node)) return Number(node.text);
-  if (import_typescript17.default.isPrefixUnaryExpression(node) && node.operator === import_typescript17.default.SyntaxKind.MinusToken && import_typescript17.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
-  if (node.kind === import_typescript17.default.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === import_typescript17.default.SyntaxKind.FalseKeyword) return false;
-  if (node.kind === import_typescript17.default.SyntaxKind.NullKeyword) return null;
-  if (import_typescript17.default.isArrayLiteralExpression(node)) {
-    const items = node.elements.map((element) => import_typescript17.default.isSpreadElement(element) ? NO_VALUE : literal2(element));
+  if (import_typescript18.default.isParenthesizedExpression(node)) return literal2(node.expression);
+  if (import_typescript18.default.isStringLiteral(node) || import_typescript18.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (import_typescript18.default.isNumericLiteral(node)) return Number(node.text);
+  if (import_typescript18.default.isPrefixUnaryExpression(node) && node.operator === import_typescript18.default.SyntaxKind.MinusToken && import_typescript18.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
+  if (node.kind === import_typescript18.default.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === import_typescript18.default.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === import_typescript18.default.SyntaxKind.NullKeyword) return null;
+  if (import_typescript18.default.isArrayLiteralExpression(node)) {
+    const items = node.elements.map((element) => import_typescript18.default.isSpreadElement(element) ? NO_VALUE : literal2(element));
     return items.includes(NO_VALUE) ? NO_VALUE : items;
   }
-  if (import_typescript17.default.isObjectLiteralExpression(node)) {
+  if (import_typescript18.default.isObjectLiteralExpression(node)) {
     const out = {};
     for (const property of node.properties) {
-      if (!import_typescript17.default.isPropertyAssignment(property)) return NO_VALUE;
+      if (!import_typescript18.default.isPropertyAssignment(property)) return NO_VALUE;
       const name = property.name;
-      const key = import_typescript17.default.isIdentifier(name) || import_typescript17.default.isStringLiteral(name) || import_typescript17.default.isNumericLiteral(name) ? name.text : void 0;
+      const key = import_typescript18.default.isIdentifier(name) || import_typescript18.default.isStringLiteral(name) || import_typescript18.default.isNumericLiteral(name) ? name.text : void 0;
       if (key === void 0) return NO_VALUE;
       const value = literal2(property.initializer);
       if (value === NO_VALUE) return NO_VALUE;
@@ -227585,12 +228360,12 @@ function literal2(node) {
 function writtenReturnResult(text3) {
   const trimmed = text3.trim().replace(/^```(?:ts|typescript|js|javascript)?\s*\n([\s\S]*?)\n```$/, "$1").trim();
   if (!/^return_result\s*\(/.test(trimmed) || trimmed.length > 2e5) return void 0;
-  const source2 = import_typescript17.default.createSourceFile("reply.ts", trimmed, import_typescript17.default.ScriptTarget.ES2022, false, import_typescript17.default.ScriptKind.TS);
+  const source2 = import_typescript18.default.createSourceFile("reply.ts", trimmed, import_typescript18.default.ScriptTarget.ES2022, false, import_typescript18.default.ScriptKind.TS);
   if (source2.statements.length !== 1) return void 0;
   const statement = source2.statements[0];
-  if (!import_typescript17.default.isExpressionStatement(statement) || !import_typescript17.default.isCallExpression(statement.expression)) return void 0;
+  if (!import_typescript18.default.isExpressionStatement(statement) || !import_typescript18.default.isCallExpression(statement.expression)) return void 0;
   const call = statement.expression;
-  if (!import_typescript17.default.isIdentifier(call.expression) || call.expression.text !== "return_result" || call.arguments.length !== 1) return void 0;
+  if (!import_typescript18.default.isIdentifier(call.expression) || call.expression.text !== "return_result" || call.arguments.length !== 1) return void 0;
   const request = literal2(call.arguments[0]);
   if (!request || typeof request !== "object" || Array.isArray(request)) return void 0;
   const fields = request;
@@ -227598,12 +228373,12 @@ function writtenReturnResult(text3) {
   if (fields.reason !== void 0 && typeof fields.reason !== "string") return void 0;
   return fields;
 }
-var import_typescript17, NO_VALUE;
+var import_typescript18, NO_VALUE;
 var init_pseudo_call = __esm({
   "src/native/pseudo-call.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript17 = __toESM(require_typescript(), 1);
+    import_typescript18 = __toESM(require_typescript(), 1);
     NO_VALUE = /* @__PURE__ */ Symbol("not a literal");
   }
 });
@@ -227717,6 +228492,7 @@ function promptPieces() {
     { id: "generation-guidance", text: GENERATION_GUIDANCE, scope: "generic" },
     { id: "approach", text: APPROACH_PROMPT, scope: "generic" },
     { id: "decision", text: DECISION_SYSTEM_PROMPT, scope: "generic" },
+    { id: "leaf", text: LEAF_SYSTEM_PROMPT, scope: "generic" },
     ...predicatePieces(),
     { id: "compaction-notice", text: COMPACTION_NOTICE, scope: "generic" },
     { id: "automatic-note", text: AUTOMATIC_NOTE, scope: "generic" },
@@ -227820,6 +228596,37 @@ function immediateEmptyEos(response) {
 }
 function modelTurnsSoFar(messages) {
   return messages.filter((message2) => message2.role === "assistant" && !(message2.tool_calls ?? []).some((call) => String(call.id).startsWith("scope_"))).length;
+}
+function dataOnly(type, env, depth2 = 0) {
+  if (depth2 > 32) return false;
+  const resolved = type.kind === "name" ? env.resolve(type) : type;
+  switch (resolved.kind) {
+    case "prim":
+      return !["Blob", "Folder", "FileHandle"].includes(resolved.name);
+    case "lit":
+      return true;
+    case "record":
+      return resolved.fields.every((field) => dataOnly(field.type, env, depth2 + 1));
+    case "list":
+    case "dict":
+      return dataOnly(resolved.element, env, depth2 + 1);
+    case "union":
+    case "intersection":
+      return resolved.members.every((member) => dataOnly(member, env, depth2 + 1));
+    case "refined":
+    case "untrusted":
+    case "index":
+      return dataOnly(resolved.base, env, depth2 + 1);
+    default:
+      return false;
+  }
+}
+function plainData(value, depth2 = 0) {
+  if (value === null || value === void 0 || ["string", "number", "boolean"].includes(typeof value)) return true;
+  if (depth2 > 64 || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.every((item) => plainData(item, depth2 + 1));
+  const prototype = Object.getPrototypeOf(value);
+  return (prototype === Object.prototype || prototype === null) && Object.values(value).every((item) => plainData(item, depth2 + 1));
 }
 function inputsListing(session, views = {}) {
   const lam = session.lam;
@@ -228100,14 +228907,15 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     state.depth--;
   }
 }
-var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, NativeToolAgent;
+var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, NativeToolAgent;
 var init_agent = __esm({
   "src/native/agent.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_native_protocol();
-    init_prompts();
+    init_program();
     init_identity();
+    init_program();
     init_types();
     init_values();
     init_runtime2();
@@ -228119,6 +228927,8 @@ var init_agent = __esm({
     init_scoped_fs();
     init_cutoff();
     init_prompt();
+    init_pluggable();
+    init_operator_frames();
     init_untrusted();
     init_pseudo_call();
     init_neuralese2();
@@ -228129,13 +228939,15 @@ var init_agent = __esm({
     init_model_recording();
     init_hash();
     init_system_prompts();
+    init_model_facing();
     scopeValueChars = (session) => Math.max(SCOPE_VALUE_CHARS, session.pages.budget);
     nativeProgramGuidanceWrites = /* @__PURE__ */ new WeakMap();
     nativeProgramGuidancePins = /* @__PURE__ */ new WeakMap();
+    replyText = (response) => modelFacing("reply-text-with-calls") ? response.text ?? "" : "";
     READ_CODE_DESCRIPTION = `Inspect a named item this call can use but does not show: source of a function in the program's codebase; documentation for eval built-ins (nl, iterateOn, transcript, decide); a declaration for an external service or importable package ("pkg" lists its exports, "pkg.name" shows one); the type-only member shape of a host service object visible to this call; or the exact schema and instructions of a native tool currently offered to this call. Tool schemas and service shapes are metadata, not program function source or service implementation. Standard JavaScript built-ins and methods are used directly through their TypeScript library types; read_code does not show their library implementation.`;
     EDIT_CODE_DESCRIPTION = "Edit a function in the program's codebase: replace one exact or uniquely fuzzy span of its source. The function is validated before the edit becomes live.";
     thought = (reasoning) => reasoning ? { reasoning_content: reasoning } : {};
-    RETURN_RESULT_DESCRIPTION = 'Finish the call. With status "success", value is the result and must have the declared return type; if a complete typed result is already staged, you may omit value to return that exact stored result. With status "blocked" (required information is missing; do not guess) or "failed" (the instructions require an invalid or contradictory operation), give the reason instead of a value. A negative answer (false, no, none, zero, an empty list) is a result like any other: return it with status "success".';
+    RETURN_RESULT_DESCRIPTION = 'Finish the call. With status "success", value is the result and must have the declared return type; if a complete typed result is already staged, you may omit value to return that exact stored result. With status "blocked" (required information is missing; do not guess) or "failed" (you cannot reliably complete the operation), give the specific reason instead of a value. Quote observed tool errors where relevant; distinguish your inability from task impossibility. Use escalate when a configured stronger model could finish. A negative answer (false, no, none, zero, an empty list) is a result like any other: return it with status "success".';
     BUILT_INS_LINE = "Eval also has the built-ins nl, iterateOn, transcript and decide; read_code shows how to use each.";
     NL_DEPTH_LIMIT_BUILT_INS_LINE = "Eval has iterateOn, transcript and decide; read_code shows how to use each. This is the fifth ad hoc layer: make further judgments here or call an existing named function from a file.";
     OPENING_THOUGHT = "I'll start by reading this call's arguments into the eval scope.";
@@ -228196,9 +229008,79 @@ var init_agent = __esm({
        * representation, its instructions the receiving call's (prompt.ts `listingViewInstructions`). Only plain data is
        * viewed; a failed view keeps the preview.
        */
+      /**
+       * The learned operator's state of one site (`compaction: nl`, native/operator-frames.ts), or undefined to keep the crisp
+       * text cut. A failed operator keeps the cut and is traced; it never fails the call.
+       */
+      async compactRef(session, site2) {
+        const compactor = this.options.neuralese?.compactor;
+        if (!compactor || !supportsNeuralese(this.driver)) return void 0;
+        const setting = this.options.compaction ?? this.options.neuralese?.compaction ?? globalThis.process?.env?.NATLANG_NEURALESE_COMPACTION;
+        const chars = site2.operator === "compact-history" ? JSON.stringify(site2.messages).length : site2.value.length;
+        const run = pluggable({
+          crisp: () => void 0,
+          nl: async (request) => {
+            try {
+              return await compactor(request);
+            } catch (error) {
+              session.runtime.trace.emit("operator", {
+                call_id: session.runtime.currentCallId ?? null,
+                operator: request.operator,
+                representation: "text",
+                chars,
+                error: String(error?.message ?? error).slice(0, 300)
+              });
+              return void 0;
+            }
+          }
+        }, setting, { default: "crisp", name: "compaction", serve: "nl", same: () => true });
+        const ref = await run(site2);
+        if (ref) session.runtime.trace.emit("operator", {
+          call_id: session.runtime.currentCallId ?? null,
+          operator: site2.operator,
+          representation: "neuralese",
+          block: ref.$neuralese.id,
+          chars
+        });
+        return ref;
+      }
+      /** The call's instructions as an operator's purpose text (bounded). */
+      purpose(session) {
+        const body = typeof session.lam.body === "string" ? session.lam.body.replace(/\n+$/, "") : "";
+        return body.length > 2e3 ? body.slice(0, 2e3) : body;
+      }
       async views(session) {
         const view = this.options.neuralese?.view;
         const lam = session.lam;
+        if (this.options.neuralese?.compactor && supportsNeuralese(this.driver) && lam.type.kind === "lambda") {
+          const root3 = lam.projectTransaction?.folder;
+          const out2 = {};
+          for (const field of lam.type.params.fields) {
+            if (!Object.hasOwn(lam.args, field.name)) continue;
+            const value = lam.args[field.name];
+            if (value instanceof FileHandle || !renderValue(value, {
+              root: root3,
+              holder: field.name,
+              budget: scopeValueChars(session),
+              liveIdentity: session.runtime.displayLiveId,
+              untrusted: session.runtime.untrusted
+            }).includes("<<cut off:")) continue;
+            let text3;
+            try {
+              text3 = JSON.stringify(value);
+            } catch {
+              text3 = void 0;
+            }
+            if (text3 === void 0) continue;
+            const ref = await this.compactRef(session, {
+              operator: "compact-params",
+              value: text3,
+              instructions: `The call that receives this argument as ${field.name} (${formatType(field.type)}) answers: ${this.purpose(session)}`
+            });
+            if (ref) out2[field.name] = ref.$neuralese.id;
+          }
+          if (Object.keys(out2).length) return out2;
+        }
         if (!view || !supportsNeuralese(this.driver) || lam.type.kind !== "lambda") return {};
         const root2 = lam.projectTransaction?.folder;
         const out = {};
@@ -228220,8 +229102,27 @@ var init_agent = __esm({
           }
           if (text3 === void 0 || value instanceof FileHandle) continue;
           const instructions = listingViewInstructions(field.name, formatType(field.type), typeof lam.body === "string" ? lam.body.replace(/\n+$/, "") : "");
+          const budget = this.options.modelBudget;
+          const bounded = budget && (budget.maxRequests !== void 0 || budget.maxTokens !== void 0);
+          let reservation;
+          let usage;
           try {
-            const written = await view({ value: text3, instructions });
+            if (bounded && !view.budgeted) throw new NeuraleseUnsupportedError("view backend does not support graph budget allowances");
+            reservation = bounded ? await budget.reserveBatch(session.runtime.signal) : void 0;
+            if (bounded && !reservation) throw new NeuraleseUnsupportedError("graph model request or token budget exhausted before view");
+            const written = await view({ value: text3, instructions }, reservation ? {
+              maxRequests: reservation.maxRequests,
+              maxTokens: reservation.maxTokens,
+              onUsage: (reported2) => {
+                usage = reported2;
+                session.runtime.trace.emit("view_budget", {
+                  call_id: session.runtime.currentCallId ?? null,
+                  argument: field.name,
+                  requests: reported2.requests,
+                  completion_tokens: reported2.tokens
+                });
+              }
+            } : void 0);
             if (written) {
               out[field.name] = written.$neuralese.id;
               session.runtime.trace.emit("view", {
@@ -228233,12 +229134,26 @@ var init_agent = __esm({
               });
             }
           } catch (error) {
+            const sourceTurns = error?.native_source_turns;
             session.runtime.trace.emit("view", {
               call_id: session.runtime.currentCallId ?? null,
               argument: field.name,
               representation: "neuralese",
-              error: String(error?.message ?? error).slice(0, 300)
+              error: String(error?.message ?? error).slice(0, 300),
+              ...Array.isArray(sourceTurns) ? { source_turns: sourceTurns } : {}
             });
+          } finally {
+            if (reservation && !usage) session.runtime.trace.emit("view_budget", {
+              call_id: session.runtime.currentCallId ?? null,
+              argument: field.name,
+              requests: null,
+              completion_tokens: null,
+              conservative_reservation: {
+                requests: reservation.maxRequests,
+                completion_tokens: reservation.maxTokens
+              }
+            });
+            reservation?.finish(usage);
           }
         }
         return out;
@@ -228248,14 +229163,69 @@ var init_agent = __esm({
         const bank = activeSystemPrompts(this.options.neuralese?.systemPrompts);
         return bank?.size && supportsNeuralese(this.driver) ? softenMessages(messages, bank) : [...messages];
       }
+      /** Re-encode foreign soft values from their authenticated source text, never their tensors or adapters. */
+      async handoffText(session, encoded, actor) {
+        const inputs = [];
+        const rewrite = async (value, argument) => {
+          if (!Array.isArray(value)) return value;
+          if (!value.every((part) => part && typeof part === "object" && ["text", "native_state", "teacher_text"].includes(part.type ?? ""))) return value;
+          const pieces = [];
+          for (const part of value) {
+            if (part.type === "text") {
+              pieces.push(part.text ?? "");
+              continue;
+            }
+            const id2 = part.id;
+            const artifact = part.type === "native_state" ? await this.options.neuralese?.store.getNativeState?.(id2) : void 0;
+            const teacher = this.options.neuralese?.teacherText?.get(id2);
+            const source2 = artifact?.metadata.text ?? teacher?.body;
+            if (typeof source2 !== "string" || !source2.length)
+              throw new NeuraleseUnsupportedError(`handoff cannot re-encode ${id2}: exact source text is unavailable`);
+            const node = graphNode(
+              session.runtime.trace,
+              "literal",
+              {
+                call_id: session.runtime.options.runId,
+                source_kind: "cross-model-source-text",
+                block: id2,
+                text_sha256: hexDigest(source2),
+                target_actor: actor,
+                ...artifact ? { source_identity: {
+                  architecture: artifact.metadata.architecture,
+                  checkpoint_sha256: artifact.metadata.checkpoint_sha256,
+                  tokenizer_fingerprint: artifact.metadata.tokenizer_fingerprint,
+                  embedding_weight_sha256: artifact.metadata.embedding_weight_sha256
+                } } : {},
+                ...teacher ? { source_call_id: teacher.producer_call_id, source_text_sha256: teacher.body_sha256 } : {},
+                ...part.source_occurrence ? { source_occurrence: part.source_occurrence } : {}
+              },
+              [blockInput(id2, "source", part.source_occurrence, producerScopeForTrace(session.runtime.trace))]
+            );
+            if (node) inputs.push({ node, port: "source_text" });
+            pieces.push(argument ? JSON.stringify(source2).slice(1, -1) : source2);
+          }
+          return pieces.join("");
+        };
+        const messages = await Promise.all(encoded.map(async (message2) => {
+          if (!message2 || typeof message2 !== "object") return message2;
+          const item = message2;
+          const calls = Array.isArray(item.tool_calls) ? await Promise.all(item.tool_calls.map(async (call) => {
+            if (!call || typeof call !== "object") return call;
+            const c = call, fn = c.function;
+            return fn ? { ...c, function: { ...fn, arguments: await rewrite(fn.arguments, true) } } : call;
+          })) : void 0;
+          return { ...item, content: await rewrite(item.content, false), ...calls ? { tool_calls: calls } : {} };
+        }));
+        return { messages, inputs };
+      }
       /** Record only actually completed native writes, even when the containing turn failed. */
-      async nativeWriteOrigins(response, session, turn, turnNode) {
+      async nativeWriteOrigins(response, session, turn, turnNode, neuralese = this.options.neuralese) {
         const nativeBlocks = response.raw_response?.native_state?.blocks ?? [];
         const producer = { call_id: session.runtime.currentCallId ?? null, turn };
         const nativeOrigins = /* @__PURE__ */ new Map();
         for (const block of nativeBlocks.filter((block2) => typeof block2.id === "string")) {
           const id2 = block.id;
-          const artifact = await this.options.neuralese?.store.getNativeState?.(id2);
+          const artifact = await neuralese?.store.getNativeState?.(id2);
           if (!artifact) throw new Error(`native-state producer artifact ${id2} was not archived before the agent turn`);
           const tokenIds = artifact?.tensors.token_ids;
           const embeddings = artifact?.tensors.embeddings;
@@ -228292,12 +229262,80 @@ var init_agent = __esm({
         }
         return nativeOrigins;
       }
+      /** A foreign actor's output crosses back into this invocation as source text, not foreign KV state. */
+      async handoffOutput(response, session, turn, turnNode, driver, actor) {
+        const neuralese = await driver.neuraleseRuntime?.();
+        if (!neuralese) throw new NeuraleseUnsupportedError("fallback native output has no accessible source store");
+        const origins = await this.nativeWriteOrigins(response, session, turn, turnNode, neuralese);
+        const rendered = /* @__PURE__ */ new Map();
+        const sourceText = async (id2, occurrence) => {
+          const cached = rendered.get(`${id2}\0${occurrence ?? ""}`);
+          if (cached !== void 0) return cached;
+          const artifact = await neuralese.store.getNativeState?.(id2) ?? await this.options.neuralese?.store.getNativeState?.(id2);
+          if (!artifact || !artifact.metadata.text) throw new NeuraleseUnsupportedError(`fallback native output ${id2} has no exact source text`);
+          const writers = origins.get(id2) ?? [];
+          if (!occurrence && writers.length > 1) throw new NeuraleseUnsupportedError(`fallback native output ${id2} has ambiguous producer occurrences`);
+          const source2 = occurrence ?? writers[0];
+          graphNode(
+            session.runtime.trace,
+            "literal",
+            {
+              call_id: session.runtime.options.runId,
+              source_kind: "cross-model-output-source-text",
+              block: id2,
+              turn: turnNode,
+              text_sha256: hexDigest(artifact.metadata.text),
+              source_actor: actor,
+              target_actor: this.options.actor?.id ?? null,
+              source_identity: {
+                architecture: artifact.metadata.architecture,
+                checkpoint_sha256: artifact.metadata.checkpoint_sha256,
+                tokenizer_fingerprint: artifact.metadata.tokenizer_fingerprint,
+                embedding_weight_sha256: artifact.metadata.embedding_weight_sha256
+              }
+            },
+            [blockInput(id2, "source", source2, producerScopeForTrace(session.runtime.trace))]
+          );
+          rendered.set(`${id2}\0${occurrence ?? ""}`, artifact.metadata.text);
+          return artifact.metadata.text;
+        };
+        const replace = async (value) => {
+          if (typeof value === "string") {
+            const parts = runtimeTextToParts(value);
+            if (!parts.some((part) => part.type === "native_state")) return value;
+            return (await Promise.all(parts.map((part) => part.type === "native_state" ? sourceText(part.id, part.source_occurrence) : part.type === "text" ? part.text : Promise.reject(new NeuraleseUnsupportedError("foreign teacher-text output is unavailable"))))).join("");
+          }
+          if (Array.isArray(value)) {
+            if (value.length && value.every((part) => part && typeof part === "object" && ["text", "native_state"].includes(String(part.type))))
+              return (await Promise.all(value.map((part) => part.type === "text" ? String(part.text ?? "") : sourceText(
+                String(part.id),
+                part.source_occurrence
+              )))).join("");
+            return Promise.all(value.map(replace));
+          }
+          if (value && typeof value === "object") return Object.fromEntries(await Promise.all(Object.entries(value).map(async ([key, child]) => [key, await replace(child)])));
+          return value;
+        };
+        const raw = response.raw_response;
+        const choices = raw?.choices;
+        return {
+          ...response,
+          ...response.text === void 0 ? {} : { text: await replace(response.text) },
+          ...response.calls ? { calls: await Promise.all(response.calls.map(async ([name, args]) => [name, await replace(args)])) } : {},
+          raw_calls: void 0,
+          ...raw ? { raw_response: {
+            ...raw,
+            ...Array.isArray(choices) ? { choices: await replace(choices) } : {},
+            native_state: { ...raw.native_state ?? {}, blocks: [] }
+          } } : {}
+        };
+      }
       /**
        * Turn the Neuralese content of a reply into conversation text: blocks a backend wrote (content parts) and literals
        * written as marker text (stored through the write port) become block markers in the reply and call arguments.
        */
       async decodeNeuralese(response, session, turn, turnNode, allowAssistantResult = true) {
-        const carries = (value) => typeof value === "string" ? value.includes("<|neuralese|>") || nativeStateSentinelIds(value).length > 0 : Array.isArray(value) ? value.some(carries) : !!value && typeof value === "object" && (String(value.type) === "native_state" || Object.values(value).some(carries));
+        const carries = (value) => typeof value === "string" ? value.includes("<|neuralese|>") || nativeStateSentinelIds(value).length > 0 || runtimeTextToParts(value).some((part) => part.type === "teacher_text") : Array.isArray(value) ? value.some(carries) : !!value && typeof value === "object" && (["native_state", "teacher_text"].includes(String(value.type)) || Object.values(value).some(carries));
         const nativeBlocks = response.raw_response?.native_state?.blocks ?? [];
         const rawChoices = response.raw_response?.choices;
         const content = rawChoices?.[0]?.message?.content;
@@ -228343,7 +229381,11 @@ var init_agent = __esm({
             decodedArgs[key] = await decodeTurnValue(
               withNativeOrigins(value),
               port,
-              { ...producer, marker_context: context },
+              {
+                ...producer,
+                marker_context: context,
+                ...name === "return_result" && key === "value" ? { source: "return_result", source_kind: "typed-text-result" } : {}
+              },
               written,
               resultValue && expectedReturn ? { type: expectedReturn, env: session.env } : void 0,
               assistantCompletion ? nativeStateText : void 0
@@ -228369,28 +229411,90 @@ var init_agent = __esm({
           decoded.calls = [await decodeCall(["return_result", { status: "success", value: content }], true)];
         }
         const reportedArtifacts = /* @__PURE__ */ new Set();
+        const teacherTextWrites = [];
         for (const block of written) {
           const reported2 = block.producer ?? {};
           if (reportedArtifacts.has(block.id)) continue;
           reportedArtifacts.add(block.id);
-          graphNode(session.runtime.trace, "block_write", {
+          const teacherText = this.options.neuralese?.teacherText?.get(block.id);
+          const writeNode = graphNode(session.runtime.trace, "block_write", {
             call_id: producer.call_id,
             turn: turnNode ?? "",
             block: block.id,
             length: block.length,
             truncated: !!block.truncated,
             stops: Array.isArray(reported2.stops) ? reported2.stops : [],
+            ...teacherText ? {
+              format: "teacher-text",
+              producer: "teacher-text-emulation",
+              source_kind: reported2.source_kind,
+              source: reported2.source,
+              marker_context: reported2.marker_context,
+              result_type: teacherText.type,
+              text_body: teacherText.body,
+              text_body_sha256: teacherText.body_sha256,
+              learned_vectors: false,
+              tokenizer_ids: false,
+              training_admission: false
+            } : {},
             ...Object.fromEntries(["position", "temperature", "seed"].filter((key) => reported2[key] !== void 0).map((key) => [key, reported2[key]]))
-          }, turnNode ? [{ node: turnNode, port: "turn" }] : []);
+          }, turnNode ? [{ node: turnNode, port: teacherText ? "result-source" : "turn" }] : []);
+          if (teacherText && writeNode) {
+            this.options.neuralese?.teacherText?.recordWriter(block.id, writeNode);
+            teacherTextWrites.push({
+              id: block.id,
+              type: teacherText.type,
+              body: teacherText.body,
+              body_sha256: teacherText.body_sha256,
+              producer_call_id: teacherText.producer_call_id,
+              writer_node: writeNode,
+              source_kind: reported2.source_kind,
+              source: reported2.source,
+              marker_context: reported2.marker_context,
+              format: "teacher-text"
+            });
+          }
         }
-        return decoded;
+        const bindTeacherOccurrences = (value) => {
+          if (typeof value === "string") return value.replace(/(nzt1_[a-z2-7]{52})/g, (marker, id2) => {
+            const writer = this.options.neuralese?.teacherText?.get(id2)?.writer_node;
+            return writer ? neuraleseSentinel(id2, false, writer) : marker;
+          });
+          if (Array.isArray(value)) return value.map(bindTeacherOccurrences);
+          if (value && typeof value === "object") {
+            const record3 = value;
+            if (record3.type === "teacher_text" && typeof record3.id === "string") {
+              const writer = this.options.neuralese?.teacherText?.get(record3.id)?.writer_node;
+              return writer ? { ...record3, source_occurrence: writer } : value;
+            }
+            if (record3.$neuralese && typeof record3.$neuralese === "object") {
+              const ref = record3.$neuralese;
+              if (typeof ref.id === "string" && this.options.neuralese?.teacherText?.get(ref.id)) {
+                const writer = this.options.neuralese.teacherText.get(ref.id)?.writer_node;
+                return writer ? { ...record3, $neuralese: { ...ref, source_occurrence: writer } } : value;
+              }
+            }
+            return Object.fromEntries(Object.entries(record3).map(([key, child]) => [key, bindTeacherOccurrences(child)]));
+          }
+          return value;
+        };
+        const transportProvenance = decoded.transport_provenance;
+        return {
+          ...decoded,
+          ...teacherTextWrites.length && transportProvenance ? { transport_provenance: {
+            ...transportProvenance,
+            typed_result_writes: teacherTextWrites
+          } } : {},
+          ...decoded.text === void 0 ? {} : { text: bindTeacherOccurrences(decoded.text) },
+          ...decoded.calls === void 0 ? {} : { calls: decoded.calls.map(([name, args]) => [name, bindTeacherOccurrences(args)]) }
+        };
       }
       /**
        * The graph nodes of one model turn: a `block_read` for each block the request carried (positions are
        * [message, part] in the request; a server that reports payload positions gives token positions), and the
        * `model_turn` with its sampling settings and the tool calls it chose.
        */
-      async modelTurnNode(session, messages, response, turn, readout) {
+      async modelTurnNode(session, messages, response, turn, readout, actor = this.options.actor, extraInputs = [], temperature = this.options.temperature) {
         const trace = session.runtime.trace;
         const callId = session.runtime.options.runId;
         const turnId = `${callId}#turn${turn}`;
@@ -228402,7 +229506,7 @@ var init_agent = __esm({
             return "external";
           }
           if (declared !== void 0) {
-            if (!writers.includes(declared) && !hasProducerOccurrence(block, declared, session.runtime.episodeBudget))
+            if (!writers.includes(declared) && !hasProducerOccurrence(block, declared, producerScopeForTrace(trace)))
               throw new Error(`neuralese-native-grad-invalid: native read ${block} names no matching in-episode writer ${declared}`);
             return declared;
           }
@@ -228415,12 +229519,16 @@ var init_agent = __esm({
         const reads = [];
         const findRefs = (value) => {
           if (typeof value === "string") {
-            return runtimeTextToParts(value).flatMap((part) => part.type === "text" ? [] : [{ block: part.id, ...part.stop_gradient ? { stop: true } : {}, ...part.source_occurrence ? { source: part.source_occurrence } : {} }]);
+            return runtimeTextToParts(value).flatMap((part) => part.type === "text" ? [] : [{ block: part.id, ...part.type === "native_state" && part.stop_gradient ? { stop: true } : {}, ...part.source_occurrence ? { source: part.source_occurrence } : {} }]);
           } else if (Array.isArray(value)) return value.flatMap(findRefs);
           else if (value && typeof value === "object") {
             const record3 = value;
-            if (record3.type === "native_state" && typeof record3.id === "string") {
-              return [{ block: record3.id, ...record3.stop_gradient === true ? { stop: true } : {}, ...typeof record3.source_occurrence === "string" ? { source: record3.source_occurrence } : {} }];
+            if ((record3.type === "native_state" || record3.type === "teacher_text") && typeof record3.id === "string") {
+              return [{
+                block: record3.id,
+                ...record3.type === "native_state" && record3.stop_gradient === true ? { stop: true } : {},
+                ...typeof record3.source_occurrence === "string" ? { source: record3.source_occurrence } : {}
+              }];
             }
             return Object.values(record3).flatMap(findRefs);
           }
@@ -228430,7 +229538,7 @@ var init_agent = __esm({
           const record3 = message2;
           const argumentRefs = (value) => {
             if (Array.isArray(value)) {
-              const parts = value.length > 0 && value.every((part) => part && typeof part === "object" && ["text", "native_state"].includes(part.type));
+              const parts = value.length > 0 && value.every((part) => part && typeof part === "object" && ["text", "native_state", "teacher_text"].includes(part.type));
               return parts ? findRefs(value) : value.flatMap(argumentRefs);
             }
             if (value && typeof value === "object") return Object.values(value).flatMap(argumentRefs);
@@ -228445,24 +229553,44 @@ var init_agent = __esm({
           for (const [part, uses] of [...contentUses, ...argumentUses].entries()) {
             for (const use of uses) {
               const block = use.block;
-              const artifact = await this.options.neuralese?.store.getNativeState?.(block);
-              if (!artifact) throw new NeuraleseUnsupportedError(`native-state consumer artifact ${block} is unavailable for provenance`);
-              const source2 = resolveReadSource(block, use.source);
-              const node = graphNode(trace, "block_read", {
-                call_id: callId,
-                turn: turnId,
-                block,
-                ...use.stop ? { stop_gradient: true } : {},
-                format: "native-state",
-                native_identity: {
-                  architecture: artifact.metadata.architecture,
-                  checkpoint_sha256: artifact.metadata.checkpoint_sha256,
-                  tokenizer_fingerprint: artifact.metadata.tokenizer_fingerprint,
-                  embedding_weight_sha256: artifact.metadata.embedding_weight_sha256
-                },
-                positions: [index + preparedMessageOffset, part]
-              }, [blockInput(block, "block", source2, producerScopeForTrace(trace))]);
-              if (node) reads.push({ node, port: "read", block, source: source2, stop: !!use.stop });
+              const teacherText = this.options.neuralese?.teacherText?.get(block);
+              if (teacherText) {
+                if (!teacherText.writer_node || use.source && use.source !== teacherText.writer_node)
+                  throw new NeuraleseUnsupportedError(`teacher-text consumer ${block} has no exact recorded writer occurrence`);
+                const source2 = teacherText.writer_node;
+                const node = graphNode(trace, "block_read", {
+                  call_id: callId,
+                  turn: turnId,
+                  block,
+                  format: "teacher-text",
+                  producer: "teacher-text-emulation",
+                  result_type: teacherText.type,
+                  text_body_sha256: teacherText.body_sha256,
+                  learned_vectors: false,
+                  tokenizer_ids: false,
+                  positions: [index + preparedMessageOffset, part]
+                }, [{ node: source2, port: "block", block }]);
+                if (node) reads.push({ node, port: "read", block, source: source2, stop: false });
+              } else {
+                const artifact = await this.options.neuralese?.store.getNativeState?.(block);
+                if (!artifact) throw new NeuraleseUnsupportedError(`native-state consumer artifact ${block} is unavailable for provenance`);
+                const source2 = resolveReadSource(block, use.source);
+                const node = graphNode(trace, "block_read", {
+                  call_id: callId,
+                  turn: turnId,
+                  block,
+                  ...use.stop ? { stop_gradient: true } : {},
+                  format: "native-state",
+                  native_identity: {
+                    architecture: artifact.metadata.architecture,
+                    checkpoint_sha256: artifact.metadata.checkpoint_sha256,
+                    tokenizer_fingerprint: artifact.metadata.tokenizer_fingerprint,
+                    embedding_weight_sha256: artifact.metadata.embedding_weight_sha256
+                  },
+                  positions: [index + preparedMessageOffset, part]
+                }, [blockInput(block, "block", source2, producerScopeForTrace(trace))]);
+                if (node) reads.push({ node, port: "read", block, source: source2, stop: !!use.stop });
+              }
             }
           }
         }
@@ -228545,7 +229673,9 @@ var init_agent = __esm({
             call_id: callId,
             turn,
             ...readout ? { readout } : {},
-            temperature: readout ? null : this.options.temperature ?? null,
+            ...actor ? { actor } : {},
+            ...this.options.actor ? { initial_actor: this.options.actor } : {},
+            temperature: readout ? null : temperature ?? null,
             seed: readout || session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(
               session.runtime.seedPolicy.root,
               runSeedKey(session.runtime.options),
@@ -228557,7 +229687,7 @@ var init_agent = __esm({
             text_chars: (response.text ?? "").length,
             calls: (response.calls ?? []).map((call) => Array.isArray(call) ? call[0] : call.name ?? null)
           },
-          [{ node: invocationNodeId(callId), port: "invocation" }, ...reads.map(({ node, port }) => ({ node, port }))],
+          [{ node: invocationNodeId(callId), port: "invocation" }, ...reads.map(({ node, port }) => ({ node, port })), ...extraInputs],
           turnId
         );
       }
@@ -228598,11 +229728,22 @@ var init_agent = __esm({
                 ...session.lam.type.kind === "lambda" ? schemaOf(session.lam.type.returns, session.env) : {},
                 description: "For success, provide a value of the declared return type, or omit it only to return the exact complete result already staged."
               },
-              reason: { type: "string", description: 'For "blocked": what is missing. For "failed": why it cannot be done.' }
+              reason: { type: "string", description: 'For "blocked": what information is missing. For "failed": what you could not complete and why. Quote relevant observed tool errors; do not invent missing information or claim a recoverable error proves impossibility.' }
             },
             ["status"]
           )
         ];
+        if (this.options.fallbacks?.length) tools.splice(1, 0, tool(
+          "escalate",
+          "Hand this executing call to the next configured model when you cannot reliably finish. State the evidence and work already done; the next model continues in this same scope and must not repeat completed effects.",
+          {
+            reason: { type: "string" },
+            evidence: { type: "string" },
+            attempted_work: { type: "string" },
+            remaining_subproblem: { type: "string" }
+          },
+          ["reason", "evidence", "attempted_work", "remaining_subproblem"]
+        ));
         const ownCode = Object.keys(session.lam.codebase).length > 0;
         const readCode = tool("read_code", canGenerateNl(session.runtime.frame) ? READ_CODE_DESCRIPTION : READ_CODE_DESCRIPTION.replace("(nl, iterateOn, transcript, decide)", "(iterateOn, transcript, decide)"), { name: { type: "string" } }, ["name"]);
         if (!ownCode) tools.splice(2, 0, readCode);
@@ -228698,24 +229839,73 @@ var init_agent = __esm({
           const offered = scopedFileToolNames(this.options.fileTools, writableFolder).filter((name) => name !== "delegate" || canGenerateNl(session.runtime.frame));
           tools.splice(2, 0, ...fileTools.filter((item) => offered.includes(item.function.name)).sort((a, b) => offered.indexOf(a.function.name) - offered.indexOf(b.function.name)));
         }
-        return tools;
+        const withheld = session.lam.withheldTools;
+        return withheld?.length ? tools.filter((item) => !withheld.includes(item.function.name)) : tools;
       }
       tools(session) {
         const tools = this.toolsScope(session);
         session.rememberOfferedTools(tools);
         return tools;
       }
-      scopeOpening(session) {
+      /** The call's signature line, the type aliases it references, and its instructions. */
+      callHeading(session) {
         const lam = session.lam;
-        if (lam.type.kind !== "lambda") return "Scope:";
-        const original = lam.originalBody ?? lam.body;
-        const program = original.replace(/^\n+|\n+$/g, "");
-        const writable = Object.values(lam.captures ?? {}).filter((cell) => cell.mutable).map((cell) => cell.name);
+        if (lam.type.kind !== "lambda") throw new TypeError("callHeading needs a function call");
+        const program = (lam.originalBody ?? lam.body).replace(/^\n+|\n+$/g, "");
         const scopeTypes = referencedTypeAliases([
           ...lam.type.params.fields.map((field) => formatType(field.type)),
           formatType(lam.type.returns)
         ], lam.typesSrc);
         const signature = `${lam.functionName || "run"}(` + lam.type.params.fields.map((field) => `${field.name}${field.optional ? "?" : ""}: ${formatType(field.type)}`).join(", ") + `): ${formatType(lam.type.returns)}`;
+        return { signature, scopeTypes, program };
+      }
+      /**
+       * The opening of a leaf call, or undefined when the call needs the interpreter: a plain function call (no folder,
+       * handoff or skills, no escalation tool) with no callable functions or services, whose parameter and result types hold
+       * only data (no files, folders, blobs, functions, host objects or Neuralese), and whose arguments and read-only
+       * captures are plain data shown whole. Such a call has nothing to run code on, so it answers from the shown values.
+       */
+      leafOpening(session, views) {
+        const lam = session.lam;
+        if (lam.type.kind !== "lambda" || lam.subtype !== "function" || lam.projectTransaction || lam.handoff || lam.skills?.listing || this.options.fallbacks?.length || Object.keys(views).length || Object.keys(lam.codebase).length || Object.keys(session.availableServices()).length) return;
+        if ([...lam.type.params.fields.map((field) => field.type), lam.type.returns].some((type) => !dataOnly(type, session.env))) return;
+        if (!Object.values(lam.args).every(plainData)) return;
+        const context = [];
+        for (const cell of Object.values(lam.captures ?? {})) {
+          if (isAdapterValue(capturedValue(cell))) continue;
+          if (cell.mutable || cell.skill) return;
+          let value;
+          try {
+            value = cell.get();
+          } catch {
+            return;
+          }
+          if (!plainData(value)) return;
+          context.push(`${cell.name}: ${cell.type} = ${renderValue(value, {
+            holder: cell.name,
+            budget: scopeValueChars(session),
+            liveIdentity: session.runtime.displayLiveId,
+            untrusted: session.runtime.untrusted
+          })}`);
+        }
+        const args = inputsListing(session, views);
+        if ([args, ...context].some((text3) => text3.includes("cut off:"))) return;
+        const { signature, scopeTypes, program } = this.callHeading(session);
+        return [
+          `You are inside this call: ${signature}`,
+          ...scopeTypes,
+          "",
+          "Instructions:",
+          program,
+          ...lam.type.params.fields.length ? ["", "Arguments:", args] : [],
+          ...context.length ? ["", "Values from the calling code:", ...context] : []
+        ].join("\n");
+      }
+      scopeOpening(session) {
+        const lam = session.lam;
+        if (lam.type.kind !== "lambda") return "Scope:";
+        const { signature, scopeTypes, program } = this.callHeading(session);
+        const writable = Object.values(lam.captures ?? {}).filter((cell) => cell.mutable).map((cell) => cell.name);
         const names = [
           ...lam.type.params.fields.map((field) => field.name),
           ...Object.entries(lam.captures ?? {}).filter(([, cell]) => !isAdapterValue(capturedValue(cell))).map(([name]) => name),
@@ -229029,8 +230219,7 @@ var init_agent = __esm({
         if (!session.finish()) return "decision readout chose a value the declared type rejects";
       }
       /** Encode stored policy against this runtime's exact native reader before any model call. */
-      async runtimeProgramGuidance() {
-        const guidance = this.options.programGuidance;
+      async runtimeProgramGuidance(guidance) {
         if (!guidance) return "";
         if (guidance.kind !== "native-program-guidance") throw new TypeError("unknown program guidance binding");
         const neuralese = this.options.neuralese;
@@ -229104,24 +230293,30 @@ var init_agent = __esm({
         if (this.options.authoredTextGuidance && (this.options.neuralese?.nativeStateConsumer || this.options.neuralese?.nativeStateConsumerForCall))
           throw new NeuraleseUnsupportedError("authored text guidance cannot replace available native program guidance");
         if (this.options.neuralese?.store) await adoptImportedNativeArtifacts(this.options.neuralese.store);
-        const budget = this.options.contextTokens === void 0 ? await defaultContextBudget(this.driver) : this.options.contextTokens;
+        let budget = this.options.contextTokens === void 0 ? await defaultContextBudget(this.driver) : this.options.contextTokens;
         session.pages.budget = shownCharsFor(budget);
         let adaptedSystem;
-        const guidance = renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance();
+        const guidance = renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName));
+        let leaf;
         const systemPrompt = () => {
+          if (leaf !== void 0) return LEAF_SYSTEM_PROMPT + guidance;
           if (adaptedSystem !== void 0) return adaptedSystem;
           const base = typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? TOOLS_PROMPT;
           const allowAdHoc = canGenerateNl(session.runtime.frame);
           const composed = (allowAdHoc ? base : promptAtNlDepthLimit(base)) + (Object.keys(session.lam.codebase).length ? FUNCTION_TOOLS_PROMPT : "") + (session.lam.projectTransaction ? directoryReducerPrompt(
             this.options.fileTools,
             allowAdHoc,
-            session.lam.projectTransaction.folder.access !== "read"
+            session.lam.projectTransaction.folder.access !== "read",
+            session.lam.withheldTools
           ) : "") + guidance;
           if (this.options.programGuidance !== void 0 || this.options.authoredTextGuidance !== void 0) adaptedSystem = composed;
           return composed;
         };
         const views = await this.views(session);
+        leaf = this.options.leafCalls === "direct" ? this.leafOpening(session, views) : void 0;
+        if (leaf !== void 0) session.runtime.trace.emit("leaf_call", { call_id: session.runtime.currentCallId ?? null });
         const openingMessages = () => {
+          if (leaf !== void 0) return [{ role: "system", content: systemPrompt() }, { role: "user", content: leaf }];
           const reading = this.scopeReading(session, views);
           const scopeOpening = this.scopeOpening(session);
           if (session.lam.skills?.listing) for (const skill of session.lam.skills.inventory ?? [])
@@ -229181,11 +230376,11 @@ var init_agent = __esm({
         const guidancePolicy = trainingGuidance?.policyOf(session.lam, session.runtime.currentCallId ?? null);
         const guidanceConsumer = !!trainingGuidance && !guidancePolicy && !trainingGuidance.insidePolicy(session);
         let guidanceRequest, guidanceReady = false;
-        const decided = await this.decisionReadout(session, messages, guidance);
+        const decided = this.options.fallbacks?.length || this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0 ? false : await this.decisionReadout(session, messages, guidance);
         if (decided !== false) return decided;
         const openingLength = messages.length;
         let tokensPerChar = 1 / 3.5;
-        const requestChars = (tools) => JSON.stringify(renderPromptMessages(messages, this.options.promptRendering)).length + JSON.stringify(this.options.promptRendering === "program-header" ? [] : tools).length;
+        const requestChars = (tools) => JSON.stringify(renderPromptMessages(messages, currentRendering)).length + JSON.stringify(currentRendering === "program-header" ? [] : tools).length;
         let protectedLength = openingLength;
         const pinNote = (note2) => {
           if (note2 === null && protectedLength > openingLength) return 0;
@@ -229205,7 +230400,63 @@ var init_agent = __esm({
         const maxTurns = this.options.maxTurns, maxTokens = this.options.maxTokens;
         const deadline = this.options.maxSeconds === void 0 ? null : Date.now() + this.options.maxSeconds * 1e3;
         let tokens2 = 0, turns = 0, failureRepairs = 0, refinementRepairs = 0, lastRefinementFailure = "";
+        let fallbackIndex = 0;
+        let currentDriver = this.driver;
+        let currentActor = this.options.actor ?? { id: this.driver.name || "model", revision: null };
+        let currentRendering = this.options.promptRendering;
+        let currentTemperature = this.options.temperature;
+        let currentGuidance = this.options.guidance;
+        let currentTurnTokens = this.options.turnTokens;
+        let handoffNode;
+        const switchModel = (report) => {
+          const next2 = this.options.fallbacks?.[fallbackIndex];
+          if (!next2) return "escalation unavailable: no configured fallback remains";
+          if (this.options.modelBudget && !this.options.modelBudget.hasRemaining()) return "graph model request or token budget exhausted";
+          if (adapterCells(session.lam).length || activeNativeAdapters().length || activeNativeStates().length || session.runtime.frame?.weights?.effective.length || session.runtime.frame?.weights?.soft)
+            return "escalation unavailable: this invocation has model-specific adapters or implicit soft weights";
+          const from = currentActor.id;
+          currentDriver = next2.driver;
+          currentActor = { id: next2.id, revision: next2.revision ?? null };
+          currentRendering = next2.promptRendering;
+          currentTemperature = next2.temperature;
+          currentGuidance = next2.guidance;
+          currentTurnTokens = next2.turnTokens === void 0 ? this.options.turnTokens : this.options.turnTokens === void 0 ? next2.turnTokens : Math.min(this.options.turnTokens, next2.turnTokens);
+          if (next2.contextTokens !== void 0 && next2.contextTokens !== null)
+            budget = budget === null ? next2.contextTokens : Math.min(budget, next2.contextTokens);
+          statedWindow = null;
+          tokensPerChar = 1 / 3.5;
+          compactedAt = 0;
+          session.pages.budget = shownCharsFor(budget);
+          fallbackIndex++;
+          session.runtime.trace.emit("model_escalation", {
+            call_id: session.runtime.currentCallId ?? null,
+            from,
+            to: currentActor.id,
+            profile: next2.name,
+            report,
+            turn: turns
+          });
+          handoffNode = graphNode(
+            session.runtime.trace,
+            "combinator",
+            {
+              call_id: session.runtime.options.runId,
+              operation: "model-escalation",
+              from,
+              to: currentActor.id,
+              actor: currentActor,
+              profile: next2.name,
+              report
+            },
+            [
+              { node: invocationNodeId(session.runtime.options.runId), port: "invocation" },
+              ...turns ? [{ node: `${session.runtime.options.runId}#turn${turns}`, port: "handoff-request" }] : []
+            ]
+          );
+          return void 0;
+        };
         let consecutiveEmptyEosWithoutResult = 0;
+        let retryProtocolWriteTemplate = false;
         let repeatedFailure = "", repeatedFailures = 0;
         const stuck = (signature) => {
           repeatedFailures = signature === repeatedFailure ? repeatedFailures + 1 : 0;
@@ -229219,19 +230470,36 @@ var init_agent = __esm({
           });
           return `model_incomplete: repeated_failed_action (the same action failed the same way 4 times in a row: ${signature.slice(signature.indexOf("\n") + 1, signature.indexOf("\n") + 241)})`;
         };
+        const handoffStuck = (evidence) => {
+          if (fallbackIndex >= (this.options.fallbacks?.length ?? 0)) return evidence;
+          const report = {
+            reason: "Repeated action made no progress",
+            evidence: evidence.slice(0, 1200),
+            attempted_work: "The same action failed identically four times; inspect the existing transcript.",
+            remaining_subproblem: "Complete the current invocation without repeating failed actions or completed effects."
+          };
+          const failure2 = switchModel(report);
+          if (failure2) return failure2;
+          repeatedFailure = "";
+          repeatedFailures = 0;
+          messages.push({ role: "user", content: `The previous actor made no progress. Continue this invocation from its existing scope and transcript. ${JSON.stringify(report)}` });
+          return void 0;
+        };
         const timedOut = () => deadline !== null && Date.now() >= deadline;
         const exhausted = () => maxTurns !== void 0 && turns >= maxTurns || maxTokens !== void 0 && tokens2 >= maxTokens || timedOut();
         const allowance = () => {
           const remaining = maxTokens === void 0 ? null : maxTokens - tokens2;
-          if (this.options.turnTokens === void 0) return remaining;
-          return remaining === null ? this.options.turnTokens : Math.min(this.options.turnTokens, remaining);
+          if (currentTurnTokens === void 0) return remaining;
+          return remaining === null ? currentTurnTokens : Math.min(currentTurnTokens, remaining);
         };
         while (true) {
           if (exhausted()) return "episode turn, token, or wall-clock budget exhausted";
           messages[0].content = systemPrompt();
           const limit = allowance() ?? (budget === null ? null : Math.floor(budget / 4));
           const lastTurn = maxTurns !== void 0 && maxTurns - turns === 1;
-          const allTools = this.tools(session);
+          const allTools = this.tools(session).filter((item) => (fallbackIndex < (this.options.fallbacks?.length ?? 0) || item.function?.name !== "escalate") && // A leaf call has nothing to run code on: return_result is its only tool (for a blocked or failed status).
+          (leaf === void 0 || item.function?.name === "return_result"));
+          session.rememberOfferedTools(allTools);
           const only = (name) => allTools.filter((tool2) => String(tool2.function?.name) === name);
           const estimate = (tools) => requestChars(tools) * tokensPerChar;
           const reply = budget === null ? 0 : Math.min(limit ?? Math.floor(budget / 4), Math.floor(budget / 4));
@@ -229281,33 +230549,48 @@ var init_agent = __esm({
             call_id: callId,
             phase: "start",
             turn: turns + 1,
-            tool_schema_bytes: new TextEncoder().encode(JSON.stringify(this.options.promptRendering === "program-header" ? [] : availableTools)).length,
+            actor: currentActor,
+            tool_schema_bytes: new TextEncoder().encode(JSON.stringify(currentRendering === "program-header" ? [] : availableTools)).length,
             messages: messages.length
           });
           let response;
+          let templatedWriteAttempt = false;
           let graphMessages = messages;
+          let reencodedInputs = [];
+          let reservation;
+          let calledDriver = false;
+          let exceededGraphReservation = false;
           try {
-            const encoded = encodeMessages(this.softened(renderPromptMessages(messages, this.options.promptRendering)));
+            const rendered = renderPromptMessages(messages, currentRendering);
+            const encoded = encodeMessages(fallbackIndex ? rendered : this.softened(rendered));
+            if (fallbackIndex && encoded.blocks) {
+              const reencoded = await this.handoffText(session, encoded.messages, currentActor.id);
+              encoded.messages = reencoded.messages;
+              encoded.blocks = 0;
+              reencodedInputs = reencoded.inputs;
+            }
             graphMessages = encoded.messages;
-            if (encoded.blocks && !supportsNeuralese(this.driver))
+            if (encoded.blocks && !supportsNeuralese(currentDriver))
               throw new NeuraleseUnsupportedError("this model backend cannot carry Neuralese blocks");
             const adapters = adapterCells(session.lam);
-            if (adapters.length && !supportsNeuralese(this.driver))
+            if (adapters.length && !supportsNeuralese(currentDriver))
               throw new NeuraleseUnsupportedError("this model backend cannot apply weight adapters");
-            const template = turns === 0 && session.lam.readout === "template" && availableTools === allTools && session.lam.type.kind === "lambda" && supportsNeuralese(this.driver) ? {
+            const template = (turns === 0 || retryProtocolWriteTemplate) && session.lam.readout === "template" && (availableTools === allTools || retryProtocolWriteTemplate && lastTurn) && session.lam.type.kind === "lambda" && supportsNeuralese(currentDriver) && !fallbackIndex ? {
               call: "return_result",
               arguments: { status: "success" },
               value_type: session.lam.type.returns.kind === "neuralese" && !(session.lam.type.returns.element.kind === "prim" && session.lam.type.returns.element.name === "string") ? "unknown" : "string",
               value: session.lam.type.returns.kind === "neuralese" ? "write" : "decode"
             } : void 0;
+            templatedWriteAttempt = template?.value === "write";
+            retryProtocolWriteTemplate = false;
             if (template) session.runtime.trace.emit("template_readout", { call_id: callId, value: template.value });
             const observer = this.options.onDelta, turn = turns + 1;
-            const turnOptions = observer || this.driver.requiresResultContract ? {
+            const turnOptions = observer || currentDriver.requiresResultContract ? {
               ...observer ? { onDelta: (delta) => {
                 streamed = true;
                 observer(turn, delta);
               } } : {},
-              ...this.driver.requiresResultContract ? { acceptsResult: (value) => {
+              ...currentDriver.requiresResultContract ? { acceptsResult: (value) => {
                 if (session.lam.type.kind !== "lambda") return false;
                 try {
                   const type = session.lam.type.returns;
@@ -229323,21 +230606,29 @@ var init_agent = __esm({
               ...adapters.length ? { adapters } : {},
               ...session.executionOccurrence() ? { native_execution_occurrence: session.executionOccurrence() } : {},
               ...template ? { template } : {},
-              ...this.options.guidance && supportsGuidance(this.driver) ? { guidance: this.options.guidance } : {},
-              ...guidanceRequest ? { privileged_context: guidanceRequest } : {},
-              ...guidancePolicy ? { guidance_policy: guidancePolicy } : {},
+              ...currentGuidance && supportsGuidance(currentDriver) ? { guidance: currentGuidance } : {},
+              ...!fallbackIndex && guidanceRequest ? { privileged_context: guidanceRequest } : {},
+              ...!fallbackIndex && guidancePolicy ? { guidance_policy: guidancePolicy } : {},
               messages: encoded.messages,
-              tools: this.options.promptRendering === "program-header" ? [] : availableTools,
-              ...this.options.promptRendering === "program-header" ? { response_tools: availableTools } : {},
+              tools: currentRendering === "program-header" ? [] : availableTools,
+              ...currentRendering === "program-header" ? { response_tools: availableTools } : {},
               // A turn that offers one tool it must use (the compaction turn, the last turn) requires a tool call.
-              ...availableTools !== allTools && this.options.promptRendering !== "program-header" ? { tool_choice: "required" } : {},
-              ...this.options.temperature === void 0 ? {} : { temperature: this.options.temperature },
+              ...availableTools !== allTools && currentRendering !== "program-header" ? { tool_choice: "required" } : {},
+              ...currentTemperature === void 0 ? {} : { temperature: currentTemperature },
               seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, "model-turn", turns),
               max_tokens: statedWindow === null ? limit : Math.max(1, Math.min(limit ?? statedWindow, statedWindow - Math.ceil(estimate(availableTools)) - REPLY_MARGIN))
             };
-            response = await runInFrame(session.runtime.frame, () => turnOptions ? this.driver(turnRequest, session.runtime.signal, turnOptions) : this.driver(turnRequest, session.runtime.signal));
+            reservation = await this.options.modelBudget?.reserve(turnRequest.max_tokens ?? null, session.runtime.signal);
+            if (this.options.modelBudget && !reservation) return "graph model request or token budget exhausted";
+            if (reservation) turnRequest.max_tokens = reservation.limit;
+            calledDriver = true;
+            response = await runInFrame(session.runtime.frame, () => turnOptions ? currentDriver(turnRequest, session.runtime.signal, turnOptions) : currentDriver(turnRequest, session.runtime.signal));
+            exceededGraphReservation = reservation?.limit !== null && reservation?.limit !== void 0 && response.completion_tokens !== void 0 && response.completion_tokens > reservation.limit;
+            reservation?.finish(response.completion_tokens);
+            reservation = void 0;
             streamed = false;
           } catch (error) {
+            reservation?.finish();
             if (streamed) {
               streamed = false;
               this.options.onDelta(turns + 1, { type: "reset" });
@@ -229346,6 +230637,7 @@ var init_agent = __esm({
               call_id: callId,
               phase: "error",
               turn: turns + 1,
+              actor: currentActor,
               duration_ms: Math.round(performance.now() - started),
               error: `${error instanceof Error ? error.name : "Error"}: ${error instanceof Error ? error.message : String(error)}`
             });
@@ -229356,6 +230648,19 @@ var init_agent = __esm({
               if (measured.window !== null) statedWindow = measured.window;
               continue;
             }
+            if (calledDriver && !(error instanceof NeuraleseUnsupportedError) && !session.runtime.signal?.aborted && fallbackIndex < (this.options.fallbacks?.length ?? 0)) {
+              const report = {
+                reason: "model request failed",
+                evidence: `The model driver failed (${error instanceof Error ? error.name : "error"}).`,
+                attempted_work: "See the existing invocation transcript.",
+                remaining_subproblem: "Continue the current call from its existing scope."
+              };
+              const failure2 = switchModel(report);
+              if (failure2) return failure2;
+              messages.push({ role: "user", content: `The previous model request failed. Continue the existing call without repeating completed effects. ${JSON.stringify(report)}` });
+              continue;
+            }
+            if (error instanceof NeuraleseUnsupportedError && fallbackIndex) return `escalation unavailable: ${error.message}`;
             throw error;
           }
           overflowRetries = 0;
@@ -229363,6 +230668,7 @@ var init_agent = __esm({
             call_id: callId,
             phase: "end",
             turn: turns + 1,
+            actor: currentActor,
             duration_ms: Math.round(performance.now() - started),
             prompt_tokens: response.prompt_tokens ?? null,
             completion_tokens: response.completion_tokens ?? null,
@@ -229376,14 +230682,69 @@ var init_agent = __esm({
               schedule_priority: response.scheduling.priority
             } : {}
           });
-          const turnNode = await this.modelTurnNode(session, graphMessages, response, turns + 1);
+          const turnNode = await this.modelTurnNode(
+            session,
+            graphMessages,
+            response,
+            turns + 1,
+            void 0,
+            currentActor,
+            [...reencodedInputs, ...handoffNode ? [{ node: handoffNode, port: "handoff" }] : []],
+            currentTemperature
+          );
+          if (turnNode && guidancePolicy?.function === "writeGuidance" && callId) trainingGuidance.noteWriterTurn(
+            callId,
+            turnNode,
+            [...session.runtime.frame?.chain ?? [], ...session.runtime.options.parentCallId ? [session.runtime.options.parentCallId] : []]
+          );
+          const recorder = activeRecorder();
+          const recordedTurn = response.raw_response?.x_natlang_recorded_turn;
+          const recordedNative = response.raw_response?.x_natlang_native_recorded_turn;
+          if (turnNode && typeof recordedTurn === "string" && recordedTurn !== recordedNative) recorder?.linkTurn?.(recordedTurn, turnNode);
+          if (recorder && !supportsNeuralese(currentDriver)) recorder.record({
+            messages: structuredClone(graphMessages),
+            tools: structuredClone(availableTools),
+            actor: { ...currentActor },
+            ...this.options.actor ? { initial_actor: { ...this.options.actor } } : {},
+            ...turnNode ? { graph_turn: turnNode } : {},
+            reply: {
+              role: "assistant",
+              content: response.text ?? null,
+              ...response.raw_calls ? { tool_calls: structuredClone(response.raw_calls) } : response.calls?.length ? {
+                tool_calls: response.calls.map(([name, args], index) => ({
+                  id: `call_${turns + 1}_${index}`,
+                  type: "function",
+                  function: { name, arguments: JSON.stringify(args) }
+                }))
+              } : {}
+            },
+            blocks: []
+          });
           if (response.prompt_tokens !== void 0 && sentChars > 0) tokensPerChar = response.prompt_tokens / sentChars;
           turns++;
           session.runtime.checkInterruption();
+          if (exceededGraphReservation) {
+            await this.nativeWriteOrigins(
+              response,
+              session,
+              turns,
+              turnNode,
+              fallbackIndex ? await currentDriver.neuraleseRuntime?.() : this.options.neuralese
+            );
+            const recorded2 = response.raw_response?.x_natlang_native_recorded_turn;
+            if (turnNode && typeof recorded2 === "string") activeRecorder()?.linkNativeTurn?.(recorded2, turnNode);
+            return "graph model token budget exceeded by model response";
+          }
           if (response.protocol_failure) {
             const failure2 = nativeProtocolFailure(response.raw_response);
             if (!failure2) throw new Error("neuralese-native-protocol-integrity: failed turn lost its server receipt");
-            await this.nativeWriteOrigins(response, session, turns, turnNode);
+            await this.nativeWriteOrigins(
+              response,
+              session,
+              turns,
+              turnNode,
+              fallbackIndex ? await currentDriver.neuraleseRuntime?.() : this.options.neuralese
+            );
             const recorded2 = response.raw_response?.x_natlang_native_recorded_turn;
             if (turnNode && typeof recorded2 === "string") activeRecorder()?.linkNativeTurn?.(recorded2, turnNode);
             tokens2 += response.completion_tokens === void 0 ? limit ?? 0 : Math.max(1, response.completion_tokens);
@@ -229397,9 +230758,21 @@ var init_agent = __esm({
             if (timedOut() || maxTokens !== void 0 && tokens2 > maxTokens) return "episode token or wall-clock budget exhausted";
             messages.push(
               { role: "assistant", content: response.text ?? "", ...thought(response.reasoning) },
-              { role: "user", content: nativeProtocolFeedback(failure2) }
+              { role: "user", content: nativeProtocolFeedback(failure2, templatedWriteAttempt) }
             );
+            retryProtocolWriteTemplate = templatedWriteAttempt;
             continue;
+          }
+          const containsForeignState = (value) => typeof value === "string" ? nativeStateSentinelIds(value).length > 0 : Array.isArray(value) ? value.length > 0 && value.every((part) => part && typeof part === "object" && ["text", "native_state"].includes(String(part.type))) && value.some((part) => part.type === "native_state") || value.some(containsForeignState) : !!value && typeof value === "object" && Object.values(value).some(containsForeignState);
+          if (fallbackIndex && ((response.raw_response?.native_state?.blocks?.length ?? 0) > 0 || containsForeignState(response.text) || containsForeignState(response.calls) || containsForeignState(response.raw_response?.choices))) {
+            try {
+              response = await this.handoffOutput(response, session, turns, turnNode, currentDriver, currentActor.id);
+            } catch (error) {
+              const recorded2 = response.raw_response?.x_natlang_native_recorded_turn;
+              if (turnNode && typeof recorded2 === "string") activeRecorder()?.linkNativeTurn?.(recorded2, turnNode);
+              if (error instanceof NeuraleseUnsupportedError) return `escalation unavailable: ${error.message}`;
+              throw error;
+            }
           }
           response = await this.decodeNeuralese(response, session, turns, turnNode, availableTools === allTools || lastTurn);
           const recordedNativeTurn = response.raw_response?.x_natlang_native_recorded_turn;
@@ -229469,7 +230842,11 @@ var init_agent = __esm({
               return;
             }
             const unrun = /```(?:ts|typescript|js|javascript)?\s*\n/.test(response.text ?? "") ? "The code in your reply was not run: code runs only when you call eval with it. " : "";
-            const feedback = response.truncated ? `Your reply was cut off ${limit === null ? "at the length limit" : `at the ${limit}-token limit`} before any tool call. ` + (session.lam.return !== MISSING && !missing ? 'A complete typed result is already staged. Call return_result with {status: "success"} and omit value to return that exact result, or reply "done" to return it without a tool call.' : "Take the next step with one tool call.") : unrun + (missing || "The staged result is incomplete.");
+            const feedback = response.truncated ? `Your reply was cut off ${limit === null ? "at the length limit" : `at the ${limit}-token limit`} before any tool call. ` + (session.lam.return !== MISSING && !missing ? 'A complete typed result is already staged. Call return_result with {status: "success"} and omit value to return that exact result, or reply "done" to return it without a tool call.' : (
+              // A text-typed call returns its plain reply: a model that thinks aloud in the reply must be told that the
+              // reply itself is the result, so it answers short instead of writing on (writer runaways, 2026-11-04).
+              session.takesTextResult() ? "This call returns text: your next reply, complete and without a tool call, is returned as the result, so reply with only the result, shorter than the limit." : "Take the next step with one tool call."
+            )) : unrun + (missing || "The staged result is incomplete.");
             if (response.truncated && ++failureRepairs > (this.options.maxFailureRepairs ?? Infinity)) {
               session.runtime.trace.emit("model_incomplete", {
                 call_id: callId,
@@ -229496,6 +230873,58 @@ var init_agent = __esm({
             const fn = original?.function;
             return original && fn && typeof fn.name === "string" && typeof fn.arguments === "string" ? { ...original, id: typeof original.id === "string" && original.id ? original.id : `call_${turns}_${i}` } : { id: `call_${turns}_${i}`, type: "function", function: { name, arguments: JSON.stringify(args) } };
           });
+          if (calls.some(([name]) => name === "escalate")) {
+            const report = calls[0]?.[1];
+            const keys3 = ["reason", "evidence", "attempted_work", "remaining_subproblem"];
+            const valid2 = availableTools.some((item) => item.function?.name === "escalate") && calls.length === 1 && calls[0]?.[0] === "escalate" && report && Object.keys(report).length === keys3.length && keys3.every((key) => typeof report[key] === "string" && !!report[key].trim());
+            session.turn = turns;
+            session.turnReasoning = response.reasoning;
+            const action = session.hostAction(calls[0][0], report ?? {}, () => {
+              const failure3 = fallbackIndex >= (this.options.fallbacks?.length ?? 0) ? "escalation unavailable: no configured fallback remains" : !valid2 ? "escalate must be offered as the only action and include all four nonempty report fields" : switchModel(report);
+              return failure3 ? { kind: "rejected", text: failure3 } : { kind: "ok", text: "Handoff accepted. Continue this same invocation from its existing scope and transcript. Do not repeat completed effects." };
+            }, String(raw[0].id));
+            const failure2 = action.kind === "ok" ? void 0 : action.text;
+            messages.push(
+              { role: "assistant", content: replyText(response), tool_calls: raw.slice(0, 1), ...thought(response.reasoning) },
+              { role: "tool", tool_call_id: String(raw[0].id), content: action.text }
+            );
+            if (action.kind === "budget") return action.text;
+            if (failure2?.startsWith("escalation unavailable:") || failure2?.startsWith("graph model ")) return failure2;
+            if (failure2) {
+              const repeated = stuck(`${JSON.stringify(calls)}
+${failure2}`);
+              if (repeated) {
+                const stuckFailure = handoffStuck(repeated);
+                if (stuckFailure) return stuckFailure;
+                continue;
+              }
+              if (++failureRepairs > (this.options.maxFailureRepairs ?? Infinity)) return failure2;
+            }
+            continue;
+          }
+          const terminalReport = calls.length === 1 && calls[0]?.[0] === "return_result" ? calls[0][1] : void 0;
+          if (!lastTurn && terminalReport && ["blocked", "failed"].includes(String(terminalReport.status)) && typeof terminalReport.reason === "string" && terminalReport.reason.trim() && fallbackIndex < (this.options.fallbacks?.length ?? 0)) {
+            const report = {
+              reason: `Actor reported ${terminalReport.status}`,
+              evidence: terminalReport.reason,
+              attempted_work: "Inspect the retained transcript and live scope; completed effects must not be repeated.",
+              remaining_subproblem: "Complete the current invocation, or report the specific remaining blocker."
+            };
+            session.turn = turns;
+            session.turnReasoning = response.reasoning;
+            const action = session.hostAction("return_result", terminalReport, () => {
+              const failure2 = switchModel(report);
+              return failure2 ? { kind: "blocked", text: failure2 } : { kind: "ok", text: "Inability report handed to the next configured actor. Continue from the existing scope and transcript." };
+            }, String(raw[0].id));
+            messages.push(
+              { role: "assistant", content: replyText(response), tool_calls: raw.slice(0, 1), ...thought(response.reasoning) },
+              { role: "tool", tool_call_id: String(raw[0].id), content: action.text }
+            );
+            if (action.kind !== "ok") return action.text;
+            repeatedFailure = "";
+            repeatedFailures = 0;
+            continue;
+          }
           const results = [];
           let refinementFailures;
           session.turn = turns;
@@ -229522,7 +230951,7 @@ var init_agent = __esm({
             if (["blocked", "budget", "completed"].includes(result.kind)) break;
             if (["error", "rejected", "refused"].includes(result.kind) || session.failureSerial > previousFailureSerial) break;
           }
-          messages.push({ role: "assistant", content: "", tool_calls: raw.slice(0, results.length), ...thought(response.reasoning) });
+          messages.push({ role: "assistant", content: replyText(response), tool_calls: raw.slice(0, results.length), ...thought(response.reasoning) });
           const left = maxTurns === void 0 ? Infinity : maxTurns - turns;
           const notice = left === 1 ? LAST_TURN_NOTICE : left <= 4 && left > 0 ? `
 
@@ -229530,10 +230959,25 @@ var init_agent = __esm({
           let note2;
           for (const [index, result] of results.entries()) {
             const [name, args] = calls[index], id2 = String(raw[index].id);
-            messages.push({ role: "tool", tool_call_id: id2, content: result.text + (index === results.length - 1 ? notice : "") });
+            let content = result.text;
+            for (const full of result.cutOff ?? []) {
+              const ref = await this.compactRef(session, {
+                operator: "compact-value",
+                value: full,
+                instructions: `Read this ${name} result for: ${this.purpose(session)}`
+              });
+              if (ref) content += "\n\n" + framedState("compact-value", ref).trimEnd();
+            }
+            messages.push({ role: "tool", tool_call_id: id2, content: content + (index === results.length - 1 ? notice : "") });
             if (name === "compact_history" && result.kind === "ok") note2 = String(args.note).trim();
           }
           if (note2 !== void 0) {
+            const history = await this.compactRef(session, {
+              operator: "compact-history",
+              tools: this.tools(session),
+              messages: messages.map((message2) => typeof message2.content === "string" ? { ...message2, content: runtimeTextToParts(message2.content).map((part) => part.type === "text" ? part.text : "[Neuralese]").join("") } : message2)
+            });
+            if (history) note2 += "\n\n" + framedState("compact-history", history);
             const elided = pinNote(note2) + collapseHistory(messages, protectedLength);
             compactedAt = requestChars(this.tools(session)) * tokensPerChar;
             compactedTurn = turns;
@@ -229556,7 +231000,11 @@ var init_agent = __esm({
           if (session.failureSerial > previousFailureSerial) {
             const repeated = stuck(`${JSON.stringify(calls)}
 ${session.failureDebug?.message ?? results.at(-1)?.text ?? ""}`);
-            if (repeated) return repeated;
+            if (repeated) {
+              const failure2 = handoffStuck(repeated);
+              if (failure2) return failure2;
+              continue;
+            }
             if (++failureRepairs > (repairLimit ?? Infinity))
               return `eval repair limit reached: ${session.failureDebug?.message ?? "failure"}`;
             continue;
@@ -229568,7 +231016,11 @@ ${session.failureDebug?.message ?? results.at(-1)?.text ?? ""}`);
           if (failed) {
             const repeated = stuck(`${JSON.stringify(calls)}
 ${failed.text}`);
-            if (repeated) return repeated;
+            if (repeated) {
+              const failure2 = handoffStuck(repeated);
+              if (failure2) return failure2;
+              continue;
+            }
             if (++failureRepairs > (repairLimit ?? Infinity)) return `repair limit reached: ${failed.text}`;
             continue;
           }
@@ -229857,6 +231309,27 @@ var init_fusion = __esm({
   }
 });
 
+// src/calls/graph-custody.ts
+function graphCustodyDigest(taskId, callId, parentCallId, children2, effects) {
+  const value = {
+    schema: "natlang.call-graph-chronology/1",
+    task_id: taskId,
+    call_id: callId,
+    parent_call_id: parentCallId,
+    child_call_ids: children2,
+    effects
+  };
+  const text3 = JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+  return hexDigest(text3);
+}
+var init_graph_custody = __esm({
+  "src/calls/graph-custody.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+  }
+});
+
 // src/calls/snapshot.ts
 function portable(value, seen, depth2) {
   if (depth2 > 64) return false;
@@ -230002,19 +231475,19 @@ function replaceParts(text3, leaves) {
   });
 }
 function normalizeProgram(code, inputs = {}, leaves = inputLeaves(inputs)) {
-  const scanner = import_typescript18.default.createScanner(import_typescript18.default.ScriptTarget.ES2022, true, import_typescript18.default.LanguageVariant.Standard, code);
+  const scanner = import_typescript19.default.createScanner(import_typescript19.default.ScriptTarget.ES2022, true, import_typescript19.default.LanguageVariant.Standard, code);
   const tokens2 = [];
   const braces = [];
-  for (let kind = scanner.scan(); kind !== import_typescript18.default.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
-    if (kind === import_typescript18.default.SyntaxKind.OpenBraceToken && braces.length) braces[braces.length - 1]++;
-    else if (kind === import_typescript18.default.SyntaxKind.CloseBraceToken && braces.length) {
+  for (let kind = scanner.scan(); kind !== import_typescript19.default.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    if (kind === import_typescript19.default.SyntaxKind.OpenBraceToken && braces.length) braces[braces.length - 1]++;
+    else if (kind === import_typescript19.default.SyntaxKind.CloseBraceToken && braces.length) {
       if (braces.at(-1) > 0) braces[braces.length - 1]--;
       else {
         braces.pop();
         kind = scanner.reScanTemplateToken(false);
       }
     }
-    if (kind === import_typescript18.default.SyntaxKind.TemplateHead || kind === import_typescript18.default.SyntaxKind.TemplateMiddle) braces.push(0);
+    if (kind === import_typescript19.default.SyntaxKind.TemplateHead || kind === import_typescript19.default.SyntaxKind.TemplateMiddle) braces.push(0);
     tokens2.push({ kind, text: scanner.getTokenText(), value: scanner.getTokenValue() });
   }
   const renamed = /* @__PURE__ */ new Map();
@@ -230022,36 +231495,36 @@ function normalizeProgram(code, inputs = {}, leaves = inputLeaves(inputs)) {
   let previous;
   for (let index = 0; index < tokens2.length; index++) {
     const token = tokens2[index];
-    if (token.kind === import_typescript18.default.SyntaxKind.Identifier && token.text === "console" && tokens2[index + 1]?.kind === import_typescript18.default.SyntaxKind.DotToken && tokens2[index + 3]?.kind === import_typescript18.default.SyntaxKind.OpenParenToken) {
+    if (token.kind === import_typescript19.default.SyntaxKind.Identifier && token.text === "console" && tokens2[index + 1]?.kind === import_typescript19.default.SyntaxKind.DotToken && tokens2[index + 3]?.kind === import_typescript19.default.SyntaxKind.OpenParenToken) {
       let depth2 = 0, end = index + 3;
       for (; end < tokens2.length; end++) {
-        if (tokens2[end].kind === import_typescript18.default.SyntaxKind.OpenParenToken) depth2++;
-        if (tokens2[end].kind === import_typescript18.default.SyntaxKind.CloseParenToken && --depth2 === 0) break;
+        if (tokens2[end].kind === import_typescript19.default.SyntaxKind.OpenParenToken) depth2++;
+        if (tokens2[end].kind === import_typescript19.default.SyntaxKind.CloseParenToken && --depth2 === 0) break;
       }
-      index = tokens2[end + 1]?.kind === import_typescript18.default.SyntaxKind.SemicolonToken ? end + 1 : end;
+      index = tokens2[end + 1]?.kind === import_typescript19.default.SyntaxKind.SemicolonToken ? end + 1 : end;
       continue;
     }
     if (DROPPED.has(token.kind)) continue;
     const next2 = tokens2[index + 1]?.kind;
-    if (token.kind === import_typescript18.default.SyntaxKind.Identifier && (previous === void 0 || previous === import_typescript18.default.SyntaxKind.SemicolonToken || previous === import_typescript18.default.SyntaxKind.CloseBraceToken) && (next2 === void 0 || next2 === import_typescript18.default.SyntaxKind.SemicolonToken)) {
+    if (token.kind === import_typescript19.default.SyntaxKind.Identifier && (previous === void 0 || previous === import_typescript19.default.SyntaxKind.SemicolonToken || previous === import_typescript19.default.SyntaxKind.CloseBraceToken) && (next2 === void 0 || next2 === import_typescript19.default.SyntaxKind.SemicolonToken)) {
       index++;
       continue;
     }
     let text3 = token.text;
-    if (token.kind === import_typescript18.default.SyntaxKind.Identifier) {
+    if (token.kind === import_typescript19.default.SyntaxKind.Identifier) {
       if (previous !== void 0 && DECLARING.has(previous) && !renamed.has(text3)) renamed.set(text3, `v${renamed.size}`);
       const name = renamed.get(text3);
-      if (name && previous !== import_typescript18.default.SyntaxKind.DotToken) text3 = name;
-    } else if (token.kind === import_typescript18.default.SyntaxKind.StringLiteral || token.kind === import_typescript18.default.SyntaxKind.NoSubstitutionTemplateLiteral) {
+      if (name && previous !== import_typescript19.default.SyntaxKind.DotToken) text3 = name;
+    } else if (token.kind === import_typescript19.default.SyntaxKind.StringLiteral || token.kind === import_typescript19.default.SyntaxKind.NoSubstitutionTemplateLiteral) {
       const path2 = leaves.get(`string:${token.value}`) ?? leaves.get(`part:${token.value.toLowerCase()}`);
       text3 = path2 ? `$${leaves.get(`string:${token.value}`) ? "in" : "part"}.${path2}` : JSON.stringify(replaceParts(token.value, leaves));
     } else if (TEMPLATE_TEXT.has(token.kind)) {
       text3 = replaceParts(text3, leaves);
-    } else if (token.kind === import_typescript18.default.SyntaxKind.NumericLiteral) {
+    } else if (token.kind === import_typescript19.default.SyntaxKind.NumericLiteral) {
       const number = Number(token.value);
       const path2 = leaves.get(`number:${number}`) ?? leaves.get(`part:${token.value}`);
       if (path2 && number !== 0 && number !== 1) text3 = `$${leaves.get(`number:${number}`) ? "in" : "part"}.${path2}`;
-    } else if (token.kind === import_typescript18.default.SyntaxKind.SemicolonToken && (previous === import_typescript18.default.SyntaxKind.SemicolonToken || previous === void 0)) continue;
+    } else if (token.kind === import_typescript19.default.SyntaxKind.SemicolonToken && (previous === import_typescript19.default.SyntaxKind.SemicolonToken || previous === void 0)) continue;
     out.push(text3);
     previous = token.kind;
   }
@@ -230064,20 +231537,20 @@ function approachHash(evals, inputs) {
   if (!programs.length) return "answer-only";
   return hexDigest(programs.join("\n;;\n")).slice(0, 24);
 }
-var import_typescript18, DECLARING, DROPPED, TEMPLATE_TEXT;
+var import_typescript19, DECLARING, DROPPED, TEMPLATE_TEXT;
 var init_normalize = __esm({
   "src/calls/normalize.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript18 = __toESM(require_typescript(), 1);
+    import_typescript19 = __toESM(require_typescript(), 1);
     init_hash();
-    DECLARING = /* @__PURE__ */ new Set([import_typescript18.default.SyntaxKind.ConstKeyword, import_typescript18.default.SyntaxKind.LetKeyword, import_typescript18.default.SyntaxKind.VarKeyword, import_typescript18.default.SyntaxKind.FunctionKeyword]);
-    DROPPED = /* @__PURE__ */ new Set([import_typescript18.default.SyntaxKind.AwaitKeyword, import_typescript18.default.SyntaxKind.ReturnKeyword]);
+    DECLARING = /* @__PURE__ */ new Set([import_typescript19.default.SyntaxKind.ConstKeyword, import_typescript19.default.SyntaxKind.LetKeyword, import_typescript19.default.SyntaxKind.VarKeyword, import_typescript19.default.SyntaxKind.FunctionKeyword]);
+    DROPPED = /* @__PURE__ */ new Set([import_typescript19.default.SyntaxKind.AwaitKeyword, import_typescript19.default.SyntaxKind.ReturnKeyword]);
     TEMPLATE_TEXT = /* @__PURE__ */ new Set([
-      import_typescript18.default.SyntaxKind.TemplateHead,
-      import_typescript18.default.SyntaxKind.TemplateMiddle,
-      import_typescript18.default.SyntaxKind.TemplateTail,
-      import_typescript18.default.SyntaxKind.NoSubstitutionTemplateLiteral
+      import_typescript19.default.SyntaxKind.TemplateHead,
+      import_typescript19.default.SyntaxKind.TemplateMiddle,
+      import_typescript19.default.SyntaxKind.TemplateTail,
+      import_typescript19.default.SyntaxKind.NoSubstitutionTemplateLiteral
     ]);
   }
 });
@@ -230155,6 +231628,7 @@ var init_recorder = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_hash();
+    init_graph_custody();
     init_snapshot();
     init_normalize();
     init_types3();
@@ -230295,7 +231769,7 @@ var init_recorder = __esm({
       /** One recording-services event (`native/effects.ts`), with its exact arguments and result. */
       effect(event, by2 = "agent") {
         if (event.phase === "requested") {
-          this.pending.push({ service: event.service, method: event.method, args: this.ref(event.exact?.args ?? []), by: by2, order: this.order++, seq: event.seq });
+          this.pending.push({ service: event.service, method: event.method, args: this.ref(event.exact?.args ?? []), by: by2, order: this.order++, seq: event.seq, graph_order: event.graph_order });
           return;
         }
         const index = event.seq !== void 0 ? this.pending.findIndex((item) => item.seq === event.seq) : this.pending.findIndex((item) => item.service === event.service && item.method === event.method);
@@ -230327,6 +231801,7 @@ var init_recorder = __esm({
             result.output,
             excluded(this.base.exclude, { name: definition.name, source: definition.source }, "return")
           ) : null;
+          const effects = [...this.effects, ...this.pending.map(({ seq: _seq, ...item }) => ({ ...item, error: "did not finish" }))].sort((a, b) => a.order - b.order);
           const record3 = {
             version: CALLS_VERSION,
             call_id: this.base.callId,
@@ -230347,7 +231822,13 @@ var init_recorder = __esm({
             detail: result.detail.slice(0, 4e3),
             started_at: this.startedAt,
             ended_at: (/* @__PURE__ */ new Date()).toISOString(),
-            effects: [...this.effects, ...this.pending.map(({ seq: _seq, ...item }) => ({ ...item, error: "did not finish" }))].sort((a, b) => a.order - b.order),
+            ...result.graphChildren ? { graph_custody: {
+              schema: "natlang.call-graph-chronology/1",
+              task_id: this.base.taskId,
+              child_call_ids: result.graphChildren,
+              sha256: graphCustodyDigest(this.base.taskId, this.base.callId, this.base.parentCallId, result.graphChildren, effects)
+            } } : {},
+            effects,
             folder: this.folder,
             approach: { evals, hash: this.executor.kind === "agent" && result.outcome === "done" ? approachHash(actions.filter((action) => action.ok).map((action) => action.code), this.hostInputs) : null },
             cost: {
@@ -230971,7 +232452,7 @@ function readSkillDescription(value, field, path2, diagnostics) {
       const type = parseType(value.$neuralese.type);
       if (type.kind !== "neuralese" || type.element.kind !== "prim" || type.element.name !== "string")
         throw new Error("expected Neuralese<string>");
-      return neuraleseRef(value.$neuralese.type, value.$neuralese.id, value.$neuralese.stop_gradient, value.$neuralese.source_occurrence);
+      return neuraleseRef(value.$neuralese.type, value.$neuralese.id, value.$neuralese.stop_gradient, value.$neuralese.source_occurrence, value.$neuralese.teacher_text === true);
     } catch {
       error(`skill-${field}-type`, `${field} must have type Neuralese<string> (optionally dialect-qualified)`);
       return void 0;
@@ -231535,6 +233016,7 @@ function definitionNode(definition, inputs, options = {}) {
   node.codebase = definition.codebase;
   node.hostClasses = options.classes;
   if (definition.readout) node.readout = definition.readout;
+  if (definition.withhold?.length) node.withheldTools = [...definition.withhold];
   const env = new TypeEnv(node.types);
   env.classes = options.classes;
   env.dialects = options.dialects;
@@ -231705,7 +233187,8 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       params: Object.entries(record3.args).map(([name, type]) => ({ name: name.replace(/\?$/, ""), type, optional: name.endsWith("?") })),
       returns: definition.representation ? definition.returns : record3.returns,
       types: record3.types,
-      codebase: record3.codebase
+      codebase: record3.codebase,
+      withhold: record3.withhold
     };
   } else if (replacement?.kind === "lambda.instructions" && options.instructions === void 0)
     definition = { ...definition, body: replacement.template.segments[0] };
@@ -231865,6 +233348,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     }
   }
   const callId = task.nextCallId();
+  task.registerGraphCall(callId, frame.parentCallId);
   const siblingOrdinal = task.reserveExecutionSiblingOrdinal(frame.parentCallId, definition.id);
   const parentOccurrenceEvent = frame.parentCallId ? traceFor(frame.parentCallId)?.events.find((event) => event.kind === "invocation" && event.phase === "start" && event.call_id === frame.parentCallId) : void 0;
   const parentOccurrence = parentOccurrenceEvent?.native_occurrence;
@@ -231876,6 +233360,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     adHocDepth,
     adHocQuestions,
     programOwner: owner,
+    typeAliases: definition.types,
     signal: frame.signal,
     abort: frame.abort,
     ...invocationSkillFiles ? { skillFiles: invocationSkillFiles } : {},
@@ -231943,13 +233428,14 @@ async function runDefinitionBody(frame, definition, positional, options, transac
   }
   if (attempt?.strict && !handoff) {
     capture?.discard();
+    task.discardGraphCall(callId, frame.parentCallId);
     throw new Deopt(attempt.declined ?? "no crisp case of this tier served the call");
   }
   const environment = task.environment();
   let runtime;
   const services = recordingServices(checkedServices(task, frame, task.services, model, callId, (kind, data) => {
     runtime?.trace.emit(kind, data);
-  }, frame.signal ?? task.signal), ({ exact, ...event }) => (capture?.effect({ ...event, exact }, "agent"), event.phase === "requested" ? runtime?.trace.emit("effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event }) : graphNode(
+  }, frame.signal ?? task.signal), ({ exact, ...event }) => (capture?.effect({ ...event, exact, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "agent"), event.phase === "requested" ? runtime?.trace.emit("effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event }) : graphNode(
     runtime?.trace,
     "effect",
     { call_id: callId, capability: `${event.service}.${event.method}`, ...event },
@@ -231957,14 +233443,50 @@ async function runDefinitionBody(frame, definition, positional, options, transac
   )));
   const addendum = [frame.systemAddendum, attempt?.guidance].filter(Boolean).join("\n\n") || void 0;
   const nativeReader = !!(task.runtime.options.neuralese?.nativeStateConsumer || task.runtime.options.neuralese?.nativeStateConsumerForCall);
-  const boundGuidance = task.nativeProgramGuidance?.binding?.program_id === owner ? task.nativeProgramGuidance : void 0;
-  const selectedNativeGuidance = eligibleGuidance ? boundGuidance ?? (nativeReader ? view.nativeGuidance() : void 0) : void 0;
-  const selectedAuthoredGuidance = eligibleGuidance && !selectedNativeGuidance && !nativeReader && view.guidance() && view.program?.id ? authoredTextGuidance(view.guidance(), view.program.id) : void 0;
+  const guidanceBound = !!owner && programGuidanceProgram(task.nativeProgramGuidance) === owner;
+  const selectedNativeGuidance = !eligibleGuidance ? void 0 : guidanceBound ? guidanceForCall(task.nativeProgramGuidance, definition.name) : nativeReader ? view.nativeGuidance() : void 0;
+  const selectedAuthoredGuidance = eligibleGuidance && !guidanceBound && !selectedNativeGuidance && !nativeReader && view.guidance() && view.program?.id ? authoredTextGuidance(view.guidance(), view.program.id) : void 0;
+  const handoffNames = task.runtime.options.escalation?.enabled === false ? [] : task.runtime.options.escalation?.models ?? [];
+  if (new Set(handoffNames).size !== handoffNames.length) throw new Error("escalation model chain contains a cycle");
+  const configuredModels = task.runtime.options.models ?? {};
+  const fallbacks = handoffNames.map((name) => {
+    const configured = configuredModels[name];
+    if (!configured) throw new Error(`escalation model ${JSON.stringify(name)} is not explicitly configured`);
+    const config = typeof configured === "function" ? { driver: configured } : configured;
+    return { ...config, name, id: config.id ?? name };
+  });
+  if (fallbacks.some((fallback, index) => fallbacks.slice(0, index).some((previous) => previous.id === fallback.id || previous.driver === fallback.driver)))
+    throw new Error("escalation model chain repeats an actor");
+  const primaryActorId = model ? model.id ?? model.driver.model ?? executorModel(task) ?? model.driver.name ?? "model" : void 0;
+  const currentFallback = fallbacks.findIndex((fallback) => fallback.driver === model?.driver || fallback.id === primaryActorId);
+  const remainingFallbacks = fallbacks.slice(currentFallback + 1).filter((fallback) => fallback.driver !== model?.driver && fallback.id !== primaryActorId);
+  const nativeOptions = task.runtime.options.neuralese;
+  const nativePort = nativeOptions?.port;
+  const boundedModels = task.modelBudget.maxRequests !== void 0 || task.modelBudget.maxTokens !== void 0;
+  const budgetedNeuralese = nativePort && boundedModels && !nativeOptions.teacherText ? {
+    ...nativeOptions,
+    port: {
+      dialect: nativePort.dialect,
+      ...nativePort.forcedText ? { forcedText: true } : {},
+      write: async (...args) => {
+        if (!nativePort.forcedText) throw new Error("graph model budget cannot bound this Neuralese writer: it does not declare forced text");
+        if (!await task.modelBudget.reserveForcedText(frame.signal ?? task.signal)) throw new Error("graph model request budget exhausted before Neuralese text writer");
+        runtime?.trace.emit("model_auxiliary_request", { call_id: callId, kind: "forced-text-writer", completion_tokens: 0 });
+        return nativePort.write(...args);
+      }
+    }
+  } : nativeOptions;
   const agent = model ? new NativeToolAgent(model.driver, {
+    actor: {
+      id: primaryActorId,
+      revision: model.revision ?? null
+    },
+    fallbacks: remainingFallbacks,
+    modelBudget: task.modelBudget,
     systemPrompt: () => task.systemPrompt() + (addendum ? `
 
 ${addendum}` : ""),
-    neuralese: task.runtime.options.neuralese,
+    neuralese: budgetedNeuralese,
     programGuidance: selectedNativeGuidance,
     authoredTextGuidance: selectedAuthoredGuidance,
     maxTurns: model.maxTurns,
@@ -231975,6 +233497,7 @@ ${addendum}` : ""),
     contextTokens: model.contextTokens,
     maxFailureRepairs: model.maxFailureRepairs,
     decisionReadout: model.decisionReadout,
+    leafCalls: model.leafCalls,
     guidance: model.guidance,
     promptRendering: model.promptRendering,
     // Live events (plans/STREAMING.md §1.6): the call's model deltas, tagged with the call; nothing without a subscriber.
@@ -231997,6 +233520,7 @@ ${addendum}` : "")
     maxActions: limits.maxActions,
     maxToolCalls: limits.maxToolCalls,
     sharedEpisodeBudget: task.episodeBudget,
+    sharedProducerScope: producerScopeForTrace(traceFor(frame.parentCallId)),
     seedPolicy: task.runtime.options.seed,
     runId: callId,
     exactHostTraceCapture: task.runtime.options.exactHostTraceCapture,
@@ -232008,7 +233532,7 @@ ${addendum}` : "")
     services,
     declarations: task.serviceDeclarations,
     serviceScopes: task.serviceScopes,
-    neuralese: task.runtime.options.neuralese,
+    neuralese: budgetedNeuralese,
     returnErrorText: task.runtime.platform.returnErrorText,
     manifest: {
       definition_id: definition.id,
@@ -232045,7 +233569,7 @@ ${addendum}` : "")
   });
   let outcome = "failed", detail = "";
   let hostValue, hasValue = false;
-  registerTrace(callId, runtime.trace, runtime.episodeBudget);
+  registerTrace(callId, runtime.trace, producerScopeForTrace(runtime.trace));
   const liveCall = task.live && { taskId: task.id, callId, parentCallId: frame.parentCallId ?? null, definitionId: definition.id, name: definition.name };
   if (liveCall) task.live({ type: "call_start", ...liveCall });
   const streams = task.streamsTraces, trace = runtime.trace;
@@ -232151,7 +233675,7 @@ ${addendum}` : "")
     });
     environment.close();
     if (capture) {
-      capture.finish({ outcome, detail, output: hostValue, hasOutput: hasValue, events: runtime.trace.events });
+      capture.finish({ outcome, detail, output: hostValue, hasOutput: hasValue, events: runtime.trace.events, graphChildren: task.graphChildren(callId) });
       if (outcome !== "done") task.failedCalls.set(`${frame.parentCallId ?? ""}|${capture.base.definition.key}`, callId);
       if (outcome === "done" && capture.executor.kind === "agent")
         for (const item of shadows) {
@@ -232249,7 +233773,7 @@ async function runCrispCase(input) {
   const { task, childFrame, callId, definition, options, inputs, folder: folder2, capture, store, item } = input;
   const args = caseArguments(capture, folder2);
   const original = { ...args };
-  const services = recordingServices(task.services, (event) => capture.effect(event, "crisp"));
+  const services = recordingServices(task.services, (event) => capture.effect({ ...event, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "crisp"));
   let error;
   try {
     const raw = await runInFrame({ ...childFrame, services }, () => item.run(args));
@@ -232313,7 +233837,7 @@ async function runCrispCase(input) {
       detail: `served by compiled case ${item.hash}`,
       events: []
     });
-    capture.finish({ outcome: "done", detail: `served by compiled case ${item.hash}`, output: value, hasOutput: true, events: [] });
+    capture.finish({ outcome: "done", detail: `served by compiled case ${item.hash}`, output: value, hasOutput: true, events: [], graphChildren: task.graphChildren(callId) });
     try {
       store.caseServed(item.hash, callId, false);
       if (!item.hash.startsWith("tier:") && Math.random() < capture.settings.auditRate) store.enqueue("audit", item.hash, callId);
@@ -232350,7 +233874,7 @@ var init_kernel = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_decision();
-    init_prompts();
+    init_program();
     init_hash();
     init_agent();
     init_runtime2();
@@ -232514,6 +234038,7 @@ function natlangDefinition(record3) {
     subtype: record3.subtype,
     ...record3.readout ? { readout: record3.readout } : {},
     ...record3.model ? { model: record3.model } : {},
+    ...record3.withhold ? { withhold: record3.withhold } : {},
     description: record3.description,
     source: record3.source,
     revision: record3.revision
@@ -233060,7 +234585,8 @@ Stop when: ${context.predicateInstructions}` : "");
               throw new RangeError("iteration measure must be a nonnegative safe integer");
             return remaining2;
           } catch (error) {
-            throw new IterationStepError(`iteration measure failed: ${error?.message ?? error}`, state, trajectory, error);
+            const hint = typeof value === "function" && value === this.step ? " The initial state is the step callable itself. For step.iterateOn(initialState, ...fixedArgs), omit the step from the arguments; only the free form iterateOn(step, initialState, ...fixedArgs) passes it explicitly." : "";
+            throw new IterationStepError(`iteration measure failed: ${error?.message ?? error}${hint}`, state, trajectory, error);
           }
         };
         let remaining;
@@ -234385,7 +235911,7 @@ function coerce(raw, type, env, path2 = "value", options = {}) {
     const sole = typeof raw === "string" ? soleSentinelUse(raw) : isContentParts(raw) && raw.some((part) => part.type !== "text") ? soleSentinelUse(partsToText(raw)) : void 0;
     if (sole) {
       checkBlockDialect(sole.id, wanted, env, path2);
-      return neuraleseRef(formatType(wanted), sole.id, sole.stop_gradient, sole.source_occurrence);
+      return neuraleseRef(formatType(wanted), sole.id, sole.stop_gradient, sole.source_occurrence, sole.teacher_text === true);
     }
     if (!isNeuraleseRef(raw)) return reject(path2, "type-mismatch", formatType(wanted), preview3(raw));
     let got;
@@ -234425,13 +235951,13 @@ function coerce(raw, type, env, path2 = "value", options = {}) {
   if (isContentParts(raw) && raw.some((part) => part.type !== "text")) {
     const sole = soleSentinelUse(partsToText(raw));
     if (wanted.kind === "prim" && wanted.name === "unknown" && sole)
-      return neuraleseRef("Neuralese<unknown>", sole.id, sole.stop_gradient, sole.source_occurrence);
+      return neuraleseRef("Neuralese<unknown>", sole.id, sole.stop_gradient, sole.source_occurrence, sole.teacher_text === true);
     return reject(path2, "type-mismatch", formatType(wanted), preview3(raw));
   }
   if (wanted.kind === "prim") {
     if (wanted.name === "unknown" && raw !== void 0) return raw;
     if ((wanted.name === "string" || wanted.name === "Blob") && typeof raw === "string") return raw;
-    if (wanted.name === "number" && typeof raw === "number" && Number.isFinite(raw) && (!Number.isInteger(raw) || Number.isSafeInteger(raw))) return raw;
+    if (wanted.name === "number" && typeof raw === "number" && Number.isFinite(raw)) return raw;
     if (wanted.name === "boolean" && typeof raw === "boolean") return raw;
     if (wanted.name === "null" && raw === null) return null;
     if (wanted.name === "Folder" && (raw instanceof Folder || raw instanceof FolderHandle)) return raw;
@@ -235063,9 +236589,9 @@ function explicitInline(plan, values, accessors, context, bound, origin, rebindI
 function instantiate(fn, representation, site2) {
   return (...args) => invokeAt(fn, args, representation, site2);
 }
-function named(name, record3) {
+function named(name, record3, home) {
   registerFileRecords(record3);
-  return namedCallable(name, record3);
+  return namedCallable(name, record3, void 0, home);
 }
 function registerCrisp(table, source2 = "refinements") {
   if (!table || typeof table !== "object" || Array.isArray(table))
@@ -252178,7 +253704,7 @@ init_evaluator();
 
 // src/native/eval-compile.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript19 = __toESM(require_typescript(), 1);
+var import_typescript20 = __toESM(require_typescript(), 1);
 
 // src/native/prelude.generated.ts
 init_define_NATLANG_TS_LIBS();
@@ -252187,30 +253713,30 @@ var PRELUDE = '// natlang crisp standard library v0.1 (SPEC 9.4). Pure helpers o
 // src/native/eval-compile.ts
 var BODY_FUNCTION = "__natlang_body";
 function lowerStaticImports(source2, validateImport) {
-  const file = import_typescript19.default.createSourceFile("imports.ts", source2, import_typescript19.default.ScriptTarget.Latest, true);
+  const file = import_typescript20.default.createSourceFile("imports.ts", source2, import_typescript20.default.ScriptTarget.Latest, true);
   const edits = [];
   const visit = (node) => {
-    if (import_typescript19.default.isImportDeclaration(node)) {
-      if (!import_typescript19.default.isStringLiteral(node.moduleSpecifier)) throw new Error("Package import must use a string literal");
+    if (import_typescript20.default.isImportDeclaration(node)) {
+      if (!import_typescript20.default.isStringLiteral(node.moduleSpecifier)) throw new Error("Package import must use a string literal");
       validateImport(node.moduleSpecifier.text);
       const clause = node.importClause;
       const call = `await __natlang_import(${node.moduleSpecifier.getText(file)})`;
       const fields = [];
       let text3 = "";
-      const typeOnlyBindings = clause?.namedBindings && import_typescript19.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
+      const typeOnlyBindings = clause?.namedBindings && import_typescript20.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
       if (!clause?.isTypeOnly && !(typeOnlyBindings && !clause?.name)) {
         if (clause?.name) fields.push(`default: ${clause.name.text}`);
         const bindings2 = clause?.namedBindings;
-        if (bindings2 && import_typescript19.default.isNamedImports(bindings2)) {
+        if (bindings2 && import_typescript20.default.isNamedImports(bindings2)) {
           for (const binding of bindings2.elements)
             if (!binding.isTypeOnly) fields.push(`${binding.propertyName?.text ?? binding.name.text}: ${binding.name.text}`);
         }
         if (fields.length) text3 += `const { ${fields.join(", ")} } = ${call};`;
-        if (bindings2 && import_typescript19.default.isNamespaceImport(bindings2)) text3 += `const ${bindings2.name.text} = ${call};`;
+        if (bindings2 && import_typescript20.default.isNamespaceImport(bindings2)) text3 += `const ${bindings2.name.text} = ${call};`;
         if (!text3) text3 = `${call};`;
       }
       edits.push({ start: node.getStart(file), end: node.end, text: text3 });
-    } else import_typescript19.default.forEachChild(node, visit);
+    } else import_typescript20.default.forEachChild(node, visit);
   };
   visit(file);
   for (const edit of edits.sort((a, b) => b.start - a.start)) source2 = source2.slice(0, edit.start) + edit.text + source2.slice(edit.end);
@@ -252218,39 +253744,39 @@ function lowerStaticImports(source2, validateImport) {
 }
 var restoreAfterAwait = (context) => (file) => {
   const f = context.factory;
-  const visit = (node) => import_typescript19.default.isAwaitExpression(node) ? f.createCallExpression(f.createParenthesizedExpression(f.createAwaitExpression(f.createCallExpression(
+  const visit = (node) => import_typescript20.default.isAwaitExpression(node) ? f.createCallExpression(f.createParenthesizedExpression(f.createAwaitExpression(f.createCallExpression(
     f.createIdentifier("__natlang_bindAwait"),
     void 0,
-    [import_typescript19.default.visitNode(node.expression, visit)]
-  ))), void 0, []) : import_typescript19.default.visitEachChild(node, visit, context);
-  return import_typescript19.default.visitNode(file, visit);
+    [import_typescript20.default.visitNode(node.expression, visit)]
+  ))), void 0, []) : import_typescript20.default.visitEachChild(node, visit, context);
+  return import_typescript20.default.visitNode(file, visit);
 };
 var lowerImportCalls = (context) => (root2) => {
   const visit = (node) => {
-    if (import_typescript19.default.isCallExpression(node) && node.expression.kind === import_typescript19.default.SyntaxKind.ImportKeyword)
-      return import_typescript19.default.factory.updateCallExpression(
+    if (import_typescript20.default.isCallExpression(node) && node.expression.kind === import_typescript20.default.SyntaxKind.ImportKeyword)
+      return import_typescript20.default.factory.updateCallExpression(
         node,
-        import_typescript19.default.factory.createIdentifier("__natlang_import"),
+        import_typescript20.default.factory.createIdentifier("__natlang_import"),
         void 0,
-        node.arguments.map((arg) => import_typescript19.default.visitNode(arg, visit))
+        node.arguments.map((arg) => import_typescript20.default.visitNode(arg, visit))
       );
-    return import_typescript19.default.visitEachChild(node, visit, context);
+    return import_typescript20.default.visitEachChild(node, visit, context);
   };
-  return import_typescript19.default.visitNode(root2, visit);
+  return import_typescript20.default.visitNode(root2, visit);
 };
 function compileEval(code, options) {
   let source2 = options.body ? `${options.asyncBody ? "async " : ""}function ${BODY_FUNCTION}() {
 ${code}
 }` : code;
   if (options.imports) source2 = lowerStaticImports(source2, options.imports);
-  const result = import_typescript19.default.transpileModule(source2, {
+  const result = import_typescript20.default.transpileModule(source2, {
     fileName: "natlang-eval.ts",
     reportDiagnostics: true,
-    compilerOptions: { target: import_typescript19.default.ScriptTarget.ES2022, module: import_typescript19.default.ModuleKind.None, isolatedModules: true, removeComments: false },
+    compilerOptions: { target: import_typescript20.default.ScriptTarget.ES2022, module: import_typescript20.default.ModuleKind.None, isolatedModules: true, removeComments: false },
     transformers: { before: [...options.imports ? [lowerImportCalls] : [], ...options.restoreAfterAwait ? [restoreAfterAwait] : []] }
   });
-  const errors = (result.diagnostics ?? []).filter((d) => d.category === import_typescript19.default.DiagnosticCategory.Error);
-  if (errors.length) throw new SyntaxError("TypeScript: " + errors.map((d) => import_typescript19.default.flattenDiagnosticMessageText(d.messageText, "\n")).join("; "));
+  const errors = (result.diagnostics ?? []).filter((d) => d.category === import_typescript20.default.DiagnosticCategory.Error);
+  if (errors.length) throw new SyntaxError("TypeScript: " + errors.map((d) => import_typescript20.default.flattenDiagnosticMessageText(d.messageText, "\n")).join("; "));
   return result.outputText;
 }
 function evalRealmBody(compiled2, body) {
@@ -252528,24 +254054,24 @@ init_scoped_fs();
 // src/runtime/selected-events.ts
 init_define_NATLANG_TS_LIBS();
 init_identity();
-function eventData(value, active = /* @__PURE__ */ new Set()) {
+function eventData(value, active2 = /* @__PURE__ */ new Set()) {
   if (value === null || ["string", "boolean"].includes(typeof value)) return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (!value || typeof value !== "object" || active.has(value)) throw new TypeError("Event payloads require acyclic finite JSON data");
+  if (!value || typeof value !== "object" || active2.has(value)) throw new TypeError("Event payloads require acyclic finite JSON data");
   const array = Array.isArray(value), prototype = Object.getPrototypeOf(value);
   if (!array && prototype !== null && prototype !== Object.prototype) throw new TypeError("Event payloads require ordinary data records");
-  active.add(value);
+  active2.add(value);
   const descriptors = Object.getOwnPropertyDescriptors(value), result = array ? [] : /* @__PURE__ */ Object.create(null);
   for (const key of Reflect.ownKeys(descriptors)) {
     if (array && key === "length") continue;
     const descriptor2 = Reflect.get(descriptors, key);
     if (typeof key !== "string" || !("value" in descriptor2) || !descriptor2.enumerable)
       throw new TypeError("Event payloads cannot contain accessors, symbols or hidden properties");
-    Object.defineProperty(result, key, { value: eventData(descriptor2.value, active), enumerable: true, writable: true, configurable: true });
+    Object.defineProperty(result, key, { value: eventData(descriptor2.value, active2), enumerable: true, writable: true, configurable: true });
   }
   if (array && (result.length !== descriptors.length.value || Object.keys(result).length !== result.length))
     throw new TypeError("Event payload arrays must be dense JSON arrays");
-  active.delete(value);
+  active2.delete(value);
   return result;
 }
 var SelectedEventQueue = class _SelectedEventQueue {
@@ -252833,77 +254359,77 @@ init_define_NATLANG_TS_LIBS();
 
 // src/compiler/sequential-loops.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript20 = __toESM(require_typescript(), 1);
+var import_typescript21 = __toESM(require_typescript(), 1);
 var SEQUENTIAL_LOOP_CODE = "nl-sequential-loop";
 function checkSequentialNlLoops(file, displayPath = (source2) => source2.fileName) {
   const nlFunctions = /* @__PURE__ */ new Set();
   for (const statement of file.statements) {
-    if (!import_typescript20.default.isImportDeclaration(statement) || !import_typescript20.default.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (!import_typescript21.default.isImportDeclaration(statement) || !import_typescript21.default.isStringLiteral(statement.moduleSpecifier)) continue;
     const clause = statement.importClause;
     if (!clause || clause.isTypeOnly) continue;
     if (statement.moduleSpecifier.text.endsWith(".nl") && clause.name) nlFunctions.add(clause.name.text);
-    if (statement.moduleSpecifier.text.endsWith(".nl") && clause.namedBindings && import_typescript20.default.isNamedImports(clause.namedBindings))
+    if (statement.moduleSpecifier.text.endsWith(".nl") && clause.namedBindings && import_typescript21.default.isNamedImports(clause.namedBindings))
       for (const item of clause.namedBindings.elements) nlFunctions.add(item.name.text);
   }
   const unwrap2 = (node) => {
-    while (import_typescript20.default.isParenthesizedExpression(node) || import_typescript20.default.isNonNullExpression(node) || import_typescript20.default.isAsExpression(node)) node = node.expression;
+    while (import_typescript21.default.isParenthesizedExpression(node) || import_typescript21.default.isNonNullExpression(node) || import_typescript21.default.isAsExpression(node)) node = node.expression;
     return node;
   };
   const isNlCall = (node) => {
     node = unwrap2(node);
-    if (!import_typescript20.default.isCallExpression(node)) return false;
+    if (!import_typescript21.default.isCallExpression(node)) return false;
     const callee = unwrap2(node.expression);
-    if (import_typescript20.default.isIdentifier(callee)) return nlFunctions.has(callee.text);
-    return import_typescript20.default.isTaggedTemplateExpression(callee) && import_typescript20.default.isIdentifier(callee.tag) && callee.tag.text === "nl";
+    if (import_typescript21.default.isIdentifier(callee)) return nlFunctions.has(callee.text);
+    return import_typescript21.default.isTaggedTemplateExpression(callee) && import_typescript21.default.isIdentifier(callee.tag) && callee.tag.text === "nl";
   };
   const simpleArgument = (node, loopNames, written) => {
     let ok2 = true;
     const visit2 = (child) => {
       if (!ok2) return;
-      if (import_typescript20.default.isCallExpression(child) || import_typescript20.default.isNewExpression(child) || import_typescript20.default.isAwaitExpression(child) || import_typescript20.default.isFunctionLike(child) || import_typescript20.default.isYieldExpression(child) || import_typescript20.default.isTaggedTemplateExpression(child) || import_typescript20.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript20.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript20.default.SyntaxKind.LastAssignment || (import_typescript20.default.isPrefixUnaryExpression(child) || import_typescript20.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript20.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript20.default.SyntaxKind.MinusMinusToken)) {
+      if (import_typescript21.default.isCallExpression(child) || import_typescript21.default.isNewExpression(child) || import_typescript21.default.isAwaitExpression(child) || import_typescript21.default.isFunctionLike(child) || import_typescript21.default.isYieldExpression(child) || import_typescript21.default.isTaggedTemplateExpression(child) || import_typescript21.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript21.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript21.default.SyntaxKind.LastAssignment || (import_typescript21.default.isPrefixUnaryExpression(child) || import_typescript21.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript21.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript21.default.SyntaxKind.MinusMinusToken)) {
         ok2 = false;
         return;
       }
-      if (import_typescript20.default.isIdentifier(child) && written.has(child.text) && !(import_typescript20.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
+      if (import_typescript21.default.isIdentifier(child) && written.has(child.text) && !(import_typescript21.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
         ok2 = false;
         return;
       }
-      import_typescript20.default.forEachChild(child, visit2);
+      import_typescript21.default.forEachChild(child, visit2);
     };
     visit2(node);
     return ok2;
   };
   const rootName = (node) => {
     node = unwrap2(node);
-    while (import_typescript20.default.isPropertyAccessExpression(node) || import_typescript20.default.isElementAccessExpression(node)) node = unwrap2(node.expression);
-    return import_typescript20.default.isIdentifier(node) ? node.text : void 0;
+    while (import_typescript21.default.isPropertyAccessExpression(node) || import_typescript21.default.isElementAccessExpression(node)) node = unwrap2(node.expression);
+    return import_typescript21.default.isIdentifier(node) ? node.text : void 0;
   };
   const diagnostics = [];
   const visit = (node) => {
-    if (import_typescript20.default.isForOfStatement(node) && !node.awaitModifier && import_typescript20.default.isVariableDeclarationList(node.initializer)) {
+    if (import_typescript21.default.isForOfStatement(node) && !node.awaitModifier && import_typescript21.default.isVariableDeclarationList(node.initializer)) {
       const loopNames = /* @__PURE__ */ new Set();
       const collect = (name) => {
-        if (import_typescript20.default.isIdentifier(name)) loopNames.add(name.text);
-        else for (const element of name.elements) if (import_typescript20.default.isBindingElement(element)) collect(element.name);
+        if (import_typescript21.default.isIdentifier(name)) loopNames.add(name.text);
+        else for (const element of name.elements) if (import_typescript21.default.isBindingElement(element)) collect(element.name);
       };
       node.initializer.declarations.forEach((declaration) => collect(declaration.name));
-      const statements = import_typescript20.default.isBlock(node.statement) ? [...node.statement.statements] : [node.statement];
+      const statements = import_typescript21.default.isBlock(node.statement) ? [...node.statement.statements] : [node.statement];
       if (statements.length === 1) {
         const only = statements[0];
         let awaited, written, ok2 = false;
-        if (import_typescript20.default.isVariableStatement(only) && only.declarationList.flags & import_typescript20.default.NodeFlags.Const && only.declarationList.declarations.length === 1) {
+        if (import_typescript21.default.isVariableStatement(only) && only.declarationList.flags & import_typescript21.default.NodeFlags.Const && only.declarationList.declarations.length === 1) {
           const init = only.declarationList.declarations[0].initializer;
-          if (init && import_typescript20.default.isAwaitExpression(unwrap2(init))) {
+          if (init && import_typescript21.default.isAwaitExpression(unwrap2(init))) {
             awaited = unwrap2(init).expression;
             ok2 = true;
           }
-        } else if (import_typescript20.default.isExpressionStatement(only)) {
+        } else if (import_typescript21.default.isExpressionStatement(only)) {
           const expression = unwrap2(only.expression);
-          if (import_typescript20.default.isCallExpression(expression) && import_typescript20.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "push" && expression.arguments.length === 1 && import_typescript20.default.isAwaitExpression(unwrap2(expression.arguments[0]))) {
+          if (import_typescript21.default.isCallExpression(expression) && import_typescript21.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "push" && expression.arguments.length === 1 && import_typescript21.default.isAwaitExpression(unwrap2(expression.arguments[0]))) {
             awaited = unwrap2(expression.arguments[0]).expression;
             written = rootName(expression.expression.expression);
             ok2 = true;
-          } else if (import_typescript20.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript20.default.SyntaxKind.EqualsToken && import_typescript20.default.isElementAccessExpression(unwrap2(expression.left)) && import_typescript20.default.isAwaitExpression(unwrap2(expression.right))) {
+          } else if (import_typescript21.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript21.default.SyntaxKind.EqualsToken && import_typescript21.default.isElementAccessExpression(unwrap2(expression.left)) && import_typescript21.default.isAwaitExpression(unwrap2(expression.right))) {
             awaited = unwrap2(expression.right).expression;
             written = rootName(expression.left);
             ok2 = true;
@@ -252913,7 +254439,7 @@ function checkSequentialNlLoops(file, displayPath = (source2) => source2.fileNam
           const call = unwrap2(awaited);
           const writes = new Set(written ? [written] : []);
           const callee = unwrap2(call.expression);
-          const pieces = [...call.arguments, ...import_typescript20.default.isTaggedTemplateExpression(callee) ? [callee.template] : []];
+          const pieces = [...call.arguments, ...import_typescript21.default.isTaggedTemplateExpression(callee) ? [callee.template] : []];
           if (pieces.every((piece) => simpleArgument(piece, loopNames, writes))) {
             const start = node.getStart(file), position = file.getLineAndCharacterOfPosition(start);
             diagnostics.push({
@@ -252930,7 +254456,7 @@ function checkSequentialNlLoops(file, displayPath = (source2) => source2.fileNam
         }
       }
     }
-    import_typescript20.default.forEachChild(node, visit);
+    import_typescript21.default.forEachChild(node, visit);
   };
   visit(file);
   return diagnostics;
@@ -252986,11 +254512,11 @@ function refinedSlotsOf(source2, name, args, returns, types3) {
 }
 
 // src/compiler/project.ts
-var import_typescript23 = __toESM(require_typescript(), 1);
+var import_typescript24 = __toESM(require_typescript(), 1);
 
 // src/compiler/rewrites.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript21 = __toESM(require_typescript(), 1);
+var import_typescript22 = __toESM(require_typescript(), 1);
 init_graph();
 var NO_REWRITE_MARKER = "natlang-no-rewrite";
 var RewriteGate = class _RewriteGate {
@@ -253021,72 +254547,72 @@ var RewriteGate = class _RewriteGate {
 };
 var COMBINATORS2 = /* @__PURE__ */ new Set(["map", "read", "combine", "empty", "split", "zip", "compose"]);
 function combinatorOf(node) {
-  if (!import_typescript21.default.isCallExpression(node)) return;
+  if (!import_typescript22.default.isCallExpression(node)) return;
   const callee = node.expression;
-  const name = import_typescript21.default.isIdentifier(callee) ? callee.text : import_typescript21.default.isPropertyAccessExpression(callee) ? callee.name.text : void 0;
+  const name = import_typescript22.default.isIdentifier(callee) ? callee.text : import_typescript22.default.isPropertyAccessExpression(callee) ? callee.name.text : void 0;
   return name && COMBINATORS2.has(name) ? name : void 0;
 }
 function operand(node) {
   let inner = node;
-  while (import_typescript21.default.isParenthesizedExpression(inner)) inner = inner.expression;
-  if (import_typescript21.default.isAwaitExpression(inner)) {
+  while (import_typescript22.default.isParenthesizedExpression(inner)) inner = inner.expression;
+  if (import_typescript22.default.isAwaitExpression(inner)) {
     let call = inner.expression;
-    while (import_typescript21.default.isParenthesizedExpression(call)) call = call.expression;
+    while (import_typescript22.default.isParenthesizedExpression(call)) call = call.expression;
     return { call, awaited: true };
   }
   return { call: inner, awaited: false };
 }
 function pure(node) {
-  if (import_typescript21.default.isParenthesizedExpression(node)) return pure(node.expression);
-  if (import_typescript21.default.isIdentifier(node) || import_typescript21.default.isLiteralExpression(node) || import_typescript21.default.isNoSubstitutionTemplateLiteral(node) || node.kind === import_typescript21.default.SyntaxKind.TrueKeyword || node.kind === import_typescript21.default.SyntaxKind.FalseKeyword || node.kind === import_typescript21.default.SyntaxKind.NullKeyword || import_typescript21.default.isArrowFunction(node) || import_typescript21.default.isFunctionExpression(node)) return true;
-  if (import_typescript21.default.isPropertyAccessExpression(node)) return pure(node.expression);
-  if (import_typescript21.default.isArrayLiteralExpression(node)) return node.elements.every((element) => import_typescript21.default.isExpression(element) && pure(element));
-  if (import_typescript21.default.isCallExpression(node) && combinatorOf(node) === "compose") return node.arguments.every(pure);
+  if (import_typescript22.default.isParenthesizedExpression(node)) return pure(node.expression);
+  if (import_typescript22.default.isIdentifier(node) || import_typescript22.default.isLiteralExpression(node) || import_typescript22.default.isNoSubstitutionTemplateLiteral(node) || node.kind === import_typescript22.default.SyntaxKind.TrueKeyword || node.kind === import_typescript22.default.SyntaxKind.FalseKeyword || node.kind === import_typescript22.default.SyntaxKind.NullKeyword || import_typescript22.default.isArrowFunction(node) || import_typescript22.default.isFunctionExpression(node)) return true;
+  if (import_typescript22.default.isPropertyAccessExpression(node)) return pure(node.expression);
+  if (import_typescript22.default.isArrayLiteralExpression(node)) return node.elements.every((element) => import_typescript22.default.isExpression(element) && pure(element));
+  if (import_typescript22.default.isCallExpression(node) && combinatorOf(node) === "compose") return node.arguments.every(pure);
   return false;
 }
 function isIdentity(node) {
-  while (import_typescript21.default.isParenthesizedExpression(node)) node = node.expression;
-  const fn = import_typescript21.default.isArrowFunction(node) || import_typescript21.default.isFunctionExpression(node) ? node : void 0;
-  if (!fn || fn.parameters.length !== 1 || !import_typescript21.default.isIdentifier(fn.parameters[0].name)) return false;
+  while (import_typescript22.default.isParenthesizedExpression(node)) node = node.expression;
+  const fn = import_typescript22.default.isArrowFunction(node) || import_typescript22.default.isFunctionExpression(node) ? node : void 0;
+  if (!fn || fn.parameters.length !== 1 || !import_typescript22.default.isIdentifier(fn.parameters[0].name)) return false;
   const name = fn.parameters[0].name.text;
-  const body = import_typescript21.default.isBlock(fn.body) ? fn.body.statements.length === 1 && import_typescript21.default.isReturnStatement(fn.body.statements[0]) ? fn.body.statements[0].expression : void 0 : fn.body;
+  const body = import_typescript22.default.isBlock(fn.body) ? fn.body.statements.length === 1 && import_typescript22.default.isReturnStatement(fn.body.statements[0]) ? fn.body.statements[0].expression : void 0 : fn.body;
   let value = body;
-  while (value && import_typescript21.default.isParenthesizedExpression(value)) value = value.expression;
-  return !!value && import_typescript21.default.isIdentifier(value) && value.text === name;
+  while (value && import_typescript22.default.isParenthesizedExpression(value)) value = value.expression;
+  return !!value && import_typescript22.default.isIdentifier(value) && value.text === name;
 }
 function hasEffect(node) {
   let found = false;
   const visit = (item) => {
-    if (found || import_typescript21.default.isArrowFunction(item) || import_typescript21.default.isFunctionExpression(item) || import_typescript21.default.isFunctionDeclaration(item)) return;
-    if (import_typescript21.default.isCallExpression(item) && combinatorOf(item) !== "compose" || import_typescript21.default.isAwaitExpression(item) || import_typescript21.default.isNewExpression(item) || import_typescript21.default.isDeleteExpression(item) || import_typescript21.default.isBinaryExpression(item) && item.operatorToken.kind >= import_typescript21.default.SyntaxKind.FirstAssignment && item.operatorToken.kind <= import_typescript21.default.SyntaxKind.LastAssignment || (import_typescript21.default.isPrefixUnaryExpression(item) || import_typescript21.default.isPostfixUnaryExpression(item)) && (item.operator === import_typescript21.default.SyntaxKind.PlusPlusToken || item.operator === import_typescript21.default.SyntaxKind.MinusMinusToken)) {
+    if (found || import_typescript22.default.isArrowFunction(item) || import_typescript22.default.isFunctionExpression(item) || import_typescript22.default.isFunctionDeclaration(item)) return;
+    if (import_typescript22.default.isCallExpression(item) && combinatorOf(item) !== "compose" || import_typescript22.default.isAwaitExpression(item) || import_typescript22.default.isNewExpression(item) || import_typescript22.default.isDeleteExpression(item) || import_typescript22.default.isBinaryExpression(item) && item.operatorToken.kind >= import_typescript22.default.SyntaxKind.FirstAssignment && item.operatorToken.kind <= import_typescript22.default.SyntaxKind.LastAssignment || (import_typescript22.default.isPrefixUnaryExpression(item) || import_typescript22.default.isPostfixUnaryExpression(item)) && (item.operator === import_typescript22.default.SyntaxKind.PlusPlusToken || item.operator === import_typescript22.default.SyntaxKind.MinusMinusToken)) {
       found = true;
       return;
     }
-    import_typescript21.default.forEachChild(item, visit);
+    import_typescript22.default.forEachChild(item, visit);
   };
   visit(node);
   return found;
 }
 function rewriteCombinators(source2, options) {
   const fileName = options.fileName ?? "program.ts";
-  const file = import_typescript21.default.createSourceFile(fileName, source2, import_typescript21.default.ScriptTarget.ES2022, true, import_typescript21.default.ScriptKind.TS);
+  const file = import_typescript22.default.createSourceFile(fileName, source2, import_typescript22.default.ScriptTarget.ES2022, true, import_typescript22.default.ScriptKind.TS);
   const applied = [];
   const skipped = [];
   const siteOf = (node) => {
-    const original = import_typescript21.default.getOriginalNode(node);
+    const original = import_typescript22.default.getOriginalNode(node);
     const start = original.pos >= 0 && original.getSourceFile() ? original.getStart(file) : 0;
     const { line, character } = file.getLineAndCharacterOfPosition(start);
     return `${fileName}:${line + 1}:${character + 1}`;
   };
   const spanOf2 = (node) => {
-    const original = import_typescript21.default.getOriginalNode(node);
+    const original = import_typescript22.default.getOriginalNode(node);
     return original.pos >= 0 ? `${fileName}#${original.getStart(file)}-${original.getEnd()}` : `${fileName}#synthesized`;
   };
   const marked = (node) => {
-    for (let current = import_typescript21.default.getOriginalNode(node); current && current.pos >= 0; current = current.parent) {
-      const ranges = import_typescript21.default.getLeadingCommentRanges(source2, current.getFullStart()) ?? [];
+    for (let current = import_typescript22.default.getOriginalNode(node); current && current.pos >= 0; current = current.parent) {
+      const ranges = import_typescript22.default.getLeadingCommentRanges(source2, current.getFullStart()) ?? [];
       if (ranges.some((range2) => source2.slice(range2.pos, range2.end).includes(NO_REWRITE_MARKER))) return true;
-      if (import_typescript21.default.isStatement(current) && !import_typescript21.default.isBlock(current)) break;
+      if (import_typescript22.default.isStatement(current) && !import_typescript22.default.isBlock(current)) break;
     }
     return false;
   };
@@ -253113,16 +254639,16 @@ function rewriteCombinators(source2, options) {
     const introduced = /* @__PURE__ */ new Map();
     const callNamed = (like, name, args) => {
       const callee = like.expression;
-      if (import_typescript21.default.isIdentifier(callee) && callee.text !== name) introduced.set(name, callee.text);
-      const target = import_typescript21.default.isPropertyAccessExpression(callee) ? f.updatePropertyAccessExpression(callee, callee.expression, f.createIdentifier(name)) : f.createIdentifier(name);
+      if (import_typescript22.default.isIdentifier(callee) && callee.text !== name) introduced.set(name, callee.text);
+      const target = import_typescript22.default.isPropertyAccessExpression(callee) ? f.updatePropertyAccessExpression(callee, callee.expression, f.createIdentifier(name)) : f.createIdentifier(name);
       return f.createCallExpression(target, void 0, args);
     };
     const withImports = (out) => {
       if (!introduced.size) return out;
       const statements = out.statements.map((statement) => {
-        if (!import_typescript21.default.isImportDeclaration(statement) || !import_typescript21.default.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "natlang:neuralese") return statement;
+        if (!import_typescript22.default.isImportDeclaration(statement) || !import_typescript22.default.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "natlang:neuralese") return statement;
         const bindings2 = statement.importClause?.namedBindings;
-        if (!bindings2 || !import_typescript21.default.isNamedImports(bindings2)) return statement;
+        if (!bindings2 || !import_typescript22.default.isNamedImports(bindings2)) return statement;
         const local = new Set(bindings2.elements.map((element) => element.name.text));
         const missing = [...introduced].filter(([name, via]) => local.has(via) && !local.has(name)).map(([name]) => name);
         if (!missing.length) return statement;
@@ -253149,9 +254675,9 @@ function rewriteCombinators(source2, options) {
       const list = [...statements];
       for (let index = 0; index < list.length; index++) {
         const statement = list[index];
-        if (!import_typescript21.default.isVariableStatement(statement) || !(statement.declarationList.flags & import_typescript21.default.NodeFlags.Const)) continue;
+        if (!import_typescript22.default.isVariableStatement(statement) || !(statement.declarationList.flags & import_typescript22.default.NodeFlags.Const)) continue;
         const declarations = statement.declarationList.declarations;
-        if (declarations.length !== 1 || !import_typescript21.default.isIdentifier(declarations[0].name) || !declarations[0].initializer) continue;
+        if (declarations.length !== 1 || !import_typescript22.default.isIdentifier(declarations[0].name) || !declarations[0].initializer) continue;
         const name = declarations[0].name.text, initializer = declarations[0].initializer;
         const inner = operand(initializer);
         if (combinatorOf(inner.call) !== "map") continue;
@@ -253159,18 +254685,18 @@ function rewriteCombinators(source2, options) {
         list.forEach((later, position) => {
           if (position <= index) return;
           const visit2 = (item) => {
-            if (import_typescript21.default.isIdentifier(item) && item.text === name && !(import_typescript21.default.isPropertyAccessExpression(item.parent) && item.parent.name === item))
+            if (import_typescript22.default.isIdentifier(item) && item.text === name && !(import_typescript22.default.isPropertyAccessExpression(item.parent) && item.parent.name === item))
               uses.push({ statement: position, node: item });
-            import_typescript21.default.forEachChild(item, visit2);
+            import_typescript22.default.forEachChild(item, visit2);
           };
           visit2(later);
         });
         if (uses.length !== 1) continue;
         const use = uses[0];
         let argument = use.node;
-        while (import_typescript21.default.isParenthesizedExpression(argument.parent) || import_typescript21.default.isAwaitExpression(argument.parent)) argument = argument.parent;
+        while (import_typescript22.default.isParenthesizedExpression(argument.parent) || import_typescript22.default.isAwaitExpression(argument.parent)) argument = argument.parent;
         const outer = argument.parent;
-        if (!import_typescript21.default.isCallExpression(outer) || combinatorOf(outer) !== "map" || outer.arguments[0] !== argument) continue;
+        if (!import_typescript22.default.isCallExpression(outer) || combinatorOf(outer) !== "map" || outer.arguments[0] !== argument) continue;
         const call = inner.call;
         const between = list.slice(index + 1, use.statement);
         const blocked = between.some(hasEffect) || !call.arguments.every(pure) || !outer.arguments.slice(1).every(pure);
@@ -253181,20 +254707,20 @@ function rewriteCombinators(source2, options) {
         if (!allowed("map-fusion", outer)) continue;
         const target = use.node;
         const replaceUse = (inlineContext) => (node) => {
-          const visit2 = (item) => item === target ? f.createParenthesizedExpression(initializer) : import_typescript21.default.visitEachChild(item, visit2, inlineContext);
+          const visit2 = (item) => item === target ? f.createParenthesizedExpression(initializer) : import_typescript22.default.visitEachChild(item, visit2, inlineContext);
           return visit2(node);
         };
-        list[use.statement] = import_typescript21.default.transform(list[use.statement], [replaceUse]).transformed[0];
+        list[use.statement] = import_typescript22.default.transform(list[use.statement], [replaceUse]).transformed[0];
         list.splice(index, 1);
         index--;
       }
       return list;
     };
     const visit = (node) => {
-      if (import_typescript21.default.isBlock(node)) node = f.updateBlock(node, foldIntermediates(node.statements));
-      else if (import_typescript21.default.isSourceFile(node)) node = f.updateSourceFile(node, foldIntermediates(node.statements));
-      node = import_typescript21.default.visitEachChild(node, visit, context);
-      if (!import_typescript21.default.isCallExpression(node)) return node;
+      if (import_typescript22.default.isBlock(node)) node = f.updateBlock(node, foldIntermediates(node.statements));
+      else if (import_typescript22.default.isSourceFile(node)) node = f.updateSourceFile(node, foldIntermediates(node.statements));
+      node = import_typescript22.default.visitEachChild(node, visit, context);
+      if (!import_typescript22.default.isCallExpression(node)) return node;
       const kind = combinatorOf(node);
       const args = node.arguments;
       if (kind === "map" && args.length === 2) {
@@ -253264,7 +254790,7 @@ function rewriteCombinators(source2, options) {
             balanced2(items.slice(Math.ceil(items.length / 2)))
           ]));
           const tree = balanced2(leaves);
-          return import_typescript21.default.isAwaitExpression(tree) ? tree.expression : tree;
+          return import_typescript22.default.isAwaitExpression(tree) ? tree.expression : tree;
         }
       }
       if (kind === "split" && args.length === 1) {
@@ -253284,9 +254810,9 @@ function rewriteCombinators(source2, options) {
     };
     return (root2) => withImports(visit(root2));
   };
-  const result = import_typescript21.default.transform(file, [transformer]);
+  const result = import_typescript22.default.transform(file, [transformer]);
   const transformed = result.transformed[0];
-  const code = applied.length ? import_typescript21.default.createPrinter({ newLine: import_typescript21.default.NewLineKind.LineFeed }).printFile(transformed) : source2;
+  const code = applied.length ? import_typescript22.default.createPrinter({ newLine: import_typescript22.default.NewLineKind.LineFeed }).printFile(transformed) : source2;
   result.dispose();
   return { code, applied, skipped };
 }
@@ -253299,7 +254825,7 @@ init_policy();
 
 // src/compiler/call-flow.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript22 = __toESM(require_typescript(), 1);
+var import_typescript23 = __toESM(require_typescript(), 1);
 function memberStage(record3, names) {
   let current = record3;
   for (const name of names) {
@@ -253312,17 +254838,17 @@ function memberStage(record3, names) {
 function calleeOf(call, imports) {
   const names = [];
   let expression = call.expression;
-  while (import_typescript22.default.isPropertyAccessExpression(expression)) {
+  while (import_typescript23.default.isPropertyAccessExpression(expression)) {
     names.unshift(expression.name.text);
     expression = expression.expression;
   }
-  if (!import_typescript22.default.isIdentifier(expression)) return void 0;
+  if (!import_typescript23.default.isIdentifier(expression)) return void 0;
   const root2 = imports.get(expression.text);
   if (!root2) return void 0;
   const stage = names.length ? memberStage(root2, names) : root2.kind === "natlang" ? root2 : void 0;
   return stage ? { stage, path: [expression.text, ...names].join(".") } : void 0;
 }
-var transparent = (node) => import_typescript22.default.isParenthesizedExpression(node) || import_typescript22.default.isAwaitExpression(node) || import_typescript22.default.isAsExpression(node) || import_typescript22.default.isNonNullExpression(node);
+var transparent = (node) => import_typescript23.default.isParenthesizedExpression(node) || import_typescript23.default.isAwaitExpression(node) || import_typescript23.default.isAsExpression(node) || import_typescript23.default.isNonNullExpression(node);
 var unwrap = (node) => {
   let current = node;
   while (transparent(current)) current = current.expression;
@@ -253330,8 +254856,8 @@ var unwrap = (node) => {
 };
 function nestedCall(node) {
   for (let current = node.parent; current; current = current.parent) {
-    if (import_typescript22.default.isCallExpression(current)) return current;
-    if (!(import_typescript22.default.isParenthesizedExpression(current) || import_typescript22.default.isAwaitExpression(current) || import_typescript22.default.isAsExpression(current))) return void 0;
+    if (import_typescript23.default.isCallExpression(current)) return current;
+    if (!(import_typescript23.default.isParenthesizedExpression(current) || import_typescript23.default.isAwaitExpression(current) || import_typescript23.default.isAsExpression(current))) return void 0;
   }
   return void 0;
 }
@@ -253349,7 +254875,7 @@ function useOf(ctx, node) {
     position: argumentPosition(call, node),
     call
   };
-  if (import_typescript22.default.isReturnStatement(node.parent) || node.parent && import_typescript22.default.isReturnStatement(node.parent.parent ?? node.parent))
+  if (import_typescript23.default.isReturnStatement(node.parent) || node.parent && import_typescript23.default.isReturnStatement(node.parent.parent ?? node.parent))
     return { reader: { kind: "host-return", site: site2, detail: ctx.mode === "eval" ? "returned by the orchestrator" : "returned to the caller", certain: true } };
   if (call && asArgument) {
     const text3 = call.expression.getText(ctx.file);
@@ -253366,7 +254892,7 @@ function useOf(ctx, node) {
 function flowOfCall(ctx, node) {
   const outer = nestedCall(node);
   const parent = node.parent;
-  const direct = outer && outer !== node && (import_typescript22.default.isAwaitExpression(parent) || import_typescript22.default.isParenthesizedExpression(parent) || parent === outer);
+  const direct = outer && outer !== node && (import_typescript23.default.isAwaitExpression(parent) || import_typescript23.default.isParenthesizedExpression(parent) || parent === outer);
   const consumer = direct ? calleeOf(outer, ctx.imports) : void 0;
   if (consumer && outer.arguments.some((argument) => unwrap(argument) === node))
     return { form: "nested", variable: null, anchor: node, uses: [{ reader: {
@@ -253378,23 +254904,23 @@ function flowOfCall(ctx, node) {
     }, consumer, position: argumentPosition(outer, node), call: outer }] };
   let declaration = parent;
   while (declaration && transparent(declaration)) declaration = declaration.parent;
-  if (declaration && import_typescript22.default.isVariableDeclaration(declaration) && import_typescript22.default.isIdentifier(declaration.name)) {
+  if (declaration && import_typescript23.default.isVariableDeclaration(declaration) && import_typescript23.default.isIdentifier(declaration.name)) {
     const bound = declaration;
     const name = declaration.name.text;
     let region = ctx.file;
     for (let current = declaration.parent; current; current = current.parent)
-      if (import_typescript22.default.isFunctionLike(current) || import_typescript22.default.isSourceFile(current)) {
+      if (import_typescript23.default.isFunctionLike(current) || import_typescript23.default.isSourceFile(current)) {
         region = current;
         break;
       }
     const uses = [];
     const find = (item) => {
-      if (import_typescript22.default.isIdentifier(item) && item.text === name && item !== bound.name && !(import_typescript22.default.isPropertyAccessExpression(item.parent) && item.parent.name === item)) uses.push(useOf(ctx, item));
-      import_typescript22.default.forEachChild(item, find);
+      if (import_typescript23.default.isIdentifier(item) && item.text === name && item !== bound.name && !(import_typescript23.default.isPropertyAccessExpression(item.parent) && item.parent.name === item)) uses.push(useOf(ctx, item));
+      import_typescript23.default.forEachChild(item, find);
     };
     find(region);
     const statement = bound.parent?.parent;
-    if (statement && import_typescript22.default.isVariableStatement(statement) && statement.modifiers?.some((modifier) => modifier.kind === import_typescript22.default.SyntaxKind.ExportKeyword))
+    if (statement && import_typescript23.default.isVariableStatement(statement) && statement.modifiers?.some((modifier) => modifier.kind === import_typescript23.default.SyntaxKind.ExportKeyword))
       uses.push({ reader: { kind: "host-return", site: siteIn(ctx, bound), detail: `${name} is exported`, certain: true } });
     return { form: "bound", variable: name, uses, anchor: declaration };
   }
@@ -253407,7 +254933,7 @@ function fusionCallSites(file, modulePath, importedNames) {
   const ctx = { file, fileName: modulePath, imports: importedNames, mode: "crisp-typescript", lineOffset: 0 };
   const mark = (call) => marks.set(`${call.getStart(file)}:${call.getEnd()}`, siteKey(modulePath, call, file));
   const walk = (node) => {
-    if (import_typescript22.default.isCallExpression(node) && calleeOf(node, importedNames)) {
+    if (import_typescript23.default.isCallExpression(node) && calleeOf(node, importedNames)) {
       const flow = flowOfCall(ctx, node);
       const consumers = flow.form === "loose" ? [] : flow.uses.filter((use) => use.consumer && use.call);
       if (consumers.length) {
@@ -253415,7 +254941,7 @@ function fusionCallSites(file, modulePath, importedNames) {
         for (const use of consumers) mark(use.call);
       }
     }
-    import_typescript22.default.forEachChild(node, walk);
+    import_typescript23.default.forEachChild(node, walk);
   };
   walk(file);
   return marks;
@@ -253743,21 +255269,21 @@ function compileProject(options) {
     getCurrentDirectory: () => root2,
     fileExists: (path2) => fs2.isFile(path2),
     readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0,
-    readDirectory: (dir, extensions, excludes, includes, depth2) => fs2.compiler ? import_typescript23.default.sys.readDirectory(dir, extensions, excludes, includes, depth2) : walkTs(fs2, dir),
-    onUnRecoverableConfigFileDiagnostic: (diagnostic) => problem(rel(configPath), import_typescript23.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "typescript")
+    readDirectory: (dir, extensions, excludes, includes, depth2) => fs2.compiler ? import_typescript24.default.sys.readDirectory(dir, extensions, excludes, includes, depth2) : walkTs(fs2, dir),
+    onUnRecoverableConfigFileDiagnostic: (diagnostic) => problem(rel(configPath), import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "typescript")
   };
-  const parsed = configPath ? import_typescript23.default.getParsedCommandLineOfConfigFile(configPath, {}, configHost) : void 0;
+  const parsed = configPath ? import_typescript24.default.getParsedCommandLineOfConfigFile(configPath, {}, configHost) : void 0;
   const compilerOptions = {
-    target: import_typescript23.default.ScriptTarget.ES2022,
-    module: import_typescript23.default.ModuleKind.NodeNext,
-    moduleResolution: import_typescript23.default.ModuleResolutionKind.NodeNext,
+    target: import_typescript24.default.ScriptTarget.ES2022,
+    module: import_typescript24.default.ModuleKind.NodeNext,
+    moduleResolution: import_typescript24.default.ModuleResolutionKind.NodeNext,
     strict: true,
     skipLibCheck: true,
     ...parsed?.options ?? {},
     allowArbitraryExtensions: true,
     noEmit: false,
     declaration: false,
-    ...options.module === "commonjs" ? { module: import_typescript23.default.ModuleKind.CommonJS, moduleResolution: import_typescript23.default.ModuleResolutionKind.Node10 } : {}
+    ...options.module === "commonjs" ? { module: import_typescript24.default.ModuleKind.CommonJS, moduleResolution: import_typescript24.default.ModuleResolutionKind.Node10 } : {}
   };
   const outDir = resolve(options.outDir ?? compilerOptions.outDir ?? join(root2, "dist"));
   compilerOptions.outDir = outDir;
@@ -253767,12 +255293,12 @@ function compileProject(options) {
   const withNeutral = (specifiers) => [.../* @__PURE__ */ new Set([...specifiers, NEUTRAL_RUNTIME_SPECIFIER])];
   const bound = options.runtimeModule && { ...options.runtimeModule, specifiers: withNeutral(options.runtimeModule.specifiers) };
   if (options.runtimeTypeRoots?.length) {
-    const resolutionHost = import_typescript23.default.sys ?? { fileExists: (path2) => fs2.isFile(path2), readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0 };
-    const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript23.default.resolveTypeReferenceDirective(name, join(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
+    const resolutionHost = import_typescript24.default.sys ?? { fileExists: (path2) => fs2.isFile(path2), readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0 };
+    const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript24.default.resolveTypeReferenceDirective(name, join(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
     if (missing) compilerOptions.typeRoots = [...compilerOptions.typeRoots ?? [], ...options.runtimeTypeRoots];
   }
   if (options.runtimeTypes) for (const specifier of options.runtimeTypes.specifiers) {
-    const resolved = import_typescript23.default.resolveModuleName(specifier, join(root2, "index.ts"), compilerOptions, import_typescript23.default.sys ?? {
+    const resolved = import_typescript24.default.resolveModuleName(specifier, join(root2, "index.ts"), compilerOptions, import_typescript24.default.sys ?? {
       fileExists: (path2) => fs2.isFile(path2),
       readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0
     });
@@ -253831,7 +255357,7 @@ function compileProject(options) {
     }
   });
   const hasServicesDeclaration = rootNames.some((path2) => /declare\s+module\s+['"]natlang:services['"]/.test(fs2.read(path2)));
-  const program = import_typescript23.default.createProgram({
+  const program = import_typescript24.default.createProgram({
     rootNames: [
       INTRINSICS_FILE,
       ...hasServicesDeclaration ? [] : [SERVICES_FALLBACK],
@@ -253842,8 +255368,8 @@ function compileProject(options) {
     options: compilerOptions,
     host
   });
-  for (const diagnostic of import_typescript23.default.getPreEmitDiagnostics(program)) {
-    if (diagnostic.category !== import_typescript23.default.DiagnosticCategory.Error) continue;
+  for (const diagnostic of import_typescript24.default.getPreEmitDiagnostics(program)) {
+    if (diagnostic.category !== import_typescript24.default.DiagnosticCategory.Error) continue;
     const file = diagnostic.file;
     const position = file && diagnostic.start !== void 0 ? file.getLineAndCharacterOfPosition(diagnostic.start) : { line: 0, character: 0 };
     diagnostics.push({
@@ -253854,7 +255380,7 @@ function compileProject(options) {
       column: position.character + 1,
       code: "typescript",
       severity: "error",
-      message: import_typescript23.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
+      message: import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
     });
   }
   const sources = rootNames.map((path2) => program.getSourceFile(path2)).filter((file) => !!file);
@@ -253976,7 +255502,7 @@ function compileProject(options) {
     const natlangImports = (file) => {
       const found = /* @__PURE__ */ new Set();
       for (const statement of file.statements) {
-        if (!import_typescript23.default.isImportDeclaration(statement) || !import_typescript23.default.isStringLiteral(statement.moduleSpecifier)) continue;
+        if (!import_typescript24.default.isImportDeclaration(statement) || !import_typescript24.default.isStringLiteral(statement.moduleSpecifier)) continue;
         const specifier = statement.moduleSpecifier.text;
         if (specifier.endsWith(".nz")) {
           const target2 = resolve(dirname2(file.fileName), specifier);
@@ -253988,7 +255514,7 @@ function compileProject(options) {
           found.add(specifier);
           generatedNz.set(
             join(outDir, relative(compilerOptions.rootDir, target2)) + ".js",
-            { bytes: bytes2, commonjs: file.impliedNodeFormat === import_typescript23.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript23.default.ModuleKind.CommonJS }
+            { bytes: bytes2, commonjs: file.impliedNodeFormat === import_typescript24.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS }
           );
           continue;
         }
@@ -254002,7 +255528,7 @@ function compileProject(options) {
         found.add(specifier);
         generated.set(
           join(outDir, relative(compilerOptions.rootDir, target)) + ".js",
-          { record: record3, target, commonjs: file.impliedNodeFormat === import_typescript23.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript23.default.ModuleKind.CommonJS }
+          { record: record3, target, commonjs: file.impliedNodeFormat === import_typescript24.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS }
         );
       }
       return found;
@@ -254010,7 +255536,7 @@ function compileProject(options) {
     const fusionSitesOf = (file) => {
       const names = /* @__PURE__ */ new Map();
       for (const statement of file.statements) {
-        if (!import_typescript23.default.isImportDeclaration(statement) || !import_typescript23.default.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.endsWith(".nl")) continue;
+        if (!import_typescript24.default.isImportDeclaration(statement) || !import_typescript24.default.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.endsWith(".nl")) continue;
         const record3 = namedRecords.get(resolve(dirname2(file.fileName), statement.moduleSpecifier.text));
         if (record3 && statement.importClause?.name) names.set(statement.importClause.name.text, record3);
       }
@@ -254024,7 +255550,7 @@ function compileProject(options) {
       const contextDir = findApplicationContext(dirname2(file.fileName), files2);
       const filePlans = plans.get(source2) ?? [];
       const fileReadouts = readouts.get(source2) ?? [];
-      const commonjs = source2.impliedNodeFormat === import_typescript23.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript23.default.ModuleKind.CommonJS;
+      const commonjs = source2.impliedNodeFormat === import_typescript24.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS;
       const rewriteFor = new Map([...rewrite.keys()].map((specifier) => [specifier, specifierFor(commonjs)]));
       return natlangTransformer({
         ...analysisLowering(
@@ -254044,7 +255570,7 @@ function compileProject(options) {
     };
     const emit3 = (fileName, text3) => {
       if ((options.constrained || /\b__natlang\.(?:fuseSite|instantiate)\(/.test(text3)) && /\.js$/.test(fileName) && !/(?:\b(?:const|let|var)\s+__natlang\b|\bimport\s*\{[^}]*\b__natlang\b)/.test(text3)) {
-        const commonjs = compilerOptions.module === import_typescript23.default.ModuleKind.CommonJS || /Object\.defineProperty\(exports/.test(text3);
+        const commonjs = compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS || /Object\.defineProperty\(exports/.test(text3);
         text3 = (commonjs ? `const __natlang = require(${JSON.stringify(specifierFor(true))}).__natlang;
 ` : `import { __natlang } from ${JSON.stringify(specifierFor(false))};
 `) + text3;
@@ -254100,8 +255626,8 @@ const __nz = ${load};
 ` + names.map((name) => `export const ${name} = __nz.${name};
 `).join(""));
     }
-    for (const diagnostic of emitted.diagnostics) if (diagnostic.category === import_typescript23.default.DiagnosticCategory.Error)
-      problem(diagnostic.file ? rel(diagnostic.file.fileName) : "", import_typescript23.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "typescript");
+    for (const diagnostic of emitted.diagnostics) if (diagnostic.category === import_typescript24.default.DiagnosticCategory.Error)
+      problem(diagnostic.file ? rel(diagnostic.file.fileName) : "", import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "typescript");
     if (options.write !== false) fs2.write?.(join(outDir, "natlang-manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
   diagnostics.sort((a, b) => a.file.localeCompare(b.file) || a.start - b.start);
@@ -254273,7 +255799,7 @@ init_loader();
 
 // src/compiler/host-cell.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript24 = __toESM(require_typescript(), 1);
+var import_typescript25 = __toESM(require_typescript(), 1);
 init_host();
 init_inline();
 init_lower();
@@ -254288,8 +255814,8 @@ var CELL_DIRECTORY = "/host-cell";
 var AMBIENT_FILE = `${CELL_DIRECTORY}/ambient.d.ts`;
 var CELL_COMPILER_OPTIONS = {
   ...EVAL_COMPILER_OPTIONS,
-  moduleDetection: import_typescript24.default.ModuleDetectionKind.Force,
-  jsx: import_typescript24.default.JsxEmit.Preserve
+  moduleDetection: import_typescript25.default.ModuleDetectionKind.Force,
+  jsx: import_typescript25.default.JsxEmit.Preserve
 };
 var NO_FILES = {
   readFile: () => void 0,
@@ -254319,7 +255845,7 @@ ${servicesDeclarations(options.services)}
       libs: options.libs,
       virtual: /* @__PURE__ */ new Map([[AMBIENT_FILE, ambient], [cellFile, text4]])
     });
-    const program2 = import_typescript24.default.createProgram({ rootNames: [INTRINSICS_FILE, AMBIENT_FILE, cellFile], options: CELL_COMPILER_OPTIONS, host });
+    const program2 = import_typescript25.default.createProgram({ rootNames: [INTRINSICS_FILE, AMBIENT_FILE, cellFile], options: CELL_COMPILER_OPTIONS, host });
     return { program: program2, cell: program2.getSourceFile(cellFile), checker: program2.getTypeChecker() };
   };
   const diagnosticOf = (file, shown, diagnostic) => {
@@ -254332,7 +255858,7 @@ ${servicesDeclarations(options.services)}
       column: location.character + 1,
       code: "typescript",
       severity: "error",
-      message: import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
+      message: import_typescript25.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
     };
   };
   let { program, cell, checker } = build(source2);
@@ -254340,8 +255866,8 @@ ${servicesDeclarations(options.services)}
     let found = false;
     const visit = (node) => {
       if (found) return;
-      if (import_typescript24.default.isIdentifier(node) && node.text === "nl" && resolveIntrinsic(check, node) === "nl") found = true;
-      else import_typescript24.default.forEachChild(node, visit);
+      if (import_typescript25.default.isIdentifier(node) && node.text === "nl" && resolveIntrinsic(check, node) === "nl") found = true;
+      else import_typescript25.default.forEachChild(node, visit);
     };
     visit(file);
     return found;
@@ -254381,7 +255907,7 @@ ${servicesDeclarations(options.services)}
   }
   if (diagnostics.some((item) => item.severity === "error")) return { code: source2, plans: analysis.plans, diagnostics, usesNl };
   const replaced = [];
-  const result = import_typescript24.default.transform(cell, [natlangTransformer({
+  const result = import_typescript25.default.transform(cell, [natlangTransformer({
     ...analysisLowering(analysis, (item) => `${display}:${item.line}`),
     checker,
     runtime: RUNTIME,
@@ -254393,11 +255919,11 @@ ${servicesDeclarations(options.services)}
   })]);
   result.dispose();
   replaced.sort((a, b) => a.start - b.start || b.end - a.end);
-  const printer = import_typescript24.default.createPrinter();
+  const printer = import_typescript25.default.createPrinter();
   let code = "", cursor = 0;
   for (const site2 of replaced) {
     if (site2.start < cursor) continue;
-    const printed = printer.printNode(import_typescript24.default.EmitHint.Unspecified, site2.lowered, cell);
+    const printed = printer.printNode(import_typescript25.default.EmitHint.Unspecified, site2.lowered, cell);
     const lost = (text3.slice(site2.start, site2.end).match(/\n/g)?.length ?? 0) - (printed.match(/\n/g)?.length ?? 0);
     code += text3.slice(cursor, site2.start) + (lost > 0 && printed.endsWith(")") ? `${printed.slice(0, -1)}${"\n".repeat(lost)})` : printed);
     cursor = site2.end;
@@ -254646,6 +256172,44 @@ function piAssistantToTurn(reply, provider) {
 
 // src/core/index.ts
 init_types();
+
+// src/native/expand-type.ts
+init_define_NATLANG_TS_LIBS();
+function expandType(type, env, docs = {}, path2 = []) {
+  if (type.kind === "name") {
+    const found = env.lookup(type.name);
+    if (!found || path2.includes(type.name) || path2.length > 12) return type;
+    const inner = expandType(found, env, docs, [...path2, type.name]);
+    if (inner.kind === "record" && docs[type.name])
+      return { ...inner, alias: type.name, fields: inner.fields.map((field) => docs[type.name][field.name] ? { ...field, doc: docs[type.name][field.name] } : field) };
+    return { ...inner, alias: inner.alias ?? type.name };
+  }
+  const child = (inner) => expandType(inner, env, docs, path2);
+  switch (type.kind) {
+    case "record":
+      return { ...type, fields: type.fields.map((field) => ({ ...field, type: child(field.type) })) };
+    case "list":
+    case "dict":
+      return { ...type, element: child(type.element) };
+    case "union":
+      return { ...type, members: type.members.map(child) };
+    case "refined":
+    case "untrusted":
+      return { ...type, base: child(type.base) };
+    case "intersection":
+    case "index": {
+      try {
+        return child(env.resolve(type));
+      } catch {
+        return type;
+      }
+    }
+    default:
+      return type;
+  }
+}
+
+// src/core/index.ts
 init_effects();
 
 // src/native/folder-shell.ts
@@ -285398,7 +286962,7 @@ function zo(e10, t) {
   }
   return n.build();
 }
-function ts25(e10) {
+function ts26(e10) {
   if (e10 === "") return "''";
   if (/[\n\r\t\x00-\x1f\x7f']/.test(e10)) {
     let n = "$'";
@@ -285628,19 +287192,19 @@ async function K7(e10, t, n, r, s) {
 function Q7(e10, t, n, r, s) {
   e10.coverage?.hit("bash:expansion:transform");
   let i = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[[@*]\]$/);
-  if (i && s.operator === "Q") return xe(e10, i[1]).map(([, c]) => ts25(c)).join(" ");
+  if (i && s.operator === "Q") return xe(e10, i[1]).map(([, c]) => ts26(c)).join(" ");
   if (i && s.operator === "a") return ns(e10, i[1]);
   let o = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[.+\]$/);
   if (o && s.operator === "a") return ns(e10, o[1]);
   switch (s.operator) {
     case "Q":
-      return r ? "" : ts25(n);
+      return r ? "" : ts26(n);
     case "P":
       return zo(e10, n);
     case "a":
       return ns(e10, t);
     case "A":
-      return r ? "" : `${t}=${ts25(n)}`;
+      return r ? "" : `${t}=${ts26(n)}`;
     case "E":
       return n.replace(/\\([\\abefnrtv'"?])/g, (a, l) => {
         switch (l) {
@@ -285675,7 +287239,7 @@ function Q7(e10, t, n, r, s) {
       });
     case "K":
     case "k":
-      return r ? "" : ts25(n);
+      return r ? "" : ts26(n);
     case "u":
       return n.charAt(0).toUpperCase() + n.slice(1);
     case "U":
@@ -286312,7 +287876,7 @@ function uw(e10, t) {
           p = zo(e10, d);
           break;
         case "Q":
-          p = ts25(d);
+          p = ts26(d);
           break;
         default:
           p = d;
@@ -286333,7 +287897,7 @@ function uw(e10, t) {
         p = zo(e10, d);
         break;
       case "Q":
-        p = ts25(d);
+        p = ts26(d);
         break;
       case "u":
         p = d.charAt(0).toUpperCase() + d.slice(1);
@@ -295444,6 +297008,24 @@ var FolderFs = class {
     if (!await this.exists(path2)) throw new Error(`ENOENT: ${path2}`);
   }
 };
+var DeviceFs = class _DeviceFs extends ir {
+  static SINKS = /* @__PURE__ */ new Set(["/null", "/zero"]);
+  constructor() {
+    super({ "/null": "", "/zero": "", "/stdin": "", "/stdout": "", "/stderr": "" });
+  }
+  async writeFile(path2, content, options) {
+    if (!_DeviceFs.SINKS.has(this.resolvePath("/", path2))) await super.writeFile(path2, content, options);
+  }
+  async appendFile(path2, content, options) {
+    if (!_DeviceFs.SINKS.has(this.resolvePath("/", path2))) await super.appendFile(path2, content, options);
+  }
+};
+function shellFs(folder2) {
+  return new Li({ base: new FolderFs(folder2), mounts: [
+    { mountPoint: "/dev", filesystem: new DeviceFs() },
+    { mountPoint: "/tmp", filesystem: new ir() }
+  ] });
+}
 function checkBashAst(tree) {
   const calls = /* @__PURE__ */ new Map();
   const visit = (value, current) => {
@@ -295488,7 +297070,7 @@ async function runFolderBash(folder2, command, options = {}) {
       if (args[0] === "-c") source2 = args[1] ?? "";
       else if (args[0] === "-" || !args.length) source2 = decodeStdin(ctx.stdin);
       else source2 = await folder2.readText(args[0]);
-      const result2 = await runFolderPython(folder2, source2, options.python);
+      const result2 = await runFolderPython(folder2, source2, options.python, void 0, ctx.cwd);
       return { stdout: result2.stdout ? `${result2.stdout}
 ` : "", stderr: result2.stderr, exitCode: 0 };
     } catch (error) {
@@ -295530,7 +297112,7 @@ ${flags.includes("-header") ? "writer.writerow(columns)\n" : ""}writer.writerows
 print(buffer.getvalue(), end='')
 `);
     try {
-      const result2 = await runFolderPython(folder2, script, options.python);
+      const result2 = await runFolderPython(folder2, script, options.python, void 0, ctx.cwd);
       return { stdout: result2.stdout ? `${result2.stdout}
 ` : "", stderr: result2.stderr, exitCode: 0 };
     } catch (error) {
@@ -295577,7 +297159,7 @@ print(buffer.getvalue(), end='')
     }
   });
   const bash = new Hp({
-    fs: new FolderFs(folder2),
+    fs: shellFs(folder2),
     cwd: ROOT2,
     python: false,
     javascript: false,
@@ -295655,6 +297237,7 @@ export {
   emptyPiUsage,
   encodeNz,
   evalRealmBody,
+  expandType,
   fitsType,
   foldSelectedEvents,
   formatDiagnostics,

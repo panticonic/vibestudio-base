@@ -6,7 +6,7 @@
  * the consumer then carries the `natlang.guidance-request/1` the engine renders (rl/privileged_context `guidance_plan`,
  * whose `_request_parts` is the exact contract), and every turn of the policy calls carries `x_natlang_guidance_policy`.
  *
- * The package's crisp parts and definitions are loaded by the host (teacher/guidance-writer.ts, Node); this module is the
+ * The package's crisp parts and definitions are loaded by the host (runtime/node-guidance-writer.ts, Node); this module is the
  * platform-neutral mechanism around them.
  */
 import type { CallableDefinition } from '../runtime/kernel.js';
@@ -69,6 +69,12 @@ export declare function guidanceRun(value: unknown): GuidanceRun;
 /** The prompt text of one model request, as the engine computes it for visibility: string contents joined by newlines. */
 export declare function requestText(messages: readonly unknown[]): string;
 /**
+ * What the writer reads about its consumer: the call's own request text without the shared system prompt. Visibility
+ * still matches the whole request text; the writer only needs the call's opening, and repeating the ~5k-token system
+ * prompt inside the writer's argument doubled its prompt and buried the facts (MEMETIC_META_LEARNING_REVIEW_20261103.md).
+ */
+export declare function consumerText(messages: readonly unknown[]): string;
+/**
  * One run's training guidance. The agent asks `policyOf` whether a call is the guidance policy's own (its turns carry
  * `x_natlang_guidance_policy` and get no guidance), and `requestFor` for a consumer call's guidance request.
  */
@@ -77,10 +83,14 @@ export declare class TrainingGuidance {
     readonly writerPackage: GuidanceWriterPackage;
     /** Calls running the guidance policy: they and every call below them get no guidance. */
     private readonly policyCalls;
+    /** The last model turn node of each writeGuidance call: the source of the state its text is written as. */
+    private readonly writerTurns;
     private readonly requests;
     constructor(run: GuidanceRun, writerPackage: GuidanceWriterPackage);
     /** The policy function a call runs, by its exact definition (name and instructions), and remembers the call. */
     policyOf(lam: LambdaNode, callId: string | null): GuidancePolicyFunction | undefined;
+    /** The agent records each writeGuidance model turn as it is taken (its graph node). */
+    noteWriterTurn(callId: string, node: string, ancestors: readonly string[]): void;
     /** Whether a call runs inside the guidance policy (its own calls and theirs). */
     insidePolicy(session: NativeSession): boolean;
     /**

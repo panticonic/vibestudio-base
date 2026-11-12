@@ -26,9 +26,14 @@ export type NativeTurnGraphBinding = {
     written_occurrences?: NativeWriteOccurrence[];
     read_occurrences?: NativeReadOccurrence[];
 };
+export type RecordedActor = {
+    id: string;
+    revision: string | null;
+};
 export type NativeRecordedTurn = {
     schema: 'natlang.native-recorded-turn/1';
     id: string;
+    actor?: RecordedActor;
     invocation_id?: string;
     retry: number;
     graph?: NativeTurnGraphBinding;
@@ -40,6 +45,11 @@ export type NativeRecordedTurn = {
     decision: Record<string, unknown>;
 });
 export type RecordedTurn = {
+    readonly recording_id?: string;
+    /** The actual actor and graph occurrence for this turn; invocation manifests name the initial actor. */
+    readonly actor?: RecordedActor;
+    readonly initial_actor?: RecordedActor;
+    readonly graph_turn?: string;
     readonly messages: unknown[];
     readonly tools?: unknown[];
     /** The assistant message as the server returned it: content and tool-call arguments may hold block parts. */
@@ -71,6 +81,7 @@ export type NativeStateBinding = {
 };
 export interface TurnRecorder {
     record(turn: RecordedTurn): void;
+    linkTurn?(id: string, graphTurn: string): void;
     linkNativeTurn?(id: string, graphTurn: string): void;
     recordGraphNode?(event: Record<string, unknown>): void;
     nativeStateWriter?(id: string): string | undefined;
@@ -116,6 +127,7 @@ export declare class ModelTurnRecorder implements TurnRecorder {
     nativeStateWriters(id: string): readonly string[];
     nativeStateWriter(id: string): string | undefined;
     linkNativeTurn(id: string, graphTurn: string): void;
+    linkTurn(id: string, graphTurn: string): void;
     private bindNativeTurn;
     absorb(other: ModelTurnRecorder): void;
     nativeTurns(): RecordedTurn[];

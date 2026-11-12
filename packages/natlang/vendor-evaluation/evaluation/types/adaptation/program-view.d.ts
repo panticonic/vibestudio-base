@@ -1,7 +1,7 @@
 import type { AdaptationBinding, ComponentValue, ProgramDescriptor } from './types.js';
 import type { ItemRecord } from '../runtime/loader.js';
 import type { InlineLambdaPlan } from '../compiler/inline.js';
-import { type NativeProgramGuidance } from './prompts.js';
+import { type NativeProgramGuidance } from '../guidance/program.js';
 /** Frontmatter is copied byte for byte. */
 export declare function replaceNamedBody(source: string, body: string): string;
 /** Escapes only static segments; original interpolation expression AST text is retained. */
