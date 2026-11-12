@@ -621,7 +621,7 @@ eval({ code: `
 
 <!-- BEGIN GENERATED: eval-importable -->
 
-Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
+Importable members (generated from `EVAL_IMPORTABLE_KEYS` in `runtimeSurface.eval.ts`): `formatRpcFailure`, `PanelOperationError`, `id`, `contextId`, `rpc`, `fs`, `callMain`, `getParent`, `getParentWithContract`, `doTargetId`, `createDurableObjectServiceClient`, `gatewayConfig`, `gatewayFetch`, `openExternal`, `createPanelSlot`, `openPanel`, `getPanelHandle`, `workers`, `workspaces`, `workspace`, `credentials`, `browserData`, `git`, `vcs`, `gad`, `images`, `missions`, `blobstore`, `webhooks`, `extensions`, `templates`, `web`, `memory`, `notifications`, `problemReports`, `panelTree`, `services`, `hosts`, `runtime`.
 
 <!-- END GENERATED: eval-importable -->
 
