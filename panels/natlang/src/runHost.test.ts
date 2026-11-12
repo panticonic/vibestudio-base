@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunChunk, RunRecord } from "@workspace/natlang/dashboard/types.js";
+import { rerunSpec } from "@workspace/natlang/dashboard/pages.js";
 import { createRunHost } from "./runHost.js";
 import { FakeRecords, addFinishedCall, fakePorts, summary, type EvalHandler } from "./testSupport.js";
 
@@ -189,9 +190,39 @@ describe("runs other owners made", () => {
       ["observed:agent-run-2", "failed", "call"],
       ["observed:agent-run-1", "done", "call"],
     ]);
-    expect((list[1]!.meta as any).path).toContain("agent:alpha · classify, extract");
-    expect((list[0]!.meta as any).path).toContain("headless · classify");
+    expect(list[1]!.title).toBe("agent:alpha · classify, extract");
+    expect(list[0]!.title).toBe("headless · classify");
+    // A workspace program's function is named by its path, as "Run again" needs it.
+    expect(list[1]!.meta).toMatchObject({ path: "skills/triage/classify.nl", program: "skills/triage" });
     expect(list[1]!.endedAt).toBe("2026-11-01T10:00:01.500Z");
+  });
+
+  it("runs another owner's run again in this panel's own session, with the same function and inputs", async () => {
+    const records = new FakeRecords();
+    addFinishedCall(records, { call_id: "r1-a", run_id: "agent-run-1", program_root: "skills/triage", definition_source: "classify.nl" }, { inputs: { ticket: "the site is down" }, output: "urgent" });
+    const { ports, evaluated } = fakePorts({ records, handle: () => ({ success: true, console: "", returnValue: "urgent" }) });
+    const host = createRunHost(ports);
+    const watched = follow(host, "observed:agent-run-1");
+    await watched.ended();
+    const again = rerunSpec(watched.run);
+    expect(again).toMatchObject({ kind: "call", function: "skills/triage/classify.nl", inputs: { ticket: "the site is down" }, program: "skills/triage" });
+    const run = await host.start(again);
+    await follow(host, run.id).ended();
+    expect(evaluated).toHaveLength(1);
+    expect(evaluated[0]!.source).toContain('const path = "skills/triage/classify.nl";');
+    expect(evaluated[0]!.source).toContain('"ticket":"the site is down"');
+    // The new run is this panel's own: the original stays another owner's.
+    expect((await host.list()).map((entry) => entry.id)).toContain(run.id);
+  });
+
+  it("cannot run an inline call again, and says so", async () => {
+    const records = new FakeRecords();
+    addFinishedCall(records, { call_id: "inline", run_id: "agent-run-7", program_root: null, definition_source: null });
+    const { ports } = fakePorts({ records });
+    const host = createRunHost(ports);
+    const watched = follow(host, "observed:agent-run-7");
+    await watched.ended();
+    await expect(host.start(rerunSpec(watched.run))).rejects.toThrow("needs the path of a .nl function");
   });
 
   it("leaves out the runs this panel started, which it lists itself", async () => {

@@ -98,7 +98,7 @@ describe("natlang dashboard", () => {
   it("shows an agent's eval run in Runs while a list is watched, and ends the live feed when the page is left", async () => {
     const { records } = mount({}, "runs");
     records.calls = [summary({ call_id: "r1", run_id: "agent-run-1" })];
-    await settled(() => expect(text()).toContain("agent:alpha · classify"));
+    await settled(() => expect(text()).toContain("classify.nl"));
     expect(records.subscribers.size).toBe(1);
     dashboard!.navigate("overview");
     await settled(() => expect(records.subscribers.size).toBe(0));

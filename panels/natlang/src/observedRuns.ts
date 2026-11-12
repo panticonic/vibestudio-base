@@ -33,12 +33,24 @@ function statusOf(roots: readonly Pick<CallSummary, "outcome">[]): RunRecord["st
   return "done";
 }
 
-function toRecord(unsorted: Group): RunRecord {
+/** The workspace path of the function a call ran, when it is one of a workspace program's `.nl` files. */
+function functionPath(call: CallSummary): string | null {
+  if (!call.program_root || !call.definition_source?.endsWith(".nl")) return null;
+  return `${call.program_root.replace(/^\/+|\/+$/g, "")}/${call.definition_source}`;
+}
+
+/**
+ * A group as a run record. As for a run this panel started, `meta` names what "Run again" needs: the function's path,
+ * its program and, once a watcher has read the record, the inputs of its first call. A run with no such function (an
+ * inline call) is named by who ran it and what it called, and cannot be run again.
+ */
+function toRecord(unsorted: Group, inputs?: Record<string, unknown>): RunRecord {
   const roots = [...unsorted.roots].sort((a, b) => (a.started_at < b.started_at ? -1 : 1));
   const group = { ...unsorted, roots };
   const status = statusOf(roots);
   const first = roots[0]!;
   const end = roots.reduce((latest, call) => Math.max(latest, Date.parse(call.started_at) + (call.wall_ms ?? 0)), 0);
+  const path = functionPath(first);
   return {
     id: `${OBSERVED}${group.key}`,
     kind: "call",
@@ -48,10 +60,10 @@ function toRecord(unsorted: Group): RunRecord {
     startedAt: first.started_at,
     endedAt: status === "running" ? null : new Date(end).toISOString(),
     interactive: false,
-    // The page names a run by `meta.path`: here that is who ran it and what it called.
     meta: {
-      path: label(group),
-      observed: { owner: first.owner_kind, agent: first.agent_ref, channel: first.channel_id, runId: group.runId },
+      path: path ?? label(group),
+      ...(path ? { program: first.program_root!.replace(/^\/+|\/+$/g, ""), inputs: inputs ?? {} } : {}),
+      observed: { owner: first.owner_kind, agent: first.agent_ref, channel: first.channel_id, runId: group.runId, label: label(group) },
     },
   };
 }
@@ -220,8 +232,8 @@ export class ObservedRuns {
           observer.error?.(new Error(`no run ${id}`));
           return;
         }
-        const run = toRecord({ key, runId, roots });
         const replay = await this.replay(calls);
+        const run = toRecord({ key, runId, roots }, replay.inputs);
         if (controller.signal.aborted) return;
         observer.connection?.(true);
         observer.update({ run, stdout: replay.stdout, stderr: "", live: replay.events, drained: run.status !== "running" });
@@ -235,7 +247,9 @@ export class ObservedRuns {
           const events = delivery.events.map((event) => ({ at: Date.now(), ...event }) as unknown as LiveEvent);
           const finished = delivery.events.some((event) => isRoot(event) && event.type === "call_end");
           const current = finished ? await this.deps.records.listCalls({ runId, limit: CALLS }) : null;
-          const next = current ? toRecord({ key, runId, roots: current.filter((call) => call.parent_call_id === null) }) : run;
+          const next = current
+            ? toRecord({ key, runId, roots: current.filter((call) => call.parent_call_id === null) }, replay.inputs)
+            : run;
           observer.update({ run: next, stdout: "", stderr: "", live: events, drained: next.status !== "running" });
         }
       } catch (error) {
@@ -258,11 +272,14 @@ export class ObservedRuns {
   }
 
   /** The live-event form of recorded calls, and the results of the root calls. */
-  private async replay(calls: readonly CallSummary[]): Promise<{ events: LiveEvent[]; stdout: string }> {
+  private async replay(
+    calls: readonly CallSummary[]
+  ): Promise<{ events: LiveEvent[]; stdout: string; inputs: Record<string, unknown> | undefined }> {
     const ordered = [...calls].sort((a, b) => (a.started_at < b.started_at ? -1 : a.started_at > b.started_at ? 1 : 0));
     const details = await Promise.all(ordered.map((call) => this.deps.records.getCall(call.call_id)));
     const events: LiveEvent[] = [];
     let stdout = "";
+    let inputs: Record<string, unknown> | undefined;
     for (const [index, call] of ordered.entries()) {
       const detail = details[index];
       const at = Date.parse(call.started_at);
@@ -285,12 +302,14 @@ export class ObservedRuns {
           outcome: call.outcome,
           detail: detail?.record?.detail ?? "",
         } as LiveEvent);
+      const firstRoot = call.parent_call_id === null && !ordered.slice(0, index).some((earlier) => earlier.parent_call_id === null);
       if (call.parent_call_id === null && detail?.record) {
         const expanded = await expandRecord(detail.record, (hash) => this.deps.records.getValue(hash));
+        if (firstRoot) inputs = expanded["inputs"] as Record<string, unknown>;
         const value = expanded["output"];
         stdout += `${call.definition_name}: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}\n`;
       }
     }
-    return { events, stdout };
+    return { events, stdout, inputs };
   }
 }
