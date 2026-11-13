@@ -102,6 +102,31 @@ goes to you as their own message. A page can also take speech itself:
 which ones this device has. Ask for sensors with the normal web APIs
 (geolocation, camera, microphone, device motion); the host asks the user.
 
+## Agents outside the workspace
+
+A workspace agent is a participant in its channel, so page events reach it
+directly and nothing below applies. An agent running elsewhere (Claude Code,
+Codex, Muse, Grok Bot, Hermes, OpenClaw) works through the `vibestudio` CLI
+with a paired direct session (`vibestudio agent attach`): it creates and
+changes tendrils with `vibestudio eval` and the agent kit above, and gets page
+events through one of the `vibestudio tendril` bridges. Every bridge follows
+the tendril's channel (the `channelId` you passed to `createTendril`), applies
+the same wake bound, frames events as page data, and resumes after the last
+event it handed over.
+
+| Agent | How page events reach it |
+| --- | --- |
+| **Claude Code** | A channel: page events are pushed into the open session. Add `{"command":"vibestudio","args":["tendril","channel","<channelId>"]}` to `.mcp.json` as server `tendril`, then start `claude --dangerously-load-development-channels server:tendril` (custom channels need that flag during the research preview, or an organization allowlist entry). Without channels: run `vibestudio tendril wait <channelId>` as a background command and start it again after each wake. |
+| **Muse** | `vibestudio tendril wait <channelId>` as a background command; a finished background command starts a turn. Start it again after each wake. |
+| **Codex, other terminal CLIs** | A listener outside the agent: `while vibestudio tendril wait <channelId> > /tmp/tendril-batch.txt; do codex exec resume --last "Tendril events are in /tmp/tendril-batch.txt"; done`. |
+| **Grok Bot, Hermes, OpenClaw** | `vibestudio tendril webhook <channelId> --url <their webhook>` with the signing secret in `VIBESTUDIO_TENDRIL_WEBHOOK_SECRET` (`vibestudio tendril secret` makes one). Deliveries are Standard Webhooks signed (`webhook-id`, `webhook-timestamp`, `webhook-signature`); OpenClaw's hook token goes in with `--bearer-env`. The JSON body has `text` (the framed event) plus the raw fields. |
+| **OpenAI dots** | No bridge yet. Dots can be woken by an MCP server through MCP Events; a tendril connector that implements it is the planned path. |
+| **Claude Duet, Instinct** | No way to push exists: Duet checks its connectors every few hours and Instinct publishes no trigger. Events wait in the channel until the agent next looks, or until the person messages it. |
+
+`tendril wait` prints events and exits (`--json` for one JSON object per
+line); `--from-now` skips what is already in the channel. None of the bridges
+time out: they wait until something happens.
+
 ## When you are done
 
 `await t.archive()` closes the pages. The channel history and state remain.
