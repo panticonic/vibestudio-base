@@ -106,3 +106,15 @@ export async function checkWorkspaceNatlangPrograms(
   }
   return checks;
 }
+
+/**
+ * What a template's test suite asserts about its natlang programs: every program compiles and its generated
+ * declarations are current, as one line per failing program (empty when all pass).
+ * `NATLANG_UPDATE_DECLARATIONS=1` writes the declarations instead of failing on them.
+ */
+export async function workspaceProgramFailures(workspace: string): Promise<string[]> {
+  const checks = await checkWorkspaceNatlangPrograms(workspace, {
+    updateDeclarations: process.env[UPDATE_DECLARATIONS_ENV] === "1",
+  });
+  return checks.filter((check) => check.failure).map((check) => `${check.program}: ${check.failure}`);
+}
