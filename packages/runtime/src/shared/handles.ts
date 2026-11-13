@@ -16,6 +16,9 @@ import type {
   PanelHandleContractRole,
   PanelHandleFromContract,
   PanelNavigateOptions,
+  PanelPresentationRequest,
+  PanelPresentResult,
+  PanelRebuildOptions,
   PanelSetTitleOptions,
   PanelWaitOptions,
   Rpc,
@@ -76,7 +79,14 @@ export interface PanelHandleHostOps {
     id: string,
     mode?: "detach" | "right" | "bottom",
   ): Promise<void>;
-  rebuild?(id: string, options?: PanelWaitOptions): Promise<PanelObservation>;
+  rebuild?(
+    id: string,
+    options?: PanelRebuildOptions,
+  ): Promise<PanelObservation>;
+  requestPresentation?(
+    id: string,
+    request: PanelPresentationRequest,
+  ): Promise<PanelPresentResult>;
   focus?(id: string, options?: PanelFocusOptions): Promise<PanelObservation>;
   stateArgs?: {
     get<T = Record<string, unknown>>(id: string): Promise<T>;
@@ -354,11 +364,18 @@ export function createPanelHandle<
         throw new Error("openDevTools is not available for this handle");
       await ops.openDevTools(metadata.id, mode);
     },
-    rebuild: async (waitOptions?: PanelWaitOptions) => {
+    rebuild: async (rebuildOptions?: PanelRebuildOptions) => {
       if (!ops?.rebuild)
         throw new Error("rebuild is not available for this handle");
       invalidateCdpGeneration(cdp);
-      return lifecycle(() => ops.rebuild!(metadata.id, waitOptions));
+      return lifecycle(() => ops.rebuild!(metadata.id, rebuildOptions));
+    },
+    requestPresentation: async (request: PanelPresentationRequest) => {
+      if (!ops?.requestPresentation)
+        throw new Error(
+          "requestPresentation is not available for this handle",
+        );
+      return ops.requestPresentation(metadata.id, request);
     },
     focus: (focusOptions?: PanelFocusOptions) => {
       if (!ops?.focus)
@@ -506,6 +523,7 @@ export function createNonPanelRuntimeHandle(options: {
     takeOver: unavailable,
     openDevTools: unavailable,
     rebuild: unavailable,
+    requestPresentation: unavailable,
     focus: unavailable,
     snapshot: unavailable,
     tree: () => Promise.resolve(undefined),

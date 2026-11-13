@@ -71,16 +71,37 @@ export type NativeChannelIntake =
       readonly kind: "input";
       readonly content: UserInput;
       readonly whenBusy?: "steer" | "followUp" | "reject";
+      /** Wake bound (tendrils 4.3); absent for inputs the bound ignores. */
+      readonly wake?: ObservationWake;
     }
   | { readonly kind: "observation"; readonly entry: EntryDraft }
   | { readonly kind: "feedback"; readonly payload: UiFeedbackPayload }
   | { readonly kind: "message-edit"; readonly content: UserInput }
   | { readonly kind: "message-retract" };
 
+/**
+ * How an input takes part in the bound on page-driven wakes (tendrils 4.3).
+ * An `observation` input that would start the conversation's
+ * `maxConsecutive`+1-th consecutive observation turn is recorded as `pointer`
+ * instead and wakes nothing; one that arrives while a turn runs steers into it.
+ * A `human` input (a user's message) resets the count and reports what was
+ * withheld meanwhile.
+ */
+export type ObservationWake =
+  | {
+      readonly kind: "observation";
+      readonly maxConsecutive: number;
+      readonly payloadKind: string;
+      readonly pointer: EntryDraft;
+    }
+  | { readonly kind: "human" };
+
 export interface NativeChannelAdmission {
   readonly conversationId: ConversationId;
   readonly submissionId: SubmissionId;
   readonly disposition: "processed" | "duplicate";
+  /** Set when this delivery was withheld by the wake bound: the totals since the last human input. */
+  readonly withheld?: { readonly count: number; readonly payloadKinds: string[] };
 }
 
 /** Product facts join fresh native input admission; no effects or Session calls here. */
@@ -813,6 +834,28 @@ const ChannelFeedback = defineDoc<{
   checkpointWhen: () => true,
 });
 
+/** Consecutive observation-started turns, and what the bound withheld, since the last human input. */
+const ObservationWakes = defineDoc<{
+  streak: number;
+  withheld: number;
+  payloadKinds: string[];
+}>({
+  kind: "vibestudio.observation-wakes",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ streak: 0, withheld: 0, payloadKinds: [] }),
+  checkpointWhen: () => true,
+});
+
+function withheldNotice(withheld: number, payloadKinds: string[]): string {
+  return (
+    `[${withheld} page observation${withheld === 1 ? "" : "s"} (${payloadKinds.join(", ")}) ` +
+    "arrived without waking you after consecutive page-started turns; they are in the channel history.]"
+  );
+}
+
 const FeedbackOccurrences = defineDoc<{
   seen: { occurrenceKey: string; at: number }[];
 }>({
@@ -1327,6 +1370,18 @@ export async function submitNativeChannelDelivery(
           context,
         )
       : null;
+  const wake = prepared.kind === "input" ? prepared.wake : undefined;
+  let observationMode: "start" | "steer" | "withhold" | null = null;
+  if (wake?.kind === "observation") {
+    const live = await harness.snapshot(LiveDoc, conversationId, context);
+    const bound = await harness.snapshot(ObservationWakes, conversationId, context);
+    observationMode = live?.run
+      ? "steer"
+      : (bound?.streak ?? 0) >= wake.maxConsecutive
+        ? "withhold"
+        : "start";
+  }
+  let withheld: NativeChannelAdmission["withheld"];
   let fresh = false;
   const admit = async (tx: Tx, submissionId: SubmissionId) => {
     await requireNativeChannelReady(tx, conversationId);
@@ -1374,14 +1429,31 @@ export async function submitNativeChannelDelivery(
   const stopObservingClose = harness.subscribeClose(() => { closing = true; });
   try {
     submission =
-      prepared.kind === "input"
+      prepared.kind === "input" && observationMode !== "withhold"
         ? await conversation.submit(
             {
               type: "input",
               requestId: incoming.deliveryId,
-              ...(prepared.whenBusy ? { whenBusy: prepared.whenBusy } : {}),
+              ...(observationMode === "steer"
+                ? { whenBusy: "steer" as const }
+                : prepared.whenBusy
+                  ? { whenBusy: prepared.whenBusy }
+                  : {}),
               content: async (tx, submissionId) => {
                 const admission = await admit(tx, submissionId);
+                let wakeNotice = "";
+                if (wake) {
+                  const bound = await tx.doc(ObservationWakes, conversationId);
+                  if (wake.kind === "human") {
+                    if (bound.withheld > 0)
+                      wakeNotice = withheldNotice(bound.withheld, bound.payloadKinds);
+                    bound.streak = 0;
+                    bound.withheld = 0;
+                    bound.payloadKinds = [];
+                  } else if (observationMode === "start") {
+                    bound.streak += 1;
+                  }
+                }
                 await bindSourceMessage(
                   tx,
                   incoming,
@@ -1406,8 +1478,8 @@ export async function submitNativeChannelDelivery(
                   (item) => item.occurrenceKey,
                 );
                 feedback.pending = [];
-                if (!notes.length) return prepared.content;
-                const diagnostic = notes.join("\n\n");
+                if (!notes.length) return withDiagnostics(prepared.content, wakeNotice);
+                const diagnostic = [wakeNotice, ...notes].filter(Boolean).join("\n\n");
                 const sourceEvent = sourceAgenticEvent(incoming);
                 const messageId = sourceEvent?.causality?.messageId;
                 if (sourceEvent?.kind === "message.completed" && messageId) {
@@ -1498,6 +1570,24 @@ export async function submitNativeChannelDelivery(
                 requestId: incoming.deliveryId,
                 entry: async (tx, submissionId) => {
                   await admit(tx, submissionId);
+                  if (prepared.kind === "input") {
+                    // Withheld by the wake bound: a passive pointer only.
+                    if (wake?.kind !== "observation")
+                      throw new Error("Only an observation input can be withheld");
+                    const bound = await tx.doc(ObservationWakes, conversationId);
+                    bound.withheld += 1;
+                    if (!bound.payloadKinds.includes(wake.payloadKind))
+                      bound.payloadKinds = [...bound.payloadKinds, wake.payloadKind];
+                    withheld = { count: bound.withheld, payloadKinds: [...bound.payloadKinds] };
+                    await bindSourceMessage(
+                      tx,
+                      incoming,
+                      conversationId,
+                      submissionId,
+                      "write",
+                    );
+                    return wake.pointer;
+                  }
                   if (prepared.kind === "observation") {
                     await bindSourceMessage(
                       tx,
@@ -1611,6 +1701,7 @@ export async function submitNativeChannelDelivery(
     conversationId,
     submissionId: submission.id,
     disposition: fresh ? "processed" : "duplicate",
+    ...(fresh && withheld ? { withheld } : {}),
   };
 }
 

@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./transcribe": "./transcribe.ts"
+  },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*"
   }
 }

@@ -35,6 +35,11 @@ import { createImagesClient } from "@workspace/runtime/images";
 import { canonicalJson } from "@vibestudio/content-addressing";
 import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 import { PublicationQueue } from "./publication-queue.js";
+import { originFromVerifiedCaller } from "./channel-origin.js";
+import {
+  ENVELOPE_ORIGIN_ANNOTATION,
+  type EnvelopeOrigin,
+} from "@workspace/agentic-protocol";
 import { ChannelLedger } from "./channel-ledger.js";
 import {
   observeChannelEvent,
@@ -2737,6 +2742,17 @@ export class PubSubChannel
 
   private readonly publicationQueue = new PublicationQueue();
   private readonly publicationLifetime = new AbortController();
+  /**
+   * Envelope provenance from the host-verified caller of the active RPC only;
+   * publish arguments and payload never contribute. Call before awaiting.
+   */
+  private verifiedOrigin(): EnvelopeOrigin {
+    return originFromVerifiedCaller(
+      this.caller,
+      this.authorization?.authorizingOrigin.kind ?? null,
+    );
+  }
+
   private async appendDurable(input: {
     type: string;
     payload: unknown;
@@ -2748,6 +2764,8 @@ export class PubSubChannel
     attachments?: StoredAttachment[];
     /** Measurement origin only; never consulted as delivery authority. */
     deliveryStartedAt?: number;
+    /** Provenance from the verified caller, captured at the RPC entry. */
+    origin?: EnvelopeOrigin;
   }): Promise<ChannelEvent> {
     return this.publicationQueue.enqueue(
       () => this.commitPublication(input),
@@ -2772,6 +2790,8 @@ export class PubSubChannel
     attachments?: StoredAttachment[];
     /** Measurement origin only; never consulted as delivery authority. */
     deliveryStartedAt?: number;
+    /** Provenance from the verified caller, captured at the RPC entry. */
+    origin?: EnvelopeOrigin;
   }) {
     const existing = input.messageId
       ? await this.channelLog.getEventByEnvelopeId(input.messageId)
@@ -2839,6 +2859,10 @@ export class PubSubChannel
         senderId: input.senderId,
         senderKind,
       })) ?? undefined;
+    if (input.origin) {
+      // Host-verified provenance wins over anything a policy annotated.
+      annotations = { ...annotations, [ENVELOPE_ORIGIN_ANNOTATION]: input.origin };
+    }
     const assetIds =
       input.type === AGENTIC_EVENT_PAYLOAD_KIND &&
       (input.payload as AgenticEvent).kind === "message.completed"
@@ -4533,6 +4557,7 @@ export class PubSubChannel
     this.assertParticipantCaller(participantId, "publish");
     this.assertGuestAdmission(participantId);
     this.markParticipantActive(participantId);
+    const origin = this.verifiedOrigin();
     const ref = opts?.ref;
     const attachments = opts?.attachments;
     const idempotencyKey = opts?.idempotencyKey;
@@ -4563,6 +4588,7 @@ export class PubSubChannel
         messageId: idempotencyKey ? `ik:${idempotencyKey}` : undefined,
         ...(idempotencyKey ? { idempotency: "idempotent-by-id" as const } : {}),
         attachments,
+        origin,
       }),
     );
 
@@ -4666,6 +4692,7 @@ export class PubSubChannel
     const caller = this.caller;
     const senderId = caller?.callerId ?? "cli";
     const isAgent = this.authorization?.authorizingOrigin.kind === "session";
+    const origin = this.verifiedOrigin();
     const handle = isAgent ? senderId : (opts?.handle ?? senderId);
     const messageId = opts?.idempotencyKey
       ? `ik:${opts.idempotencyKey}`
@@ -4706,6 +4733,7 @@ export class PubSubChannel
       ...(opts?.idempotencyKey
         ? { idempotency: "idempotent-by-id" as const }
         : {}),
+      origin,
     });
     this.assertPublishOwner(logged, senderId, AGENTIC_EVENT_PAYLOAD_KIND);
     const accepted = agenticEventSchema.parse(logged.payload);
@@ -4844,6 +4872,7 @@ export class PubSubChannel
     this.assertParticipantCaller(participantId, "error");
     this.markParticipantActive(participantId);
     const senderMetadata = this.getSenderMetadata(participantId);
+    const origin = this.verifiedOrigin();
     const payload: Record<string, unknown> = {
       id: messageId,
       error: errorMessage,
@@ -4854,6 +4883,7 @@ export class PubSubChannel
       payload,
       senderId: participantId,
       senderMetadata,
+      origin,
     });
     broadcast(
       this.broadcastDeps,

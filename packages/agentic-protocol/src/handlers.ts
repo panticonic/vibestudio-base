@@ -75,6 +75,23 @@ export interface MessageInteraction {
   values?: string[];
 }
 
+/** A person's instruction given through a tendril page's control (`metadata.tendril`). */
+export interface MessageTendrilSource {
+  tendrilId: string;
+  via: "voice" | "text";
+}
+
+/** Read `metadata.tendril` off a message payload; absent or malformed ⇒ undefined. */
+export function readMessageTendril(metadata: unknown): MessageTendrilSource | undefined {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const raw = (metadata as { tendril?: unknown }).tendril;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const { tendrilId, via } = raw as Record<string, unknown>;
+  if (typeof tendrilId !== "string" || !tendrilId) return undefined;
+  if (via !== "voice" && via !== "text") return undefined;
+  return { tendrilId, via };
+}
+
 /** Read `metadata.interaction` off a message payload; absent or malformed ⇒ undefined. */
 export function readMessageInteraction(
   metadata: unknown,
@@ -159,6 +176,8 @@ export interface ProjectedMessage {
   notify?: MessageNotifyIntent;
   /** The UI selection this message carries, projected from `metadata.interaction`. */
   interaction?: MessageInteraction;
+  /** Sent from a tendril page's control, projected from `metadata.tendril`. */
+  tendril?: MessageTendrilSource;
   /** Edit-fork provenance: the parent message this supersedes. */
   replaces?: { messageId: string; seq: number };
   startedAt?: string;
@@ -514,6 +533,10 @@ export function applyMessageEvent(
       ("metadata" in payload
         ? readMessageInteraction(payload.metadata)
         : undefined) ?? existing.interaction;
+    const tendril =
+      ("metadata" in payload
+        ? readMessageTendril(payload.metadata)
+        : undefined) ?? existing.tendril;
     const native =
       existing.native ??
       ("metadata" in payload
@@ -535,6 +558,7 @@ export function applyMessageEvent(
         ...(replaces !== undefined ? { replaces } : {}),
         ...(notify !== undefined ? { notify } : {}),
         ...(interaction !== undefined ? { interaction } : {}),
+        ...(tendril !== undefined ? { tendril } : {}),
         ...(native !== undefined ? { native } : {}),
         status: "started",
         startedAt: event.createdAt,
@@ -636,6 +660,10 @@ export function applyMessageEvent(
       ("metadata" in payload
         ? readMessageInteraction(payload.metadata)
         : undefined) ?? existing.interaction;
+    const tendril =
+      ("metadata" in payload
+        ? readMessageTendril(payload.metadata)
+        : undefined) ?? existing.tendril;
     const native =
       existing.native ??
       ("metadata" in payload
@@ -657,6 +685,7 @@ export function applyMessageEvent(
         ...(replaces !== undefined ? { replaces } : {}),
         ...(notify !== undefined ? { notify } : {}),
         ...(interaction !== undefined ? { interaction } : {}),
+        ...(tendril !== undefined ? { tendril } : {}),
         ...(native !== undefined ? { native } : {}),
         status: failure ? "failed" : "completed",
         ...(failure

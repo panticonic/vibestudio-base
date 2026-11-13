@@ -500,6 +500,12 @@ export abstract class DurableObjectBase {
               ...(typeof record["callerPanelId"] === "string"
                 ? { callerPanelId: record["callerPanelId"] }
                 : {}),
+              ...(typeof record["callerDeviceId"] === "string"
+                ? { callerDeviceId: record["callerDeviceId"] }
+                : {}),
+              ...(typeof record["callerPanelSource"] === "string"
+                ? { callerPanelSource: record["callerPanelSource"] }
+                : {}),
               ...(typeof record["userId"] === "string"
                 ? { userId: record["userId"] }
                 : {}),
@@ -719,6 +725,12 @@ export abstract class DurableObjectBase {
         ...(caller.callerPanelId
           ? { callerPanelId: caller.callerPanelId }
           : {}),
+        ...(caller.callerDeviceId
+          ? { callerDeviceId: caller.callerDeviceId }
+          : {}),
+        ...(caller.callerPanelSource
+          ? { callerPanelSource: caller.callerPanelSource }
+          : {}),
         ...(caller.userId ? { userId: caller.userId } : {}),
         ...(caller.workspaceId ? { workspaceId: caller.workspaceId } : {}),
       };
@@ -745,6 +757,23 @@ export abstract class DurableObjectBase {
   protected get rpcCallerPanelId(): string | null {
     const context = this._invocationContext.current();
     return context ? context.callerPanelId : this._currentRpcCallerPanelId;
+  }
+
+  /**
+   * The verified paired device the active caller runs on; null for callers
+   * that are not on a device (server, workers, headless) and outside an RPC.
+   */
+  protected get rpcCallerDeviceId(): string | null {
+    return this.activeVerifiedCaller?.callerDeviceId ?? null;
+  }
+
+  /**
+   * Verified code identity source of a panel caller (e.g. "panels/trip");
+   * null for non-panel callers and outside an RPC. Host-stamped, never from
+   * the payload.
+   */
+  protected get rpcCallerPanelSource(): string | null {
+    return this.activeVerifiedCaller?.callerPanelSource ?? null;
   }
 
   /** Correlation id of the inbound call, when the caller stamped one. */

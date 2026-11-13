@@ -2350,6 +2350,106 @@ describe("ui feedback repair turns", () => {
   });
 });
 
+describe("bound on page-driven wakes", () => {
+  function observed(n: number): NativeChannelIntake {
+    return {
+      kind: "input",
+      content: `Channel observation: tendril.event ${n}`,
+      wake: {
+        kind: "observation",
+        maxConsecutive: 2,
+        payloadKind: "tendril.event",
+        pointer: {
+          kind: "vibestudio.channel-observation",
+          data: { payloadKind: "tendril.event", n },
+        },
+      },
+    };
+  }
+  async function readyFixture() {
+    return fixture(undefined, {
+      modelRequests: async (request, api) => {
+        await api.prepare(request.model, context);
+        return { status: "ready", options: {}, close: async () => {} };
+      },
+    });
+  }
+  type F = Awaited<ReturnType<typeof readyFixture>>;
+  async function typeOf(f: F, submissionId: number) {
+    return (await f.storage.submission(submissionId as never, context))?.type;
+  }
+  async function placedText(f: F, submissionId: number): Promise<string> {
+    const record = await f.storage.submission(submissionId as never, context);
+    const content = (await f.storage.entry(record!.entry!, context))?.entry
+      .model?.[0]?.content;
+    return typeof content === "string" ? content : JSON.stringify(content);
+  }
+
+  it("withholds observations past the cap until a person speaks, then reports them", async () => {
+    const f = await readyFixture();
+    f.faux.setResponses(
+      Array.from({ length: 5 }, (_, i) => fauxAssistantMessage(`reply ${i}`)),
+    );
+    const submit = (id: string, intake: NativeChannelIntake) =>
+      submitNativeChannelDelivery(f.harness, binding, delivery(id), intake, context);
+
+    for (const n of [1, 2]) {
+      const admitted = await submit(`obs-${n}`, observed(n));
+      expect(await typeOf(f, admitted.submissionId)).toBe("input");
+      expect(admitted.withheld).toBeUndefined();
+      await f.harness.runPass(context);
+    }
+    expect(f.faux.state.callCount).toBe(2);
+
+    const third = await submit("obs-3", observed(3));
+    expect(await typeOf(f, third.submissionId)).toBe("write");
+    expect(third.withheld).toEqual({ count: 1, payloadKinds: ["tendril.event"] });
+    const fourth = await submit("obs-4", observed(4));
+    expect(fourth.withheld).toEqual({ count: 2, payloadKinds: ["tendril.event"] });
+    await f.harness.runPass(context);
+    expect(f.faux.state.callCount).toBe(2);
+
+    const human = await submit("human", {
+      kind: "input",
+      content: "what happened?",
+      wake: { kind: "human" },
+    });
+    await f.harness.runPass(context);
+    expect(f.faux.state.callCount).toBe(3);
+    const text = await placedText(f, human.submissionId);
+    expect(text).toContain("2 page observations (tendril.event)");
+    expect(text).toContain("what happened?");
+
+    // The count restarted with the person's message.
+    const after = await submit("obs-5", observed(5));
+    expect(await typeOf(f, after.submissionId)).toBe("input");
+    expect(after.withheld).toBeUndefined();
+  });
+
+  it("does not count turns started by other inputs, nor report when nothing was withheld", async () => {
+    const f = await readyFixture();
+    f.faux.setResponses(
+      Array.from({ length: 4 }, (_, i) => fauxAssistantMessage(`reply ${i}`)),
+    );
+    const submit = (id: string, intake: NativeChannelIntake) =>
+      submitNativeChannelDelivery(f.harness, binding, delivery(id), intake, context);
+    await submit("obs-1", observed(1));
+    await f.harness.runPass(context);
+    const human = await submit("human", {
+      kind: "input",
+      content: "hi",
+      wake: { kind: "human" },
+    });
+    await f.harness.runPass(context);
+    expect(await placedText(f, human.submissionId)).toBe("hi");
+    for (const n of [2, 3]) {
+      const admitted = await submit(`obs-${n}`, observed(n));
+      expect(await typeOf(f, admitted.submissionId)).toBe("input");
+      await f.harness.runPass(context);
+    }
+  });
+});
+
 describe("native canonical channel admission", () => {
   it("retains a stopped input across process restart and replays without restarting its submission", async () => {
     const directory = await mkdtemp(join(tmpdir(), "native-live-replay-"));

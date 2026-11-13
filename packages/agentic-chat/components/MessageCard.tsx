@@ -924,6 +924,16 @@ export const MessageCard = React.memo(function MessageCard({
                     sender={msg.senderMetadata}
                   />
                 ) : null}
+                {msg.tendril ? (
+                  <Text
+                    size="1"
+                    color="gray"
+                    title={`Sent from a live page (tendril ${msg.tendril.tendrilId})`}
+                    style={{ marginLeft: 6 }}
+                  >
+                    {msg.tendril.via === "voice" ? "🌱 spoken on page" : "🌱 typed on page"}
+                  </Text>
+                ) : null}
               </Box>
               {showModelBadge && (
                 <Badge
