@@ -27,6 +27,25 @@ export declare const BUILT_INS_LINE = "Eval also has the built-ins nl, iterateOn
 /** Inline children have the same delegation tools as named calls. */
 export declare const INLINE_BUILT_INS_LINE = "Eval also has the built-ins nl, iterateOn, transcript and decide; read_code shows how to use each.";
 export declare const NL_DEPTH_LIMIT_BUILT_INS_LINE: string;
+/**
+ * What one call's opening message adds after its scope: the program's guidance, then the function-tools, folder and
+ * nesting-limit paragraphs that apply to this call. The system prompt and tool list are the same for every call, so
+ * every call's opening shares one cached prefix; this is the part that differs. The runtime and the rebuild of recorded
+ * calls for training (native/serving-request.ts) both compose it here.
+ */
+export declare function callNotes(call: {
+    guidance?: string;
+    ownCode: boolean;
+    allowAdHoc: boolean;
+    rendering?: PromptRendering;
+    folder?: {
+        fileTools?: FileToolSurface;
+        writable: boolean;
+        withheld?: readonly string[];
+    };
+}): string;
+/** A call's opening message with its notes (callNotes) as the last paragraph. */
+export declare const withCallNotes: (opening: string, notes: string) => string;
 export declare const OPENING_THOUGHT = "I'll start by reading this call's arguments into the eval scope.";
 export declare const FOLDER_THOUGHT = "Next I'll list the files in this call's folder.";
 export declare const DIFF_CODE_DESCRIPTION = "Show the changes made to functions of the program's codebase in this call.";
@@ -107,8 +126,11 @@ export declare class NativeToolAgent {
         programGuidance?: ProgramGuidance;
         authoredTextGuidance?: AuthoredTextGuidance;
         maxFailureRepairs?: number;
-        /** The readout's system prompt (default DECISION_SYSTEM_PROMPT; the kernel adds iteration addenda). */
+        /** The readout's system prompt (default DECISION_SYSTEM_PROMPT). */
         decisionSystemPrompt?: () => string;
+        /** Text for this call only (an iteration predicate's prompt, a retry's guidance): part of the call's notes in its
+         * opening message (callNotes), so the system prompt stays the same for every call. */
+        callAddendum?: string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
         /** `direct`: a leaf call (see `leafOpening`) answers from LEAF_SYSTEM_PROMPT and an opening that shows its arguments,
@@ -202,8 +224,11 @@ export declare class NativeToolAgent {
         programGuidance?: ProgramGuidance;
         authoredTextGuidance?: AuthoredTextGuidance;
         maxFailureRepairs?: number;
-        /** The readout's system prompt (default DECISION_SYSTEM_PROMPT; the kernel adds iteration addenda). */
+        /** The readout's system prompt (default DECISION_SYSTEM_PROMPT). */
         decisionSystemPrompt?: () => string;
+        /** Text for this call only (an iteration predicate's prompt, a retry's guidance): part of the call's notes in its
+         * opening message (callNotes), so the system prompt stays the same for every call. */
+        callAddendum?: string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
         /** `direct`: a leaf call (see `leafOpening`) answers from LEAF_SYSTEM_PROMPT and an opening that shows its arguments,
@@ -306,6 +331,8 @@ export declare class NativeToolAgent {
      * captures are plain data shown whole. Such a call has nothing to run code on, so it answers from the shown values.
      */
     private leafOpening;
+    /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
+     * withCallNotes). */
     private scopeOpening;
     /** Ambient TypeScript declarations for the functions this call can use, with the aliases they reference. */
     private callableDeclarations;

@@ -10,7 +10,7 @@ import { isModelRole } from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import type { ModelConfig, ModelDriver } from "../vendor/workerd/natlang-workerd.js";
 import type { ExecutorIdentity } from "./executorIdentity.js";
-import { gatewayDriver, type ModelResolver } from "./driver.js";
+import { gatewayDriver, LOCAL_DECISION_REPLY, type ModelResolver } from "./driver.js";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 
 /** The role the default natlang model resolves through. */
@@ -130,7 +130,7 @@ export function modelsFor(options: {
       return {
         model: pinned?.ref ?? EXECUTOR_ROLE,
         request: pinned?.modelSpec.samplingParams ?? {},
-        ...(executorGuided() ? { guidance: true } : {}),
+        ...(executorGuided() ? { guidance: true, decisionReply: LOCAL_DECISION_REPLY } : {}),
       };
     },
   };

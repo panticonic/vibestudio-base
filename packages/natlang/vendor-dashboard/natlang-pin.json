@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "80906ffba605a1d9955240e2bc59960d6bb41217",
+  "commit": "ee9bb0b22548e3edd041d32a25119e903554e8a5",
   "dirty": false,
   "targets": [
     "dashboard"

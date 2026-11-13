@@ -5,4 +5,5 @@
  */
 export * from '../model/pi-translation.js';
 export * from '../model/decision-scoring.js';
+export * from '../decision-frame.js';
 export type { DecisionRequest, DecisionScores, ModelTurn, ModelTurnDelta, ModelTurnRequest } from '../contracts.js';

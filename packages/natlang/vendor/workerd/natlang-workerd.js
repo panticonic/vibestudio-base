@@ -213387,57 +213387,6 @@ var init_context = __esm({
   }
 });
 
-// src/native/decision.ts
-function finiteValues(type, env) {
-  const out = [];
-  const visit = (item, depth2) => {
-    if (depth2 > 32) return false;
-    const resolved = item.kind === "name" ? env.resolve(item) : item;
-    switch (resolved.kind) {
-      case "refined":
-      case "untrusted":
-        return visit(resolved.base, depth2 + 1);
-      case "lit":
-        out.push(resolved.value);
-        return true;
-      case "union":
-        return resolved.members.every((member) => visit(member, depth2 + 1));
-      case "prim":
-        if (resolved.name === "boolean") {
-          out.push(true, false);
-          return true;
-        }
-        if (resolved.name === "null") {
-          out.push(null);
-          return true;
-        }
-        return false;
-      default:
-        return false;
-    }
-  };
-  if (!visit(type, 0)) return null;
-  return [...new Map(out.map((value) => [JSON.stringify(value), value])).values()];
-}
-function decisionScorer(driver) {
-  return typeof driver?.decide === "function" ? driver.decide : void 0;
-}
-function softmax(logProbs) {
-  const top = Math.max(...logProbs);
-  const weights = logProbs.map((value) => Math.exp(value - top));
-  const total = weights.reduce((sum, value) => sum + value, 0);
-  return weights.map((value) => value / total);
-}
-var DECISION_SYSTEM_PROMPT, decisionPrompt;
-var init_decision = __esm({
-  "src/native/decision.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    DECISION_SYSTEM_PROMPT = "You are running one call of a natural-language function. Carry out its instructions yourself for this call's argument values, judging the visible inputs. Your reply is the function's return value: one JSON value of the declared type, with nothing else.";
-    decisionPrompt = (replies) => "Answer this call now, without tools. Reply with exactly one of these JSON values and nothing else: " + replies.join(", ") + ".";
-  }
-});
-
 // src/guidance/program.ts
 function nativeProgramGuidance(input, programId) {
   if (typeof input !== "string") {
@@ -213617,7 +213566,7 @@ function promptAtNlDepthLimit(prompt) {
   if (!prompt.includes(TOOLS_PROMPT)) return prompt + "\n\n" + NL_DEPTH_LIMIT_NOTICE;
   return prompt.replace(TOOLS_PROMPT, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT).replace(GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT).replace(APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT);
 }
-var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, LEAF_SYSTEM_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
+var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, LEAF_SYSTEM_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
 var init_prompt = __esm({
   "src/native/prompt.ts"() {
     "use strict";
@@ -213677,6 +213626,7 @@ For a tree edit, deep-copy the input, change only the requested leaf at its exis
 For exact numerical answers, identify the requested operands and their units in the source, compute with eval, and check the order of a ratio or difference against the question.
 Before returning, check that each value answers the requested predicate and matches its declared type; for booleans, verify whether true or false expresses your conclusion.
 `;
+    SYSTEM_PROMPT = `${TOOLS_PROMPT}${GENERATION_GUIDANCE}`;
     GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT = `
 
 For a large input, use eval to select the fields or subtree relevant to the question before printing it; read more only when needed.
@@ -217961,6 +217911,67 @@ var init_type_aliases = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     import_typescript10 = __toESM(require_typescript(), 1);
+  }
+});
+
+// src/decision-frame.ts
+var decisionPrompt;
+var init_decision_frame = __esm({
+  "src/decision-frame.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    decisionPrompt = (replies, frame = "value") => frame === "result-object" ? 'Answer this call now, without tools. Reply with exactly one JSON object {"result": VALUE} and nothing else, where VALUE is one of these JSON values: ' + replies.join(", ") + "." : "Answer this call now, without tools. Reply with exactly one of these JSON values and nothing else: " + replies.join(", ") + ".";
+  }
+});
+
+// src/native/decision.ts
+function finiteValues(type, env) {
+  const out = [];
+  const visit = (item, depth2) => {
+    if (depth2 > 32) return false;
+    const resolved = item.kind === "name" ? env.resolve(item) : item;
+    switch (resolved.kind) {
+      case "refined":
+      case "untrusted":
+        return visit(resolved.base, depth2 + 1);
+      case "lit":
+        out.push(resolved.value);
+        return true;
+      case "union":
+        return resolved.members.every((member) => visit(member, depth2 + 1));
+      case "prim":
+        if (resolved.name === "boolean") {
+          out.push(true, false);
+          return true;
+        }
+        if (resolved.name === "null") {
+          out.push(null);
+          return true;
+        }
+        return false;
+      default:
+        return false;
+    }
+  };
+  if (!visit(type, 0)) return null;
+  return [...new Map(out.map((value) => [JSON.stringify(value), value])).values()];
+}
+function decisionScorer(driver) {
+  return typeof driver?.decide === "function" ? driver.decide : void 0;
+}
+function softmax(logProbs) {
+  const top = Math.max(...logProbs);
+  const weights = logProbs.map((value) => Math.exp(value - top));
+  const total = weights.reduce((sum, value) => sum + value, 0);
+  return weights.map((value) => value / total);
+}
+var DECISION_SYSTEM_PROMPT;
+var init_decision = __esm({
+  "src/native/decision.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_decision_frame();
+    DECISION_SYSTEM_PROMPT = "You are running one call of a natural-language function. Carry out its instructions yourself for this call's argument values, judging the visible inputs. Your reply is the function's return value: one JSON value of the declared type, with nothing else.";
   }
 });
 
@@ -222530,7 +222541,7 @@ var init_runtime = __esm({
       }
       systemPrompt() {
         const extra = this.runtime.options.systemPrompt;
-        return TOOLS_PROMPT + (this.appPromptSnapshot ?? (typeof extra === "function" ? extra() : extra ?? ""));
+        return SYSTEM_PROMPT + (this.appPromptSnapshot ?? (typeof extra === "function" ? extra() : extra ?? ""));
       }
       cancel(reason = new Error("natlang task cancelled")) {
         this.abort.abort(reason);
@@ -227514,6 +227525,11 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
           if (name === "edit_code") throw new Reject([{ path: requested, code: "external", expected: `a function of this program; ${requested} belongs to an imported package, which can be read but not changed` }]);
           return { kind: "ok", text: this.show(packaged), value: packaged };
         }
+        if (!found && name === "edit_code" && !Object.keys(this.lam.codebase).length) throw new Reject([{
+          path: requested,
+          code: "no-own-code",
+          expected: "a function in this call's callable folder; this function has none, so there is no code of its own to edit"
+        }]);
         if (!found) {
           const toolDocumentation = name === "read_code" ? this.toolDocumentation(requested) : void 0;
           if (toolDocumentation !== void 0) return { kind: "ok", text: toolDocumentation, value: toolDocumentation };
@@ -228594,6 +228610,14 @@ function immediateEmptyEos(response) {
   const toolCalls = message2?.tool_calls;
   return choice?.finish_reason === "stop" && (content === null || content === "") && (toolCalls === void 0 || Array.isArray(toolCalls) && toolCalls.length === 0);
 }
+function callNotes(call) {
+  const runtime = [
+    call.ownCode ? FUNCTION_TOOLS_PROMPT : "",
+    call.folder ? directoryReducerPrompt(call.folder.fileTools, call.allowAdHoc, call.folder.writable, call.folder.withheld) : "",
+    call.allowAdHoc ? "" : NL_DEPTH_LIMIT_NOTICE
+  ].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
+  return [call.guidance?.trim() ?? "", renderSystemPrompt(runtime, call.rendering)].filter(Boolean).join("\n\n");
+}
 function modelTurnsSoFar(messages) {
   return messages.filter((message2) => message2.role === "assistant" && !(message2.tool_calls ?? []).some((call) => String(call.id).startsWith("scope_"))).length;
 }
@@ -228907,7 +228931,7 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     state.depth--;
   }
 }
-var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, NativeToolAgent;
+var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, NativeToolAgent;
 var init_agent = __esm({
   "src/native/agent.ts"() {
     "use strict";
@@ -228943,6 +228967,8 @@ var init_agent = __esm({
     scopeValueChars = (session) => Math.max(SCOPE_VALUE_CHARS, session.pages.budget);
     nativeProgramGuidanceWrites = /* @__PURE__ */ new WeakMap();
     nativeProgramGuidancePins = /* @__PURE__ */ new WeakMap();
+    UNRUN_CALL = "Not run: an earlier call in this reply failed; call it again if you still need it.";
+    READ_ONLY_TOOLS = /* @__PURE__ */ new Set(["read_file", "list_files", "search_files", "diff_files", "read_code", "diff_code", "read_page"]);
     replyText = (response) => modelFacing("reply-text-with-calls") ? response.text ?? "" : "";
     READ_CODE_DESCRIPTION = `Inspect a named item this call can use but does not show: source of a function in the program's codebase; documentation for eval built-ins (nl, iterateOn, transcript, decide); a declaration for an external service or importable package ("pkg" lists its exports, "pkg.name" shows one); the type-only member shape of a host service object visible to this call; or the exact schema and instructions of a native tool currently offered to this call. Tool schemas and service shapes are metadata, not program function source or service implementation. Standard JavaScript built-ins and methods are used directly through their TypeScript library types; read_code does not show their library implementation.`;
     EDIT_CODE_DESCRIPTION = "Edit a function in the program's codebase: replace one exact or uniquely fuzzy span of its source. The function is validated before the edit becomes live.";
@@ -228950,6 +228976,9 @@ var init_agent = __esm({
     RETURN_RESULT_DESCRIPTION = 'Finish the call. With status "success", value is the result and must have the declared return type; if a complete typed result is already staged, you may omit value to return that exact stored result. With status "blocked" (required information is missing; do not guess) or "failed" (you cannot reliably complete the operation), give the specific reason instead of a value. Quote observed tool errors where relevant; distinguish your inability from task impossibility. Use escalate when a configured stronger model could finish. A negative answer (false, no, none, zero, an empty list) is a result like any other: return it with status "success".';
     BUILT_INS_LINE = "Eval also has the built-ins nl, iterateOn, transcript and decide; read_code shows how to use each.";
     NL_DEPTH_LIMIT_BUILT_INS_LINE = "Eval has iterateOn, transcript and decide; read_code shows how to use each. This is the fifth ad hoc layer: make further judgments here or call an existing named function from a file.";
+    withCallNotes = (opening, notes) => notes ? `${opening}
+
+${notes}` : opening;
     OPENING_THOUGHT = "I'll start by reading this call's arguments into the eval scope.";
     FOLDER_THOUGHT = "Next I'll list the files in this call's folder.";
     DIFF_CODE_DESCRIPTION = "Show the changes made to functions of the program's codebase in this call.";
@@ -229724,6 +229753,9 @@ var init_agent = __esm({
             RETURN_RESULT_DESCRIPTION,
             {
               status: { type: "string", enum: ["success", "blocked", "failed"] },
+              // The declared result type, as before: it also types how LFM3's XML calls write and read the value (a string
+              // result is raw text, other types JSON). This last tool line is the only part of the tool list that differs
+              // between calls, right before the call's own opening, so openings still share everything above it.
               value: {
                 ...session.lam.type.kind === "lambda" ? schemaOf(session.lam.type.returns, session.env) : {},
                 description: "For success, provide a value of the declared return type, or omit it only to return the exact complete result already staged."
@@ -229744,13 +229776,10 @@ var init_agent = __esm({
           },
           ["reason", "evidence", "attempted_work", "remaining_subproblem"]
         ));
-        const ownCode = Object.keys(session.lam.codebase).length > 0;
-        const readCode = tool("read_code", canGenerateNl(session.runtime.frame) ? READ_CODE_DESCRIPTION : READ_CODE_DESCRIPTION.replace("(nl, iterateOn, transcript, decide)", "(iterateOn, transcript, decide)"), { name: { type: "string" } }, ["name"]);
-        if (!ownCode) tools.splice(2, 0, readCode);
-        if (ownCode) tools.splice(
+        tools.splice(
           2,
           0,
-          readCode,
+          tool("read_code", READ_CODE_DESCRIPTION, { name: { type: "string" } }, ["name"]),
           tool(
             "edit_code",
             EDIT_CODE_DESCRIPTION,
@@ -229901,6 +229930,8 @@ var init_agent = __esm({
           ...context.length ? ["", "Values from the calling code:", ...context] : []
         ].join("\n");
       }
+      /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
+       * withCallNotes). */
       scopeOpening(session) {
         const lam = session.lam;
         if (lam.type.kind !== "lambda") return "Scope:";
@@ -230146,7 +230177,7 @@ var init_agent = __esm({
        * Answer a finite-typed call by scoring each allowed value as the reply to its opening (native/decision.ts).
        * Returns false when the readout does not apply, so the tool loop runs; a string is a failure, as from run.
        */
-      async decisionReadout(session, opening, guidance) {
+      async decisionReadout(session, opening) {
         const lam = session.lam;
         const wanted = lam.readout === "decision" || this.options.decisionReadout === "finite-returns";
         if (!wanted || lam.type.kind !== "lambda" || lam.subtype !== "function" || lam.projectTransaction) return false;
@@ -230162,7 +230193,7 @@ var init_agent = __esm({
           return false;
         }
         const replies = values.map((value) => JSON.stringify(value));
-        const system = (this.options.decisionSystemPrompt?.() ?? DECISION_SYSTEM_PROMPT) + guidance;
+        const system = this.options.decisionSystemPrompt?.() ?? DECISION_SYSTEM_PROMPT;
         const messages = [{ role: "system", content: system }, ...opening.slice(1), { role: "user", content: decisionPrompt(replies) }];
         const encoded = encodeMessages(this.softened(renderPromptMessages(messages, this.options.promptRendering)));
         const training = this.options.trainingGuidance;
@@ -230295,30 +230326,33 @@ var init_agent = __esm({
         if (this.options.neuralese?.store) await adoptImportedNativeArtifacts(this.options.neuralese.store);
         let budget = this.options.contextTokens === void 0 ? await defaultContextBudget(this.driver) : this.options.contextTokens;
         session.pages.budget = shownCharsFor(budget);
-        let adaptedSystem;
-        const guidance = renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName));
+        const guidance = [
+          renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName)),
+          this.options.callAddendum ?? ""
+        ].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
         let leaf;
-        const systemPrompt = () => {
-          if (leaf !== void 0) return LEAF_SYSTEM_PROMPT + guidance;
-          if (adaptedSystem !== void 0) return adaptedSystem;
-          const base = typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? TOOLS_PROMPT;
-          const allowAdHoc = canGenerateNl(session.runtime.frame);
-          const composed = (allowAdHoc ? base : promptAtNlDepthLimit(base)) + (Object.keys(session.lam.codebase).length ? FUNCTION_TOOLS_PROMPT : "") + (session.lam.projectTransaction ? directoryReducerPrompt(
-            this.options.fileTools,
-            allowAdHoc,
-            session.lam.projectTransaction.folder.access !== "read",
-            session.lam.withheldTools
-          ) : "") + guidance;
-          if (this.options.programGuidance !== void 0 || this.options.authoredTextGuidance !== void 0) adaptedSystem = composed;
-          return composed;
-        };
+        const systemPrompt = () => leaf !== void 0 ? LEAF_SYSTEM_PROMPT : typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? SYSTEM_PROMPT;
+        const notes = callNotes({
+          guidance,
+          ownCode: Object.keys(session.lam.codebase).length > 0,
+          folder: session.lam.projectTransaction ? {
+            fileTools: this.options.fileTools,
+            writable: session.lam.projectTransaction.folder.access !== "read",
+            withheld: session.lam.withheldTools
+          } : void 0,
+          allowAdHoc: canGenerateNl(session.runtime.frame),
+          rendering: this.options.promptRendering
+        });
         const views = await this.views(session);
         leaf = this.options.leafCalls === "direct" ? this.leafOpening(session, views) : void 0;
         if (leaf !== void 0) session.runtime.trace.emit("leaf_call", { call_id: session.runtime.currentCallId ?? null });
         const openingMessages = () => {
-          if (leaf !== void 0) return [{ role: "system", content: systemPrompt() }, { role: "user", content: leaf }];
+          if (leaf !== void 0) return [
+            { role: "system", content: systemPrompt() },
+            { role: "user", content: withCallNotes(leaf, notes) }
+          ];
           const reading = this.scopeReading(session, views);
-          const scopeOpening = this.scopeOpening(session);
+          const scopeOpening = withCallNotes(this.scopeOpening(session), notes);
           if (session.lam.skills?.listing) for (const skill of session.lam.skills.inventory ?? [])
             session.runtime.trace.emit("skill_use", {
               phase: "offered",
@@ -230376,7 +230410,7 @@ var init_agent = __esm({
         const guidancePolicy = trainingGuidance?.policyOf(session.lam, session.runtime.currentCallId ?? null);
         const guidanceConsumer = !!trainingGuidance && !guidancePolicy && !trainingGuidance.insidePolicy(session);
         let guidanceRequest, guidanceReady = false;
-        const decided = this.options.fallbacks?.length || this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0 ? false : await this.decisionReadout(session, messages, guidance);
+        const decided = this.options.fallbacks?.length || this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0 ? false : await this.decisionReadout(session, messages);
         if (decided !== false) return decided;
         const openingLength = messages.length;
         let tokensPerChar = 1 / 3.5;
@@ -230506,6 +230540,8 @@ var init_agent = __esm({
           const compactable = messages.length - protectedLength > 2;
           const nearLimit = budget !== null && compactable && compactedTurn !== turns && estimate(allTools) > Math.min(budget - reply, Math.max(budget * 0.75, compactedAt + budget * 0.25));
           const availableTools = lastTurn ? only("return_result") : nearLimit ? only("compact_history") : allTools;
+          const offered = allTools;
+          const forcedCall = availableTools === allTools || !supportsNeuralese(currentDriver) ? void 0 : lastTurn ? { call: "return_result", arguments: {}, argument: "status", value: "decode", optional: true } : { call: "compact_history", arguments: {}, argument: "note", value: "decode", optional: true };
           const explainCompaction = () => {
             if (availableTools === allTools || lastTurn) return;
             const latest = messages.at(-1);
@@ -230513,9 +230549,9 @@ var init_agent = __esm({
               messages[messages.length - 1] = { ...latest, content: latest.content + COMPACTION_NOTICE };
           };
           explainCompaction();
-          if (budget !== null && estimate(availableTools) > budget - reply) {
+          if (budget !== null && estimate(offered) > budget - reply) {
             const removed = pinNote(null) + collapseHistory(messages, protectedLength);
-            if (estimate(availableTools) > budget - reply) {
+            if (estimate(offered) > budget - reply) {
               for (let index = protectedLength; index < messages.length; index++) {
                 const message2 = messages[index];
                 if (message2.role === "assistant" && "reasoning_content" in message2) {
@@ -230531,10 +230567,10 @@ var init_agent = __esm({
               turn: turns + 1,
               elided: removed,
               note: null,
-              estimated_tokens: Math.round(estimate(availableTools))
+              estimated_tokens: Math.round(estimate(offered))
             });
           }
-          const sentChars = requestChars(availableTools);
+          const sentChars = requestChars(offered);
           const callId = session.runtime.currentCallId ?? null;
           if (guidanceConsumer && callId && !guidanceReady) {
             guidanceRequest = await trainingGuidance.requestFor(
@@ -230550,7 +230586,7 @@ var init_agent = __esm({
             phase: "start",
             turn: turns + 1,
             actor: currentActor,
-            tool_schema_bytes: new TextEncoder().encode(JSON.stringify(currentRendering === "program-header" ? [] : availableTools)).length,
+            tool_schema_bytes: new TextEncoder().encode(JSON.stringify(currentRendering === "program-header" ? [] : offered)).length,
             messages: messages.length
           });
           let response;
@@ -230605,18 +230641,18 @@ var init_agent = __esm({
               ...callId ? { invocation_id: callId } : {},
               ...adapters.length ? { adapters } : {},
               ...session.executionOccurrence() ? { native_execution_occurrence: session.executionOccurrence() } : {},
-              ...template ? { template } : {},
+              ...template ?? forcedCall ? { template: template ?? forcedCall } : {},
               ...currentGuidance && supportsGuidance(currentDriver) ? { guidance: currentGuidance } : {},
               ...!fallbackIndex && guidanceRequest ? { privileged_context: guidanceRequest } : {},
               ...!fallbackIndex && guidancePolicy ? { guidance_policy: guidancePolicy } : {},
               messages: encoded.messages,
-              tools: currentRendering === "program-header" ? [] : availableTools,
-              ...currentRendering === "program-header" ? { response_tools: availableTools } : {},
+              tools: currentRendering === "program-header" ? [] : offered,
+              ...currentRendering === "program-header" ? { response_tools: offered } : {},
               // A turn that offers one tool it must use (the compaction turn, the last turn) requires a tool call.
               ...availableTools !== allTools && currentRendering !== "program-header" ? { tool_choice: "required" } : {},
               ...currentTemperature === void 0 ? {} : { temperature: currentTemperature },
               seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, "model-turn", turns),
-              max_tokens: statedWindow === null ? limit : Math.max(1, Math.min(limit ?? statedWindow, statedWindow - Math.ceil(estimate(availableTools)) - REPLY_MARGIN))
+              max_tokens: statedWindow === null ? limit : Math.max(1, Math.min(limit ?? statedWindow, statedWindow - Math.ceil(estimate(offered)) - REPLY_MARGIN))
             };
             reservation = await this.options.modelBudget?.reserve(turnRequest.max_tokens ?? null, session.runtime.signal);
             if (this.options.modelBudget && !reservation) return "graph model request or token budget exhausted";
@@ -230703,7 +230739,7 @@ var init_agent = __esm({
           if (turnNode && typeof recordedTurn === "string" && recordedTurn !== recordedNative) recorder?.linkTurn?.(recordedTurn, turnNode);
           if (recorder && !supportsNeuralese(currentDriver)) recorder.record({
             messages: structuredClone(graphMessages),
-            tools: structuredClone(availableTools),
+            tools: structuredClone(offered),
             actor: { ...currentActor },
             ...this.options.actor ? { initial_actor: { ...this.options.actor } } : {},
             ...turnNode ? { graph_turn: turnNode } : {},
@@ -230930,8 +230966,18 @@ ${failure2}`);
           session.turn = turns;
           session.turnReasoning = response.reasoning;
           const previousFailureSerial = session.failureSerial;
+          let stoppedAt;
           for (const [index, [name, args]] of calls.entries()) {
             if (timedOut()) return "episode wall-clock budget exhausted";
+            if (stoppedAt !== void 0) {
+              if (READ_ONLY_TOOLS.has(name)) results.push(await session.applyAsync(
+                name,
+                args,
+                typeof raw[index].id === "string" ? raw[index].id : void 0
+              ));
+              else results.push({ kind: "rejected", text: UNRUN_CALL });
+              continue;
+            }
             let appliedArgs = args;
             if (name === "return_result" && this.options.refinement && (appliedArgs.status ?? "success") === "success") {
               const failures = await this.refinementGate(session, appliedArgs);
@@ -230949,7 +230995,8 @@ ${failure2}`);
             results.push(result);
             if (result.kind === "blocked") return result.text;
             if (["blocked", "budget", "completed"].includes(result.kind)) break;
-            if (["error", "rejected", "refused"].includes(result.kind) || session.failureSerial > previousFailureSerial) break;
+            if (["error", "rejected", "refused"].includes(result.kind) || session.failureSerial > previousFailureSerial)
+              stoppedAt ??= index;
           }
           messages.push({ role: "assistant", content: replyText(response), tool_calls: raw.slice(0, results.length), ...thought(response.reasoning) });
           const left = maxTurns === void 0 ? Infinity : maxTurns - turns;
@@ -233483,9 +233530,8 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     },
     fallbacks: remainingFallbacks,
     modelBudget: task.modelBudget,
-    systemPrompt: () => task.systemPrompt() + (addendum ? `
-
-${addendum}` : ""),
+    systemPrompt: () => task.systemPrompt(),
+    callAddendum: addendum,
     neuralese: budgetedNeuralese,
     programGuidance: selectedNativeGuidance,
     authoredTextGuidance: selectedAuthoredGuidance,
@@ -233508,10 +233554,7 @@ ${addendum}` : ""),
       definitionId: definition.id,
       name: definition.name
     }) } : {},
-    ...signature?.refinedReturns ? { refinement: { checker: task.refinementChecker(), ...task.refinementJudges(model, frame) } } : {},
-    decisionSystemPrompt: () => DECISION_SYSTEM_PROMPT + (addendum ? `
-
-${addendum}` : "")
+    ...signature?.refinedReturns ? { refinement: { checker: task.refinementChecker(), ...task.refinementJudges(model, frame) } } : {}
   }) : void 0;
   runtime = new NativeRuntime({
     environment,
@@ -233873,7 +233916,6 @@ var init_kernel = __esm({
   "src/runtime/kernel.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    init_decision();
     init_program();
     init_hash();
     init_agent();

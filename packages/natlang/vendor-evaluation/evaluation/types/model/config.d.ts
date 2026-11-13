@@ -17,6 +17,9 @@ export type BatchingSettings = {
 export type ModelProfile = {
     /** Match the prompt rendering declared by the trained weights; unadapted models use full. */
     promptRendering?: import('../native/system-prompts.js').PromptRendering;
+    /** The reply a decision readout scores (decision-frame.ts): `value` for a model natlang trained, `result-object` for an
+     * instruction model that was not. A managed stock model's default is `result-object`, anything else's `value`. */
+    decisionReply?: import('../decision-frame.js').DecisionReply;
     endpoint?: string;
     chatCompletionsUrl?: string;
     provider?: string;
@@ -64,6 +67,7 @@ export type ModelProfile = {
 };
 type Common = {
     promptRendering?: ModelProfile['promptRendering'];
+    decisionReply?: ModelProfile['decisionReply'];
     headers?: Record<string, string>;
     runtime?: ModelProfile['runtime'];
     concurrency?: number;

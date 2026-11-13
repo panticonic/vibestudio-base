@@ -232,9 +232,28 @@ function piAssistantToTurn(reply, provider) {
     raw_response: { stop_reason: reply.stopReason, usage: reply.usage }
   };
 }
+
+// src/decision-frame.ts
+var DECISION_REPLIES = ["value", "result-object"];
+var decisionPrompt = (replies, frame = "value") => frame === "result-object" ? 'Answer this call now, without tools. Reply with exactly one JSON object {"result": VALUE} and nothing else, where VALUE is one of these JSON values: ' + replies.join(", ") + "." : "Answer this call now, without tools. Reply with exactly one of these JSON values and nothing else: " + replies.join(", ") + ".";
+var decisionReply = (json, frame = "value") => frame === "result-object" ? `{"result": ${json}}` : json;
+function framedDecision(request, frame) {
+  if (frame === void 0 || frame === "value") return request;
+  const last = request.messages.at(-1);
+  if (last?.role !== "user" || last.content !== decisionPrompt(request.options)) return request;
+  return {
+    ...request,
+    messages: [...request.messages.slice(0, -1), { ...last, content: decisionPrompt(request.options, frame) }],
+    options: request.options.map((option) => decisionReply(option, frame))
+  };
+}
 export {
+  DECISION_REPLIES,
   batchScoreItem,
+  decisionPrompt,
+  decisionReply,
   emptyPiUsage,
+  framedDecision,
   piAssistantContent,
   piAssistantToTurn,
   piDeltaTranslator,

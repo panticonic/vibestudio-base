@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "80906ffba605a1d9955240e2bc59960d6bb41217",
+  "commit": "ee9bb0b22548e3edd041d32a25119e903554e8a5",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "0ee7b85173b60ec3967aa7029a74caaab7eee4cfe18ea8ed9067acc1797d7dd5",
+    "workerd/natlang-workerd.js": "f93141a1766ba3b58ad60426b765dd4957dae8b48b37c679559cf54ac1a486f6",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "2cae58a884b7533360134da93edfc682df5d9559d40a4b74e9d385337207c31a",
@@ -37,13 +37,13 @@
     "workerd/types/compiler/rewrites.d.ts": "4d8f1a091d11e89583cbff7770f9012a477874cfd26761e49493401defcdc50f",
     "workerd/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "workerd/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
-    "workerd/types/contracts.d.ts": "39bde953373aa789d01cece46a114ea385adc410a500c0b866ced3e35edb7402",
+    "workerd/types/contracts.d.ts": "fbac7bb9a5f0309502e9c3bd06df83abd784cf4dd19d49bad9da9e07de9b8b9d",
     "workerd/types/core/index.d.ts": "fa04ac1d2470f96e58673680673a630ed50721bfe0857e6ebd8edad31b0f5d00",
     "workerd/types/core/workerd-bundle.d.ts": "4a40511caffe0ea52c76599f739f6eb52a8848aec79695aac0184450fb359275",
     "workerd/types/core/workerd.d.ts": "e2f6ed23cfa7e3843720b07d627571e656c727f5e950ef904ad39587c242c896",
     "workerd/types/guidance/program.d.ts": "aa74b06c4ea8f94a18915431e7f89c4570f65b00100269f1a591762af69d036a",
     "workerd/types/model/pi-translation.d.ts": "f911ab3fa0c4566fe13181a2176a516365f4dce4a9843f2cc38ef05db7c5c99d",
-    "workerd/types/native/agent.d.ts": "cf585d283f71d8c48a6faf92079321f3e9e6f0047c7624bb966fac5e51d784b5",
+    "workerd/types/native/agent.d.ts": "a42154e1b507e70b0d6446b36249d5900b5516644a10a1539a80a6960e39dfe1",
     "workerd/types/native/data-layout.d.ts": "15e84a39a1957b702f6671ff0e9cbd189e48bd2d30267125d81d3a0619919dd6",
     "workerd/types/native/effects.d.ts": "c1b30cc4edeafae9addfe070f9ca45d5c9c363f65be0b4ce611720261f62fc89",
     "workerd/types/native/eval-compile.d.ts": "4a02172711cc148517ce9ca4d1a3619d6dd788dfd50def999e5b319a9339eff5",
@@ -61,7 +61,7 @@
     "workerd/types/native/nz-file.d.ts": "28f8836ccf8208fe67560da5cf28d03fe6a5dd8fe8da268f8386d12aeb74edff",
     "workerd/types/native/operator-frames.d.ts": "2c044318960e6568e58f614ea1b158fca30394cd35f4f9fde865e47295ff6e4c",
     "workerd/types/native/pages.d.ts": "bcffc8701ec4ed3740b2bda98fbacc9325f2d389b686c37103db59e6e873f044",
-    "workerd/types/native/prompt.d.ts": "54b5377c7f9babb7815ee2d1753c0ebf85ede813a8a3f470cdd5715f66e82076",
+    "workerd/types/native/prompt.d.ts": "d75042d5bd984254ac4bc660e65dd53144ba3354024d76e182cca15f7de9af9b",
     "workerd/types/native/python-watchdog.d.ts": "e19f8d4aa638c0e15e7fffdfa742ade774fbf39e0db4af38cf1ad720b2181e28",
     "workerd/types/native/realm.d.ts": "bfda898a9161bd89de4f5b9b03e0194748559e9b24e77289e282f0491816f2e3",
     "workerd/types/native/refinement-settings.d.ts": "1d8fd6ac1aa19080e50a4662338093cb9291bbca105c47f7d9c252a0693d937d",

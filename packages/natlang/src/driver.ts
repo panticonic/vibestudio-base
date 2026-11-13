@@ -3,6 +3,7 @@ import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 import type { ModelGatewayTurnOptions } from "@workspace/model-gateway/contract";
 import { LOCAL_PROVIDER_ID, type ModelCatalogEntry } from "@workspace/model-catalog/catalog";
 import {
+  framedDecision,
   piAssistantToTurn,
   toPiContext,
   type DecisionRequest,
@@ -10,6 +11,9 @@ import {
   type ModelTurnRequest,
 } from "@workspace/natlang-pi";
 import type { ModelDriver } from "../vendor/workerd/natlang-workerd.js";
+
+/** The reply form natlang scores for a local (stock) model; part of the executor's identity (models.ts). */
+export const LOCAL_DECISION_REPLY = "result-object" as const;
 
 /** What the driver needs of the model settings service. */
 export interface ModelResolver {
@@ -67,9 +71,12 @@ export function gatewayDriver(options: {
       },
     };
   };
-  const decide = async (request: DecisionRequest, signal?: AbortSignal): Promise<DecisionScores> => {
+  const decide = async (readout: DecisionRequest, signal?: AbortSignal): Promise<DecisionScores> => {
     signal?.throwIfAborted();
     const entry = await resolver.resolve(model);
+    // A local model is a stock instruction model, not one natlang trained on the bare-value reply the readout asks for:
+    // it is asked for, and scored on, the form it answers in (the same one natlang's own managed stock models use).
+    const request = framedDecision(readout, entry.provider === LOCAL_PROVIDER_ID ? LOCAL_DECISION_REPLY : undefined);
     const { messages } = toPiContext(
       { messages: request.messages, tools: [], seed: null, max_tokens: null },
       { api: entry.modelSpec.api, provider: entry.provider, id: entry.id }

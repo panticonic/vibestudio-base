@@ -33,7 +33,7 @@ describe("the executor identity", () => {
     expect(executor).toMatchObject({ id: "local:lfm3-1.7b", guidance: true });
     expect(executorIdentity).toEqual({
       id: "gateway:local:lfm3-1.7b",
-      configuration: { model: "local:lfm3-1.7b", request: STOCK_REQUEST, guidance: true },
+      configuration: { model: "local:lfm3-1.7b", request: STOCK_REQUEST, guidance: true, decisionReply: "result-object" },
     });
   });
 
