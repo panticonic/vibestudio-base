@@ -116,15 +116,16 @@ event it handed over.
 
 | Agent | How page events reach it |
 | --- | --- |
-| **Claude Code** | A channel: page events are pushed into the open session. Add `{"command":"vibestudio","args":["tendril","channel","<channelId>"]}` to `.mcp.json` as server `tendril`, then start `claude --dangerously-load-development-channels server:tendril` (custom channels need that flag during the research preview, or an organization allowlist entry). Without channels: run `vibestudio tendril wait <channelId>` as a background command and start it again after each wake. |
+| **Claude Code** | A channel: page events are pushed into the open session. Add `{"command":"vibestudio","args":["tendril","channel","<channelId>"]}` to `.mcp.json` as server `tendril`, then start `claude --dangerously-load-development-channels server:tendril` (custom channels need that flag during the research preview, or an organization allowlist entry). Without channels: watch `vibestudio tendril wait <channelId> --follow` with the Monitor tool (each output line is one event and starts a turn; a quiet stream costs nothing), or run `vibestudio tendril wait <channelId>` as a background command and start it again after each wake. |
 | **Muse** | `vibestudio tendril wait <channelId>` as a background command; a finished background command starts a turn. Start it again after each wake. |
 | **Codex, other terminal CLIs** | A listener outside the agent: `while vibestudio tendril wait <channelId> > /tmp/tendril-batch.txt; do codex exec resume --last "Tendril events are in /tmp/tendril-batch.txt"; done`. |
 | **Grok Bot, Hermes, OpenClaw** | `vibestudio tendril webhook <channelId> --url <their webhook>` with the signing secret in `VIBESTUDIO_TENDRIL_WEBHOOK_SECRET` (`vibestudio tendril secret` makes one). Deliveries are Standard Webhooks signed (`webhook-id`, `webhook-timestamp`, `webhook-signature`); OpenClaw's hook token goes in with `--bearer-env`. The JSON body has `text` (the framed event) plus the raw fields. |
-| **OpenAI dots** | No bridge yet. Dots can be woken by an MCP server through MCP Events; a tendril connector that implements it is the planned path. |
+| **OpenAI dots** | No bridge for workspace tendrils yet. Dots are woken by MCP servers through MCP Events; standalone Tendriller has such a connector, the workspace does not. |
 | **Claude Duet, Instinct** | No way to push exists: Duet checks its connectors every few hours and Instinct publishes no trigger. Events wait in the channel until the agent next looks, or until the person messages it. |
 
 `tendril wait` prints events and exits (`--json` for one JSON object per
-line); `--from-now` skips what is already in the channel. None of the bridges
+line; `--follow` keeps running, one line per event); `--from-now` skips what
+is already in the channel. None of the bridges
 time out: they wait until something happens.
 
 ## When you are done
