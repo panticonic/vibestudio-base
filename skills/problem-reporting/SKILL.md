@@ -21,9 +21,8 @@ Keep one draft per issue in the current task, and preserve the report ID and the
 
 1. Establish the user's goal, the observed and expected behavior, and whether the issue is reproducible. A report about poor quality doesn't need an exception. Create one manual draft with `create`, or continue the existing draft by its report ID.
 2. Collect only the evidence the user selected, using the user's existing permissions. Prefer precise invocation, build, panel, and message identifiers. `gad.diagnoseInvocation` gives a bounded diagnostic for one invocation; it does not permit exporting a full trajectory. Mark evidence that is missing, denied, expired, or disconnected as incomplete. See [report preparation](references/preparation.md).
-3. To get a first draft of the narrative, call `draftProblemReport`. It removes
-   secrets, URL query strings and home paths from your evidence, fetches one
-   bounded invocation diagnostic when you give `invocation`, and lays the
+3. To get a first draft of the narrative, call `draftProblemReport`. It fetches
+   one bounded invocation diagnostic when you give `invocation`, and lays the
    account out as sections in the user's own words: the user's account
    `unverified` unless you set `reproduced`, the diagnostic `observed`. It
    returns a proposal and saves nothing; you review it, add your own findings,
@@ -40,8 +39,9 @@ Keep one draft per issue in the current task, and preserve the report ID and the
    );
    ```
 
-   Read `draft.gaps` to the user: what could not be collected and what was
-   removed. Write further sections with `appendNarrative(reportId, revision, sections)`,
+   Read `draft.gaps` to the user: what could not be collected. Don't put credentials in
+   the evidence; `prepare` (step 5) removes secrets, URL query strings and home
+   paths, but only after the draft is saved. Write further sections with `appendNarrative(reportId, revision, sections)`,
    which returns the new revision and the host-assigned `sectionIds`; revise one of
    your sections with `patchNarrative(reportId, revision, sectionId, changes)`. The
    host records you as the author, and only the user can edit user-written sections.

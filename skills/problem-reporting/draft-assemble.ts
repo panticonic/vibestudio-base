@@ -6,7 +6,7 @@ const NARRATIVE_LIMIT_BYTES = 128 * 1024;
 const OPERATION_TOKEN = /^[A-Za-z0-9_.:@/-]+$/;
 const SYMPTOM_CUT = 280;
 
-export function assembleDraft(evidence: Evidence, facts: Facts, redactions: string[]): Draft {
+export function assembleDraft(evidence: Evidence, facts: Facts): Draft {
   // The user's account is unverified until the agent reproduced it; what the program read from the platform is observed.
   const account = evidence.reproduced ? "observed" : "unverified";
   const sections: DraftSection[] = [
@@ -35,7 +35,6 @@ export function assembleDraft(evidence: Evidence, facts: Facts, redactions: stri
   const gaps = [...facts.gaps];
   if (!evidence.reproduced) gaps.push("not reproduced: the report records the account as given");
   if (!operation) gaps.push("operation unknown");
-  if (redactions.length) gaps.push(`removed before drafting: ${redactions.join(", ")}`);
   return {
     problem: {
       operation,

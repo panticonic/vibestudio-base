@@ -8,7 +8,6 @@ vi.mock("@workspace/runtime", () => runtimeMock);
 
 import { assembleDraft as assemble } from "./draft-assemble.js";
 import { draftProblemReport } from "./draft-problem-report.js";
-import { redact } from "./draft-redact.js";
 import type { Evidence } from "./types.js";
 
 const evidence = (overrides: Partial<Evidence> = {}): Evidence => ({
@@ -21,31 +20,6 @@ const evidence = (overrides: Partial<Evidence> = {}): Evidence => ({
   ...overrides,
 });
 
-describe("redact", () => {
-  it("removes tokens, URL queries and userinfo, and home paths, and names what it removed", () => {
-    const result = redact(
-      "GET https://bob:pw@api.example.com/v1/items?api_key=abc123def456ghi failed; Authorization: Bearer ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa in /home/werg/.config/x and C:\\Users\\Maria\\AppData; password=hunter2hunter2"
-    );
-    expect(result.text).not.toMatch(/ghp_|abc123|bob:pw|\/home\/werg|Maria|hunter2/);
-    expect(result.text).toContain("https://api.example.com/v1/items");
-    expect(result.removed).toEqual(
-      expect.arrayContaining([
-        "bearer token",
-        "URL query or userinfo",
-        "home path",
-        "credential assignment",
-      ])
-    );
-  });
-
-  it("leaves ordinary text alone", () => {
-    expect(redact("It answered gamma, beta, alpha.")).toEqual({
-      text: "It answered gamma, beta, alpha.",
-      removed: [],
-    });
-  });
-});
-
 describe("assemble", () => {
   const facts = {
     destination: "https://vibestudio.app/v1/problem-reporting",
@@ -54,7 +28,7 @@ describe("assemble", () => {
   };
 
   it("lays the account out as sections, marking it unverified until it was reproduced", () => {
-    const draft = assemble(evidence({ attempts: "Asked again." }), facts, []);
+    const draft = assemble(evidence({ attempts: "Asked again." }), facts);
     expect(draft.narrative.map((section) => [section.section, section.claims])).toEqual([
       ["goal", "unverified"],
       ["symptom", "unverified"],
@@ -66,18 +40,14 @@ describe("assemble", () => {
       symptom: "It answered gamma, beta, alpha.",
       expected: "alpha, beta, gamma",
     });
-    const reproduced = assemble(evidence({ reproduced: true }), facts, []);
+    const reproduced = assemble(evidence({ reproduced: true }), facts);
     expect(reproduced.narrative.find((section) => section.section === "symptom")?.claims).toBe(
       "observed"
     );
   });
 
   it("adds the platform's diagnostic as an observed finding", () => {
-    const draft = assemble(
-      evidence(),
-      { ...facts, diagnostic: "invocation inv_1: status failed" },
-      []
-    );
+    const draft = assemble(evidence(), { ...facts, diagnostic: "invocation inv_1: status failed" });
     expect(draft.narrative.at(-1)).toEqual({
       section: "findings",
       claims: "observed",
@@ -87,20 +57,19 @@ describe("assemble", () => {
 
   it("copies a valid operation token, nulls an invalid one, and records the gaps", () => {
     expect(
-      assemble(evidence({ operation: "eval.returnImage" }), facts, ["home path"]).problem.operation
+      assemble(evidence({ operation: "eval.returnImage" }), facts).problem.operation
     ).toBe("eval.returnImage");
-    const draft = assemble(evidence({ operation: "eval return image" }), facts, ["home path"]);
+    const draft = assemble(evidence({ operation: "eval return image" }), facts);
     expect(draft.problem.operation).toBeNull();
     expect(draft.gaps).toEqual([
       "invocation diagnostic unavailable: denied",
       "not reproduced: the report records the account as given",
       "operation unknown",
-      "removed before drafting: home path",
     ]);
   });
 
   it("refuses to silently shorten a narrative over the limit", () => {
-    expect(() => assemble(evidence({ observed: "x".repeat(129 * 1024) }), facts, [])).toThrow(
+    expect(() => assemble(evidence({ observed: "x".repeat(129 * 1024) }), facts)).toThrow(
       /never silently shortened/
     );
   });
@@ -116,13 +85,14 @@ describe("draftProblemReport", () => {
     });
   });
 
-  it("removes secrets before laying the account out and says what it removed", async () => {
-    const draft = await draftProblemReport(
-      evidence({ observed: "Failed with password=hunter2hunter2 in /home/werg/x" })
-    );
-    expect(JSON.stringify(draft)).not.toMatch(/hunter2|\/home\/werg/);
+  it("lays the evidence out as given and leaves redaction to prepare", async () => {
+    const draft = await draftProblemReport(evidence({ observed: "Failed in /home/werg/x" }));
+    expect(draft.problem.symptom).toBe("Failed in /home/werg/x");
     expect(draft.destination).toBe("https://vibestudio.app/v1/problem-reports");
-    expect(draft.gaps).toContain("removed before drafting: credential assignment, home path");
+    expect(draft.gaps).toEqual([
+      "not reproduced: the report records the account as given",
+      "operation unknown",
+    ]);
     expect(runtimeMock.gad.diagnoseInvocation).not.toHaveBeenCalled();
   });
 
