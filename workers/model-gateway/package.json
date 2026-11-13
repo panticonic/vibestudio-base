@@ -115,6 +115,8 @@
     "@workspace/runtime": "workspace:*"
   },
   "devDependencies": {
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/trajectory-identity": "workspace:*",
     "vitest": "^3.2.7"
   },
   "exports": {
