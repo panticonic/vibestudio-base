@@ -88,6 +88,16 @@ export function buildSlateDefinitions(
       danger: true,
     },
     {
+      id: "panel.reopen",
+      title: "Reopen Closed Panel",
+      aliases: ["undo close", "restore"],
+      keywords: ["reopen", "closed", "undo", "unarchive"],
+      section: "Panel",
+      icon: "↺",
+      surfaces: desktopOnly,
+      accelerator: "⇧⌘T",
+    },
+    {
       id: "panel.focus",
       title: "Go to Panel",
       aliases: ["go to", "goto"],

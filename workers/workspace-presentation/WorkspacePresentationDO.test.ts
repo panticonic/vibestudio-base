@@ -66,6 +66,19 @@ describe("WorkspacePresentationDO", async () => {
     db.close();
   });
 
+  it("resolves entity titles independently of any slot binding", async () => {
+    const { instance, db } = await createPresentation();
+    instance.bindSlot("slot-1", "entity-1", "panels/chat");
+    instance.updatePanelTitle("slot-1", "entity-1", "Support inbox");
+    // A closed slot's binding is removed, yet its entity keeps its title.
+    instance.removeSlots(["slot-1"]);
+    expect(instance.titlesForSlots(["slot-1"])).toEqual({});
+    expect(
+      instance.titlesForEntities(["entity-1", "entity-2"]),
+    ).toEqual({ "entity-1": "Support inbox" });
+    db.close();
+  });
+
   it("clears a panel and entity title together", async () => {
     const { instance, db } = await createPresentation();
     instance.bindSlot("slot-1", "entity-1", "panels/chat");

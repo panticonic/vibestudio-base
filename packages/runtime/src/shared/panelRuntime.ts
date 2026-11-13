@@ -14,6 +14,10 @@ import {
   type OperationJournalEntry,
 } from "./journal.js";
 import type { PanelSourceUsage } from "@vibestudio/shared/panelSearchTypes";
+import type {
+  WorkspacePanelTreeHistoryRow,
+  WorkspacePresentedClosedPanel,
+} from "@vibestudio/shared/panel/workspaceStateSnapshot";
 import type { Rpc } from "../core/index.js";
 import type {
   PanelLifecycleResult,
@@ -203,6 +207,20 @@ export interface PanelRuntimeTree {
     delta: -1 | 1,
     options?: PanelWaitOptions,
   ): Promise<PanelObservation | null>;
+  /**
+   * Closes that can be reopened now, most recent first. Each is identified by
+   * its root `slotId`; `closedCount` includes the root's closed descendants.
+   */
+  closed(input?: {
+    ownerUserId?: string | null;
+    limit?: number;
+  }): Promise<WorkspacePresentedClosedPanel[]>;
+  /**
+   * Reverse the close whose root is `id`: reactivate every slot it took down
+   * at its current history entry, restore the subtree in place, and wait for
+   * the root to become boot-ready.
+   */
+  reopen(id: string, options?: PanelWaitOptions): Promise<PanelHandle>;
 }
 
 export interface PanelRuntimeTreeEntry {
@@ -863,6 +881,26 @@ export function createPanelRuntime(
     id: string,
   ): Promise<PanelLifecycleResult> => {
     const closed = await workspaceState.closeSlot(asPanelSlotId(id));
+    await drainCloseCleanup(closed.closeId);
+    return {
+      panelId: id,
+      operation: "close",
+      status: "closed",
+      loaded: false,
+      rebuilt: false,
+      reloaded: false,
+      closedCount: closed.closedCount,
+    };
+  };
+
+  /**
+   * Retire the runtime resources a durable close left pending: notify
+   * ownership observers, retire each closed slot's entity, close its CDP
+   * session, and acknowledge each page that cleaned up completely. Whoever
+   * made the close, the same receipts drive the same cleanup, so a reopen can
+   * finish a close another host started before reversing it.
+   */
+  const drainCloseCleanup = async (closeId: string): Promise<void> => {
     const cleanupFailures: unknown[] = [];
     const runCleanup = async (operation: () => Promise<unknown> | unknown) => {
       try {
@@ -877,7 +915,7 @@ export function createPanelRuntime(
       let page: Awaited<ReturnType<typeof workspaceState.getCloseCleanupPage>>;
       try {
         page = await workspaceState.getCloseCleanupPage({
-          closeId: closed.closeId,
+          closeId,
           ...(cursor ? { cursor } : {}),
           limit: 200,
         });
@@ -927,15 +965,86 @@ export function createPanelRuntime(
         "Panel close cleanup could not retire all owned resources",
       );
     }
-    return {
-      panelId: id,
-      operation: "close",
-      status: "closed",
-      loaded: false,
-      rebuilt: false,
-      reloaded: false,
-      closedCount: closed.closedCount,
+  };
+
+  const reopenPanel = (
+    id: string,
+    waitOptions?: PanelWaitOptions,
+  ): Promise<PanelHandle> =>
+    changingGeneration(id, () => reopenPanelUnfenced(id, waitOptions));
+  const reopenPanelUnfenced = async (
+    id: string,
+    waitOptions?: PanelWaitOptions,
+  ): Promise<PanelHandle> => {
+    // The close may have been made by another host whose cleanup has not run
+    // yet; the plan is only issued once that cleanup has finished.
+    await drainCloseCleanup(id);
+    const plan = await callState("slot.reopenPlan", [id]);
+    // Reactivated entities that end up uncommitted (a later slot fails, or the
+    // reopen loses a race) are owned by durable GC, exactly as uncommitted
+    // navigation preparations are; retiring them here could retire an entity
+    // a concurrent reopen of the same close has already committed.
+    for (const { entry } of plan.slots) await reactivateHistoryEntry(entry);
+    await callState("slot.reopen", [{ slotId: id, closedAt: plan.closedAt }]);
+    recordOperation({ type: "reopen", id });
+    const attempt = await ensurePanelMaterialized(id);
+    await waitUntilReady(await observePanel(id), waitOptions?.signal, attempt);
+    const metadata = await readMetadata(id);
+    if (!metadata) throw new Error(`Unknown panel slot: ${id}`);
+    return fromMetadata(metadataFromResult(id, metadata));
+  };
+
+  /**
+   * Reactivate the runtime entity a retained history entry names. The entry's
+   * key determines the entity identity, so the created entity must be the one
+   * the entry already records.
+   */
+  const reactivateHistoryEntry = async (
+    entry: WorkspacePanelTreeHistoryRow,
+  ): Promise<void> => {
+    const external = entry.source.startsWith("browser:");
+    const source = external
+      ? entry.source.slice("browser:".length)
+      : entry.source;
+    const storedOptions = entry.options
+      ? (JSON.parse(entry.options) as {
+          ref?: string;
+        })
+      : {};
+    const spec = {
+      kind: "panel" as const,
+      execution: external
+        ? ({ surface: "external", url: source } as const)
+        : ({
+            surface: "code",
+            source,
+            ...(storedOptions.ref ? { ref: storedOptions.ref } : {}),
+          } as const),
+      key: entry.entry_key,
+      contextId: entry.context_id,
+      stateArgs: entry.state_args ? JSON.parse(entry.state_args) : {},
     };
+    const next = await rpc.call(
+      "main",
+      mainRpcMethods["runtime.createEntity"],
+      [spec],
+    );
+    if (next.id !== entry.entity_id) {
+      const mismatch = new Error(
+        `History entry ${entry.entry_key} resolved to ${next.id}, expected ${entry.entity_id}`,
+      );
+      try {
+        await rpc.call("main", mainRpcMethods["runtime.retireEntity"], [
+          { id: next.id },
+        ]);
+      } catch (retireError) {
+        throw new AggregateError(
+          [mismatch, retireError],
+          `${mismatch.message}; the mismatched entity ${next.id} could not be retired`,
+        );
+      }
+      throw mismatch;
+    }
   };
 
   const navigatePanel = (
@@ -1062,41 +1171,7 @@ export function createPanelRuntime(
     if (!current) throw new Error(`Unknown panel slot: ${id}`);
     const target = await callState("slot.historyRelative", [id, delta]);
     if (!target) return null;
-    const external = target.source.startsWith("browser:");
-    const source = external
-      ? target.source.slice("browser:".length)
-      : target.source;
-    const storedOptions = target.options
-      ? (JSON.parse(target.options) as {
-          ref?: string;
-        })
-      : {};
-    const spec = {
-      kind: "panel" as const,
-      execution: external
-        ? ({ surface: "external", url: source } as const)
-        : ({
-            surface: "code",
-            source,
-            ...(storedOptions.ref ? { ref: storedOptions.ref } : {}),
-          } as const),
-      key: target.entry_key,
-      contextId: target.context_id,
-      stateArgs: target.state_args ? JSON.parse(target.state_args) : {},
-    };
-    const next = await rpc.call(
-      "main",
-      mainRpcMethods["runtime.createEntity"],
-      [spec],
-    );
-    if (next.id !== target.entity_id) {
-      await rpc
-        .call("main", mainRpcMethods["runtime.retireEntity"], [{ id: next.id }])
-        .catch(() => {});
-      throw new Error(
-        `History entry ${target.entry_key} resolved to ${next.id}, expected ${target.entity_id}`,
-      );
-    }
+    await reactivateHistoryEntry(target);
     const transition = await commitPreparedPanelNavigation(navigationClients, {
       slotId: asPanelSlotId(id),
       expectedCurrentEntityId: asPanelEntityId(current.entity.id),
@@ -1733,6 +1808,12 @@ export function createPanelRuntime(
     },
     navigateHistory(id, delta, waitOptions) {
       return navigateHistory(id, delta, waitOptions);
+    },
+    closed(input) {
+      return callState("slot.closedRoots", [input ?? {}]);
+    },
+    reopen(id, waitOptions) {
+      return reopenPanel(id, waitOptions);
     },
   };
 

@@ -84,6 +84,7 @@ export type OperationJournalEntry =
   | { type: "open"; source: string; id: string; kind: "workspace" | "browser" }
   | { type: "reload"; id: string }
   | { type: "close"; id: string }
+  | { type: "reopen"; id: string }
   | { type: "interaction"; id: string; receipt: unknown }
   | { type: "profile.start"; id: string }
   | {

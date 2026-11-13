@@ -269,6 +269,20 @@ export class WorkspacePresentationDO extends DurableObjectBase {
   }
 
   @schemaRpc()
+  titlesForEntities(entityIds: string[]): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const entityId of entityIds) {
+      const row = this.sql
+        .exec(`SELECT title FROM entity_titles WHERE entity_id = ?`, entityId)
+        .toArray()[0];
+      if (typeof row?.["title"] === "string" && row["title"] !== "") {
+        result[entityId] = row["title"];
+      }
+    }
+    return result;
+  }
+
+  @schemaRpc()
   incrementAccess(slotId: string): void {
     this.ctx.storage.transactionSync(() => {
       this.sql.exec(

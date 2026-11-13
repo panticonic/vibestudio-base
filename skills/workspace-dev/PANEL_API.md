@@ -502,7 +502,7 @@ error, or an entry module that throws.
 | `focus(opts?)`                                  | Assigns and presents the panel, then waits for ready                                                                |
 | `children()` / `parent()`                       | Tree relationships                                                                                                  |
 | `stateArgs.get()` / `stateArgs.patch()`           | Validated, host-stored application state args                                                                       |
-| `archive()` / `unload()`                        | Removes the panel subtree / releases the live runtime                                                               |
+| `archive()` / `unload()`                        | Removes the panel subtree (reversible with `panelTree.reopen(id)`) / releases the live runtime                      |
 | `tree()` / `state()` / `routes()` / `setMode()` | Optional inspection through the application's `_agent` API                                                          |
 | `cdp.session()`                                 | Stable generation-fenced CDP session and Playwright-style page                                                      |
 | `click(selector)`                               | Click through the panel's CDP session; requires approval                                                            |

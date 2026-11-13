@@ -1678,3 +1678,204 @@ describe("recursive panel ownership", () => {
     expect(acknowledge).not.toHaveBeenCalled();
   });
 });
+
+describe("reopening a closed panel", () => {
+  const root = "panel:tree/new";
+  const child = "panel:tree/closed-child";
+  const historyRow = (
+    slotId: string,
+    entryKey: string,
+    source: string,
+    options: string | null,
+  ) => ({
+    slot_id: slotId,
+    cursor: 1,
+    entry_key: entryKey,
+    entity_id: `panel:nav-${entryKey}`,
+    source,
+    context_id: `ctx:${slotId}`,
+    state_args: source.startsWith("browser:") ? null : '{"tab":"inbox"}',
+    options,
+    recorded_at: 1,
+  });
+  const plan = {
+    slotId: root,
+    closedAt: 1_700_000_000_123,
+    slots: [
+      {
+        slotId: root,
+        entry: historyRow(root, "nav-root", "panels/new", '{"ref":"main"}'),
+      },
+      {
+        slotId: child,
+        entry: historyRow(child, "nav-child", "browser:https://example.com/", null),
+      },
+    ],
+  };
+
+  function reopenHarness(
+    reopenOptions: {
+      pendingCleanup?: Array<{ slotId: string; entityId: string | null }>;
+      createdEntityId?: (spec: { key: string }) => string | undefined;
+    } = {},
+  ) {
+    const recordOperation = vi.fn();
+    const onClose = vi.fn();
+    const base = runtimeHarness();
+    let pending = reopenOptions.pendingCleanup ?? [];
+    const call = vi.fn(
+      async (
+        target: string,
+        method: string,
+        args: unknown[],
+        callOptions?: { signal?: AbortSignal },
+      ): Promise<unknown> => {
+        switch (method) {
+          case "workspace-state.slot.closeCleanupPage":
+            return { items: pending, nextCursor: null };
+          case "workspace-state.slot.closeCleanupAck":
+            pending = [];
+            return undefined;
+          case "workspace-state.slot.reopenPlan":
+            return plan;
+          case "workspace-state.slot.reopen":
+            return { slotId: root, reopenedCount: plan.slots.length };
+          case "workspace-state.slot.closedRoots":
+            return [];
+          case "runtime.createEntity": {
+            const created = (await base.call(
+              target,
+              method,
+              args,
+              callOptions,
+            )) as { id: string };
+            const override = reopenOptions.createdEntityId?.(
+              args[0] as { key: string },
+            );
+            return override ? { ...created, id: override } : created;
+          }
+          default:
+            return base.call(target, method, args, callOptions);
+        }
+      },
+    );
+    const runtime = createPanelRuntime({
+      rpc: schemaRpcClientMock({ call }, "panel-test"),
+      defaultOpenParentId: null,
+      createCdp: () => ({}) as never,
+      recordOperation,
+      onClose,
+    });
+    return { call, runtime, recordOperation, onClose };
+  }
+
+  it("reactivates every closed slot's entry before atomically reversing the close", async () => {
+    const { call, runtime, recordOperation } = reopenHarness();
+
+    const handle = await runtime.panelTree.reopen(root);
+
+    expect(handle.id).toBe(root);
+    const lifecycle = new Set([
+      "workspace-state.slot.closeCleanupPage",
+      "workspace-state.slot.reopenPlan",
+      "runtime.createEntity",
+      "workspace-state.slot.reopen",
+      "panelRuntime.ensureSlot",
+    ]);
+    expect(
+      call.mock.calls
+        .map(([, method]) => method)
+        .filter((method) => lifecycle.has(method)),
+    ).toEqual([
+      "workspace-state.slot.closeCleanupPage",
+      "workspace-state.slot.reopenPlan",
+      "runtime.createEntity",
+      "runtime.createEntity",
+      "workspace-state.slot.reopen",
+      "panelRuntime.ensureSlot",
+    ]);
+    expect(
+      call.mock.calls
+        .filter(([, method]) => method === "workspace-state.slot.closeCleanupPage")
+        .map(([, , args]) => (args[0] as { closeId: string }).closeId),
+    ).toEqual([root]);
+    expect(
+      call.mock.calls
+        .filter(([, method]) => method === "runtime.createEntity")
+        .map(([, , args]) => args[0]),
+    ).toEqual([
+      {
+        kind: "panel",
+        execution: { surface: "code", source: "panels/new", ref: "main" },
+        key: "nav-root",
+        contextId: `ctx:${root}`,
+        stateArgs: { tab: "inbox" },
+      },
+      {
+        kind: "panel",
+        execution: { surface: "external", url: "https://example.com/" },
+        key: "nav-child",
+        contextId: `ctx:${child}`,
+        stateArgs: {},
+      },
+    ]);
+    expect(
+      call.mock.calls.find(
+        ([, method]) => method === "workspace-state.slot.reopen",
+      )?.[2],
+    ).toEqual([{ slotId: root, closedAt: plan.closedAt }]);
+    expect(recordOperation).toHaveBeenCalledWith({ type: "reopen", id: root });
+  });
+
+  it("finishes a close's pending cleanup before reading its reopen plan", async () => {
+    const { call, runtime, onClose } = reopenHarness({
+      pendingCleanup: [
+        { slotId: root, entityId: "panel:nav-nav-root" },
+        { slotId: child, entityId: null },
+      ],
+    });
+
+    await runtime.panelTree.reopen(root);
+
+    const methods = call.mock.calls.map(([, method]) => method);
+    expect(onClose.mock.calls).toEqual([[root], [child]]);
+    expect(methods.indexOf("runtime.retireEntity")).toBeLessThan(
+      methods.indexOf("workspace-state.slot.closeCleanupAck"),
+    );
+    expect(methods.indexOf("workspace-state.slot.closeCleanupAck")).toBeLessThan(
+      methods.indexOf("workspace-state.slot.reopenPlan"),
+    );
+  });
+
+  it("refuses to reverse a close when an entry reactivates a different entity", async () => {
+    const { call, runtime, recordOperation } = reopenHarness({
+      createdEntityId: (spec) =>
+        spec.key === "nav-child" ? "panel:unexpected" : undefined,
+    });
+
+    await expect(runtime.panelTree.reopen(root)).rejects.toThrow(
+      "History entry nav-child resolved to panel:unexpected, expected panel:nav-nav-child",
+    );
+    const methods = call.mock.calls.map(([, method]) => method);
+    expect(methods).not.toContain("workspace-state.slot.reopen");
+    expect(
+      call.mock.calls
+        .filter(([, method]) => method === "runtime.retireEntity")
+        .map(([, , args]) => args),
+    ).toEqual([[{ id: "panel:unexpected" }]]);
+    expect(recordOperation).not.toHaveBeenCalled();
+  });
+
+  it("lists reopenable closes through the workspace-state service", async () => {
+    const { call, runtime } = reopenHarness();
+
+    await expect(runtime.panelTree.closed({ limit: 5 })).resolves.toEqual([]);
+    await runtime.panelTree.closed();
+
+    expect(
+      call.mock.calls
+        .filter(([, method]) => method === "workspace-state.slot.closedRoots")
+        .map(([, , args]) => args),
+    ).toEqual([[{ limit: 5 }], [{}]]);
+  });
+});
