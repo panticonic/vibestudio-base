@@ -16,7 +16,8 @@ import {
 import type { PanelSourceUsage } from "@vibestudio/shared/panelSearchTypes";
 import type {
   WorkspacePanelTreeHistoryRow,
-  WorkspacePresentedClosedPanel,
+  WorkspaceClosedPanelsInput,
+  WorkspacePresentedClosedPanelPage,
 } from "@vibestudio/shared/panel/workspaceStateSnapshot";
 import type { Rpc } from "../core/index.js";
 import type {
@@ -208,19 +209,26 @@ export interface PanelRuntimeTree {
     options?: PanelWaitOptions,
   ): Promise<PanelObservation | null>;
   /**
-   * Closes that can be reopened now, most recent first. Each is identified by
-   * its root `slotId`; `closedCount` includes the root's closed descendants.
+   * One page of the closes that can be reopened now, most recent first. Each
+   * is identified by its root `slotId`; `closedCount` includes the root's
+   * closed descendants. `query` matches the title or source; pass the
+   * returned `nextCursor` back as `cursor` for the next page.
    */
-  closed(input?: {
-    ownerUserId?: string | null;
-    limit?: number;
-  }): Promise<WorkspacePresentedClosedPanel[]>;
+  closed(
+    input?: WorkspaceClosedPanelsInput,
+  ): Promise<WorkspacePresentedClosedPanelPage>;
   /**
    * Reverse the close whose root is `id`: reactivate every slot it took down
    * at its current history entry, restore the subtree in place, and wait for
    * the root to become boot-ready.
    */
   reopen(id: string, options?: PanelWaitOptions): Promise<PanelHandle>;
+  /**
+   * Permanently delete the close whose root is `id`: its whole closed subtree
+   * and history, and every context no surviving panel or live entity uses.
+   * Irreversible.
+   */
+  deleteClosed(id: string): Promise<{ deletedCount: number }>;
 }
 
 export interface PanelRuntimeTreeEntry {
@@ -993,6 +1001,19 @@ export function createPanelRuntime(
     if (!metadata) throw new Error(`Unknown panel slot: ${id}`);
     return fromMetadata(metadataFromResult(id, metadata));
   };
+
+  const deleteClosedPanel = (id: string): Promise<{ deletedCount: number }> =>
+    changingGeneration(id, async () => {
+      await drainCloseCleanup(id);
+      // The owner destroys the contexts only these panels used, under the
+      // purge's own gate; the plan pins which close is being deleted.
+      const plan = await callState("slot.purgePlan", [id]);
+      const result = await callState("slot.purge", [
+        { slotId: id, closedAt: plan.closedAt },
+      ]);
+      recordOperation({ type: "deleteClosed", id });
+      return { deletedCount: result.deletedCount };
+    });
 
   /**
    * Reactivate the runtime entity a retained history entry names. The entry's
@@ -1814,6 +1835,9 @@ export function createPanelRuntime(
     },
     reopen(id, waitOptions) {
       return reopenPanel(id, waitOptions);
+    },
+    deleteClosed(id) {
+      return deleteClosedPanel(id);
     },
   };
 

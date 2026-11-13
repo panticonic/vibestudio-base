@@ -85,6 +85,7 @@ export type OperationJournalEntry =
   | { type: "reload"; id: string }
   | { type: "close"; id: string }
   | { type: "reopen"; id: string }
+  | { type: "deleteClosed"; id: string }
   | { type: "interaction"; id: string; receipt: unknown }
   | { type: "profile.start"; id: string }
   | {

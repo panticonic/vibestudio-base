@@ -1927,6 +1927,8 @@ async function renderOperationJournalFooter(journal: any): Promise<string | unde
         return `closed #${entry.id}`;
       case "reopen":
         return `reopened #${entry.id}`;
+      case "deleteClosed":
+        return `deleted closed #${entry.id}`;
       case "stateArgs.patch":
         return `patched stateArgs on #${entry.id}`;
       default:

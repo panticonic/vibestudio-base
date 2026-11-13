@@ -98,6 +98,14 @@ export function buildSlateDefinitions(
       accelerator: "⇧⌘T",
     },
     {
+      id: "panel.closedList",
+      title: "Closed Panels",
+      keywords: ["closed", "archive", "history", "trash"],
+      section: "Panel",
+      icon: "🗃",
+      surfaces: desktopOnly,
+    },
+    {
       id: "panel.focus",
       title: "Go to Panel",
       aliases: ["go to", "goto"],

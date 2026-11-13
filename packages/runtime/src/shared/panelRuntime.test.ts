@@ -1741,7 +1741,16 @@ describe("reopening a closed panel", () => {
           case "workspace-state.slot.reopen":
             return { slotId: root, reopenedCount: plan.slots.length };
           case "workspace-state.slot.closedRoots":
-            return [];
+            return { items: [], nextCursor: null };
+          case "workspace-state.slot.purgePlan":
+            return {
+              slotId: root,
+              closedAt: plan.closedAt,
+              slotIds: plan.slots.map((slot) => slot.slotId),
+              orphanContextIds: ["ctx-only-here"],
+            };
+          case "workspace-state.slot.purge":
+            return { slotId: root, deletedCount: plan.slots.length };
           case "runtime.createEntity": {
             const created = (await base.call(
               target,
@@ -1869,13 +1878,36 @@ describe("reopening a closed panel", () => {
   it("lists reopenable closes through the workspace-state service", async () => {
     const { call, runtime } = reopenHarness();
 
-    await expect(runtime.panelTree.closed({ limit: 5 })).resolves.toEqual([]);
+    await expect(
+      runtime.panelTree.closed({ limit: 5, query: "notes", cursor: "c" }),
+    ).resolves.toEqual({ items: [], nextCursor: null });
     await runtime.panelTree.closed();
 
     expect(
       call.mock.calls
         .filter(([, method]) => method === "workspace-state.slot.closedRoots")
         .map(([, , args]) => args),
-    ).toEqual([[{ limit: 5 }], [{}]]);
+    ).toEqual([[{ limit: 5, query: "notes", cursor: "c" }], [{}]]);
+  });
+
+  it("permanently deletes a close after its pending cleanup, pinned to that close", async () => {
+    const { call, runtime, recordOperation } = reopenHarness({
+      pendingCleanup: [{ slotId: root, entityId: null }],
+    });
+
+    await expect(runtime.panelTree.deleteClosed(root)).resolves.toEqual({
+      deletedCount: plan.slots.length,
+    });
+
+    const methods = call.mock.calls.map(([, method]) => method);
+    expect(methods.indexOf("workspace-state.slot.closeCleanupAck")).toBeLessThan(
+      methods.indexOf("workspace-state.slot.purgePlan"),
+    );
+    // Contexts are the owner's to destroy under the purge's own gate.
+    expect(methods).not.toContain("runtime.destroyContext");
+    expect(
+      call.mock.calls.find(([, method]) => method === "workspace-state.slot.purge")?.[2],
+    ).toEqual([{ slotId: root, closedAt: plan.closedAt }]);
+    expect(recordOperation).toHaveBeenCalledWith({ type: "deleteClosed", id: root });
   });
 });
