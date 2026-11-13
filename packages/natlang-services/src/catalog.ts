@@ -16,12 +16,8 @@ export interface DeclaredMethod {
   readonly name: string;
   /** Positional parameter names, one per argument in the contract. */
   readonly params: readonly string[];
-  /** The contract table entry, when it is not named like the method. */
-  readonly contractMethod?: string;
   /** Which tuple of an argument union to document. */
   readonly argsArm?: number;
-  /** Input fields the runtime fills in when omitted (so they are optional here). */
-  readonly bound?: readonly string[];
   /** For contracts that carry no description of their own. */
   readonly description?: string;
 }
@@ -38,29 +34,7 @@ export interface ServiceCatalogEntry {
   readonly summary: string;
   readonly contract: ContractOrigin;
   readonly methods: readonly DeclaredMethod[];
-  /**
-   * The service is the view of one agent's conversation (its roster, its supervisor, its runs): it exists only in an
-   * agent's eval, and a user-initiated run (a panel, a CLI) has nothing to give it. A program that declares it is an
-   * agent's program; a host that runs programs for a user reports that instead of failing at the call.
-   */
-  readonly requiresAgent?: true;
 }
-
-const GAD_INSPECTORS = [
-  "inspectAgentHealth",
-  "inspectAgent",
-  "inspectChannelRoster",
-  "inspectChannelEnvelopes",
-  "readChannelEnvelopes",
-  "inspectTurnState",
-  "inspectInvocationState",
-  "diagnoseInvocation",
-  "describeChannels",
-  "listAgentDirectory",
-  "searchAgentDirectory",
-  "inspectPublicationIntegrity",
-  "inspectStorageDiagnostics",
-] as const;
 
 export const SERVICE_CATALOG = [
   {
@@ -75,22 +49,13 @@ export const SERVICE_CATALOG = [
     ],
   },
   {
-    name: "gad",
+    name: "docs",
     summary:
-      "Read-only inspectors over the workspace's canonical conversation store (Graph and Data): agent health, channel rosters and envelopes, turn and invocation state, and integrity diagnostics. Every method returns bounded output; page with the cursors it returns.",
-    contract: { origin: "host", module: "workspaceSource", table: "gadMethods" },
-    methods: GAD_INSPECTORS.map((name) => ({ name, params: ["input"] })),
-  },
-  {
-    name: "problemReports",
-    summary:
-      "Read-only view of the calling user's local problem reports. Drafting, preparing, and sending a report stay with the agent and its human approval.",
-    contract: { origin: "host", module: "problemReports", table: "problemReportsMethods" },
+      "Read-only capability catalog: search the host services and runtime APIs the caller may call by keyword, and open one entry's full contract (description, typed arguments and result, access, examples). Skill and reference documents are files: read them with fs.",
+    contract: { origin: "host", module: "docs", table: "docsMethods" },
     methods: [
-      { name: "availability", params: [] },
-      { name: "incidents", params: [] },
-      { name: "get", params: ["reportId"] },
-      { name: "history", params: [] },
+      { name: "search", params: ["query", "options"] },
+      { name: "describe", params: ["id"] },
     ],
   },
   {
@@ -112,19 +77,6 @@ export const SERVICE_CATALOG = [
     ],
   },
   {
-    name: "templates",
-    summary: "Read-only inspection of workspace template sources.",
-    contract: { origin: "host", module: "templates", table: "templatesMethods" },
-    methods: [{ name: "inspect", params: ["locator"] }],
-  },
-  {
-    name: "credentials",
-    summary:
-      "Resolve which stored credential would serve a URL. This returns a secret-free summary and null for an unbound URL; it cannot fetch, store, or reveal a credential.",
-    contract: { origin: "host", module: "credentials", table: "credentialsMethods" },
-    methods: [{ name: "resolveCredential", params: ["input"] }],
-  },
-  {
     name: "fs",
     summary:
       "Read-only access to the workspace context's files: bounded line-range reads, directory listings, and ripgrep search. Paths are relative to the context root.",
@@ -133,17 +85,6 @@ export const SERVICE_CATALOG = [
       { name: "readText", params: ["path", "options"], argsArm: 0 },
       { name: "readdir", params: ["path", "options"], argsArm: 0 },
       { name: "grep", params: ["pattern", "options"], argsArm: 0 },
-    ],
-  },
-  {
-    name: "vcs",
-    summary:
-      "Read-only semantic version control: the working status of a context, the semantic comparison of two states, and event history. Committing, merging, reverting, and pushing stay with the agent.",
-    contract: { origin: "host", module: "vcs", table: "vcsMethods" },
-    methods: [
-      { name: "status", params: ["input"], bound: ["contextId"] },
-      { name: "compare", params: ["input"] },
-      { name: "history", params: ["input"] },
     ],
   },
   {
@@ -163,18 +104,6 @@ export const SERVICE_CATALOG = [
       "Recall from workspace memory: past conversation messages, committed files, and commit summaries, with provenance.",
     contract: { origin: "base", file: "packages/runtime/src/shared/memory.ts", table: "memoryMethods" },
     methods: [{ name: "recall", params: ["input"] }],
-  },
-  {
-    name: "addressees",
-    summary:
-      "Who the agent can message in its conversation. Read-only; sending stays with the notify tool.",
-    contract: {
-      origin: "base",
-      file: "packages/natlang-services/src/contracts.ts",
-      table: "addresseesMethods",
-    },
-    methods: [{ name: "list", params: [] }],
-    requiresAgent: true,
   },
   {
     name: "systemTests",

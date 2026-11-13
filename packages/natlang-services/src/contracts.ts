@@ -1,27 +1,9 @@
 /**
  * Contracts for the services that have no service-schema table of their own:
- * the agent's addressee list, and the system-test inspection packet. They are
- * zod so the declaration generator reads them like every other contract.
+ * the system-test inspection packet. They are zod so the declaration generator
+ * reads them like every other contract.
  */
 import { z } from "zod";
-import type { AddresseeRow } from "@workspace/agentic-protocol";
-
-const addresseeRowSchema = z.object({
-  ref: z.string().describe("The exact `to` value the notify tool accepts for this recipient."),
-  kind: z
-    .string()
-    .describe("channel, a participant kind (user, agent, ...), supervisor, or subagent run."),
-  note: z.string().describe("A short description: display name, chat surface, or run status."),
-}) satisfies z.ZodType<AddresseeRow>;
-
-export const addresseesMethods = {
-  list: {
-    description:
-      "List who this agent can message in its conversation: the channel itself, the other participants, its supervisor, and its subagent runs. Read-only; sending stays with the notify tool. Each row carries the exact ref notify accepts. A person's row identifies a client connection, not necessarily who is behind it.",
-    args: z.tuple([]),
-    returns: z.array(addresseeRowSchema),
-  },
-} as const;
 
 const systemTestInspectionSchema = z
   .object({

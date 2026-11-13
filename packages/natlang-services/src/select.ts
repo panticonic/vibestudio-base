@@ -2,7 +2,7 @@ import { systemTestRunnerRpcMethods } from "@vibestudio/service-schemas/systemTe
 import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
 import { SERVICE_CATALOG, SERVICE_NAMES, type ServiceName } from "./catalog.js";
 
-/** The eval bindings (`gad`, `vcs`, `services`, `rpc`, `agent`, ...) a program may draw services from. */
+/** The eval bindings (`services`, `web`, `memory`, `extensions`, `rpc`, ...) a program may draw services from. */
 export type ServiceBindings = Readonly<Record<string, unknown>>;
 
 type ServiceMethod = (...args: never[]) => Promise<unknown>;
@@ -21,11 +21,7 @@ function entryFor(name: ServiceName) {
 function requireBinding(service: ServiceName, bindings: ServiceBindings, binding: string): unknown {
   const value = bindings[binding];
   if (value === undefined || value === null) {
-    const needsAgent = "requiresAgent" in entryFor(service);
-    throw new Error(
-      `natlang service "${service}" needs the eval binding \`${binding}\`, which is not available in this eval` +
-        (needsAgent ? `: ${service} is the view of an agent's conversation, and only an agent's eval has one` : "")
-    );
+    throw new Error(`natlang service "${service}" needs the eval binding \`${binding}\`, which is not available in this eval`);
   }
   return value;
 }
@@ -65,8 +61,7 @@ function hostService(name: ServiceName) {
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
   serverLog: hostService("serverLog"),
-  gad: binding("gad"),
-  problemReports: binding("problemReports"),
+  docs: hostService("docs"),
   localModels: (bindings) => {
     const extensions = requireBinding("localModels", bindings, "extensions") as {
       invoke(extension: string, method: string, args: unknown[]): Promise<unknown>;
@@ -78,18 +73,9 @@ const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangServic
       listModels: async () => result.parse(await extensions.invoke(LOCAL_MODELS_EXTENSION, method, [])),
     });
   },
-  templates: binding("templates"),
-  credentials: binding("credentials"),
   fs: hostService("fs"),
-  vcs: binding("vcs"),
   web: binding("web"),
   memory: binding("memory"),
-  addressees: (bindings) => {
-    const agent = requireBinding("addressees", bindings, "agent") as {
-      addressees(): Promise<unknown>;
-    };
-    return Object.freeze({ list: () => agent.addressees() });
-  },
   systemTests: (bindings) => {
     const rpc = requireBinding("systemTests", bindings, "rpc") as {
       call(target: string, method: unknown, args: unknown[]): Promise<unknown>;

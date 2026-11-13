@@ -1,13 +1,7 @@
 import type { ProgramDescription } from "@workspace/natlang/describe-types";
-import { SERVICE_CATALOG } from "@workspace/natlang-services/catalog";
 import { DashboardError, evaluateValue, type NatlangPanelPorts } from "./ports.js";
 
 type Json = Record<string, any>;
-
-/** The services a program declares that exist only in an agent's eval: a run started by the user has none to give. */
-export function agentOnlyServices(services: readonly string[]): string[] {
-  return SERVICE_CATALOG.filter((entry) => "requiresAgent" in entry && services.includes(entry.name)).map((entry) => entry.name);
-}
 
 /** Workspace folders searched for natlang programs: skills, projects and packages hold them. */
 export const PROGRAM_ROOTS = ["skills", "projects", "packages"] as const;
@@ -195,14 +189,9 @@ export function programsApi(
       } catch (error) {
         problem = error instanceof Error ? error.message : String(error);
       }
-      const agentOnly = agentOnlyServices(described.services);
-      // Said up front: a run from this panel would fail at load, because the program reads an agent's conversation.
-      const note = agentOnly.length
-        ? `This program uses ${agentOnly.join(", ")}, the view of an agent's conversation; it runs in an agent's eval, not from this panel.`
-        : "";
       return {
         directory,
-        manifest: { name, version, description: [description, note].filter(Boolean).join(" "), targets: {}, warmup: [] },
+        manifest: { name, version, description, targets: {}, warmup: [] },
         problem,
         functions: described.functions,
         services: described.services,

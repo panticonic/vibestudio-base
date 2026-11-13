@@ -77,15 +77,6 @@
           "evidence": "intentional-broad"
         },
         {
-          "capability": "userland:extensions/templates/workspace.templates.inspect#*",
-          "resource": {
-            "kind": "prefix",
-            "prefix": ""
-          },
-          "tier": "gated",
-          "evidence": "bounded-dynamic"
-        },
-        {
           "capability": "workspace-service:gad.workspace",
           "resource": {
             "kind": "prefix",

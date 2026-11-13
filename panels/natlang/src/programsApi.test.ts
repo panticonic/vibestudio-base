@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentOnlyServices, nlFiles, programFolders, programsApi } from "./programsApi.js";
+import { nlFiles, programFolders, programsApi } from "./programsApi.js";
 import { fakePorts, memoryFs } from "./testSupport.js";
 
 const TRIAGE = "---\ndescription: Decide whether a ticket is urgent.\nargs:\n  ticket: string\nreturns: string\n---\nDecide.\n";
@@ -82,19 +82,6 @@ describe("programsApi", () => {
       readme: { name: "README.md" },
     });
     expect(detail["functions"][0].fields[0]).toMatchObject({ name: "ticket", required: true });
-  });
-
-  it("says up front that a program reading an agent's conversation does not run from the panel", async () => {
-    expect(agentOnlyServices(["serverLog", "addressees"])).toEqual(["addressees"]);
-    expect(agentOnlyServices(["serverLog"])).toEqual([]);
-    const { ports } = fakePorts({
-      files: WORKSPACE,
-      handle: () => ({ success: true, console: "", returnValue: { ...description, services: ["addressees"] } }),
-    });
-    const detail = await programsApi(ports).detail("skills/triage");
-    expect(detail["manifest"].description).toBe(
-      "Triage tickets. This program uses addressees, the view of an agent's conversation; it runs in an agent's eval, not from this panel."
-    );
   });
 
   it("reports a program that does not compile as its problem and still shows the rest", async () => {
