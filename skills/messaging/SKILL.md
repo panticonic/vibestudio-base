@@ -62,8 +62,11 @@ const who = resolveAddressee("Tell Maria the build passed", await agent.addresse
 // { kind: "ambiguous", reason: "several" | "none", candidates: [...] }
 ```
 
-The resolver takes the row the user names in so many words (a name, handle,
-chat surface, run state or role such as the supervisor). It never guesses
+The resolver reads only the addressee phrase (the object of "tell", "ask",
+"message", "ping" and the like, up to where the message begins), so words in
+the message itself never name anyone. It takes the row that phrase names in so
+many words (a name, handle, chat surface, run state or role such as the
+supervisor). It never guesses
 between rows it names equally well: an ambiguity comes back as data with the
 competing rows, and a name that matches nothing returns the whole roster. Ask the
 user which one, or choose from the roster yourself when the user described the
