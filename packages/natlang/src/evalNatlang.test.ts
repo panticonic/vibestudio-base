@@ -273,20 +273,32 @@ describe("createEvalNatlang", () => {
     expect(published[0]).toMatchObject({ owner, runId: "run-1" });
   });
 
-  it("serves the trace of a recorded call", async () => {
+  it("serves a recorded call's digest, and its raw record and trace on request", async () => {
     const { natlang } = setup({
       records: {
         getCall: (input) => ({
-          record: { call_id: input.callId },
-          summary: { definition_name: "greet", outcome: "done", model_id: "test:executor-small" },
-          events: '{"kind":"model_request"}\n{"kind":"action"}',
+          record: { call_id: input.callId, inputs: {}, outcome: "done", detail: '"hi"', output: null },
+          summary: { call_id: input.callId, parent_call_id: null, definition_name: "greet", outcome: "done", model_id: "test:executor-small" },
+          events:
+            '{"kind":"model_request"}\n{"kind":"proposal","phase":"generated","turn":1,"text":"","calls":[]}\n' +
+            '{"kind":"action","name":"return_result","arguments":{"status":"success","value":"hi"},"outcome":"completed","result_text":"done"}',
           annotations: [],
         }),
+        listCalls: () => [],
       },
     });
     const trace = await (natlang.ambient.natlang as any).trace("call-9");
-    expect(trace).toMatchObject({ callId: "call-9", name: "greet", outcome: "done" });
-    expect(trace.events).toEqual([{ kind: "model_request" }, { kind: "action" }]);
+    expect(trace).toMatchObject({
+      callId: "call-9",
+      name: "greet",
+      outcome: "done",
+      children: [],
+      turns: [{ turn: 1, actions: [{ tool: "return_result", outcome: "completed", result: "done" }] }],
+    });
+    expect(trace).not.toHaveProperty("reason");
+    const raw = await (natlang.ambient.natlang as any).trace("call-9", { raw: true });
+    expect(raw).toMatchObject({ callId: "call-9", name: "greet", outcome: "done" });
+    expect(raw.events.map((event: any) => event.kind)).toEqual(["model_request", "proposal", "action"]);
   });
 
   it("describes nl and natlang in help()", () => {

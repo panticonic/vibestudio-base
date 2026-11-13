@@ -6,7 +6,7 @@ import {
   isModelUsable,
   type ModelCatalogEntry,
 } from "@workspace/model-catalog/catalog";
-import { isModelRole } from "@workspace/model-catalog/modelRoles";
+import { MODEL_ROLE_CALL_BUDGETS, isModelRole, type ModelRole } from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import type { ModelConfig, ModelDriver } from "../vendor/workerd/natlang-workerd.js";
 import type { ExecutorIdentity } from "./executorIdentity.js";
@@ -14,7 +14,22 @@ import { gatewayDriver, LOCAL_DECISION_REPLY, type ModelResolver } from "./drive
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 
 /** The role the default natlang model resolves through. */
-export const EXECUTOR_ROLE = "executor";
+export const EXECUTOR_ROLE = "executor" satisfies ModelRole;
+
+/**
+ * No usable model is behind a natlang model name: the role resolves to none (`role`), or the named model is unknown or
+ * not connected. A call that needs it fails with this as its cause.
+ */
+export class NatlangModelUnavailableError extends Error {
+  override readonly name = "NatlangModelUnavailableError";
+  constructor(
+    message: string,
+    /** The model role that did not resolve, when the name is a role. */
+    readonly role?: ModelRole
+  ) {
+    super(message);
+  }
+}
 
 /**
  * Resolves natlang's model names through the model settings service (the single
@@ -55,17 +70,17 @@ export class ModelDirectory implements ModelResolver {
   private async lookup(model: string): Promise<ModelCatalogEntry> {
     if (isModelRole(model)) {
       const resolution = await this.settings.call("resolveRole", model);
-      if (!resolution.model) throw new Error(resolution.reason);
+      if (!resolution.model) throw new NatlangModelUnavailableError(resolution.reason, model);
       return resolution.model;
     }
     const entry = await this.settings.call("getModel", model);
     if (!entry) {
-      throw new Error(
+      throw new NatlangModelUnavailableError(
         `Unknown model ${JSON.stringify(model)}: a natlang model name is a model role (${EXECUTOR_ROLE}) or a "provider:id" model ref`
       );
     }
     if (!isModelUsable(entry)) {
-      throw new Error(
+      throw new NatlangModelUnavailableError(
         `Model ${entry.ref} is not available (${entry.availability.state}); connect its provider first`
       );
     }
@@ -75,9 +90,12 @@ export class ModelDirectory implements ModelResolver {
 
 /**
  * The runtime's models: the default is the executor role, and a function whose
- * frontmatter says `model: NAME` runs on the model NAME names (a role or a
- * "provider:id" ref). `models` answers any NAME with a driver; a NAME that names
- * no usable model fails the call that asked for it, naming the model.
+ * frontmatter says `model: NAME` (or a call through `fn.on({ model: NAME })`) runs
+ * on the model NAME names (a role or a "provider:id" ref). `models` answers any NAME
+ * with a driver; a NAME that names no usable model fails the call that asked for it,
+ * naming the model. Every model config carries a call budget: a role's own
+ * (`MODEL_ROLE_CALL_BUDGETS`), and the executor's for a model named by ref, so no
+ * natlang call runs unbounded whichever model it is on.
  */
 export function modelsFor(options: {
   gateway: ModelGatewayClient;
@@ -109,6 +127,7 @@ export function modelsFor(options: {
   let pinned: ModelCatalogEntry | null = null;
   const executorGuided = () => pinned?.provider === LOCAL_PROVIDER_ID;
   const executor: ModelConfig = {
+    ...MODEL_ROLE_CALL_BUDGETS[EXECUTOR_ROLE],
     driver: driverFor(EXECUTOR_ROLE, executorGuided),
     get id() {
       return pinned?.ref ?? EXECUTOR_ROLE;
@@ -141,7 +160,12 @@ export function modelsFor(options: {
       let config = named.get(name);
       if (!config) {
         const guided = name.startsWith(`${LOCAL_PROVIDER_ID}:`);
-        config = { driver: driverFor(name, () => guided), id: name, ...(guided ? { guidance: true } : {}) };
+        config = {
+          ...MODEL_ROLE_CALL_BUDGETS[isModelRole(name) ? name : EXECUTOR_ROLE],
+          driver: driverFor(name, () => guided),
+          id: name,
+          ...(guided ? { guidance: true } : {}),
+        };
         named.set(name, config);
       }
       return config;

@@ -4,6 +4,7 @@ readout: decision
 args:
   evidence: Evidence
 returns: DefectClass
+budget: { maxTurns: 8, turnTokens: 1024 }
 ---
 Classify evidence, an account of something that went wrong. Judge by what failed and who owns it.
 

@@ -58,6 +58,10 @@ export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSigna
     decide?: DecisionScorer;
     neuraleseRuntime?: () => Promise<NeuraleseRuntimeOptions | undefined>;
 };
+/**
+ * The call's arguments as its caller gave them, as the opening eval's result shows them (read_inputs() returns
+ * the same values in eval). A long value is cut off, and its name holds all of it; an argument the caller left out is undefined.
+ */
 export declare function inputsListing(session: NativeSession, views?: Readonly<Record<string, string>>): string;
 /**
  * The prompt size and context window a server states when it refuses a request as longer than its context, for the
@@ -133,9 +137,6 @@ export declare class NativeToolAgent {
         callAddendum?: string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
-        /** `direct`: a leaf call (see `leafOpening`) answers from LEAF_SYSTEM_PROMPT and an opening that shows its arguments,
-         * with only return_result offered; `tools` (default): every call gets the full interpreter surface. */
-        leafCalls?: 'direct' | 'tools';
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -231,9 +232,6 @@ export declare class NativeToolAgent {
         callAddendum?: string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
-        /** `direct`: a leaf call (see `leafOpening`) answers from LEAF_SYSTEM_PROMPT and an opening that shows its arguments,
-         * with only return_result offered; `tools` (default): every call gets the full interpreter surface. */
-        leafCalls?: 'direct' | 'tools';
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -324,13 +322,6 @@ export declare class NativeToolAgent {
     tools(session: NativeSession): unknown[];
     /** The call's signature line, the type aliases it references, and its instructions. */
     private callHeading;
-    /**
-     * The opening of a leaf call, or undefined when the call needs the interpreter: a plain function call (no folder,
-     * handoff or skills, no escalation tool) with no callable functions or services, whose parameter and result types hold
-     * only data (no files, folders, blobs, functions, host objects or Neuralese), and whose arguments and read-only
-     * captures are plain data shown whole. Such a call has nothing to run code on, so it answers from the shown values.
-     */
-    private leafOpening;
     /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
      * withCallNotes). */
     private scopeOpening;

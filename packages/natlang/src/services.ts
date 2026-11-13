@@ -1,4 +1,5 @@
 import { serviceDeclarations, selectServices } from "@workspace/natlang-services";
+import { NatlangProgramError } from "./programError.js";
 
 /** The module programs import services from. */
 const SERVICES_MODULE = "natlang:services";
@@ -97,9 +98,11 @@ export function servicesFor(
   try {
     return selectServices(bindings, names);
   } catch (error) {
-    throw new Error(
+    // The message carries the reason; a `cause` would only repeat it where the failure is shown.
+    throw new NatlangProgramError(
       `natlang program ${program} cannot get its services: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
+      program,
+      "services-unavailable"
     );
   }
 }

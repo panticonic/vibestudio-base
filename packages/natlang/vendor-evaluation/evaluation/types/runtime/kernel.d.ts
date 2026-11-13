@@ -33,6 +33,8 @@ export type CallableDefinition = {
     model?: string;
     /** Tools this definition's own calls are not offered (`withhold:` frontmatter; loader WITHHOLDABLE_TOOLS). */
     withhold?: readonly string[];
+    /** The model work one call may take (`budget:` frontmatter); each bound replaces its model's own. */
+    budget?: import('./loader.js').CallBudget;
     revision?: string;
     description?: string;
     /** Source path for named definitions. */
@@ -75,25 +77,56 @@ export type InvokeOptions = {
  * runtime with a reader dialect. A definition without a generic result runs only at the representation it declares.
  */
 export declare function instantiateDefinition(frame: Frame, definition: CallableDefinition, at: Instantiation): CallableDefinition;
+/**
+ * Why a natlang call ended without a result, for code that branches on it (`detail` says it in words):
+ * - `blocked`, `failed`: the model returned that status, with its reason;
+ * - `type-mismatch`: the model kept returning a value that is not of the declared type;
+ * - `repeated-failed-action`: the model kept repeating an action that failed the same way;
+ * - `no-action`: the model kept replying without calling a tool or returning a result;
+ * - `budget-exhausted`: the call used up its turn, token, action or graph budget;
+ * - `refinement`: the result did not satisfy its refined type (`RefinementCallError`);
+ * - `refused`: natlang did not run the call (a nesting limit, or an ad hoc call asking its caller's own question);
+ * - `incomplete`: the call ended without a result for another reason;
+ * - `cancelled`: the call's task or caller was cancelled;
+ * - `error`: an error that is not the model's outcome ended it (the error's `cause`: its model driver, its arguments, the host).
+ */
+export type NatlangFailureReason = 'blocked' | 'failed' | 'type-mismatch' | 'repeated-failed-action' | 'no-action' | 'budget-exhausted' | 'refinement' | 'refused' | 'incomplete' | 'cancelled' | 'error';
+/**
+ * The reason a call that quiesced ended, read from its trace: the last `model_incomplete` the agent loop emitted (a
+ * repeated failure, a budget stop, replies without an action), or the model's own `return_result` status.
+ */
+export declare function callFailureReason(events: readonly Record<string, unknown>[]): NatlangFailureReason;
+/**
+ * A natlang call that ended without a result. Every failure of a call surfaces as one, naming the call (`callId`, its
+ * record); `reason` classifies it, and a failure that is not the model's outcome keeps the original error as `cause`.
+ */
 export declare class NatlangCallError extends Error {
     readonly definition: string;
     readonly outcome: string;
     readonly detail: string;
     readonly callId: string;
     readonly trace: Record<string, unknown>[];
-    constructor(definition: string, outcome: string, detail: string, callId: string, trace: Record<string, unknown>[]);
+    readonly reason: NatlangFailureReason;
+    constructor(definition: string, outcome: string, detail: string, callId: string, trace: Record<string, unknown>[], reason?: NatlangFailureReason, options?: {
+        cause?: unknown;
+    });
 }
 /** A call that ended because its result did not satisfy a refined type (`Is<T, P>`): the code is the one in `detail`. */
 export declare class RefinementCallError extends NatlangCallError {
     readonly code: Exclude<RefinementCode, 'refinement-predicate-invalid'>;
     constructor(code: Exclude<RefinementCode, 'refinement-predicate-invalid'>, definition: string, outcome: string, detail: string, callId: string, trace: Record<string, unknown>[]);
 }
+/** Whether `error` is a call failure the model's work decided (not a cancellation or an error from outside the call). */
+export declare function isModelOutcomeFailure(error: unknown): error is NatlangCallError;
 /** Convert an interpreter value into an ordinary JavaScript value for host code. */
 export declare function toHost(value: Value): unknown;
 /** The pending lambda node for one invocation of `definition` with positional inputs (not yet run). */
 export declare function definitionNode(definition: CallableDefinition, inputs: unknown[], options?: InvokeOptions): LambdaNode;
 /** Prepare the same context-bound node for public calls and direct host execution. */
 export declare function prepareDefinitionNode(definition: CallableDefinition, inputs: unknown[], options?: InvokeOptions): Promise<LambdaNode>;
+/** Why an ad hoc nl call that asks its enclosing call's own question on the same inputs is not run (native/runtime.ts
+ * recognizes it to add what to do instead). */
+export declare const SAME_QUESTION_REFUSAL: string;
 /**
  * Run one natlang definition in the given frame and return its checked value. Model code can start a call and never
  * await it (an eval that fails first, a promise left in a variable): its failure is then no one's to handle, and it must

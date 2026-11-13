@@ -3,6 +3,7 @@ description: Decide what a unit's identity icon should show.
 args:
   unit: UnitDescription
 returns: IconIntent
+budget: { maxTurns: 4, turnTokens: 256 }
 ---
 Return the IconIntent for unit, choosing the family by the first rule that fits:
 1. brand: the unit directly implements or integrates one of these technologies, and term is that name exactly: claude, git, gmail, gnubash, javascript, react, svelte, typescript.

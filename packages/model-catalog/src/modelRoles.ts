@@ -25,6 +25,22 @@ export function isModelRole(value: string): value is ModelRole {
   return (MODEL_ROLES as readonly string[]).includes(value);
 }
 
+/**
+ * The model work one natlang call on a role's model may take: its turns, the reply tokens of one turn, and the
+ * context window natlang keeps the call's conversation within. A work budget, not a deadline: a call that uses it up
+ * ends with natlang's `budget-exhausted` reason (on its last turn the model is offered only `return_result`). The
+ * executor's is what the natlang suites measure it at (6 turns of 512 tokens in an 8192-token window). A `.nl`
+ * function that needs other bounds declares them (`budget:` in its frontmatter).
+ */
+export interface ModelRoleCallBudget {
+  maxTurns: number;
+  turnTokens: number;
+  contextTokens: number;
+}
+export const MODEL_ROLE_CALL_BUDGETS: Readonly<Record<ModelRole, ModelRoleCallBudget>> = {
+  executor: { maxTurns: 6, turnTokens: 512, contextTokens: 8192 },
+};
+
 /** The local-models library slug of the local executor model (LFM3 1.7B). */
 export const EXECUTOR_LOCAL_MODEL = {
   id: "lfm3-1.7b",

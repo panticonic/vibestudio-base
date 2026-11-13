@@ -374,37 +374,8 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(text).not.toContain("[natlang]");
   });
 
-  it("surfaces a failed natlang call as the cell's user-code failure text", async () => {
-    const out = await formatEvalResult({
-      success: false,
-      console: "",
-      failureKind: "user-code",
-      error: rpcFailure(
-        "natlang triage: failed: return type mismatch (record rec-9)",
-      ),
-      natlang: {
-        calls: [
-          {
-            callId: "c1",
-            name: "triage",
-            outcome: "failed",
-            detail: "return type mismatch",
-            turns: 2,
-            promptTokens: 10,
-            completionTokens: 2,
-            durationMs: 5,
-            recordId: "rec-9",
-          },
-        ],
-      },
-    });
-    const text = textOf(out);
-    expect(text).toContain(
-      "[eval] Error: natlang triage: failed: return type mismatch (record rec-9)",
-    );
-    expect(text).toContain("- triage: failed (return type mismatch)");
-    expect(out.isError).toBe(true);
-  });
+  // A failed natlang call's error line, reason, next step and trace handle are asserted on the real provider and eval
+  // engine output in @workspace/natlang's callFailure.integration.test.ts, which renders it with formatEvalResult.
 
   it("projects a canonical panel screenshot as native image content without base64 text", async () => {
     const data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";

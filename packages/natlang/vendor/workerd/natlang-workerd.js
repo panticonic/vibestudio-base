@@ -733,7 +733,8 @@ var init_intrinsics = __esm({
       "then",
       "iterateOn",
       "in",
-      "with"
+      "with",
+      "on"
     ]);
     camelCaseName = (name) => {
       const words = name.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
@@ -828,6 +829,8 @@ interface Iteration<T> {
 /** Methods every compiled natlang callable provides. */
 interface NatlangCallableMethods<A extends unknown[], R> {
   iterateOn(initial: NatlangStepState<A, R>, ...args: NatlangStepArgs<A>): Iteration<NatlangStepState<A, R>>;
+  /** The same function on another of the runtime's models (the name \`model:\` frontmatter takes); a new function. */
+  on(options: { model: string }): NatlangFunction<A, R>;
 }
 
 /** A compiled natural-language function: asynchronous, typed, and monitored. */
@@ -838,11 +841,13 @@ type NatlangGenericFunction<A extends unknown[], C, T extends C> = (<R extends C
 /** An inline \`nl\` value can be instantiated again with a fresh snapshot of the same named captures. */
 type InlineNatlangFunction<A extends unknown[] = any[], R = any> = NatlangFunction<A, R> & {
   with<C extends Record<string, unknown>>(captures: C): InlineNatlangFunction<A, R>;
+  on(options: { model: string }): InlineNatlangFunction<A, R>;
 };
 
 /** An nl function without a type argument; the compiler infers its signature from its uses. */
 type NatlangUntypedFunction = ((...args: any[]) => Promise<any>) & {
   iterateOn<S>(initial: S, ...args: any[]): Iteration<S>;
+  on(options: { model: string }): NatlangUntypedFunction;
 };
 type NlResult<F> = [F] extends [NlUnspecified] ? NatlangUntypedFunction :
   [F] extends [(...args: infer A) => infer R] ? InlineNatlangFunction<A, Awaited<R>> : InlineNatlangFunction<any[], F>;
@@ -63238,10 +63243,10 @@ ${lanes.join("\n")}
                 }
                 let expression;
                 if (isSingleOrDoubleQuote(firstChar) && !(symbol2.flags & 8)) {
-                  const literalText = stripQuotes(symbolName2).replace(/\\./g, (s) => s.substring(1));
-                  context.approximateLength += literalText.length + 2;
+                  const literalText2 = stripQuotes(symbolName2).replace(/\\./g, (s) => s.substring(1));
+                  context.approximateLength += literalText2.length + 2;
                   expression = factory.createStringLiteral(
-                    literalText,
+                    literalText2,
                     firstChar === 39
                     /* singleQuote */
                   );
@@ -213566,7 +213571,7 @@ function promptAtNlDepthLimit(prompt) {
   if (!prompt.includes(TOOLS_PROMPT)) return prompt + "\n\n" + NL_DEPTH_LIMIT_NOTICE;
   return prompt.replace(TOOLS_PROMPT, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT).replace(GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT).replace(APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT);
 }
-var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, LEAF_SYSTEM_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
+var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, PROMPT_EXAMPLE_TEXTS, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
 var init_prompt = __esm({
   "src/native/prompt.ts"() {
     "use strict";
@@ -213579,7 +213584,6 @@ At a direct parameter declared Neuralese<string>, an ordinary string argument is
     SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. This applies to inline nl children: when the child's inputs and captured context are enough to judge its assigned question, return that declared typed answer directly. Nest another nl call only for a genuinely distinct subproblem needed to complete this assignment, not a near-identical re-ask. When the evidence is already available, return the declared value directly.
 
 `;
-    LEAF_SYSTEM_PROMPT = `You are running one call of a natural-language function. Carry out its instructions yourself for the argument values shown. Your reply is the function's return value: for a string result, the text itself; for any other result, one JSON value of the declared type. Reply with that value alone. When the instructions define a result for missing information or no match, that result is a successful answer. When required information is missing and the instructions define no such result, call return_result with status "blocked" and what is missing; call it with status "failed" when the instructions cannot be carried out.`;
     TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without tools ends your turn and is taken as your answer.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows their types, not their contents. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) already supplies stepFn; never pass the callable again as the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval will also stage that value as your response. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position. When the result type is string, you can also just reply with the text.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
     FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code and fix it with edit_code.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
     FILE_TOOL_SURFACES = ["all", "editor", "files"];
@@ -213614,6 +213618,7 @@ How a call usually goes (a schematic: <angle brackets> stand for whatever this c
 - Asking a helper: a function the instructions name for part of the work is awaited like any function. eval({ code: "const part = await <helper>(<question>); part" }).
 - Returning stored data: if eval already holds the exact answer in a local value, complete with eval({ code: "<storedAnswer>", finish: true }) or an explicit return of that value. This preserves every field, including long descriptions; do not retype an object from an abbreviated preview. console.log inspects a value but does not return it: a finishing eval must also evaluate or explicitly return the actual typed answer.
 - Finishing: for a semantic answer, reply with the declared string or a JSON value of the declared type. For computation or effects, eval({ code: "<computation>; <value>", finish: true }) completes the fresh typed result. You can also use return_result({ status: "success", value: <value of the declared type> }). When something the instructions rely on is absent: return_result({ status: "blocked", reason: "<what is missing>" }); when they ask for the impossible, status "failed". Code in a reply does not execute.`;
+    PROMPT_EXAMPLE_TEXTS = ["Refunds are allowed within 30 days of delivery.", "Decide whether item meets policy."];
     APPROACH_PROMPT_AT_NL_DEPTH_LIMIT = APPROACH_PROMPT.replace(
       /^- Judging items:.*$/m,
       "- Judging items: inspect the relevant inputs and make the remaining semantic judgments here. Existing named natural-language functions remain available. Use code for exact bookkeeping."
@@ -219507,6 +219512,20 @@ var init_representation = __esm({
 
 // src/runtime/loader.ts
 import YAML from "yaml";
+function frontmatterLine(text3, key, member) {
+  const lines = text3.split(/\r?\n/);
+  const end = lines.indexOf("---", 1);
+  const start = lines.findIndex((line, index) => index > 0 && (end < 0 || index < end) && line.startsWith(`${key}:`));
+  if (start < 0) return void 0;
+  if (member === void 0) return start + 1;
+  const name = new RegExp(`(?:^\\s+|[{,;]\\s*)${member.replace(/[$?]/g, "\\$&")}\\??\\s*:`);
+  for (let index = start; index < (end < 0 ? lines.length : end); index++) {
+    if (index > start && !/^\s/.test(lines[index])) break;
+    const line = index === start ? lines[index].slice(key.length + 1) : lines[index];
+    if (name.test(line)) return index + 1;
+  }
+  return start + 1;
+}
 function registerFileRecords(codebase) {
   const visit = (item) => {
     if (item.kind !== "namespace") FILE_NODES.add(nodeKey(item));
@@ -219519,6 +219538,13 @@ function registerFileRecords(codebase) {
 function isFileRecord(record3) {
   if (record3.kind !== "namespace" && !FILE_NODES.has(nodeKey(record3))) return false;
   return Object.values(record3.codebase).every(isFileRecord);
+}
+function callBudget(path2, value, line) {
+  if (value === void 0) return void 0;
+  const entries = value && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
+  if (!entries.length || entries.some(([key, limit]) => !CALL_BUDGET_KEYS.includes(key) || !Number.isSafeInteger(limit) || limit < 1))
+    throw new NatlangSourceError(path2, `budget maps ${CALL_BUDGET_KEYS.join(", ")} to positive whole numbers, such as budget: { maxTurns: 8, turnTokens: 1024 }`, line);
+  return Object.fromEntries(entries);
 }
 function unquoteType(text3) {
   const trimmed = text3.trim();
@@ -219594,14 +219620,17 @@ function checkName(path2, name) {
   if (!IDENTIFIER4.test(name)) throw new NatlangSourceError(path2, invalidNameMessage(name));
   if (RESERVED_CALLABLE_PROPERTIES.has(name)) throw new NatlangSourceError(path2, reservedNameMessage(name));
 }
-function checkSignature(path2, args, returns, types3) {
-  const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name, text3]) => [name, parseType(text3)])));
-  try {
-    for (const type of Object.values(args)) env.checkNames(parseType(type));
-    env.checkNames(parseType(returns));
-  } catch (error) {
-    throw new NatlangSourceError(path2, error.message);
-  }
+function checkSignature(path2, args, returns, types3, text3 = "") {
+  const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name, text4]) => [name, parseType(text4)])));
+  const check = (type, line) => {
+    try {
+      env.checkNames(parseType(type));
+    } catch (error) {
+      throw new NatlangSourceError(path2, error.message, line());
+    }
+  };
+  for (const [name, type] of Object.entries(args)) check(type, () => frontmatterLine(text3, "args", name.replace(/\?$/, "")));
+  check(returns, () => frontmatterLine(text3, "returns"));
 }
 function parseNatlang(path2, text3, inherited, files2) {
   const match2 = FRONTMATTER.exec(text3);
@@ -219613,7 +219642,11 @@ function parseNatlang(path2, text3, inherited, files2) {
     throw new NatlangSourceError(path2, error.message);
   }
   for (const key of Object.keys(meta)) if (!NL_KEYS.has(key))
-    throw new NatlangSourceError(path2, `unknown frontmatter field ${JSON.stringify(key)}; allowed: ${[...NL_KEYS].join(", ")}`);
+    throw new NatlangSourceError(
+      path2,
+      `unknown frontmatter field ${JSON.stringify(key)}; allowed: ${[...NL_KEYS].join(", ")}`,
+      frontmatterLine(text3, key)
+    );
   if (typeof meta.returns !== "string") throw new NatlangSourceError(path2, "frontmatter needs a returns type");
   const subtype = String(meta.kind ?? "function");
   if (subtype !== "function" && subtype !== "directory-reducer")
@@ -219633,13 +219666,14 @@ function parseNatlang(path2, text3, inherited, files2) {
   if (generic && meta.readout === "decision")
     throw new NatlangSourceError(path2, `readout: decision scores a finite crisp result; declare returns: ${generic.crisp} for it`);
   const returns = generic?.crisp ?? meta.returns;
-  checkSignature(path2, args, returns, types3);
+  checkSignature(path2, args, returns, types3, text3);
   if (generic) checkSignature(path2, {}, generic.neuralese, types3);
   if (meta.readout !== void 0) {
     if (meta.readout !== "decision" && meta.readout !== "template") throw new NatlangSourceError(path2, "readout must be decision or template");
   }
-  if (meta.model !== void 0 && (typeof meta.model !== "string" || !/^[A-Za-z_][\w-]*$/.test(meta.model)))
+  if (meta.model !== void 0 && (typeof meta.model !== "string" || !/^[A-Za-z_][\w.:/-]*$/.test(meta.model)))
     throw new NatlangSourceError(path2, "model must name one of the runtime's models, such as small");
+  const budget = callBudget(path2, meta.budget, frontmatterLine(text3, "budget"));
   if (meta.uses !== void 0 && (!Array.isArray(meta.uses) || meta.uses.some((item) => typeof item !== "string" || !/^[A-Za-z_$][\w$]*(\/[A-Za-z_$][\w$]*)*$/.test(item))))
     throw new NatlangSourceError(path2, "uses must list package items by path from the package root, such as [harness/cut]");
   if (meta.withhold !== void 0 && (!Array.isArray(meta.withhold) || meta.withhold.some((item) => typeof item !== "string" || !WITHHOLDABLE_TOOLS.includes(item))))
@@ -219668,7 +219702,8 @@ function parseNatlang(path2, text3, inherited, files2) {
     ...meta.readout === "decision" || meta.readout === "template" ? { readout: meta.readout } : {},
     ...typeof meta.model === "string" ? { model: meta.model } : {},
     ...Array.isArray(meta.uses) && meta.uses.length ? { uses: meta.uses } : {},
-    ...Array.isArray(meta.withhold) && meta.withhold.length ? { withhold: [...new Set(meta.withhold)] } : {}
+    ...Array.isArray(meta.withhold) && meta.withhold.length ? { withhold: [...new Set(meta.withhold)] } : {},
+    ...budget ? { budget } : {}
   };
 }
 function packageRoot(dir, files2) {
@@ -220019,7 +220054,7 @@ function findApplicationContext(start, files2) {
     dir = parent;
   }
 }
-var import_typescript11, NatlangSourceError, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
+var import_typescript11, NatlangSourceError, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
 var init_loader = __esm({
   "src/runtime/loader.ts"() {
     "use strict";
@@ -220034,18 +220069,23 @@ var init_loader = __esm({
     init_nz_file();
     init_representation();
     NatlangSourceError = class extends Error {
-      constructor(path2, message2) {
-        super(`${path2}: ${message2}`);
+      constructor(path2, reason, line) {
+        super(`${path2}${line === void 0 ? "" : `:${line}`}: ${reason}`);
         this.path = path2;
+        this.reason = reason;
+        this.line = line;
         this.name = "NatlangSourceError";
       }
       path;
+      reason;
+      line;
     };
     FILE_NODES = /* @__PURE__ */ new Set();
     nodeKey = (record3) => `${record3.kind}:${record3.id}@${record3.revision}`;
     IDENTIFIER4 = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
     FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
-    NL_KEYS = /* @__PURE__ */ new Set(["description", "args", "returns", "generic", "types", "kind", "readout", "model", "uses", "withhold"]);
+    NL_KEYS = /* @__PURE__ */ new Set(["description", "args", "returns", "generic", "types", "kind", "readout", "model", "uses", "withhold", "budget"]);
+    CALL_BUDGET_KEYS = ["maxTurns", "turnTokens", "maxTokens", "contextTokens"];
     WITHHOLDABLE_TOOLS = [
       "edit_code",
       "diff_code",
@@ -225539,6 +225579,76 @@ var init_return_errors = __esm({
   }
 });
 
+// src/native/pseudo-call.ts
+function literal2(node) {
+  if (import_typescript17.default.isParenthesizedExpression(node)) return literal2(node.expression);
+  if (import_typescript17.default.isStringLiteral(node) || import_typescript17.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (import_typescript17.default.isNumericLiteral(node)) return Number(node.text);
+  if (import_typescript17.default.isPrefixUnaryExpression(node) && node.operator === import_typescript17.default.SyntaxKind.MinusToken && import_typescript17.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
+  if (node.kind === import_typescript17.default.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === import_typescript17.default.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === import_typescript17.default.SyntaxKind.NullKeyword) return null;
+  if (import_typescript17.default.isArrayLiteralExpression(node)) {
+    const items = node.elements.map((element) => import_typescript17.default.isSpreadElement(element) ? NO_VALUE : literal2(element));
+    return items.includes(NO_VALUE) ? NO_VALUE : items;
+  }
+  if (import_typescript17.default.isObjectLiteralExpression(node)) {
+    const out = {};
+    for (const property of node.properties) {
+      if (!import_typescript17.default.isPropertyAssignment(property)) return NO_VALUE;
+      const name = property.name;
+      const key = import_typescript17.default.isIdentifier(name) || import_typescript17.default.isStringLiteral(name) || import_typescript17.default.isNumericLiteral(name) ? name.text : void 0;
+      if (key === void 0) return NO_VALUE;
+      const value = literal2(property.initializer);
+      if (value === NO_VALUE) return NO_VALUE;
+      Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+    }
+    return out;
+  }
+  return NO_VALUE;
+}
+function literalText(text3) {
+  try {
+    return { value: JSON.parse(text3) };
+  } catch {
+  }
+  const trimmed = text3.trim();
+  if (!trimmed || trimmed.length > 2e5) return void 0;
+  const source2 = import_typescript17.default.createSourceFile("value.ts", `(${trimmed}
+)`, import_typescript17.default.ScriptTarget.ES2022, false, import_typescript17.default.ScriptKind.TS);
+  if ((source2.parseDiagnostics ?? []).length) return void 0;
+  if (source2.statements.length !== 1) return void 0;
+  const statement = source2.statements[0];
+  if (!import_typescript17.default.isExpressionStatement(statement)) return void 0;
+  const value = literal2(statement.expression);
+  return value === NO_VALUE ? void 0 : { value };
+}
+function writtenReturnResult(text3) {
+  const trimmed = text3.trim().replace(/^```(?:ts|typescript|js|javascript)?\s*\n([\s\S]*?)\n```$/, "$1").trim();
+  if (!/^return_result\s*\(/.test(trimmed) || trimmed.length > 2e5) return void 0;
+  const source2 = import_typescript17.default.createSourceFile("reply.ts", trimmed, import_typescript17.default.ScriptTarget.ES2022, false, import_typescript17.default.ScriptKind.TS);
+  if (source2.statements.length !== 1) return void 0;
+  const statement = source2.statements[0];
+  if (!import_typescript17.default.isExpressionStatement(statement) || !import_typescript17.default.isCallExpression(statement.expression)) return void 0;
+  const call = statement.expression;
+  if (!import_typescript17.default.isIdentifier(call.expression) || call.expression.text !== "return_result" || call.arguments.length !== 1) return void 0;
+  const request = literal2(call.arguments[0]);
+  if (!request || typeof request !== "object" || Array.isArray(request)) return void 0;
+  const fields = request;
+  if (!["success", "blocked", "failed"].includes(String(fields.status)) || !Object.keys(fields).every((key) => ["status", "value", "reason"].includes(key))) return void 0;
+  if (fields.reason !== void 0 && typeof fields.reason !== "string") return void 0;
+  return fields;
+}
+var import_typescript17, NO_VALUE;
+var init_pseudo_call = __esm({
+  "src/native/pseudo-call.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    import_typescript17 = __toESM(require_typescript(), 1);
+    NO_VALUE = /* @__PURE__ */ Symbol("not a literal");
+  }
+});
+
 // src/native/staged-result.ts
 var RESULT_PREFIX, STAGED_RESULT_NOTICE, RECORDED_RESULT_NOTICE, escapeRegex, noticePatterns;
 var init_staged_result = __esm({
@@ -225582,23 +225692,23 @@ function typeAliasesFromEnv(env) {
   return aliases;
 }
 function computedNeuraleseMarkerConcatenation(code, codebase, isNeuraleseType, neuraleseResult) {
-  const source2 = import_typescript17.default.createSourceFile("natlang-eval.ts", code, import_typescript17.default.ScriptTarget.Latest, true, import_typescript17.default.ScriptKind.TS);
-  const partsOf2 = (expression) => import_typescript17.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript17.default.SyntaxKind.PlusToken ? [...partsOf2(expression.left), ...partsOf2(expression.right)] : [expression];
+  const source2 = import_typescript18.default.createSourceFile("natlang-eval.ts", code, import_typescript18.default.ScriptTarget.Latest, true, import_typescript18.default.ScriptKind.TS);
+  const partsOf2 = (expression) => import_typescript18.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript18.default.SyntaxKind.PlusToken ? [...partsOf2(expression.left), ...partsOf2(expression.right)] : [expression];
   const hasComputedMarker = (expression) => {
-    if (import_typescript17.default.isTemplateExpression(expression)) {
+    if (import_typescript18.default.isTemplateExpression(expression)) {
       const templateText = expression.head.text + expression.templateSpans.map((span) => span.literal.text).join("");
       return expression.templateSpans.length > 0 && templateText.includes("<|neuralese|>") && templateText.includes("<|/neuralese|>");
     }
     const parts = partsOf2(expression);
-    const literalText = parts.filter(import_typescript17.default.isStringLiteralLike).map((part) => part.text);
-    const hasOpen = literalText.some((text3) => text3.includes("<|neuralese|>"));
-    const hasClose = literalText.some((text3) => text3.includes("<|/neuralese|>"));
-    const hasComputedPart = parts.some((part) => !import_typescript17.default.isStringLiteralLike(part) && !import_typescript17.default.isNoSubstitutionTemplateLiteral(part));
+    const literalText2 = parts.filter(import_typescript18.default.isStringLiteralLike).map((part) => part.text);
+    const hasOpen = literalText2.some((text3) => text3.includes("<|neuralese|>"));
+    const hasClose = literalText2.some((text3) => text3.includes("<|/neuralese|>"));
+    const hasComputedPart = parts.some((part) => !import_typescript18.default.isStringLiteralLike(part) && !import_typescript18.default.isNoSubstitutionTemplateLiteral(part));
     return hasOpen && hasClose && hasComputedPart;
   };
   const expressionPath = (expression) => {
-    if (import_typescript17.default.isIdentifier(expression)) return [expression.text];
-    if (import_typescript17.default.isPropertyAccessExpression(expression)) {
+    if (import_typescript18.default.isIdentifier(expression)) return [expression.text];
+    if (import_typescript18.default.isPropertyAccessExpression(expression)) {
       const base = expressionPath(expression.expression);
       return base ? [...base, expression.name.text] : void 0;
     }
@@ -225623,29 +225733,29 @@ function computedNeuraleseMarkerConcatenation(code, codebase, isNeuraleseType, n
   let found;
   const computedVariables = /* @__PURE__ */ new Set();
   const collectComputedVariables = (node) => {
-    if (import_typescript17.default.isVariableDeclaration(node) && import_typescript17.default.isIdentifier(node.name) && node.initializer && hasComputedMarker(node.initializer))
+    if (import_typescript18.default.isVariableDeclaration(node) && import_typescript18.default.isIdentifier(node.name) && node.initializer && hasComputedMarker(node.initializer))
       computedVariables.add(node.name.text);
-    import_typescript17.default.forEachChild(node, collectComputedVariables);
+    import_typescript18.default.forEachChild(node, collectComputedVariables);
   };
   collectComputedVariables(source2);
   const visit = (node) => {
     if (found) return;
-    if (import_typescript17.default.isReturnStatement(node) && node.expression && neuraleseResult && (hasComputedMarker(node.expression) || import_typescript17.default.isIdentifier(node.expression) && computedVariables.has(node.expression.text))) {
+    if (import_typescript18.default.isReturnStatement(node) && node.expression && neuraleseResult && (hasComputedMarker(node.expression) || import_typescript18.default.isIdentifier(node.expression) && computedVariables.has(node.expression.text))) {
       found = node.expression;
       return;
     }
-    if (import_typescript17.default.isVariableDeclaration(node) && node.type && isNeuraleseType(node.type.getText(source2)) && node.initializer && hasComputedMarker(node.initializer)) {
+    if (import_typescript18.default.isVariableDeclaration(node) && node.type && isNeuraleseType(node.type.getText(source2)) && node.initializer && hasComputedMarker(node.initializer)) {
       found = node.initializer;
       return;
     }
-    if (import_typescript17.default.isCallExpression(node)) {
+    if (import_typescript18.default.isCallExpression(node)) {
       const parameters = callableArgumentTypes(node.expression);
-      for (const [index, argument] of node.arguments.entries()) if (parameters?.[index] && isNeuraleseType(parameters[index]) && (hasComputedMarker(argument) || import_typescript17.default.isIdentifier(argument) && computedVariables.has(argument.text))) {
+      for (const [index, argument] of node.arguments.entries()) if (parameters?.[index] && isNeuraleseType(parameters[index]) && (hasComputedMarker(argument) || import_typescript18.default.isIdentifier(argument) && computedVariables.has(argument.text))) {
         found = argument;
         return;
       }
     }
-    import_typescript17.default.forEachChild(node, visit);
+    import_typescript18.default.forEachChild(node, visit);
   };
   visit(source2);
   return found;
@@ -225668,6 +225778,16 @@ ${error.message}${hint ? `
 hint: ${hint}` : ""}`,
     codes: error.diagnostics.map((diagnostic) => diagnostic.code)
   };
+}
+function structuredShape(type, env) {
+  const resolved = env.resolve(type);
+  if (resolved.kind === "refined" || resolved.kind === "untrusted") return structuredShape(resolved.base, env);
+  if (resolved.kind === "record" || resolved.kind === "dict") return "an object";
+  if (resolved.kind === "list") return "an array";
+  if (resolved.kind !== "union" || !resolved.members.length) return void 0;
+  const shapes = new Set(resolved.members.map((member) => structuredShape(member, env)));
+  if (shapes.has(void 0)) return void 0;
+  return shapes.size === 1 ? [...shapes][0] : "an object or an array";
 }
 function jsonSerializableType(type, env, active2 = /* @__PURE__ */ new Set()) {
   const resolved = env.resolve(type);
@@ -226138,7 +226258,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript17, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript18, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -226162,6 +226282,7 @@ var init_runtime2 = __esm({
     init_neuralese2();
     init_graph();
     init_context();
+    init_kernel();
     init_callable();
     init_selected_captures();
     init_selected_surface();
@@ -226171,10 +226292,11 @@ var init_runtime2 = __esm({
     init_introspection();
     init_tool_surface();
     init_return_errors();
+    init_pseudo_call();
     init_staged_result();
     init_model_facing();
     init_tool_markup();
-    import_typescript17 = __toESM(require_typescript(), 1);
+    import_typescript18 = __toESM(require_typescript(), 1);
     init_hash();
     SELF_CALL_ADVICE = "Do what its instructions ask here. For a judgment, decide it yourself from the inputs and return the answer with return_result; use eval only for exact work the instructions need.";
     oneLine = (value, holder, liveIdentity, untrusted2) => renderValue(value, { holder, budget: 80, liveIdentity, untrusted: untrusted2 });
@@ -226923,8 +227045,10 @@ ${tool2} is one of your tools: call it as a tool, not from eval code.` : "";
 ${tool2} is the call you are executing, not a function in its scope: ${SELF_CALL_ADVICE}` : tool2 && !NATIVE_TOOLS.includes(tool2) ? `
 ${tool2} must be bound in this eval's scope before you use it. Mentioning it in instructions does not declare it.` + // Only an interpolated template can be the cause of the template advice.
         (code.includes("${") ? " JavaScript template interpolation runs when the template is created: create an item-specific template inside the callback or loop that binds the item, or mention a future child parameter by name in literal instructions and pass its value when calling the child." : "") : "";
+        const sameQuestionNote = message2.includes(SAME_QUESTION_REFUSAL) ? `
+That question is this call's own: you are the call that answers it. Any nl call with these instructions and inputs is refused the same way. ${SELF_CALL_ADVICE}` : "";
         const repeatNote = repeated ? "\nThis is the code of your previous eval, and it failed the same way: change it before running it again." : "";
-        return toolNote + bindingNote + repeatNote + (reaching ? `
+        return toolNote + bindingNote + sameQuestionNote + repeatNote + (reaching ? `
 ${this.scopeGuide()}` : "") + (logs.length ? `
 console:
 ${this.show(logs.join("\n"))}` : "") + (effects.length ? `
@@ -227134,29 +227258,21 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
             } catch (directError) {
               if (!(directError instanceof Reject)) throw directError;
               if (!parseJsonFallback || typeof value !== "string") throw directError;
-              let parsed;
-              try {
-                parsed = JSON.parse(value);
-              } catch {
-                throw directError;
-              }
-              typedValue = coerceCompleteJson(parsed, element, this.env, "return");
+              const parsed = literalText(value);
+              if (!parsed) throw directError;
+              typedValue = coerceCompleteJson(parsed.value, element, this.env, "return");
             }
             const text3 = typedJsonSource(typedValue);
             if (text3 === void 0) throw first;
             return this.writeNeuraleseResult(text3, wanted, source2, "typed-json-result");
           }
-          let candidate = value;
-          if (parseJsonFallback && typeof value === "string") {
-            try {
-              candidate = JSON.parse(value);
-            } catch {
-              candidate = value;
-            }
-          }
+          const spelled = parseJsonFallback && typeof value === "string" ? literalText(value) : void 0;
+          const candidate = spelled ? spelled.value : value;
+          let second;
           try {
             return coerce(candidate, resultType, this.env, "return");
-          } catch {
+          } catch (error) {
+            second = error;
             const plans = [];
             const preflightType = typedTextPreflightType(candidate, resultType, this.env, [], plans);
             if (plans.length) {
@@ -227173,6 +227289,11 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
               ));
               return applyTypedTextRefs(preflightValue, plans, refs);
             }
+          }
+          const shape2 = parseJsonFallback && typeof value === "string" ? structuredShape(resultType, this.env) : void 0;
+          if (shape2) {
+            if (spelled && second instanceof Reject && spelled.value !== null && typeof spelled.value === "object") throw second;
+            throw new Reject([{ path: "value", code: "type-mismatch", text: `return_result needs the ${formatType(resultType)} itself as its value argument, written as ${shape2} in the arguments rather than as text.` }]);
           }
           throw first;
         }
@@ -227431,9 +227552,10 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
             try {
               value = coerce(args.value, this.lam.type.returns, this.env, "return");
             } catch (first) {
-              if (typeof args.value !== "string") throw first;
+              const spelled = typeof args.value === "string" ? literalText(args.value) : void 0;
+              if (!spelled) throw first;
               try {
-                value = coerce(JSON.parse(args.value), this.lam.type.returns, this.env, "return");
+                value = coerce(spelled.value, this.lam.type.returns, this.env, "return");
               } catch {
                 throw first;
               }
@@ -227834,6 +227956,13 @@ ${declaration}`;
         const persistentTypeNames = [.../* @__PURE__ */ new Set([...Object.keys(visibleTypes), ...Object.keys(currentTypes)])];
         const hooks = this.runtime.hooks;
         const boundValues = Object.fromEntries([...Object.entries(captureRead), ...inputNames.map((name) => [name, this.lam.args[name]])].filter((entry) => ["string", "number", "boolean"].includes(typeof entry[1])));
+        const ownText = this.lam.body + "\n" + JSON.stringify(this.lam.args ?? {}) + "\n" + JSON.stringify(this.lam.let ?? {});
+        const copied = PROMPT_EXAMPLE_TEXTS.find((text3) => code.includes(text3) && !ownText.includes(text3));
+        if (copied) {
+          const own = inputNames.length ? `this call's own instructions and inputs (${inputNames.join(", ")})` : "this call's own instructions";
+          const text3 = `prompt-example: ${JSON.stringify(copied)} comes from the example in your system prompt, not from this call; work from ${own} instead.`;
+          return { kind: "rejected", text: text3 + this.captureScopeFailure("compile", code, scopeBefore, text3), codes: ["prompt-example"] };
+        }
         const compiled2 = compileScopeSnippet(code, {
           inputBindings: inputNames,
           boundValues,
@@ -228345,60 +228474,6 @@ var init_operator_frames = __esm({
   }
 });
 
-// src/native/pseudo-call.ts
-function literal2(node) {
-  if (import_typescript18.default.isParenthesizedExpression(node)) return literal2(node.expression);
-  if (import_typescript18.default.isStringLiteral(node) || import_typescript18.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (import_typescript18.default.isNumericLiteral(node)) return Number(node.text);
-  if (import_typescript18.default.isPrefixUnaryExpression(node) && node.operator === import_typescript18.default.SyntaxKind.MinusToken && import_typescript18.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
-  if (node.kind === import_typescript18.default.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === import_typescript18.default.SyntaxKind.FalseKeyword) return false;
-  if (node.kind === import_typescript18.default.SyntaxKind.NullKeyword) return null;
-  if (import_typescript18.default.isArrayLiteralExpression(node)) {
-    const items = node.elements.map((element) => import_typescript18.default.isSpreadElement(element) ? NO_VALUE : literal2(element));
-    return items.includes(NO_VALUE) ? NO_VALUE : items;
-  }
-  if (import_typescript18.default.isObjectLiteralExpression(node)) {
-    const out = {};
-    for (const property of node.properties) {
-      if (!import_typescript18.default.isPropertyAssignment(property)) return NO_VALUE;
-      const name = property.name;
-      const key = import_typescript18.default.isIdentifier(name) || import_typescript18.default.isStringLiteral(name) || import_typescript18.default.isNumericLiteral(name) ? name.text : void 0;
-      if (key === void 0) return NO_VALUE;
-      const value = literal2(property.initializer);
-      if (value === NO_VALUE) return NO_VALUE;
-      out[key] = value;
-    }
-    return out;
-  }
-  return NO_VALUE;
-}
-function writtenReturnResult(text3) {
-  const trimmed = text3.trim().replace(/^```(?:ts|typescript|js|javascript)?\s*\n([\s\S]*?)\n```$/, "$1").trim();
-  if (!/^return_result\s*\(/.test(trimmed) || trimmed.length > 2e5) return void 0;
-  const source2 = import_typescript18.default.createSourceFile("reply.ts", trimmed, import_typescript18.default.ScriptTarget.ES2022, false, import_typescript18.default.ScriptKind.TS);
-  if (source2.statements.length !== 1) return void 0;
-  const statement = source2.statements[0];
-  if (!import_typescript18.default.isExpressionStatement(statement) || !import_typescript18.default.isCallExpression(statement.expression)) return void 0;
-  const call = statement.expression;
-  if (!import_typescript18.default.isIdentifier(call.expression) || call.expression.text !== "return_result" || call.arguments.length !== 1) return void 0;
-  const request = literal2(call.arguments[0]);
-  if (!request || typeof request !== "object" || Array.isArray(request)) return void 0;
-  const fields = request;
-  if (!["success", "blocked", "failed"].includes(String(fields.status)) || !Object.keys(fields).every((key) => ["status", "value", "reason"].includes(key))) return void 0;
-  if (fields.reason !== void 0 && typeof fields.reason !== "string") return void 0;
-  return fields;
-}
-var import_typescript18, NO_VALUE;
-var init_pseudo_call = __esm({
-  "src/native/pseudo-call.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    import_typescript18 = __toESM(require_typescript(), 1);
-    NO_VALUE = /* @__PURE__ */ Symbol("not a literal");
-  }
-});
-
 // src/builtin/sources.generated.ts
 var BUILTIN_SOURCES;
 var init_sources_generated = __esm({
@@ -228508,7 +228583,6 @@ function promptPieces() {
     { id: "generation-guidance", text: GENERATION_GUIDANCE, scope: "generic" },
     { id: "approach", text: APPROACH_PROMPT, scope: "generic" },
     { id: "decision", text: DECISION_SYSTEM_PROMPT, scope: "generic" },
-    { id: "leaf", text: LEAF_SYSTEM_PROMPT, scope: "generic" },
     ...predicatePieces(),
     { id: "compaction-notice", text: COMPACTION_NOTICE, scope: "generic" },
     { id: "automatic-note", text: AUTOMATIC_NOTE, scope: "generic" },
@@ -228620,37 +228694,6 @@ function callNotes(call) {
 }
 function modelTurnsSoFar(messages) {
   return messages.filter((message2) => message2.role === "assistant" && !(message2.tool_calls ?? []).some((call) => String(call.id).startsWith("scope_"))).length;
-}
-function dataOnly(type, env, depth2 = 0) {
-  if (depth2 > 32) return false;
-  const resolved = type.kind === "name" ? env.resolve(type) : type;
-  switch (resolved.kind) {
-    case "prim":
-      return !["Blob", "Folder", "FileHandle"].includes(resolved.name);
-    case "lit":
-      return true;
-    case "record":
-      return resolved.fields.every((field) => dataOnly(field.type, env, depth2 + 1));
-    case "list":
-    case "dict":
-      return dataOnly(resolved.element, env, depth2 + 1);
-    case "union":
-    case "intersection":
-      return resolved.members.every((member) => dataOnly(member, env, depth2 + 1));
-    case "refined":
-    case "untrusted":
-    case "index":
-      return dataOnly(resolved.base, env, depth2 + 1);
-    default:
-      return false;
-  }
-}
-function plainData(value, depth2 = 0) {
-  if (value === null || value === void 0 || ["string", "number", "boolean"].includes(typeof value)) return true;
-  if (depth2 > 64 || typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.every((item) => plainData(item, depth2 + 1));
-  const prototype = Object.getPrototypeOf(value);
-  return (prototype === Object.prototype || prototype === null) && Object.values(value).every((item) => plainData(item, depth2 + 1));
 }
 function inputsListing(session, views = {}) {
   const lam = session.lam;
@@ -229888,48 +229931,6 @@ ${notes}` : opening;
         const signature = `${lam.functionName || "run"}(` + lam.type.params.fields.map((field) => `${field.name}${field.optional ? "?" : ""}: ${formatType(field.type)}`).join(", ") + `): ${formatType(lam.type.returns)}`;
         return { signature, scopeTypes, program };
       }
-      /**
-       * The opening of a leaf call, or undefined when the call needs the interpreter: a plain function call (no folder,
-       * handoff or skills, no escalation tool) with no callable functions or services, whose parameter and result types hold
-       * only data (no files, folders, blobs, functions, host objects or Neuralese), and whose arguments and read-only
-       * captures are plain data shown whole. Such a call has nothing to run code on, so it answers from the shown values.
-       */
-      leafOpening(session, views) {
-        const lam = session.lam;
-        if (lam.type.kind !== "lambda" || lam.subtype !== "function" || lam.projectTransaction || lam.handoff || lam.skills?.listing || this.options.fallbacks?.length || Object.keys(views).length || Object.keys(lam.codebase).length || Object.keys(session.availableServices()).length) return;
-        if ([...lam.type.params.fields.map((field) => field.type), lam.type.returns].some((type) => !dataOnly(type, session.env))) return;
-        if (!Object.values(lam.args).every(plainData)) return;
-        const context = [];
-        for (const cell of Object.values(lam.captures ?? {})) {
-          if (isAdapterValue(capturedValue(cell))) continue;
-          if (cell.mutable || cell.skill) return;
-          let value;
-          try {
-            value = cell.get();
-          } catch {
-            return;
-          }
-          if (!plainData(value)) return;
-          context.push(`${cell.name}: ${cell.type} = ${renderValue(value, {
-            holder: cell.name,
-            budget: scopeValueChars(session),
-            liveIdentity: session.runtime.displayLiveId,
-            untrusted: session.runtime.untrusted
-          })}`);
-        }
-        const args = inputsListing(session, views);
-        if ([args, ...context].some((text3) => text3.includes("cut off:"))) return;
-        const { signature, scopeTypes, program } = this.callHeading(session);
-        return [
-          `You are inside this call: ${signature}`,
-          ...scopeTypes,
-          "",
-          "Instructions:",
-          program,
-          ...lam.type.params.fields.length ? ["", "Arguments:", args] : [],
-          ...context.length ? ["", "Values from the calling code:", ...context] : []
-        ].join("\n");
-      }
       /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
        * withCallNotes). */
       scopeOpening(session) {
@@ -230330,8 +230331,7 @@ ${notes}` : opening;
           renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName)),
           this.options.callAddendum ?? ""
         ].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
-        let leaf;
-        const systemPrompt = () => leaf !== void 0 ? LEAF_SYSTEM_PROMPT : typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? SYSTEM_PROMPT;
+        const systemPrompt = () => typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? SYSTEM_PROMPT;
         const notes = callNotes({
           guidance,
           ownCode: Object.keys(session.lam.codebase).length > 0,
@@ -230344,13 +230344,7 @@ ${notes}` : opening;
           rendering: this.options.promptRendering
         });
         const views = await this.views(session);
-        leaf = this.options.leafCalls === "direct" ? this.leafOpening(session, views) : void 0;
-        if (leaf !== void 0) session.runtime.trace.emit("leaf_call", { call_id: session.runtime.currentCallId ?? null });
         const openingMessages = () => {
-          if (leaf !== void 0) return [
-            { role: "system", content: systemPrompt() },
-            { role: "user", content: withCallNotes(leaf, notes) }
-          ];
           const reading = this.scopeReading(session, views);
           const scopeOpening = withCallNotes(this.scopeOpening(session), notes);
           if (session.lam.skills?.listing) for (const skill of session.lam.skills.inventory ?? [])
@@ -230445,7 +230439,7 @@ ${notes}` : opening;
         const switchModel = (report) => {
           const next2 = this.options.fallbacks?.[fallbackIndex];
           if (!next2) return "escalation unavailable: no configured fallback remains";
-          if (this.options.modelBudget && !this.options.modelBudget.hasRemaining()) return "graph model request or token budget exhausted";
+          if (this.options.modelBudget && !this.options.modelBudget.hasRemaining()) return budgetStop("graph model request or token budget exhausted");
           if (adapterCells(session.lam).length || activeNativeAdapters().length || activeNativeStates().length || session.runtime.frame?.weights?.effective.length || session.runtime.frame?.weights?.soft)
             return "escalation unavailable: this invocation has model-specific adapters or implicit soft weights";
           const from = currentActor.id;
@@ -230519,6 +230513,16 @@ ${notes}` : opening;
           messages.push({ role: "user", content: `The previous actor made no progress. Continue this invocation from its existing scope and transcript. ${JSON.stringify(report)}` });
           return void 0;
         };
+        const budgetStop = (detail) => {
+          session.runtime.trace.emit("model_incomplete", {
+            call_id: session.runtime.currentCallId ?? null,
+            turn: turns,
+            reason: "budget_exhausted",
+            evidence: detail
+          });
+          return detail;
+        };
+        let repliesWithoutAction = 0;
         const timedOut = () => deadline !== null && Date.now() >= deadline;
         const exhausted = () => maxTurns !== void 0 && turns >= maxTurns || maxTokens !== void 0 && tokens2 >= maxTokens || timedOut();
         const allowance = () => {
@@ -230527,12 +230531,11 @@ ${notes}` : opening;
           return remaining === null ? currentTurnTokens : Math.min(currentTurnTokens, remaining);
         };
         while (true) {
-          if (exhausted()) return "episode turn, token, or wall-clock budget exhausted";
+          if (exhausted()) return budgetStop("episode turn, token, or wall-clock budget exhausted");
           messages[0].content = systemPrompt();
           const limit = allowance() ?? (budget === null ? null : Math.floor(budget / 4));
           const lastTurn = maxTurns !== void 0 && maxTurns - turns === 1;
-          const allTools = this.tools(session).filter((item) => (fallbackIndex < (this.options.fallbacks?.length ?? 0) || item.function?.name !== "escalate") && // A leaf call has nothing to run code on: return_result is its only tool (for a blocked or failed status).
-          (leaf === void 0 || item.function?.name === "return_result"));
+          const allTools = this.tools(session).filter((item) => fallbackIndex < (this.options.fallbacks?.length ?? 0) || item.function?.name !== "escalate");
           session.rememberOfferedTools(allTools);
           const only = (name) => allTools.filter((tool2) => String(tool2.function?.name) === name);
           const estimate = (tools) => requestChars(tools) * tokensPerChar;
@@ -230655,7 +230658,7 @@ ${notes}` : opening;
               max_tokens: statedWindow === null ? limit : Math.max(1, Math.min(limit ?? statedWindow, statedWindow - Math.ceil(estimate(offered)) - REPLY_MARGIN))
             };
             reservation = await this.options.modelBudget?.reserve(turnRequest.max_tokens ?? null, session.runtime.signal);
-            if (this.options.modelBudget && !reservation) return "graph model request or token budget exhausted";
+            if (this.options.modelBudget && !reservation) return budgetStop("graph model request or token budget exhausted");
             if (reservation) turnRequest.max_tokens = reservation.limit;
             calledDriver = true;
             response = await runInFrame(session.runtime.frame, () => turnOptions ? currentDriver(turnRequest, session.runtime.signal, turnOptions) : currentDriver(turnRequest, session.runtime.signal));
@@ -230769,7 +230772,7 @@ ${notes}` : opening;
             );
             const recorded2 = response.raw_response?.x_natlang_native_recorded_turn;
             if (turnNode && typeof recorded2 === "string") activeRecorder()?.linkNativeTurn?.(recorded2, turnNode);
-            return "graph model token budget exceeded by model response";
+            return budgetStop("graph model token budget exceeded by model response");
           }
           if (response.protocol_failure) {
             const failure2 = nativeProtocolFailure(response.raw_response);
@@ -230791,7 +230794,7 @@ ${notes}` : opening;
               failed_turn: turnNode,
               failure: failure2
             });
-            if (timedOut() || maxTokens !== void 0 && tokens2 > maxTokens) return "episode token or wall-clock budget exhausted";
+            if (timedOut() || maxTokens !== void 0 && tokens2 > maxTokens) return budgetStop("episode token or wall-clock budget exhausted");
             messages.push(
               { role: "assistant", content: response.text ?? "", ...thought(response.reasoning) },
               { role: "user", content: nativeProtocolFeedback(failure2, templatedWriteAttempt) }
@@ -230828,7 +230831,7 @@ ${notes}` : opening;
           });
           tokens2 += response.completion_tokens === void 0 ? limit ?? 0 : Math.max(1, response.completion_tokens);
           if (timedOut() || maxTokens !== void 0 && tokens2 > maxTokens)
-            return "episode token or wall-clock budget exhausted";
+            return budgetStop("episode token or wall-clock budget exhausted");
           if (!response.calls?.length && availableTools !== allTools && !lastTurn && !response.truncated) {
             consecutiveEmptyEosWithoutResult = 0;
             const elided = pinNote(null) + collapseHistory(messages, protectedLength);
@@ -230894,9 +230897,21 @@ ${notes}` : opening;
               });
               return "model_incomplete: truncated_without_action (configured repair limit reached)";
             }
+            if (!response.truncated && ++repliesWithoutAction >= 4) {
+              const said = (response.text ?? "").replace(/\s+/g, " ").trim();
+              session.runtime.trace.emit("model_incomplete", {
+                call_id: callId,
+                turn: turns,
+                reason: "no_action",
+                evidence: "four_consecutive_replies_without_a_tool_call",
+                replies: repliesWithoutAction
+              });
+              return `model_incomplete: no_action (${repliesWithoutAction} replies in a row called no tool and returned no result` + (said ? `; the last one said: ${JSON.stringify(said.length > 200 ? said.slice(0, 200) + "..." : said)})` : ")");
+            }
             messages.push({ role: "assistant", content: response.text ?? "", ...thought(response.reasoning) }, { role: "user", content: feedback });
             continue;
           }
+          repliesWithoutAction = 0;
           this.proposals.push({ calls, value_confidence: response.value_confidence ?? [], released: true, messages: [...messages] });
           session.runtime.trace.emit("proposal", {
             call_id: session.runtime.currentCallId ?? null,
@@ -230924,7 +230939,7 @@ ${notes}` : opening;
               { role: "assistant", content: replyText(response), tool_calls: raw.slice(0, 1), ...thought(response.reasoning) },
               { role: "tool", tool_call_id: String(raw[0].id), content: action.text }
             );
-            if (action.kind === "budget") return action.text;
+            if (action.kind === "budget") return budgetStop(action.text);
             if (failure2?.startsWith("escalation unavailable:") || failure2?.startsWith("graph model ")) return failure2;
             if (failure2) {
               const repeated = stuck(`${JSON.stringify(calls)}
@@ -230968,7 +230983,7 @@ ${failure2}`);
           const previousFailureSerial = session.failureSerial;
           let stoppedAt;
           for (const [index, [name, args]] of calls.entries()) {
-            if (timedOut()) return "episode wall-clock budget exhausted";
+            if (timedOut()) return budgetStop("episode wall-clock budget exhausted");
             if (stoppedAt !== void 0) {
               if (READ_ONLY_TOOLS.has(name)) results.push(await session.applyAsync(
                 name,
@@ -231036,7 +231051,7 @@ ${failure2}`);
               estimated_tokens: Math.round(compactedAt)
             });
           }
-          if (results.at(-1)?.kind === "budget") return "action or tool-call budget exhausted";
+          if (results.at(-1)?.kind === "budget") return budgetStop("action or tool-call budget exhausted");
           const repairLimit = this.options.maxFailureRepairs;
           const refinedResult = results.find((result) => result.codes?.some((code) => code === "refinement-unsatisfied" || code === "refinement-undecided"));
           if (refinementFailures || refinedResult) {
@@ -232882,9 +232897,12 @@ var kernel_exports = {};
 __export(kernel_exports, {
   NatlangCallError: () => NatlangCallError,
   RefinementCallError: () => RefinementCallError,
+  SAME_QUESTION_REFUSAL: () => SAME_QUESTION_REFUSAL,
+  callFailureReason: () => callFailureReason,
   definitionNode: () => definitionNode,
   instantiateDefinition: () => instantiateDefinition,
   invokeDefinition: () => invokeDefinition,
+  isModelOutcomeFailure: () => isModelOutcomeFailure,
   prepareDefinitionNode: () => prepareDefinitionNode,
   toHost: () => toHost
 });
@@ -233003,6 +233021,23 @@ function rebaseCaptureCells(captures, replacements) {
   }
   return changed ? result : captures;
 }
+function callFailureReason(events) {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event.kind === "model_incomplete") {
+      if (event.reason === "budget_exhausted") return "budget-exhausted";
+      if (event.reason !== "repeated_failed_action") return "no-action";
+      const action = events.slice(0, index).reverse().find((item) => item.kind === "action");
+      return action?.name === "return_result" && Array.isArray(action.diagnostics) && action.diagnostics.includes("type-mismatch") ? "type-mismatch" : "repeated-failed-action";
+    }
+    if (event.kind === "action" && event.name === "return_result" && event.outcome === "blocked")
+      return event.arguments?.status === "blocked" ? "blocked" : "failed";
+  }
+  return "incomplete";
+}
+function isModelOutcomeFailure(error) {
+  return error instanceof NatlangCallError && error.reason !== "error" && error.reason !== "cancelled";
+}
 function refinedSignature(definition) {
   const texts = [definition.returns, ...definition.params.map((parameter) => parameter.type), ...Object.values(definition.types)];
   if (!texts.some((text3) => /\bIs\s*</.test(text3))) return void 0;
@@ -233111,6 +233146,7 @@ async function prepareDefinitionNode(definition, inputs, options = {}) {
 function invokeDefinition(frame, definition, positional, options = {}) {
   if (definition.declaredParameters && !definition.openParameters)
     positional = positional.slice(0, definition.params.length);
+  if (frame.model !== void 0) definition = { ...definition, model: frame.model };
   const abort = new AbortController();
   const signal = AbortSignal.any([frame.signal ?? frame.task.signal, abort.signal]);
   const call = runDefinition({ ...frame, signal, abort }, definition, positional, options);
@@ -233235,7 +233271,8 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       returns: definition.representation ? definition.returns : record3.returns,
       types: record3.types,
       codebase: record3.codebase,
-      withhold: record3.withhold
+      withhold: record3.withhold,
+      budget: record3.budget
     };
   } else if (replacement?.kind === "lambda.instructions" && options.instructions === void 0)
     definition = { ...definition, body: replacement.template.segments[0] };
@@ -233269,24 +233306,19 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       "quiesced",
       `ad hoc nl calls are limited to ${MAX_AD_HOC_NL_DEPTH} nested layers; solve this part here or call an existing named function`,
       "",
-      []
+      [],
+      "refused"
     );
   const question = adHoc ? (options.instructions ?? definition.body).replace(/\s+/g, " ").trim().toLowerCase() + "\0" + inputsKey(positional) : "";
   if (question && !fileRoot && (frame.adHocQuestions ?? []).includes(question))
-    throw new NatlangCallError(
-      definition.name,
-      "quiesced",
-      "this call was itself created with these same instructions and inputs; make the judgment here from its inputs and return it instead of delegating it again",
-      "",
-      []
-    );
+    throw new NatlangCallError(definition.name, "quiesced", SAME_QUESTION_REFUSAL, "", [], "refused");
   const adHocQuestions = fileRoot ? [] : question ? [...frame.adHocQuestions ?? [], question] : frame.adHocQuestions;
   const baseIdentity = definition.programId ? JSON.stringify([definition.programId, definition.id]) : definition.id;
   const callIdentity = definition.contextId ? `${baseIdentity}#${definition.contextId}` : baseIdentity;
   if (frame.chain.includes(callIdentity)) throw new NatlangRecursionError(definition.id, frame.chain, definition.name);
   const limits = task.runtime.options.limits ?? {};
   if (limits.maxDepth !== void 0 && frame.chain.length >= limits.maxDepth)
-    throw new NatlangCallError(definition.name, "quiesced", `natlang calls nested deeper than ${limits.maxDepth}`, "", []);
+    throw new NatlangCallError(definition.name, "quiesced", `natlang calls nested deeper than ${limits.maxDepth}`, "", [], "refused");
   let inputs = positional;
   let folder2 = options.folder;
   const extraTransactions = [];
@@ -233535,15 +233567,14 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     neuralese: budgetedNeuralese,
     programGuidance: selectedNativeGuidance,
     authoredTextGuidance: selectedAuthoredGuidance,
-    maxTurns: model.maxTurns,
-    maxTokens: model.maxTokens,
-    turnTokens: model.turnTokens,
+    maxTurns: definition.budget?.maxTurns ?? model.maxTurns,
+    maxTokens: definition.budget?.maxTokens ?? model.maxTokens,
+    turnTokens: definition.budget?.turnTokens ?? model.turnTokens,
     temperature: model.temperature,
     maxSeconds: model.maxSeconds,
-    contextTokens: model.contextTokens,
+    contextTokens: definition.budget?.contextTokens ?? model.contextTokens,
     maxFailureRepairs: model.maxFailureRepairs,
     decisionReadout: model.decisionReadout,
-    leafCalls: model.leafCalls,
     guidance: model.guidance,
     promptRendering: model.promptRendering,
     // Live events (plans/STREAMING.md §1.6): the call's model deltas, tagged with the call; nothing without a subscriber.
@@ -233696,11 +233727,22 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     fusion?.produced?.(hostValue);
     return hostValue;
   } catch (error) {
-    if (!(error instanceof NatlangCallError)) detail = error instanceof Error ? error.message : String(error);
+    const own = error instanceof NatlangCallError && error.callId === callId;
+    const cancelled = (frame.signal ?? task.signal).aborted;
+    if (!own) detail = error instanceof Error ? error.message : String(error);
     frame.abort?.abort(new Error(`${definition.name} ended without a result`));
     if (folder2?.transaction.open) folder2.transaction.abort();
     for (const transaction of extraTransactions) if (transaction.open) transaction.abort();
-    throw error;
+    if (own) throw error;
+    throw new NatlangCallError(
+      definition.name,
+      outcome,
+      detail,
+      callId,
+      runtime.trace.events,
+      cancelled ? "cancelled" : "error",
+      { cause: error }
+    );
   } finally {
     await task.drainChildren(callId);
     releaseTrace(callId);
@@ -233911,7 +233953,7 @@ async function runCrispCase(input) {
     effects: effects.map((effect) => ({ effect, args: valueOf(effect.args), result: effect.result ? valueOf(effect.result) : void 0 }))
   }) };
 }
-var isScopedHandle, isScopeRecord, NatlangCallError, RefinementCallError, inputIdentities, nextInputIdentity;
+var isScopedHandle, isScopeRecord, NatlangCallError, RefinementCallError, SAME_QUESTION_REFUSAL, inputIdentities, nextInputIdentity;
 var init_kernel = __esm({
   "src/runtime/kernel.ts"() {
     "use strict";
@@ -233948,29 +233990,32 @@ var init_kernel = __esm({
       return prototype === null || Object.getPrototypeOf(prototype) === null && Object.prototype.hasOwnProperty.call(prototype, "constructor") && prototype.constructor?.name === "Object";
     };
     NatlangCallError = class extends Error {
-      constructor(definition, outcome, detail, callId, trace) {
-        super(`${definition}: ${outcome}: ${detail}`);
+      constructor(definition, outcome, detail, callId, trace, reason, options) {
+        super(`${definition}: ${outcome}: ${detail}`, options);
         this.definition = definition;
         this.outcome = outcome;
         this.detail = detail;
         this.callId = callId;
         this.trace = trace;
         this.name = "NatlangCallError";
+        this.reason = reason ?? callFailureReason(trace);
       }
       definition;
       outcome;
       detail;
       callId;
       trace;
+      reason;
     };
     RefinementCallError = class extends NatlangCallError {
       constructor(code, definition, outcome, detail, callId, trace) {
-        super(definition, outcome, detail, callId, trace);
+        super(definition, outcome, detail, callId, trace, "refinement");
         this.code = code;
         this.name = "RefinementCallError";
       }
       code;
     };
+    SAME_QUESTION_REFUSAL = "not run: it has the same instructions and inputs as the call that made it, so it would only hand that question back; that call answers it itself";
     inputIdentities = /* @__PURE__ */ new WeakMap();
     nextInputIdentity = 0;
   }
@@ -234031,7 +234076,7 @@ function defineChild(target, name, value) {
 }
 function startCall(meta, args, at) {
   let started;
-  const call = (async () => {
+  const call = CallPromise.resolve((async () => {
     const bound = meta.bound ?? resolveFrame(meta.created);
     const current = currentFrame();
     const same = current && current.task === bound.task && current.parentCallId === bound.parentCallId;
@@ -234039,7 +234084,7 @@ function startCall(meta, args, at) {
     const readout = same && current.readout !== bound.readout ? current.readout : void 0;
     const frame = signal || readout ? { ...bound, ...signal ? { signal } : {}, ...readout ? { readout } : {} } : bound;
     return started = meta.invoke(args, frame, at);
-  })();
+  })());
   if (started && typeof started === "object") startedCalls.set(call, started);
   call.catch(() => {
   });
@@ -234050,6 +234095,18 @@ function invokeAt(fn, args, representation, site2) {
   if (!meta) throw new TypeError("invokeAt calls a natlang function (a named .nl function or an nl value)");
   return startCall(meta, [...args], { representation: checkRepresentation(representation), ...site2 ? { site: site2 } : {} });
 }
+function onModel(meta, options) {
+  const model = options && typeof options === "object" && typeof options.model === "string" ? options.model.trim() : "";
+  if (!model || Object.keys(options).some((key) => key !== "model"))
+    throw new TypeError("on takes { model: NAME }, where NAME is a model of the runtime (as `model:` frontmatter names one)");
+  const rebind2 = meta.rebindInline;
+  return makeCallable({
+    ...meta,
+    definition: { ...meta.definition, model },
+    invoke: (args, frame, at) => meta.invoke(args, { ...frame, model }, at),
+    ...rebind2 ? { rebindInline: (...args) => onModel(callableMeta(rebind2(...args)), { model }) } : {}
+  });
+}
 function makeCallable(meta) {
   const fn = function(...args) {
     return startCall(meta, args);
@@ -234058,6 +234115,7 @@ function makeCallable(meta) {
   Object.defineProperty(fn, NATLANG_CALLABLE, { value: meta });
   Object.defineProperty(fn, "iterateOn", { value: (initial, ...fixed) => iterateOn(fn, initial, ...fixed).inFrame(meta.bound) });
   if (meta.rebindInline) Object.defineProperty(fn, "with", { value: (captures) => meta.rebindInline(captures) });
+  Object.defineProperty(fn, "on", { value: (options) => onModel(meta, options) });
   Object.defineProperty(fn, "in", { value: (context) => {
     const rebinder = globalThis[/* @__PURE__ */ Symbol.for("natlang.rebinder")];
     if (!rebinder) throw new Error("contexts are not available in this runtime build");
@@ -234081,6 +234139,7 @@ function natlangDefinition(record3) {
     ...record3.readout ? { readout: record3.readout } : {},
     ...record3.model ? { model: record3.model } : {},
     ...record3.withhold ? { withhold: record3.withhold } : {},
+    ...record3.budget ? { budget: record3.budget } : {},
     description: record3.description,
     source: record3.source,
     revision: record3.revision
@@ -234209,7 +234268,7 @@ function inlineCallable(definition, instructions, captures, classes, bound, prov
     })
   });
 }
-var NATLANG_CALLABLE;
+var NATLANG_CALLABLE, CallPromise;
 var init_callable = __esm({
   "src/runtime/callable.ts"() {
     "use strict";
@@ -234225,6 +234284,9 @@ var init_callable = __esm({
     init_iterate();
     init_graph();
     NATLANG_CALLABLE = /* @__PURE__ */ Symbol.for("natlang.callable");
+    CallPromise = class extends Promise {
+    };
+    Object.defineProperty(CallPromise, /* @__PURE__ */ Symbol.for("natlang.call-promise"), { value: true });
   }
 });
 
@@ -255255,7 +255317,8 @@ function compileProject(options) {
   const diagnostics = [];
   const files2 = sourceFiles(fs2, root2);
   const rel = (path2) => relative(root2, path2);
-  const problem = (file, message2, code = "callable-scope") => diagnostics.push({ file, start: 0, end: 0, line: 1, column: 1, code, message: message2, severity: "error" });
+  const problem = (file, message2, code = "callable-scope", line = 1) => diagnostics.push({ file, start: 0, end: 0, line, column: 1, code, message: message2, severity: "error" });
+  const sourceProblem = (fallback, error) => error instanceof NatlangSourceError ? problem(rel(error.path), error.reason, "callable-scope", error.line) : problem(rel(fallback), String(error));
   const layout = callableFolders(fs2, root2);
   const namedRecords = /* @__PURE__ */ new Map();
   for (const path2 of layout.named) {
@@ -255263,7 +255326,7 @@ function compileProject(options) {
     try {
       namedRecords.set(path2, loadNamedFunction(path2, files2));
     } catch (error) {
-      problem(rel(path2), error instanceof NatlangSourceError ? error.message : String(error));
+      sourceProblem(path2, error);
     }
   }
   const contextRecords = /* @__PURE__ */ new Map();
@@ -255271,7 +255334,7 @@ function compileProject(options) {
     try {
       contextRecords.set(dir, loadCallableFolder(dir, files2));
     } catch (error) {
-      problem(rel(dir), error instanceof NatlangSourceError ? error.message : String(error));
+      sourceProblem(dir, error);
     }
   }
   const optimizationComponents = [];
@@ -297262,6 +297325,7 @@ export {
   builtinDefinition,
   builtinNames,
   builtinRecords,
+  callFailureReason,
   callableTree,
   canonicalValue,
   compileEval,
@@ -297287,6 +297351,7 @@ export {
   importedNativeArtifacts,
   invokeAt,
   invokeDefinition,
+  isModelOutcomeFailure,
   isNatlangCallable,
   iterateOn2 as iterateOn,
   live,

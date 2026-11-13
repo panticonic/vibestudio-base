@@ -141,7 +141,7 @@ export class RecordsStore implements CallStoreLike {
     const programRoot = record.program_root ?? this.programRoots.get(record.task_id) ?? null;
     if (programRoot !== record.program_root) record = { ...record, program_root: programRoot };
     const run = this.run;
-    const summary = run && record.parent_call_id === null ? summarize(record) : undefined;
+    const summary = run && record.parent_call_id === null ? summarize(record, events) : undefined;
     if (summary) run!.calls.push(summary);
     this.write("record", async () => {
       const { recordId } = await this.records.record({
@@ -171,8 +171,47 @@ export class RecordsStore implements CallStoreLike {
   }
 }
 
-function summarize(record: Parameters<CallStoreLike["record"]>[0]): EvalNatlangCallSummary {
+/** The events of a recorded call (ndjson, or one JSON array). */
+export function parseEvents(text: string): Record<string, unknown>[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith("[")) return JSON.parse(trimmed) as Record<string, unknown>[];
+  return trimmed.split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+/**
+ * The decision readout of a finite-result call, from its trace: natlang scores the result's values (`decision_readout`
+ * phase `scored`), or, when the model cannot score them (a hosted fallback without log-probabilities), says so
+ * (`unavailable`) and runs the ordinary tool loop.
+ */
+export function decisionOf(events: readonly Record<string, unknown>[]): EvalNatlangCallSummary["decision"] {
+  const readout = [...events].reverse().find((event) => event["kind"] === "decision_readout");
+  if (!readout) return undefined;
+  if (readout["phase"] === "unavailable") return { mode: "tool-loop", reason: String(readout["reason"] ?? "") };
+  const options = readout["options"] as string[] | undefined;
+  const probabilities = readout["probabilities"] as number[] | undefined;
+  const chosen = readout["chosen"] as number | undefined;
+  if (readout["phase"] !== "scored" || !options || !probabilities || chosen === undefined) return undefined;
+  const ranked = probabilities.map((p, index) => ({ p, index })).sort((a, b) => b.p - a.p);
+  const runnerUp = ranked.find((entry) => entry.index !== chosen);
+  return {
+    mode: "scored",
+    value: options[chosen]!,
+    p: probabilities[chosen]!,
+    ...(runnerUp ? { runnerUp: options[runnerUp.index]!, pRunnerUp: runnerUp.p } : {}),
+  };
+}
+
+function summarize(record: Parameters<CallStoreLike["record"]>[0], events: string | undefined): EvalNatlangCallSummary {
   const detail = record.detail.trim();
+  let decision: EvalNatlangCallSummary["decision"];
+  if (record.definition.readout === "decision" && events) {
+    try {
+      decision = decisionOf(parseEvents(events));
+    } catch {
+      // An unreadable trace leaves the summary without its readout; the record keeps the events.
+    }
+  }
   return {
     callId: record.call_id,
     name: record.definition.name,
@@ -190,6 +229,7 @@ function summarize(record: Parameters<CallStoreLike["record"]>[0]): EvalNatlangC
     promptTokens: record.cost.tokens_in,
     completionTokens: record.cost.tokens_out,
     durationMs: record.cost.wall_ms,
+    ...(decision ? { decision } : {}),
   };
 }
 

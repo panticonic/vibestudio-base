@@ -56,6 +56,8 @@ export type NatlangRecord = {
     uses?: string[];
     /** `withhold: [delegate]` in the frontmatter: tools this function's own calls are not offered (WITHHOLDABLE_TOOLS). */
     withhold?: string[];
+    /** `budget: { maxTurns: 8 }` in the frontmatter: the model work one call may take, instead of its model's own budget. */
+    budget?: CallBudget;
     /**
      * Data entries of the companion folder bound by default (S0 §7): each `.nz` file's exports under the file's name,
      * as loaded (Neuralese references, data, soft-function specs). Its blocks are registered as imported blocks.
@@ -84,14 +86,20 @@ export type NamespaceRecord = {
     codebase: Record<string, ItemRecord>;
 };
 export type ItemRecord = NatlangRecord | ModuleRecord | NamespaceRecord;
+/** A source file that is not a valid natlang item: `reason` says why, at `line` (1-based) when it is known. */
 export declare class NatlangSourceError extends Error {
     readonly path: string;
-    constructor(path: string, message: string);
+    readonly reason: string;
+    readonly line?: number | undefined;
+    constructor(path: string, reason: string, line?: number | undefined);
 }
 export declare const nodeKey: (record: NatlangRecord | ModuleRecord) => string;
 export declare function registerFileRecords(codebase: Record<string, ItemRecord> | ItemRecord): void;
 /** Whether an executable node and all its children come from files. */
 export declare function isFileRecord(record: ItemRecord): boolean;
+/** What a `budget:` frontmatter map may bound: a call's turns, the reply tokens of one turn, all its tokens, its context window. */
+export declare const CALL_BUDGET_KEYS: readonly ["maxTurns", "turnTokens", "maxTokens", "contextTokens"];
+export type CallBudget = Partial<Record<typeof CALL_BUDGET_KEYS[number], number>>;
 /** Optional tools a `.nl` function may withhold from its own calls (`withhold:` frontmatter). eval, return_result,
  * read_page, compact_history and read_code are the call protocol itself and always offered. */
 export declare const WITHHOLDABLE_TOOLS: readonly string[];

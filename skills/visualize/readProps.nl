@@ -4,6 +4,7 @@ args:
   data: string
   component: DataComponent
 returns: ComponentSpec
+budget: { turnTokens: 1024 }
 ---
 Return a ComponentSpec whose component is the given component and whose props show every fact in data and nothing else.
 1. Copy each name, number, date, time and place from data exactly as written; do not round, convert or invent values.

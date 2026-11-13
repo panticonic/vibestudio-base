@@ -363,9 +363,10 @@ or import them from `@workspace/runtime`.
   cell with `cell.tsx:line:column` positions and executes nothing. Each call the
   cell makes is listed in the result (`[natlang]` lines, `details.natlang`), and
   a failed call fails the cell as
-  `natlang <name>: <outcome>: <detail> (record <id>)`. Cancelling the eval
-  cancels its running natlang calls. `await help("natlang")` returns the
-  authoring summary.
+  `natlang <name>: <outcome>: <detail> (record <id>)`, followed by its reason,
+  next step and trace (see [When a natlang call fails](#when-a-natlang-call-fails)).
+  Cancelling the eval cancels its running natlang calls. `await help("natlang")`
+  returns the authoring summary.
 - **`help()`**: `await help()` lists services and import guidance;
   `await help("vcs")` displays and returns a compact live method index;
   `await help("vcs.edit")` displays and returns that method's exact schema and typed errors.
@@ -555,7 +556,12 @@ The `eval` tool returns
 - `scopeKeys`: the keys currently in the live notebook `scope`.
 - `natlang`: present when the cell made natlang calls (`nl`, `natlang.load`):
   one entry per root call with its name, outcome, model, turns, tokens and
-  record id. Read a call's full trace with `await natlang.trace(callId)`.
+  record id; a failed call's `reason`; and a finite-result call's `decision`
+  (the chosen value's probability and the runner-up, or that the model could
+  not score and the call ran the tool loop). Read a call's digest with
+  `await natlang.trace(callId)`. A cell that a natlang call failed has
+  `failureCode: "natlang_call_failed"` and the call's record in
+  `error.errorData` (`protocol: "natlang-call-failure/1"`).
 - `kernel`: notebook kernel metadata: the kernel instance ID, start time,
   current idle-lease deadline, and, on the first result after a start, a
   `started` or `restarted` event listing exactly which keys were restored or
@@ -1117,7 +1123,69 @@ await brief({ since });
   runs). Editors and dashboards draw typed forms from it.
 - Calls run on the `executor` model role (the local executor model when ready,
   otherwise a billed low-tier hosted model); the result names the model that ran.
+  Each call has a work budget: 6 turns of up to 512 reply tokens in an
+  8192-token context. A program function that needs other bounds declares
+  `budget: { maxTurns: 8, turnTokens: 1024 }` in its frontmatter.
+  `` fn.on({ model: "standard" }) `` (or `` nl`...`.on({ model }) ``) is the same
+  function on another model for one call, through the model gateway as usual.
+- A finite-result function (`readout: decision`) is scored: its `[natlang]`
+  line shows `decision "urgent" 55%, runner-up "normal" 45%` and flags a close
+  call as `LOW CONFIDENCE`. A confident-looking label can still be wrong: on low
+  confidence, confirm it against the evidence or ask. `decision: not scored`
+  means the model could not score and the call ran the ordinary tool loop.
 - Cancelling the run stops its natlang calls.
+
+### When a natlang call fails
+
+A failed call throws `NatlangCallError`. Uncaught, it fails the cell with
+`failureCode: "natlang_call_failed"`, and the result reads:
+
+```text
+[eval] Error: natlang nl@cell.ts:1: quiesced: blocked: no ticket text was given (record run-1-1-…/1)
+[natlang] nl@cell.ts:1 failed: blocked. Next: The model says the inputs do not support an answer: …
+[natlang] Trace: await natlang.trace("run-1-1-…/1")
+```
+
+The error has `callId`, `reason`, `outcome`, `detail`, `trace` (the expression
+that reads the digest) and `partial` (the call's last scope: its `let`
+bindings and any staged result, as previews); `details.error.errorData` has the
+same record. Branch on `reason`:
+
+| `reason` | What it means | Next |
+|---|---|---|
+| `blocked`, `failed` | The model says the inputs do not support an answer, or the instructions cannot be carried out on them. | Check the arguments you passed (the digest's `inputs`); pass the missing evidence as an argument. |
+| `type-mismatch`, `repeated-failed-action`, `no-action` | The model could not produce the declared type, kept repeating a failing action, or kept replying without acting. | Narrow the type or the instructions, retry once with `.on({ model: "standard" })`, or do the step yourself. |
+| `budget-exhausted` | The call used its whole turn and token budget. | Do the exact parts in code and give the model one decision; a program function can declare `budget:`. |
+| `refinement` | The result did not satisfy its refined type. | Read `detail`; tighten the instructions or loosen the predicate. |
+| `executor-unavailable` | No model fills the executor role. | See the `local-models` skill, connect a low-tier provider, or do the work yourself. |
+| `model-unavailable` | The model the call names is unknown or not connected. | Name a connected model (a role or a `provider:id` ref). |
+| `model-refused` | The model gateway refused the call (authority or usage). | Final for this call: report it; do not retry in a loop. |
+| `cancelled` | The run was cancelled. | Nothing to recover. |
+| `refused`, `incomplete`, `error` | Natlang did not run the call; it ended without a result for another reason; or an error outside the model's work ended it (`errorData.cause`). | Read `detail` and the digest; fix what it names. |
+
+`await natlang.trace(callId)` returns a digest: `inputs`, `turns` (what the
+model said and each action with its code, outcome and result), `children` (the
+calls it made; each has its own digest), `lastScope`, `reason` and `detail`.
+`{ raw: true }` returns the full record and event trace instead.
+`await natlang.calls({ parentCallId })` lists a call's children,
+`{ run: runId }` a run's calls, `{ roots: true }` only root calls.
+`await natlang.rerun(callId, { model: "standard" })` replays a workspace
+program call's recorded inputs, on another model if you name one (an inline
+call cannot be replayed: call it again from your code).
+
+```ts
+try {
+  return await judge(note);
+} catch (e: any) {
+  if (e.name !== "NatlangCallError") throw e;
+  if (e.reason === "type-mismatch" || e.reason === "no-action") return await judge.on({ model: "standard" })(note);
+  const t = await natlang.trace(e.callId);
+  return { reason: e.reason, lastTurn: t.turns.at(-1), children: t.children, partial: e.partial };
+}
+```
+
+When you take the work over yourself, start from `e.partial` and the digest's
+last turn rather than from scratch.
 
 ## Worker Management
 

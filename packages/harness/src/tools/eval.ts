@@ -24,6 +24,7 @@ import {
 import {
   evalImageArtifactSchema,
   mapEvalResultLeaves,
+  type EvalNatlangCallSummary,
   type EvalStartInput,
 } from "@vibestudio/service-schemas/eval";
 
@@ -349,7 +350,10 @@ export async function formatEvalResult(
     parts.push(
       `[eval] Error: ${result.error ? formatRpcFailure(deserializeRpcFailure(result.error)) : "unknown error"}`,
     );
-  if (!result.success && result.error?.errorData !== undefined) {
+  const natlangFailure = !result.success ? natlangFailureOf(result.error?.errorData) : undefined;
+  if (natlangFailure) {
+    parts.push(formatNatlangFailure(natlangFailure));
+  } else if (!result.success && result.error?.errorData !== undefined) {
     parts.push(
       `[eval] Structured failure${result.failureCode ? `: ${result.failureCode}` : ""}. ` +
         "See details.error.errorData for the typed recovery data.",
@@ -387,7 +391,7 @@ export async function formatEvalResult(
     );
   }
   if (result.natlang?.calls.length) {
-    parts.push(formatNatlangCalls(result.natlang));
+    parts.push(formatNatlangCalls(result.natlang, natlangFailure?.callId));
   }
   const keys = result.scopeKeys ?? [];
   if (
@@ -427,17 +431,91 @@ export async function formatEvalResult(
   };
 }
 
-/** One compact line per natlang call the cell made; a failed call keeps its detail. */
-function formatNatlangCalls(natlang: NonNullable<EvalRunResult["natlang"]>): string {
+/** The typed record of a failed natlang call (`natlang-call-failure/1`), the provider's `errorData`. */
+interface NatlangFailureData {
+  protocol: "natlang-call-failure/1";
+  callId?: string;
+  name: string;
+  reason: string;
+  next: string;
+  trace?: string;
+  partial?: { scope: Record<string, string>; staged?: string };
+  cause?: { message: string; code?: string; errorKind?: string };
+}
+
+function natlangFailureOf(data: unknown): NatlangFailureData | undefined {
+  const record = data as Partial<NatlangFailureData> | null | undefined;
+  return record && typeof record === "object" && record.protocol === "natlang-call-failure/1"
+    ? (record as NatlangFailureData)
+    : undefined;
+}
+
+/** A failed natlang call's reason, next step, trace and partial work; the `[eval] Error` line has its detail. */
+function formatNatlangFailure(failure: NatlangFailureData): string {
+  const lines = [
+    `[natlang] ${failure.name} failed: ${failure.reason}. Next: ${failure.next}`,
+    ...(failure.cause
+      ? [
+          `[natlang] Cause: ${failure.cause.message}` +
+            (failure.cause.code ? ` (${failure.cause.code})` : ""),
+        ]
+      : []),
+    ...(failure.trace ? [`[natlang] Trace: ${failure.trace}`] : []),
+  ];
+  const scope = Object.entries(failure.partial?.scope ?? {});
+  if (scope.length || failure.partial?.staged !== undefined) {
+    const shown = [
+      ...scope.map(([name, value]) => `${name} = ${value}`),
+      ...(failure.partial?.staged !== undefined ? [`staged result = ${failure.partial.staged}`] : []),
+    ].join("; ");
+    lines.push(
+      `[natlang] Partial work (e.partial): ${shown.length > MAX_PARTIAL_CHARS ? `${shown.slice(0, MAX_PARTIAL_CHARS)}...` : shown}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * A scored decision whose chosen value leads the runner-up by less than this is flagged: the label is the model's
+ * best guess, not a clear call. Confirm it against the evidence (or ask) before acting on it.
+ */
+const LOW_CONFIDENCE_MARGIN = 0.2;
+const MAX_PARTIAL_CHARS = 600;
+
+function formatDecision(decision: NonNullable<EvalNatlangCallSummary["decision"]>): string {
+  if (decision.mode === "tool-loop")
+    return `decision: not scored (${decision.reason}); ran the tool loop`;
+  const percent = (p: number) => `${Math.round(p * 100)}%`;
+  const low =
+    decision.pRunnerUp !== undefined && decision.p - decision.pRunnerUp < LOW_CONFIDENCE_MARGIN
+      ? ", LOW CONFIDENCE"
+      : "";
+  return (
+    `decision ${decision.value} ${percent(decision.p)}` +
+    (decision.runnerUp !== undefined ? `, runner-up ${decision.runnerUp} ${percent(decision.pRunnerUp ?? 0)}` : "") +
+    low
+  );
+}
+
+/**
+ * One compact line per natlang call the cell made. A failed call shows its reason (natlang's outcome when it has
+ * none) and its detail, except the call the `[eval] Error` line already details.
+ */
+function formatNatlangCalls(
+  natlang: NonNullable<EvalRunResult["natlang"]>,
+  detailedCallId?: string,
+): string {
   const lines = natlang.calls.map((call) => {
     const stats = [
       `${call.turns} ${call.turns === 1 ? "turn" : "turns"}`,
       `${call.promptTokens}+${call.completionTokens} tokens`,
       `${call.durationMs}ms`,
       ...(call.model ? [call.model] : []),
+      ...(call.decision ? [formatDecision(call.decision)] : []),
     ].join(", ");
+    const detail = call.detail && call.callId !== detailedCallId ? ` (${call.detail})` : "";
     return (
-      `- ${call.name}: ${call.outcome}${call.detail ? ` (${call.detail})` : ""} [${stats}]` +
+      `- ${call.name}: ${call.reason ?? call.outcome}${detail} [${stats}]` +
       (call.recordId ? ` record ${call.recordId}` : "")
     );
   });

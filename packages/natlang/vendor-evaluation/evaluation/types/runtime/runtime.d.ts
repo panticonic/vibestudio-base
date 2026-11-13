@@ -40,10 +40,6 @@ export type ModelConfig = {
     /** `finite-returns`: every call with a finite result type uses the decision readout when the driver can score
      * replies; `declared` (default): only functions whose frontmatter says `readout: decision`. */
     decisionReadout?: 'declared' | 'finite-returns';
-    /** `direct`: leaf calls (no callable functions, services, files, folders or Neuralese; arguments shown whole) answer
-     * from a short system prompt with only return_result offered, instead of the full interpreter surface (native/agent.ts
-     * `leafOpening`). `tools` (default): every call gets the interpreter. */
-    leafCalls?: 'direct' | 'tools';
     /** Guided generation (the `guidance` request field) on natlang's reference server and the llama.cpp fork (managed and in
      * the page). A configured runtime (`natlang run`, natlangRuntime()) turns it on for those backends unless the profile's
      * `runtime.guidance` says otherwise; set directly, it is off unless given. Other backends ignore the field. */

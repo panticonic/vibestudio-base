@@ -54,6 +54,8 @@ export interface FakeServices {
   /** Natlang records calls, by method name. */
   records?: Record<string, (input: any) => unknown>;
   roleResolution?: { model: unknown; reason?: string };
+  /** Catalog entries `getModel` knows besides the executor's. */
+  models?: readonly { ref: string }[];
 }
 
 /**
@@ -92,7 +94,8 @@ export function fakeRpc(services: FakeServices) {
             const resolution = services.roleResolution ?? { model: EXECUTOR_ENTRY };
             return { role: input, ref: (resolution.model as any)?.ref ?? null, source: "local", model: resolution.model, reason: resolution.reason ?? "test" };
           }
-          return method.name === "getModel" && input === EXECUTOR_ENTRY.ref ? EXECUTOR_ENTRY : null;
+          if (method.name !== "getModel") return null;
+          return [EXECUTOR_ENTRY, ...(services.models ?? [])].find((entry) => entry.ref === input) ?? null;
         case "do:vibestudio.natlang.v1": {
           const handler = services.records?.[method.name];
           if (handler) return handler(input);

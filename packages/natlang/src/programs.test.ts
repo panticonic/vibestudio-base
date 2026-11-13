@@ -139,8 +139,9 @@ describe("ProgramLoader", () => {
 
   it("binds a program to exactly its declared services, never the eval's other bindings", async () => {
     const { tasks, value } = await load(
-      { "skills/s/brief.nl": BRIEF, "skills/s/services.d.ts": "declare module 'natlang:services' { export const addressees: unknown; }" },
+      { "skills/s/brief.nl": BRIEF, "skills/s/services.d.ts": "declare module 'natlang:services' { export const web: unknown; }" },
       {
+        web: { search: async () => [], fetch: async () => "", read: async () => "" },
         agent: { addressees: async () => [] },
         credentials: { fetch: async () => "secret" },
         vcs: {},
@@ -150,8 +151,8 @@ describe("ProgramLoader", () => {
     // Invoking the program starts a task; the task's services are the declared slice.
     await expect((value as () => Promise<unknown>)()).rejects.toThrow();
     expect(tasks).toHaveLength(1);
-    expect(Object.keys(tasks[0]!.services)).toEqual(["addressees"]);
-    expect(Object.keys(tasks[0]!.serviceDeclarations)).toEqual(["addressees"]);
+    expect(Object.keys(tasks[0]!.services)).toEqual(["web"]);
+    expect(Object.keys(tasks[0]!.serviceDeclarations)).toEqual(["web"]);
   });
 
   it("refuses a service the catalog does not have", async () => {

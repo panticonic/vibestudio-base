@@ -10,7 +10,8 @@ export type { ModelDriver, ModelConfig, NatlangRuntimeOptions, NatlangLimits, Ta
 export { modelTurnsSoFar } from '../native/agent.js';
 export { NatlangContextError, NatlangRecursionError, SlotContextStore, currentFrame } from './context.js';
 export type { ContextStore, Frame } from './context.js';
-export { NatlangCallError, RefinementCallError, invokeDefinition } from './kernel.js';
+export { NatlangCallError, RefinementCallError, invokeDefinition, callFailureReason, isModelOutcomeFailure } from './kernel.js';
+export type { NatlangFailureReason } from './kernel.js';
 export { RefinementError, RefinementChecker, MemoryVerdictCache, decisionJudge, parseRefinementSettings } from '../native/refinement.js';
 export type { RefinementSettings, RefinementJudge, VerdictCache, RefinementVerdict, RefinementCode } from '../native/refinement.js';
 export { refinements } from '../native/types.js';

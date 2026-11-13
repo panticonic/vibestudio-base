@@ -10,12 +10,21 @@ import type {
 } from "@vibestudio/service-schemas/evalNatlang";
 import * as core from "../vendor/workerd/natlang-workerd.js";
 import type { LiveEvent, Platform } from "../vendor/workerd/natlang-workerd.js";
+import { callFailure, NatlangCallFailure } from "./callFailure.js";
 import { folderBash } from "./folderTools.js";
 import { natlangHelp } from "./help.js";
 import { ModelDirectory, modelsFor, EXECUTOR_ROLE } from "./models.js";
 import { ProgramLoader, type TaskRunner, type WorkspaceFs } from "./programs.js";
-import { LivePublisher, RecordsStore, type RecordingRun } from "./recordsStore.js";
+import { LivePublisher, RecordsStore, parseEvents, type RecordingRun } from "./recordsStore.js";
 import { confinedRealm } from "./realm.js";
+import {
+  CHILDREN_LISTED,
+  FAILURE_ANNOTATION,
+  callsFilter,
+  listing,
+  traceDigest,
+  type NatlangCallsQuery,
+} from "./traceDigest.js";
 
 /** The ambient names this provider injects; a cell's `declare const` for them would shadow natlang's own. */
 const OWN_AMBIENT = new Set(["nl", "natlang", "__natlang"]);
@@ -36,15 +45,6 @@ function requireBinding<T>(bindings: Readonly<Record<string, unknown>>, name: st
     throw new Error(`natlang needs the eval binding \`${name}\`, which this eval does not have`);
   }
   return value as T;
-}
-
-/** The events of a stored call: ndjson or one JSON array, as an array. */
-function parseEvents(text: string | null): unknown[] | null {
-  if (text === null) return null;
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("[")) return JSON.parse(trimmed) as unknown[];
-  return trimmed.split("\n").map((line) => JSON.parse(line) as unknown);
 }
 
 /**
@@ -97,25 +97,37 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
    * executing, so everything that talks to other services happens here, inside it: the cell's preparation
    * before its first call (the executor role resolves from current readiness; the records service says
    * whether anything watches live), and, before the call's result reaches the cell, the writes of its record.
+   * A call that fails reaches the cell as one typed failure (`callFailure`), recorded on the call as well.
    */
   async function inCell<T>(work: () => Promise<T>): Promise<T> {
     const run = active;
     if (run) await (run.prepared ??= prepare(run));
+    let outcome: { value: T } | { error: unknown };
     try {
-      return await work();
-    } finally {
-      await run?.live?.drain();
-      await store.flush();
+      outcome = { value: await work() };
+    } catch (error) {
+      outcome = { error };
     }
+    let failure: unknown;
+    if ("error" in outcome) {
+      failure = callFailure(outcome.error, run?.calls);
+      if (failure instanceof NatlangCallFailure && failure.callId) {
+        store.annotate(failure.callId, FAILURE_ANNOTATION, { reason: failure.reason }, "vibestudio");
+      }
+    }
+    await run?.live?.drain();
+    await store.flush();
+    if ("error" in outcome) throw failure;
+    return outcome.value;
   }
 
   async function prepare(run: ActiveRun): Promise<void> {
     directory.newEpoch();
     try {
       nameExecutor(await directory.resolve(EXECUTOR_ROLE));
-    } catch (error) {
-      // No usable model fills the role: a call that needs one fails with the reason.
-      store.fail("natlang: the executor role does not resolve", error);
+    } catch {
+      // No usable model fills the role. A call that needs it fails with the reason (`executor-unavailable`), and a
+      // cell whose calls all name another model does not need it.
       nameExecutor(null);
     }
     run.live = await livePublisher(run.runId);
@@ -153,22 +165,75 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     load: (path: string) => loader.load(path),
     /** A workspace program's functions with their typed signatures (from the compilation `load` runs). */
     describe: (path: string) => loader.describe(path),
-    /** A recorded call's record and trace. */
-    async trace(callId: string) {
+    /**
+     * A recorded call made readable (`traceDigest`): its turns and actions, the calls it made, the scope it ended
+     * with and why. `{ raw: true }` returns the record and natlang's full event trace instead.
+     */
+    async trace(callId: string, options: { raw?: boolean } = {}) {
       const detail = await records.getCall(callId);
       if (!detail) throw new Error(`no natlang call ${JSON.stringify(callId)} is recorded`);
-      return {
-        callId,
-        name: detail.summary.definition_name,
-        outcome: detail.summary.outcome,
-        model: detail.summary.model_id,
-        record: detail.record,
-        events: parseEvents(detail.events),
-        annotations: detail.annotations,
-      };
+      const events = detail.events === null ? [] : parseEvents(detail.events);
+      if (options.raw) {
+        return {
+          callId,
+          name: detail.summary.definition_name,
+          outcome: detail.summary.outcome,
+          model: detail.summary.model_id,
+          record: detail.record,
+          events: detail.events === null ? null : events,
+          annotations: detail.annotations,
+        };
+      }
+      const children = await records.listCalls({ parentCallId: callId, limit: CHILDREN_LISTED });
+      return traceDigest({ detail, events, children, value: (hash) => records.getValue(hash) });
     },
+    /** This owner's recorded calls: a call's children (`parentCallId`), a run's calls (`run`), root calls (`roots`). */
+    async calls(query: NatlangCallsQuery = {}) {
+      return (await records.listCalls(callsFilter(query, host.owner.objectKey))).map(listing);
+    },
+    /**
+     * Run a recorded workspace-program call again on its recorded inputs, on another model when `model` names one
+     * (`fn.on({ model })`). The new call has its own record.
+     */
+    rerun: (callId: string, options: { model?: string } = {}) => rerun(callId, options),
     help: () => natlangHelp(),
   });
+
+  async function rerun(callId: string, options: { model?: string }): Promise<unknown> {
+    const detail = await records.getCall(callId);
+    if (!detail?.record) throw new Error(`no natlang call ${JSON.stringify(callId)} is recorded`);
+    const { definition, program_root: programRoot, inputs } = detail.record;
+    const params = (definition["params"] ?? []) as Array<{ name: string; optional?: boolean }>;
+    if (definition.site !== "named" || !definition.source?.endsWith(".nl") || programRoot === null) {
+      throw new Error(
+        `natlang.rerun replays a workspace program's function; ${definition.name} is an ${definition.site} call whose ` +
+          "captures were live values of its cell: call it again from your code, with .on({ model }) for another model"
+      );
+    }
+    const args: unknown[] = [];
+    for (const param of params) {
+      const ref = inputs[param.name] as { complete?: boolean; hash?: string; reason?: string } | undefined;
+      if (ref === undefined) {
+        if (param.optional) {
+          args.push(undefined);
+          continue;
+        }
+        throw new Error(`natlang.rerun: the record of ${callId} has no input ${param.name}`);
+      }
+      const text = ref.complete && ref.hash ? await records.getValue(ref.hash) : null;
+      if (text === null) {
+        throw new Error(
+          `natlang.rerun: input ${param.name} of ${callId} was not recorded in full (${ref.reason ?? "evicted"}); ` +
+            "call the function again with that input yourself"
+        );
+      }
+      args.push(JSON.parse(text));
+    }
+    const loaded = (await loader.load(programRoot ? `${programRoot}/${definition.source}` : definition.source)) as ((
+      ...values: unknown[]
+    ) => Promise<unknown>) & { on(options: { model: string }): (...values: unknown[]) => Promise<unknown> };
+    return (options.model === undefined ? loaded : loaded.on({ model: options.model }))(...args);
+  }
 
   async function livePublisher(runId: string): Promise<LivePublisher | null> {
     try {
@@ -193,7 +258,8 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     for (const key of Reflect.ownKeys(callable)) {
       if (key === "length" || key === "name" || key === "prototype") continue;
       const descriptor = Reflect.getOwnPropertyDescriptor(callable, key)!;
-      if (key === "with" && typeof descriptor.value === "function") {
+      // A callable derived from this one (other captures, another model) runs inside the executing cell too.
+      if ((key === "with" || key === "on") && typeof descriptor.value === "function") {
         const rebind = descriptor.value as (...captures: unknown[]) => F;
         Object.defineProperty(call, key, {
           ...descriptor,

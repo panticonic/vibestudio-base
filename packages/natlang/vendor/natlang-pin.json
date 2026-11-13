@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "09b8e3b16c486edd97b3808fea30bac26f6e04da",
+  "commit": "9f13cce63b3b9a356decefc70a9f3a88c2427174",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "f93141a1766ba3b58ad60426b765dd4957dae8b48b37c679559cf54ac1a486f6",
+    "workerd/natlang-workerd.js": "48f2dd7bd92c27a0779a0d4edd9ff15bb288bb5444d0fcc65e978f6e5adc7496",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "2cae58a884b7533360134da93edfc682df5d9559d40a4b74e9d385337207c31a",
@@ -43,7 +43,7 @@
     "workerd/types/core/workerd.d.ts": "e2f6ed23cfa7e3843720b07d627571e656c727f5e950ef904ad39587c242c896",
     "workerd/types/guidance/program.d.ts": "aa74b06c4ea8f94a18915431e7f89c4570f65b00100269f1a591762af69d036a",
     "workerd/types/model/pi-translation.d.ts": "f911ab3fa0c4566fe13181a2176a516365f4dce4a9843f2cc38ef05db7c5c99d",
-    "workerd/types/native/agent.d.ts": "a42154e1b507e70b0d6446b36249d5900b5516644a10a1539a80a6960e39dfe1",
+    "workerd/types/native/agent.d.ts": "b38135b2a25a4261e9765d757189c55735e21fdcd2819ddb7cd25a93e3a49ebe",
     "workerd/types/native/data-layout.d.ts": "15e84a39a1957b702f6671ff0e9cbd189e48bd2d30267125d81d3a0619919dd6",
     "workerd/types/native/effects.d.ts": "c1b30cc4edeafae9addfe070f9ca45d5c9c363f65be0b4ce611720261f62fc89",
     "workerd/types/native/eval-compile.d.ts": "4a02172711cc148517ce9ca4d1a3619d6dd788dfd50def999e5b319a9339eff5",
@@ -61,7 +61,7 @@
     "workerd/types/native/nz-file.d.ts": "28f8836ccf8208fe67560da5cf28d03fe6a5dd8fe8da268f8386d12aeb74edff",
     "workerd/types/native/operator-frames.d.ts": "2c044318960e6568e58f614ea1b158fca30394cd35f4f9fde865e47295ff6e4c",
     "workerd/types/native/pages.d.ts": "bcffc8701ec4ed3740b2bda98fbacc9325f2d389b686c37103db59e6e873f044",
-    "workerd/types/native/prompt.d.ts": "d75042d5bd984254ac4bc660e65dd53144ba3354024d76e182cca15f7de9af9b",
+    "workerd/types/native/prompt.d.ts": "9569430d7dcce2eeb08b49e955a51f01aff92dad2beba06cd8b8bb82576bdf67",
     "workerd/types/native/python-watchdog.d.ts": "e19f8d4aa638c0e15e7fffdfa742ade774fbf39e0db4af38cf1ad720b2181e28",
     "workerd/types/native/realm.d.ts": "bfda898a9161bd89de4f5b9b03e0194748559e9b24e77289e282f0491816f2e3",
     "workerd/types/native/refinement-settings.d.ts": "1d8fd6ac1aa19080e50a4662338093cb9291bbca105c47f7d9c252a0693d937d",
@@ -79,22 +79,22 @@
     "workerd/types/neuralese/combinators.d.ts": "e6f4185384d5e31b8dc2e4ff0e1ed87a4a29eaddd871c87bc22d223a6c59bbce",
     "workerd/types/runtime/builtin.d.ts": "b83ca08ac05375b94286b38813dfa9ddd5298de13e457c49ac9a13aae959c502",
     "workerd/types/runtime/callable.d.ts": "f8ea5e31020072fcbca434ecacf5e0586210af10ba8ace071aef16179476f8fb",
-    "workerd/types/runtime/context.d.ts": "420c4ff36d746cbae63cd84e69c5709e75eca38ef657649da526d250f2b2883f",
+    "workerd/types/runtime/context.d.ts": "b6123794bec7fbeaad0285a889b70cd718b0b1211016a1d1add3c63a97c5cf57",
     "workerd/types/runtime/contexts.d.ts": "314d08db87ce8f85085ee09f717f3e681b238fc8748fba67138bca41e66240c8",
     "workerd/types/runtime/folder-iteration.d.ts": "4784fccd0f803a341728b48a12960460ede367b63613eeb50549f47acada7d4d",
     "workerd/types/runtime/fusion.d.ts": "3bef801b8f478f30175040509ae9630acd09a1e7d45b12855faa0e269319b740",
-    "workerd/types/runtime/index.d.ts": "74c36f27ce3562b11ea10b6567fc81baa9e2a7c1efa6d8d267abdb78ce37b39e",
+    "workerd/types/runtime/index.d.ts": "e424a85f0df726ecbea29d1b754b17ec1a77b39161a987a5f8321a1bab0a84f8",
     "workerd/types/runtime/iterate.d.ts": "d91b8a5f53b7faea43ca972321f85475e33db6bc8669aac0b80eae34d2d71f16",
-    "workerd/types/runtime/kernel.d.ts": "1e99516bdddd2390716e8d2799da1e06cb2796e31f6fe23fa5233d6441378d69",
-    "workerd/types/runtime/loader.d.ts": "0fad5083d866d91d671a831047b6e784042ed40d270ed54c12c36e8554d5c81b",
+    "workerd/types/runtime/kernel.d.ts": "f5c2f2f9ed92cf6a3dcd80227abdcdbf53fc954c6a3362254f1ab432fdc3c24d",
+    "workerd/types/runtime/loader.d.ts": "c609837901153a69b62387169602d8b385dfb28572c103c0f853cd2aeac64572",
     "workerd/types/runtime/lowered.d.ts": "a77239334b33df567c9d39f2f21bcc815973333aca87640fb586fefe1e38b166",
     "workerd/types/runtime/modules.d.ts": "a224faa452a8e79b31da41345aac1134562fa4510b2e28ca98cafc243bddc192",
     "workerd/types/runtime/platform.d.ts": "f38205568f5239a43dcdb60d5cefe2736241c33e9e41fcba56f18d03ef2bc557",
     "workerd/types/runtime/pluggable.d.ts": "f66f2a2cd915eb769c802f07a9821cf64e7f89b2d88fc5ef5ae9030bc29a69eb",
     "workerd/types/runtime/promotion.d.ts": "2e5948cd1f5a9439d288bd0051cfd0809728092d980ae3059ca554f564c5a565",
-    "workerd/types/runtime/runtime.d.ts": "0d74f13c4a955ca82de7038612a687c736d78bab7b5be892a07c77b44f3d47ee",
+    "workerd/types/runtime/runtime.d.ts": "afe7351b72d2b909617ef404d3665c76c42c1762343c56bf7491d8bb11a4c937",
     "workerd/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
-    "workerd/types/runtime/surface.d.ts": "d54ad52fbea9acc88ed71b59a28fe50251a0723a5a4dc5ea9ea013ffb14971ac",
+    "workerd/types/runtime/surface.d.ts": "e80ee7a7b5623782a7e0cf6ad5e9a7abfce29f1eb0cf6f7c7279d520a7bfa8ae",
     "workerd/types/runtime/virtual-project.d.ts": "43ea1e83612832a0eae51c7d2e54a1bd897c15d5055878080266f3dbad274040"
   }
 }

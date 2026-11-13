@@ -9,7 +9,10 @@ import {
 } from "../vendor/workerd/natlang-workerd.js";
 import { describeProgram } from "./describe.js";
 import type { ProgramDescription } from "./describeTypes.js";
+import { NatlangProgramError } from "./programError.js";
 import { declarationsFor, declaredServiceNames, servicesFor } from "./services.js";
+
+export { NatlangProgramError };
 
 /** The parts of the eval `fs` binding program loading reads. */
 export interface WorkspaceFs {
@@ -43,10 +46,6 @@ const SKIPPED_DIRECTORIES = new Set(["node_modules", "dist"]);
 /** Compiled programs kept per loader (a cache bound: an evicted program recompiles on its next load). */
 const PROGRAMS_KEPT = 32;
 
-/** `natlang.load` refused a program: it does not type-check, or cannot get its services. */
-export class NatlangProgramError extends Error {
-  override readonly name = "NatlangProgramError";
-}
 
 const IMPORT_ROOTS: Readonly<Record<string, string>> = {
   "@workspace-skills/": "skills/",
@@ -120,8 +119,10 @@ export function compileProgram(options: {
   entry: string;
   /** Names the program in diagnostics. */
   label: string;
+  /** The workspace folder the files are relative to: diagnostics name workspace paths. */
+  root?: string;
 }): CompiledProgram {
-  const { platform, files, entry, label } = options;
+  const { platform, files, entry, label, root = "" } = options;
   const services = declaredServiceNames(files);
   const compiled = compileVirtualProject(
     { files, root: PROJECT_ROOT },
@@ -133,8 +134,18 @@ export function compileProgram(options: {
     }
   );
   if (!compiled.ok) {
+    // The compiler names files in the in-memory project (relative to it, or under its mount point); the author
+    // knows them by their workspace paths.
+    const workspaceFile = (file: string) => {
+      const relative = file.startsWith(`${PROJECT_ROOT}/`) ? file.slice(PROJECT_ROOT.length + 1) : file;
+      return root ? `${root}/${relative}` : relative;
+    };
     throw new NatlangProgramError(
-      `natlang program ${label} does not compile:\n${formatDiagnostics(compiled.diagnostics)}`
+      `natlang program ${label} does not compile:\n${formatDiagnostics(
+        compiled.diagnostics.map((diagnostic) => ({ ...diagnostic, file: workspaceFile(diagnostic.file) }))
+      )}`,
+      label,
+      "does-not-compile"
     );
   }
   let value: unknown;
@@ -175,6 +186,11 @@ export function bindProgram(value: unknown, task: Parameters<TaskRunner>[1], run
         return runTask(() => call.apply(this, args), task);
       };
       Object.defineProperty(bound, "name", { value: call.name });
+      // `fn.on({ model })` of a natlang function: the same function on another model, bound to the same services.
+      const on = (item as { on?: unknown }).on;
+      if (typeof on === "function") {
+        Object.defineProperty(bound, "on", { value: (options: unknown) => bind(on.call(item, options)) });
+      }
       for (const [key, child] of Object.entries(item)) {
         Object.defineProperty(bound, key, { value: bind(child), enumerable: true });
       }
@@ -213,21 +229,23 @@ export class ProgramLoader {
   }> {
     const { fs, platform } = this.options;
     const path = workspacePath(specifier);
-    if (!path) throw new NatlangProgramError("natlang.load needs a workspace path");
+    if (!path) throw new NatlangProgramError("natlang.load needs a workspace path", specifier, "invalid-path");
     const directory = (await fs.stat(path)).isDirectory();
     const slash = path.lastIndexOf("/");
     const root = directory ? path : slash < 0 ? "" : path.slice(0, slash);
     const entry = directory ? "" : path.slice(slash + 1);
     if (!directory && !/\.(?:nl|tsx?)$/.test(entry)) {
       throw new NatlangProgramError(
-        `natlang.load takes a .nl file, a .ts module or a folder of them; ${path} is none of those`
+        `natlang.load takes a .nl file, a .ts module or a folder of them; ${path} is none of those`,
+        path,
+        "invalid-path"
       );
     }
     const files = await readProjectFiles(fs, root || ".");
     const key = programKey(files, declaredServiceNames(files));
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
-      program = compileProgram({ platform, files, entry, label: path });
+      program = compileProgram({ platform, files, entry, label: path, root });
       this.compiled.set(`${path}\u0000${key}`, program);
       if (this.compiled.size > PROGRAMS_KEPT) {
         this.compiled.delete(this.compiled.keys().next().value as string);
