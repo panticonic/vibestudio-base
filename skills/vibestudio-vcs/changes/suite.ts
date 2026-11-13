@@ -37,7 +37,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
   ),
   policy: {
     codeEdits: "deny",
-    settings: { maxTurns: 4, turnTokens: 192, contextTokens: 8192 },
+    settings: { maxTurns: 6, turnTokens: 512, contextTokens: 8192 },
   },
   budget: { maxRollouts: 60, maxProposals: 0, maxModelCalls: 800 },
   fixture: {
