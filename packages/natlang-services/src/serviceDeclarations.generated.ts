@@ -1030,6 +1030,17 @@ export function resolveCredential(input: {
 }): Promise<{
   id: string;
   label: string;
+  actor?: "human" | "agent";
+  /** RFC 8693 exchange through which the host obtains an agent-attributed token from this human-attributed credential for an agent acting for its owner. tokenUrl must share the credential's OAuth token endpoint origin. */
+  agentExchange?: {
+    tokenUrl: string;
+    clientId: string;
+    scope?: string;
+    extraParams?: {
+      [key: string]: string;
+    };
+    retireUrl?: string;
+  };
   accountIdentity?: {
     email?: string;
     username?: string;
@@ -1129,6 +1140,7 @@ export function resolveCredential(input: {
   }[];
   owner?: {
     userProfileId?: string;
+    userId?: string;
     sourceId: string;
     sourceKind: "workspace" | "package" | "plugin" | "user";
     label: string;
