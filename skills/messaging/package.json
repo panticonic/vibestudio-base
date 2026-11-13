@@ -1,0 +1,13 @@
+{
+  "name": "@workspace-skills/messaging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Message anyone with the notify tool: its addressee grammar, the escalation ladder, and resolving a named recipient.",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@workspace/agentic-protocol": "workspace:*"
+  }
+}

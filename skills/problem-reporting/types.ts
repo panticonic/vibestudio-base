@@ -16,18 +16,6 @@ export type Evidence = {
   invocation?: { trajectoryId: string; branchId: string; invocationId: string };
 };
 
-/**
- * Whose problem a failure is.
- * - platform: Vibestudio itself broke a documented contract: a wrong result from a platform tool or service, an
- *   internal error, a crash, state that disagrees with itself.
- * - user-code: the code that failed was written in the workspace (apps, panels, extensions, workers, project code,
- *   including code the agent wrote in this task), and the failure is that code's own bug or build error.
- * - refusal: the platform correctly refused: validation, permission, approval, path or revision checks working as
- *   designed.
- * - transient: a one-off network, rate-limit or timeout failure that cleared on retry.
- */
-export type DefectClass = "platform" | "user-code" | "refusal" | "transient";
-
 export type ReportSection =
   | "goal"
   | "symptom"

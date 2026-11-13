@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
-import assemble from "./draftProblemReport/assemble.js";
-import redact from "./draftProblemReport/redact.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const runtimeMock = vi.hoisted(() => ({
+  gad: { diagnoseInvocation: vi.fn() },
+  problemReports: { availability: vi.fn() },
+}));
+vi.mock("@workspace/runtime", () => runtimeMock);
+
+import { assembleDraft as assemble } from "./draft-assemble.js";
+import { draftProblemReport } from "./draft-problem-report.js";
+import { redact } from "./draft-redact.js";
 import type { Evidence } from "./types.js";
 
 const evidence = (overrides: Partial<Evidence> = {}): Evidence => ({
@@ -95,5 +103,59 @@ describe("assemble", () => {
     expect(() => assemble(evidence({ observed: "x".repeat(129 * 1024) }), facts, [])).toThrow(
       /never silently shortened/
     );
+  });
+});
+
+describe("draftProblemReport", () => {
+  const invocation = { trajectoryId: "traj_1", branchId: "main", invocationId: "inv_1" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    runtimeMock.problemReports.availability.mockResolvedValue({
+      destination: "https://vibestudio.app/v1/problem-reports",
+    });
+  });
+
+  it("removes secrets before laying the account out and says what it removed", async () => {
+    const draft = await draftProblemReport(
+      evidence({ observed: "Failed with password=hunter2hunter2 in /home/werg/x" })
+    );
+    expect(JSON.stringify(draft)).not.toMatch(/hunter2|\/home\/werg/);
+    expect(draft.destination).toBe("https://vibestudio.app/v1/problem-reports");
+    expect(draft.gaps).toContain("removed before drafting: credential assignment, home path");
+    expect(runtimeMock.gad.diagnoseInvocation).not.toHaveBeenCalled();
+  });
+
+  it("adds one bounded diagnostic as an observed finding when evidence names an invocation", async () => {
+    runtimeMock.gad.diagnoseInvocation.mockResolvedValue({
+      invocation: {
+        invocation_id: "inv_1",
+        status: "failed",
+        terminal_outcome: "error",
+        terminal_reason_code: null,
+      },
+      events: [{}, {}],
+      commands: [{}],
+    });
+    const draft = await draftProblemReport(evidence({ invocation }));
+    expect(runtimeMock.gad.diagnoseInvocation).toHaveBeenCalledWith({
+      ...invocation,
+      eventLimit: 20,
+      commandLimit: 20,
+      effectLimit: 50,
+    });
+    expect(draft.narrative.at(-1)).toEqual({
+      section: "findings",
+      claims: "observed",
+      markdown:
+        "invocation inv_1: status failed; terminal outcome error; reason code none; 2 events, 1 commands read",
+    });
+  });
+
+  it("records a denied diagnostic as a gap instead of failing", async () => {
+    runtimeMock.gad.diagnoseInvocation.mockRejectedValue(new Error("denied for a non-owner"));
+    const draft = await draftProblemReport(evidence({ invocation }));
+    expect(draft.gaps).toContain("invocation diagnostic unavailable: denied for a non-owner");
+    expect(draft.narrative.map((section) => section.section)).not.toContain("findings");
   });
 });

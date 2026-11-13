@@ -15,7 +15,7 @@ const SECRET_PATTERNS: [string, RegExp][] = [
 
 export type Redacted = { text: string; removed: string[] };
 
-export default function redact(text: string): Redacted {
+export function redact(text: string): Redacted {
   const removed: string[] = [];
   let out = text;
   for (const [name, pattern] of SECRET_PATTERNS) {

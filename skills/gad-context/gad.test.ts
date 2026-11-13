@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import findings from "./inspectAgentHealth/findings.js";
-import { nextInspector, urgencyOf } from "./inspectAgentHealth/policy.js";
-import collectSummary from "./summarizeChannel/collect.js";
-import timeline from "./summarizeChannel/timeline.js";
+import { listFindings, nextInspector, reportAgentHealth, urgencyOf } from "./agent-health.js";
+import { readTimeline, summarizeChannel } from "./channel-summary.js";
 import type { AgentHealth, EnvelopeItem } from "./types.js";
 
 const health = (overrides: Partial<AgentHealth> = {}): AgentHealth => ({
@@ -18,13 +16,13 @@ const health = (overrides: Partial<AgentHealth> = {}): AgentHealth => ({
   ...overrides,
 });
 
-describe("findings", () => {
+describe("listFindings", () => {
   it("lists nothing for a quiet channel", () => {
-    expect(findings(health())).toEqual([]);
+    expect(listFindings(health())).toEqual([]);
   });
 
   it("counts publication problems and names orphan envelopes", () => {
-    const found = findings(
+    const found = listFindings(
       health({
         publicationIntegrity: {
           summary: { missingMappings: 2, orphanMappings: 1, sequenceMismatches: 0 },
@@ -40,7 +38,7 @@ describe("findings", () => {
   });
 
   it("separates running invocations from a terminal event that never reached the projection", () => {
-    const found = findings(
+    const found = listFindings(
       health({
         invocationState: {
           rows: [
@@ -79,13 +77,37 @@ describe("findings", () => {
   });
 
   it("reports an empty roster and oversized rows", () => {
-    const found = findings(
+    const found = listFindings(
       health({
         roster: { summary: { activeParticipants: 0 } },
         storage: { rows: [{ scope: "log_events", id: "ev_1", bytes: 41_000_000 }] },
       })
     );
     expect(found.map((finding) => finding.kind)).toEqual(["oversized-storage", "empty-roster"]);
+  });
+});
+
+describe("reportAgentHealth", () => {
+  it("is healthy when nothing is open, busy when work is in flight, and reports integrity apart from activity", () => {
+    expect(reportAgentHealth(health())).toMatchObject({ status: "healthy", integrity: "ok", findings: [] });
+    expect(
+      reportAgentHealth(health({ summary: { durableIntegrityOk: true, activity: "in-flight", activeParticipants: 2 } }))
+    ).toMatchObject({ status: "busy", activity: "in-flight", integrity: "ok" });
+  });
+
+  it("asks for investigation when integrity is broken, and for urgent attention on a duplicate turn.opened", () => {
+    expect(
+      reportAgentHealth(health({ summary: { durableIntegrityOk: false, activity: "idle", activeParticipants: 2 } }))
+    ).toMatchObject({ status: "investigate", integrity: "broken" });
+    const report = reportAgentHealth(
+      health({
+        turnState: { summary: { openTurns: 0, streamingMessages: 0, duplicateOpenedTurns: 1 }, rows: [] },
+      })
+    );
+    expect(report.status).toBe("urgent");
+    expect(report.findings).toEqual([
+      expect.objectContaining({ kind: "duplicate-turn-opened", urgency: "urgent", next: "inspectTurnState" }),
+    ]);
   });
 });
 
@@ -137,7 +159,7 @@ const message = (
   publishedAt: "2026-10-30T14:00:00.000Z",
 });
 
-describe("timeline", () => {
+describe("readTimeline", () => {
   it("merges overlapping pages by seq and keeps only the conversation", () => {
     const presence: EnvelopeItem = {
       envelopeId: "env_1",
@@ -147,7 +169,7 @@ describe("timeline", () => {
       payloadSummary: {},
       publishedAt: "",
     };
-    const flat = timeline([
+    const flat = readTimeline([
       { items: [presence, message(2, "user", "How many panels?")] },
       { items: [message(2, "user", "How many panels?"), message(3, "agent", "There are 17.")] },
     ]);
@@ -163,7 +185,7 @@ describe("timeline", () => {
   });
 
   it("reads a long block through its preview", () => {
-    const flat = timeline([
+    const flat = readTimeline([
       {
         items: [message(1, "agent", { type: "string", chars: 900, preview: "Changelog for 2.4" })],
       },
@@ -172,7 +194,7 @@ describe("timeline", () => {
   });
 });
 
-describe("summarizeChannel.collect", () => {
+describe("summarizeChannel", () => {
   it("reads how the conversation stands from its last message, and cites the opening and the latest", () => {
     const pages = [
       {
@@ -182,22 +204,22 @@ describe("summarizeChannel.collect", () => {
         ],
       },
     ];
-    expect(collectSummary(pages)).toMatchObject({
+    expect(summarizeChannel(pages)).toMatchObject({
       range: { fromSeq: 2, toSeq: 3, envelopes: 2 },
       standing: "agent-replied",
       opening: 2,
       latest: 3,
       latestText: "Done. Let me know if you want more.",
     });
-    expect(collectSummary([{ items: [message(2, "user", "Hello")] }]).standing).toBe(
+    expect(summarizeChannel([{ items: [message(2, "user", "Hello")] }]).standing).toBe(
       "awaiting-agent"
     );
     expect(
-      collectSummary([
+      summarizeChannel([
         { items: [message(2, "user", "Hi"), message(3, "agent", "x", "message.failed")] },
       ]).standing
     ).toBe("failed");
-    expect(collectSummary([{ items: [] }])).toMatchObject({
+    expect(summarizeChannel([{ items: [] }])).toMatchObject({
       standing: "empty",
       range: { envelopes: 0 },
     });

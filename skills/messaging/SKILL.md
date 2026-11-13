@@ -53,20 +53,18 @@ From eval, `await agent.addressees()` returns the same rows as data
 exact ref before you call `notify`. It lists; it never sends.
 
 To turn a name a user said ("tell Maria the build passed") into that exact ref,
-use the typed resolver instead of matching rows by eye:
+use the resolver instead of matching rows by eye:
 
 ```ts
-const resolver = await natlang.load(
-  "skills/messaging/addressee/resolveAddressee.nl",
-);
-const who = await resolver.resolve("Tell Maria the build passed");
+import { resolveAddressee } from "@workspace-skills/messaging";
+const who = resolveAddressee("Tell Maria the build passed", await agent.addressees());
 // { kind: "ref", ref: "@maria", note: "Maria Silva (desktop)" }
 // { kind: "ambiguous", reason: "several" | "none", candidates: [...] }
 ```
 
-The resolver reads the roster and takes the row the user names in so many words
-(a name, handle, chat surface, run state or role such as the supervisor). It never
-guesses between rows it names equally well: an ambiguity comes back as data with the
+The resolver takes the row the user names in so many words (a name, handle,
+chat surface, run state or role such as the supervisor). It never guesses
+between rows it names equally well: an ambiguity comes back as data with the
 competing rows, and a name that matches nothing returns the whole roster. Ask the
 user which one, or choose from the roster yourself when the user described the
 recipient some other way; hold the note unsent until then. The resolver does not send; you call `notify` with the

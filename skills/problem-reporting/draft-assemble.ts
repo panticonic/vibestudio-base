@@ -1,12 +1,12 @@
 /** Build the draft from the redacted evidence and the facts read from the platform. Every word is the user's or the platform's. */
-import type { Draft, DraftSection, Evidence, Facts } from "../types.js";
+import type { Draft, DraftSection, Evidence, Facts } from "./types.js";
 
 /** The narrative budget of a report, counted in UTF-8 bytes, separately from evidence and attachments. */
 const NARRATIVE_LIMIT_BYTES = 128 * 1024;
 const OPERATION_TOKEN = /^[A-Za-z0-9_.:@/-]+$/;
 const SYMPTOM_CUT = 280;
 
-export default function assemble(evidence: Evidence, facts: Facts, redactions: string[]): Draft {
+export function assembleDraft(evidence: Evidence, facts: Facts, redactions: string[]): Draft {
   // The user's account is unverified until the agent reproduced it; what the program read from the platform is observed.
   const account = evidence.reproduced ? "observed" : "unverified";
   const sections: DraftSection[] = [

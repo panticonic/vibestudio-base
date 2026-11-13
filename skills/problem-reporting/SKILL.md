@@ -21,17 +21,17 @@ Keep one draft per issue in the current task, and preserve the report ID and the
 
 1. Establish the user's goal, the observed and expected behavior, and whether the issue is reproducible. A report about poor quality doesn't need an exception. Create one manual draft with `create`, or continue the existing draft by its report ID.
 2. Collect only the evidence the user selected, using the user's existing permissions. Prefer precise invocation, build, panel, and message identifiers. `gad.diagnoseInvocation` gives a bounded diagnostic for one invocation; it does not permit exporting a full trajectory. Mark evidence that is missing, denied, expired, or disconnected as incomplete. See [report preparation](references/preparation.md).
-3. To get a first draft of the narrative, ask the typed drafter. It removes
+3. To get a first draft of the narrative, call `draftProblemReport`. It removes
    secrets, URL query strings and home paths from your evidence, fetches one
    bounded invocation diagnostic when you give `invocation`, and lays the
    account out as sections in the user's own words: the user's account
-   `unverified` unless you set `reproduced`, the diagnostic `observed`. No model
-   is involved. It returns a proposal and saves nothing; you review it, add your
-   own findings, and save it yourself.
+   `unverified` unless you set `reproduced`, the diagnostic `observed`. It
+   returns a proposal and saves nothing; you review it, add your own findings,
+   and save it yourself.
 
    ```ts
-   const draftReport = await natlang.load("skills/problem-reporting/draftProblemReport.nl");
-   const draft: Draft = await draftReport.collect(evidence);
+   import { draftProblemReport, type Draft } from "@workspace-skills/problem-reporting";
+   const draft: Draft = await draftProblemReport(evidence);
    // draft.problem has operation, symptom and expected; you choose category, component and kind.
    const { revision, sectionIds } = await problemReports.appendNarrative(
      reportId,

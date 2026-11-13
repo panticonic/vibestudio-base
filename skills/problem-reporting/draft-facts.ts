@@ -1,8 +1,8 @@
 /** Read-only facts for a draft: the report destination, and one bounded invocation diagnostic when evidence names one. */
-import { gad, problemReports } from "natlang:services";
-import type { Evidence, Facts } from "../types.js";
+import { gad, problemReports } from "@workspace/runtime";
+import type { Evidence, Facts } from "./types.js";
 
-export default async function facts(evidence: Evidence): Promise<Facts> {
+export async function readDraftFacts(evidence: Evidence): Promise<Facts> {
   const available = await problemReports.availability();
   const gaps: string[] = [];
   let diagnostic = "";

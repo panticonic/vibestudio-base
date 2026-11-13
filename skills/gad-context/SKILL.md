@@ -55,9 +55,8 @@ how soon each finding needs attention by the documented policy; no model is
 involved.
 
 ```ts
-const health = await natlang.load("skills/gad-context/inspectAgentHealth.nl");
-const report: HealthReport = await health.collect({ channelId: chat.channelId });
-return report;
+import { inspectAgentHealth } from "@workspace-skills/gad-context";
+return await inspectAgentHealth({ channelId: chat.channelId });
 ```
 
 - `integrity` (`ok` or `broken`) and `activity` (`idle` or `in-flight`) stay
@@ -70,22 +69,21 @@ return report;
 
 To recap a conversation, read pages of envelopes with
 `gad.inspectChannelEnvelopes` (or `gad.collectChannelEnvelopePages`) and pass
-them to the summary. It returns exact counts, the opening and latest message
-by `seq` with their text, and how the conversation `standing is: `agent-replied`,
-`awaiting-agent`, `failed`, or `empty`. Whether the agent's last message
-answers or asks the user for something, and what the conversation is about,
-stay with you: a small model misjudged "let me know if you want more" as a
-request in 3 of 8 measured cases, so the summary does not guess.
+them to `summarizeChannel`. It returns exact counts, the opening and latest
+message by `seq` with their text, and how the conversation `standing` is:
+`agent-replied`, `awaiting-agent`, `failed`, or `empty`. Whether the agent's last
+message answers or asks the user for something, and what the conversation is
+about, stay with you: that is a judgment about meaning, so the summary does not
+guess.
 
 ```ts
+import { summarizeChannel } from "@workspace-skills/gad-context";
 const pages = await gad.collectChannelEnvelopePages(
   { channelId: chat.channelId, window: { kind: "tail" } },
   { maximumItems: 100 },
   gad.inspectChannelEnvelopes,
 );
-const summarize = await natlang.load("skills/gad-context/summarizeChannel.nl");
-const summary: ChannelSummary = summarize.collect(pages);
-return summary;
+return summarizeChannel(pages);
 ```
 
 The raw form, when you need a field the report does not carry:

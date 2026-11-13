@@ -1,5 +1,15 @@
-/** Flatten pages of envelopes into exact counts and the ordered conversation, so judging reads only the conversation. */
-import type { EnvelopeItem, EnvelopePage, TimelineEntry } from "../types.js";
+/**
+ * The summary of a channel's envelope history: merge the pages by `seq`, count senders and payload kinds, and read how
+ * the conversation stands from its last message. Exact code over pages the caller already read; it reads nothing itself.
+ * Whether the agent's last message asks the user for something is left to the reader of `latestText`.
+ */
+import type {
+  ChannelSummary,
+  EnvelopeItem,
+  EnvelopePage,
+  Standing,
+  TimelineEntry,
+} from "./types.js";
 
 const AGENTIC_EVENT = "agentic.trajectory.v1/event";
 const TEXT_CUT = 400;
@@ -31,7 +41,8 @@ function textOf(event: any): string {
   return parts.join("\n").slice(0, TEXT_CUT);
 }
 
-export default function timeline(pages: EnvelopePage[]): Flat {
+/** Flatten pages of envelopes into exact counts and the ordered conversation. */
+export function readTimeline(pages: EnvelopePage[]): Flat {
   const bySeq = new Map<number, EnvelopeItem>();
   for (const page of pages) for (const item of page.items) bySeq.set(item.seq, item);
   const items = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
@@ -64,5 +75,28 @@ export default function timeline(pages: EnvelopePage[]): Flat {
     senders: rank(senders).map(([sender, envelopes]) => ({ sender, envelopes })),
     kinds: rank(kinds).map(([kind, envelopes]) => ({ kind, envelopes })),
     timeline: entries,
+  };
+}
+
+/** Who spoke, what kinds of envelopes there are, and how the conversation stands. */
+export function summarizeChannel(pages: EnvelopePage[]): ChannelSummary {
+  const flat = readTimeline(pages);
+  const seqs = flat.items.map((item) => item.seq);
+  const last = flat.timeline[flat.timeline.length - 1];
+  const firstUser = flat.timeline.find((entry) => entry.who === "user");
+  const standing: Standing = !last
+    ? "empty"
+    : last.event === "message.failed"
+      ? "failed"
+      : last.who === "user"
+        ? "awaiting-agent"
+        : "agent-replied";
+  return {
+    range: { fromSeq: seqs[0] ?? 0, toSeq: seqs[seqs.length - 1] ?? 0, envelopes: seqs.length },
+    senders: flat.senders,
+    kinds: flat.kinds,
+    ...(firstUser ? { opening: firstUser.seq, openingText: firstUser.text } : {}),
+    ...(last ? { latest: last.seq, latestText: last.text } : {}),
+    standing,
   };
 }
