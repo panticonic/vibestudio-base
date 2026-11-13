@@ -370,6 +370,12 @@ export declare class NativeSession {
     /** Synchronous tools (no eval). */
     apply(name: string, args: Record<string, unknown>): NativeResult;
     private scopeTool;
+    /**
+     * A tool call whose name is something in the eval scope (transcript.search, an input, a function of this call, a
+     * service): the base LFM3 sent transcript.search/transcript.entry/read_function as tool calls in 46 of 512 held-v2
+     * episodes and got only "expected a scope-eval tool". Name the eval form instead.
+     */
+    private notATool;
     /** The services this call may use: all but those scoped to functions it is not running within. */
     /** What eval code in this call can use, for a model looking for something it does not have. */
     private scopeGuide;

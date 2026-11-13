@@ -3,7 +3,6 @@ import { type IFileSystem, type FsStat, type FileContent, type BufferEncoding, t
 import { Folder } from './scoped-fs.js';
 import { type PythonHost } from './folder-python.js';
 import { type AskHost, type CallHost } from './natlang-command.js';
-/** A lazy filesystem adapter: stat and directory traversal use metadata, not file contents. */
 export declare class FolderFs implements IFileSystem {
     readonly folder: Folder;
     private readonly emptyDirs;

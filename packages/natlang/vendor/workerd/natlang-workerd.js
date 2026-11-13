@@ -216072,7 +216072,7 @@ function foreignCodeHint(source2) {
   };
   const first = lines.findIndex((line) => line.trim() !== "");
   if (first >= 0 && PYTHON_IMPORT_LINE.test(lines[first]))
-    return at(first, TYPESCRIPT_ONLY + "Python is not available: the inputs, services, functions and built-ins such as nl are already in scope, so use them by name, and write judgment as `await nl(...)`.");
+    return at(first, TYPESCRIPT_ONLY + "Python is not available in eval: the inputs, services, functions and built-ins such as nl are already in scope, so use them by name, and write a judgment as await nl`instructions`(value).");
   const python = lines.findIndex((line) => PYTHON_SYNTAX_LINES.some((pattern2) => pattern2.test(line)));
   if (python >= 0)
     return at(python, TYPESCRIPT_ONLY + "Declare with const or let, use braces for blocks and true/false/null, and inspect a value by ending the code with it.");
@@ -216308,7 +216308,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   const transientHelpers = [];
   for (const { statement, helper } of helperCandidates) {
     const found = persistentHelperFreeNames(helper.fn, helperChecker, file);
-    const free = { ...found, names: found.names.filter((name) => name !== helper.name) };
+    const free = { ...found, names: found.names.filter((name) => name && name !== helper.name) };
     const spanOfDeclaration = span(statement);
     const hidden = free.names.filter((name) => !knownHelperNames.has(name) && !bindings2.some((binding) => binding.name === name));
     const ephemeral = free.names.filter((name) => transientNames.has(name));
@@ -225408,6 +225408,35 @@ async function readNeuraleseForCurrentTask(value) {
     } });
   }
   const library = task?.services?.neuralese;
+  if (!library && frame) {
+    let declared2;
+    try {
+      declared2 = parseType(ref.type);
+    } catch {
+      throw new NeuraleseReadoutCapabilityError("the Neuralese reference has an invalid declared type");
+    }
+    if (declared2.kind !== "neuralese") throw new NeuraleseReadoutCapabilityError("the reference does not declare Neuralese<T>");
+    const elementType = formatType(declared2.element);
+    graphNode(traceFor(frame.parentCallId), "readout", {
+      type: elementType,
+      call_id: frame.parentCallId ?? null,
+      transport: "model-read/1",
+      block: ref.id
+    }, valueInputs(value, "args", producerScopeForTrace(traceFor(frame.parentCallId))));
+    const { invokeDefinition: invokeDefinition2 } = await Promise.resolve().then(() => (init_kernel(), kernel_exports));
+    return invokeDefinition2(frame, {
+      id: "natlang:model-read/1",
+      name: "natlang.read",
+      body: "Read the supplied Neuralese value. Return exactly the value it contains in its declared element type. Preserve its content and structure; do not summarize, add fields, or add commentary.",
+      params: [{ name: "value", type: ref.type }],
+      returns: elementType,
+      types: { ...frame.typeAliases ?? {} },
+      codebase: {},
+      subtype: "function",
+      readout: "template",
+      revision: "model-read/1"
+    }, [value], { manifest: { internal: true, adHoc: false } });
+  }
   if (!library?.bodies?.read) throw new NeuraleseReadoutCapabilityError("services.neuralese is missing or has no read body");
   const store = task?.runtime.options.neuralese?.store;
   if (!store || !await store.has(library.bodies.read))
@@ -227303,7 +227332,7 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
         this.runtime.checkInterruption();
         if (this.completed) return this.record(name, args, { kind: "error", text: "the task has already finished" });
         if (!NATIVE_TOOLS.includes(name))
-          return this.record(name, args, rejected(new Reject([{ path: name, code: "bad-action", expected: "a scope-eval tool" }])));
+          return this.record(name, args, rejected(new Reject([this.notATool(name, args)])));
         if (this.lam.withheldTools?.includes(name))
           return this.record(name, args, rejected(new Reject([{ path: name, code: "withheld-tool", text: `${name} is withheld from calls of ${this.lam.functionName || "this function"} by its definition; do this step with the tools this call offers` }])));
         if (this.actionLimitReached()) return this.record(name, args, { kind: "budget", text: "action or tool-call budget exhausted" });
@@ -227566,6 +227595,33 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
           return { kind: "completed", text: `Returned ${oneLine(value, void 0, this.runtime.displayLiveId, this.runtime.untrusted)}.`, value };
         }
         throw new Reject([{ path: name, code: "bad-action", expected: "a scope-eval tool" }]);
+      }
+      /**
+       * A tool call whose name is something in the eval scope (transcript.search, an input, a function of this call, a
+       * service): the base LFM3 sent transcript.search/transcript.entry/read_function as tool calls in 46 of 512 held-v2
+       * episodes and got only "expected a scope-eval tool". Name the eval form instead.
+       */
+      notATool(name, args) {
+        const root2 = name.split(".")[0];
+        const builtins = ["transcript", "nl", "iterateOn", "decide", "read"];
+        const inputs = this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : [];
+        const scope = /* @__PURE__ */ new Set([
+          ...builtins,
+          ...inputs,
+          ...Object.keys(this.lam.captures ?? {}),
+          ...Object.keys(this.lam.let),
+          ...this.persistentScopeHelpers.keys(),
+          ...Object.keys(this.lam.codebase),
+          ...Object.keys(this.availableServices())
+        ]);
+        if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(name) || !scope.has(root2))
+          return { path: name, code: "bad-action", expected: "a scope-eval tool" };
+        const first = Object.values(args).find((value2) => typeof value2 === "string" || typeof value2 === "number");
+        const shown = first === void 0 ? "" : JSON.stringify(first);
+        const awaited = builtins.includes(root2) && root2 !== "transcript" || Object.hasOwn(this.lam.codebase, root2) || this.persistentScopeHelpers.has(root2);
+        const value = !awaited && root2 !== "transcript" && !Object.hasOwn(this.availableServices(), root2);
+        const example2 = name === "transcript" ? 'transcript.search("\u2026")' : value && name === root2 ? name : `${awaited ? "await " : ""}${name}(${shown})`;
+        return { path: name, code: "bad-action", text: `${name}: bad-action, ${name} is not a tool: ${root2} is in this call's eval scope. Use it in code, for example eval with code: ${example2}${builtins.includes(root2) ? `; read_code("${root2}") shows how to use it` : ""}.` };
       }
       /** The services this call may use: all but those scoped to functions it is not running within. */
       /** What eval code in this call can use, for a model looking for something it does not have. */
@@ -296959,12 +297015,16 @@ var builtin2 = (path2) => /^\/(?:usr\/)?bin\/[^/]+$/.test(path2) && BINARIES.has
 var PINNED_TIME = /* @__PURE__ */ new Date("2026-01-01T00:00:00.000Z");
 var asBytes = (value) => typeof value === "string" ? new TextEncoder().encode(value) : value;
 var decodeStdin = (value) => new TextDecoder().decode(Uint8Array.from(value, (char) => char.charCodeAt(0)));
+var EMPTY_DIRS = /* @__PURE__ */ new WeakMap();
 var FolderFs = class {
   constructor(folder2) {
     this.folder = folder2;
+    let dirs = EMPTY_DIRS.get(folder2);
+    if (!dirs) EMPTY_DIRS.set(folder2, dirs = /* @__PURE__ */ new Set());
+    this.emptyDirs = dirs;
   }
   folder;
-  emptyDirs = /* @__PURE__ */ new Set();
+  emptyDirs;
   resolvePath(base, path2) {
     const full = path2.startsWith("/") ? path2 : `${base}/${path2}`;
     const parts = [];
@@ -297131,6 +297191,31 @@ function shellFs(folder2) {
     { mountPoint: "/tmp", filesystem: new ir() }
   ] });
 }
+function staticWord(word) {
+  const text3 = (parts) => {
+    if (!parts) return void 0;
+    let out = "";
+    for (const part of parts) {
+      if (part.type === "Literal" || part.type === "SingleQuoted") out += part.value ?? "";
+      else if (part.type === "DoubleQuoted") {
+        const inner = text3(part.parts);
+        if (inner === void 0) return void 0;
+        out += inner;
+      } else return void 0;
+    }
+    return out;
+  };
+  return text3(word?.parts);
+}
+function checkNestedShell(node) {
+  const args = node.args;
+  const flag = staticWord(args?.[0]);
+  if (!flag || !/^-[a-z]*c[a-z]*$/.test(flag)) return false;
+  const script = staticWord(args?.[1]);
+  if (script === void 0) return false;
+  checkBashAst(new Hp().transform(script).ast);
+  return true;
+}
 function checkBashAst(tree) {
   const calls = /* @__PURE__ */ new Map();
   const visit = (value, current) => {
@@ -297151,8 +297236,9 @@ function checkBashAst(tree) {
     if (node.type === "SimpleCommand") {
       const parts = node.name?.parts;
       const name = parts?.every((part) => part.type === "Literal") ? parts.map((part) => part.value).join("") : void 0;
+      if (name && (name === "bash" || name === "sh") && checkNestedShell(node)) return;
       if (name && ["source", ".", "eval", "bash", "sh"].includes(name))
-        throw new SyntaxError(`${name} cannot bypass the bash policy; use commands directly`);
+        throw new SyntaxError(name === "bash" || name === "sh" ? `${name} runs only a literal script here, as ${name} -c '...'; or write the commands directly` : `${name} cannot bypass the bash policy; use commands directly`);
       if (current && name) calls.get(current)?.add(name);
     }
     for (const [key, child] of Object.entries(node)) if (key !== "name" || node.type !== "SimpleCommand") visit(child, current);

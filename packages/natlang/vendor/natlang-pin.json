@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "9f13cce63b3b9a356decefc70a9f3a88c2427174",
+  "commit": "5b79c0fda510cb7a4e3adadf1fcb74060bffc014",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "48f2dd7bd92c27a0779a0d4edd9ff15bb288bb5444d0fcc65e978f6e5adc7496",
+    "workerd/natlang-workerd.js": "412911584d037462f1e0186fe63e708603dcc201f5fc28a81372dbdd28727eeb",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "2cae58a884b7533360134da93edfc682df5d9559d40a4b74e9d385337207c31a",
@@ -50,7 +50,7 @@
     "workerd/types/native/evaluator.d.ts": "4062d478a1a1b980eef0fae54c86867441a2766c7a8174848252746f512b5ecb",
     "workerd/types/native/expand-type.d.ts": "38361cfe755c1a84a39eb1871e21a39834934d5122f81f872220d994942685af",
     "workerd/types/native/folder-python.d.ts": "582baec00702e3c897824763ceb03da9806313704a19ce7fbd47eaf29463afc1",
-    "workerd/types/native/folder-shell.d.ts": "9499ae6fbc70c81c22c8bd722a7b70c0ca099b80f2670f98e83ba52d7a2d6d00",
+    "workerd/types/native/folder-shell.d.ts": "10e98082a7a5520336c9f78294bbef5d56ff582a40321c958dbbee02cd0699ba",
     "workerd/types/native/graph.d.ts": "618c071a52de3e99deaa770cdf42e5bd90777eb12694d2dd36935f1558d84139",
     "workerd/types/native/model-budget.d.ts": "210ac4e60d24be85b05cd12500dce701c4a7e68c0ac59abd8b5bca8932a9ca51",
     "workerd/types/native/model-recording.d.ts": "111b89c4003d879beaaaf80e3cd98f2086d5dcc9ab8451fa20be02e6ba982bae",
@@ -68,7 +68,7 @@
     "workerd/types/native/refinement.d.ts": "e18e94c7eb21b8f208cd87821cfc23c7122c4bf8a3b9b338d782f66535000818",
     "workerd/types/native/representation.d.ts": "c6b0029b95337b4778ed2c9565e3e0006b99de5c8a70840d844fdf284fad7dda",
     "workerd/types/native/return-errors.d.ts": "784a1c44b1bf20a2270240ecc43abf1e7f0ce3a097b226b8e9a6402698f32172",
-    "workerd/types/native/runtime.d.ts": "2fe6b04cb61e7e97a5477bf85cfec16229fce01ac42589178f0c90d1fd5182f1",
+    "workerd/types/native/runtime.d.ts": "a36f3f4bd7a3103ebfd77b1eb80f4f09714e9c138b9848718b7832ed03671c70",
     "workerd/types/native/scoped-fs.d.ts": "2822cefcd3c40b1fc0064c9dcf98b07cd687a9a8e9f87133215615772edfee39",
     "workerd/types/native/system-prompts.d.ts": "0f524759bde25e9cd622a3e652948b2657b077c99c5cdc86f19a71a26662a47e",
     "workerd/types/native/trace.d.ts": "915a063fb9fdea55a1b68c644ca12724a1c961e0c538aec0ab46977ffd40e3a4",
