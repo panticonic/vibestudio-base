@@ -3084,7 +3084,13 @@ export class EvalKernel extends DurableObjectBase {
     // either one from replacing the other's causal edge, containment, or abort
     // signal.
     const rt = hardenBoundary(
-      this.createRunHostedRuntime(support, execution, args.gatewayToken, args.parent ?? null, args)
+      this.createRunHostedRuntime(
+        support,
+        execution,
+        args.gatewayToken ?? this.ctx.props?.host?.token,
+        args.parent ?? null,
+        args
+      )
     );
     // In path mode, load the entry file. The eval service validates exactly one of
     // `code` or `path`; this fallback remains defensive for direct/internal calls.
@@ -4272,9 +4278,8 @@ export class EvalKernel extends DurableObjectBase {
     parent: RunArgs["parent"] | null,
     owner: OwnerBindingArgs
   ): WorkspaceRuntimeLike {
-    // Eval host calls must use the owner-scoped token minted for this exact
-    // kernel. Falling back to the internal-DO service bearer would create a
-    // second, broader authority path for runs that bypassed normal admission.
+    // Eval host calls use the token of the entity that hosts this kernel (its
+    // `props.host`): the kernel acts as that entity and as no broader principal.
     if (!gatewayToken) {
       throw new Error("eval: owner-scoped gateway token is required");
     }

@@ -233,6 +233,9 @@ export class SessionDO extends DurableObjectBase {
   async settle(method: string, args?: unknown[]): Promise<unknown> {
     if (this.caller?.callerKind !== "server") refuse("settle is for the host", "EACCES");
     if (!SETTLE_METHODS.has(method)) refuse(`${method} is not a settlement path`, "EINVAL");
+    // A session that never hosted a kernel has no roots to list, and listing is not a reason to start one.
+    if (method === "listRetainedExecutionRoots" && this.getStateValue(KERNEL_HOSTED_KEY) !== "1")
+      return [];
     return (await this.kernel()).call(method, ...(args ?? []));
   }
 
