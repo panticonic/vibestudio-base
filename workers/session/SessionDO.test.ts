@@ -160,3 +160,23 @@ describe("SessionDO host paths", () => {
     expect(host.seen.at(-1)!.op).toBe("release");
   });
 });
+
+describe("SessionDO channel traffic", () => {
+  it("relays a channel's delivery, invocation and cancellation to the kernel that holds the resident sessions", async () => {
+    const host = codeHost();
+    const { call, callAs } = await createTestDO(SessionDO, host.env, { props });
+    const delivery = { channelId: "c1", channelRef: { objectKey: "c1" } };
+    const code = { callerId: "do:workers/agent:Agent:a", callerKind: "do" } as const;
+    await call("acceptChannelDelivery", delivery);
+    await callAs(code, "acceptChannelInvocation", { channelId: "c1", message: {} });
+    await callAs(code, "cancelChannelInvocation", { channelId: "c1", message: {} });
+    const byMethod = (method: string) => host.seen.find((entry) => entry.method === method)!;
+    // The sender is the entity's own caller: the kernel checks it against the channel it registered.
+    expect(byMethod("relayChannelDelivery").args).toEqual([
+      delivery,
+      expect.objectContaining({ kind: "server" }),
+    ]);
+    expect(byMethod("relayChannelInvocation")).toBeDefined();
+    expect(byMethod("relayChannelCancellation")).toBeDefined();
+  });
+});

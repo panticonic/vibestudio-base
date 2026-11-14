@@ -6,6 +6,11 @@ import {
 import type { HostedCode } from "@vibestudio/durable/codeHost";
 import type { LifecyclePrepareInput } from "@workspace/runtime/worker/kernel";
 import type {
+  ResidentChannelCancellationInput,
+  ResidentChannelDeliveryInput,
+  ResidentChannelInvocationInput,
+} from "@vibestudio/shared/residentSession";
+import type {
   KernelCaller,
   KernelEventPage,
   KernelRunSnapshot,
@@ -222,6 +227,32 @@ export class SessionDO extends DurableObjectBase {
   async deleteScopeValue(key: string): Promise<{ ok: boolean; existed: boolean }> {
     this.authorizeCaller();
     return (await this.kernel()).call("deleteScopeValue", key, this.scopeCaller());
+  }
+
+  /**
+   * Channel traffic for the resident sessions a notebook registered. The channel
+   * addresses this entity (the kernel acts as it), but the receivers live in the
+   * hosted kernel: this entity relays, and the kernel checks the sender against the
+   * channel it registered (docs/dolt-redesign.md §7.2).
+   */
+  @rpc({ ...SESSION_METHOD, principals: ["host", "code"], sensitivity: "write" })
+  override async acceptChannelDelivery(input: ResidentChannelDeliveryInput): Promise<unknown> {
+    return (await this.kernel()).call("relayChannelDelivery", input, {
+      id: this.rpcCallerId,
+      kind: this.rpcCallerKind,
+    });
+  }
+
+  @rpc({ ...SESSION_METHOD, principals: ["code"], sensitivity: "write" })
+  override async acceptChannelInvocation(input: ResidentChannelInvocationInput): Promise<unknown> {
+    return (await this.kernel()).call("relayChannelInvocation", input);
+  }
+
+  @rpc({ ...SESSION_METHOD, principals: ["code"], sensitivity: "write" })
+  override async cancelChannelInvocation(
+    input: ResidentChannelCancellationInput
+  ): Promise<unknown> {
+    return (await this.kernel()).call("relayChannelCancellation", input);
   }
 
   /**

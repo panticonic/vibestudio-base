@@ -1,4 +1,7 @@
-import { residentChannelRpcMethods } from "@vibestudio/shared/residentSession";
+import {
+  assertChannelDeliverySource,
+  residentChannelRpcMethods,
+} from "@vibestudio/shared/residentSession";
 import { APPROVAL_WAIT_CANCELLED_CODE } from "@vibestudio/shared/approvals";
 import { schemaRpcClient } from "@vibestudio/rpc/internal";
 import { mainRpcMethod, mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
@@ -2467,6 +2470,46 @@ export class EvalKernel extends DurableObjectBase {
   @rpc(KERNEL_RPC)
   async lifecycle(input: LifecyclePrepareInput): Promise<{ status: "ready" }> {
     return this.releaseForLifecycle(input) as Promise<{ status: "ready" }>;
+  }
+
+  /**
+   * Channel traffic for this notebook's resident sessions. The channel addresses
+   * the session entity (the kernel acts as it), which cannot see the receivers
+   * registered here: it checks the sender and relays. The registry belongs to the
+   * base class; these calls reach it on the entity's behalf.
+   */
+  private residentRegistry(): {
+    target(channelId: string): string | null;
+    acceptDelivery(input: unknown): Promise<unknown>;
+    acceptInvocation(input: unknown): Promise<unknown>;
+    cancelInvocation(input: unknown): Promise<unknown>;
+  } {
+    return (this as unknown as { residentSessions: ReturnType<EvalKernel["residentRegistry"]> })
+      .residentSessions;
+  }
+
+  @rpc(KERNEL_RPC)
+  async relayChannelDelivery(
+    input: { channelId: string },
+    sender: { id: string | null; kind: string | null }
+  ): Promise<unknown> {
+    const registry = this.residentRegistry();
+    assertChannelDeliverySource(
+      sender,
+      input as Parameters<typeof assertChannelDeliverySource>[1],
+      registry.target(input.channelId)
+    );
+    return registry.acceptDelivery(input);
+  }
+
+  @rpc(KERNEL_RPC)
+  async relayChannelInvocation(input: unknown): Promise<unknown> {
+    return this.residentRegistry().acceptInvocation(input);
+  }
+
+  @rpc(KERNEL_RPC)
+  async relayChannelCancellation(input: unknown): Promise<unknown> {
+    return this.residentRegistry().cancelInvocation(input);
   }
 
   /** Durably accepts one run (§7.5.1). The run executes in this kernel's own lifetime. */
