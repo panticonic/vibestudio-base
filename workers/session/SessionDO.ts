@@ -165,7 +165,7 @@ export class SessionDO extends DurableObjectBase {
     );
     const hosted = await this.kernel();
     // The run's timeoutMs bounds its CPU: the limit rides on this one call (§7.8).
-    const limits = cpuLimitForTimeout(input.timeoutMs);
+    const limits = cpuLimitForTimeout(input["timeoutMs"]);
     const kernel = limits ? hosted.limited(limits) : hosted;
     try {
       return await callOrRestart<KernelStartAck>(

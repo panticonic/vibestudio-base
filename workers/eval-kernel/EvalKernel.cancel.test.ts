@@ -581,7 +581,7 @@ describe("EvalKernel cancellation + forced recovery", () => {
   });
 
   it("reports a dropped legacy notebook once, on the first result, and not again after a later restart", async () => {
-    const status = (instance: unknown, args?: { legacyNotebookDropped?: boolean }) =>
+    const status = (instance: object, args?: { legacyNotebookDropped?: boolean }) =>
       priv<
         (args?: { legacyNotebookDropped?: boolean }) => {
           event?: { kind: string; legacyNotebookDropped?: true };
