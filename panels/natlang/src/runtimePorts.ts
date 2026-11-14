@@ -1,5 +1,4 @@
-import { createEvalExecutor } from "@vibestudio/service-schemas/eval";
-import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
+import { createDynamicCodeExecutor } from "@vibestudio/service-schemas/dynamicCode";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 import {
@@ -12,10 +11,13 @@ import { createNatlangRecordsClient } from "@workspace/natlang-records/client";
 import { extensions, fs, openPanel, panel, rpc } from "@workspace/runtime";
 import type { EvalOutcome, EvalRunner, NatlangPanelPorts } from "./ports.js";
 
-/** Run source in this panel's own eval session: the eval owner is the panel, so the natlang provider is the one agents use. */
+/**
+ * Run source in this panel's own eval session: the eval owner is the panel, so the natlang provider is the one agents use.
+ * The host admits the run, the panel starts it on the session entity that hosts the kernel and pulls the result from there.
+ */
 function panelEvaluate(): EvalRunner {
   const execute = (signal: AbortSignal | undefined) =>
-    createEvalExecutor(createMainRpcCaller(rpc), signal ? { signal } : {});
+    createDynamicCodeExecutor(rpc, signal ? { signal } : {});
   return async (source, options): Promise<EvalOutcome> => {
     const result = await execute(options.signal)({
       runId: options.runId,

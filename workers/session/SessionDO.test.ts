@@ -106,6 +106,25 @@ describe("SessionDO", () => {
     expect(host.seen.filter((entry) => entry.method === "start")).toHaveLength(1);
   });
 
+  it("serves the user's own shell, and resets only for the host", async () => {
+    const host = codeHost();
+    const { call, callAs } = await createTestDO(SessionDO, host.env, { props });
+    await call("start", { runId: "r1" }, "n1");
+    // A CLI shell is the user, who owns every session of the workspace.
+    await callAs({ callerId: "shell:dev_cli", callerKind: "shell" }, "get", "r1");
+    await callAs({ callerId: "shell:dev_cli", callerKind: "shell" }, "await", "r1", {});
+    // A reset needs the host's own authority gate: neither the principal nor a shell calls it.
+    await expect(callAs({ callerId: PRINCIPAL, callerKind: "panel" }, "reset")).rejects.toThrow(
+      /host/i
+    );
+    await expect(
+      callAs({ callerId: "shell:dev_cli", callerKind: "shell" }, "reset")
+    ).rejects.toThrow(/host/i);
+    expect(host.seen.filter((entry) => entry.method === "reset")).toEqual([]);
+    await call("reset");
+    expect(host.seen.filter((entry) => entry.method === "reset")).toHaveLength(1);
+  });
+
   it("a refused start leaves no nonce behind; reset forgets them", async () => {
     let refuse = true;
     const host = codeHost((seen) => {

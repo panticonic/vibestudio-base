@@ -42,13 +42,31 @@ const SETTLE_METHODS: ReadonlySet<string> = new Set([
 
 const WEBSITE_CLOSED = {
   kind: "closed",
-  reason: "A session holds a principal's notebook and its runs; it is not exposed to websites.",
+  reason: "A session's host controls and channel traffic are not exposed to websites.",
 } as const;
 
-/** The rpc authority every session method shares: callers are checked in the class (`authorizeCaller`). */
+/**
+ * A caller's own runs: the principal the session serves may be a website, which acts through its
+ * authenticated launch scope. Every call is still checked in the class (`authorizeCaller`).
+ */
+const WEBSITE_OWN_RUNS = {
+  kind: "eligible",
+  rationale:
+    "A session serves exactly one authenticated principal; it accepts only that principal (or the host acting for it).",
+} as const;
+
+/** The rpc authority of a run's own calls: callers are checked in the class (`authorizeCaller`). */
 const SESSION_METHOD = {
+  website: WEBSITE_OWN_RUNS,
+  principals: ["host", "user", "code", "session", "website"],
+  effect: { kind: "open" },
+  tier: "open",
+} as const;
+
+/** Host-only calls: the lifecycle and settlement paths no principal reaches. */
+const SESSION_HOST_METHOD = {
   website: WEBSITE_CLOSED,
-  principals: ["host", "code", "session"],
+  principals: ["host"],
   effect: { kind: "open" },
   tier: "open",
 } as const;
@@ -106,13 +124,21 @@ export class SessionDO extends DurableObjectBase {
     return principal;
   }
 
-  /** The principal itself, or the host acting for it. */
+  /**
+   * The principal itself, the host acting for it, or the user's own shell (a CLI or desktop
+   * shell is the user, who owns every session of the workspace; the host applies the same rule
+   * when a shell selects a live session owner at admission).
+   */
   private authorizeCaller(): void {
     const caller = this.caller;
     if (!caller) refuse("A session call needs an authenticated caller", "EACCES");
-    if (caller.callerKind === "server") return;
+    if (caller.callerKind === "server" || caller.callerKind === "shell") return;
     if (caller.callerId !== this.principalId())
       refuse("This session serves another principal", "EACCES");
+  }
+
+  private requireHost(): void {
+    if (this.caller?.callerKind !== "server") refuse("This call is for the host", "EACCES");
   }
 
   private kernel(): Promise<HostedCode> {
@@ -254,9 +280,10 @@ export class SessionDO extends DurableObjectBase {
     );
   }
 
-  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  /** Host only: the host gates a scope reset with its own approval before it calls this. */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
   async reset(): Promise<{ ok: boolean }> {
-    this.authorizeCaller();
+    this.requireHost();
     const result = await callOrRestart<{ ok: boolean }>(
       await this.kernel(),
       KERNEL_CONTROL_BUDGET_MS,
@@ -286,7 +313,7 @@ export class SessionDO extends DurableObjectBase {
    * hosted kernel: this entity relays, and the kernel checks the sender against the
    * channel it registered (docs/dolt-redesign.md §7.2).
    */
-  @rpc({ ...SESSION_METHOD, principals: ["host", "code"], sensitivity: "write" })
+  @rpc({ ...SESSION_HOST_METHOD, principals: ["host", "code"], sensitivity: "write" })
   override async acceptChannelDelivery(input: ResidentChannelDeliveryInput): Promise<unknown> {
     return (await this.kernel()).call("relayChannelDelivery", input, {
       id: this.rpcCallerId,
@@ -294,12 +321,12 @@ export class SessionDO extends DurableObjectBase {
     });
   }
 
-  @rpc({ ...SESSION_METHOD, principals: ["code"], sensitivity: "write" })
+  @rpc({ ...SESSION_HOST_METHOD, principals: ["code"], sensitivity: "write" })
   override async acceptChannelInvocation(input: ResidentChannelInvocationInput): Promise<unknown> {
     return (await this.kernel()).call("relayChannelInvocation", input);
   }
 
-  @rpc({ ...SESSION_METHOD, principals: ["code"], sensitivity: "write" })
+  @rpc({ ...SESSION_HOST_METHOD, principals: ["code"], sensitivity: "write" })
   override async cancelChannelInvocation(
     input: ResidentChannelCancellationInput
   ): Promise<unknown> {
@@ -311,7 +338,7 @@ export class SessionDO extends DurableObjectBase {
    * (docs/dolt-redesign.md §7.5, §7.12 steps 5 and 6): authority events, the
    * execution roots, acknowledgement. Host only: no session principal calls them.
    */
-  @rpc({ ...SESSION_METHOD, principals: ["host"], sensitivity: "write" })
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
   async settle(method: string, args?: unknown[]): Promise<unknown> {
     if (this.caller?.callerKind !== "server") refuse("settle is for the host", "EACCES");
     if (!SETTLE_METHODS.has(method)) refuse(`${method} is not a settlement path`, "EINVAL");
