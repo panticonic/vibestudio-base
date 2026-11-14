@@ -4,6 +4,7 @@ import { SessionDO } from "./SessionDO.js";
 
 interface Seen {
   op: string;
+  limits?: { cpuMs?: number; subRequests?: number };
   method?: string;
   args?: unknown[];
   executable?: { source: string; className: string };
@@ -48,6 +49,18 @@ describe("SessionDO", () => {
       { runId: "r1", code: "1", executionSessionNonce: "nonce-1" },
       { kind: "session", admissionNonce: "nonce-1" },
     ]);
+  });
+
+  it("carries the run's timeoutMs as the CPU limit of its start call, and no limit without one", async () => {
+    const host = codeHost();
+    const { call } = await createTestDO(SessionDO, host.env, { props });
+    await call("start", { runId: "r1", timeoutMs: 5000 }, "n1");
+    await call("start", { runId: "r2" }, "n2");
+    await call("await", "r1", { waitMs: 5 });
+    const calls = host.seen.filter((entry) => entry.op === "call");
+    expect(calls.find((entry) => entry.args?.[0] && (entry.args[0] as { runId: string }).runId === "r1")!.limits).toEqual({ cpuMs: 5000 });
+    expect(calls.find((entry) => entry.args?.[0] && (entry.args[0] as { runId: string }).runId === "r2")!.limits).toBeUndefined();
+    expect(calls.find((entry) => entry.method === "await")!.limits).toBeUndefined();
   });
 
   it("relays run-scoped calls with the nonce its run was admitted under, and refuses an unknown run", async () => {

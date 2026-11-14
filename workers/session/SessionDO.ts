@@ -3,7 +3,7 @@ import {
   rpc,
   type DurableObjectContext,
 } from "@workspace/runtime/worker/kernel";
-import type { HostedCode } from "@vibestudio/durable/codeHost";
+import { cpuLimitForTimeout, type HostedCode } from "@vibestudio/durable/codeHost";
 import type { LifecyclePrepareInput } from "@workspace/runtime/worker/kernel";
 import type {
   ResidentChannelCancellationInput,
@@ -154,7 +154,10 @@ export class SessionDO extends DurableObjectBase {
       admissionNonce,
       Date.now()
     );
-    const kernel = await this.kernel();
+    const hosted = await this.kernel();
+    // The run's timeoutMs bounds its CPU: the limit rides on this one call (§7.8).
+    const limits = cpuLimitForTimeout(input.timeoutMs);
+    const kernel = limits ? hosted.limited(limits) : hosted;
     try {
       return await kernel.call<KernelStartAck>(
         "start",

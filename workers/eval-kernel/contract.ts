@@ -1,7 +1,8 @@
 /**
  * The kernel call contract of docs/dolt-redesign.md §7.5.1, as types. The
- * kernel (`EvalKernel`) implements it; a session entity relays it. Types
- * only: nothing here is bundled into either class.
+ * kernel (`EvalKernel`) implements it; a session entity or an agent calls it.
+ * Types only: nothing here is bundled into either class (a worker cannot import
+ * another worker's runtime code).
  */
 
 /** Who the hosting entity is acting for. */
