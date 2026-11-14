@@ -742,7 +742,7 @@ function customChannelEvent(type: string, overrides: Partial<ServerLogEvent> = {
 }
 async function expectedEvalCaller(): Promise<string> {
   const key = sha256HexSyncText(`${AGENT_ID}\0${CHANNEL}`).slice(0, 40);
-  return `do:vibestudio/internal:EvalDO:${key}`;
+  return `do:workers/session:SessionDO:${key}`;
 }
 describe("canonical channel endpoint admission", () => {
   it.each(["before", "after"] as const)(
@@ -966,7 +966,7 @@ describe("AgentVesselBase activation-local inspection", () => {
 describe("AgentVesselBase.chatOp", () => {
   it("rejects a caller that is not this agent's own EvalDO", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(
       /only this agent's own EvalDO/
     );
@@ -992,7 +992,7 @@ describe("AgentVesselBase.chatOp", () => {
 
     // Only this agent's own EvalDO may report ingestion (the open DO relay would
     // otherwise let any caller wipe an agent's grants).
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.observeOutsideContent(CHANNEL, "web:example.com")).rejects.toThrow(
       /only this agent's own EvalDO/
     );
@@ -1013,7 +1013,7 @@ describe("AgentVesselBase.chatOp", () => {
 
   it("lists the addressees the list_addressees tool lists, only to this agent's own EvalDO", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(
       /only this agent's own EvalDO/
     );
@@ -1479,7 +1479,7 @@ describe("AgentVesselBase.onEvalProgress (live eval console streaming)", () => {
 
   it("refuses a caller that is not the agent's own EvalDO (same gate as chatOp)", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(
       vessel.onEvalProgress({
         runId: "inv:inv-6",

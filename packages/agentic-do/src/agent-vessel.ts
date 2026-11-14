@@ -170,6 +170,7 @@ import {
   type ResolveAddresseeContext,
 } from "@workspace/agentic-protocol";
 import { canonicalJson, sha256HexSyncText, stableSha256Hex } from "@vibestudio/content-addressing";
+import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 
 import {
   createAgentEntity,
@@ -3256,7 +3257,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    * Auth: the caller MUST be this agent's own EvalDO. We re-derive that DO's
    * objectKey the SAME way evalService does — sha256(ownerId + "\\0" + subKey),
    * hex, first 40 chars — and require the verified caller id to be
-   * `do:vibestudio/internal:EvalDO:<key>`. Any other caller is rejected; the
+   * `do:workers/session:SessionDO:<key>`. Any other caller is rejected; the
    * generic DO relay is open, so a sensitive receiver gates on receipt.
    */
   @rpc({
@@ -3825,14 +3826,12 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  /** Re-derive this agent's own EvalDO objectKey (matching evalService's
-   *  formula EXACTLY: sha256(`${ownerId}\0${subKey}`) hex, first 40 chars; owner
-   *  = this agent's runtime id, subKey = channelId) and require the verified
-   *  caller to be that EvalDO. */
+  /** Re-derive the runtime id of the session entity that hosts this agent's own
+   *  eval kernel (evalService's formula exactly, `evalRuntimeId`: owner = this
+   *  agent's runtime id, scope = channelId) and require the verified caller to be it. */
   private async assertOwnEvalCaller(channelId: string): Promise<void> {
     const callerId = this.rpcCallerId;
-    const expectedKey = sha256HexSyncText(`${this.participantId()}\0${channelId}`);
-    const expectedCaller = `do:vibestudio/internal:EvalDO:${expectedKey.slice(0, 40)}`;
+    const expectedCaller = evalRuntimeId(this.participantId(), channelId);
     if (callerId !== expectedCaller) {
       throw new Error(
         `chatOp: refusing caller ${callerId ?? "unknown"} — only this agent's own EvalDO may forward chat ops`
