@@ -1454,6 +1454,39 @@ export function createPanelRuntime(
     ]);
     if (!allowed.has(method))
       throw new Error(`Unknown panel agent method: ${method}`);
+    // A browser panel is an external page: no panel runtime runs inside it, so
+    // nothing ever registers the `panel:` RPC target these calls address, and
+    // routing them fails as TARGET_NOT_REACHABLE however long it waits (a
+    // recoverable-looking host failure that invites a retry). The host answers
+    // with what an external page has: no state providers, its location, and
+    // the document capture `snapshot()` takes over CDP.
+    const observed = await observePanel(id);
+    if (observed.kind === "browser") {
+      switch (method) {
+        case "_agent.state":
+          return {};
+        case "_agent.routes": {
+          const location = new URL(
+            observed.source.startsWith("browser:")
+              ? observed.source.slice("browser:".length)
+              : observed.source,
+          );
+          return {
+            href: location.href,
+            pathname: location.pathname,
+            search: location.search,
+            hash: location.hash,
+          };
+        }
+        case "_agent.tree":
+          return (await snapshotPanel(id)).document.structure;
+        case "_agent.snapshot":
+          return (await snapshotPanel(id)).document;
+        default:
+          // `setMode` switches a code panel between fixture and live data.
+          return undefined;
+      }
+    }
     return (await invokeReadyPanelAgent(id, method, args)).result;
   };
 
