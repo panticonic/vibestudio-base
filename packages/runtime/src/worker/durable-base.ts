@@ -405,6 +405,11 @@ export abstract class DurableObjectBase {
     if (dolt) assertCleanWorkingSet(dolt);
   }
 
+  /** A product class has no per-object props (`ctx.props` is absent there). */
+  private codeHostProps(): CodeHostProps {
+    return (this.ctx.props ?? {}) as CodeHostProps;
+  }
+
   private _codeHostClient:
     | ((spec: HostCodeSpec) => Promise<HostedCode>)
     | null = null;
@@ -418,7 +423,7 @@ export abstract class DurableObjectBase {
   protected hostCode(spec: HostCodeSpec): Promise<HostedCode> {
     this._codeHostClient ??= createCodeHostClient({
       env: this.env,
-      props: this.ctx.props as CodeHostProps,
+      props: this.codeHostProps(),
     });
     return this._codeHostClient(spec);
   }
@@ -732,7 +737,7 @@ export abstract class DurableObjectBase {
   private connectionlessClient(): InternalConnectionlessRpcClient {
     if (!this._connectionless) {
       // A hosted class acts as the entity that hosts it.
-      const hostIdentity = (this.ctx.props as CodeHostProps).host ?? null;
+      const hostIdentity = this.codeHostProps().host ?? null;
       const token = hostIdentity?.token ?? this.env["RPC_AUTH_TOKEN"];
       if (typeof token !== "string" || token.length === 0) {
         throw new Error("RPC not available: RPC_AUTH_TOKEN not configured");
@@ -1112,7 +1117,7 @@ export abstract class DurableObjectBase {
 
   /** Concrete immutable runtime identity presented by this object on outbound RPC. */
   protected get rpcSelfId(): string {
-    const host = (this.ctx.props as CodeHostProps).host;
+    const host = this.codeHostProps().host;
     if (host) return host.entityId;
     return `do:${String(this.env["WORKER_SOURCE"] ?? "")}:${String(
       this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
@@ -1372,7 +1377,7 @@ export abstract class DurableObjectBase {
       // Only the hosting root can name this facet: no caller check applies.
       return serveHostedCall({
         instance: this,
-        props: this.ctx.props as CodeHostProps,
+        props: this.codeHostProps(),
         method,
         body: await request.text(),
         onRevoked: (reason) => this.onHostedRevoked(reason),
