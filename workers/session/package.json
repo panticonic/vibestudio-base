@@ -5,7 +5,7 @@
   "type": "module",
   "vibestudio": {
     "title": "Session",
-    "icon": "🗒️",
+    "icon": "\ud83d\uddd2\ufe0f",
     "kind": "worker",
     "entry": "index.ts",
     "durable": {
@@ -32,7 +32,26 @@
     ],
     "authority": {
       "provides": [],
-      "requests": []
+      "requests": [
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "external.open",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
     }
   },
   "dependencies": {

@@ -5,7 +5,7 @@
   "type": "module",
   "vibestudio": {
     "title": "Eval kernel",
-    "icon": "🧪",
+    "icon": "\ud83e\uddea",
     "kind": "worker",
     "entry": "index.ts",
     "durable": {
@@ -34,7 +34,80 @@
     ],
     "authority": {
       "provides": [],
-      "requests": []
+      "requests": [
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "credential.use",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "external.open",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "panel.inspect",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "permissions.read",
+          "resource": {
+            "kind": "exact",
+            "key": "permissions.read"
+          },
+          "tier": "gated",
+          "evidence": "exact"
+        },
+        {
+          "capability": "server-logs.read",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "webhooks.manage",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace.storage.materialize",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
     }
   },
   "dependencies": {
