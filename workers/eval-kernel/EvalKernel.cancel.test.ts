@@ -580,6 +580,34 @@ describe("EvalKernel cancellation + forced recovery", () => {
     ).not.toHaveProperty("event");
   });
 
+  it("reports a dropped legacy notebook once, on the first result, and not again after a later restart", async () => {
+    const status = (instance: unknown, args?: { legacyNotebookDropped?: boolean }) =>
+      priv<
+        (args?: { legacyNotebookDropped?: boolean }) => {
+          event?: { kind: string; legacyNotebookDropped?: true };
+        }
+      >(instance, "kernelStatusForRun").call(instance, args);
+    const first = await createTestDO(EvalKernel);
+    setPriv(first.instance, "scopeRecovery", { restored: [], lost: [] });
+    // A first start that also carries the fact is a restart as far as the notebook goes.
+    expect(status(first.instance, { legacyNotebookDropped: true }).event).toMatchObject({
+      kind: "restarted",
+      legacyNotebookDropped: true,
+    });
+    expect(status(first.instance, { legacyNotebookDropped: true }).event).toBeUndefined();
+    // A new incarnation over the same state reports its own restart, without repeating the notice.
+    const second = await createTestDO(EvalKernel, undefined, { db: first.db });
+    setPriv(second.instance, "scopeRecovery", { restored: [], lost: [] });
+    const later = status(second.instance, { legacyNotebookDropped: true }).event;
+    expect(later?.kind).toBe("restarted");
+    expect(later).not.toHaveProperty("legacyNotebookDropped");
+    // A run that does not carry the fact never reports it.
+    const plain = await createTestDO(EvalKernel);
+    expect(status(plain.instance).event).toEqual(
+      expect.not.objectContaining({ legacyNotebookDropped: true })
+    );
+  });
+
   it("keeps the outstanding panel inventory across evaluator reconstruction", async () => {
     const first = await createTestDO(EvalKernel);
     const firstResources = priv<

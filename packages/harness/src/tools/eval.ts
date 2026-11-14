@@ -189,12 +189,12 @@ export interface EvalRunResult {
   kernel?: {
     incarnationId: string;
     startedAt: number;
-    idleExpiresAt?: number;
     event?: {
       kind: "started" | "restarted";
       recovery:
         | { status: "complete"; restored: string[]; lost: string[] }
         | { status: "unavailable" };
+      legacyNotebookDropped?: true;
     };
   };
 }
@@ -345,6 +345,15 @@ export async function formatEvalResult(
           "Durable scope recovery could not be assessed because this run failed before hydration.",
       );
     }
+  }
+  if (kernelEvent?.legacyNotebookDropped) {
+    // D5 (docs/dolt-redesign.md §7.10): the previous version kept this notebook in a
+    // different kind of object, which the upgrade did not carry over. Said once.
+    parts.push(
+      "[kernel] This notebook was upgraded: scope values and `db` tables from the previous " +
+        "version (its EvalDO) were not carried over and are gone. Rebuild what you need from " +
+        "stable IDs, files, or durable records before relying on earlier state.",
+    );
   }
   if (!result.success)
     parts.push(
@@ -579,7 +588,7 @@ export function createEvalTool(
   return {
     name: "eval",
     description:
-      'Execute TypeScript/JS in your persistent notebook sandbox (a per-agent EvalDO, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, then for 30 minutes of notebook inactivity. Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; imports and local declarations are cell-local, so reimport helpers in a later cell or retain their handles explicitly in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
+      'Execute TypeScript/JS in your persistent notebook sandbox (your own kernel, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, and afterwards until the notebook is explicitly ended or the node must reclaim its memory (a restart is reported, below). Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; imports and local declarations are cell-local, so reimport helpers in a later cell or retain their handles explicitly in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
     parameters: evalToolParameters,
     execute: options.execution.execute,
     replay: "safe",

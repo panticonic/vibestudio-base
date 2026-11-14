@@ -417,6 +417,9 @@ interface EvalExecutionContext {
   readonly externalOpen: ExternalOpenClient;
 }
 
+/** Kernel state: the notice of a dropped legacy notebook was given (D5). */
+const LEGACY_NOTICE_KEY = "eval_legacy_notebook_notice";
+
 interface RunArgs {
   code?: string;
   path?: string;
@@ -424,6 +427,12 @@ interface RunArgs {
   sourcePath?: string;
   /** Exact immutable source accepted by the host before this durable row. */
   sourceDigest?: string;
+  /**
+   * Host fact, admitted with the run: this scope had a notebook in the retired
+   * product `EvalDO`, which the upgrade dropped (docs/dolt-redesign.md §7.10, D5).
+   * The first result of this kernel reports it once. Server→kernel arg only.
+   */
+  legacyNotebookDropped?: boolean;
   sourceState?: import("@vibestudio/service-schemas/vcs").VcsStateNodeRef;
   contentStateHash?: string;
   /** Clear durable user scope/db before this run is first inserted. */
@@ -551,6 +560,7 @@ interface KernelRunStatus {
     recovery:
       | { status: "complete"; restored: string[]; lost: string[] }
       | { status: "unavailable" };
+    legacyNotebookDropped?: true;
   };
 }
 
@@ -1506,7 +1516,7 @@ export class EvalKernel extends DurableObjectBase {
         } finally {
           // Consume the incarnation event inside the serialized run chain. A
           // second queued cell can never race the first and also claim it.
-          kernel = this.kernelStatusForRun();
+          kernel = this.kernelStatusForRun(args);
         }
       });
       this.runChain = ran.catch(() => undefined);
@@ -1617,7 +1627,7 @@ export class EvalKernel extends DurableObjectBase {
             ]),
             failureKind: "cancelled",
             failureCode: "eval_deadline_exceeded",
-            kernel: kernel ?? this.kernelStatusForRun(),
+            kernel: kernel ?? this.kernelStatusForRun(args),
           }
         : approvalWaitCancelled
           ? {
@@ -1626,7 +1636,7 @@ export class EvalKernel extends DurableObjectBase {
               error: serializeRpcFailure(err),
               failureKind: "cancelled",
               failureCode: "eval_cancelled",
-              kernel: kernel ?? this.kernelStatusForRun(),
+              kernel: kernel ?? this.kernelStatusForRun(args),
             }
           : {
               success: false,
@@ -1663,7 +1673,7 @@ export class EvalKernel extends DurableObjectBase {
                     },
                   }
                 : {}),
-              kernel: kernel ?? this.kernelStatusForRun(),
+              kernel: kernel ?? this.kernelStatusForRun(args),
             };
     } finally {
       if (timer) clearTimeout(timer);
@@ -3079,10 +3089,17 @@ export class EvalKernel extends DurableObjectBase {
     await Promise.allSettled([...this.inFlightResultArtifacts]);
   }
 
-  private kernelStatusForRun(): KernelRunStatus {
-    const event = this.kernelEventPending
+  private kernelStatusForRun(args?: { legacyNotebookDropped?: boolean }): KernelRunStatus {
+    // Reported once for the scope, the first time a result can carry it, and never again
+    // (the kernel's own state remembers it, so a later restart of the heap does not repeat it).
+    const legacy =
+      args?.legacyNotebookDropped === true && this.getStateValue(LEGACY_NOTICE_KEY) === null;
+    if (legacy) this.setStateValue(LEGACY_NOTICE_KEY, "1");
+    const event = this.kernelEventPending || legacy
       ? {
-          kind: this.kernelRestarted ? ("restarted" as const) : ("started" as const),
+          kind:
+            this.kernelRestarted || legacy ? ("restarted" as const) : ("started" as const),
+          ...(legacy ? { legacyNotebookDropped: true as const } : {}),
           recovery: this.scopeRecovery
             ? {
                 status: "complete" as const,
