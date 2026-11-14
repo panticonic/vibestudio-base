@@ -29,9 +29,9 @@ export function natlangHelp(): string {
     "  A program returns proposals for consequential effects; you commit them.",
     "",
     "Models and budgets: calls run on the executor model by default, within its budget (" +
-      `${MODEL_ROLE_CALL_BUDGETS.executor.maxTurns} turns of ${MODEL_ROLE_CALL_BUDGETS.executor.turnTokens} tokens).`,
+      `${MODEL_ROLE_CALL_BUDGETS.executor.maxTurns} turns and ${MODEL_ROLE_CALL_BUDGETS.executor.maxTokens} generated tokens a call).`,
     "  A program function's `model: NAME` frontmatter names a model role or a 'provider:id' ref, and",
-    "  `budget: { maxTurns: 8, turnTokens: 1024 }` gives its calls other bounds. fn.on({ model: NAME }) is the same",
+    "  `budget: { maxTurns: 4, maxTokens: 6144 }` gives its calls other bounds. fn.on({ model: NAME }) is the same",
     "  function on another model, for one call: await judge.on({ model: 'standard' })(note).",
     "",
     "Results and traces:",

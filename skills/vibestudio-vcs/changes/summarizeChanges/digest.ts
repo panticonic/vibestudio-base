@@ -44,36 +44,25 @@ function changeOf(entry: Compare["coordinates"][number]): ChangedFile | null {
 export default function digest(compare: Compare): ChangeDigest {
   const changed = compare.coordinates.flatMap((entry) => {
     const change = changeOf(entry);
-    return change ? [{ id: entry.coordinate.id, change }] : [];
+    return change ? [change] : [];
   });
   const tierRank = { stated: 0, trigger: 1, mechanical: 2 } as const;
   const intents = compare.intents
     .filter((entry) => entry.side === "theirs")
-    .map((entry) => ({
-      text: entry.intent.text,
-      tier: entry.intent.tier,
-      covers: entry.coordinates.map((coordinate) => coordinate.id),
-    }))
+    .map((entry) => ({ text: entry.intent.text, tier: entry.intent.tier }))
     .sort((left, right) => tierRank[left.tier] - tierRank[right.tier]);
   const units: UnitChange[] = [];
-  for (const { id, change } of changed) {
+  for (const change of changed) {
     let unit = units.find((known) => known.unit === change.unit);
     if (!unit) {
-      unit = { unit: change.unit, files: [], intents: [] };
+      unit = { unit: change.unit, files: [] };
       units.push(unit);
     }
     unit.files.push(change);
-    for (const intent of intents) {
-      if (
-        intent.covers.includes(id) &&
-        !unit.intents.some((known) => known.text === intent.text)
-      )
-        unit.intents.push({ text: intent.text, tier: intent.tier });
-    }
   }
   return {
     units,
-    intents: intents.map(({ text, tier }) => ({ text, tier })),
+    intents,
     fileCount: changed.length,
     truncated: compare.intentsTruncated || compare.nextCursor !== null,
   };

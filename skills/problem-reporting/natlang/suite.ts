@@ -2,6 +2,10 @@ import { defineEvaluationSuite } from "@workspace/natlang/evaluation";
 import { executorIdentityForChoice, loadModelConfiguration } from "@workspace/natlang/model";
 import type { DefectClass, Evidence } from "./types.js";
 
+// The executor's production call budget (Base model-catalog MODEL_ROLE_CALL_BUDGETS.executor): the gates measure the
+// bounds the program runs under. A suite cannot import workspace source, so it is restated here.
+const EXECUTOR_BUDGET = { maxTurns: 12, maxTokens: 16384 };
+
 /** What `score` returns: the gates are a plain boolean record. */
 type Metric = {
   quality: number;
@@ -20,7 +24,7 @@ export default defineEvaluationSuite<CaseInput, DefectClass>({
   cases: "./cases.jsonl",
   models: { executor: "default" },
   executorIdentity: executorIdentityForChoice(loadModelConfiguration("default").choice),
-  policy: { codeEdits: "deny", settings: { maxTurns: 8, turnTokens: 1024, contextTokens: 8192 } },
+  policy: { codeEdits: "deny", settings: EXECUTOR_BUDGET },
   budget: { maxRollouts: 80, maxProposals: 0, maxModelCalls: 1200 },
   fixture: {
     async create(testCase, context) {

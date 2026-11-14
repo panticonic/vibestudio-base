@@ -65,12 +65,11 @@ type ChangedFile = {
 type UnitChange = {
   unit: string;
   files: ChangedFile[];
-  /** Stated intents first, then the request that triggered the work, then mechanical summaries (for example "file-create path"). */
-  intents: { text: string; tier: "stated" | "trigger" | "mechanical" }[];
 };
 type ChangeDigest = {
   units: UnitChange[];
-  /** All the source side's recorded intents, stated ones first. */
+  /** All the source side's recorded intents: stated ones first, then the request that triggered the work, then mechanical
+   * summaries (for example "file-create path"). */
   intents: { text: string; tier: "stated" | "trigger" | "mechanical" }[];
   fileCount: number;
   truncated: boolean;

@@ -26,19 +26,25 @@ export function isModelRole(value: string): value is ModelRole {
 }
 
 /**
- * The model work one natlang call on a role's model may take: its turns, the reply tokens of one turn, and the
- * context window natlang keeps the call's conversation within. A work budget, not a deadline: a call that uses it up
- * ends with natlang's `budget-exhausted` reason (on its last turn the model is offered only `return_result`). The
- * executor's is what the natlang suites measure it at (6 turns of 512 tokens in an 8192-token window). A `.nl`
- * function that needs other bounds declares them (`budget:` in its frontmatter).
+ * The model work one natlang call on a role's model may take, in total: its turns and the tokens it generates. A work
+ * budget, not a deadline: a call that uses it up ends with natlang's `budget-exhausted` reason (on its last turn the
+ * model is offered only `return_result`). It bounds a call's work as a whole, not each turn: a call that loops without
+ * end (a prose-only model once grew one conversation to 4 GB) stops, and a model that thinks long before acting is
+ * not cut off mid-thought.
+ *
+ * Sized from the executor's measured reasoning (LFM3 1.7B, 2026-11-13): 830-1,260 generated tokens before its first
+ * action, about 1,500 at the high end, and 3-6 actions in a multi-step call. 16,384 tokens is about ten such turns;
+ * 12 turns is twice the six actions. A request takes at most a quarter of the context window (natlang's default turn
+ * limit), and natlang continues a reply cut off there instead of starting the turn again. No per-turn cap: below
+ * about 1,500 tokens it cuts this model off before it acts. No context cap: the server's window holds the 5-6k-token
+ * opening and several exchanges. A `.nl` function that needs other bounds declares them (`budget:` frontmatter).
  */
 export interface ModelRoleCallBudget {
   maxTurns: number;
-  turnTokens: number;
-  contextTokens: number;
+  maxTokens: number;
 }
 export const MODEL_ROLE_CALL_BUDGETS: Readonly<Record<ModelRole, ModelRoleCallBudget>> = {
-  executor: { maxTurns: 6, turnTokens: 512, contextTokens: 8192 },
+  executor: { maxTurns: 12, maxTokens: 16384 },
 };
 
 /** The local-models library slug of the local executor model (LFM3 1.7B). */

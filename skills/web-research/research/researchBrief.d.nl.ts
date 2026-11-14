@@ -48,7 +48,7 @@ type CitedBrief = {
   rejected: number;
 };
 type FetchedPage = { url: string; title: string; text: string };
-declare const fn: NatlangFunction<[question: string, sources: string[]], CitedBrief> & { readonly brief: ((question: string, sources: string[]) => Promise<CitedBrief>) & {  }; readonly findEvidence: NatlangFunction<[question: string, passage: Passage], Evidence[]>; readonly gather: ((question: string, sources: readonly string[]) => Promise<{
+declare const fn: NatlangFunction<[question: string, sources: string[]], CitedBrief> & { readonly brief: ((question: string, sources: string[]) => Promise<CitedBrief>) & {  }; readonly findEvidence: NatlangFunction<[question: string, passage: Passage], Evidence | null>; readonly gather: ((question: string, sources: readonly string[]) => Promise<{
   pages: FetchedPage[];
   notRead: { url: string; reason: string }[];
 }>) & {  }; readonly verify: { readonly WINDOW: number; readonly windows: (text: string) => string[]; readonly checkedEvidence: (evidence: readonly Evidence[], pageText: string) => Evidence[]; readonly checkedStatements: (statements: readonly Statement[], claims: ReadonlyMap<number, string>) => Statement[]; readonly statedDate: (text: string) => string | null }; readonly writeBrief: NatlangFunction<[question: string, claims: Claim[]], Statement[]> };

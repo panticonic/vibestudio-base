@@ -11,7 +11,7 @@ import {
   statedDate,
   windows,
 } from "./verify.js";
-import type { Citation, CitedBrief, Claim } from "../types.js";
+import type { Citation, CitedBrief, Claim, Evidence } from "../types.js";
 
 export default async function researchBrief(
   question: string,
@@ -28,7 +28,9 @@ export default async function researchBrief(
         findEvidence(question, { url: page.url, title: page.title, text }),
       ),
     );
-    const proposed = found.flat();
+    const proposed = found.filter(
+      (item: Evidence | null): item is Evidence => item !== null,
+    );
     const checked = checkedEvidence(proposed, page.text);
     rejected += proposed.length - checked.length;
     for (const item of checked)

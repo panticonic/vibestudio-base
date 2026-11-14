@@ -42,16 +42,13 @@ describe("digest", () => {
     ]);
   });
 
-  it("gives each unit the intents that cover its files, stated ones first", () => {
+  it("lists the source side's intents once, stated ones first, and none per unit", () => {
     const changes = digest(compareOf("live-capture:summary"));
-    const phone = changes.units.find(
-      (unit) => unit.unit === "skills/phone-setup",
-    )!;
-    expect(phone.intents[0]).toEqual({
+    expect(changes.intents[0]).toEqual({
       text: "Move skills/phone-setup/index.ts to skills/phone-setup/lib.ts",
       tier: "stated",
     });
-    expect(changes.intents[0]?.tier).toBe("stated");
+    for (const unit of changes.units) expect(unit).not.toHaveProperty("intents");
   });
 
   it("reports a mode-only change and a truncated page", () => {

@@ -47,5 +47,5 @@ type CitedBrief = {
   /** Claims or statements dropped because their quote is not in the page or they cite nothing valid. */
   rejected: number;
 };
-declare const fn: NatlangFunction<[question: string, passage: Passage], Evidence[]>;
+declare const fn: NatlangFunction<[question: string, passage: Passage], Evidence | null>;
 export default fn;

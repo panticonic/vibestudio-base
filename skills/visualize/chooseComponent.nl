@@ -5,7 +5,7 @@ args:
   ask: string
 returns: ComponentChoice
 readout: decision
-budget: { turnTokens: 1024 }
+budget: { maxTurns: 3, maxTokens: 4096 }
 ---
 data describes what the answer contains; ask is what the user wants to know or do. Choose by the first rule that fits:
 1. Prose: the answer is a single fact, a one-step answer, a fixed calculation with one result, or a simple edit. Nothing needs showing.

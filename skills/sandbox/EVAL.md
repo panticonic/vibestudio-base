@@ -1123,9 +1123,9 @@ await brief({ since });
   runs). Editors and dashboards draw typed forms from it.
 - Calls run on the `executor` model role (the local executor model when ready,
   otherwise a billed low-tier hosted model); the result names the model that ran.
-  Each call has a work budget: 6 turns of up to 512 reply tokens in an
-  8192-token context. A program function that needs other bounds declares
-  `budget: { maxTurns: 8, turnTokens: 1024 }` in its frontmatter.
+  Each call has a work budget: 12 turns and 16,384 generated tokens in all.
+  A program function that needs other bounds declares
+  `budget: { maxTurns: 4, maxTokens: 6144 }` in its frontmatter.
   `` fn.on({ model: "standard" }) `` (or `` nl`...`.on({ model }) ``) is the same
   function on another model for one call, through the model gateway as usual.
 - A finite-result function (`readout: decision`) is scored: its `[natlang]`

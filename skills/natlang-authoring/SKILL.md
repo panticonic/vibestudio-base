@@ -65,9 +65,11 @@ Frontmatter keys:
 - `readout: decision` for a finite result (a literal union, `boolean`): one scoring pass instead of a tool loop. The
   `[natlang]` line then shows the chosen value's probability and the runner-up, and flags a close call.
 - `model: NAME`: a model role (`executor`) or a `"provider:id"` ref the function runs on.
-- `budget: { maxTurns: 8, turnTokens: 1024 }`: the model work one call may take (also `maxTokens`,
-  `contextTokens`). Without it a call has the executor's budget: 6 turns of up to 512 reply tokens in an 8192-token
-  context. Declare what the function's evaluation suite measured, not a number that merely makes a run finish.
+- `budget: { maxTurns: 4, maxTokens: 6144 }`: the model work one call may take, in total: its turns and the tokens it
+  generates (also `turnTokens`, one request's reply, and `contextTokens`). Without it a call has the executor's budget:
+  12 turns and 16,384 generated tokens. Bound the total, not each turn: the executor thinks 1-1.5k tokens before it
+  acts, and a per-turn cap below that cuts it off. Declare what the function's evaluation suite measured, not a number
+  that merely makes a run finish.
 - `uses: [dir/item]`: package items it may call besides its callable folder. `withhold: [delegate]`: tools its calls
   are not offered.
 

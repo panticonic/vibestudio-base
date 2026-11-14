@@ -68,18 +68,17 @@ export type ChangedFile = {
   status: "adopt" | "convergent" | "composed" | "conflict" | "resolved";
 };
 
-/** A unit (repository), the files that changed in it, and the recorded intents of the work that changed them. */
+/** A unit (repository) and the files that changed in it. The digest's intents are listed once, for all units. */
 export type UnitChange = {
   unit: string;
   files: ChangedFile[];
-  /** Stated intents first, then the request that triggered the work, then mechanical summaries (for example "file-create path"). */
-  intents: { text: string; tier: "stated" | "trigger" | "mechanical" }[];
 };
 
 /** The compare result reduced to what a description needs. */
 export type ChangeDigest = {
   units: UnitChange[];
-  /** All the source side's recorded intents, stated ones first. */
+  /** All the source side's recorded intents: stated ones first, then the request that triggered the work, then mechanical
+   * summaries (for example "file-create path"). */
   intents: { text: string; tier: "stated" | "trigger" | "mechanical" }[];
   fileCount: number;
   truncated: boolean;
