@@ -3041,7 +3041,10 @@ export class EvalKernel extends DurableObjectBase {
            AND name NOT LIKE 'sqlite_%'
            AND substr(name, 1, 4) <> '_cf_'
            AND substr(name, 1, 11) <> '_litestream'
-           AND name NOT GLOB '_vibestudio_*'`
+           AND name NOT GLOB '_vibestudio_*'
+           AND name NOT GLOB 'dolt_*'
+           AND name NOT GLOB 'doltlite_*'
+           AND name NOT GLOB 'vsl_*'`
       )
       .toArray()
       .map((row) => String(row["name"]))

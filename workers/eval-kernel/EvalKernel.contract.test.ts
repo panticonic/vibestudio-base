@@ -172,4 +172,19 @@ describe("EvalKernel call contract", () => {
     });
     await expect(instance.reset(session(NONCE_A))).resolves.toEqual({ ok: true });
   });
+
+  it("reset drops the notebook's tables and none the engine or Dolt owns", async () => {
+    const { instance, sql } = await kernel();
+    sql.exec("CREATE TABLE notebook_rows (v TEXT)");
+    // Names a Dolt cell reserves: dropping them is refused by the node's authorizer.
+    sql.exec("CREATE TABLE dolt_probe (v TEXT)");
+    sql.exec("CREATE TABLE vsl_probe (v TEXT)");
+    await instance.reset();
+    const names = sql
+      .exec("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .toArray()
+      .map((row) => String(row["name"]));
+    expect(names).not.toContain("notebook_rows");
+    expect(names).toEqual(expect.arrayContaining(["dolt_probe", "vsl_probe", "runs", "state"]));
+  });
 });
