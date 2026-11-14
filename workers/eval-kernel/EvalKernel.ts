@@ -417,6 +417,13 @@ interface EvalExecutionContext {
   readonly externalOpen: ExternalOpenClient;
 }
 
+/**
+ * How long after its deadline a run that is still `running` is treated as dead (see
+ * `reapOverdueRuns`): its own timer and cleanup are due well before, and a normal
+ * unwind of a cooperative guest takes milliseconds.
+ */
+const OVERDUE_RUN_GRACE_MS = 1_500;
+
 /** Kernel state: the notice of a dropped legacy notebook was given (D5). */
 const LEGACY_NOTICE_KEY = "eval_legacy_notebook_notice";
 
@@ -1247,6 +1254,7 @@ export class EvalKernel extends DurableObjectBase {
     existing: boolean;
   }> {
     this.assertAdmissionOpen();
+    await this.reapOverdueRuns();
     const runId = args.runId;
     const retained = this.retainedRunAdmission(args, schedule);
     if (retained) return retained;
@@ -2558,6 +2566,7 @@ export class EvalKernel extends DurableObjectBase {
       0,
       Math.min(KERNEL_AWAIT_MAX_MS, Math.trunc(options?.waitMs ?? KERNEL_AWAIT_DEFAULT_MS))
     );
+    await this.reapOverdueRuns();
     const snapshot = () => this.getRun(runId) as KernelRunSnapshot;
     let current = snapshot();
     if (current.status === "pending" && !this.inFlightRuns.has(runId)) this.scheduleRun(runId);
@@ -2579,10 +2588,69 @@ export class EvalKernel extends DurableObjectBase {
       } else {
         await new Promise<void>((resolve) => setTimeout(resolve, Math.min(250, remaining)));
       }
+      await this.reapOverdueRuns();
       current = snapshot();
       if (terminal(current.status)) return current;
     }
     return current;
+  }
+
+  /**
+   * A run whose declared deadline passed long enough ago that its own timer
+   * should have ended it, and which is still `running`, is dead, not slow. The
+   * cause is the call's CPU limit (docs/dolt-redesign.md §7.8): celld ends a
+   * spinning `start` call at the run's `timeoutMs` of CPU, and the continuation
+   * of the work that call left under `waitUntil`, including this run's timer and
+   * its terminal write, never runs again (a fork behaviour, probed in
+   * `celldCpuWatchdogCelld.test.ts`). The kernel therefore keeps no promise that
+   * a run settles itself: the pull that observes it (`await`, `get`, `start`)
+   * settles it, through the same bounded recovery as a cancellation (cleanup
+   * handlers, then a force reset of the scope when the guest does not unwind),
+   * with the timeout's own result. A run with no deadline has nothing to compare
+   * and is ended by `cancel`.
+   */
+  private overdueRuns(): Array<Record<string, unknown>> {
+    return this.sql
+      .exec(
+        `SELECT run_id, args FROM runs
+          WHERE status = 'running' AND deadline_at IS NOT NULL AND deadline_at + ? < ?`,
+        OVERDUE_RUN_GRACE_MS,
+        Date.now()
+      )
+      .toArray();
+  }
+
+  private hasOverdueRun(): boolean {
+    return this.overdueRuns().length > 0;
+  }
+
+  private async reapOverdueRuns(): Promise<void> {
+    const overdue = this.overdueRuns();
+    for (const row of overdue) {
+      const runId = String(row["run_id"]);
+      const args = JSON.parse(String(row["args"])) as RunArgs;
+      console.warn(
+        `[EvalKernel] run ${runId} is ${OVERDUE_RUN_GRACE_MS}ms past its ${args.timeoutMs}ms deadline and not settled; ending it`
+      );
+      // The timeout is the result; the cancellation machinery only has to settle the run.
+      this.sql.exec(
+        `UPDATE runs SET result = COALESCE(result, ?) WHERE run_id = ? AND status = 'running'`,
+        JSON.stringify({
+          success: false,
+          console: "",
+          error: aggregateRunFailures(`eval timed out after ${args.timeoutMs}ms`, [
+            serializeRpcFailure(new Error(`eval timed out after ${args.timeoutMs}ms`)),
+          ]),
+          failureKind: "cancelled",
+          failureCode: "eval_deadline_exceeded",
+          kernel: this.kernelStatusForRun(args),
+        } satisfies RunResult),
+        runId
+      );
+      await this.cancelRun(runId).catch((error) =>
+        console.error(`[EvalKernel] ending overdue run ${runId} failed`, error)
+      );
+    }
   }
 
   @rpc(KERNEL_RPC)
@@ -2598,6 +2666,8 @@ export class EvalKernel extends DurableObjectBase {
   @rpc(KERNEL_RPC)
   get(runId: string, caller?: KernelCaller): KernelRunSnapshot {
     this.authorizeRunCaller(caller, runId);
+    // A read settles nothing itself, but it starts the settling of a dead run: the next read sees it.
+    if (this.hasOverdueRun()) void this.reapOverdueRuns();
     return this.getRun(runId) as KernelRunSnapshot;
   }
 

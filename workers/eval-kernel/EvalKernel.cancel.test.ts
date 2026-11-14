@@ -658,6 +658,43 @@ describe("EvalKernel cancellation + forced recovery", () => {
     });
   });
 
+  it("a run left running past its deadline (its call was ended by the CPU limit) is settled by the pull that observes it, with the timeout as its result", async () => {
+    const { instance, sql } = await createTestDO(EvalKernel);
+    seedPendingRun(sql, "overdue", { code: "while (true) {}", contextId: "ctx", timeoutMs: 4000 });
+    seedPendingRun(sql, "in-time", { code: "return 1;", contextId: "ctx", timeoutMs: 60_000 });
+    seedPendingRun(sql, "no-deadline");
+    const now = Date.now();
+    sql.exec(`UPDATE runs SET status = 'running', deadline_at = ? WHERE run_id = 'overdue'`, now - 10_000);
+    sql.exec(`UPDATE runs SET status = 'running', deadline_at = ? WHERE run_id = 'in-time'`, now + 50_000);
+    sql.exec(`UPDATE runs SET status = 'running' WHERE run_id = 'no-deadline'`);
+    const kernel = instance as unknown as {
+      get(runId: string): { status: string; result?: Record<string, unknown> };
+      await(runId: string, options: { waitMs: number }): Promise<{ status: string; result?: Record<string, unknown> }>;
+    };
+    // A read starts the settling and a later read sees it; `await` settles before it answers.
+    expect(["running", "cancelling"]).toContain(kernel.get("overdue").status);
+    const settled = await kernel.await("overdue", { waitMs: 3000 });
+    expect(settled.status).toBe("cancelled");
+    expect(settled.result).toMatchObject({
+      success: false,
+      failureKind: "cancelled",
+      failureCode: "eval_deadline_exceeded",
+    });
+    expect(JSON.stringify(settled.result)).toContain("eval timed out after 4000ms");
+    // The force reset ended every run of the scope, as a cancellation of a wedged run does; the
+    // point here is that a deadline that has not passed, or none, is never reaped by itself.
+    const second = await createTestDO(EvalKernel);
+    seedPendingRun(second.sql, "in-time", { code: "return 1;", contextId: "ctx", timeoutMs: 60_000 });
+    seedPendingRun(second.sql, "no-deadline");
+    second.sql.exec(`UPDATE runs SET status = 'running', deadline_at = ? WHERE run_id = 'in-time'`, now + 50_000);
+    second.sql.exec(`UPDATE runs SET status = 'running' WHERE run_id = 'no-deadline'`);
+    const other = second.instance as unknown as {
+      await(runId: string, options: { waitMs: number }): Promise<{ status: string }>;
+    };
+    expect((await other.await("in-time", { waitMs: 0 })).status).toBe("running");
+    expect((await other.await("no-deadline", { waitMs: 0 })).status).toBe("running");
+  });
+
   it("on an operator revocation, the active run is left alone", async () => {
     const { instance, sql } = await createTestDO(EvalKernel);
     const { runLocked, started } = blockUntilAborted();
