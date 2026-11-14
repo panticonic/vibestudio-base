@@ -351,12 +351,19 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
     db?: Database;
     initialize?: boolean;
     props?: import("./durable-base.js").DurableObjectContext["props"];
+    /**
+     * A complete `ctx.storage` replacing the in-memory SQLite one, for example
+     * `FakeDoltStorage#storage` to run the object on a Dolt cell. Its `sql` is
+     * the object's `sql`; `db` is then an unused empty database.
+     */
+    storage?: Record<string, unknown> & { sql: unknown };
   }
 ): Promise<TestDOResult<InstanceType<DOClass>, DOClass>> {
   const SQL = await getSqlJs();
   // Reuse an existing db to simulate hibernation (fresh DO, same durable storage).
   const db = opts?.db ?? new SQL.Database();
-  const sqlProxy = createSqlProxy(db);
+  const sqlProxy =
+    (opts?.storage?.sql as ReturnType<typeof createSqlProxy> | undefined) ?? createSqlProxy(db);
 
   const alarms: number[] = [];
   const acceptedWebSockets: AcceptedWebSocket[] = [];
@@ -366,7 +373,7 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
   const ctx = {
     props: structuredClone(opts?.props ?? { nativeOwner: null, stateArgs: null, image: null }),
     id: { toString: () => objectKey, name: objectKey },
-    storage: {
+    storage: opts?.storage ? { sync: async (): Promise<void> => {}, ...opts.storage } : {
       sql: sqlProxy,
       // Unit storage is already synchronous/in-memory. Native workerd tests
       // separately prove the real confirmation and uncertain-failure contract.
