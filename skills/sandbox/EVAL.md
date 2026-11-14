@@ -8,10 +8,13 @@ back.
 
 **Eval does not need a connected panel.** It keeps working if the chat/editor
 panel, or the user, disconnects. It behaves like a notebook kernel: the same
-live heap stays in memory while a run or cancellation is in progress, and for
-30 minutes of inactivity afterwards. Every cell renews that idle lease, and
-detached work that is still active does not count as inactivity. The in-DO
-SQLite `db` and the serializable part of `scope` survive kernel restarts.
+live heap stays in memory from the first cell until the notebook is ended
+explicitly: a `reset`, the conversation being archived or retired, an operator
+revocation, or a server drain or restart. There is no idle timeout. When the
+server already keeps as many notebooks resident as its budget allows, a run
+proceeds without a hold and the heap may be lost; the restart report says
+exactly what was lost. The in-DO SQLite `db` and the serializable part of
+`scope` survive kernel restarts.
 
 Imports and local declarations belong to their cell. To use a live object in a
 later cell, save it in `scope` (for example, `scope.phone = await phoneSetup()`)
@@ -562,10 +565,9 @@ The `eval` tool returns
   `await natlang.trace(callId)`. A cell that a natlang call failed has
   `failureCode: "natlang_call_failed"` and the call's record in
   `error.errorData` (`protocol: "natlang-call-failure/1"`).
-- `kernel`: notebook kernel metadata: the kernel instance ID, start time,
-  current idle-lease deadline, and, on the first result after a start, a
-  `started` or `restarted` event listing exactly which keys were restored or
-  lost.
+- `kernel`: notebook kernel metadata: the kernel instance ID, start time, and,
+  on the first result after a start, a `started` or `restarted` event listing
+  exactly which keys were restored or lost.
 
 After a restart, the formatted tool result begins with `[kernel] Restarted`.
 Act on that line: module singletons and all live-only objects are gone. It
@@ -816,10 +818,9 @@ absolute paths such as `/home/user/.../workspace/...`.
 While the kernel is in memory, the EvalDO's in-memory map is the source of
 truth: objects are not serialized and rebuilt between calls. Functions, class
 instances, handles, and open connections keep their identity and behavior
-across cells. Before each cell the host renews the kernel's lease; the
-30-minute idle countdown starts once the run and any cancellation have
-finished. There is no heartbeat, polling loop, or disconnect at the end of a
-cell.
+across cells. The kernel holds its server residency from its first cell until
+a reset, retirement, drain, or operator revocation ends it; no timer ends it.
+There is no heartbeat, polling loop, or disconnect at the end of a cell.
 
 After each cell, the EvalDO also writes a recovery snapshot to its SQLite
 `repl_scopes` table. The snapshot is not the live heap and never replaces live
@@ -881,9 +882,10 @@ return await scope.session.page.getByRole("heading").innerText();
 Locators, listeners, and other live page objects are not handles; recreate
 them from `scope.session.page`.
 
-Nothing is collected at the end of a cell, but the idle window is not
-guaranteed either. Code that needs to recover must store stable data instead
-of assuming the kernel stays in memory.
+Nothing is collected at the end of a cell, but residency is not guaranteed
+either: a server drain or restart, an operator revocation, or a node that
+refuses the hold ends it. Code that needs to recover must store stable data
+instead of assuming the kernel stays in memory.
 
 ### Resetting scope
 
