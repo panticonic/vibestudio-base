@@ -2150,6 +2150,10 @@ describe("native Pi entity activation and release", () => {
       ),
     ).resolves.toEqual({ accepted: true });
     expect(acknowledged).toBe(true);
+    // The host pulls the committed row from the kernel and tells the owner too.
+    await expect(
+      fixture.callAs("server", "onEvalComplete", { runId }),
+    ).resolves.toEqual({ accepted: true });
   });
 
   it("keeps early and pending hints unacknowledged and creates no unknown receipt", async () => {

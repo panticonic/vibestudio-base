@@ -772,9 +772,9 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   @rpc({
     website: {
       kind: "closed",
-      reason: "Internal EvalDO completion delivery to its owning agent.",
+      reason: "Internal eval completion delivery to its owning agent.",
     },
-    principals: ["code"],
+    principals: ["code", "host"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
@@ -794,10 +794,14 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         runId,
         BACKGROUND_CONTEXT,
       );
+      // The terminal hint comes from the host, which pulls the committed row
+      // from the kernel and tells the owner (the kernel no longer pushes it), or
+      // from the session entity that hosts the kernel.
       if (
         route.runId !== runId ||
-        this.rpcCallerId !==
-          evalRuntimeId(this.rpcSelfId, route.scopeKey ?? "default")
+        (this.rpcCallerKind !== "server" &&
+          this.rpcCallerId !==
+            evalRuntimeId(this.rpcSelfId, route.scopeKey ?? "default"))
       ) {
         throw new Error(
           "Eval completion does not belong to this owner's retained operation",
