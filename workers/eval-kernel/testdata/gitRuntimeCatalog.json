@@ -1,0 +1,402 @@
+{
+ "importProject": {
+  "description": "Clone an external Git project, record its remote/upstream config, and return the semantic candidate plus identity-joined evidence from the same atomic semantic import. The import does not publish protected main. The returned semanticEvidence includes the external snapshot source URI, revision, digest, and target repository IDs; the provenance tool can independently inspect the same returned IDs. Check the same repo with the positional call `git.upstreamStatus([imported.path])` to distinguish the unpublished integration-required candidate from protected main and outgoing Git publication, and report that same candidate event ID with the path and publication state. Use the ordinary VCS integration path when publication is intended.",
+  "access": {
+   "sensitivity": "write",
+   "capability": "git.project.import"
+  },
+  "argsSchema": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 1,
+   "items": [
+    {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string",
+       "description": "Workspace-relative target path for the imported repo; must sit under a supported import dir (e.g. \"projects/<name>\")."
+      },
+      "remote": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string",
+         "description": "Git remote name, e.g. \"origin\"."
+        },
+        "url": {
+         "type": "string",
+         "description": "Durable HTTP(S) fetch/push URL without embedded credentials, query parameters, or fragments."
+        },
+        "branch": {
+         "type": "string",
+         "description": "Default branch to track/clone; omit to use the remote's default."
+        }
+       },
+       "required": [
+        "name",
+        "url"
+       ],
+       "additionalProperties": false,
+       "description": "Remote to clone from and record as a shared remote."
+      },
+      "credentialIdOverride": {
+       "type": "string",
+       "nullable": true,
+       "description": "Call-scoped concrete credential override; omit to use the configured logical binding, or use null for an anonymous clone."
+      }
+     },
+     "required": [
+      "path",
+      "remote"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  },
+  "returnsSchema": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "remote": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "description": "Git remote name, e.g. \"origin\"."
+      },
+      "url": {
+       "type": "string",
+       "description": "Durable HTTP(S) fetch/push URL without embedded credentials, query parameters, or fragments."
+      },
+      "branch": {
+       "type": "string",
+       "description": "Default branch to track/clone; omit to use the remote's default."
+      }
+     },
+     "required": [
+      "name",
+      "url"
+     ],
+     "additionalProperties": false
+    },
+    "candidate": {
+     "type": "object",
+     "properties": {
+      "contextId": {
+       "type": "string",
+       "description": "Semantic context containing the external snapshot candidate."
+      },
+      "eventId": {
+       "type": "string",
+       "description": "Committed candidate event created from the external snapshot."
+      },
+      "changed": {
+       "type": "boolean"
+      },
+      "semanticEvidence": {
+       "type": "object",
+       "properties": {
+        "applicationId": {
+         "type": "string",
+         "description": "Exact application committed by the import event."
+        },
+        "workUnitId": {
+         "type": "string",
+         "description": "Exact import work unit owned by that application."
+        },
+        "externalSnapshot": {
+         "type": "object",
+         "properties": {
+          "sourceKind": {
+           "type": "string",
+           "enum": [
+            "git",
+            "archive",
+            "filesystem",
+            "upload",
+            "generated"
+           ]
+          },
+          "sourceUri": {
+           "type": "string",
+           "minLength": 1,
+           "maxLength": 2048,
+           "description": "Canonical credential-free identity of the observed external source."
+          },
+          "snapshotRevision": {
+           "type": "string",
+           "minLength": 1
+          },
+          "sourceSubdir": {
+           "type": "string",
+           "minLength": 1,
+           "nullable": true
+          },
+          "canonicalSnapshot": {
+           "type": "string",
+           "pattern": "^v1-sha256:[0-9a-f]{64}$",
+           "description": "Canonical commitment to the complete admitted external file set."
+          },
+          "snapshotDigest": {
+           "type": "string",
+           "pattern": "^snapshot:[0-9a-f]{64}$",
+           "description": "Semantic-workspace-derived commitment to the normalized imported descriptors."
+          },
+          "targetRepositoryIds": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact native repositories admitted from this snapshot."
+           },
+           "minItems": 1
+          }
+         },
+         "required": [
+          "sourceKind",
+          "sourceUri",
+          "snapshotRevision",
+          "snapshotDigest",
+          "targetRepositoryIds"
+         ],
+         "additionalProperties": false,
+         "description": "Canonical external snapshot recorded on the import work unit."
+        }
+       },
+       "required": [
+        "applicationId",
+        "workUnitId",
+        "externalSnapshot"
+       ],
+       "additionalProperties": false,
+       "description": "Identity-joined evidence returned atomically by the canonical semantic import."
+      }
+     },
+     "required": [
+      "contextId",
+      "eventId",
+      "changed",
+      "semanticEvidence"
+     ],
+     "additionalProperties": false,
+     "description": "Semantic candidate to compare and merge before explicitly publishing protected main."
+    }
+   },
+   "required": [
+    "path",
+    "remote",
+    "candidate"
+   ],
+   "additionalProperties": false
+  },
+  "examples": [
+   {
+    "args": [
+     {
+      "path": "projects/bgkit",
+      "remote": {
+       "name": "origin",
+       "url": "https://github.com/werg/bgkit.git",
+       "branch": "vibestudio-bridge"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "upstreamStatus": {
+  "description": "Observe the declared remote and return external Git upstream status for tracked repos, including integration-required candidate coordinates. Relationship, counts, remoteBranchExists, and observedAt describe only the observation made by this call and are absent when it fails. Call `git.upstreamStatus()` for every configured upstream, or `git.upstreamStatus([imported.path])` for selected repositories. The configured gitInterop provider performs all Git/network work.",
+  "access": {
+   "sensitivity": "read"
+  },
+  "argsSchema": {
+   "anyOf": [
+    {
+     "type": "array",
+     "minItems": 0,
+     "maxItems": 0,
+     "items": []
+    },
+    {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 1,
+     "items": [
+      {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1,
+       "description": "One or more workspace-relative repos to inspect."
+      }
+     ]
+    },
+    {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 2,
+     "items": [
+      {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1,
+       "description": "One or more workspace-relative repos to inspect."
+      },
+      {
+       "type": "object",
+       "properties": {
+        "remote": {
+         "type": "string"
+        },
+        "branch": {
+         "type": "string"
+        },
+        "credentialIdOverride": {
+         "type": "string",
+         "nullable": true,
+         "description": "Call-scoped concrete credential override for this observation; omit to use the configured logical binding, or use null for anonymous Git HTTP."
+        }
+       },
+       "additionalProperties": false
+      }
+     ]
+    }
+   ]
+  },
+  "returnsSchema": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "repoPath": {
+      "type": "string"
+     },
+     "remote": {
+      "type": "string"
+     },
+     "branch": {
+      "type": "string"
+     },
+     "autoPush": {
+      "type": "boolean"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "in-sync",
+       "ahead",
+       "behind",
+       "diverged",
+       "integration-required",
+       "auth-failed",
+       "error",
+       "exporting",
+       "pushing",
+       "local-only",
+       "not-materialized",
+       "fetch-failed",
+       "empty"
+      ]
+     },
+     "relationship": {
+      "type": "string",
+      "enum": [
+       "in-sync",
+       "ahead",
+       "behind",
+       "diverged"
+      ],
+      "description": "Relationship derived from the remote observation made by this call."
+     },
+     "aheadBy": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "behindBy": {
+      "$ref": "#/items/properties/aheadBy"
+     },
+     "remoteBranchExists": {
+      "type": "boolean",
+      "description": "Present after a successful remote observation; false means the configured branch is absent, not that the fetch failed."
+     },
+     "observedAt": {
+      "$ref": "#/items/properties/aheadBy",
+      "description": "When this call successfully observed the declared remote."
+     },
+     "error": {
+      "type": "string",
+      "description": "Failure from this observation attempt; never a persisted prior failure."
+     },
+     "lastSuccessfulObservationAt": {
+      "$ref": "#/items/properties/aheadBy",
+      "description": "Historical telemetry from the most recent successful remote observation."
+     },
+     "lastSuccessfulPushCommit": {
+      "type": "string",
+      "description": "Historical telemetry from the most recent successful wire push."
+     },
+     "lastSuccessfulPushAt": {
+      "$ref": "#/items/properties/aheadBy",
+      "description": "Historical telemetry from the most recent successful wire push."
+     },
+     "lastFailureReason": {
+      "type": "string",
+      "description": "Historical telemetry from the most recent failed background operation."
+     },
+     "candidate": {
+      "type": "object",
+      "properties": {
+       "contextId": {
+        "type": "string",
+        "description": "Semantic context containing the external snapshot candidate."
+       },
+       "eventId": {
+        "type": "string",
+        "description": "Committed candidate event created from the external snapshot."
+       }
+      },
+      "required": [
+       "contextId",
+       "eventId"
+      ],
+      "additionalProperties": false,
+      "description": "Unpublished external snapshot awaiting ordinary semantic VCS integration."
+     },
+     "autoPushRequired": {
+      "type": "boolean"
+     },
+     "lastFailureAt": {
+      "$ref": "#/items/properties/aheadBy"
+     },
+     "nextRetryAt": {
+      "$ref": "#/items/properties/aheadBy"
+     }
+    },
+    "required": [
+     "repoPath",
+     "autoPush",
+     "state"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "examples": [
+   {
+    "args": []
+   },
+   {
+    "args": [
+     [
+      "projects/bgkit"
+     ]
+    ]
+   }
+  ]
+ }
+}

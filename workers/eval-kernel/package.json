@@ -1,0 +1,52 @@
+{
+  "name": "@workspace-workers/eval-kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Eval kernel",
+    "icon": "🧪",
+    "kind": "worker",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "EvalKernel",
+          "hosted": {
+            "storage": "dolt",
+            "codegen": true,
+            "residency": true,
+            "limits": {
+              "cpuMs": 600000
+            }
+          }
+        }
+      ]
+    },
+    "tests": [
+      {
+        "name": "native",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ],
+    "authority": {
+      "provides": [],
+      "requests": []
+    }
+  },
+  "dependencies": {
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@vibestudio/content-addressing": "workspace:*",
+    "@workspace/eval": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

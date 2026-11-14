@@ -1,0 +1,47 @@
+{
+  "name": "@workspace-workers/session",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Session",
+    "icon": "🗒️",
+    "kind": "worker",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "SessionDO",
+          "hosts": [
+            {
+              "source": "workers/eval-kernel",
+              "className": "EvalKernel"
+            }
+          ]
+        }
+      ]
+    },
+    "tests": [
+      {
+        "name": "native",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ],
+    "authority": {
+      "provides": [],
+      "requests": []
+    }
+  },
+  "dependencies": {
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}
