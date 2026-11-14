@@ -3,7 +3,7 @@ import {
   rpc,
   type DurableObjectContext,
 } from "@workspace/runtime/worker/kernel";
-import { cpuLimitForTimeout, type HostedCode } from "@vibestudio/durable/codeHost";
+import { callOrRestart, cpuLimitForTimeout, type HostedCode } from "@vibestudio/durable/codeHost";
 import type { LifecyclePrepareInput } from "@workspace/runtime/worker/kernel";
 import type {
   ResidentChannelCancellationInput,
@@ -22,6 +22,15 @@ export const SESSION_KERNEL_SOURCE = "workers/eval-kernel";
 export const SESSION_KERNEL_CLASS = "EvalKernel";
 const KERNEL_NAME = "kernel";
 const KERNEL_HOSTED_KEY = "kernel_hosted";
+
+/**
+ * How long a call to the kernel may take before the kernel is treated as not answering and
+ * restarted (docs/dolt-redesign.md §7.8; `callOrRestart`). Generous: a restart discards the heap.
+ * `await` blocks for the `waitMs` the caller chose, so its budget is that plus this.
+ */
+const KERNEL_CALL_BUDGET_MS = 60_000;
+/** Cancellation may wait for an owner's cleanup handlers, and a reset for a stuck run's grace. */
+const KERNEL_CONTROL_BUDGET_MS = 180_000;
 
 const SETTLE_METHODS: ReadonlySet<string> = new Set([
   "appendAuthorityEvent",
@@ -159,7 +168,9 @@ export class SessionDO extends DurableObjectBase {
     const limits = cpuLimitForTimeout(input.timeoutMs);
     const kernel = limits ? hosted.limited(limits) : hosted;
     try {
-      return await kernel.call<KernelStartAck>(
+      return await callOrRestart<KernelStartAck>(
+        kernel,
+        KERNEL_CALL_BUDGET_MS,
         "start",
         { ...input, executionSessionNonce: admissionNonce },
         {
@@ -181,7 +192,14 @@ export class SessionDO extends DurableObjectBase {
   @rpc({ ...SESSION_METHOD, sensitivity: "read" })
   async await(runId: string, options?: { waitMs?: number }): Promise<KernelRunSnapshot> {
     this.authorizeCaller();
-    return (await this.kernel()).call("await", runId, options ?? {}, this.runCaller(runId));
+    return callOrRestart(
+      await this.kernel(),
+      Math.min(Math.max(options?.waitMs ?? 30_000, 0), 120_000) + KERNEL_CALL_BUDGET_MS,
+      "await",
+      runId,
+      options ?? {},
+      this.runCaller(runId)
+    );
   }
 
   @rpc({ ...SESSION_METHOD, sensitivity: "read" })
@@ -190,31 +208,61 @@ export class SessionDO extends DurableObjectBase {
     options?: { after?: number; limit?: number }
   ): Promise<KernelEventPage> {
     this.authorizeCaller();
-    return (await this.kernel()).call("events", runId, options ?? {}, this.runCaller(runId));
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "events",
+      runId,
+      options ?? {},
+      this.runCaller(runId)
+    );
   }
 
   @rpc({ ...SESSION_METHOD, sensitivity: "write" })
   async cancel(runId: string): Promise<{ ok: true; forcedReset: boolean }> {
     this.authorizeCaller();
-    return (await this.kernel()).call("cancel", runId, this.runCaller(runId));
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CONTROL_BUDGET_MS,
+      "cancel",
+      runId,
+      this.runCaller(runId)
+    );
   }
 
   @rpc({ ...SESSION_METHOD, sensitivity: "read" })
   async get(runId: string): Promise<KernelRunSnapshot> {
     this.authorizeCaller();
-    return (await this.kernel()).call("get", runId, this.runCaller(runId));
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "get",
+      runId,
+      this.runCaller(runId)
+    );
   }
 
   @rpc({ ...SESSION_METHOD, sensitivity: "read" })
   async receipt(runId: string): Promise<unknown> {
     this.authorizeCaller();
-    return (await this.kernel()).call("receipt", runId, this.runCaller(runId));
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "receipt",
+      runId,
+      this.runCaller(runId)
+    );
   }
 
   @rpc({ ...SESSION_METHOD, sensitivity: "write" })
   async reset(): Promise<{ ok: boolean }> {
     this.authorizeCaller();
-    const result = await (await this.kernel()).call<{ ok: boolean }>("reset", this.scopeCaller());
+    const result = await callOrRestart<{ ok: boolean }>(
+      await this.kernel(),
+      KERNEL_CONTROL_BUDGET_MS,
+      "reset",
+      this.scopeCaller()
+    );
     // The kernel kept no run, so the session keeps no nonce for one.
     this.sql.exec(`DELETE FROM session_runs`);
     return result;
