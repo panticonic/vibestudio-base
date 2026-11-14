@@ -232,6 +232,8 @@ type EvalRunStatusValue =
 
 type TimedSettlement<T> = { settled: true; value: T } | { settled: false };
 
+function noop(): void {}
+
 function settleWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<TimedSettlement<T>> {
   return new Promise((resolve) => {
     let settled = false;
@@ -1426,6 +1428,54 @@ export class EvalKernel extends DurableObjectBase {
   }
 
   /**
+   * Wait for the run's promise, but not past a deadline abort that the run does not answer.
+   *
+   * A run whose call is ended by its CPU limit (celld ends a spinning `start` call at the run's
+   * `timeoutMs` of CPU, docs/dolt-redesign.md §7.8) has its JavaScript frames unwound by the
+   * isolate: `ran` never settles and never rejects. The deadline timer is not lost (celld
+   * `2d1749d` keeps the pending ops of a limited event) and fires the abort; this is what lets
+   * the abort settle the run. After a DEADLINE abort the run's own cancellation cleanup is
+   * awaited as before (it may be what releases the guest), then the guest gets a short grace to
+   * unwind; if `ran` still has not settled, it is abandoned: the chain is released so the next
+   * run is admitted, and the abort reason is thrown so the caller's catch classifies it as the
+   * timeout. A user cancellation keeps its own bounded recovery (`cancelRun` force reset).
+   */
+  private async awaitRunOrAbandon<T>(
+    runId: string,
+    ran: Promise<T>,
+    signal: AbortSignal,
+    abandon: () => void
+  ): Promise<T> {
+    const unwound = ran.then(
+      () => "ran" as const,
+      () => "ran" as const
+    );
+    const deadlineAborted = new Promise<"abort">((resolve) => {
+      const check = () =>
+        (signal.reason as { code?: unknown } | undefined)?.code === "EEVALDEADLINE"
+          ? resolve("abort")
+          : undefined;
+      if (signal.aborted) check();
+      else signal.addEventListener("abort", check, { once: true });
+    });
+    const first = await Promise.race([unwound, deadlineAborted]);
+    if (first === "ran") return ran;
+    // The cleanup may be what releases the guest, so it is never waited on before `unwound`.
+    const cleanup = this.runCancelExecutions.get(runId);
+    const cleanupSettled = cleanup ? cleanup.then(noop, noop) : Promise.resolve();
+    const second = await Promise.race([
+      unwound,
+      cleanupSettled.then(() => settleWithin(unwound, OVERDUE_RUN_GRACE_MS)),
+    ]);
+    if (second === "ran" || (typeof second === "object" && second.settled)) return ran;
+    console.warn(
+      `[EvalKernel] run ${runId} did not unwind within ${OVERDUE_RUN_GRACE_MS}ms of its deadline abort; abandoning it`
+    );
+    abandon();
+    throw signal.reason;
+  }
+
+  /**
    * Run the sandbox once for `runId`: claim the row (pending → running), execute (serialized via
    * `runChain` so ScopeManager's single enter/exit is never concurrent), and persist the result with
    * a CAS so a concurrent `reset` cancel is never resurrected.
@@ -1527,8 +1577,14 @@ export class EvalKernel extends DurableObjectBase {
           kernel = this.kernelStatusForRun(args);
         }
       });
-      this.runChain = ran.catch(() => undefined);
-      result = await ran;
+      // A run the deadline abandons (see `awaitRunOrAbandon`) releases the chain, so the runs
+      // queued behind it, and every later one, are admitted.
+      let abandon!: () => void;
+      const abandoned = new Promise<void>((resolve) => {
+        abandon = resolve;
+      });
+      this.runChain = Promise.race([ran.then(noop, noop), abandoned]);
+      result = await this.awaitRunOrAbandon(runId, ran, controller.signal, abandon);
       if (controller.signal.aborted && deadlineAt !== null) {
         if (
           this.runCancelExecutions.has(runId) ||

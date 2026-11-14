@@ -1460,6 +1460,48 @@ describe("EvalKernel cancellation + forced recovery", () => {
     }
   });
 
+  it("a run whose guest never unwinds after its deadline abort is settled by the deadline, and the next run is admitted", async () => {
+    // The CPU limit unwinds a spinning cell's frames: its promise never settles or rejects.
+    // The deadline timer survives (celld 2d1749d) and aborts; the abort must settle the run.
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { instance, sql } = await createTestDO(EvalKernel);
+      seedPendingRun(sql, "spin", { code: "while (true) {}", contextId: "ctx", timeoutMs: 4000 });
+      seedPendingRun(sql, "after", { code: "return 2;", contextId: "ctx", timeoutMs: 60_000 });
+      sql.exec(`UPDATE runs SET deadline_at = ? WHERE run_id = 'spin'`, Date.now() + 4000);
+      let calls = 0;
+      setPriv(instance, "runLocked", async (args: { code?: string }) => {
+        calls += 1;
+        if (args.code === "while (true) {}") return new Promise<never>(() => undefined);
+        return { success: true, console: "", returnValue: 2 };
+      });
+      const spin = instance.executeRun("spin");
+      const next = instance.executeRun("after");
+      let settled = false;
+      void spin.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(3_999);
+      expect(settled).toBe(false);
+      // The abort fires at the deadline; the guest gets a short grace, then is abandoned.
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(spin).resolves.toMatchObject({
+        success: false,
+        failureKind: "cancelled",
+        failureCode: "eval_deadline_exceeded",
+      });
+      expect(instance.getRun("spin")).toMatchObject({ status: "done" });
+      // The run queued behind it on the chain is not stuck behind the abandoned promise.
+      await expect(next).resolves.toMatchObject({ success: true, returnValue: 2 });
+      expect(calls).toBe(2);
+      // A later run on the same kernel is admitted and answers.
+      seedPendingRun(sql, "third", { code: "return 2;", contextId: "ctx", timeoutMs: 60_000 });
+      await expect(instance.executeRun("third")).resolves.toMatchObject({ success: true });
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("serves get through a concurrent call while await is held", async () => {
     const hostFetch = vi.spyOn(globalThis, "fetch").mockImplementation(successfulTestRpcFetch);
     const { instance, sql, call } = await createTestDO(EvalKernel);
