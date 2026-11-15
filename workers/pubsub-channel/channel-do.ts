@@ -69,6 +69,69 @@ import type {
 } from "@workspace/pubsub";
 
 const PUBSUB_CHANNEL_SCHEMA_BASELINE = 126;
+/**
+ * The DDL of the tables that carried `--` comments before schema 126. A Dolt store drops
+ * comments from the DDL it keeps and the shape fingerprint cannot represent them
+ * (`installDurableObjectSchema` refuses them), so the notes are here. `participants.last_active_at`
+ * is the freshest real client activity across a user's subscriptions; `channel_members` is the
+ * durable membership (WP7 section 3), separate from the ephemeral `participants` roster, with the
+ * workspace-wide pending-invite index in GAD; `invite_index_ops` is a crash-safe membership to
+ * workspace-inbox projection (a row is replaced whenever the desired state changes and removed only
+ * when GAD confirms its op_id); `presence_last_seen` outlives the `participants` row so an offline
+ * member renders "last seen"; member ids are `user:<userId>`.
+ */
+const CHANNEL_TABLE_DDL = {
+  participants: `
+      CREATE TABLE IF NOT EXISTS participants (
+        id TEXT PRIMARY KEY,
+        metadata TEXT NOT NULL,
+        transport TEXT NOT NULL CHECK (transport IN ('rpc','do')),
+        last_active_at INTEGER,
+        presence_status TEXT CHECK (presence_status IN ('online','idle','away')),
+        handle TEXT
+      )
+    `,
+  participantsHandleIndex: `CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_handle
+         ON participants(handle) WHERE handle IS NOT NULL`,
+  channelMembers: `
+      CREATE TABLE IF NOT EXISTS channel_members (
+        user_id  TEXT PRIMARY KEY,
+        handle   TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at INTEGER NOT NULL
+      )
+    `,
+  inviteIndexOps: `
+      CREATE TABLE IF NOT EXISTS invite_index_ops (
+        user_id    TEXT PRIMARY KEY,
+        op_id      TEXT NOT NULL UNIQUE,
+        revision   INTEGER NOT NULL CHECK (revision > 0),
+        action     TEXT NOT NULL CHECK (action IN ('put', 'delete')),
+        handle     TEXT,
+        added_by   TEXT,
+        added_at   INTEGER,
+        updated_at INTEGER NOT NULL,
+        CHECK (
+          action = 'delete' OR
+          (handle IS NOT NULL AND added_by IS NOT NULL AND added_at IS NOT NULL)
+        )
+      )
+    `,
+  inviteIndexOpsUpdatedIndex: `CREATE INDEX IF NOT EXISTS idx_invite_index_ops_updated ON invite_index_ops(updated_at)`,
+  presenceLastSeen: `
+      CREATE TABLE IF NOT EXISTS presence_last_seen (
+        participant_id TEXT PRIMARY KEY,
+        last_seen      INTEGER NOT NULL
+      )
+    `,
+} as const;
+/** The tables of CHANNEL_TABLE_DDL with their indexes, in the order the 125 upgrade recreates them. */
+const CHANNEL_RECREATED_TABLES = [
+  ["participants", [CHANNEL_TABLE_DDL.participants, CHANNEL_TABLE_DDL.participantsHandleIndex]],
+  ["channel_members", [CHANNEL_TABLE_DDL.channelMembers]],
+  ["invite_index_ops", [CHANNEL_TABLE_DDL.inviteIndexOps, CHANNEL_TABLE_DDL.inviteIndexOpsUpdatedIndex]],
+  ["presence_last_seen", [CHANNEL_TABLE_DDL.presenceLastSeen]],
+] as const;
 /** The conversation's facts (versioned): everything else a channel keeps in `state` is identity or cache. */
 const CHANNEL_FACT_KEYS = [
   "config",
@@ -737,21 +800,8 @@ export class PubSubChannel
   }
 
   protected createTables(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS participants (
-        id TEXT PRIMARY KEY,
-        metadata TEXT NOT NULL,
-        transport TEXT NOT NULL CHECK (transport IN ('rpc','do')),
-        -- Freshest real client activity across a user's subscriptions.
-        last_active_at INTEGER,
-        presence_status TEXT CHECK (presence_status IN ('online','idle','away')),
-        handle TEXT
-      )
-    `);
-    this.sql.exec(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_handle
-         ON participants(handle) WHERE handle IS NOT NULL`,
-    );
+    this.sql.exec(CHANNEL_TABLE_DDL.participants);
+    this.sql.exec(CHANNEL_TABLE_DDL.participantsHandleIndex);
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS pending_calls (
         transport_call_id TEXT PRIMARY KEY,
@@ -937,37 +987,13 @@ export class PubSubChannel
     // the ephemeral `participants` roster, which is rebuilt on reconnect. The
     // workspace-wide pending-invite index lives in GAD; membership carries no
     // duplicate acknowledgement state.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS channel_members (
-        user_id  TEXT PRIMARY KEY,   -- user:<userId>
-        handle   TEXT NOT NULL,
-        added_by TEXT NOT NULL,      -- user:<userId> (or raw callerId)
-        added_at INTEGER NOT NULL
-      )
-    `);
+    this.sql.exec(CHANNEL_TABLE_DDL.channelMembers);
     // Crash-safe membership → workspace-inbox projection. A row is replaced
     // atomically whenever the desired state changes, and removed only when the
     // matching op_id is confirmed by GAD, so an interleaved add/remove cannot
     // let an older response erase the newer intent.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS invite_index_ops (
-        user_id    TEXT PRIMARY KEY,   -- user:<userId>
-        op_id      TEXT NOT NULL UNIQUE,
-        revision   INTEGER NOT NULL CHECK (revision > 0),
-        action     TEXT NOT NULL CHECK (action IN ('put', 'delete')),
-        handle     TEXT,
-        added_by   TEXT,
-        added_at   INTEGER,
-        updated_at INTEGER NOT NULL,
-        CHECK (
-          action = 'delete' OR
-          (handle IS NOT NULL AND added_by IS NOT NULL AND added_at IS NOT NULL)
-        )
-      )
-    `);
-    this.sql.exec(
-      `CREATE INDEX IF NOT EXISTS idx_invite_index_ops_updated ON invite_index_ops(updated_at)`,
-    );
+    this.sql.exec(CHANNEL_TABLE_DDL.inviteIndexOps);
+    this.sql.exec(CHANNEL_TABLE_DDL.inviteIndexOpsUpdatedIndex);
     // The conversation's own facts, versioned with its ledger so a fork at a
     // sequence carries them (the `state` table is local to the object).
     this.sql.exec(this.channelFactsDdl());
@@ -976,12 +1002,7 @@ export class PubSubChannel
     // here so an offline member still renders "last seen Xm ago". Deliberately
     // OUTLIVES the ephemeral `participants` row (which is deleted on leave); a
     // (re)join clears the row. Bounded by PRESENCE_LAST_SEEN_RETENTION_MS.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS presence_last_seen (
-        participant_id TEXT PRIMARY KEY,    -- user:<userId>
-        last_seen      INTEGER NOT NULL
-      )
-    `);
+    this.sql.exec(CHANNEL_TABLE_DDL.presenceLastSeen);
   }
 
   private channelFactsDdl(): string {
@@ -1000,6 +1021,15 @@ export class PubSubChannel
         fromVersion: 125,
         fromFingerprint: CHANNEL_SCHEMA_V125_SHAPE,
         upgrade: () => {
+          // The four tables whose DDL carried comments are recreated with the text a
+          // Dolt store can fingerprint; their rows move across unchanged.
+          for (const [table, statements] of CHANNEL_RECREATED_TABLES) {
+            this.sql.exec(`CREATE TABLE ${table}_upgrade AS SELECT * FROM ${table}`);
+            this.sql.exec(`DROP TABLE ${table}`);
+            for (const statement of statements) this.sql.exec(statement);
+            this.sql.exec(`INSERT INTO ${table} SELECT * FROM ${table}_upgrade`);
+            this.sql.exec(`DROP TABLE ${table}_upgrade`);
+          }
           this.sql.exec(this.channelFactsDdl());
           this.sql.exec(
             `INSERT OR IGNORE INTO channel_facts (key, value)

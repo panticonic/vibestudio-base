@@ -17,10 +17,18 @@ async function currentDescriptor(): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+/** The DDL of the four tables as the version-125 class wrote it: with the `--` comments a Dolt store cannot fingerprint. */
+const V125_DDL: Record<string, string> = {
+  "participants": "CREATE TABLE IF NOT EXISTS participants (\n        id TEXT PRIMARY KEY,\n        metadata TEXT NOT NULL,\n        transport TEXT NOT NULL CHECK (transport IN ('rpc','do')),\n        -- Freshest real client activity across a user's subscriptions.\n        last_active_at INTEGER,\n        presence_status TEXT CHECK (presence_status IN ('online','idle','away')),\n        handle TEXT\n      )\n    ",
+  "channel_members": "CREATE TABLE IF NOT EXISTS channel_members (\n        user_id  TEXT PRIMARY KEY,   -- user:<userId>\n        handle   TEXT NOT NULL,\n        added_by TEXT NOT NULL,      -- user:<userId> (or raw callerId)\n        added_at INTEGER NOT NULL\n      )\n    ",
+  "invite_index_ops": "CREATE TABLE IF NOT EXISTS invite_index_ops (\n        user_id    TEXT PRIMARY KEY,   -- user:<userId>\n        op_id      TEXT NOT NULL UNIQUE,\n        revision   INTEGER NOT NULL CHECK (revision > 0),\n        action     TEXT NOT NULL CHECK (action IN ('put', 'delete')),\n        handle     TEXT,\n        added_by   TEXT,\n        added_at   INTEGER,\n        updated_at INTEGER NOT NULL,\n        CHECK (\n          action = 'delete' OR\n          (handle IS NOT NULL AND added_by IS NOT NULL AND added_at IS NOT NULL)\n        )\n      )\n    ",
+  "presence_last_seen": "CREATE TABLE IF NOT EXISTS presence_last_seen (\n        participant_id TEXT PRIMARY KEY,    -- user:<userId>\n        last_seen      INTEGER NOT NULL\n      )\n    "
+};
+
 /**
- * An object as the version-125 class left it: the current tables without
- * `channel_facts`, its identity row at 125 with the 125 shape (the test fails if
- * that shape is not exactly what the current tables minus `channel_facts` are),
+ * An object as the version-125 class left it: the current tables with the old
+ * DDL of the four commented ones and without `channel_facts`, its identity row at 125 with the
+ * 125 shape (the test fails if that shape is not exactly what those tables are),
  * and its facts in `state`.
  */
 async function version125Object(): Promise<Fixture> {
@@ -28,6 +36,17 @@ async function version125Object(): Promise<Fixture> {
   await (object.instance as unknown as { initializeSchema(): Promise<void> }).initializeSchema();
   const db = object.db;
   db.run("DROP TABLE channel_facts");
+  for (const [table, ddl] of Object.entries(V125_DDL)) {
+    db.run(`DROP TABLE ${table}`);
+    db.run(ddl);
+  }
+  db.run(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_handle ON participants(handle) WHERE handle IS NOT NULL",
+  );
+  db.run("CREATE INDEX IF NOT EXISTS idx_invite_index_ops_updated ON invite_index_ops(updated_at)");
+  db.run(
+    "INSERT INTO channel_members (user_id, handle, added_by, added_at) VALUES ('user:usr_bob', 'bob', 'user:usr_alice', 5)",
+  );
   db.run("UPDATE _vibestudio_schema SET version = 125, shape_json = ?", [CHANNEL_SCHEMA_V125_SHAPE]);
   for (const [key, value] of [
     ["contextId", "ctx-legacy"],
@@ -72,6 +91,13 @@ describe("a channel's schema 125 to 126 and the import of its SQLite state", () 
     expect(
       legacy.sql.exec("SELECT version FROM _vibestudio_schema").toArray()[0]!["version"],
     ).toBe(126);
+    // The recreated tables kept their rows and now carry the comment-free text.
+    expect(legacy.sql.exec("SELECT user_id, handle FROM channel_members").toArray()).toEqual([
+      { user_id: "user:usr_bob", handle: "bob" },
+    ]);
+    expect(
+      String(legacy.sql.exec("SELECT sql FROM sqlite_master WHERE name = 'channel_members'").one()["sql"]),
+    ).not.toContain("--");
   });
 
   it("copies a legacy object into the Dolt cell through the class's own import calls, ledger and facts and identity alike", async () => {
