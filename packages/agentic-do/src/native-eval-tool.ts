@@ -29,7 +29,7 @@ import type { NativeInvocationExecution } from "./native-invocation-boundary.js"
 import {
   bindEvalRun,
   ensureEvalAwaitTask,
-  evalHostId,
+  evalSessionId,
   recordEvalAdmission,
   recordEvalReceiptAdmission,
   retainedEvalAdmission,
@@ -44,7 +44,7 @@ export interface NativeEvalHost {
   readonly acknowledgements: NativeEvalAcknowledgements;
   /** The background pull that settles a started run; a restart of this owner resumes it. */
   readonly awaiting: NativeEvalAwait;
-  /** This owner's runtime id: the entity that hosts its kernel (docs/dolt-redesign.md §6.11.6). */
+  /** This owner's runtime id: the entity that hosts its kernel is named from it and the scope. */
   readonly ownerId: () => string;
   /** Resolve the actual owned channel binding; caller input cannot select a notebook. */
   readonly scopeForConversation: (
@@ -58,7 +58,7 @@ export interface NativeEvalHost {
 }
 
 /**
- * Short admission/control calls. The kernel (hosted by this owner itself) owns
+ * Short admission/control calls. The kernel (hosted by this owner's session entity) owns
  * execution and its cancellation cleanup; the result is pulled, by the await task.
  */
 export function createNativeEvalExecution(
@@ -102,7 +102,7 @@ export function createNativeEvalExecution(
       }),
     );
     const route = { runId: input.runId, scopeKey };
-    const hostId = evalHostId(host.ownerId());
+    const hostId = evalSessionId(host.ownerId(), scopeKey);
     const call = createMainRpcCaller(execution.rpc);
     if (
       api.continuation !== undefined &&
@@ -160,7 +160,7 @@ export function createNativeEvalExecution(
       }
       if (started.admission.hostId !== hostId)
         throw new Error(
-          "Eval admission named an entity other than this owner (its class must declare that it hosts the eval kernel)",
+          "Eval admission named a session entity other than this owner's scope entity",
         );
       await api.commit(
         (tx) => recordEvalAdmission(tx, route.runId, started.started),

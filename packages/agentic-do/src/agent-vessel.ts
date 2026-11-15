@@ -65,7 +65,7 @@ import { lastTurnCommitThrough } from "./native-agent-commits.js";
 import { FORK_ADOPTION_KEY } from "./native-agent-owner.js";
 import { createNativeAutomationRuns } from "./native-automation-runs.js";
 import { createNativeEvalExecution } from "./native-eval-tool.js";
-import { evalHostId, type EvalAwaitInput } from "./native-eval-receipts.js";
+import { evalSessionId, type EvalAwaitInput } from "./native-eval-receipts.js";
 import { createNativeChannelMethodTools } from "./native-channel-method-tools.js";
 import { createNativeSuspendExecution } from "./native-suspend-tool.js";
 import {
@@ -174,11 +174,7 @@ import {
   type ResolveAddresseeContext,
 } from "@workspace/agentic-protocol";
 import { canonicalJson, sha256HexSyncText, stableSha256Hex } from "@vibestudio/content-addressing";
-import {
-  HostedEvalKernel,
-  type EvalLifecycleInput,
-} from "./hosted-eval-kernel.js";
-import type { LifecyclePrepareResult } from "@workspace/runtime/worker/durable-base";
+import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 
 import {
   createAgentEntity,
@@ -636,28 +632,6 @@ export interface ChannelDeliveryOutcome {
 
 const HOT_PATH_TRACE_RETENTION_LIMIT = 500;
 const HOT_PATH_TRACE_SWEEP_INTERVAL = 64;
-
-/** The rpc authority of the calls an agent's kernel serves: the caller is checked in the class. */
-const HOSTED_KERNEL_METHOD = {
-  website: {
-    kind: "closed",
-    reason: "An agent's eval kernel is reached by the agent itself and the host, never by a website.",
-  },
-  principals: ["host", "code"],
-  effect: { kind: "open" },
-  tier: "open",
-} as const;
-
-/** Host-only calls: the interlocks and the scope reset no principal reaches. */
-const HOSTED_KERNEL_HOST_METHOD = {
-  website: {
-    kind: "closed",
-    reason: "An agent's eval kernel is reached by the agent itself and the host, never by a website.",
-  },
-  principals: ["host"],
-  effect: { kind: "open" },
-  tier: "open",
-} as const;
 
 /** Result of the deferred-eval gate: parked, or a settled tool result whose
  * typed terminal fields flow unchanged into the trajectory invocation event. */
@@ -3062,8 +3036,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       }
       case "cancelEval": {
         // The chat-panel pill cancels a SERVER-SIDE eval run by asking THIS agent
-        // (the eval's owner) to cancel it. The agent cancels on the kernel it hosts
-        // itself, so the panel cannot address another owner's kernel. The UI supplies the
+        // (the eval's owner, subKey = channelId) to cancel it. The agent cancels
+        // on its own scope's session entity (named from its own id and the channel),
+        // so the panel cannot address another owner's kernel. The UI supplies the
         // journaled invocation coordinate, which is the run id.
         const invocationId = (args as { invocationId?: unknown } | null)?.invocationId;
         if (typeof invocationId !== "string" || invocationId.length === 0) {
@@ -3075,7 +3050,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         const runId = invocationId;
         try {
           const result = await createDynamicCodeRunObserver(this.rpc, {
-            hostId: evalHostId(this.rpcSelfId),
+            hostId: evalSessionId(this.rpcSelfId, channelId),
             runId,
           }).cancel({ signal });
           return { result };
@@ -3282,8 +3257,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
    * attribution) using our existing channel machinery. Return values mirror
    * `ChatSandboxValue`'s.
    *
-   * Auth: the caller MUST be this agent's own eval kernel, which acts as the agent
-   * (the verified caller id is this agent's own runtime id). Any other caller is rejected; the
+   * Auth: the caller MUST be this agent's own eval kernel. We re-derive that DO's
+   * objectKey the SAME way the host does — sha256(ownerId + "\\0" + subKey),
+   * hex, first 40 chars — and require the verified caller id to be
+   * `do:workers/session:SessionDO:<key>`. Any other caller is rejected; the
    * generic DO relay is open, so a sensitive receiver gates on receipt.
    */
   @rpc({
@@ -3852,158 +3829,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  // ── The kernel this agent hosts (docs/dolt-redesign.md §6.11.6, §7.5.1) ──────────────
-  //
-  // The agent is the hosting entity of its own eval kernel: the host admits a run on it
-  // (`dynamicCode.admit`) and the agent starts, pulls and cancels the run here, through its own
-  // methods, which relay to the hosted class. The only principals are the agent itself and the
-  // host: the agent's tool pulls through its own rpc, and the host reaches the three host-only
-  // interlocks and the scope reset.
-
-  /**
-   * The agent itself (its tools and the pill's cancel) or the host acting for the agent. A call the agent
-   * makes to its own id never leaves its rpc client: it is delivered in-process with no verified caller
-   * (neither an id nor a kind), which only the agent's own code can produce; every call that arrives from
-   * outside carries the caller the host verified.
-   */
-  private authorizeKernelCaller(): void {
-    if (this.rpcCallerKind === "server") return;
-    if (this.rpcCallerId === this.participantId()) return;
-    if (this.rpcCallerId === null && this.rpcCallerKind === null) return;
-    throw Object.assign(
-      new Error(
-        `This agent's kernel serves only the agent itself (caller ${this.rpcCallerKind ?? "none"} ${this.rpcCallerId ?? "unknown"})`
-      ),
-      { code: "EACCES" }
-    );
-  }
-
-  private requireKernelHost(): void {
-    if (this.rpcCallerKind !== "server")
-      throw Object.assign(new Error("This call is for the host"), { code: "EACCES" });
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
-  async start(
-    input: { runId: string } & Record<string, unknown>,
-    admissionNonce: string
-  ): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.start(input, admissionNonce);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
-  async await(runId: string, options?: { waitMs?: number }): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.await(runId, options);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
-  async events(runId: string, options?: { after?: number; limit?: number }): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.events(runId, options);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
-  async cancel(runId: string): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.cancel(runId);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
-  async get(runId: string): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.get(runId);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
-  async receipt(runId: string): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.receipt(runId);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
-  async acknowledge(
-    runId: string,
-    identity: { runDigest: string; resultDigest: string }
-  ): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.acknowledge(runId, identity);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
-  async readScopeTextPage(key: string, offset?: number, limit?: number): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.readScopeTextPage(key, offset, limit);
-  }
-
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
-  async deleteScopeValue(key: string): Promise<unknown> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.deleteScopeValue(key);
-  }
-
-  /** Ends the notebook heap's residency hold; the committed state stays with the agent. */
-  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
-  async end(): Promise<{ ok: true }> {
-    this.authorizeKernelCaller();
-    return this.hostedEvalKernel.end();
-  }
-
-  /** Host only: the host gates a scope reset with its own approval before it calls this. */
-  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "write" })
-  async reset(): Promise<unknown> {
-    this.requireKernelHost();
-    return this.hostedEvalKernel.reset();
-  }
-
-  /** Host only: facts only the host observes, recorded in the run's event log. */
-  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "write" })
-  async recordAuthorityEvent(
-    runId: string,
-    kind: "authority-requested" | "authority-decided",
-    payload: unknown
-  ): Promise<void> {
-    this.requireKernelHost();
-    await this.hostedEvalKernel.recordAuthorityEvent(runId, kind, payload);
-  }
-
-  /** Host only: the publication interlock for a workspace bundle a notebook imports. */
-  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "write" })
-  async retainExecutionRoot(
-    runId: string,
-    moduleSpecifier: string,
-    artifact: unknown
-  ): Promise<void> {
-    this.requireKernelHost();
-    await this.hostedEvalKernel.retainExecutionRoot(runId, moduleSpecifier, artifact);
-  }
-
-  /** Host only: the workspace bundles this agent's kernel retains, for the execution-root census. */
-  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "read" })
-  async executionRoots(): Promise<unknown[]> {
-    this.requireKernelHost();
-    return this.hostedEvalKernel.executionRoots();
-  }
-
-  /**
-   * Retirement and suspension reach the kernel through this agent: its runs are cancelled and the
-   * panels it opened retired before the agent goes (a hosted class has no lifecycle of its own),
-   * then the heap's hold ends.
-   */
-  override async releaseForLifecycle(
-    input: LifecyclePrepareInput
-  ): Promise<LifecyclePrepareResult> {
-    await this.hostedEvalKernel.lifecycle(input as unknown as EvalLifecycleInput);
-    return super.releaseForLifecycle(input);
-  }
-
-  /** The kernel this agent hosts acts as the agent (docs/dolt-redesign.md §6.11.6), so the verified
-   *  caller of a chat or describe relay is the agent's own runtime id. The kernel is the only code
-   *  of this agent that relays these operations; any other caller is refused. */
-  private async assertOwnEvalCaller(_channelId: string): Promise<void> {
+  /** Re-derive the runtime id of the session entity that hosts this agent's own
+   *  eval kernel (the host's formula exactly, `evalRuntimeId`: owner = this
+   *  agent's runtime id, scope = channelId) and require the verified caller to be it. */
+  private async assertOwnEvalCaller(channelId: string): Promise<void> {
     const callerId = this.rpcCallerId;
-    if (callerId !== this.participantId()) {
+    const expectedCaller = evalRuntimeId(this.participantId(), channelId);
+    if (callerId !== expectedCaller) {
       throw new Error(
         `chatOp: refusing caller ${callerId ?? "unknown"} — only this agent's own eval kernel may forward chat ops`
       );
@@ -6891,13 +6723,6 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         )
       ).channelId,
     bindExecution: (api, context) => this.bindNativeToolExecution(api, context),
-  });
-
-  /** The eval kernel this agent hosts in its own cell (docs/dolt-redesign.md §6.11.6). */
-  private readonly hostedEvalKernel = new HostedEvalKernel({
-    hostCode: (spec) => this.hostCode(spec),
-    getStateValue: (key) => this.getStateValue(key),
-    setStateValue: (key, value) => this.setStateValue(key, value),
   });
 
   protected executeNativeEval(...args: Parameters<NativeEvalExecution["execute"]>) {

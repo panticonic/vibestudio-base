@@ -196,8 +196,8 @@ argument can name an owner, channel, context, agent, or receiver runtime; the
 host derives those from the authenticated caller and its verified binding.
 
 The executor owns the run lifecycle: it calls `dynamicCode.admit` (the host's
-admission: authority, execution session, the entity that hosts the kernel: a
-session entity, or the agent itself, which hosts its own), starts the run on that entity, tails its `events` and pulls `await`
+admission: authority, execution session, the session entity that hosts the
+kernel), starts the run on that entity, tails its `events` and pulls `await`
 until the committed result settles, requests cancellation when its caller
 aborts, and calls `dynamicCode.release` when the run is terminal. A caller
 that outlives one call (a worker that restarts) keeps the entity's id and the

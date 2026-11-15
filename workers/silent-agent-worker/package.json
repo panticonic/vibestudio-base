@@ -7,7 +7,7 @@
     "icon": "./assets/icon.svg",
     "entry": "index.ts",
     "durable": {
-      "classes": [{"className": "SilentAgentWorker", "storage": "dolt", "doltLocal": ["do_identity", "subscription_intents", "subscriptions", "subagent_runs", "custom_cards", "agent_hot_path_trace"], "hosts": [{"source": "workers/eval-kernel", "className": "EvalKernel"}]}]
+      "classes": [{"className": "SilentAgentWorker", "storage": "dolt", "doltLocal": ["do_identity", "subscription_intents", "subscriptions", "subagent_runs", "custom_cards", "agent_hot_path_trace"]}]
     },
     "exposeModules": [
       "@workspace/runtime",
