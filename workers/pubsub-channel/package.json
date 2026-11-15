@@ -9,7 +9,24 @@
     "durable": {
       "classes": [
         {
-          "className": "PubSubChannel"
+          "className": "PubSubChannel",
+          "storage": "dolt",
+          "doltLocal": [
+            "channel_ledger_state",
+            "channel_observation_claim",
+            "channel_maintenance_queue",
+            "channel_delivery_%",
+            "channel_relationship%",
+            "channel_event_identities",
+            "channel_receipts",
+            "participants",
+            "presence_last_seen",
+            "invite_index_ops",
+            "pending_calls",
+            "provider_call_claims",
+            "fork_%",
+            "lineage_%"
+          ]
         }
       ]
     },

@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { createTestDO } from "@workspace/runtime/worker/test-utils";
 import { PubSubChannel } from "./channel-do.js";
 import { ChannelLog } from "./log-store.js";
+import { clonedChannelFake, newChannelFake } from "./channel-test-support.js";
 import type { SqlStorage } from "@workspace/runtime/worker";
 import { ChannelViewFeed } from "@workspace/agentic-core/chat-store";
 
 async function owner() {
-  const fixture = await createTestDO(PubSubChannel,{__objectKey:"channel-1"});
-  const storage = (fixture.instance as unknown as {ctx:{storage:{transactionSync<T>(operation:()=>T):T}}}).ctx.storage;
+  const fake = await newChannelFake();
+  const fixture = await createTestDO(PubSubChannel,{__objectKey:"channel-1"},{storage:fake.storage as never});
+  const storage = fake.storage;
   const calls: string[] = [];
   const blobs = new Map<string, string>();
   const log = new ChannelLog({call:async <Args extends unknown[], Result>(_target: string,method: import("@vibestudio/rpc").RpcMethod<Args, Result>,args: Args): Promise<Result> => {
@@ -16,8 +18,8 @@ async function owner() {
     if (name === "blobstore.putText") { const value = args![0] as string; const digest = sha256HexSyncText(value); blobs.set(digest,value); return {digest,size:new TextEncoder().encode(value).length} as Result; }
     if (name === "blobstore.getText") return (blobs.get(args![0] as string) ?? null) as Result;
     throw new Error(`Unexpected remote history dependency: ${name}`);
-  }},"channel-1",fixture.sql as SqlStorage,(operation)=>storage.transactionSync(operation));
-  return {...fixture,log,calls};
+  }},"channel-1",fixture.sql as SqlStorage,(operation)=>storage.transactionSync(operation),(describe,operation)=>storage.transactionSync(operation,{commit:describe}));
+  return {...fixture,fake,log,calls};
 }
 
 describe("ChannelLog owner history", () => {
@@ -76,13 +78,12 @@ describe("ChannelLog owner history", () => {
     await expect(parent.log.append({...input,messageId:"second-opening"})).rejects.toThrow("duplicate turn.opened for turn turn-one");
     expect(await parent.log.headSeq()).toBe(1);
     await parent.log.append({type:"test.tail",payload:{value:2},senderId:"agent-1",contentClass:"internal",externalKeys:[]});
-    const Database=parent.db.constructor as {new(data:Uint8Array):typeof parent.db};
     const clone=async(channelId:string,through:number)=>{
-      const fixture=await createTestDO(PubSubChannel,{__objectKey:channelId},{db:new Database(parent.db.export())});
-      const storage=(fixture.instance as unknown as {ctx:{storage:{transactionSync<T>(operation:()=>T):T}}}).ctx.storage;
-      const log=new ChannelLog({call:async()=>{throw new Error("Unexpected remote dependency");}},channelId,fixture.sql as SqlStorage,(operation)=>storage.transactionSync(operation));
+      const fake=await clonedChannelFake(parent,through);
+      const fixture=await createTestDO(PubSubChannel,{__objectKey:channelId},{storage:fake.storage as never});
+      const log=new ChannelLog({call:async()=>{throw new Error("Unexpected remote dependency");}},channelId,fixture.sql as SqlStorage,(operation)=>fake.storage.transactionSync(operation),(describe,operation)=>fake.storage.transactionSync(operation,{commit:describe}));
       log.ledger.initializeClone();
-      await log.forkFrom("channel-1",through);
+      log.ledger.adoptParent("channel-1",through);
       return log;
     };
     const inherited=await clone("child-inherited",1);
@@ -122,9 +123,9 @@ describe("ChannelLog owner history", () => {
     const first=await fixture.log.append(input);
     await expect(fixture.log.append(input)).resolves.toEqual(first);
     await expect(fixture.log.append({...input,payload:{value:"other"}})).rejects.toThrow("different canonical content");
-    const reopened=await createTestDO(PubSubChannel,{__objectKey:"channel-1"},{db:fixture.db});
-    const storage=(reopened.instance as unknown as {ctx:{storage:{transactionSync<T>(operation:()=>T):T}}}).ctx.storage;
-    const log=new ChannelLog({call:async()=>{throw new Error("Unexpected remote dependency");}},"channel-1",reopened.sql as SqlStorage,(operation)=>storage.transactionSync(operation));
+    const reopened=await createTestDO(PubSubChannel,{__objectKey:"channel-1"},{storage:fixture.fake.storage as never});
+    const storage=fixture.fake.storage;
+    const log=new ChannelLog({call:async()=>{throw new Error("Unexpected remote dependency");}},"channel-1",reopened.sql as SqlStorage,(operation)=>storage.transactionSync(operation),(describe,operation)=>storage.transactionSync(operation,{commit:describe}));
     await expect(log.getEventByEnvelopeId("immutable")).resolves.toEqual(first);
     const debt=log.ledger.peekObservation()!;
     expect(debt).toMatchObject({kind:"append",sequence:1,envelope:{envelopeId:"immutable"}});

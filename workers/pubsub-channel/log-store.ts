@@ -10,7 +10,7 @@ import {
   type ChannelEnvelopePageInfo,
   type ChannelEnvelopeWindow,
 } from "@vibestudio/shared/channelEnvelopePaging";
-import { ChannelLedger } from "./channel-ledger.js";
+import { ChannelLedger, type ChannelCommitted } from "./channel-ledger.js";
 import type { SqlStorage } from "@workspace/runtime/worker";
 import {
   DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT,
@@ -154,8 +154,9 @@ export class ChannelLog {
     private readonly channelId: string,
     sql: SqlStorage,
     transaction: <T>(operation: () => T) => T,
+    committed?: ChannelCommitted,
   ) {
-    this.ledger = new ChannelLedger(sql, transaction, channelId);
+    this.ledger = new ChannelLedger(sql, transaction, channelId, committed);
   }
 
   async append(input: ChannelAppendInput): Promise<ChannelEvent> {
@@ -195,11 +196,11 @@ export class ChannelLog {
     return this.eventFromLogEnvelope(await this.hydrate(envelope));
   }
 
-  async forkFrom(
+  async adoptParent(
     parentChannelId: string,
-    throughSeq: number | null,
+    throughSeq: number,
   ): Promise<void> {
-    this.ledger.forkFrom(parentChannelId, throughSeq);
+    this.ledger.adoptParent(parentChannelId, throughSeq);
   }
 
   async headSeq(): Promise<number> {

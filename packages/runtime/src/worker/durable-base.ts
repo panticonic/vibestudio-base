@@ -119,6 +119,10 @@ import {
 } from "@vibestudio/durable/schema";
 import { DurableWorkReadiness, InvocationContext } from "@vibestudio/durable";
 import {
+  isLegacyCall,
+  serveLegacyCall,
+} from "@vibestudio/durable/legacyImport";
+import {
   assertCleanWorkingSet,
   committedTransactionSync,
   doltStorageOf,
@@ -1383,6 +1387,17 @@ export abstract class DurableObjectBase {
         onRevoked: (reason) => this.onHostedRevoked(reason),
       });
     }
+    if (isLegacyCall(method)) {
+      // The object's own root copies a legacy SQLite facet into this Dolt facet
+      // (once); only it holds the proof the call carries.
+      return serveLegacyCall({
+        storage: this.ctx.storage,
+        props: this.codeHostProps(),
+        request,
+        method,
+        body: await request.text(),
+      });
+    }
     const authorityAcceptedAt = directAuthorityAcceptedAt(request);
 
     // Converged inbound dispatch: an `RpcEnvelope` POSTed to `__rpc` (relay
@@ -2423,30 +2438,44 @@ export abstract class DurableObjectBase {
     )
       throw new Error("Clone initialization does not match this incarnation");
     const encoded = canonicalJson(input);
-    this.ctx.storage.transactionSync(() => {
-      const previous = this.getStateValue("__clonePreparation");
-      if (previous) {
-        const receipt = JSON.parse(previous) as LifecycleCloneInput;
-        if (receipt.target.objectKey === this.objectKey) {
-          if (previous !== encoded)
-            throw new Error(
-              `Clone initialization incarnation changed: expected ${previous}, received ${encoded}`,
-            );
-          return;
+    let initialized = false;
+    // On a Dolt store the fork's own first commit: what a class changes in its
+    // versioned rows to become a new identity, recorded as one commit on top of
+    // the parent's history. A SQLite store runs a plain transaction.
+    this.committedTransaction(
+      () =>
+        initialized
+          ? {
+              message: `fork: initialized ${this.objectKey} from ${input.source.objectKey}`,
+              allowEmpty: true,
+            }
+          : null,
+      () => {
+        const previous = this.getStateValue("__clonePreparation");
+        if (previous) {
+          const receipt = JSON.parse(previous) as LifecycleCloneInput;
+          if (receipt.target.objectKey === this.objectKey) {
+            if (previous !== encoded)
+              throw new Error(
+                `Clone initialization incarnation changed: expected ${previous}, received ${encoded}`,
+              );
+            return;
+          }
+          if (receipt.target.objectKey !== input.source.objectKey) {
+            throw new Error("Cloned storage belongs to a different source");
+          }
         }
-        if (receipt.target.objectKey !== input.source.objectKey) {
-          throw new Error("Cloned storage belongs to a different source");
-        }
-      }
-      this.initializeClonedStorage(input);
-      // Readiness and worker claims belong to the source activation, not its copy.
-      this.sql
-        .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'
+        this.initializeClonedStorage(input);
+        // Readiness and worker claims belong to the source activation, not its copy.
+        this.sql
+          .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'
         OR key LIKE 'durable-work-ack-generation:%'
         OR key IN ('durable-work-active-worker', 'durable-work-active-activation')`);
-      this.setStateValue("__objectKey", this.objectKey);
-      this.setStateValue("__clonePreparation", encoded);
-    });
+        this.setStateValue("__objectKey", this.objectKey);
+        this.setStateValue("__clonePreparation", encoded);
+        initialized = true;
+      },
+    );
   }
 
   protected async registerLifecycleRelease(detail?: unknown): Promise<void> {

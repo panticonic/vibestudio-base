@@ -406,10 +406,13 @@ export class ChannelDeliveryProjection {
     });
   }
 
-  /** Reset every disposable projection after a channel clone. The inherited
-   * prefix is replayed context-only through `forkPointSequence`; child-local
-   * facts after the boundary use the ordinary full fold. */
-  resetForFork(forkPointSequence: number): void {
+  /** A fork's projections, built from nothing: its local tables start empty, so
+   * only the rows that are not derived from the log are put back (the initial
+   * configuration, which the fork's versioned facts carry) and the boundary is
+   * set. The inherited prefix is replayed context-only through
+   * `forkPointSequence`; child-local facts after the boundary use the ordinary
+   * full fold. Clearing first makes a retry of the fork's initialization safe. */
+  seedForFork(initialConfigJson: string, forkPointSequence: number): void {
     this.transaction(() => {
       this.sql.exec(`DELETE FROM channel_relationships`);
       this.sql.exec(`DELETE FROM channel_relationship_operations`);
@@ -422,12 +425,13 @@ export class ChannelDeliveryProjection {
       this.sql.exec(`DELETE FROM channel_receipts`);
       this.sql.exec(`DELETE FROM channel_delivery_message_senders`);
       this.sql.exec(
-        `UPDATE channel_delivery_context
-            SET projection_version = ?,
-                current_config_json = initial_config_json,
-                conversation_state_json = ?
-          WHERE singleton = 1`,
+        `INSERT OR REPLACE INTO channel_delivery_context
+           (singleton, projection_version, initial_config_json, current_config_json,
+            conversation_state_json)
+         VALUES (1, ?, ?, ?, ?)`,
         CHANNEL_DELIVERY_PROJECTION_VERSION,
+        initialConfigJson,
+        initialConfigJson,
         JSON.stringify(conversationV1Policy.init()),
       );
       this.sql.exec(
