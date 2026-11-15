@@ -932,7 +932,7 @@ describe("PubSubChannel", () => {
           {
             kind: "fork",
             throughSequence: parentHead,
-            expectedParentHash: boundary.hash,
+            parentEnvelopeId: String(boundary.envelopeId),
           },
         );
         expect(
@@ -973,7 +973,7 @@ describe("PubSubChannel", () => {
         });
         expect(fork).toEqual({
           observedSequence: parentHead,
-          hash: boundary.hash,
+          envelopeId: String(boundary.envelopeId),
         });
         expect(
           child.instance.settleReadyWork("channel-observation", {
@@ -1174,8 +1174,7 @@ describe("PubSubChannel", () => {
           generation: first!.generation,
           outcome: {
             observedSequence: 1,
-            envelopeId: String(prefix.envelopeId),
-            hash: prefix.hash,
+            envelopeId: "not-the-prefix",
           },
         }),
       ).toThrow("changed its canonical event");

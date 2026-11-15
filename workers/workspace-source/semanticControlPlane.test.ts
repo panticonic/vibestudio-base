@@ -981,7 +981,7 @@ describe("appendLogEvent core (§3.2)", () => {
       ],
     });
 
-    // seq starts at 1, prevHash chains from GENESIS
+    // seq starts at 1; the head pointer is GAD's private chain from GENESIS
     expect(result.logId).toBe("traj-core");
     expect(result.head).toBe("main");
     expect(result.envelopes).toHaveLength(2);
@@ -989,18 +989,13 @@ describe("appendLogEvent core (§3.2)", () => {
     const secondEnvelope = result.envelopes[1];
     if (!firstEnvelope || !secondEnvelope)
       throw new Error("Expected both appended trajectory events");
-    expect(firstEnvelope).toMatchObject({
-      envelopeId: "evt-1",
-      seq: 1,
-      prevHash: GENESIS,
-    });
-    expect(secondEnvelope).toMatchObject({
-      envelopeId: "evt-2",
-      seq: 2,
-      prevHash: firstEnvelope.hash,
-    });
+    expect(firstEnvelope).toMatchObject({ envelopeId: "evt-1", seq: 1 });
+    expect(secondEnvelope).toMatchObject({ envelopeId: "evt-2", seq: 2 });
+    // The wire envelope carries no hash; the head pointer is the chain GAD keeps for itself.
+    expect(Object.keys(firstEnvelope)).not.toContain("hash");
+    expect(Object.keys(firstEnvelope)).not.toContain("prevHash");
     expect(result.headSeq).toBe(2);
-    expect(result.headHash).toBe(secondEnvelope.hash);
+    expect(result.headHash).not.toBe(GENESIS);
 
     // publication is a deterministic causality edge, not a synthesized event
     expect(result.published).toEqual([
@@ -2857,8 +2852,17 @@ describe("forkLog no-copy (§3.5)", () => {
     expect(appended.envelopes.at(-1)).toMatchObject({
       envelopeId: "env-fork-new",
       seq: 3,
-      prevHash: fork.forkHash,
     });
+    // GAD's private chain continues from the fork hash (the wire envelope carries none).
+    expect(
+      (
+        await querySql<{ rows: Array<{ prev_hash: string }> }>(
+          sql,
+          "SELECT prev_hash FROM log_events WHERE log_id = ? AND seq = 3",
+          ["chan-fork"],
+        )
+      ).rows,
+    ).toEqual([{ prev_hash: fork.forkHash }]);
     expect(await countRows(sql, "log_id = ?", ["chan-fork"])).toBe(1);
 
     // fork idempotency
@@ -2989,10 +2993,17 @@ describe("forkLog no-copy (§3.5)", () => {
         },
       ],
     });
-    expect(appended.envelopes[0]).toMatchObject({
-      seq: 3,
-      prevHash: fork.forkHash,
-    });
+    expect(appended.envelopes[0]).toMatchObject({ seq: 3 });
+    // GAD's private chain continues from the fork hash (the wire envelope carries none).
+    expect(
+      (
+        await querySql<{ rows: Array<{ prev_hash: string }> }>(
+          sql,
+          "SELECT prev_hash FROM log_events WHERE log_id = ? AND head = ? AND seq = 3",
+          ["traj-p5-fork", "main"],
+        )
+      ).rows,
+    ).toEqual([{ prev_hash: fork.forkHash }]);
 
     await expect(
       call("checkLogIntegrity", { logId: "traj-p5", head: "main" }),
@@ -3222,7 +3233,7 @@ describe("fork-divergent deterministic terminals (§3.6)", () => {
       throw new Error("Expected both canonical terminal events");
     expect(parentEvent.payloadKind).toBe("invocation.completed");
     expect(childEvent.payloadKind).toBe("invocation.abandoned");
-    expect(parentEvent.hash).not.toBe(childEvent.hash);
+    expect(parentEvent.payloadKind).not.toBe(childEvent.payloadKind);
 
     // 8. three independent rows share the deterministic envelope id
     expect(await countRows(sql, "envelope_id = ?", ["inv:1:terminal"])).toBe(3);

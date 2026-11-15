@@ -1,7 +1,4 @@
-import {
-  canonicalJson,
-  sha256HexSyncText,
-} from "@vibestudio/content-addressing";
+import { canonicalJson } from "@vibestudio/content-addressing";
 import {
   channelEnvelopePageInfo,
   normalizeChannelEnvelopePageRequest,
@@ -9,26 +6,58 @@ import {
 } from "@vibestudio/shared/channelEnvelopePaging";
 import {
   registryMutationFromLogEnvelope,
-  LOG_GENESIS_HASH,
-  logEnvelopeHashPreimage,
   logEnvelopeSemantic,
   type LogEnvelope,
 } from "@workspace/agentic-protocol";
 import type { SqlStorage } from "@workspace/runtime/worker";
 
-type SemanticEnvelope = Omit<
-  LogEnvelope,
-  "logId" | "head" | "seq" | "prevHash" | "hash"
->;
+type SemanticEnvelope = Omit<LogEnvelope, "logId" | "head" | "seq">;
 export type ChannelObservation =
   | { kind: "root" }
   | {
       kind: "fork";
       parentChannelId: string;
       throughSequence: number;
-      expectedParentHash: string;
+      /** The event that ends the parent's prefix (null for an empty prefix). A boundary is named by its id. */
+      parentEnvelopeId: string | null;
     }
   | { kind: "append"; sequence: number; envelope: LogEnvelope };
+
+/**
+ * The ledger's tables. `events` and `chunks` are versioned; `state` is local (the head, the graph
+ * observation cursor, the fork's parent), so a fork rebuilds it from the events it holds.
+ */
+export const CHANNEL_LEDGER_DDL = {
+  events: `
+      CREATE TABLE IF NOT EXISTS channel_ledger_events (
+        sequence INTEGER PRIMARY KEY,
+        envelope_id TEXT NOT NULL UNIQUE,
+        payload_kind TEXT NOT NULL,
+        opened_turn_id TEXT
+      )
+    `,
+  openedTurnIndex: `CREATE UNIQUE INDEX IF NOT EXISTS channel_ledger_opened_turn ON channel_ledger_events (opened_turn_id) WHERE opened_turn_id IS NOT NULL`,
+  kindSequenceIndex: `CREATE INDEX IF NOT EXISTS channel_ledger_kind_sequence ON channel_ledger_events (payload_kind, sequence)`,
+  chunks: `
+      CREATE TABLE IF NOT EXISTS channel_ledger_chunks (
+        sequence INTEGER NOT NULL,
+        chunk INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        PRIMARY KEY (sequence, chunk)
+      )
+    `,
+  state: `
+      CREATE TABLE IF NOT EXISTS channel_ledger_state (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        head_sequence INTEGER NOT NULL,
+        observed_sequence INTEGER NOT NULL,
+        parent_channel_id TEXT,
+        parent_sequence INTEGER,
+        root_observed INTEGER NOT NULL DEFAULT 0,
+        parent_observed INTEGER NOT NULL DEFAULT 1
+      )
+    `,
+} as const;
 
 /** The channel owner's immutable event ledger. Global graph delivery is debt,
  * never the channel's history or membership authority. */
@@ -49,39 +78,15 @@ export class ChannelLedger {
   ) {}
 
   static createTables(sql: SqlStorage): void {
-    sql.exec(`
-      CREATE TABLE IF NOT EXISTS channel_ledger_events (
-        sequence INTEGER PRIMARY KEY,
-        envelope_id TEXT NOT NULL UNIQUE,
-        payload_kind TEXT NOT NULL,
-        opened_turn_id TEXT,
-        hash TEXT NOT NULL
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS channel_ledger_opened_turn ON channel_ledger_events (opened_turn_id) WHERE opened_turn_id IS NOT NULL;
-      CREATE INDEX IF NOT EXISTS channel_ledger_kind_sequence ON channel_ledger_events (payload_kind, sequence);
-      CREATE TABLE IF NOT EXISTS channel_ledger_chunks (
-        sequence INTEGER NOT NULL,
-        chunk INTEGER NOT NULL,
-        body TEXT NOT NULL,
-        PRIMARY KEY (sequence, chunk)
-      );
-      CREATE TABLE IF NOT EXISTS channel_ledger_state (
-        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-        head_sequence INTEGER NOT NULL,
-        head_hash TEXT NOT NULL,
-        observed_sequence INTEGER NOT NULL,
-        parent_channel_id TEXT,
-        parent_sequence INTEGER,
-        parent_hash TEXT,
-        root_observed INTEGER NOT NULL DEFAULT 0,
-        parent_observed INTEGER NOT NULL DEFAULT 1
-      );
-    `);
+    sql.exec(CHANNEL_LEDGER_DDL.events);
+    sql.exec(CHANNEL_LEDGER_DDL.openedTurnIndex);
+    sql.exec(CHANNEL_LEDGER_DDL.kindSequenceIndex);
+    sql.exec(CHANNEL_LEDGER_DDL.chunks);
+    sql.exec(CHANNEL_LEDGER_DDL.state);
     sql.exec(
       `INSERT OR IGNORE INTO channel_ledger_state
-      (singleton, head_sequence, head_hash, observed_sequence)
-      VALUES (1, 0, ?, 0)`,
-      LOG_GENESIS_HASH,
+      (singleton, head_sequence, observed_sequence)
+      VALUES (1, 0, 0)`,
     );
   }
 
@@ -123,9 +128,23 @@ export class ChannelLedger {
       )
       .toArray();
     if (!chunks.length) return null;
-    return JSON.parse(
+    const envelope = JSON.parse(
       chunks.map((row) => String(row["body"])).join(""),
-    ) as LogEnvelope;
+    ) as LogEnvelope & { prevHash?: unknown; hash?: unknown };
+    // An event stored before the hash chain was deleted still carries its two fields.
+    delete envelope.prevHash;
+    delete envelope.hash;
+    return envelope;
+  }
+
+  /** The id of the event at `sequence`: how a boundary of the ledger is named. Null for sequence 0. */
+  boundaryEnvelopeId(sequence: number): string | null {
+    if (sequence === 0) return null;
+    const row = this.sql
+      .exec(`SELECT envelope_id FROM channel_ledger_events WHERE sequence = ?`, sequence)
+      .toArray()[0];
+    if (!row) throw new Error("Channel ledger boundary names no event");
+    return String(row["envelope_id"]);
   }
 
   /** The commit message of an append. Its first words name the event; `commitMessageSequence` reads the sequence back. */
@@ -158,22 +177,11 @@ export class ChannelLedger {
         }
         const state = this.state();
         const sequence = Number(state["head_sequence"]) + 1;
-        const prevHash = String(state["head_hash"]);
         const envelope: LogEnvelope = {
           ...semantic,
           logId: this.channelId,
           head: "main",
           seq: sequence,
-          prevHash,
-          hash: sha256HexSyncText(
-            logEnvelopeHashPreimage({
-              prevHash,
-              logId: this.channelId,
-              head: "main",
-              seq: sequence,
-              semantic: logEnvelopeSemantic(semantic),
-            }),
-          ),
         };
         registryMutationFromLogEnvelope(envelope);
         const openedTurnId =
@@ -191,12 +199,11 @@ export class ChannelLedger {
         )
           throw new Error(`duplicate turn.opened for turn ${openedTurnId}`);
         this.sql.exec(
-          `INSERT INTO channel_ledger_events (sequence, envelope_id, payload_kind, opened_turn_id, hash) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO channel_ledger_events (sequence, envelope_id, payload_kind, opened_turn_id) VALUES (?, ?, ?, ?)`,
           sequence,
           String(envelope.envelopeId),
           envelope.payloadKind,
           openedTurnId,
-          envelope.hash,
         );
         const body = JSON.stringify(envelope);
         // Chunks bound individual SQLite rows independently of event size.
@@ -212,9 +219,8 @@ export class ChannelLedger {
             body.slice(offset, offset + 65536),
           );
         this.sql.exec(
-          `UPDATE channel_ledger_state SET head_sequence = ?, head_hash = ? WHERE singleton = 1`,
+          `UPDATE channel_ledger_state SET head_sequence = ? WHERE singleton = 1`,
           sequence,
-          envelope.hash,
         );
         appended = true;
         return envelope;
@@ -324,15 +330,13 @@ export class ChannelLedger {
     const head = Number(
       this.sql.exec(`SELECT COALESCE(MAX(sequence), 0) AS head FROM channel_ledger_events`).toArray()[0]?.["head"] ?? 0,
     );
-    const hash = head === 0 ? LOG_GENESIS_HASH : this.at(head)?.hash;
-    if (!hash) throw new Error("Channel fork lost its newest event");
+    this.boundaryEnvelopeId(head);
     this.sql.exec(
       `INSERT OR REPLACE INTO channel_ledger_state
-         (singleton, head_sequence, head_hash, observed_sequence, parent_channel_id,
-          parent_sequence, parent_hash, root_observed, parent_observed)
-       VALUES (1, ?, ?, 0, NULL, NULL, NULL, 0, 1)`,
+         (singleton, head_sequence, observed_sequence, parent_channel_id,
+          parent_sequence, root_observed, parent_observed)
+       VALUES (1, ?, 0, NULL, NULL, 0, 1)`,
       head,
-      hash,
     );
   }
 
@@ -355,14 +359,12 @@ export class ChannelLedger {
       }
       if (this.headSequence() !== throughSequence)
         throw new Error("Channel fork does not end at the requested canonical prefix");
-      const hash = this.headSequence() === 0 ? LOG_GENESIS_HASH : this.at(throughSequence)?.hash;
-      if (!hash) throw new Error("Channel fork prefix lost its canonical boundary");
+      this.boundaryEnvelopeId(throughSequence);
       this.sql.exec(
         `UPDATE channel_ledger_state SET observed_sequence = 0,
-           parent_channel_id = ?, parent_sequence = ?, parent_hash = ?, parent_observed = 0 WHERE singleton = 1`,
+           parent_channel_id = ?, parent_sequence = ?, parent_observed = 0 WHERE singleton = 1`,
         parentChannelId,
         throughSequence,
-        hash,
       );
     });
   }
@@ -374,7 +376,7 @@ export class ChannelLedger {
         kind: "fork",
         parentChannelId: String(state["parent_channel_id"]),
         throughSequence: Number(state["parent_sequence"]),
-        expectedParentHash: String(state["parent_hash"]),
+        parentEnvelopeId: this.boundaryEnvelopeId(Number(state["parent_sequence"])),
       };
     if (
       Number(state["root_observed"]) === 0 &&
@@ -434,7 +436,7 @@ export class ChannelLedger {
   markForkObserved(
     parentChannelId: string,
     throughSequence: number,
-    hash: string,
+    parentEnvelopeId: string | null,
   ): void {
     this.transaction(() => {
       const next = this.peekObservation();
@@ -443,7 +445,7 @@ export class ChannelLedger {
         next.kind !== "fork" ||
         next.parentChannelId !== parentChannelId ||
         next.throughSequence !== throughSequence ||
-        next.expectedParentHash !== hash
+        next.parentEnvelopeId !== parentEnvelopeId
       )
         throw new Error("Channel fork observation changed its original prefix");
       this.sql.exec(

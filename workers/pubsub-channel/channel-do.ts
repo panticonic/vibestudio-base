@@ -1,7 +1,7 @@
 import type { ResidentChannelLifecycle } from "@vibestudio/shared/residentSession";
 import { durableRpcMethods } from "@vibestudio/durable/rpcMethods";
 import type { DurableObjectSchemaUpgrade } from "@vibestudio/durable/schema";
-import { CHANNEL_SCHEMA_V125_SHAPE } from "./channel-schema-history.js";
+import { CHANNEL_SCHEMA_V125_SHAPE, CHANNEL_SCHEMA_V126_SHAPE } from "./channel-schema-history.js";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
@@ -37,7 +37,7 @@ import { createImagesClient } from "@workspace/runtime/images";
 import { canonicalJson } from "@vibestudio/content-addressing";
 import { MAX_CHANNEL_REPLAY_PAGE_LIMIT } from "@workspace/pubsub";
 import { PublicationQueue } from "./publication-queue.js";
-import { ChannelLedger } from "./channel-ledger.js";
+import { CHANNEL_LEDGER_DDL, ChannelLedger } from "./channel-ledger.js";
 import {
   observeChannelEvent,
   type ChannelObservationOutcome,
@@ -68,7 +68,7 @@ import type {
   ServerLogEvent,
 } from "@workspace/pubsub";
 
-const PUBSUB_CHANNEL_SCHEMA_BASELINE = 126;
+const PUBSUB_CHANNEL_SCHEMA_BASELINE = 127;
 /**
  * The DDL of the tables that carried `--` comments before schema 126. A Dolt store drops
  * comments from the DDL it keeps and the shape fingerprint cannot represent them
@@ -169,7 +169,6 @@ import type {
 } from "@vibestudio/shared/durableWork";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
-  LOG_GENESIS_HASH,
   agenticEventFromLogEnvelope,
   isAgenticLogEventKind,
   AGENTIC_PROTOCOL_VERSION,
@@ -454,7 +453,7 @@ interface ChannelDeliveryInput {
 
 type ChannelObservationReceipt =
   | ChannelObservationOutcome
-  | { observedSequence: number; hash: string };
+  | { observedSequence: number; envelopeId: string | null };
 
 export interface ChannelDeliveryOutcome {
   deliveryId: string;
@@ -614,7 +613,7 @@ export class PubSubChannel
   private observationReleaseBarrier: {
     channelId: string;
     headSequence: number;
-    headHash: string;
+    headEnvelopeId: string | null;
   } | null = null;
 
   @rpc({
@@ -636,18 +635,14 @@ export class PubSubChannel
     if (stage === "delivery") {
       await this.publicationQueue.commitBarrier(this.rpcAbortSignal);
       const headSequence = this.channelLog.ledger.headSequence();
-      const headHash =
-        headSequence === 0
-          ? LOG_GENESIS_HASH
-          : this.channelLog.ledger.at(headSequence)?.hash;
-      if (!headHash)
-        throw new Error("Channel delivery release lost its canonical boundary");
+      const headEnvelopeId =
+        this.channelLog.ledger.boundaryEnvelopeId(headSequence);
       return {
         queues: ["channel-delivery"],
         barrier: {
           channelId: this.objectKey,
           headSequence,
-          headHash,
+          headEnvelopeId,
           admissionRevision: this.publicationQueue.admissionRevision,
         },
       };
@@ -656,16 +651,10 @@ export class PubSubChannel
     this.publicationQueue.seal();
     await this.publicationQueue.commitBarrier(this.rpcAbortSignal);
     const headSequence = this.channelLog.ledger.headSequence();
-    const headHash =
-      headSequence === 0
-        ? LOG_GENESIS_HASH
-        : this.channelLog.ledger.at(headSequence)?.hash;
-    if (!headHash)
-      throw new Error("Channel release lost its canonical retained boundary");
     this.observationReleaseBarrier = {
       channelId: this.objectKey,
       headSequence,
-      headHash,
+      headEnvelopeId: this.channelLog.ledger.boundaryEnvelopeId(headSequence),
     };
     return {
       queues: ["channel-observation"],
@@ -705,11 +694,10 @@ export class PubSubChannel
       )
         throw new Error("Channel release does not own this delivery boundary");
       const sequence = Number(barrier["headSequence"]);
-      const hash =
-        sequence === 0
-          ? LOG_GENESIS_HASH
-          : this.channelLog.ledger.at(sequence)?.hash;
-      if (!hash || hash !== barrier["headHash"])
+      if (
+        this.channelLog.ledger.boundaryEnvelopeId(sequence) !==
+        barrier["headEnvelopeId"]
+      )
         throw new Error(
           "Channel delivery release changed its canonical boundary",
         );
@@ -723,7 +711,7 @@ export class PubSubChannel
     if (!owned || canonicalJson(owned) !== canonicalJson(barrier))
       throw new Error("Channel release does not own this observation boundary");
     const observed = await this.waitObservedThrough(owned.headSequence);
-    if (observed.hash !== owned.headHash)
+    if (observed.envelopeId !== owned.headEnvelopeId)
       throw new Error(
         "Channel release observation changed its retained boundary",
       );
@@ -1014,7 +1002,11 @@ export class PubSubChannel
     `;
   }
 
-  /** 125 to 126: the conversation's facts move from `state` (local) to `channel_facts` (versioned). */
+  /**
+   * 125 to 126: the conversation's facts move from `state` (local) to `channel_facts` (versioned).
+   * 126 to 127: the hash chain is gone from the ledger (`channel_ledger_events.hash`) and from its
+   * local state row (`head_hash`, `parent_hash`).
+   */
   protected override schemaUpgrades(): readonly DurableObjectSchemaUpgrade[] {
     return [
       {
@@ -1041,6 +1033,37 @@ export class PubSubChannel
             `INSERT OR IGNORE INTO channel_facts (key, value)
                SELECT 'initialConfig', initial_config_json FROM channel_delivery_context WHERE singleton = 1`,
           );
+        },
+      },
+      {
+        fromVersion: 126,
+        fromFingerprint: CHANNEL_SCHEMA_V126_SHAPE,
+        upgrade: () => {
+          // The two tables are recreated with the exact text of the current DDL (an `ALTER TABLE ... DROP
+          // COLUMN` leaves the old text with a hole in it, which a SQLite store fingerprints as drift);
+          // their rows move across unchanged.
+          for (const [table, columns, statements] of [
+            [
+              "channel_ledger_events",
+              "sequence, envelope_id, payload_kind, opened_turn_id",
+              [
+                CHANNEL_LEDGER_DDL.events,
+                CHANNEL_LEDGER_DDL.openedTurnIndex,
+                CHANNEL_LEDGER_DDL.kindSequenceIndex,
+              ],
+            ],
+            [
+              "channel_ledger_state",
+              "singleton, head_sequence, observed_sequence, parent_channel_id, parent_sequence, root_observed, parent_observed",
+              [CHANNEL_LEDGER_DDL.state],
+            ],
+          ] as const) {
+            this.sql.exec(`CREATE TABLE ${table}_upgrade AS SELECT ${columns} FROM ${table}`);
+            this.sql.exec(`DROP TABLE ${table}`);
+            for (const statement of statements) this.sql.exec(statement);
+            this.sql.exec(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM ${table}_upgrade`);
+            this.sql.exec(`DROP TABLE ${table}_upgrade`);
+          }
         },
       },
     ];
@@ -2077,7 +2100,7 @@ export class PubSubChannel
 
   private readonly observationWaiters = new Set<{
     sequence: number;
-    resolve: (value: { observedSequence: number; hash: string }) => void;
+    resolve: (value: { observedSequence: number; envelopeId: string | null }) => void;
     reject: (error: unknown) => void;
   }>();
 
@@ -2196,11 +2219,11 @@ export class PubSubChannel
           { signal },
         ),
       );
-      if (receipt.seq !== 0 || receipt.hash !== LOG_GENESIS_HASH)
+      if (receipt.seq !== 0)
         throw new Error(
           "Channel root observation changed its canonical genesis",
         );
-      return { observedSequence: 0, hash: receipt.hash };
+      return { observedSequence: 0, envelopeId: null };
     }
     const signal = this.rpcAbortSignal ?? undefined;
     const throughSequence = Number(row["through_sequence"]);
@@ -2267,7 +2290,7 @@ export class PubSubChannel
     );
     if (
       receipt.observedSequence !== observation.throughSequence ||
-      receipt.hash !== observation.expectedParentHash
+      receipt.envelopeId !== observation.parentEnvelopeId
     )
       throw new Error(
         "Channel fork observation changed its original parent prefix",
@@ -2278,8 +2301,8 @@ export class PubSubChannel
     kind: "fork";
     parentChannelId: string;
     throughSequence: number;
-    expectedParentHash: string;
-  }): Promise<{ observedSequence: number; hash: string }> {
+    parentEnvelopeId: string | null;
+  }): Promise<{ observedSequence: number; envelopeId: string | null }> {
     const signal = this.rpcAbortSignal ?? undefined;
     return this.runDetached(async () => {
       const fork = await this.inviteIndex.callWithOptions(
@@ -2295,14 +2318,14 @@ export class PubSubChannel
         ],
         { signal },
       );
-      if (
-        fork.forkSeq !== input.throughSequence ||
-        fork.forkHash !== input.expectedParentHash
-      )
+      if (fork.forkSeq !== input.throughSequence)
         throw new Error(
           "Channel fork observation acknowledgement changed its canonical prefix",
         );
-      return { observedSequence: fork.forkSeq, hash: fork.forkHash };
+      return {
+        observedSequence: fork.forkSeq,
+        envelopeId: input.parentEnvelopeId,
+      };
     });
   }
 
@@ -2326,12 +2349,11 @@ export class PubSubChannel
       const outcome = request.outcome as {
         observedSequence?: unknown;
         envelopeId?: unknown;
-        hash?: unknown;
       };
       if (!next)
         throw new Error("Channel observation receipt has no owned event");
       if (next.kind === "root") {
-        if (outcome.observedSequence !== 0 || outcome.hash !== LOG_GENESIS_HASH)
+        if (outcome.observedSequence !== 0 || outcome.envelopeId !== null)
           throw new Error(
             "Channel root observation receipt changed its genesis",
           );
@@ -2339,7 +2361,7 @@ export class PubSubChannel
       } else if (next.kind === "fork") {
         if (
           outcome.observedSequence !== next.throughSequence ||
-          outcome.hash !== next.expectedParentHash
+          outcome.envelopeId !== next.parentEnvelopeId
         )
           throw new Error(
             "Channel fork observation receipt changed its canonical prefix",
@@ -2347,7 +2369,7 @@ export class PubSubChannel
         this.channelLog.ledger.markForkObserved(
           next.parentChannelId,
           next.throughSequence,
-          next.expectedParentHash,
+          next.parentEnvelopeId,
         );
       } else {
         const throughSequence = Number(row["through_sequence"]);
@@ -2355,8 +2377,7 @@ export class PubSubChannel
         if (
           !last ||
           outcome.observedSequence !== throughSequence ||
-          outcome.envelopeId !== last.envelopeId ||
-          outcome.hash !== last.hash
+          outcome.envelopeId !== last.envelopeId
         )
           throw new Error(
             "Channel observation receipt changed its canonical event",
@@ -2410,15 +2431,17 @@ export class PubSubChannel
         this.channelLog.ledger.hasObservedRoot() &&
         observed >= waiter.sequence
       ) {
-        const hash =
-          waiter.sequence === 0
-            ? LOG_GENESIS_HASH
-            : this.channelLog.ledger.at(waiter.sequence)?.hash;
-        if (!hash)
+        let envelopeId: string | null;
+        try {
+          envelopeId = this.channelLog.ledger.boundaryEnvelopeId(waiter.sequence);
+        } catch {
           waiter.reject(
             new Error("Channel observation lost its retained boundary"),
           );
-        else waiter.resolve({ observedSequence: waiter.sequence, hash });
+          this.observationWaiters.delete(waiter);
+          continue;
+        }
+        waiter.resolve({ observedSequence: waiter.sequence, envelopeId });
       } else if (failure)
         waiter.reject(
           deserializeRpcFailure(JSON.parse(String(failure["error_json"]))),
@@ -2440,7 +2463,7 @@ export class PubSubChannel
   })
   async waitObservedThrough(
     sequence: number,
-  ): Promise<{ observedSequence: number; hash: string }> {
+  ): Promise<{ observedSequence: number; envelopeId: string | null }> {
     if (
       !Number.isSafeInteger(sequence) ||
       sequence < 0 ||
@@ -2451,10 +2474,10 @@ export class PubSubChannel
     signal?.throwIfAborted();
     let waiter!: {
       sequence: number;
-      resolve: (value: { observedSequence: number; hash: string }) => void;
+      resolve: (value: { observedSequence: number; envelopeId: string | null }) => void;
       reject: (error: unknown) => void;
     };
-    const promise = new Promise<{ observedSequence: number; hash: string }>(
+    const promise = new Promise<{ observedSequence: number; envelopeId: string | null }>(
       (resolve, reject) => {
         waiter = { sequence, resolve, reject };
         this.observationWaiters.add(waiter);

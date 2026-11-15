@@ -131,8 +131,12 @@ import {
   type TrajectoryEvent,
 } from "@workspace/agentic-protocol";
 import {
+  type ChainedLogEnvelope,
+  logChainPreimage,
+  wireLogEnvelope,
+} from "./logChain.js";
+import {
   gadAppendErrorMessage,
-  logEnvelopeHashPreimage,
   logEnvelopeSemantic,
   type AppendIdempotency,
   type LogEnvelopeSemanticInput,
@@ -2200,7 +2204,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     semantic: Record<string, unknown>,
   ): string {
     return sha256HexSyncText(
-      logEnvelopeHashPreimage({ prevHash, logId, head, seq, semantic }),
+      logChainPreimage({ prevHash, logId, head, seq, semantic }),
     );
   }
 
@@ -2255,7 +2259,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       : "(no field-level diff — likely appendedAt handling or stored-value encoding)";
   }
 
-  private mapLogEnvelope(row: JsonRecord): LogEnvelope {
+  private mapLogEnvelope(row: JsonRecord): ChainedLogEnvelope {
     return {
       logId: String(row["log_id"]),
       head: String(row["head"]),
@@ -2349,16 +2353,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   readLog(input: ReadLogInput): LogEnvelope[] {
-    return this.readLogQuery(input);
+    return this.readLogQuery(input).map(wireLogEnvelope);
   }
 
-  private readLogQuery(input: LogReadQuery): LogEnvelope[] {
+  private readLogQuery(input: LogReadQuery): ChainedLogEnvelope[] {
     this.ensureReady();
     const limit =
       input.limit == null ? null : Math.max(Math.trunc(input.limit), 0);
     if (limit === 0) return [];
     const segments = this.logLineage(input.logId, input.head);
-    const collected: LogEnvelope[] = [];
+    const collected: ChainedLogEnvelope[] = [];
     // Ancestors hold the lowest seqs: walk root-first.
     for (const segment of [...segments].reverse()) {
       const remaining = limit != null ? limit - collected.length : null;
@@ -2379,7 +2383,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return collected;
   }
 
-  private readLogTail(input: LogReadQuery): LogEnvelope[] {
+  private readLogTail(input: LogReadQuery): ChainedLogEnvelope[] {
     this.ensureReady();
     const limit =
       input.limit == null ? null : Math.max(Math.trunc(input.limit), 0);
@@ -2404,6 +2408,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   getLogEvent(input: { logId: string; head: string; envelopeId: string }): LogEnvelope | null {
+    const stored = this.getChainedLogEvent(input);
+    return stored ? wireLogEnvelope(stored) : null;
+  }
+
+  private getChainedLogEvent(input: {
+    logId: string;
+    head: string;
+    envelopeId: string;
+  }): ChainedLogEnvelope | null {
     this.ensureReady();
     const row = this.lineageEventRow(input.logId, input.head, input.envelopeId);
     return row ? this.mapLogEnvelope(row) : null;
@@ -2544,12 +2557,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!publicationWasReady && this.hasReadyPublicationDelivery()) {
       this.markWorkReady("workspace-publication");
     }
-    return result;
+    return { ...result, envelopes: result.envelopes.map(wireLogEnvelope) };
   }
 
   private appendLogEventInTxn(
     input: AppendLogEventInput,
-  ): AppendLogEventResult {
+  ): Omit<AppendLogEventResult, "envelopes"> & {
+    envelopes: ChainedLogEnvelope[];
+  } {
     if (!input.logId) throw new Error("appendLogEvent requires logId");
     if (!input.head) throw new Error("appendLogEvent requires head");
     if (!input.events.length)
@@ -2579,7 +2594,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     );
 
     // Lineage-scoped idempotent replay: skip the longest already-applied prefix.
-    const replayed: LogEnvelope[] = [];
+    const replayed: ChainedLogEnvelope[] = [];
     for (const event of prepared) {
       const existing = existingHead
         ? this.lineageEventRow(input.logId, input.head, event.envelopeId)
@@ -2621,7 +2636,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     // and the duplicate is skipped (loudly, via warn). Same id with DIFFERENT
     // content remains a hard replay-mismatch failure — that is a genuine
     // causality/ordering bug, never benign redelivery.
-    const midBatchReplayed: LogEnvelope[] = [];
+    const midBatchReplayed: ChainedLogEnvelope[] = [];
     const remaining: typeof prepared = [];
     for (const [suffixIndex, event] of prepared
       .slice(replayed.length)
@@ -2718,7 +2733,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       }
     }
 
-    const appended: LogEnvelope[] = [];
+    const appended: ChainedLogEnvelope[] = [];
     let seq = pointer.seq;
     let prevHash = pointer.hash;
     for (const event of remaining) {
@@ -2743,7 +2758,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         prevHash,
         semantic,
       );
-      const envelope: LogEnvelope = {
+      const envelope: ChainedLogEnvelope = {
         logId: input.logId,
         head: input.head,
         seq,
@@ -2911,7 +2926,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return prepareLogEvent(logKind, input, { envelopeId: input.envelopeId ?? crypto.randomUUID(), appendedAt: input.appendedAt ?? nowIso() });
   }
 
-  private insertLogEvent(envelope: LogEnvelope): void {
+  private insertLogEvent(envelope: ChainedLogEnvelope): void {
     this.sql.exec(
       `INSERT INTO log_events (
          log_id, head, seq, envelope_id, payload_kind, actor_json, to_json,
@@ -3054,7 +3069,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
       // Seed the child's projection caches (P1: caches, rebuildable) by folding
       // the inherited lineage view under the child key. No log rows are copied.
-      const inherited = this.readLog({
+      const inherited = this.readLogQuery({
         logId: input.toLogId,
         head: input.toHead,
       });
@@ -4228,7 +4243,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       let actor: unknown = null;
       let appendedAt: string | null = null;
       if (eventId && logId && head) {
-        const event = this.getLogEvent({ logId, head, envelopeId: eventId });
+        const event = this.getChainedLogEvent({ logId, head, envelopeId: eventId });
         if (event) {
           actor = event.actor;
           appendedAt = event.appendedAt;
@@ -4569,7 +4584,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   // -------------------------------------------------------------------------
 
   private trajectoryEventView(
-    envelope: LogEnvelope,
+    envelope: ChainedLogEnvelope,
     override?: { trajectoryId: string; branchId: string },
   ): TrajectoryEvent {
     const causality = agenticCausality(envelope.causality);
@@ -4688,7 +4703,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const logId = input.trajectoryId ?? this.findLogIdForHead(input.branchId);
     if (!logId) return [];
     const limit = input.limit ?? 500;
-    const envelopes = this.readLog({
+    const envelopes = this.readLogQuery({
       logId,
       head: input.branchId,
       afterSeq: input.cursor ?? 0,
@@ -5370,7 +5385,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!lineage) return null;
     const trajectoryId = lineage.publication.trajectoryId;
     const branchId = lineage.publication.branchId;
-    const events = this.readLog({ logId: trajectoryId, head: branchId }).filter(
+    const events = this.readLogQuery({ logId: trajectoryId, head: branchId }).filter(
       (envelope) => envelope.seq <= lineage.trajectoryEvent.seq,
     );
     return PrivateLineageForPublishedEnvelopeSchema.parse({

@@ -160,8 +160,6 @@ class TestableAiChatWorker extends AiChatWorker {
               payload: event.payload,
               ...(event.causality ? { causality: event.causality } : {}),
               appendedAt: event.appendedAt ?? new Date().toISOString(),
-              prevHash: "test-previous-hash",
-              hash: `test-hash:${index}`,
             })),
             published: [],
           };

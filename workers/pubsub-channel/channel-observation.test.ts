@@ -24,8 +24,6 @@ const envelope: LogEnvelope = {
     agentHops: 2,
   },
   appendedAt: "2026-10-10T00:00:00.000Z",
-  prevHash: "original:previous",
-  hash: "original:hash",
 };
 function fixture(response: LogEnvelope | LogEnvelope[] = envelope, failure?: Error) {
   const responses=Array.isArray(response)?response:[response];
@@ -36,7 +34,7 @@ function fixture(response: LogEnvelope | LogEnvelope[] = envelope, failure?: Err
       logId: channelId,
       head: "main",
       headSeq: last.seq,
-      headHash: last.hash,
+      headHash: `chain:${last.seq}`,
       envelopes: responses,
       published: [],
     };
@@ -71,20 +69,20 @@ function input(value = envelope): ChannelObservationInput {
 }
 describe("channel canonical observation", () => {
   it("mirrors an existing frozen prefix in one atomic append and verifies every acknowledgement",async()=>{
-    const second={...envelope,seq:4,envelopeId:"second" as LogEnvelope["envelopeId"],prevHash:envelope.hash,hash:"second:hash"};
-    const third={...second,seq:5,envelopeId:"third" as LogEnvelope["envelopeId"],prevHash:second.hash,hash:"third:hash"};
+    const second={...envelope,seq:4,envelopeId:"second" as LogEnvelope["envelopeId"]};
+    const third={...second,seq:5,envelopeId:"third" as LogEnvelope["envelopeId"]};
     const batch={kind:"append" as const,sequence:3,envelopes:[envelope,second,third]};
     const actual=fixture(batch.envelopes);
-    await expect(observeChannelEvent(actual.rpc,channelId,batch)).resolves.toEqual({observedSequence:5,envelopeId:third.envelopeId,hash:third.hash});
+    await expect(observeChannelEvent(actual.rpc,channelId,batch)).resolves.toEqual({observedSequence:5,envelopeId:third.envelopeId});
     expect(actual.append).toHaveBeenCalledTimes(1);
     expect((actual.append.mock.calls[0]![0] as {events:unknown[]}).events).toHaveLength(3);
-    for(const replies of [[envelope,third],[envelope,{...second,hash:"divergent"},third],[third,second,envelope]]) {
+    for(const replies of [[envelope,third],[envelope,{...second,seq:9},third],[third,second,envelope]]) {
       const invalid=fixture(replies);
       await expect(observeChannelEvent(invalid.rpc,channelId,batch)).rejects.toThrow("acknowledgement differs");
       expect(invalid.append).toHaveBeenCalledTimes(1);
     }
     const invalid=fixture(batch.envelopes);
-    await expect(observeChannelEvent(invalid.rpc,channelId,{...batch,envelopes:[envelope,{...second,prevHash:"divergent"}]})).rejects.toThrow("exact locally committed envelope");
+    await expect(observeChannelEvent(invalid.rpc,channelId,{...batch,envelopes:[envelope,{...second,seq:9}]})).rejects.toThrow("exact locally committed envelope");
     expect(invalid.append).not.toHaveBeenCalled();
   });
 
@@ -95,7 +93,6 @@ describe("channel canonical observation", () => {
     ).resolves.toEqual({
       observedSequence: 3,
       envelopeId: envelope.envelopeId,
-      hash: envelope.hash,
     });
     expect(f.append).toHaveBeenCalledWith({
       logId: channelId,
@@ -120,8 +117,6 @@ describe("channel canonical observation", () => {
     for (const patch of [
       { seq: 4 },
       { envelopeId: "other" as LogEnvelope["envelopeId"] },
-      { hash: "other" },
-      { prevHash: "other" },
     ]) {
       const f = fixture({ ...envelope, ...patch });
       await expect(

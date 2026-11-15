@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
@@ -10,8 +11,6 @@ import {
   agenticEventSchema,
   actorRefSchema,
   brandId,
-  checkTrajectoryIntegrity,
-  computeEventHash,
   createInitialChannelViewState,
   createInitialTrajectoryState,
   encodeAgenticEventStoredValues,
@@ -109,12 +108,10 @@ async function trajectoryEvent(
     ...base,
     eventHash:
       overrides.eventHash ??
-      (await computeEventHash({
-        prevEventHash: base.prevEventHash,
-        branchId: base.branchId,
-        seq: base.seq,
-        event,
-      })),
+      // A fixture identity: the retired per-branch hash chain is not under test here.
+      sha256HexSyncText(
+        `${base.prevEventHash}${base.branchId}${base.seq}${canonicalJson(event)}`,
+      ),
   };
 }
 
@@ -1856,39 +1853,6 @@ describe("@workspace/agentic-protocol reducers", () => {
       startedAtSeq: 10,
       lastSeq: -1,
     });
-  });
-});
-
-describe("@workspace/agentic-protocol hash helpers", () => {
-  it("detects tampering in a per-branch hash chain", async () => {
-    const first = await trajectoryEvent(messageEvent(), {
-      eventId: brandId<EventId>("evt-1"),
-      seq: 0,
-    });
-    const second = await trajectoryEvent(
-      messageEvent({
-        causality: { messageId: brandId<MessageId>("msg-2") },
-        payload: textCompletedPayload("msg-2", "user", "next"),
-      }),
-      {
-        eventId: brandId<EventId>("evt-2"),
-        seq: 1,
-        prevEventHash: first.eventHash,
-      },
-    );
-
-    await expect(checkTrajectoryIntegrity([first, second])).resolves.toEqual({
-      ok: true,
-      errors: [],
-    });
-
-    const tampered = {
-      ...second,
-      payload: textCompletedPayload("msg-2", "user", "changed"),
-    } as TrajectoryEvent;
-    const result = await checkTrajectoryIntegrity([first, tampered]);
-    expect(result.ok).toBe(false);
-    expect(result.errors.join("\n")).toContain("eventHash mismatch");
   });
 });
 
