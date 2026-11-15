@@ -803,50 +803,22 @@ describe("EvalKernel cancellation + forced recovery", () => {
     expect(instance.getRun("lifecycle-active-run")).toMatchObject({ status: "cancelled" });
   });
 
-  it("serializes live event delivery and permits only cleanup/diagnostic tails after terminal", async () => {
+  it("permits only cleanup/diagnostic tails after terminal", async () => {
     const { instance, sql } = await createTestDO(EvalKernel);
     seedPendingRun(sql, "event-order", {
       executionSessionNonce: "session-order-123456",
-      eventSinkNonce: "sink-order-123456",
     });
-    let releaseFirst!: () => void;
-    const firstDelivery = new Promise<{ delivered: boolean }>(
-      (resolve) => (releaseFirst = () => resolve({ delivered: false }))
-    );
-    let firstStarted!: () => void;
-    const firstStartedPromise = new Promise<void>((resolve) => (firstStarted = resolve));
-    const calls: Array<{ method: string; args: unknown[] }> = [];
-    const rpcCall = vi.fn((_target: string, method: string, args: unknown[]) => {
-      calls.push({ method, args });
-      if (calls.length === 1) {
-        firstStarted();
-        return firstDelivery;
-      }
-      return Promise.resolve({ delivered: false });
-    });
-    mockOwnedCall(instance, rpcCall);
     const append = priv<(runId: string, kind: string, payload: unknown) => void>(
       instance,
       "appendRunEvent"
     );
-    const drain = priv<(runId: string) => Promise<void>>(instance, "drainLiveEventDelivery");
 
     append.call(instance, "event-order", "state", { status: "running" });
     append.call(instance, "event-order", "progress", { step: 1 });
-    await firstStartedPromise;
-    expect(calls).toHaveLength(1);
-
-    releaseFirst();
-    await drain.call(instance, "event-order");
-    expect(calls).toHaveLength(2);
-
     append.call(instance, "event-order", "state", { status: "succeeded" });
-    await drain.call(instance, "event-order");
     append.call(instance, "event-order", "progress", { step: 2 });
     append.call(instance, "event-order", "state", { status: "running" });
     append.call(instance, "event-order", "cleanup", { status: "settled" });
-    await Promise.resolve();
-    expect(calls).toHaveLength(3);
     expect(
       sql
         .exec(`SELECT kind, payload FROM run_events WHERE run_id = 'event-order' ORDER BY sequence`)
@@ -1352,26 +1324,10 @@ describe("EvalKernel cancellation + forced recovery", () => {
         request: { acquisitionId: "acq-1", capability: "context.boundary" },
       },
     });
-    await vi.waitFor(() =>
-      expect(call).toHaveBeenCalledWith(
-        "do:workers/agent-worker:AiChatWorker:agent-1",
-        "onEvalProgress",
-        [
-          expect.objectContaining({
-            runId: "authority-lifecycle",
-            agentInvocationId: "inv-authority",
-            channelId: "channel-1",
-            activity: expect.objectContaining({ kind: "authority-requested" }),
-          }),
-        ],
-        expect.any(Object)
-      )
-    );
-    const progressCall = call.mock.calls[0] as unknown as
-      | [string, string, unknown[], RpcCallOptions]
-      | undefined;
-    const progressOptions = progressCall?.[3];
-    expect(executionSessionNonceFor(progressOptions)).toBeUndefined();
+    // The owner reads it from the run's events (a pull); nothing is pushed to it.
+    expect(call).not.toHaveBeenCalled();
+    const events = instance.getRunEvents("authority-lifecycle", 0, 10);
+    expect(events.events.map((event) => event.kind)).toContain("authority-requested");
 
     instance.appendAuthorityEvent("authority-lifecycle", "authority-decided", {
       acquisitionId: "acq-1",
@@ -3684,38 +3640,6 @@ describe("EvalKernel cancellation + forced recovery", () => {
     expect(calls[1]?.signal).toBeUndefined();
   });
 
-  it("terminal settlement completes despite a wedged live event publisher", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { instance, sql } = await createTestDO(EvalKernel);
-    const call = vi.fn((_target: string, method: string) => {
-      if (method === "evalEventIngress.publish") return new Promise<never>(() => {});
-      return Promise.resolve(undefined);
-    });
-    mockOwnedCall(instance, call);
-    setPriv(instance, "runLocked", () => Promise.resolve({ success: true, console: "" }));
-    seedPendingRun(sql, "hung-publisher", {
-      code: "return 1;",
-      contextId: "ctx",
-      executionSessionNonce: "session-hung-123456",
-      eventSinkNonce: "sink-hung-123456",
-    });
-
-    const result = await priv<(id: string) => Promise<RunResult>>(instance, "executeRun").call(
-      instance,
-      "hung-publisher"
-    );
-
-    expect(result).toMatchObject({ success: true });
-    expect(instance.getRun("hung-publisher")).toMatchObject({ status: "done" });
-    expect(call).toHaveBeenCalledWith(
-      "main",
-      "evalEventIngress.publish",
-      expect.anything(),
-      expect.anything()
-    );
-    warn.mockRestore();
-  });
-
   it("retains a post-terminal authority decision and reports no activity for a terminal run", async () => {
     const { instance, sql } = await createTestDO(EvalKernel);
     seedPendingRun(sql, "authority-terminal");
@@ -3883,7 +3807,6 @@ describe("EvalKernel cancellation + forced recovery", () => {
       intentDigest: "i".repeat(64),
       gatewayToken: "gateway-old",
       executionSessionNonce: "session-old",
-      eventSinkNonce: "sink-old",
     });
     sql.exec(`UPDATE runs SET status = 'cancelling' WHERE run_id = 'cancelling-redrive'`);
     const runLocked = vi.fn();
@@ -3896,7 +3819,6 @@ describe("EvalKernel cancellation + forced recovery", () => {
         intentDigest: "i".repeat(64),
         gatewayToken: "gateway-new",
         executionSessionNonce: "session-new",
-        eventSinkNonce: "sink-new",
       })
     ).resolves.toMatchObject({ status: "cancelling", existing: true });
 
@@ -3905,12 +3827,10 @@ describe("EvalKernel cancellation + forced recovery", () => {
         sql.exec(`SELECT args FROM runs WHERE run_id = 'cancelling-redrive'`).toArray()[0]?.["args"]
       )
     ) as Record<string, unknown>;
-    // The freshly prepared admission owns the event route, so the tail of the
-    // cancellation (its terminal event) reaches the NEW sink.
+    // The freshly prepared admission owns the run from here on.
     expect(stored).toMatchObject({
       gatewayToken: "gateway-new",
       executionSessionNonce: "session-new",
-      eventSinkNonce: "sink-new",
     });
     // A cancelling run is never (re)attached to execution.
     await new Promise((resolve) => setTimeout(resolve, 5));

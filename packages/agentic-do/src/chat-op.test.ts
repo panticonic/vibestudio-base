@@ -1455,70 +1455,74 @@ describe("AgentVesselBase.chatOp", () => {
     expect(vessel.channelStub.calls).toHaveLength(0);
   });
 });
-describe("AgentVesselBase.onEvalProgress (live eval console streaming)", () => {
-  it("publishes output against the parent invocation, not the eval effect runId", async () => {
+/** What the owner's await task hands over for a run it pulls: the run's events, in order. */
+async function pulled(
+  vessel: Awaited<ReturnType<typeof makeVessel>>,
+  runId: string,
+  events: Array<{ kind: string; payload: unknown }>
+) {
+  await (
+    vessel as unknown as {
+      publishEvalEvents: (
+        input: { route: { runId: string; scopeKey: string } },
+        events: unknown[],
+        context: unknown
+      ) => Promise<void>;
+    }
+  ).publishEvalEvents(
+    { route: { runId, scopeKey: CHANNEL } },
+    events.map((event, index) => ({ sequence: index + 1, at: index + 1, ...event })),
+    {}
+  );
+}
+describe("AgentVesselBase.publishEvalEvents (live eval console streaming, pulled from the kernel's event log)", () => {
+  it("publishes output against the parent invocation, which is the run id", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = await expectedEvalCaller();
 
-    await vessel.onEvalProgress({
-      runId: "inv:inv-5",
-      agentInvocationId: "inv-5",
-      channelId: CHANNEL,
-      output: "hello\nworld",
-    });
+    await pulled(vessel, "inv-5", [
+      { kind: "console", payload: { text: "hello\n" } },
+      { kind: "console", payload: { text: "world" } },
+    ]);
 
-    const published = vessel.channelStub.published.find(
+    const published = vessel.channelStub.published.filter(
       (p) => p.event.kind === "invocation.output"
     );
-    expect(published?.event).toMatchObject({
+    // One page is one chunk.
+    expect(published).toHaveLength(1);
+    expect(published[0]?.event).toMatchObject({
       kind: "invocation.output",
       causality: { invocationId: "inv-5" },
       payload: { output: "hello\nworld", channel: "stdout" },
     });
   });
 
-  it("refuses a caller that is not the agent's own EvalDO (same gate as chatOp)", async () => {
+  it("is a no-op for events that carry no output (no event published)", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
-    await expect(
-      vessel.onEvalProgress({
-        runId: "inv:inv-6",
-        agentInvocationId: "inv-6",
-        channelId: CHANNEL,
-        output: "x",
-      })
-    ).rejects.toThrow(/only this agent's own EvalDO/);
-  });
-
-  it("is a no-op for empty output (no event published)", async () => {
-    const vessel = await makeVessel();
-    vessel.callerIdForTest = await expectedEvalCaller();
-    await vessel.onEvalProgress({
-      runId: "inv:inv-7",
-      agentInvocationId: "inv-7",
-      channelId: CHANNEL,
-      output: "",
-    });
+    await pulled(vessel, "inv-7", [
+      { kind: "console", payload: { text: "" } },
+      { kind: "state", payload: { status: "succeeded" } },
+      { kind: "checkpoint", payload: {} },
+    ]);
     expect(vessel.channelStub.published.some((p) => p.event.kind === "invocation.output")).toBe(
       false
     );
   });
-});
-describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
-  it("publishes authority suspension as structured parent-invocation progress", async () => {
+
+  it("publishes authority suspension as structured parent-invocation progress, after the output before it", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = await expectedEvalCaller();
 
-    await vessel.onEvalProgress({
-      runId: "inv:inv-authority",
-      agentInvocationId: "inv-authority",
-      channelId: CHANNEL,
-      activity: {
+    await pulled(vessel, "inv-authority", [
+      { kind: "console", payload: { text: "before" } },
+      {
         kind: "authority-requested",
-        detail: { capability: "vcs.edit", resourceKey: "repo:panels/taskflow" },
+        payload: { capability: "vcs.edit", resourceKey: "repo:panels/taskflow" },
       },
-    });
+    ]);
 
+    expect(vessel.channelStub.published.map((entry) => entry.event.kind)).toEqual([
+      "invocation.output",
+      "invocation.progress",
+    ]);
     expect(
       vessel.channelStub.published.find((entry) => entry.event.kind === "invocation.progress")
         ?.event
@@ -1529,11 +1533,22 @@ describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
         message: "Waiting for approval to use vcs.edit on repo:panels/taskflow",
         data: {
           eval: {
-            runId: "inv:inv-authority",
+            runId: "inv-authority",
             activity: "authority-pending",
           },
         },
       },
+    });
+  });
+
+  it("says the decision was received when authority is decided", async () => {
+    const vessel = await makeVessel();
+    await pulled(vessel, "inv-decided", [{ kind: "authority-decided", payload: {} }]);
+    expect(
+      vessel.channelStub.published.find((entry) => entry.event.kind === "invocation.progress")
+        ?.event
+    ).toMatchObject({
+      payload: { message: "Approval decision received; resuming eval" },
     });
   });
 });

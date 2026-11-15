@@ -17,7 +17,8 @@ import type { RpcMethodArgs, RpcMethodResult } from "@vibestudio/shared/rpcMetho
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
+import type { EvalRunEvent } from "@vibestudio/service-schemas/eval";
+import { createDynamicCodeRunObserver } from "@vibestudio/service-schemas/dynamicCode";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { Type, type Api, type Model } from "@panticonic/pi-ai";
@@ -62,6 +63,7 @@ import {
 } from "./native-channel-knowledge.js";
 import { createNativeAutomationRuns } from "./native-automation-runs.js";
 import { createNativeEvalExecution } from "./native-eval-tool.js";
+import { evalSessionId, type EvalAwaitInput } from "./native-eval-receipts.js";
 import { createNativeChannelMethodTools } from "./native-channel-method-tools.js";
 import { createNativeSuspendExecution } from "./native-suspend-tool.js";
 import {
@@ -3030,11 +3032,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       }
       case "cancelEval": {
         // The chat-panel pill cancels a SERVER-SIDE eval run by asking THIS agent
-        // (the eval's owner, subKey = channelId) to cancel it. The agent calls
-        // eval.cancel for itself — the eval service resolves the owner from the
-        // caller, so the panel cannot address another owner's EvalDO. The UI
-        // supplies the journaled invocation coordinate; this trusted owner
-        // derives the distinct eval-effect coordinate used as the run id.
+        // (the eval's owner, subKey = channelId) to cancel it. The agent cancels
+        // on its own scope's session entity (named from its own id and the channel),
+        // so the panel cannot address another owner's kernel. The UI supplies the
+        // journaled invocation coordinate, which is the run id.
         const invocationId = (args as { invocationId?: unknown } | null)?.invocationId;
         if (typeof invocationId !== "string" || invocationId.length === 0) {
           return {
@@ -3044,12 +3045,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         }
         const runId = invocationId;
         try {
-          const result = await this.rpc.call(
-            "main",
-            mainRpcMethods["eval.cancel"],
-            [{ scopeKey: channelId, runId }],
-            { signal }
-          );
+          const result = await createDynamicCodeRunObserver(this.rpc, {
+            hostId: evalSessionId(this.rpcSelfId, channelId),
+            runId,
+          }).cancel({ signal });
           return { result };
         } catch (err) {
           return {
@@ -4105,106 +4104,111 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   /**
-   * Streamed eval console — the rolling-output sibling of `onEvalComplete`. The agent's eval runs in
-   * a server-side EvalDO; during the run the EvalDO forwards buffered console chunks here (gated
-   * by `assertOwnEvalCaller`, exactly like the `chat` binding's `chatOp` — only this agent's own
-   * EvalDO may act as it). Each chunk is published as an `invocation.output` event keyed to the eval
-   * parent tool invocation (`agentInvocationId`), independently of the eval effect's `runId`, so the
-   * chat panel renders the console live AND persists it for the card's details view. Best-effort: a
-   * dropped chunk is just a gap in the live console — the
-   * final result still carries the full console text. Ordering: the EvalDO awaits its final flush
-   * before completing, so every output precedes the `invocation.completed` terminal (the reducer drops
-   * output after terminal).
+   * The eval run's console and authority events, as the owner's await task pulls them from the
+   * kernel's event log. Each console chunk is published as an `invocation.output` event keyed to
+   * the eval parent tool invocation (`agentInvocationId`, which is the run id), independently of the
+   * eval effect's result, so the chat panel renders the console live AND persists it for the card's
+   * details view; an authority event becomes an `invocation.progress` ("waiting for approval").
+   * Best-effort: a dropped chunk is just a gap in the live console, the final result still carries
+   * the full console text. The await task hands over every event before the terminal receipt is
+   * accepted, so output precedes the `invocation.completed` terminal (the reducer drops output
+   * after terminal).
    */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async onEvalProgress(payload: {
-    runId: string;
-    agentInvocationId: string;
-    channelId: string;
-    output?: string;
-    activity?: {
-      kind: "authority-requested" | "authority-decided";
-      detail?: unknown;
+  protected override async publishEvalEvents(
+    input: EvalAwaitInput,
+    events: readonly EvalRunEvent[],
+    _context: Context
+  ): Promise<void> {
+    const channelId = input.route.scopeKey;
+    if (!channelId) return;
+    const agentInvocationId = input.route.runId;
+    const runId = input.route.runId;
+    let output = "";
+    const flushOutput = async () => {
+      if (!output) return;
+      const text = output;
+      output = "";
+      await this.publishEvalOutput(channelId, agentInvocationId, text);
     };
-  }): Promise<void> {
-    const [validatedPayload] = evalOwnerCallbackMethods.onEvalProgress.args.parse([payload]);
-    await this.assertOwnEvalCaller(validatedPayload.channelId);
-    if (validatedPayload.activity) {
-      const detail =
-        validatedPayload.activity.detail && typeof validatedPayload.activity.detail === "object"
-          ? (validatedPayload.activity.detail as Record<string, unknown>)
-          : {};
-      const capability =
-        typeof detail["capability"] === "string" ? detail["capability"] : undefined;
-      const resourceKey =
-        typeof detail["resourceKey"] === "string" ? detail["resourceKey"] : undefined;
-      const waiting = validatedPayload.activity.kind === "authority-requested";
-      const message = waiting
-        ? `Waiting for approval${capability ? ` to use ${capability}` : ""}${resourceKey ? ` on ${resourceKey}` : ""}`
-        : "Approval decision received; resuming eval";
-      const participantId =
-        this.subscriptions.getParticipantId(payload.channelId) ?? this.participantId();
-      const actor = this.cardActor(payload.channelId, participantId);
-      const event: AgenticEvent<"invocation.progress"> = {
-        kind: "invocation.progress",
-        actor,
-        causality: {
-          invocationId: validatedPayload.agentInvocationId as never,
-        },
-        payload: {
-          protocol: AGENTIC_PROTOCOL_VERSION,
-          message,
-          data: {
-            eval: {
-              runId: validatedPayload.runId,
-              activity: waiting ? "authority-pending" : "executing",
-              detail: validatedPayload.activity.detail,
-            },
+    for (const event of events) {
+      if (event.kind === "console") {
+        const text = (event.payload as { text?: unknown } | null)?.text;
+        if (typeof text === "string") output += text;
+        continue;
+      }
+      if (event.kind === "authority-requested" || event.kind === "authority-decided") {
+        await flushOutput();
+        await this.publishEvalActivity(channelId, agentInvocationId, runId, {
+          kind: event.kind,
+          detail: event.payload,
+        });
+      }
+    }
+    await flushOutput();
+  }
+
+  private async publishEvalActivity(
+    channelId: string,
+    agentInvocationId: string,
+    runId: string,
+    activity: { kind: "authority-requested" | "authority-decided"; detail?: unknown }
+  ): Promise<void> {
+    const detail =
+      activity.detail && typeof activity.detail === "object"
+        ? (activity.detail as Record<string, unknown>)
+        : {};
+    const capability = typeof detail["capability"] === "string" ? detail["capability"] : undefined;
+    const resourceKey =
+      typeof detail["resourceKey"] === "string" ? detail["resourceKey"] : undefined;
+    const waiting = activity.kind === "authority-requested";
+    const message = waiting
+      ? `Waiting for approval${capability ? ` to use ${capability}` : ""}${resourceKey ? ` on ${resourceKey}` : ""}`
+      : "Approval decision received; resuming eval";
+    const participantId = this.subscriptions.getParticipantId(channelId) ?? this.participantId();
+    const actor = this.cardActor(channelId, participantId);
+    const event: AgenticEvent<"invocation.progress"> = {
+      kind: "invocation.progress",
+      actor,
+      causality: { invocationId: agentInvocationId as never },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        message,
+        data: {
+          eval: {
+            runId,
+            activity: waiting ? "authority-pending" : "executing",
+            detail: activity.detail,
           },
         },
-        createdAt: new Date().toISOString(),
-      };
-      await this.createChannelClient(validatedPayload.channelId).publishAgenticEvent(
-        participantId,
-        event,
-        {
-          senderMetadata: actor.metadata,
-        }
-      );
-      return;
-    }
-    if (!validatedPayload.output) return;
-    const participantId =
-      this.subscriptions.getParticipantId(validatedPayload.channelId) ?? this.participantId();
-    const actor = this.cardActor(validatedPayload.channelId, participantId);
+      },
+      createdAt: new Date().toISOString(),
+    };
+    await this.createChannelClient(channelId).publishAgenticEvent(participantId, event, {
+      senderMetadata: actor.metadata,
+    });
+  }
+
+  private async publishEvalOutput(
+    channelId: string,
+    agentInvocationId: string,
+    output: string
+  ): Promise<void> {
+    const participantId = this.subscriptions.getParticipantId(channelId) ?? this.participantId();
+    const actor = this.cardActor(channelId, participantId);
     const event: AgenticEvent<"invocation.output"> = {
       kind: "invocation.output",
       actor,
-      causality: { invocationId: validatedPayload.agentInvocationId as never },
+      causality: { invocationId: agentInvocationId as never },
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
-        output: validatedPayload.output,
+        output,
         channel: "stdout",
       },
       createdAt: new Date().toISOString(),
     };
-    await this.createChannelClient(validatedPayload.channelId).publishAgenticEvent(
-      participantId,
-      event,
-      {
-        senderMetadata: actor.metadata,
-      }
-    );
+    await this.createChannelClient(channelId).publishAgenticEvent(participantId, event, {
+      senderMetadata: actor.metadata,
+    });
   }
 
   /**
@@ -6665,6 +6669,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   private readonly nativeEvalExecution = createNativeEvalExecution({
     harness: () => this.admittedAgentSession(),
     acknowledgements: this.agentEvalAcknowledgements,
+    awaiting: this.agentEvalAwait,
+    ownerId: () => this.rpcSelfId,
     scopeForConversation: async (conversationId, context) =>
       (
         await retainedNativeConversationChannel(

@@ -280,6 +280,26 @@ export class SessionDO extends DurableObjectBase {
     );
   }
 
+  /**
+   * The principal's durable acknowledgement that it consumed the run's exact terminal result.
+   * The kernel records the digests and from then on refuses a result that differs from them.
+   */
+  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  async acknowledge(
+    runId: string,
+    identity: { runDigest: string; resultDigest: string }
+  ): Promise<{ acknowledged: true; duplicate: boolean }> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "acknowledgeRunResult",
+      runId,
+      identity,
+      this.runCaller(runId)
+    );
+  }
+
   /** Host only: the host gates a scope reset with its own approval before it calls this. */
   @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
   async reset(): Promise<{ ok: boolean }> {

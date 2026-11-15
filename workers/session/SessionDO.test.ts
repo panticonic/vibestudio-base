@@ -91,6 +91,25 @@ describe("SessionDO", () => {
     );
   });
 
+  it("relays the principal's acknowledgement of a run's exact result with the run's nonce", async () => {
+    const host = codeHost();
+    const { call, callAs } = await createTestDO(SessionDO, host.env, { props });
+    await call("start", { runId: "r1" }, "nonce-1");
+    const identity = { runDigest: "a".repeat(64), resultDigest: "b".repeat(64) };
+    await callAs({ callerId: PRINCIPAL, callerKind: "do" }, "acknowledge", "r1", identity);
+    expect(host.seen.find((entry) => entry.method === "acknowledgeRunResult")!.args).toEqual([
+      "r1",
+      identity,
+      { kind: "session", admissionNonce: "nonce-1" },
+    ]);
+    await expect(
+      callAs({ callerId: "do:other", callerKind: "do" }, "acknowledge", "r1", identity)
+    ).rejects.toThrow(/serves another principal/);
+    await expect(call("acknowledge", "never-admitted", identity)).rejects.toThrow(
+      /was not admitted by this session/
+    );
+  });
+
   it("serves its principal and the host, and nobody else", async () => {
     const host = codeHost();
     const { call, callAs } = await createTestDO(SessionDO, host.env, { props });

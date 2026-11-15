@@ -114,6 +114,34 @@ describe("EvalKernel call contract", () => {
     );
   });
 
+  it("acknowledges a run's exact result for its own session only, and nothing else's", async () => {
+    const { instance } = await kernel();
+    await instance.start(
+      { runId: "run-a", code: "x", executionSessionNonce: NONCE_A },
+      session(NONCE_A)
+    );
+    await instance.await("run-a", { waitMs: 5_000 }, session(NONCE_A));
+    const receipt = instance.receipt("run-a", session(NONCE_A))!;
+    const identity = { runDigest: receipt.runDigest, resultDigest: receipt.resultDigest };
+    await expect(
+      instance.acknowledgeRunResult("run-a", identity, session(NONCE_B))
+    ).rejects.toMatchObject({ code: "EACCES" });
+    expect(instance.receipt("run-a", session(NONCE_A))).toMatchObject({ acknowledged: false });
+    await expect(
+      instance.acknowledgeRunResult("run-a", identity, session(NONCE_A))
+    ).resolves.toEqual({ acknowledged: true, duplicate: false });
+    await expect(
+      instance.acknowledgeRunResult("run-a", identity, { kind: "host" })
+    ).resolves.toEqual({ acknowledged: true, duplicate: true });
+    await expect(
+      instance.acknowledgeRunResult(
+        "run-a",
+        { ...identity, resultDigest: "f".repeat(64) },
+        session(NONCE_A)
+      )
+    ).rejects.toThrow(/does not match the terminal receipt/);
+  });
+
   it("start: the run's nonce is the session's, and only a run that has not begun is re-admitted", async () => {
     const { instance } = await kernel();
     await expect(

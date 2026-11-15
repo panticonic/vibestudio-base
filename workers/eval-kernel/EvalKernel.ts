@@ -57,7 +57,6 @@ import {
   type KernelStartAck,
 } from "./contract.js";
 import {
-  evalOwnerCallbackRpcMethods,
   type EvalNatlangCallSummary,
   type EvalNatlangResult,
   type EvalOperationJournal,
@@ -73,7 +72,6 @@ import {
   mapEvalResultLeaves,
 } from "@vibestudio/service-schemas/eval";
 import type { EvalNatlang } from "@vibestudio/service-schemas/evalNatlang";
-import { evalEventIngressMethods } from "@vibestudio/service-schemas/evalEventIngress";
 import { evalExecutionRootsMethods } from "@vibestudio/service-schemas/evalExecutionRoots";
 import { fsMethods } from "@vibestudio/service-schemas/fs";
 import { blobstoreMethods } from "@vibestudio/service-schemas/blobstore";
@@ -103,7 +101,6 @@ import {
   ownerIngestionRecorder,
   type OwnerBindingArgs,
 } from "./evalOwnerBindings.js";
-import { ConsoleStreamer } from "./consoleStreamer.js";
 import {
   describeEvalBindingSurface,
   describeEvalHelpName,
@@ -473,8 +470,6 @@ interface RunArgs {
   gatewayToken?: string;
   /** Host-created proof binding outbound RPC to this exact admitted run. */
   executionSessionNonce?: string;
-  /** Host-only producer credential for the canonical live event sink. */
-  eventSinkNonce?: string;
   /** Exact non-authorizing parent tool invocation for outbound service effects. */
   causalParent?: RpcCausalParent;
   /** Exact parent tool invocation used to route the eventual tool completion. */
@@ -506,12 +501,11 @@ function semanticRunArgs(
   args: RunArgs
 ): Omit<
   RunArgs,
-  "gatewayToken" | "executionSessionNonce" | "eventSinkNonce" | "scopeInputRevision" | "runDigest"
+  "gatewayToken" | "executionSessionNonce" | "scopeInputRevision" | "runDigest"
 > {
   const {
     gatewayToken: _gatewayToken,
     executionSessionNonce: _executionSessionNonce,
-    eventSinkNonce: _eventSinkNonce,
     scopeInputRevision: _scopeInputRevision,
     runDigest: _runDigest,
     ...semantic
@@ -625,13 +619,6 @@ export class EvalKernel extends DurableObjectBase {
    *  reset callers join this promise rather than re-entering or overlooking a
    *  cleanup already started by another lifecycle edge. */
   private readonly runCancelExecutions = new Map<string, Promise<void>>();
-  /**
-   * Live event delivery is ordered per run. Terminal events close the host
-   * event-sink route, so concurrent waitUntil publishes would otherwise let a
-   * terminal event overtake earlier events and turn normal teardown into
-   * authenticated-session errors.
-   */
-  private readonly liveEventDeliveries = new Map<string, Promise<void>>();
   /**
    * Factories from the manifest-declared runtime unit (providers.evalRuntime),
    * loaded dynamically via the build service (see ensureRuntimeSupport). The
@@ -1352,14 +1339,12 @@ export class EvalKernel extends DurableObjectBase {
         // host restart may legitimately remint them before the durable pending
         // run is attached to execution. A CANCELLING run is refreshed too: its
         // terminal `cancelled` state event has not been appended yet, so
-        // routing the tail of its lifecycle to the freshly prepared event sink
-        // lets the new admission observe a terminal instead of leaking open
-        // against a dead nonce.
+        // carrying the freshly prepared nonce lets the new admission observe a
+        // terminal instead of leaking open against a dead nonce.
         const refreshed = {
           ...prior,
           gatewayToken: args.gatewayToken,
           executionSessionNonce: args.executionSessionNonce,
-          eventSinkNonce: args.eventSinkNonce,
         };
         if (JSON.stringify(refreshed) !== JSON.stringify(prior)) {
           this.sql.exec(
@@ -1863,7 +1848,6 @@ export class EvalKernel extends DurableObjectBase {
       failureKind: terminalResult.failureKind,
       failureCode: terminalResult.failureCode,
     });
-    await this.settleLiveEventDelivery(runId);
     return terminalResult;
   }
 
@@ -1904,8 +1888,10 @@ export class EvalKernel extends DurableObjectBase {
   @rpc(KERNEL_RPC)
   async acknowledgeRunResult(
     runId: string,
-    identity: { runDigest: string; resultDigest: string }
+    identity: { runDigest: string; resultDigest: string },
+    caller?: KernelCaller
   ): Promise<{ acknowledged: true; duplicate: boolean }> {
+    this.authorizeRunCaller(caller, runId);
     return this.ctx.storage.transaction(async () => {
       const receipt = this.getRunReceipt(runId);
       if (!receipt) throw new Error(`eval: run ${runId} has no terminal receipt`);
@@ -2092,62 +2078,6 @@ export class EvalKernel extends DurableObjectBase {
         if (pending.size === 0) this.runPendingAuthorityRequests.delete(runId);
       }
     }
-    const args = JSON.parse(String(row["args"])) as RunArgs;
-    const activity = this.deliverEvalProgress(runId, args, {
-      activity: { kind, detail: payload },
-    })
-      .then(() => undefined)
-      .catch((error) => {
-        // The durable run event and eval.get activity are canonical. This push
-        // only makes the lifecycle visible immediately in the trajectory.
-        console.warn(
-          `[EvalKernel] activity progress delivery for ${runId} failed:`,
-          error instanceof Error ? error.message : String(error)
-        );
-      });
-    this.ctx.waitUntil?.(activity);
-  }
-
-  /** Kernel-owned progress is authenticated as the sealed EvalKernel. Detaching
-   * its callback lifetime prevents borrowing a completed inbound invocation;
-   * evaluated code never receives this control RPC client. */
-  private async deliverEvalProgress(
-    runId: string | undefined,
-    args: RunArgs,
-    progress: {
-      output?: string;
-      activity?: { kind: "authority-requested" | "authority-decided"; detail?: unknown };
-    },
-    signal?: AbortSignal
-  ): Promise<void> {
-    if (
-      !runId ||
-      !args.agentRef ||
-      !args.channelId ||
-      !args.agentInvocationId ||
-      !args.executionSessionNonce
-    ) {
-      return;
-    }
-    const options: RpcCallOptions = signal ? { signal } : {};
-    const agentRef = args.agentRef;
-    const agentInvocationId = args.agentInvocationId;
-    const channelId = args.channelId;
-    await this.runDetached(() =>
-      this.rpc.call(
-        agentRef,
-        evalOwnerCallbackRpcMethods.onEvalProgress,
-        [
-          {
-            runId,
-            agentInvocationId,
-            channelId,
-            ...progress,
-          },
-        ],
-        options
-      )
-    );
   }
 
   /**
@@ -2388,76 +2318,7 @@ export class EvalKernel extends DurableObjectBase {
       MAX_DURABLE_RUN_EVENTS,
       runId
     );
-    const argsRow = this.sql.exec(`SELECT args FROM runs WHERE run_id = ?`, runId).toArray()[0];
-    // The durable event remains canonical, but no event after a terminal state
-    // may re-enter a route whose authenticated execution session has already
-    // been closed. This also covers late waitUntil work from an aborted run.
-    if (!argsRow || terminalEventExists) return true;
-    const args = JSON.parse(String(argsRow["args"])) as RunArgs;
-    if (!args.executionSessionNonce || !args.eventSinkNonce) return true;
-    const event = {
-      sequence,
-      at,
-      kind,
-      payload: JSON.parse(encoded),
-    };
-    const options: RpcCallOptions = {};
-    const eventIngress = createTypedServiceClient(
-      "evalEventIngress",
-      evalEventIngressMethods,
-      (service, method, callArgs) =>
-        this.runDetached(() =>
-          this.rpc.call("main", mainRpcMethod(`${service}.${method}`), callArgs, options)
-        )
-    );
-    const previous = this.liveEventDeliveries.get(runId) ?? Promise.resolve();
-    let publish: Promise<void>;
-    publish = previous
-      .catch(() => undefined)
-      .then(() => eventIngress.publish(args.eventSinkNonce!, runId, event))
-      .then(() => undefined)
-      .catch((error) => {
-        // The durable page is canonical. A dropped live observer recovers by
-        // cursor without affecting execution or terminal settlement.
-        console.warn(
-          `[EvalKernel] live event delivery failed for ${runId}@${sequence}:`,
-          error instanceof Error ? error.message : String(error)
-        );
-      })
-      .finally(() => {
-        if (this.liveEventDeliveries.get(runId) === publish) {
-          this.liveEventDeliveries.delete(runId);
-        }
-      });
-    this.liveEventDeliveries.set(runId, publish);
-    this.ctx.waitUntil?.(publish);
     return true;
-  }
-
-  private async drainLiveEventDelivery(runId: string): Promise<void> {
-    for (;;) {
-      const pending = this.liveEventDeliveries.get(runId);
-      if (!pending) return;
-      await pending;
-      if (this.liveEventDeliveries.get(runId) === pending) return;
-    }
-  }
-
-  /**
-   * The single place durable terminal settlement meets live delivery: hand the
-   * ordered per-run delivery chain to the DO lifetime immediately. INVARIANT:
-   * terminal settlement
-   * (run()/executeRun/cancel) never blocks on a wedged live publisher — the
-   * durable page is canonical and observers recover by cursor.
-   */
-  private settleLiveEventDelivery(runId: string): Promise<void> {
-    const drained = this.drainLiveEventDelivery(runId);
-    // Durable settlement never waits on the lossy live observer. The DO event
-    // owns the ordered delivery tail; cursor recovery remains canonical if the
-    // receiver or transport never answers.
-    if (this.ctx.waitUntil) this.ctx.waitUntil(drained);
-    else void drained.catch(() => undefined);
-    return Promise.resolve();
   }
 
   /** Reset the eval context, including recovery from non-cooperative in-flight work. */
@@ -3021,8 +2882,7 @@ export class EvalKernel extends DurableObjectBase {
       );
       this.appendRunEvent(runId, "cleanup", { status: "settled" });
       this.appendRunEvent(runId, "state", { status: "cancelled" });
-      await this.settleLiveEventDelivery(runId);
-    }
+      }
   }
 
   private async executeRunCancelHandlers(runId: string): Promise<void> {
@@ -3497,26 +3357,6 @@ export class EvalKernel extends DurableObjectBase {
     // conservative — every route to the client (the import specifier,
     // `handle.cdp`, `CdpConnection`, `getCdpEndpoint`) contains "cdp", so a
     // no-match guarantees no CDP use; a false positive just restores prior cost.
-    // Live console streaming — agent-owned eval only (`agentRef`+`channelId` set by the eval service).
-    // Each chunk is forwarded to the owning agent's `onEvalProgress` (gated there by
-    // `assertOwnEvalCaller`), which publishes it as an `invocation.output` event so the chat panel
-    // renders the console live. CLI/panel eval (no `agentRef`) gets the full console in the result.
-    const agentRef = args.agentRef;
-    const channelId = args.channelId;
-    const agentInvocationId = args.agentInvocationId;
-    const executionSessionNonce = args.executionSessionNonce;
-    const streamer =
-      agentRef && channelId && agentInvocationId && executionSessionNonce
-        ? new ConsoleStreamer((chunk, progressSignal) =>
-            this.deliverEvalProgress(
-              runId,
-              { ...args, executionSessionNonce },
-              { output: chunk },
-              progressSignal
-            )
-          )
-        : null;
-
     let consoleOutput = "";
     let liveConsoleBuffer = "";
     let liveConsoleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3536,7 +3376,6 @@ export class EvalKernel extends DurableObjectBase {
       liveConsoleBuffer += chunk;
       if (liveConsoleBuffer.length >= 4_096) flushLiveConsole();
       else if (runId && !liveConsoleTimer) liveConsoleTimer = setTimeout(flushLiveConsole, 25);
-      streamer?.push(formatted);
     };
     scopeManager.enterEval();
     try {
@@ -3606,7 +3445,6 @@ export class EvalKernel extends DurableObjectBase {
       // Live progress is incidental. The terminal result below is canonical and
       // includes the complete console, so a stalled progress receiver must not
       // hold this durable run open.
-      streamer?.close();
       flushLiveConsole();
       const consoleText = consoleOutput || result.consoleOutput;
       // Recoverable large output: the harness windows console/error/return for
@@ -3636,7 +3474,6 @@ export class EvalKernel extends DurableObjectBase {
       execution.operationJournal.close();
       evalNodeCallbackOwnerOpen = false;
       flushLiveConsole();
-      streamer?.close();
       await this.settleResidentSessions(execution);
       if (!signal?.aborted) {
         const localKeys = new Set([

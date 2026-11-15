@@ -32,8 +32,7 @@ import {
   type RpcCaller,
 } from "@vibestudio/rpc";
 import { mergeRpcOptions } from "@vibestudio/rpc/internal";
-import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
-import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
+import type { EvalRunEvent } from "@vibestudio/service-schemas/eval";
 import { authorityMethods } from "@vibestudio/service-schemas/authority";
 import { nativeInvocationInspectionInputSchema, nativeInvocationSourceSchema, nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
@@ -58,9 +57,9 @@ import {
   retireBoundAgentSession,
 } from "./native-agent-session.js";
 import {
-  consumeEvalReceipt,
   createNativeEvalAcknowledgements,
-  retainedEvalRunRoute,
+  createNativeEvalAwait,
+  type EvalAwaitInput,
 } from "./native-eval-receipts.js";
 import {
   bindAuthorityAcquisition,
@@ -502,10 +501,25 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   protected callAgentHost: AgentHostCall = (method, args, options) =>
     createMainRpcCaller(this.agentRpc)(method, args, options);
 
-  protected readonly agentEvalAcknowledgements =
-    createNativeEvalAcknowledgements((method, args, context) =>
-      createMainRpcCaller(this.agentRpc)(method, args, { signal: context.abortSignal }),
-    );
+  protected readonly agentEvalAcknowledgements = createNativeEvalAcknowledgements({
+    rpc: this.agentRpc,
+    ownerId: () => this.rpcSelfId,
+  });
+
+  /** The pull that settles every started eval run of this owner (docs/dolt-redesign.md §7.5). */
+  protected readonly agentEvalAwait = createNativeEvalAwait({
+    rpc: this.agentRpc,
+    ownerId: () => this.rpcSelfId,
+    acknowledgements: this.agentEvalAcknowledgements,
+    onEvents: (input, events, context) => this.publishEvalEvents(input, events, context),
+  });
+
+  /** The run's console and authority events as they are pulled; a product composition shows them. */
+  protected async publishEvalEvents(
+    _input: EvalAwaitInput,
+    _events: readonly EvalRunEvent[],
+    _context: Context,
+  ): Promise<void> {}
 
   protected loadedImage(): LoadedAgentImage {
     const source = this.env["WORKER_SOURCE"];
@@ -580,7 +594,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       options.registry.install(
         defineExtension({
           name: "vibestudio.eval-acknowledgement",
-          tasks: [this.agentEvalAcknowledgements.task],
+          tasks: [this.agentEvalAcknowledgements.task, this.agentEvalAwait.task],
         }),
       );
       if (typeof options.modelRequests !== "function") {
@@ -764,60 +778,6 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     });
   }
 
-  /**
-   * Domain hints address the retained operation by its run/receipt identity.
-   * Caller identity comes from host mediation; payload result/channel fields
-   * grant no authority and never supply a result to the Session.
-   */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason: "Internal eval completion delivery to its owning agent.",
-    },
-    principals: ["code", "host"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async onEvalComplete(payload: {
-    runId: string;
-  }): Promise<{ accepted: boolean }> {
-    return this.ownSettlement(async () => {
-      const [{ runId }] = evalOwnerCallbackMethods.onEvalComplete.args.parse([
-        payload,
-      ]);
-      // Existing-domain settlement remains serviceable while new admission is
-      // sealed and the resource owner awaits its cleanup receipt.
-      const harness = await this.restoreAgentSession();
-      const route = await retainedEvalRunRoute(
-        harness,
-        runId,
-        BACKGROUND_CONTEXT,
-      );
-      // The terminal hint comes from the host, which pulls the committed row
-      // from the kernel and tells the owner (the kernel no longer pushes it), or
-      // from the session entity that hosts the kernel.
-      if (
-        route.runId !== runId ||
-        (this.rpcCallerKind !== "server" &&
-          this.rpcCallerId !==
-            evalRuntimeId(this.rpcSelfId, route.scopeKey ?? "default"))
-      ) {
-        throw new Error(
-          "Eval completion does not belong to this owner's retained operation",
-        );
-      }
-      return consumeEvalReceipt(
-        harness,
-        harness,
-        runId,
-        this.callAgentHost,
-        this.agentEvalAcknowledgements,
-        BACKGROUND_CONTEXT,
-      );
-    });
-  }
-
   override releaseForLifecycle(
     input: LifecyclePrepareInput,
   ): Promise<LifecyclePrepareResult> {
@@ -920,7 +880,13 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   private async drainEvalAcknowledgements(harness: Harness): Promise<void> {
     const live = await harness.inspect(BACKGROUND_CONTEXT);
+    // A retiring owner stops pulling its runs and discharges the acknowledgements it owes.
     for (const { record: task } of live.tasks) {
+      if (task.kind === this.agentEvalAwait.task.definition.name) {
+        await harness.abortTask(task.id, BACKGROUND_CONTEXT);
+        await harness.waitForTask(task.id, BACKGROUND_CONTEXT);
+        continue;
+      }
       if (task.kind !== this.agentEvalAcknowledgements.task.definition.name)
         continue;
       if (

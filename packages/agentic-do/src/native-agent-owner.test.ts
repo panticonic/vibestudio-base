@@ -54,7 +54,12 @@ import type {
   LifecyclePrepareResult,
 } from "@workspace/runtime/worker/durable-base";
 import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
-import { bindEvalRun, recordEvalAdmission } from "./native-eval-receipts.js";
+import {
+  bindEvalRun,
+  ensureEvalAwaitTask,
+  recordEvalAdmission,
+  retainedEvalAdmission,
+} from "./native-eval-receipts.js";
 import {
   authorityAcquisitionReceiptSchema,
   type AuthorityAcquisitionReceipt,
@@ -73,6 +78,9 @@ class Owner extends NativeAgentOwner {
     return retainNativeModelInvocation(this.admittedAgentSession(), request, api, this.loadedImage(), context);
   }
   readonly models = createModels();
+  awaitingDefinition() {
+    return this.agentEvalAwait;
+  }
   modelRequests: ModelRequestPort = async () => ({
     status: "ready",
     options: {},
@@ -352,6 +360,12 @@ async function host() {
     const envelope = JSON.parse(
       Buffer.concat(chunks).toString(),
     ) as RpcEnvelope;
+    // A caller that aborts a pending request (a pull cut short by its owner closing) tells us so.
+    if (["request-cancel", "stream-cancel"].includes((envelope.message as { type: string }).type)) {
+      response.setHeader("Content-Type", "application/json");
+      response.end("{}");
+      return;
+    }
     if (
       envelope.message.type !== "request" &&
       envelope.message.type !== "stream-request"
@@ -377,8 +391,14 @@ async function host() {
       result = "accepted";
     else if (method === "authority.outstandingAcquisitions")
       result = { receipts: [], next: null };
-    else if (method === "eval.receipt") result = receipt;
-    else if (method === "eval.acknowledge") {
+    // The calls the owner makes on the session entity that hosts its kernel (a pull).
+    else if (method === "receipt") result = receipt;
+    else if (method === "await") {
+      if (!receipt) await new Promise((resolve) => setTimeout(resolve, 20));
+      result = { status: receipt ? "done" : "running" };
+    } else if (method === "events") result = { events: [], next: 0, hasMore: false };
+    else if (method === "dynamicCode.release") result = { released: true };
+    else if (method === "acknowledge") {
       await onAcknowledgement();
       if (acknowledgementFailures-- > 0)
         error = "acknowledgement response lost";
@@ -2083,31 +2103,44 @@ describe("native Pi entity activation and release", () => {
     expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
   });
 
-  it("authenticates the exact EvalDO and commits domain truth before acknowledging", async () => {
-    const h = await host();
-    const fixture = await owner(h);
+  /** The await task of an owner, started on a run it retained (what the eval tool does once the run is started). */
+  async function pullRun(
+    fixture: Awaited<ReturnType<typeof owner>>,
+    runId: string,
+    binding: string,
+    scopeKey: string,
+    receiptIdentity: string,
+  ) {
     const session = await fixture.instance.open();
     const root = await session.root(BACKGROUND_CONTEXT);
-    const runId = "native-run";
-    const route = { runId, scopeKey: "finite-eval" };
-    const accepted = {
-      runId,
-      runDigest: "a".repeat(64),
-      authorityManifestDigest: "b".repeat(64),
-      status: "accepted",
-    };
     await session.commit(async (tx) => {
-      await bindEvalRun(tx, runId, "binding:one", route, root.id);
-      await recordEvalAdmission(tx, runId, accepted);
+      await bindEvalRun(tx, runId, binding, { runId, scopeKey }, root.id);
+      await recordEvalAdmission(tx, runId, {
+        runId,
+        runDigest: receiptIdentity,
+        authorityManifestDigest: "b".repeat(64),
+        status: "accepted",
+      });
+      await ensureEvalAwaitTask(tx, runId, fixture.instance.awaitingDefinition());
     }, BACKGROUND_CONTEXT);
+    return session;
+  }
+
+  it("pulls the committed row from the session entity and commits domain truth before acknowledging there", async () => {
+    const h = await host();
+    const fixture = await owner(h);
+    const runId = "native-run";
+    const scopeKey = "finite-eval";
+    const runDigest = "a".repeat(64);
     const result = { success: true, console: "domain output", returnValue: 42 };
     h.setReceipt({
       runId,
-      runDigest: accepted.runDigest,
+      runDigest,
       resultDigest: "c".repeat(64),
       result,
       acknowledged: false,
     });
+    const session = await fixture.instance.open();
     let acknowledged = false;
     h.onAck(async () => {
       expect(
@@ -2115,107 +2148,46 @@ describe("native Pi entity activation and release", () => {
       ).toEqual(result);
       acknowledged = true;
     });
-    await expect(
-      fixture.callAs(
-        {
-          callerId: evalRuntimeId("someone-else", route.scopeKey),
-          callerKind: "do",
-        },
-        "onEvalComplete",
-        { runId },
-      ),
-    ).rejects.toThrow("does not belong");
-    expect(h.calls).not.toContain("eval.receipt");
-    expect(h.calls).not.toContain("eval.acknowledge");
-    await expect(
-      fixture.callAs(
-        {
-          callerId: evalRuntimeId(runtimeId, route.scopeKey),
-          callerKind: "do",
-        },
-        "onEvalComplete",
-        { runId, result: { returnValue: "forged" } },
-      ),
-    ).rejects.toThrow();
-    expect(h.calls).not.toContain("eval.receipt");
-    expect(h.calls).not.toContain("eval.acknowledge");
-    await expect(
-      fixture.callAs(
-        {
-          callerId: evalRuntimeId(runtimeId, route.scopeKey),
-          callerKind: "do",
-        },
-        "onEvalComplete",
-        { runId },
-      ),
-    ).resolves.toEqual({ accepted: true });
+    await pullRun(fixture, runId, "binding:one", scopeKey, runDigest);
+    const admission = await retainedEvalAdmission(session, runId, BACKGROUND_CONTEXT);
+    await session.waitForTask(admission!.awaiting!, BACKGROUND_CONTEXT);
+    const settled = await retainedEvalAdmission(session, runId, BACKGROUND_CONTEXT);
+    await session.waitForTask(settled!.acknowledgement!, BACKGROUND_CONTEXT);
     expect(acknowledged).toBe(true);
-    // The host pulls the committed row from the kernel and tells the owner too.
-    await expect(
-      fixture.callAs("server", "onEvalComplete", { runId }),
-    ).resolves.toEqual({ accepted: true });
+    // Every call of the pull is a call on the entity that hosts this owner's scope kernel.
+    const sessionId = evalRuntimeId(runtimeId, scopeKey);
+    const pulls = h.envelopes.filter((envelope) =>
+      ["await", "events", "receipt", "acknowledge"].includes(
+        (envelope.message as { method: string }).method,
+      ),
+    );
+    expect(pulls.length).toBeGreaterThanOrEqual(4);
+    expect(pulls.every((envelope) => envelope.target === sessionId)).toBe(true);
+    // The owner exposes no completion hint: nothing a caller sends can settle a run.
+    expect(
+      (fixture.instance as unknown as { onEvalComplete?: unknown }).onEvalComplete,
+    ).toBeUndefined();
   });
 
-  it("keeps early and pending hints unacknowledged and creates no unknown receipt", async () => {
+  it("keeps a pending run unsettled: it pulls, creates no receipt and acknowledges nothing", async () => {
     const h = await host();
     const fixture = await owner(h);
-    const session = await fixture.instance.open();
-    const root = await session.root(BACKGROUND_CONTEXT);
-    const caller = {
-      callerId: evalRuntimeId(runtimeId, "default"),
-      callerKind: "do" as const,
-    };
-    await expect(
-      fixture.callAs(caller, "onEvalComplete", { runId: "unknown" }),
-    ).rejects.toThrow("no retained domain admission");
+    const session = await pullRun(fixture, "pending", "binding:pending", "default", "a".repeat(64));
+    session.resume();
+    for (let i = 0; i < 100 && !h.calls.includes("await"); i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(h.calls).toContain("await");
     expect(
-      await session.snapshot(ReceiptDoc, "unknown", BACKGROUND_CONTEXT),
+      (await session.snapshot(ReceiptDoc, "pending", BACKGROUND_CONTEXT))?.result,
     ).toBeUndefined();
-    await session.commit(
-      (tx) =>
-        bindEvalRun(
-          tx,
-          "pending",
-          "binding:pending",
-          { runId: "pending" },
-          root.id,
-        ),
-      BACKGROUND_CONTEXT,
-    );
-    await expect(
-      fixture.callAs(caller, "onEvalComplete", { runId: "pending" }),
-    ).resolves.toEqual({ accepted: false });
-    await session.commit(
-      (tx) =>
-        recordEvalAdmission(tx, "pending", {
-          runId: "pending",
-          runDigest: "a".repeat(64),
-          authorityManifestDigest: "b".repeat(64),
-          status: "accepted",
-        }),
-      BACKGROUND_CONTEXT,
-    );
-    await expect(
-      fixture.callAs(caller, "onEvalComplete", { runId: "pending" }),
-    ).resolves.toEqual({ accepted: false });
-    expect(h.calls).not.toContain("eval.acknowledge");
+    expect(h.calls).not.toContain("acknowledge");
+    expect((await retainedEvalAdmission(session, "pending", BACKGROUND_CONTEXT))?.outcome).toBeNull();
   });
 
-  it("recovers a lost exact acknowledgement through authenticated delivery after replacement", async () => {
+  it("recovers a lost exact acknowledgement after replacement", async () => {
     const h = await host();
     const first = await owner(h);
-    const session = await first.instance.open();
-    const root = await session.root(BACKGROUND_CONTEXT);
     const runId = "lost-ack";
-    await session.commit(async (tx) => {
-      await bindEvalRun(tx, runId, "binding:lost", { runId }, root.id);
-      await recordEvalAdmission(tx, runId, {
-        runId,
-        runDigest: "a".repeat(64),
-        authorityManifestDigest: "b".repeat(64),
-        status: "accepted",
-      });
-    }, BACKGROUND_CONTEXT);
     const result = { success: true, console: "retained", returnValue: 43 };
     h.setReceipt({
       runId,
@@ -2224,14 +2196,16 @@ describe("native Pi entity activation and release", () => {
       result,
       acknowledged: false,
     });
-    const caller = {
-      callerId: evalRuntimeId(runtimeId, "default"),
-      callerKind: "do" as const,
-    };
     h.loseAck();
-    await expect(
-      first.callAs(caller, "onEvalComplete", { runId }),
-    ).rejects.toThrow("acknowledgement response lost");
+    const session = await pullRun(first, runId, "binding:lost", "default", "a".repeat(64));
+    const awaiting = (await retainedEvalAdmission(session, runId, BACKGROUND_CONTEXT))!
+      .awaiting!;
+    await session.waitForTask(awaiting, BACKGROUND_CONTEXT);
+    const debt = (await retainedEvalAdmission(session, runId, BACKGROUND_CONTEXT))!
+      .acknowledgement!;
+    await expect(session.waitForTask(debt, BACKGROUND_CONTEXT)).rejects.toThrow(
+      "acknowledgement response lost",
+    );
     expect(
       (await session.snapshot(ReceiptDoc, runId, BACKGROUND_CONTEXT))?.result,
     ).toEqual(result);
@@ -2254,48 +2228,26 @@ describe("native Pi entity activation and release", () => {
       failed.state.condition.incident,
       BACKGROUND_CONTEXT,
     );
-    await expect(
-      next.callAs(caller, "onEvalComplete", { runId }),
-    ).resolves.toEqual({ accepted: true });
     expect(
-      (
-        await (
-          await next.instance.open()
-        ).snapshot(ReceiptDoc, runId, BACKGROUND_CONTEXT)
-      )?.result,
+      (await reopened.waitForTask(failed.id, BACKGROUND_CONTEXT)).state.outcome.status,
+    ).toBe("completed");
+    expect(
+      (await reopened.snapshot(ReceiptDoc, runId, BACKGROUND_CONTEXT))?.result,
     ).toEqual(result);
-    expect(
-      h.calls.filter((method) => method === "eval.acknowledge"),
-    ).toHaveLength(2);
+    expect(h.calls.filter((method) => method === "acknowledge")).toHaveLength(2);
   });
 
-  it("keeps domain settlement serviceable while terminal resource cleanup is joined", async () => {
+  it("settles a run at the owner's retirement from the pull while terminal resource cleanup is joined", async () => {
     const h = await host();
     const fixture = await owner(h);
-    const session = await fixture.instance.open();
-    const root = await session.root(BACKGROUND_CONTEXT);
     const runId = "retiring-run";
-    await session.commit(async (tx) => {
-      await bindEvalRun(tx, runId, "binding:retiring", { runId }, root.id);
-      await recordEvalAdmission(tx, runId, {
-        runId,
-        runDigest: "a".repeat(64),
-        authorityManifestDigest: "b".repeat(64),
-        status: "accepted",
-      });
-    }, BACKGROUND_CONTEXT);
+    const runDigest = "a".repeat(64);
     const result = {
       success: false,
       console: "",
       error: serializeRpcFailure(new Error("cancelled")),
     };
-    h.setReceipt({
-      runId,
-      runDigest: "a".repeat(64),
-      resultDigest: "c".repeat(64),
-      result,
-      acknowledged: false,
-    });
+    const session = await pullRun(fixture, runId, "binding:retiring", "default", runDigest);
     let completed!: () => void;
     const resource = new Promise<void>((resolve) => {
       completed = resolve;
@@ -2323,13 +2275,20 @@ describe("native Pi entity activation and release", () => {
       await reached;
       expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
       await expect(fixture.instance.open()).rejects.toThrow("sealed");
-      await expect(
-        fixture.callAs(
-          { callerId: evalRuntimeId(runtimeId, "default"), callerKind: "do" },
-          "onEvalComplete",
-          { runId },
-        ),
-      ).resolves.toEqual({ accepted: true });
+      // The run ends while the owner is sealed: the pull still settles it and the receipt is acknowledged.
+      h.setReceipt({
+        runId,
+        runDigest,
+        resultDigest: "c".repeat(64),
+        result,
+        acknowledged: false,
+      });
+      for (let i = 0; i < 200 && !h.calls.includes("acknowledge"); i++) {
+        // The release may close the session as soon as the acknowledgement is in.
+        await session.runPass(BACKGROUND_CONTEXT).catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(h.calls).toContain("acknowledge");
       expect(await release).toEqual({ status: "ready" });
       expect(h.calls).not.toContain("workspace-state.lifecycleLeaseClear");
     } finally {
