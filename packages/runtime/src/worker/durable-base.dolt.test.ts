@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { doltLocalPatterns } from "@vibestudio/durable/dolt";
 import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
 import { DurableObjectBase } from "./durable-base.js";
@@ -35,6 +35,9 @@ class NotesDO extends DurableObjectBase {
   }
   engine(): boolean {
     return this.dolt !== null;
+  }
+  sqlStateValue(key: string): string | null {
+    return this.getStateValue(key);
   }
   kernel(name: string) {
     return this.hostCode({
@@ -192,6 +195,59 @@ describe("Base durable base on a Dolt cell", () => {
       .map((row) => row["name"]);
     expect(tables).toContain("_vibestudio_direct_rpc_nonces");
     expect(tables).not.toContain("vsl_direct_rpc_nonces");
+  });
+});
+
+/** A class on a short compaction schedule (`DEFAULT_DOLT_GC_POLICY` is 64 commits), and one that never compacts. */
+class GcNotesDO extends NotesDO {
+  protected override doltGcPolicy() {
+    return { minCommits: 4, growth: 0.5 };
+  }
+}
+class NeverGcNotesDO extends NotesDO {
+  protected override doltGcPolicy() {
+    return null;
+  }
+}
+
+describe("Base durable base compacts a Dolt cell (docs/dolt-redesign.md §6.11.8)", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 450));
+
+  it("asks for a check after every eighth commit, runs it later in a block of the object, and remembers it", async () => {
+    const fake = await FakeDoltStorage.create({ doltLocal: doltLocalPatterns([]) });
+    const { instance } = await createTestDO(GcNotesDO, undefined, { storage: fake.storage });
+    const gc = vi.spyOn(fake.dolt, "gc");
+    for (let i = 0; i < 7; i++) instance.add(`note ${i}`);
+    await settle();
+    expect(gc).not.toHaveBeenCalled();
+    instance.add("the eighth");
+    // The check is not run inside the commit's own event: nothing has been collected yet.
+    expect(gc).not.toHaveBeenCalled();
+    await settle();
+    expect(gc).toHaveBeenCalledOnce();
+    expect(instance.sqlStateValue("__dolt_gc_head")).toBe(fake.dolt.hashOf("HEAD"));
+    // The object is intact and the schedule is not due again.
+    expect(() => instance.check()).not.toThrow();
+    // The next check is asked for at the sixteenth commit; the cell held nine commits when it was collected, so
+    // it is due again after five more, and the sixteenth commit's check finds it so.
+    for (let i = 0; i < 7; i++) instance.add(`more ${i}`);
+    await settle();
+    expect(gc).toHaveBeenCalledOnce();
+    instance.add("the sixteenth");
+    await settle();
+    expect(gc).toHaveBeenCalledTimes(2);
+  });
+
+  it("never compacts a class that returns no schedule, nor a SQLite cell", async () => {
+    const fake = await FakeDoltStorage.create({ doltLocal: doltLocalPatterns([]) });
+    const { instance } = await createTestDO(NeverGcNotesDO, undefined, { storage: fake.storage });
+    const gc = vi.spyOn(fake.dolt, "gc");
+    for (let i = 0; i < 16; i++) instance.add(`note ${i}`);
+    await settle();
+    expect(gc).not.toHaveBeenCalled();
+    const sqlite = await createTestDO(GcNotesDO);
+    for (let i = 0; i < 9; i++) sqlite.instance.add(`note ${i}`);
+    await settle();
   });
 });
 
