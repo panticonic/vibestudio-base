@@ -5271,6 +5271,7 @@ describe("PubSubChannel", () => {
     const clonedAgentTarget =
       "do:workers/agent-worker:AiChatWorker:agent-lf-child";
     let cloneCalls = 0;
+    const cloneRequests: unknown[] = [];
     const lifecycleCalls: Array<{
       target: string;
       method: string;
@@ -5301,7 +5302,7 @@ describe("PubSubChannel", () => {
         ) {
           return activeEntityFixture(args[0]);
         }
-        if (target === agentTarget && method === "exportChannelKnowledge") {
+        if (target === agentTarget && method === "forkFrontier") {
           lifecycleCalls.push({ target, method, args });
           const request = args[0] as {
             channelId: string;
@@ -5310,17 +5311,16 @@ describe("PubSubChannel", () => {
           return {
             channelId: request.channelId,
             throughSequence: request.throughSequence,
-            history: {
-              source: { conversationId: 1, at: null },
-              agent: {},
-              entries: [],
-            },
+            conversationId: 1,
+            commit: "agent-turn-commit",
+            entryHigh: 7,
             anchors: [],
           };
         }
         // Clone the channel and its subscribed agent into a fresh context.
         if (target === "main" && method === "runtime.cloneContext") {
           cloneCalls += 1;
+          cloneRequests.push(args[0]);
           return {
             contextId: "ctx-lf-fork",
             contexts: [],
@@ -5354,7 +5354,7 @@ describe("PubSubChannel", () => {
         // The cloned child's postClone is driven over RPC; ack it.
         if (
           method === "postClone" ||
-          method === "importChannelKnowledge" ||
+          method === "adoptChannelKnowledge" ||
           method === "runtime.rebindAgentChannel"
         ) {
           lifecycleCalls.push({ target, method, args });
@@ -5397,10 +5397,14 @@ describe("PubSubChannel", () => {
     expect(result.forkedChannelId).toBe("channel-lf-child");
     await expect(parent.instance.fork(forkInput)).resolves.toEqual(result);
     expect(cloneCalls).toBe(1);
+    // The agent's cell is forked where its own frontier says, beside the channel's cell at the fork point.
+    expect(
+      (cloneRequests[0] as { storageAt: Record<string, string> }).storageAt[agentTarget],
+    ).toBe("agent-turn-commit");
     expect(lifecycleCalls).toEqual([
       {
         target: agentTarget,
-        method: "exportChannelKnowledge",
+        method: "forkFrontier",
         args: [
           {
             operationId: `fork:fork-operation-1:${agentTarget}`,
@@ -5420,13 +5424,16 @@ describe("PubSubChannel", () => {
       },
       expect.objectContaining({
         target: clonedAgentTarget,
-        method: "importChannelKnowledge",
+        method: "adoptChannelKnowledge",
         args: [
           expect.objectContaining({
             parentChannelId: "channel-lf-parent",
             channelId: "channel-lf-child",
             contextId: "ctx-lf-fork",
-            knowledge: expect.objectContaining({ throughSequence: 2 }),
+            frontier: expect.objectContaining({
+              throughSequence: 2,
+              commit: "agent-turn-commit",
+            }),
           }),
         ],
       }),

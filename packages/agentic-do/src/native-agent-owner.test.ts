@@ -868,6 +868,18 @@ async function ordinaryAuthorityOwner(waiting: boolean, attachLocator = false) {
   return { h, authority, fixture, session, root, submission };
 }
 
+/** The inverse of the layout split: every local row back in Pi's single table set, as an object made before it. */
+function unsplitPiStore(sql: { exec(query: string, ...values: never[]): { toArray(): unknown[] } }): void {
+  for (const table of ["record_ids", "tasks", "submissions", "documents", "document_revisions", "payload_chunks"]) {
+    sql.exec(`INSERT OR REPLACE INTO ${table} SELECT * FROM vsl_${table}`).toArray();
+    sql.exec(`DELETE FROM vsl_${table}`).toArray();
+  }
+  sql.exec(
+    `UPDATE durable_metadata SET next_id = (SELECT next_id FROM vsl_durable_metadata), next_seq = (SELECT next_seq FROM vsl_durable_metadata)`,
+  ).toArray();
+  sql.exec("DELETE FROM state WHERE key = 'vibestudio.pi-store.layout'").toArray();
+}
+
 describe("native Pi entity activation and release", () => {
   it.each(["pending", "acknowledgement", "historical-archive"] as const)(
     "migrates legacy task-scoped provenance before reopening %s authority debt",
@@ -878,7 +890,7 @@ describe("native Pi entity activation and release", () => {
       const submission = await first.start();
       const request = first.requests[0]!;
       const document = first.fixture.sql.exec(
-        "SELECT id, key_value FROM documents WHERE kind = ? AND scope_kind = 'session'",
+        "SELECT id, key_value FROM vsl_documents WHERE kind = ? AND scope_kind = 'session'",
         JSON.stringify("vibestudio.native-invocation-source"),
       ).one();
       const coordinates = { taskId: request.taskId, invocationId: JSON.parse(String(document["key_value"])) as string };
@@ -911,6 +923,8 @@ describe("native Pi entity activation and release", () => {
         await first.session.waitForIdle(BACKGROUND_CONTEXT);
       }
       await lifecycleRelease(first.fixture.instance, releaseInput);
+      // A store made before the split has one table set: put every local row back where Pi's single set kept it.
+      unsplitPiStore(first.fixture.sql);
       // Seed the persisted v1 layout from an actual admitted request. Old Pi
       // task retirement destroyed source content; its retained authority receipt
       // remains sufficient to reconcile an already consumed acknowledgement.
@@ -982,16 +996,17 @@ describe("native Pi entity activation and release", () => {
         "SELECT * FROM payload_chunks WHERE id = ? AND revision > 0 ORDER BY revision, ordinal", document["id"],
       ).toArray();
       const next = await authorityOwner(h, authority, first.fixture.db);
-      expect(next.fixture.sql.exec("SELECT scope_kind, owner_id FROM documents WHERE id = ?", document["id"]).one())
+      // The upgrade moved the operational document to the local set with the layout migration's scope change.
+      expect(next.fixture.sql.exec("SELECT scope_kind, owner_id FROM vsl_documents WHERE id = ?", document["id"]).one())
         .toEqual({ scope_kind: "session", owner_id: 0 });
       if (debt === "pending") {
-        expect(next.fixture.sql.exec("SELECT * FROM document_revisions WHERE document_id = ? ORDER BY seq", document["id"]).toArray())
+        expect(next.fixture.sql.exec("SELECT * FROM vsl_document_revisions WHERE document_id = ? ORDER BY seq", document["id"]).toArray())
           .toEqual(revisionsBefore);
-        expect(next.fixture.sql.exec("SELECT * FROM payload_chunks WHERE id = ? AND revision > 0 ORDER BY revision, ordinal", document["id"]).toArray())
+        expect(next.fixture.sql.exec("SELECT * FROM vsl_payload_chunks WHERE id = ? AND revision > 0 ORDER BY revision, ordinal", document["id"]).toArray())
           .toEqual(contentBefore);
       }
       if (debt === "historical-archive") {
-        const archived = next.fixture.sql.exec("SELECT CAST(data AS TEXT) AS content FROM payload_chunks WHERE id = ? AND revision > 0", document["id"]).one();
+        const archived = next.fixture.sql.exec("SELECT CAST(data AS TEXT) AS content FROM vsl_payload_chunks WHERE id = ? AND revision > 0", document["id"]).one();
         expect(JSON.parse(String(archived["content"]))).toEqual({ source: historicalSource });
       } else {
         expect(await readRetainedNativeInvocationSource(next.session, coordinates, {

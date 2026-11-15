@@ -65,7 +65,7 @@ export {
   subscribeAgentToChannel,
   unsubscribeAgentFromChannel,
 } from "./agent-launch.js";
-export { importAgentChannelKnowledge } from "./native-channel-knowledge.js";
+export { adoptAgentChannelKnowledge } from "./native-channel-knowledge.js";
 export {
   ProvisionalAgentLifecycle,
   withWorkspaceReviewRetry,

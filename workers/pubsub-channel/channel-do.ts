@@ -51,7 +51,7 @@ import type {
   ServerLogEvent as ChannelEvent,
   PublishReceipt,
 } from "@workspace/pubsub";
-import type { NativeChannelKnowledge } from "@workspace/agentic-core/native-channel-knowledge";
+import type { NativeForkFrontier } from "@workspace/agentic-core/native-channel-knowledge";
 import {
   channelSubscriptionQueuingStrategy,
   encodeChannelSubscriptionRecord,
@@ -324,7 +324,7 @@ interface ForkOpts extends Omit<ForkRequest, "seed"> {
   agents?: Array<{
     participantId: string;
     ref: DORef;
-    knowledge: NativeChannelKnowledge | null;
+    frontier: NativeForkFrontier | null;
   }>;
 }
 
@@ -7215,7 +7215,7 @@ export class PubSubChannel
         opts.agents.push({
           participantId: p.participantId,
           ref: p.doRef,
-          knowledge: null,
+          frontier: null,
         });
       }
       this.sql.exec(
@@ -7239,13 +7239,14 @@ export class PubSubChannel
     });
 
     try {
-      // Source execution stays with its owner. Only the exact committed native
-      // transcript prefix crosses into the receiving lifetime.
+      // Source execution stays with its owner. Each agent names the commit of its own cell that
+      // holds the conversation through the fork point; the cell is forked there, so the exact
+      // committed native transcript prefix is the receiving lifetime's own storage.
       for (const agent of keptAgents) {
-        if (agent.knowledge !== null) continue;
-        const knowledge = await this.rpc.call(
+        if (agent.frontier !== null) continue;
+        const frontier = await this.rpc.call(
           doTarget(agent.ref),
-          agentRpcMethods["exportChannelKnowledge"],
+          agentRpcMethods["forkFrontier"],
           [
             {
               operationId: `fork:${forkId}:${agent.participantId}`,
@@ -7256,15 +7257,15 @@ export class PubSubChannel
         );
         this.forkLifetime.signal.throwIfAborted();
         if (
-          knowledge.channelId !== this.objectKey ||
-          knowledge.throughSequence !== opts.forkPointPubsubId
+          frontier.channelId !== this.objectKey ||
+          frontier.throughSequence !== opts.forkPointPubsubId
         )
           throw new Error(
             `Fork participant ${agent.participantId} changed its selected knowledge frontier`,
           );
-        agent.knowledge = JSON.parse(
-          canonicalJson(knowledge),
-        ) as NativeChannelKnowledge;
+        agent.frontier = JSON.parse(
+          canonicalJson(frontier),
+        ) as NativeForkFrontier;
         this.sql.exec(
           `UPDATE fork_ops SET opts = ? WHERE fork_id = ?`,
           canonicalJson(opts),
@@ -7295,7 +7296,15 @@ export class PubSubChannel
           sourceContextId,
           include,
           recursive: true,
-          storageAt: { [doTarget(selfRef)]: opts.channelCommit },
+          storageAt: {
+            [doTarget(selfRef)]: opts.channelCommit,
+            ...Object.fromEntries(
+              keptAgents.map((agent) => [
+                doTarget(agent.ref),
+                agent.frontier!.commit,
+              ]),
+            ),
+          },
           targetKey: `fork:${forkId}`,
         },
       ]);
@@ -7373,11 +7382,11 @@ export class PubSubChannel
             },
           ]);
           this.forkLifetime.signal.throwIfAborted();
-          if (agent.knowledge === null)
-            throw new Error("Fork lost its immutable agent knowledge");
+          if (agent.frontier === null)
+            throw new Error("Fork lost its immutable agent frontier");
           await this.rpc.call(
             doTarget(clonedRef),
-            agentRpcMethods["importChannelKnowledge"],
+            agentRpcMethods["adoptChannelKnowledge"],
             [
               {
                 operationId: `fork:${forkId}:${agent.participantId}`,
@@ -7389,7 +7398,7 @@ export class PubSubChannel
                   objectKey: forkedChannelId,
                 },
                 contextId: forkedContextId,
-                knowledge: agent.knowledge,
+                frontier: agent.frontier,
               },
             ],
           );

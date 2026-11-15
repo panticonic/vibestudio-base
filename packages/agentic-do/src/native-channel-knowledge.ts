@@ -2,7 +2,6 @@ import { copyJson, type Context, type JsonValue } from "@panticonic/pi-chord";
 import {
   defineDoc,
   defineDocFamily,
-  type AgentChange,
   type Conversation,
   type ConversationId,
   type EntryId,
@@ -23,17 +22,14 @@ import {
   participantKey,
 } from "@workspace/agentic-protocol";
 import type {
+  AdoptChannelKnowledgeInput,
   ExportChannelKnowledgeInput,
-  ImportChannelKnowledgeInput,
-  NativeChannelKnowledge,
   NativeChannelKnowledgeAnchor,
+  NativeForkFrontier,
 } from "@workspace/agentic-core/native-channel-knowledge";
 import type { ChannelEvent } from "@workspace/pubsub";
 import type { ChannelClient } from "./channel-client.js";
-import {
-  retainedAgentExecutionOwner,
-  retainedAgentExecutionOwnerInTransaction,
-} from "./native-agent-session.js";
+import { retainedAgentExecutionOwner } from "./native-agent-session.js";
 import {
   bindNativeChannelConversation,
   retainedNativeConversationChannel,
@@ -52,19 +48,6 @@ const KnowledgeAnchors = defineDoc<{
   history: "latest",
   fork: "initial",
   initial: () => ({ anchors: [], configuration: null }),
-  checkpointWhen: () => true,
-});
-const KnowledgeExport = defineDocFamily<
-  { request: JsonValue | null; knowledge: JsonValue | null },
-  null
->({
-  kind: "vibestudio.channel-knowledge-export",
-  version: 1,
-  scope: "conversation",
-  family: true,
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ request: null, knowledge: null }),
   checkpointWhen: () => true,
 });
 const KnowledgeImport = defineDocFamily<
@@ -155,52 +138,21 @@ function validateRequest(request: ExportChannelKnowledgeInput): void {
       "Knowledge export requires its exact operation, channel and committed frontier",
     );
 }
-function exportReplay(
-  value: {
-    readonly request: JsonValue | null;
-    readonly knowledge: JsonValue | null;
-  },
-  request: ExportChannelKnowledgeInput,
-): NativeChannelKnowledge {
-  if (
-    canonicalJson(value.request) !== canonicalJson(request) ||
-    value.knowledge === null
-  )
-    throw new Error(
-      "Knowledge export operation changed its immutable source frontier",
-    );
-  return frozen(detached(value.knowledge)) as unknown as NativeChannelKnowledge;
-}
-/** Capture a canonical channel prefix as actual committed native transcript knowledge. */
-export async function exportNativeChannelKnowledge(
+/**
+ * The greatest entry of the native conversation that a canonical channel prefix (through `request.throughSequence`)
+ * accounts for, and the anchors that tie the channel events of that prefix to their entries. A knowledge export
+ * copies the history up to `at`; a fork of the whole cell asks which commit holds exactly that much.
+ */
+export async function nativeChannelKnowledgeFrontier(
   source: NativeChannelKnowledgeSource,
-  input: ExportChannelKnowledgeInput,
+  request: ExportChannelKnowledgeInput,
+  binding: NativeChannelBinding,
   context: Context,
-): Promise<NativeChannelKnowledge> {
-  const request = detached(input);
-  validateRequest(request);
+): Promise<{
+  readonly at: EntryId | null;
+  readonly anchors: NativeChannelKnowledgeAnchor[];
+}> {
   const owner = await retainedAgentExecutionOwner(source.harness, context);
-  const binding = await retainedNativeConversationChannel(
-    source.harness,
-    source.conversation.id,
-    context,
-  );
-  if (
-    canonicalJson(binding) !== canonicalJson(source.binding) ||
-    request.channelId !== binding.channelId ||
-    source.channelRef.objectKey !== binding.channelId ||
-    source.participantId !== owner.runtimeId
-  )
-    throw new Error(
-      "Knowledge export requires its actual owned channel conversation",
-    );
-  const existing = await source.harness.snapshot(
-    KnowledgeExport,
-    source.conversation.id,
-    request.operationId,
-    context,
-  );
-  if (existing) return exportReplay(existing, request);
   const inherited = ((
     await source.harness.snapshot(
       KnowledgeAnchors,
@@ -458,45 +410,70 @@ export async function exportNativeChannelKnowledge(
       }
     }
   }
-  const history = await source.conversation.exportHistory(at, context);
-  const entryIds = new Set(history.entries.map((entry) => entry.id));
-  const candidate: NativeChannelKnowledge = frozen(
+  return { at, anchors };
+}
+/**
+ * What the agent knows of the channel through `request.throughSequence`, as a fork of its whole cell would hold it: the
+ * native conversation, the greatest entry the prefix accounts for, and the anchors that tie the prefix's channel events
+ * to their entries. `commitFor` names the last closed turn of the agent's cell that holds no entry beyond `at`; the cell
+ * is forked there, so the receiving agent has those entries under the same IDs and adopts them through
+ * {@link adoptNativeChannelKnowledge}.
+ */
+export async function nativeForkFrontier(
+  source: NativeChannelKnowledgeSource,
+  input: ExportChannelKnowledgeInput,
+  commitFor: (at: EntryId | null) => { readonly commit: string; readonly entryHigh: number },
+  context: Context,
+): Promise<NativeForkFrontier> {
+  const request = detached(input);
+  validateRequest(request);
+  const owner = await retainedAgentExecutionOwner(source.harness, context);
+  const binding = await retainedNativeConversationChannel(
+    source.harness,
+    source.conversation.id,
+    context,
+  );
+  if (
+    canonicalJson(binding) !== canonicalJson(source.binding) ||
+    request.channelId !== binding.channelId ||
+    source.channelRef.objectKey !== binding.channelId ||
+    source.participantId !== owner.runtimeId
+  )
+    throw new Error(
+      "A fork frontier requires the actual owned channel conversation",
+    );
+  const { at, anchors } = await nativeChannelKnowledgeFrontier(
+    source,
+    request,
+    binding,
+    context,
+  );
+  const { commit, entryHigh } = commitFor(at);
+  return frozen(
     detached({
       channelId: binding.channelId,
       throughSequence: request.throughSequence,
-      history,
-      anchors: anchors.filter((anchor) => entryIds.has(anchor.entryId)),
+      conversationId: source.conversation.id,
+      commit,
+      entryHigh,
+      // The fork holds the entries through `entryHigh`; an anchor to a later entry belongs to a turn it does not hold.
+      anchors: anchors.filter((anchor) => anchor.entryId <= entryHigh),
+      configuration: source.configuration
+        ? await source.configuration(context)
+        : null,
     }),
-  );
-  return source.conversation.commit(async (tx) => {
-    await retainedAgentExecutionOwnerInTransaction(tx);
-    const receipt = await tx.doc(
-      KnowledgeExport,
-      source.conversation.id,
-      request.operationId,
-      null,
-    );
-    if (receipt.request !== null) return exportReplay(receipt, request);
-    const configured = source.configuration
-      ? frozen(
-          detached({
-            ...candidate,
-            configuration: await source.configuration(context),
-          }),
-        )
-      : candidate;
-    receipt.request = detached(request) as unknown as JsonValue;
-    receipt.knowledge = detached(configured) as unknown as JsonValue;
-    return configured;
-  }, context);
+  ) as NativeForkFrontier;
 }
 class ConcurrentKnowledgeImport extends Error {}
-/** Import standalone knowledge with new native IDs, ownership and immutable canonical provenance. */
-export async function importNativeChannelKnowledge(
+/**
+ * Bind the conversation a forked cell holds (its entries came with the fork, under their original IDs) to the channel
+ * it was forked for: the channel binding, the anchors of the entries to the channel's events, and the original
+ * configuration. The first activation of a fork does this once; a repeat finds its receipt.
+ */
+export async function adoptNativeChannelKnowledge(
   harness: Harness,
-  input: ImportChannelKnowledgeInput,
+  input: AdoptChannelKnowledgeInput,
   options: {
-    readonly agent?: AgentChange;
     readonly initialize?: (
       tx: Tx,
       conversationId: ConversationId,
@@ -505,44 +482,45 @@ export async function importNativeChannelKnowledge(
   context: Context,
 ): Promise<Conversation> {
   const request = detached(input);
+  const frontier = request.frontier;
   if (
     !request.operationId ||
     !request.channelId ||
     !request.contextId ||
     !request.parentChannelId ||
-    request.parentChannelId !== request.knowledge.channelId
+    request.parentChannelId !== frontier.channelId
   )
     throw new Error(
-      "Knowledge import requires its exact source and receiving channel identities",
+      "Fork adoption requires its exact source and receiving channel identities",
     );
   if (
-    !Number.isSafeInteger(request.knowledge.throughSequence) ||
-    request.knowledge.throughSequence < 0
+    !Number.isSafeInteger(frontier.throughSequence) ||
+    frontier.throughSequence < 0 ||
+    !Number.isSafeInteger(frontier.conversationId) ||
+    !Number.isSafeInteger(frontier.entryHigh)
   )
-    throw new Error("Knowledge import has no exact committed source frontier");
-  const ids = new Set(
-    request.knowledge.history.entries.map((entry) => entry.id),
-  );
+    throw new Error("Fork adoption has no exact committed source frontier");
   const envelopeIds = new Set<string>();
-  for (const anchor of request.knowledge.anchors) {
+  for (const anchor of frontier.anchors) {
     if (
       !anchor.envelopeId ||
       envelopeIds.has(anchor.envelopeId) ||
       !Number.isSafeInteger(anchor.sequence) ||
       anchor.sequence < 0 ||
-      anchor.sequence > request.knowledge.throughSequence ||
+      anchor.sequence > frontier.throughSequence ||
       !/^[a-f0-9]{64}$/.test(anchor.eventDigest) ||
-      !ids.has(anchor.entryId)
+      anchor.entryId > frontier.entryHigh
     )
-      throw new Error("Knowledge import has an invalid canonical entry anchor");
+      throw new Error("Fork adoption has an invalid canonical entry anchor");
     envelopeIds.add(anchor.envelopeId);
   }
   const owner = await retainedAgentExecutionOwner(harness, context);
   if (owner.contextId !== request.contextId)
     throw new Error(
-      "Knowledge import does not belong to its receiving host context",
+      "Fork adoption does not belong to its receiving host context",
     );
   const identity = sha256HexSyncText(canonicalJson(request));
+  const conversationId = frontier.conversationId as ConversationId;
   async function replay(): Promise<Conversation | null> {
     const receipt = await harness.snapshot(
       KnowledgeImport,
@@ -551,7 +529,7 @@ export async function importNativeChannelKnowledge(
     );
     if (!receipt) return null;
     if (receipt.identity !== identity || receipt.conversationId === null)
-      throw new Error("Knowledge import operation changed its immutable input");
+      throw new Error("Fork adoption operation changed its immutable input");
     const binding = await retainedNativeConversationChannel(
       harness,
       receipt.conversationId,
@@ -561,71 +539,57 @@ export async function importNativeChannelKnowledge(
       binding.channelId !== request.channelId ||
       binding.contextId !== request.contextId
     )
-      throw new Error("Knowledge import lost its actual receiving binding");
+      throw new Error("Fork adoption lost its actual receiving binding");
     const conversation = await harness.conversation(
       receipt.conversationId,
       context,
     );
     if (!conversation)
-      throw new Error(
-        "Knowledge import lost its committed receiving conversation",
-      );
+      throw new Error("Fork adoption lost its committed conversation");
     return conversation;
   }
   const existing = await replay();
   if (existing) return existing;
-  try {
-    return await harness.importHistory(
-      request.knowledge.history,
-      {
-        ownership: { kind: "ownerless" },
-        ...(options.agent === undefined ? {} : { agent: options.agent }),
-        init: async (tx, conversationId, entryIds) => {
-          const receipt = await tx.doc(
-            KnowledgeImport,
-            request.operationId,
-            null,
-          );
-          if (receipt.identity) {
-            if (receipt.identity !== identity)
-              throw new Error(
-                "Knowledge import operation changed its immutable input",
-              );
-            throw new ConcurrentKnowledgeImport();
-          }
-          await bindNativeChannelConversation(tx, conversationId, {
-            channelId: request.channelId,
-            channelRef: request.channelRef,
-            contextId: request.contextId,
-          });
-          const anchors = request.knowledge.anchors.map((anchor) => {
-            const entry = entryIds[anchor.entryId];
-            if (entry === undefined)
-              throw new Error(
-                "Native history import lost an exact receiving entry allocation",
-              );
-            return { ...anchor, entryId: entry };
-          });
-          const retained = await tx.doc(KnowledgeAnchors, conversationId);
-          retained.anchors = detached(anchors) as unknown as JsonValue;
-          retained.configuration = request.knowledge.configuration ?? null;
-          await options.initialize?.(tx, conversationId);
-          receipt.identity = identity;
-          receipt.conversationId = conversationId;
-        },
-      },
-      context,
+  const conversation = await harness.conversation(conversationId, context);
+  if (!conversation)
+    throw new Error(
+      "A forked cell does not hold the conversation its frontier names",
     );
+  try {
+    await conversation.commit(async (tx) => {
+      const receipt = await tx.doc(
+        KnowledgeImport,
+        request.operationId,
+        null,
+      );
+      if (receipt.identity) {
+        if (receipt.identity !== identity)
+          throw new Error("Fork adoption operation changed its immutable input");
+        throw new ConcurrentKnowledgeImport();
+      }
+      await bindNativeChannelConversation(tx, conversationId, {
+        channelId: request.channelId,
+        channelRef: request.channelRef,
+        contextId: request.contextId,
+      });
+      const retained = await tx.doc(KnowledgeAnchors, conversationId);
+      retained.anchors = detached(frontier.anchors) as unknown as JsonValue;
+      retained.configuration = frontier.configuration ?? null;
+      await options.initialize?.(tx, conversationId);
+      receipt.identity = identity;
+      receipt.conversationId = conversationId;
+    }, context);
   } catch (error) {
     if (!(error instanceof ConcurrentKnowledgeImport)) throw error;
     const committed = await replay();
     if (!committed)
       throw new Error(
-        "Concurrent knowledge import has no committed receiving identity",
+        "Concurrent fork adoption has no committed receiving identity",
         { cause: error },
       );
     return committed;
   }
+  return conversation;
 }
 
 /** The original imported product configuration, committed with the genuine receiving history. */

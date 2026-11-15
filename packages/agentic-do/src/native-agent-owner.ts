@@ -16,7 +16,8 @@ import {
   type TaskId,
 } from "@panticonic/pi-durable";
 import {
-  applySqliteMigrationsInTransaction,
+  applyCompositeSqliteMigrationsInTransaction,
+  CompositeSqliteStorage,
   nativeSqliteExecutor,
   NativeDatabase,
   type NativeStorage,
@@ -61,6 +62,14 @@ import {
   createNativeEvalAwait,
   type EvalAwaitInput,
 } from "./native-eval-receipts.js";
+import { nativeAgentCommitPolicy } from "./native-agent-commits.js";
+import {
+  hasLegacyPiLayout,
+  localPiTables,
+  PI_STORE_LAYOUT_KEY,
+  PI_STORE_LAYOUT_VERSION,
+  splitLegacyPiStore,
+} from "./pi-store-split.js";
 import {
   bindAuthorityAcquisition,
   consumeAuthorityReceipt,
@@ -84,6 +93,8 @@ interface RetainedModelConnection {
   readonly request: ModelRequestTarget;
 }
 
+/** The owner's `state` key that marks a forked cell whose adoption is under way. */
+export const FORK_ADOPTION_KEY = "vibestudio.fork-adoption";
 const NATIVE_SOURCE_LAYOUT_KEY = "vibestudio.native-invocation-source.layout";
 const NATIVE_SOURCE_LAYOUT_VERSION = 2;
 
@@ -121,6 +132,17 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   }
 
   protected abstract agentOptions(): NativeAgentOptions;
+
+  /**
+   * Whether this cell is a fork of another agent's, taken at one of its commits, whose adoption has not finished: it
+   * holds the conversation and has no owner yet. The adoption sets the marker before it opens the session and clears
+   * it when it is done, so a crash between the two resumes as a fork.
+   */
+  protected forkAdoptionPending(): boolean {
+    return this.native.sql
+      .exec("SELECT 1 AS found FROM state WHERE key = ?", FORK_ADOPTION_KEY)
+      .toArray().length > 0;
+  }
 
   /** Owners without a channel name their own invocation trajectory; channel
    * agents keep the default, their conversation's channel. */
@@ -330,14 +352,45 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       "documents",
       "document_revisions",
       "payload_chunks",
+      ...localPiTables(),
     ];
   }
 
+  /**
+   * Both table sets of the composite store: conversations, entries and conversation knowledge in the default-named
+   * tables (versioned on a Dolt cell), everything else in the `vsl_` set (local).
+   */
   protected override async createTables(): Promise<void> {
-    await applySqliteMigrationsInTransaction(
+    await applyCompositeSqliteMigrationsInTransaction(
       nativeSqliteExecutor(this.native.sql, () => {}),
     );
     await this.createAgentTables();
+  }
+
+  /**
+   * A store made with Pi's single table set (a legacy object, copied by the engine's one-time import, or a SQLite
+   * object upgraded in place) moves its tasks, submissions and operational documents to the local set. A store that
+   * has no such rows, which is every new one, only records its layout. One committed transaction, so a crash leaves
+   * the old layout or the new one.
+   */
+  private migratePiStoreLayout(): void {
+    const recorded = this.native.sql
+      .exec("SELECT value FROM state WHERE key = ?", PI_STORE_LAYOUT_KEY)
+      .toArray()[0];
+    if (recorded && JSON.parse(String(recorded["value"])) === PI_STORE_LAYOUT_VERSION) return;
+    this.committedTransaction(
+      () => "migrate: the Pi store's tasks, submissions and operational documents move to the local set",
+      () => {
+        if (hasLegacyPiLayout(this.native.sql)) splitLegacyPiStore(this.native.sql);
+        this.native.sql
+          .exec(
+            "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
+            PI_STORE_LAYOUT_KEY,
+            JSON.stringify(PI_STORE_LAYOUT_VERSION),
+          )
+          .toArray();
+      },
+    );
   }
 
   /** Every framework route, including alarms and hibernation, crosses this gate. */
@@ -488,7 +541,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       }
     }
     const startedAt = Date.now();
-    const initialization = super.initializeSchema().then(() => this.migrateNativeSourceLayout());
+    const initialization = super
+      .initializeSchema()
+      .then(() => this.migrateNativeSourceLayout())
+      .then(() => this.migratePiStoreLayout());
     if (!this.tracedSchemaInitialization) {
       this.tracedSchemaInitialization = initialization;
       void initialization.then(() => this.traceOwnerStartup("schema", startedAt), () => {
@@ -611,7 +667,11 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             // The owning schema gate already committed and validated the whole
             // store. SqliteStorage consumes that gate, never a second installer.
             const sqliteStartedAt = Date.now();
-            const storage = await SqliteStorage.open(database);
+            const storage = await CompositeSqliteStorage.open(
+              database,
+              // A Dolt cell commits at a closed turn; a SQLite cell (a test double) has no commit to make.
+              this.dolt ? { commit: nativeAgentCommitPolicy() } : {},
+            );
             this.traceOwnerStartup("sqlite-open", sqliteStartedAt);
             return storage;
           } catch (error) {
@@ -640,6 +700,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           modelRequests: this.ownedModelRequests(options.modelRequests),
         },
         BACKGROUND_CONTEXT,
+        { adoptFork: this.forkAdoptionPending() },
       );
       this.traceOwnerStartup("session-open", phaseStartedAt);
       const trajectory = this.nativeTrajectory();

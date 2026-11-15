@@ -30,8 +30,8 @@ type Receiver = Pick<
   | "observeOutsideContent"
   | "initializeAutomation"
   | "canFork"
-  | "exportChannelKnowledge"
-  | "importChannelKnowledge"
+  | "forkFrontier"
+  | "adoptChannelKnowledge"
   | "cancelSubagentExecution"
   | "readSubagentExecutionActivity"
   | "retireSubagentExecution"
@@ -63,7 +63,7 @@ const additionalAgentRpcMethods = createReceiverRpcMethods<AdditionalReceiver>([
   "observeOutsideContent",
   "initializeAutomation",
   "canFork",
-  "exportChannelKnowledge",
+  "forkFrontier",
   "cancelSubagentExecution",
   "readSubagentExecutionActivity",
   "retireSubagentExecution",

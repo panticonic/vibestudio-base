@@ -195,6 +195,17 @@ class SpawnVessel extends AgentVesselBase {
       ctx,
     );
   }
+  /** A cell's commit history: a turn commit for each entry the conversation could hold, newest first. */
+  protected override get dolt(): never {
+    return {
+      log: () =>
+        Array.from({ length: 200 }, (_, index) => ({
+          hash: `turn-commit-${200 - index}`,
+          message: `agent: turn closed t${200 - index} entries<=${200 - index}`,
+        })),
+      hashOf: (ref: string) => `resolved:${ref}`,
+    } as never;
+  }
   protected override get rpc(): RpcClient {
     const base = super.rpc;
     if (!this.rpcWireIntercepted) {
@@ -323,7 +334,7 @@ class SpawnVessel extends AgentVesselBase {
           return undefined;
         if (child && method === "subscribeChannel")
           return { ok: true, participantId: child.id };
-        if (child && method === "importChannelKnowledge")
+        if (child && method === "adoptChannelKnowledge")
           return { ok: true, participantId: child.id };
         if (child && method === "getAgentSettings")
           return {
@@ -1482,7 +1493,7 @@ describe("native shipping subagent launch", () => {
     ).toHaveLength(2);
   });
 
-  it("exports genuine original native input knowledge before child import, membership and task seed", async () => {
+  it("forks the parent's cell at the last closed turn before the child adopts it, subscribes and gets its task seed", async () => {
     const f = await fixture();
     const event: ChannelEvent = {
       id: 1,
@@ -1569,25 +1580,27 @@ describe("native shipping subagent launch", () => {
     await f.terminal(task);
     const operations = f.vessel.calls.map((call) => call.method);
     expect(operations.indexOf("runtime.createEntity")).toBeLessThan(
-      operations.indexOf("importChannelKnowledge"),
+      operations.indexOf("adoptChannelKnowledge"),
     );
-    expect(operations.indexOf("importChannelKnowledge")).toBeLessThan(
+    expect(operations.indexOf("adoptChannelKnowledge")).toBeLessThan(
       operations.indexOf("recordTaskProvenance"),
     );
     expect(operations).not.toContain("subscribeChannel");
     const imported = f.vessel.calls.find(
-      (call) => call.method === "importChannelKnowledge",
+      (call) => call.method === "adoptChannelKnowledge",
     )!.args[0] as {
-      knowledge: { history: unknown; anchors: unknown[] };
+      frontier: { commit: string; entryHigh: number; anchors: unknown[]; conversationId: number };
       contextId: string;
       channelId: string;
     };
-    expect(JSON.stringify(imported.knowledge.history)).toContain(
-      "Original parent knowledge",
-    );
-    expect(imported.knowledge.anchors).toHaveLength(1);
-    expect(imported.knowledge.history).not.toHaveProperty("tasks");
-    expect(imported.knowledge.history).not.toHaveProperty("documents");
+    // The child is created as a fork of the parent's own cell at the commit its frontier names.
+    const created = f.vessel.calls.find(
+      (call) => call.method === "runtime.createEntity",
+    )!.args[0] as { forkStorage?: { at: string } };
+    expect(created.forkStorage).toEqual({ at: imported.frontier.commit });
+    expect(imported.frontier.commit).toBe(`turn-commit-${imported.frontier.entryHigh}`);
+    expect(imported.frontier.anchors).toHaveLength(1);
+    expect(imported.frontier).not.toHaveProperty("history");
     const run = f.vessel.runs()[0]!;
     expect(imported.contextId).toBe(run.childContextId);
     expect(imported.channelId).toBe(run.taskChannelId);

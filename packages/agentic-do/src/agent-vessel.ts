@@ -51,16 +51,18 @@ import type { NativeEvalExecution } from "@workspace/harness/tools/eval";
 import { NativeChannelOwner, type NativeChannelConfiguration } from "./native-channel-owner.js";
 import { parseDoTargetId } from "@vibestudio/shared/workspaceServiceRpc";
 import {
-  importAgentChannelKnowledge,
+  adoptAgentChannelKnowledge,
+  type AdoptChannelKnowledgeInput,
   type ExportChannelKnowledgeInput,
-  type ImportChannelKnowledgeInput,
-  type NativeChannelKnowledge,
+  type NativeForkFrontier,
 } from "@workspace/agentic-core/native-channel-knowledge";
 import {
+  adoptNativeChannelKnowledge,
+  nativeForkFrontier,
   retainedNativeChannelKnowledgeConfiguration,
-  exportNativeChannelKnowledge,
-  importNativeChannelKnowledge,
 } from "./native-channel-knowledge.js";
+import { lastTurnCommitThrough } from "./native-agent-commits.js";
+import { FORK_ADOPTION_KEY } from "./native-agent-owner.js";
 import { createNativeAutomationRuns } from "./native-automation-runs.js";
 import { createNativeEvalExecution } from "./native-eval-tool.js";
 import { evalSessionId, type EvalAwaitInput } from "./native-eval-receipts.js";
@@ -712,8 +714,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     SubscriptionManager.createTables(this.sql);
     SubagentRunStore.createTables(this.sql);
     CardManager.createTables(this.sql);
+    // A local table of a Dolt cell: no AUTOINCREMENT (its counter would be a tracked table). The newest rows are
+    // never deleted, so the rowid still only grows.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_hot_path_trace (
-      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      sequence INTEGER PRIMARY KEY,
       channel_id TEXT NOT NULL, phase TEXT NOT NULL, source TEXT, item_id TEXT,
       generation INTEGER, started_at INTEGER NOT NULL, duration_ms INTEGER,
       details_json TEXT NOT NULL
@@ -4568,21 +4572,28 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     }
   }
 
+  /**
+   * The commit of this agent's cell a fork for `channelId` through `throughSequence` is taken at: the last closed turn
+   * that holds no entry beyond what that channel prefix accounts for (§6.4), with what the fork needs to adopt it.
+   * Pure of the cell's state apart from a receipt-free read: the same question asked again gets the same commit.
+   */
   @rpc({
     website: {
       kind: "closed",
-      reason: "Knowledge export belongs to the owned channel fork operation.",
+      reason: "The fork frontier belongs to the owned channel fork operation.",
     },
     principals: ["host", "code"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
   })
-  async exportChannelKnowledge(
+  async forkFrontier(
     input: ExportChannelKnowledgeInput
-  ): Promise<NativeChannelKnowledge> {
+  ): Promise<NativeForkFrontier> {
     if (!this.subscriptions.ownsReasoningLoop(input.channelId))
-      throw new Error("Knowledge export requires owned reasoning membership");
+      throw new Error("A fork frontier requires owned reasoning membership");
+    const dolt = this.dolt;
+    if (!dolt) throw new Error("An agent fork needs the Dolt history of its cell");
     const conversation = await this.nativeChannelConversation(input.channelId);
     const harness = this.admittedAgentSession();
     const binding = await retainedNativeConversationChannel(
@@ -4593,8 +4604,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const channel = this.createChannelClient(input.channelId, this.agentRpc);
     const channelRef = parseDoTargetId(await channel.resolveTarget());
     if (!channelRef || channelRef.objectKey !== input.channelId)
-      throw new Error("Knowledge export resolved a different canonical channel");
-    return exportNativeChannelKnowledge(
+      throw new Error("A fork frontier resolved a different canonical channel");
+    return nativeForkFrontier(
       {
         harness,
         conversation,
@@ -4605,29 +4616,36 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         configuration: () => this.exportNativeAgentKnowledgeConfiguration(input.channelId),
       },
       input,
+      (at) => lastTurnCommitThrough(dolt, at),
       BACKGROUND_CONTEXT
     );
   }
 
+  /**
+   * The first activation of a cell forked from another agent's: it holds the conversation and none of the source's
+   * local state. Bind it to the channel it was forked for, subscribe, and carry on as a new agent of its own.
+   */
   @rpc({
     website: {
       kind: "closed",
-      reason: "Knowledge import belongs to the owned channel fork operation.",
+      reason: "Fork adoption belongs to the owned channel fork operation.",
     },
     principals: ["host", "code"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
   })
-  async importChannelKnowledge(
-    input: ImportChannelKnowledgeInput
+  async adoptChannelKnowledge(
+    input: AdoptChannelKnowledgeInput
   ): Promise<{ ok: boolean; participantId: string }> {
     this.admitChannelEndpoint(input.channelId, input.channelRef);
     this.ensureIdentity();
+    // The cell is a fork until this adoption says otherwise: its first session binds the new owner to it.
+    this.setStateValue(FORK_ADOPTION_KEY, "pending");
     const harness = await this.agentSession(BACKGROUND_CONTEXT);
     const owner = await retainedAgentExecutionOwner(harness, BACKGROUND_CONTEXT);
     if (owner.contextId !== input.contextId)
-      throw new Error("Knowledge import changed its receiving host context");
+      throw new Error("Fork adoption changed its receiving host context");
     const descriptor = this.getEffectiveParticipantInfo(input.channelId, input.config);
     const prepared = await this.subscriptions.prepareSubscription({
       channelId: input.channelId,
@@ -4638,7 +4656,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       replay: false,
     });
     const intent = copyJson(prepared, { omitUndefinedProperties: true });
-    await importNativeChannelKnowledge(
+    await adoptNativeChannelKnowledge(
       harness,
       input,
       {
@@ -4655,8 +4673,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             {
               operationId: input.operationId,
               parentChannelId: input.parentChannelId,
-              throughSequence: input.knowledge.throughSequence,
-              knowledgeDigest: sha256HexSyncText(canonicalJson(input.knowledge)),
+              throughSequence: input.frontier.throughSequence,
+              knowledgeDigest: sha256HexSyncText(canonicalJson(input.frontier)),
             }
           );
           await this.bindNativeChannelPublication(tx, id, {
@@ -4683,6 +4701,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       },
       BACKGROUND_CONTEXT
     );
+    this.deleteStateValue(FORK_ADOPTION_KEY);
     return { ok: true, participantId: this.participantId() };
   }
 
@@ -4840,7 +4859,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       )
         throw new Error("Child fallback model cannot be materialized: " + String(fallback));
       const targetKey = `subagent:${execution.invocationId}`;
-      let knowledge: NativeChannelKnowledge | null = null;
+      let frontier: NativeForkFrontier | null = null;
       if (p.mode === "fork") {
         const snapshot = await this.createChannelClient(
           binding.channelId,
@@ -4849,7 +4868,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         const throughSequence = snapshot.ready.snapshotLastSeq;
         if (typeof throughSequence !== "number")
           throw new Error("Child fork has no canonical channel frontier");
-        knowledge = await this.exportChannelKnowledge({
+        // The child is a fork of this agent's cell at the last closed turn that holds nothing beyond
+        // the channel's present frontier; it adopts that conversation for its own task channel.
+        frontier = await this.forkFrontier({
           operationId: targetKey,
           channelId: binding.channelId,
           throughSequence,
@@ -4883,7 +4904,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             depth: offer["depth"],
             lineageParticipantIds: p.mode === "fork" ? offer["lineageParticipantIds"] : [],
             requestedConfig: overrides,
-            knowledge,
+            frontier,
             startedAt: Date.now(),
           },
           { omitUndefinedProperties: true }
@@ -4964,12 +4985,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     });
     if (contextId !== intent.childContextId)
       throw new Error("Child provisioning changed its admitted resource identity");
+    const frontier =
+      p["mode"] === "fork" ? (p["frontier"] as unknown as NativeForkFrontier) : null;
     const child = await createAgentEntity(invocationRpc, {
       source: p["source"],
       className: p["className"],
       key: intent.targetKey,
       contextId,
       agentChannelId: intent.taskChannelId,
+      ...(frontier ? { forkStorage: { at: frontier.commit } } : {}),
       config,
       stateArgs: {
         subagent: {
@@ -5013,13 +5037,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       throw new Error("Child launch record changed its actual resource owner");
     this.subagentRuns.insert(run);
     const subscription =
-      p["mode"] === "fork"
-        ? await importAgentChannelKnowledge(invocationRpc, child, {
+      frontier
+        ? await adoptAgentChannelKnowledge(invocationRpc, child, {
             operationId: intent.targetKey,
             parentChannelId: intent.channelId,
             channelId: intent.taskChannelId,
             contextId,
-            knowledge: p["knowledge"] as unknown as NativeChannelKnowledge,
+            frontier,
             config,
           })
         : await subscribeAgentToChannel(invocationRpc, child, {

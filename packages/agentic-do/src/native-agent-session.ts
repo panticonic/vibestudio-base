@@ -48,6 +48,7 @@ export async function openPlatformAgentSession(
   call: AgentHostCall,
   options: Omit<HarnessOptions, "publishWake">,
   context: Context,
+  binding: AgentBindingOptions = {},
 ): Promise<Harness> {
   const loaded = { ...image };
   if (
@@ -109,6 +110,7 @@ export async function openPlatformAgentSession(
       },
     },
     context,
+    binding,
   );
   admittedExecutors.set(harness, {
     ...loaded,
@@ -294,6 +296,12 @@ export async function retireBoundAgentSession(
   }, context);
 }
 
+/** How an activation binds to the store it opens. */
+export interface AgentBindingOptions {
+  /** The store is a fork of another agent cell, taken at one of its commits: it has the conversation and no owner. */
+  readonly adoptFork?: boolean;
+}
+
 type BoundHarnessOptions = Omit<HarnessOptions, "publishWake"> & {
   readonly publishWake: NonNullable<HarnessOptions["publishWake"]>;
 };
@@ -309,6 +317,7 @@ export async function openBoundAgentSession(
   owner: AgentExecutionOwner & { readonly generation: number },
   options: BoundHarnessOptions,
   context: Context,
+  binding: AgentBindingOptions = {},
 ): Promise<Harness> {
   const bound = { ...owner };
   let harness: Harness | undefined;
@@ -435,7 +444,12 @@ export async function openBoundAgentSession(
         undefined,
         context,
       );
-      if (conversations.items.length > 0 || documents.items.length > 0)
+      // A fork of an agent cell holds the conversation (versioned) and none of the owner's local state; its first
+      // activation, which the fork's adoption drives, binds the new owner to it.
+      if (
+        (conversations.items.length > 0 || documents.items.length > 0) &&
+        !binding.adoptFork
+      )
         throw new Error(
           "Unbound execution namespace: existing data has no admitted execution owner",
         );
