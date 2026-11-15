@@ -422,6 +422,33 @@ describe("native channel fork frontier and adoption", () => {
       ),
     ).rejects.toThrow(/changed its immutable input/);
   });
+  it("deduplicates a redelivery after the cell was evicted between turns: the same input runs no second turn", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pi-evict-"));
+    directories.push(directory);
+    const path = join(directory, "cell.sqlite");
+    const first = await fixture("evicted", await openNodeCompositeSqliteStorage(path));
+    const conversation = await first.open();
+    await first.input(conversation, "answered once");
+    const delivered = first.events[0]!;
+    const entriesBefore = (await conversation.entries({}, 100, undefined, context)).items.length;
+    expect(first.faux.state.callCount).toBe(1);
+    // The cell leaves memory between turns; its next activation opens the same store as the same owner.
+    await first.harness.close(context);
+    sessions.splice(sessions.indexOf(first.harness), 1);
+    const second = await fixture("evicted", await openNodeCompositeSqliteStorage(path));
+    second.faux.setResponses([fauxAssistantMessage("a second answer that must never be asked for")]);
+    await submitNativeChannelDelivery(
+      second.harness,
+      second.binding,
+      second.delivery(delivered),
+      { kind: "input", content: "answered once" },
+      context,
+    );
+    await second.harness.runPass(context);
+    const reopened = await second.harness.conversation(conversation.id, context);
+    expect((await reopened!.entries({}, 100, undefined, context)).items.length).toBe(entriesBefore);
+    expect(second.faux.state.callCount).toBe(0);
+  });
   it("refuses a cell with a conversation and no owner unless it is a fork being adopted", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pi-unbound-"));
     directories.push(directory);
