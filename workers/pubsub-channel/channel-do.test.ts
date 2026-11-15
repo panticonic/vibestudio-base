@@ -5518,6 +5518,122 @@ describe("PubSubChannel", () => {
     ).rejects.toThrow(/cannot fork after unfinished message streaming-1/);
   });
 
+  it("forks every kept agent's cell at its own commit, and a crash between phases resumes from the journaled frontiers", async () => {
+    const self = "do:workers/pubsub-channel:PubSubChannel:channel-ma-parent";
+    const agents = [
+      { parent: "do:workers/agent-worker:AiChatWorker:agent-ma-a", child: "agent-ma-a-child", commit: "commit-a" },
+      { parent: "do:workers/agent-worker:AiChatWorker:agent-ma-b", child: "agent-ma-b-child", commit: "commit-b" },
+    ];
+    const frontierCalls = new Map<string, number>();
+    const adoptCalls: string[] = [];
+    const cloneRequests: Array<{ storageAt: Record<string, string> }> = [];
+    let hangOnSecondAgent = true;
+    const rpcCall = (target: string, method: string, args: unknown[]) => {
+      if (target === "main" && method === "workers.resolveService" && args[0] === "vibestudio.channel.v1")
+        return durableObjectServiceFixture(
+          `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+          {
+            source: "workers/pubsub-channel",
+            name: "PubSubChannel",
+            className: "PubSubChannel",
+            objectKey: String(args[1]),
+          },
+        );
+      if (target === "main" && method === "workspace-state.entity.resolveActive") return activeEntityFixture(args[0]);
+      const agent = agents.find((candidate) => candidate.parent === target);
+      if (agent && method === "forkFrontier") {
+        frontierCalls.set(target, (frontierCalls.get(target) ?? 0) + 1);
+        const request = args[0] as { channelId: string; throughSequence: number };
+        return {
+          channelId: request.channelId,
+          throughSequence: request.throughSequence,
+          conversationId: 1,
+          commit: agent.commit,
+          entryHigh: 3,
+          anchors: [],
+        };
+      }
+      if (target === "main" && method === "runtime.cloneContext") {
+        cloneRequests.push(args[0] as { storageAt: Record<string, string> });
+        return {
+          contextId: "ctx-ma-fork",
+          contexts: [],
+          rewired: [],
+          entities: [
+            {
+              sourceId: self,
+              newId: "do:workers/pubsub-channel:PubSubChannel:channel-ma-child",
+              kind: "do",
+              source: "workers/pubsub-channel",
+              className: "PubSubChannel",
+              sourceKey: "channel-ma-parent",
+              newKey: "channel-ma-child",
+              targetId: "do:workers/pubsub-channel:PubSubChannel:channel-ma-child",
+            },
+            ...agents.map((agent) => ({
+              sourceId: agent.parent,
+              newId: `do:workers/agent-worker:AiChatWorker:${agent.child}`,
+              kind: "do",
+              source: "workers/agent-worker",
+              className: "AiChatWorker",
+              sourceKey: agent.parent.split(":").at(-1)!,
+              newKey: agent.child,
+              targetId: `do:workers/agent-worker:AiChatWorker:${agent.child}`,
+            })),
+          ],
+        };
+      }
+      if (method === "adoptChannelKnowledge") {
+        adoptCalls.push(target);
+        // The first life never gets an answer from the second agent: it is killed there.
+        if (hangOnSecondAgent && target.endsWith(agents[1]!.child)) return new Promise(() => {});
+        return null;
+      }
+      if (method === "postClone" || method === "runtime.rebindAgentChannel") return null;
+      return undefined;
+    };
+    const fake = await newChannelFake();
+    const input = { operationId: "multi-agent-fork-1", locus: { kind: "head" as const }, reason: "deep dive" };
+    const first = await createGadBackedChannel({ channelKey: "channel-ma-parent", fake, rpcCall });
+    setRpcCaller(first.instance, "panel:user", "panel");
+    await first.instance.subscribe("panel:user", { contextId: "ctx-ma", name: "User", type: "panel" });
+    for (const [index, agent] of agents.entries()) {
+      setRpcCaller(first.instance, agent.parent, "durable-object");
+      await first.instance.join({
+        participantId: agent.parent,
+        operationId: `join-${index}`,
+        contextId: "ctx-ma",
+        metadata: { name: `Agent ${index}`, type: "agent" },
+        delivery: "all",
+        endpoint: { kind: "entity", entityId: agent.parent, invocation: "direct" },
+        applicationConfig: null,
+        replay: true,
+      });
+    }
+    setRpcCaller(first.instance, "panel:user", "panel");
+    void first.instance.fork(input).catch(() => undefined);
+    await vi.waitFor(() => expect(adoptCalls).toHaveLength(2), { timeout: 10_000 });
+    // The first life is gone with the second adoption unanswered. A second life over the same cell resumes the operation.
+    hangOnSecondAgent = false;
+    const second = await createGadBackedChannel({ channelKey: "channel-ma-parent", fake, rpcCall });
+    setRpcCaller(second.instance, "panel:user", "panel");
+    const result = await second.instance.fork(input);
+    expect(result.clonedAgents.map((agent) => agent.objectKey).sort()).toEqual(
+      agents.map((agent) => agent.child).sort(),
+    );
+    // Each agent named its commit once: the resumed operation used the journaled frontiers.
+    for (const agent of agents) expect(frontierCalls.get(agent.parent)).toBe(1);
+    // Every cell was forked at its own commit, the channel's beside them.
+    for (const request of cloneRequests) {
+      expect(request.storageAt[agents[0]!.parent]).toBe("commit-a");
+      expect(request.storageAt[agents[1]!.parent]).toBe("commit-b");
+      expect(typeof request.storageAt[self]).toBe("string");
+    }
+    expect(cloneRequests.length).toBeGreaterThanOrEqual(2);
+    // Both agents were adopted in the second life, the first one again (an adoption is idempotent by operation).
+    expect(adoptCalls.filter((target) => target.endsWith(agents[1]!.child))).toHaveLength(2);
+  });
+
   it("keeps failed fork cleanup retryable until context destruction succeeds", async () => {
     let destroyAttempts = 0;
     const { instance, sql } = await createGadBackedChannel({
