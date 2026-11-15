@@ -4642,6 +4642,19 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     this.ensureIdentity();
     // The cell is a fork until this adoption says otherwise: its first session binds the new owner to it.
     this.setStateValue(FORK_ADOPTION_KEY, "pending");
+    if (input.frontier.entryHigh === 0) {
+      // The fork was taken before any turn of the source closed: nothing of its conversation survives in the cell,
+      // so the agent joins the fork channel as a new agent would, with the channel's history as its context.
+      const joined = await this.subscribeChannel({
+        channelId: input.channelId,
+        channelRef: input.channelRef,
+        contextId: input.contextId,
+        config: input.config,
+        replay: true,
+      });
+      this.deleteStateValue(FORK_ADOPTION_KEY);
+      return joined;
+    }
     const harness = await this.agentSession(BACKGROUND_CONTEXT);
     const owner = await retainedAgentExecutionOwner(harness, BACKGROUND_CONTEXT);
     if (owner.contextId !== input.contextId)
