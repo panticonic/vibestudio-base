@@ -1166,7 +1166,6 @@ describe("PubSubChannel", () => {
         { value: 2 },
       );
       expect(requests[0]!.events).toHaveLength(2);
-      const prefix = canonicalLedger(channel.instance).at(1)!;
       expect(() =>
         channel.instance.settleReadyWork("channel-observation", {
           workerId,
