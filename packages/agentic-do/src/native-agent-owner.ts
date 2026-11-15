@@ -65,7 +65,6 @@ import {
 import { nativeAgentCommitPolicy } from "./native-agent-commits.js";
 import {
   hasLegacyPiLayout,
-  localPiTables,
   PI_STORE_LAYOUT_KEY,
   PI_STORE_LAYOUT_VERSION,
   splitLegacyPiStore,
@@ -352,8 +351,26 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       "documents",
       "document_revisions",
       "payload_chunks",
-      ...localPiTables(),
     ];
+  }
+
+  /**
+   * The local table set exists, with its schema-version row: created for an object that predates the split, and
+   * again for a fork, whose local tables came with their definitions and none of their rows. A read when there is
+   * nothing to do.
+   */
+  private async ensureLocalPiTables(): Promise<void> {
+    try {
+      const row = this.native.sql
+        .exec("SELECT version FROM vsl_durable_schema WHERE singleton = 1")
+        .toArray()[0];
+      if (row && Number(row["version"]) >= 2) return;
+    } catch {
+      // The table is missing: the object predates the split.
+    }
+    await new NativeDatabase(this.native).transaction(async (transaction) => {
+      await applyCompositeSqliteMigrationsInTransaction(transaction);
+    });
   }
 
   /**
@@ -373,7 +390,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
    * has no such rows, which is every new one, only records its layout. One committed transaction, so a crash leaves
    * the old layout or the new one.
    */
-  private migratePiStoreLayout(): void {
+  private async migratePiStoreLayout(): Promise<void> {
+    await this.ensureLocalPiTables();
     const recorded = this.native.sql
       .exec("SELECT value FROM state WHERE key = ?", PI_STORE_LAYOUT_KEY)
       .toArray()[0];
@@ -667,6 +685,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             // The owning schema gate already committed and validated the whole
             // store. SqliteStorage consumes that gate, never a second installer.
             const sqliteStartedAt = Date.now();
+            await this.ensureLocalPiTables();
             const storage = await CompositeSqliteStorage.open(
               database,
               // A Dolt cell commits at a closed turn; a SQLite cell (a test double) has no commit to make.

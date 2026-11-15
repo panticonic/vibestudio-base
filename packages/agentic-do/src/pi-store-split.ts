@@ -13,16 +13,6 @@ export const PI_STORE_LAYOUT_KEY = "vibestudio.pi-store.layout";
 /** 2: one table set, as Pi ships it. 3: the versioned set and the local `vsl_` set (`CompositeSqliteStorage`). */
 export const PI_STORE_LAYOUT_VERSION = 3;
 
-/** The local table set's names, in the order a move writes them (a record's ID row first). */
-const LOCAL_TABLES = [
-  "record_ids",
-  "tasks",
-  "submissions",
-  "documents",
-  "document_revisions",
-  "payload_chunks",
-] as const;
-
 /**
  * A document is local unless it is conversation knowledge: a conversation document that a fork inherits (`fork` of
  * `current` or `asOf`). This is `defaultDocumentRoute` as SQL over the legacy tables, whose record JSON (revision 0 of
@@ -82,15 +72,4 @@ export function splitLegacyPiStore(sql: PiStoreSql, prefix: string = DEFAULT_LOC
        next_seq = (SELECT next_seq FROM durable_metadata WHERE singleton = 1)
      WHERE singleton = 1`,
   );
-}
-
-/** The `vsl_` tables of the local set, for the owner's required-table check. */
-export function localPiTables(prefix: string = DEFAULT_LOCAL_PREFIX): readonly string[] {
-  return [
-    `${prefix}durable_schema`,
-    `${prefix}durable_metadata`,
-    ...LOCAL_TABLES.map((table) => `${prefix}${table}`),
-    `${prefix}conversations`,
-    `${prefix}entries`,
-  ];
 }

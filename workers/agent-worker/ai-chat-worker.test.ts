@@ -403,6 +403,43 @@ describe("AiChatWorker", () => {
     expect(second.instance).toBeInstanceOf(TestableAiChatWorker);
   });
 
+  it("opens an object made before the local table set, creates the set, and records the layout", async () => {
+    const first = await createTestDO(TestableAiChatWorker, {
+      ...admittedImage,
+      __objectKey: "agent-before-split",
+    }, { props: activationProps("agent-before-split") });
+    resources.push(first);
+    expect(
+      (
+        await releaseAcrossPhases(first.instance, {
+          epoch: "replacement",
+          mode: "suspend",
+          reason: "test",
+          deadlineMs: 0,
+        })
+      ).status,
+    ).toBe("ready");
+    resources.splice(resources.indexOf(first), 1);
+    // The object as the single-set build left it: no local tables, no layout record, the same sealed schema.
+    const names = first.sql
+      .exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'vsl\\_%' ESCAPE '\\'")
+      .toArray()
+      .map((row) => String(row["name"]));
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) first.db.run(`DROP TABLE ${name}`);
+    first.db.run("DELETE FROM state WHERE key = 'vibestudio.pi-store.layout'");
+    const second = await createTestDO(
+      TestableAiChatWorker,
+      { ...admittedImage, __objectKey: "agent-before-split" },
+      { db: first.db, props: activationProps("agent-before-split") },
+    );
+    resources.push(second);
+    expect(second.sql.exec("SELECT version FROM vsl_durable_schema").one()["version"]).toBe(2);
+    expect(
+      second.sql.exec("SELECT value FROM state WHERE key = 'vibestudio.pi-store.layout'").one()["value"],
+    ).toBe("3");
+  });
+
   it("exposes the shared provider connect presets to the credential flow", async () => {
     const worker = await makeWorker();
     for (const providerId of Object.keys(PROVIDER_CREDENTIAL_SETUPS)) {
