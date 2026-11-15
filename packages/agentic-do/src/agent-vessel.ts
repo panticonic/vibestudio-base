@@ -4700,6 +4700,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
               displayName: descriptor.name,
             },
             policy: this.getPublishPolicy(input.channelId) ?? "all",
+            ...this.nativeReportTo(input.channelId),
           });
         },
       },
@@ -6564,11 +6565,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           displayName: descriptor.name,
         },
         policy: this.getPublishPolicy(channelId) ?? "all",
-        ...(this.subagentIdentity()?.taskChannelId === channelId
-          ? { reportTo: this.subagentIdentity()!.parentParticipantId }
-          : {}),
+        ...this.nativeReportTo(channelId),
       },
     };
+  }
+
+  /** A subagent reports to its parent on its task channel; the projection's binding is immutable, so every path that
+   *  binds it (a fresh open, a fork's adoption) names the same recipient. */
+  private nativeReportTo(channelId: string): { reportTo: string } | Record<string, never> {
+    const subagent = this.subagentIdentity();
+    return subagent?.taskChannelId === channelId ? { reportTo: subagent.parentParticipantId } : {};
   }
 
   override async resumeAfterRestart(input: LifecycleResumeInput): Promise<void> {

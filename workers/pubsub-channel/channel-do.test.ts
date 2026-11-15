@@ -5610,9 +5610,23 @@ describe("PubSubChannel", () => {
         replay: true,
       });
     }
+    // A headless client is an entity in the channel too; it has no cell to fork and is never asked for a frontier.
+    const headless = "do:workers/session:SessionDO:headless-client";
+    setRpcCaller(first.instance, headless, "durable-object");
+    await first.instance.join({
+      participantId: headless,
+      operationId: "join-headless",
+      contextId: "ctx-ma",
+      metadata: { name: "Headless", type: "headless" },
+      delivery: "all",
+      endpoint: { kind: "entity", entityId: headless, invocation: "direct" },
+      applicationConfig: null,
+      replay: true,
+    });
     setRpcCaller(first.instance, "panel:user", "panel");
     void first.instance.fork(input).catch(() => undefined);
     await vi.waitFor(() => expect(adoptCalls).toHaveLength(2), { timeout: 10_000 });
+    expect(frontierCalls.has(headless)).toBe(false);
     // The first life is gone with the second adoption unanswered. A second life over the same cell resumes the operation.
     hangOnSecondAgent = false;
     const second = await createGadBackedChannel({ channelKey: "channel-ma-parent", fake, rpcCall });

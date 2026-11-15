@@ -7211,6 +7211,9 @@ export class PubSubChannel
           !p.doRef
         )
           continue;
+        // Only an agent has a cell to fork: a headless client is an entity too (kind "external"), and it holds no
+        // conversation knowledge to select a commit of.
+        if (p.ref.kind !== "agent") continue;
         if (includeScope && !includeScope.has(doTarget(p.doRef))) continue;
         opts.agents.push({
           participantId: p.participantId,
