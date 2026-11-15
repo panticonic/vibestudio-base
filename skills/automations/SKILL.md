@@ -44,7 +44,7 @@ current user, and the missions service checks ownership again on mutation.
   The prompt should include the observation, the requested response, and any
   notification instruction. Errors fail the run; they are not quiet results.
 - Agent `eval`: a small script that runs as the same agent in its channel-bound
-  EvalDO. Eval code has the normal module API. Model-facing tools such as
+  eval kernel. Eval code has the normal module API. Model-facing tools such as
   `notify` are not JavaScript globals. Use a `tool` action for a known tool and
   exact arguments, or a prompt action when the agent should decide what to do.
 - Lower-level `method` charter: a reusable deterministic method on another

@@ -1,10 +1,10 @@
 import { canonicalBase64Bytes } from "./portable-bytes.js";
 /**
- * Eval tool — runs code in the agent's own server-side EvalDO via the `eval` service
+ * Eval tool — runs code in the agent's own server-side eval kernel via the `eval` service
  * (owner = the agent's verified identity). Replaces the former panel-advertised `eval`
  * channel method: the native task owns the admission and waits on its receipt.
- * EvalDO runs the code. REPL scope + a synchronous SQLite `db` persist
- * in the EvalDO across calls.
+ * eval kernel runs the code. REPL scope + a synchronous SQLite `db` persist
+ * in the eval kernel across calls.
  */
 import { Type, type Static } from "@panticonic/pi-ai";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
@@ -351,7 +351,7 @@ export async function formatEvalResult(
     // different kind of object, which the upgrade did not carry over. Said once.
     parts.push(
       "[kernel] This notebook was upgraded: scope values and `db` tables from the previous " +
-        "version (its EvalDO) were not carried over and are gone. Rebuild what you need from " +
+        "version (its eval kernel) were not carried over and are gone. Rebuild what you need from " +
         "stable IDs, files, or durable records before relying on earlier state.",
     );
   }
@@ -561,7 +561,7 @@ async function imageContentFromEvalReturn(
   };
 }
 
-/** A refused admission is a tool failure, not an EvalDO execution receipt. */
+/** A refused admission is a tool failure, not an eval kernel execution receipt. */
 export type EvalToolDetails = EvalRunResult | { failure: AgentToolFailure };
 
 export type NativeEvalExecution = Required<
@@ -625,7 +625,7 @@ const MAX_EVIDENCE_CHARS = 16_000;
 /**
  * Window to `max` chars (head+tail) with an actionable notice of how much was
  * elided and where to recover the full value: `scopeKey` is the persistent-scope
- * key the EvalDO stashed a bounded full copy under, page/grep it in a follow-up eval.
+ * key the eval kernel stashed a bounded full copy under, page/grep it in a follow-up eval.
  */
 function clampText(text: string, max: number, scopeKey: string): string {
   if (text.length <= max) return text;

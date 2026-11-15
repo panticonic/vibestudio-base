@@ -19,7 +19,7 @@ import {
  * injected as `EVAL_NATLANG_SOURCE`). Like the CDP client, the provider is
  * loaded lazily, only for a cell that can reference it; unlike the CDP client
  * it also lowers the cell and wraps its execution in the owner's natlang task.
- * The EvalDO owns exactly one `EvalNatlang` per owner and closes it whenever it
+ * The eval kernel owns exactly one `EvalNatlang` per owner and closes it whenever it
  * drops the notebook heap the instance was serving.
  */
 

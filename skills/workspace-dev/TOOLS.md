@@ -213,7 +213,7 @@ policy and receipts. There is no scaffold-specific publication recovery API.
 ## eval
 
 Runs TypeScript/JavaScript server-side in your own notebook sandbox (a
-per-agent EvalDO), even when no panel is open. The live heap persists from the
+per-agent eval kernel), even when no panel is open. The live heap persists from the
 first cell until the notebook is reset or retired (no idle timeout); a server
 drain or restart ends it. After an unavoidable restart,
 `[kernel] Restarted` lists which scope keys were restored and which were lost.

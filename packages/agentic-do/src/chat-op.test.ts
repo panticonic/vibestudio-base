@@ -964,11 +964,11 @@ describe("AgentVesselBase activation-local inspection", () => {
   });
 });
 describe("AgentVesselBase.chatOp", () => {
-  it("rejects a caller that is not this agent's own EvalDO", async () => {
+  it("rejects a caller that is not this agent's own eval kernel", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(
-      /only this agent's own EvalDO/
+      /only this agent's own eval kernel/
     );
   });
 
@@ -990,15 +990,15 @@ describe("AgentVesselBase.chatOp", () => {
       throw new Error(`unexpected ${target}.${method}`);
     };
 
-    // Only this agent's own EvalDO may report ingestion (the open DO relay would
+    // Only this agent's own eval kernel may report ingestion (the open DO relay would
     // otherwise let any caller wipe an agent's grants).
     vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.observeOutsideContent(CHANNEL, "web:example.com")).rejects.toThrow(
-      /only this agent's own EvalDO/
+      /only this agent's own eval kernel/
     );
     expect(resets).toEqual([]);
 
-    // The owning EvalDO reports a source; the agent drops its task grants once
+    // The owning eval kernel reports a source; the agent drops its task grants once
     // through the same reset its web tools use.
     vessel.callerIdForTest = await expectedEvalCaller();
     await vessel.observeOutsideContent(CHANNEL, "web:example.com");
@@ -1011,11 +1011,11 @@ describe("AgentVesselBase.chatOp", () => {
     expect(resets).toHaveLength(2);
   });
 
-  it("lists the addressees the list_addressees tool lists, only to this agent's own EvalDO", async () => {
+  it("lists the addressees the list_addressees tool lists, only to this agent's own eval kernel", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(
-      /only this agent's own EvalDO/
+      /only this agent's own eval kernel/
     );
     vessel.callerIdForTest = null;
     await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(/refusing caller/);
@@ -1026,7 +1026,7 @@ describe("AgentVesselBase.chatOp", () => {
     ]);
   });
 
-  it("accepts the agent's own EvalDO (key matches the eval service formula)", async () => {
+  it("accepts the agent's own eval kernel (key matches the eval service formula)", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
     vessel.channelStub.messageTypes.set("weather", WEATHER_TYPE);

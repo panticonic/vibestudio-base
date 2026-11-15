@@ -52,7 +52,7 @@ function requireBinding<T>(bindings: Readonly<Record<string, unknown>>, name: st
  * ambient `nl`/`natlang`, cell lowering, and the owner's natlang runtime.
  *
  * One runtime per owner runs on a workerd platform whose realm is the eval
- * engine's confinement over the host's `UNSAFE_EVAL`. Its default model is the
+ * engine's confinement over the kernel's `codegen` isolate. Its default model is the
  * `executor` role through the model gateway, and every call is recorded to the
  * natlang records service. Inline `nl` has no services; a workspace program
  * loaded with `natlang.load` runs as its own task with exactly its declared

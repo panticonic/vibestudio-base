@@ -1,14 +1,14 @@
 /**
  * Owner-scoped eval-engine bindings — `chat` (channel ops) + `agent` (self
- * introspect/configure) — that an EvalDO injects when it runs AS an agent.
+ * introspect/configure) — that an eval kernel injects when it runs AS an agent.
  *
  * Extracted into a self-contained, import-light module so it is unit-testable
- * without loading the EvalDO's heavy engine/runtime deps. Both bindings forward
+ * without loading the eval kernel's heavy engine/runtime deps. Both bindings forward
  * to the owning agent runtime over the gated `chatOp` channel (the runtime's
- * `assertOwnEvalCaller` restricts that to the agent's own EvalDO).
+ * `assertOwnEvalCaller` restricts that to the agent's own eval kernel).
  */
 
-/** Subset of the EvalDO run args needed to decide + build the owner bindings. */
+/** Subset of the eval kernel run args needed to decide + build the owner bindings. */
 export interface OwnerBindingArgs {
   channelId?: string;
   agentRef?: string;

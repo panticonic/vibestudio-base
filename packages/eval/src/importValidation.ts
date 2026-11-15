@@ -17,7 +17,7 @@ import { analyzeModuleImports } from "@vibestudio/module-imports";
 /**
  * Eval globals that are injected ambiently, NOT exported by `@workspace/runtime`
  * — importing them shadows the working binding with `undefined`. Single source:
- * `EVAL_AMBIENT_ONLY` (so this can't drift from the EvalDO's actual injection).
+ * `EVAL_AMBIENT_ONLY` (so this can't drift from the eval kernel's actual injection).
  */
 const PRE_INJECTED = new Set<string>(EVAL_AMBIENT_ONLY);
 const RUNTIME_SPECIFIER = "@workspace/runtime";

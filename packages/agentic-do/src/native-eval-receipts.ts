@@ -71,18 +71,6 @@ export async function retainedEvalAdmission(
   return admission?.binding ? admission : undefined;
 }
 
-/** Read a committed operation route without creating an admission document. */
-export async function retainedEvalRunRoute(
-  harness: Harness,
-  key: string,
-  context: Context,
-): Promise<EvalRunRoute> {
-  const admission = await harness.snapshot(EvalAdmission, key, context);
-  if (!admission?.binding)
-    throw new Error("Eval receipt has no retained domain admission");
-  return admission.route;
-}
-
 /** Commit the immutable route before crossing the domain admission boundary. */
 export async function bindEvalRun(
   tx: Tx,

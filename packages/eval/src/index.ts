@@ -1,5 +1,4 @@
 // Transform TS/TSX/JSX to CommonJS
-export { EVAL_ENGINE_HOST_CONTRACT_VERSION } from "@vibestudio/service-schemas/evalEngine";
 
 export { transformCode } from "./transform.js";
 export type { TransformOptions, TransformResult } from "./transform.js";

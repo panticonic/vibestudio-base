@@ -32,14 +32,6 @@ const KERNEL_CALL_BUDGET_MS = 60_000;
 /** Cancellation may wait for an owner's cleanup handlers, and a reset for a stuck run's grace. */
 const KERNEL_CONTROL_BUDGET_MS = 180_000;
 
-const SETTLE_METHODS: ReadonlySet<string> = new Set([
-  "appendAuthorityEvent",
-  "failPendingRun",
-  "acknowledgeRunResult",
-  "retainExecutionRoot",
-  "listRetainedExecutionRoots",
-]);
-
 const WEBSITE_CLOSED = {
   kind: "closed",
   reason: "A session's host controls and channel traffic are not exposed to websites.",
@@ -354,18 +346,40 @@ export class SessionDO extends DurableObjectBase {
   }
 
   /**
-   * The host's settlement paths of the push model, until pull replaces them
-   * (docs/dolt-redesign.md §7.5, §7.12 steps 5 and 6): authority events, the
-   * execution roots, acknowledgement. Host only: no session principal calls them.
+   * Facts only the host observes, recorded in the run's event log so a puller sees them in
+   * `events` (docs/dolt-redesign.md §7.5.2). The host calls these; no principal does.
    */
   @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
-  async settle(method: string, args?: unknown[]): Promise<unknown> {
-    if (this.caller?.callerKind !== "server") refuse("settle is for the host", "EACCES");
-    if (!SETTLE_METHODS.has(method)) refuse(`${method} is not a settlement path`, "EINVAL");
+  async recordAuthorityEvent(
+    runId: string,
+    kind: "authority-requested" | "authority-decided",
+    payload: unknown
+  ): Promise<void> {
+    this.requireHost();
+    await (await this.kernel()).call("appendAuthorityEvent", runId, kind, payload);
+  }
+
+  /**
+   * The host's publication interlock for a workspace bundle a notebook imports: the host reserves
+   * the artifact, this entity's kernel commits its owner row, the host finalizes.
+   */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
+  async retainExecutionRoot(
+    runId: string,
+    moduleSpecifier: string,
+    artifact: unknown
+  ): Promise<void> {
+    this.requireHost();
+    await (await this.kernel()).call("retainExecutionRoot", runId, moduleSpecifier, artifact);
+  }
+
+  /** The workspace bundles this notebook retains, for the host's execution-root census. */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "read" })
+  async executionRoots(): Promise<unknown[]> {
+    this.requireHost();
     // A session that never hosted a kernel has no roots to list, and listing is not a reason to start one.
-    if (method === "listRetainedExecutionRoots" && this.getStateValue(KERNEL_HOSTED_KEY) !== "1")
-      return [];
-    return (await this.kernel()).call(method, ...(args ?? []));
+    if (this.getStateValue(KERNEL_HOSTED_KEY) !== "1") return [];
+    return (await this.kernel()).call("listRetainedExecutionRoots") as Promise<unknown[]>;
   }
 
   /**

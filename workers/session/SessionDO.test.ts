@@ -178,19 +178,35 @@ describe("SessionDO", () => {
 });
 
 describe("SessionDO host paths", () => {
-  it("relays only the host's settlement paths, and only for the host", async () => {
+  it("records the host's observations and bundle retention on the kernel, for the host only", async () => {
     const host = codeHost();
     const { call, callAs } = await createTestDO(SessionDO, host.env, { props });
-    await call("settle", "appendAuthorityEvent", ["r1", "authority-requested", { a: 1 }]);
+    await call("recordAuthorityEvent", "r1", "authority-requested", { a: 1 });
     expect(host.seen.find((entry) => entry.method === "appendAuthorityEvent")!.args).toEqual([
       "r1",
       "authority-requested",
       { a: 1 },
     ]);
-    await expect(call("settle", "start", [])).rejects.toThrow(/not a settlement path/);
-    await expect(
-      callAs({ callerId: PRINCIPAL, callerKind: "panel" }, "settle", "failPendingRun", [])
-    ).rejects.toThrow();
+    await call("retainExecutionRoot", "r1", "@workspace/x", { digest: "d" });
+    expect(host.seen.find((entry) => entry.method === "retainExecutionRoot")!.args).toEqual([
+      "r1",
+      "@workspace/x",
+      { digest: "d" },
+    ]);
+    for (const method of ["recordAuthorityEvent", "retainExecutionRoot", "executionRoots"])
+      await expect(
+        callAs({ callerId: PRINCIPAL, callerKind: "panel" }, method, "r1", "x", {})
+      ).rejects.toThrow(/host principal is required|for the host/);
+  });
+
+  it("lists the roots its kernel retains only once it has hosted one", async () => {
+    const host = codeHost(() => [{ runId: "r1" }]);
+    const { call } = await createTestDO(SessionDO, host.env, { props });
+    // Listing is not a reason to start a kernel.
+    await expect(call("executionRoots")).resolves.toEqual([]);
+    expect(host.seen).toHaveLength(0);
+    await call("start", { runId: "r1" }, "n");
+    await expect(call("executionRoots")).resolves.toEqual([{ runId: "r1" }]);
   });
 
   it("relays its lifecycle to the kernel only once it has hosted one, and ends the hold at release", async () => {

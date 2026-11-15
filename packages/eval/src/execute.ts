@@ -15,7 +15,7 @@ const nativeCompileFunction: CompileFunction = (argNames, body) =>
 
 /**
  * Resolves the realm's compile function: a global `__vibestudioCompileFunction__` override
- * (installed by realms where `new Function` is blocked — e.g. the workerd EvalDO kernel,
+ * (installed by realms where `new Function` is blocked — e.g. the workerd eval kernel kernel,
  * backed by an UnsafeEval binding) — else native `new Function`. Mirrors how the realm
  * provides `__vibestudioRequire__`.
  */
@@ -110,7 +110,7 @@ export interface ValidateRequiresResult {
 
 export function unavailableModuleMessage(spec: string): string {
   if (spec.startsWith("node:")) {
-    return `Node built-in module "${spec}" is not available in sandbox eval. Safe node:buffer, node:fs, node:fs/promises, node:path, node:util, node:crypto, and tenant-neutral node:os compatibility modules are supplied by the EvalDO host; use @workspace/runtime APIs such as fs and vcs for other portable work, or put privileged Node work behind a workspace extension/worker service.`;
+    return `Node built-in module "${spec}" is not available in sandbox eval. Safe node:buffer, node:fs, node:fs/promises, node:path, node:util, node:crypto, and tenant-neutral node:os compatibility modules are supplied by the eval kernel host; use @workspace/runtime APIs such as fs and vcs for other portable work, or put privileged Node work behind a workspace extension/worker service.`;
   }
   return `Module "${spec}" not available. For npm packages, use the imports parameter: imports: { "${spec}": "npm:latest" }`;
 }

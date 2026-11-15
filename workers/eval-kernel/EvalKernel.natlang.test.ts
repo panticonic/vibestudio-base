@@ -111,7 +111,6 @@ async function harness(options: { declared?: boolean; version?: unknown } = {}):
   });
   setPriv(instance, "loadLibraryModule", loadLibraryModule);
   setPriv(instance, "engine", {
-    EVAL_ENGINE_HOST_CONTRACT_VERSION: 1,
     executeSandbox: vi.fn(async (code: string, opts: Record<string, unknown>) => {
       executed.push({ code, options: opts });
       return { success: true, consoleOutput: "", returnValue: "done" };
@@ -256,7 +255,6 @@ describe("EvalKernel natlang provider", () => {
       next: "pass the missing evidence as an argument",
     };
     setPriv(h.instance, "engine", {
-      EVAL_ENGINE_HOST_CONTRACT_VERSION: 1,
       executeSandbox: vi.fn(async () => ({
         success: false,
         consoleOutput: "",

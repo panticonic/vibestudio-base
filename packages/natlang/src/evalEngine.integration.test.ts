@@ -4,12 +4,12 @@ import { createEvalNatlang } from "./evalNatlang.js";
 import { EXECUTOR_ENTRY, fakeRpc, testNewFunction, toolCallMessage, type FakeServices } from "./testSupport.js";
 
 /**
- * The provider as the EvalDO drives it, with the real eval engine: the cell is
+ * The provider as the eval kernel drives it, with the real eval engine: the cell is
  * lowered by the provider, the engine transforms and executes the lowered code
  * in its confined realm with the provider's ambient values injected, inside the
- * provider's `runCell`. The model is scripted behind the gateway. The EvalDO's
+ * provider's `runCell`. The model is scripted behind the gateway. The eval kernel's
  * own sequencing (precheck, lazy load, result shape) is covered by the host's
- * `EvalDO.natlang.test.ts` and the managed-instance system test.
+ * `EvalKernel.natlang.test.ts` and the managed-instance system test.
  */
 function harness(services: FakeServices, scope: Record<string, unknown> = {}) {
   const { rpc, gate } = fakeRpc(services);

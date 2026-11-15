@@ -272,7 +272,7 @@ async function gateway(env: Record<string, unknown> = {}) {
 }
 
 const evalCaller = {
-  callerId: "do:vibestudio/internal:EvalDO:abc",
+  callerId: "do:workers/session:SessionDO:abc",
   callerKind: "agent" as const,
   userId: "user:test",
 };

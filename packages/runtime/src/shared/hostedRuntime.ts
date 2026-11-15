@@ -189,7 +189,7 @@ export interface WorkspaceRuntime {
   readonly hosts: AttachedHostsApi;
 }
 
-// DO-safe host helpers — re-exported so a connectionless host (EvalDO) can build
+// DO-safe host helpers — re-exported so a connectionless host (eval kernel) can build
 // its `RuntimeHost` ports from one import without pulling panel/worker bootstrap.
 export { createGatewayFetch } from "./gatewayFetch.js";
 export { createWorkerdClient } from "./workerd.js";

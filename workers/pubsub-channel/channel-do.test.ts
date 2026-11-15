@@ -1589,7 +1589,7 @@ describe("PubSubChannel", () => {
     const channel = await createGadBackedChannel();
     await joinResidentSession(
       channel.instance,
-      "do:vibestudio/internal:EvalDO:cancel-delivery",
+      "do:workers/session:SessionDO:cancel-delivery",
     );
     setRpcCaller(channel.instance, "panel:user", "panel");
     await channel.instance.subscribe("panel:user", {
@@ -1678,7 +1678,7 @@ describe("PubSubChannel", () => {
     "retains the %s channel role independently of its verified DO principal",
     async (type) => {
       const { instance } = await createGadBackedChannel();
-      const senderId = "do:vibestudio/internal:EvalDO:input-client";
+      const senderId = "do:workers/session:SessionDO:input-client";
       await joinResidentSession(instance, senderId, {
         name: "Programmatic participant",
         type,
@@ -2715,7 +2715,7 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const evalDoId = "do:vibestudio/internal:EvalDO:eval-1";
+    const evalDoId = "do:workers/session:SessionDO:eval-1";
     const arbitraryLabel = "headless-diagnose-123";
     setRpcCaller(instance, evalDoId, "durable-object");
 
@@ -2752,7 +2752,7 @@ describe("PubSubChannel", () => {
   });
 
   it("establishes exact admitted self-membership without another entity lookup", async () => {
-    const participantId = "do:vibestudio/internal:EvalDO:admitted-eval";
+    const participantId = "do:workers/session:SessionDO:admitted-eval";
     const lookups: unknown[][] = [];
     const { instance } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
@@ -2797,7 +2797,7 @@ describe("PubSubChannel", () => {
         ...input,
         endpoint: {
           ...input.endpoint,
-          entityId: "do:vibestudio/internal:EvalDO:other",
+          entityId: "do:workers/session:SessionDO:other",
         },
       }),
     ).rejects.toThrow(
@@ -2807,7 +2807,7 @@ describe("PubSubChannel", () => {
 
   it("closes its owned join once and never closes a concurrently replaced membership", async () => {
     const { instance } = await createGadBackedChannel();
-    const participantId = "do:vibestudio/internal:EvalDO:finite-owner";
+    const participantId = "do:workers/session:SessionDO:finite-owner";
     setRpcCaller(instance, participantId, "do");
     const input = {
       participantId,
@@ -3649,7 +3649,7 @@ describe("PubSubChannel", () => {
   });
 
   it("does not let an unavailable failure from an old claim detach a replacement receiver", async () => {
-    const residentId = "do:vibestudio/internal:EvalDO:resident-generation";
+    const residentId = "do:workers/session:SessionDO:resident-generation";
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
@@ -3724,7 +3724,7 @@ describe("PubSubChannel", () => {
   });
 
   it("terminalizes permanent delivery poison and unblocks the ordered lane", async () => {
-    const residentId = "do:vibestudio/internal:EvalDO:permanent-poison";
+    const residentId = "do:workers/session:SessionDO:permanent-poison";
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
@@ -3875,7 +3875,7 @@ describe("PubSubChannel", () => {
 
   it("derives every executable recipient through the same entity endpoint", async () => {
     const agentDoId = "do:workers/agent-worker:AiChatWorker:agent-x";
-    const clientDoId = "do:vibestudio/internal:EvalDO:client-x";
+    const clientDoId = "do:workers/session:SessionDO:client-x";
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
@@ -4249,7 +4249,7 @@ describe("PubSubChannel", () => {
   });
 
   it("routes resident-session method calls through the durable event path", async () => {
-    const evalPid = "do:vibestudio/internal:EvalDO:eval-1";
+    const evalPid = "do:workers/session:SessionDO:eval-1";
     const rpcCalls: Array<{ target: string; method: string }> = [];
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
@@ -4424,12 +4424,12 @@ describe("PubSubChannel", () => {
     },
     {
       name: "resident",
-      target: "do:vibestudio/internal:EvalDO:matrix-live",
+      target: "do:workers/session:SessionDO:matrix-live",
       route: "mailbox",
     },
     {
       name: "disconnected resident",
-      target: "do:vibestudio/internal:EvalDO:matrix-disconnected",
+      target: "do:workers/session:SessionDO:matrix-disconnected",
       route: "mailbox-refused",
     },
     { name: "live session", target: "panel:matrix-provider", route: "session" },
@@ -4894,7 +4894,7 @@ describe("PubSubChannel", () => {
       },
     });
 
-    setRpcCaller(instance, "do:vibestudio/internal:EvalDO:agent-eval", "do");
+    setRpcCaller(instance, "do:workers/session:SessionDO:agent-eval", "do");
     await expect(
       instance.inspectAgent({
         participantId: targetPid,
@@ -5671,7 +5671,7 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const caller = "do:vibestudio/internal:EvalDO:system-tests";
+    const caller = "do:workers/session:SessionDO:system-tests";
 
     await joinResidentSession(instance, caller, {
       name: "System tests",

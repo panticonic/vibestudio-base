@@ -24,7 +24,7 @@ export default function ActionBar({ props = {}, chat, scope, scopes }) {
 Like inline UI, the component receives `{ props, chat, scope, scopes }`.
 `scope` here is the panel's browser-local scope (see
 [INLINE_UI.md](INLINE_UI.md#panel-scope)), not the eval REPL scope, which lives
-server-side in the agent's `EvalDO`. Reach runtime services with
+server-side in the agent's eval kernel. Reach runtime services with
 `chat.rpc.call(...)`.
 
 For a temporary bar, pass `code`. The panel writes it to a scratch file it owns,

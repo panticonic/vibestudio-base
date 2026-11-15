@@ -490,7 +490,7 @@ Rules for routes and object keys:
 
 Use a Durable Object as the default database for user-facing workspace apps,
 panels, and long-lived agent workflows whenever data must be shared beyond one
-agent's eval. The eval `db` is private to that agent's EvalDO. It suits scratch
+agent's eval. The eval `db` is private to that agent's eval kernel. It suits scratch
 analysis and resumable diagnostics, but panels, apps, workers, and other agents
 cannot use it.
 
@@ -1012,14 +1012,14 @@ workspace.
 ### Identity-level tightening (inline)
 
 The principal floor is coarse: any DO caller has caller kind `"do"`. When a
-method must accept only ONE specific caller (this agent's own EvalDO, the
+method must accept only ONE specific caller (this agent's own eval kernel, the
 agent's own PubSubChannel, a known class), add an inline check ON TOP of the
 floor using the server-authenticated caller, which cannot be forged:
 
 ```ts
 @rpc({ website: { kind: "closed", reason: "Internal agent callbacks are not exposed to websites." }, principals: ["code"], effect: { kind: "open" }, tier: "open", sensitivity: "write" })
 async onChannelOp(channelId: string): Promise<void> {
-  await this.assertOwnEvalCaller(channelId); // only THIS agent's own EvalDO
+  await this.assertOwnEvalCaller(channelId); // only THIS agent's own eval kernel
   ...
 }
 // this.rpcCallerId / this.rpcCallerKind / this.caller are server-set from the

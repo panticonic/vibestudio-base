@@ -2,7 +2,8 @@
 
 Run TypeScript/JavaScript **server-side** in your own per-agent sandbox. `eval`
 is a LOCAL agent tool: the agent loop dispatches it in-process, and the code
-runs in your channel's `EvalDO` (a server-side Durable Object), not in the
+runs in your channel's eval kernel (a class hosted by a server-side session
+entity), not in the
 chat/editor panel. Console output is captured and the return value is sent
 back.
 
@@ -23,13 +24,13 @@ bindings never become globals, even while the heap stays alive.
 
 ## Eval Perspective
 
-Eval runs in a server-side EvalDO, not in the visible chat/editor panel, so it
+Eval runs in a server-side eval kernel, not in the visible chat/editor panel, so it
 sees the runtime differently from the user's panel:
 
 - `chat.channelId` is the channel where this agent is currently responding.
   It is not the channel of a parent panel, sibling panel, or any other chat
   panel in the tree.
-- In eval, `panelTree.self()` is the EvalDO runtime handle. Use top-level
+- In eval, `panelTree.self()` is the eval kernel runtime handle. Use top-level
   `getParent()` for the owning agent's nearest visible panel ancestor.
 - `client_eval` runs as the chat panel with its own fixed authority and cannot
   request `panel.inspect`. Reading, inspecting, or driving other panels or
@@ -164,50 +165,45 @@ entry file.
 | `timeoutMs`  | positive integer                                 | —                       | Optional wall-clock deadline in milliseconds; omitted means no deadline                                           |
 | `authority`  | per-run authority intent                         | adaptive mutable prompt | Narrow this run: an exact `requests` allowlist, read-only effects, pregranted-only execution, or preauthorization |
 
-The table describes the agent tool. Code that calls the server service directly
-uses this typed shape:
+The table describes the agent tool. Code that runs dynamic code directly asks
+the host to admit the run, starts it on the entity that hosts the kernel, and
+pulls its committed result; nothing is pushed back. The typed intent is:
 
 ```ts
-import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-await rpc.call("main", mainRpcMethods["eval.start"], [
-  {
-    runId,
-    source: {
-      kind: "inline",
-      code,
-      pathHint: "src/probe.ts",
-      syntax: "typescript",
-    },
-    scope: { key: channelId, lifecycle: "persistent" },
-    resultReceiver: { kind: "caller" }, // optional terminal push to the authenticated caller
-    authority,
+import { createDynamicCodeExecutor } from "@vibestudio/service-schemas/dynamicCode";
+
+const runEval = createDynamicCodeExecutor(rpc, {
+  signal,
+  onEvents: (events) => {
+    // console, authority and state events, in order, as they are pulled
   },
-]);
+});
+const result = await runEval({
+  runId,
+  source: {
+    kind: "inline",
+    code,
+    pathHint: "src/probe.ts",
+    syntax: "typescript",
+  },
+  scope: { key: channelId, lifecycle: "persistent" },
+  authority,
+});
 ```
 
-For a file entry, use `source: {kind:"context-file", path, syntax?}`. Recovery
-and control calls take `scopeKey`, for example `eval.get({runId, scopeKey})`.
-No eval argument can name an owner, channel, context, agent, or receiver
-runtime; the host derives those from the authenticated caller and its verified
-binding.
+For a file entry, use `source: {kind:"context-file", path, syntax?}`. No eval
+argument can name an owner, channel, context, agent, or receiver runtime; the
+host derives those from the authenticated caller and its verified binding.
 
-Host-side integrations can use the unified eval lifecycle helper instead of
-assembling start, status reads, and cancellation themselves. `EvalCall` is the
-canonical `MainRpcCaller` type, so the same descriptor-backed receiver powers
-both direct eval operations and the helper:
-
-```ts
-import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
-import { createEvalExecutor } from "@vibestudio/service-schemas/eval";
-
-const runEval = createEvalExecutor(createMainRpcCaller(rpc), { signal });
-const result = await runEval(input);
-```
-
-The executor owns the run lifecycle: it starts once, reads durable status until
-the result settles, and requests cancellation when its caller aborts. Use the
-lower-level `eval.start`, `eval.get`, and `eval.cancel` methods only when the
-integration needs to manage that lifecycle explicitly.
+The executor owns the run lifecycle: it calls `dynamicCode.admit` (the host's
+admission: authority, execution session, the session entity that hosts the
+kernel), starts the run on that entity, tails its `events` and pulls `await`
+until the committed result settles, requests cancellation when its caller
+aborts, and calls `dynamicCode.release` when the run is terminal. A caller
+that outlives one call (a worker that restarts) keeps the entity's id and the
+run id and pulls from a later activation (`startDynamicCodeRun`,
+`createDynamicCodeRunObserver`). Resetting or disposing a scope are host
+controls: `dynamicCode.reset` (behind its own approval) and `dynamicCode.dispose`.
 
 ### Per-run authority
 
@@ -266,7 +262,7 @@ panels subscribe to `eval:run-event` through `events.watch` for live state,
 console, progress, authority, cleanup, kernel, and diagnostic records, and call
 `eval.events({runId, after, limit})` only to catch up after a reconnect. Agents
 get the final result when the tool call completes and do not poll event pages.
-Workspace import bundles record their immutable build identity in the EvalDO's
+Workspace import bundles record their immutable build identity in the eval kernel's
 run and module provenance, and are kept from garbage collection until the
 kernel is disposed. External npm bundles are not part of the workspace
 BuildStore root set.
@@ -328,7 +324,7 @@ or import them from `@workspace/runtime`.
   `child.services.eval.start(...)` and `child.services.eval.get(...)`. The
   child applies its own schema and authority checks; there is no special eval
   bridge for development.
-- **`fs`**: filesystem scoped to the current context. The EvalDO resolves your
+- **`fs`**: filesystem scoped to the current context. The eval kernel resolves your
   context, so do NOT pass a contextId: `await fs.readdir("/")`,
   `await fs.readFile("src/index.ts", "utf-8")`.
 - **`web`** and **`memory`**: the `web_search`/`web_fetch`/`web_read` and
@@ -384,7 +380,7 @@ eval({ code: `
 
 ### chat (agent eval)
 
-When eval runs **as an agent** (in the agent's own server-side EvalDO), it gets
+When eval runs **as an agent** (in the agent's own server-side eval kernel), it gets
 a `chat` binding for the agent's current channel. It has the same API as
 [CHAT_API.md](CHAT_API.md): `chat.send`, `chat.publish`,
 `chat.publishCustomMessage`/`chat.updateCustomMessage`,
@@ -406,7 +402,7 @@ eval({ code: `
 ` })
 ```
 
-`chat` is a thin proxy: the EvalDO forwards each call to the agent's DO, which
+`chat` is a thin proxy: the eval kernel forwards each call to the agent's DO, which
 performs it through its channel and returns the result. `chat.callMethod`
 resolves to the result from the participant that received the call, and
 `chat.participantByHandle` is async because it fetches the roster over RPC.
@@ -486,7 +482,7 @@ An independent headless agent created directly is different: its model comes
 from the entity's creation config (`stateArgs.agentConfig.model`), not from a
 later subscription.
 
-> `agent` exists only in **agent** eval, like `chat`. The EvalDO forwards each
+> `agent` exists only in **agent** eval, like `chat`. The eval kernel forwards each
 > call to your own vessel, which accepts calls only from your own eval.
 
 ## Top-level Await
@@ -598,8 +594,8 @@ data, return a compact summary and keep the full value in `scope`, `db`, or
 
 Load npm packages through the `imports` parameter; workspace packages resolve
 automatically. Then use a normal `import`. Both static `import` and dynamic
-`await import(...)` work. They compile to the EvalDO's per-owner `require`, so
-your loaded modules never leak into another agent's EvalDO in the same isolate.
+`await import(...)` work. They compile to the eval kernel's per-owner `require`, so
+your loaded modules never leak into another agent's eval kernel in the same isolate.
 
 Local variables and import bindings belong to one eval call. Import functions
 in every call that uses them, and save results and runtime handles in `scope`
@@ -815,14 +811,14 @@ absolute paths such as `/home/user/.../workspace/...`.
 ## REPL Scope
 
 `scope` is the live notebook heap shared by eval cells in the same channel.
-While the kernel is in memory, the EvalDO's in-memory map is the source of
+While the kernel is in memory, the eval kernel's in-memory map is the source of
 truth: objects are not serialized and rebuilt between calls. Functions, class
 instances, handles, and open connections keep their identity and behavior
 across cells. The kernel holds its server residency from its first cell until
 a reset, retirement, drain, or operator revocation ends it; no timer ends it.
 There is no heartbeat, polling loop, or disconnect at the end of a cell.
 
-After each cell, the EvalDO also writes a recovery snapshot to its SQLite
+After each cell, the eval kernel also writes a recovery snapshot to its SQLite
 `repl_scopes` table. The snapshot is not the live heap and never replaces live
 values. It is read only when a new ScopeManager is created after a cold start,
 reset, eviction, or rebuild.
@@ -897,7 +893,7 @@ supplied code, keeping only reserved/base tables. Check the effect of the reset
 in that call or a later one.
 
 Do not call `eval.reset` through `rpc` from inside eval code. A nested RPC call
-is authenticated as the EvalDO, not as the agent that invoked the tool, so it
+is authenticated as the eval kernel, not as the agent that invoked the tool, so it
 cannot address the agent's channel sandbox. Agents reset with
 `eval({ reset: true, ... })`.
 
@@ -908,7 +904,7 @@ by the automatic save after each eval. You do not need to call `scopes.save()`.
 
 ## Database Access
 
-`db` is a **synchronous** SQLite database inside the EvalDO. It persists across
+`db` is a **synchronous** SQLite database inside the eval kernel. It persists across
 calls, turns, and panel disconnects, and is the persistent counterpart to
 `scope`.
 
@@ -942,7 +938,7 @@ const todos = await rpc.call(store.targetId, todoStoreRpcMethods.listTodos, []);
 ```
 
 See [workspace-dev/WORKERS.md](../workspace-dev/WORKERS.md#durable-object-backed-app-databases)
-for the full app database pattern. The eval `db` is private to your EvalDO.
+for the full app database pattern. The eval `db` is private to your eval kernel.
 
 ## Filesystem Access
 
@@ -1481,7 +1477,7 @@ that may stall. When the deadline passes, async work is cancelled normally, and
 synchronous loops and functions are stopped at cooperative checkpoints and
 reported as an eval error instead of hanging the agent runtime. You can split
 long work into shorter runs and keep state in `scope` or `db`; both persist in
-the EvalDO between runs, across turns, and across panel disconnects.
+the eval kernel between runs, across turns, and across panel disconnects.
 
 Use the failure that fits the task. To test error handling and recovery, throw
 the error in one eval and follow it with a successful eval. Use `timeoutMs`
@@ -1519,7 +1515,7 @@ Host-side code that calls the lower-level `eval.cancel` service must check its
 - `false`: only the requested run was cancelled, and the persisted scope and
   user `db` were kept.
 - `true`: the run or its registered cleanup did not finish within the
-  cancellation grace period, so the EvalDO cancelled every unfinished run and
+  cancellation grace period, so the eval kernel cancelled every unfinished run and
   reset its shared scope and user `db` to recover. Do not try to read cleanup
   records from the reset scope; report the forced recovery and start fresh.
 

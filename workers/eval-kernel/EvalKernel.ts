@@ -315,7 +315,6 @@ interface ScopeBlobBackendLike {
 }
 
 interface EvalEngine {
-  EVAL_ENGINE_HOST_CONTRACT_VERSION: number;
   executeSandbox(code: string, options: Record<string, unknown>): Promise<SandboxResult>;
   ScopeManager: new (opts: {
     channelId: string;
@@ -435,7 +434,7 @@ interface RunArgs {
   sourceDigest?: string;
   /**
    * Host fact, admitted with the run: this scope had a notebook in the retired
-   * product `EvalDO`, which the upgrade dropped (docs/dolt-redesign.md §7.10, D5).
+   * product eval kernel, which the upgrade dropped (docs/dolt-redesign.md §7.10, D5).
    * The first result of this kernel reports it once. Server→kernel arg only.
    */
   legacyNotebookDropped?: boolean;
@@ -2078,35 +2077,6 @@ export class EvalKernel extends DurableObjectBase {
         if (pending.size === 0) this.runPendingAuthorityRequests.delete(runId);
       }
     }
-  }
-
-  /**
-   * Settle an execution that never crossed the method boundary.  The host uses
-   * this only after the held executeRun transport failed while the durable row
-   * is still pending.  A running or terminal row is untouched, so loss of a
-   * response cannot overwrite work that actually began.
-   */
-  @rpc(KERNEL_RPC)
-  failPendingRun(runId: string, error: RpcFailure): RunResult | null {
-    const result = this.compactRunResult({
-      success: false,
-      console: "",
-      error,
-      failureKind: "infrastructure",
-      failureCode: "eval_dispatch_failed",
-    });
-    this.sql.exec(
-      `UPDATE runs SET status = 'done', result = ? WHERE run_id = ? AND status = 'pending'`,
-      JSON.stringify(result),
-      runId
-    );
-    const row = this.sql
-      .exec(`SELECT status, result FROM runs WHERE run_id = ?`, runId)
-      .toArray()[0];
-
-    return row?.["status"] === "done" && row["result"] != null
-      ? (JSON.parse(String(row["result"])) as RunResult)
-      : null;
   }
 
   /**

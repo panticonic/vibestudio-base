@@ -26,11 +26,11 @@ interface ScopeRow {
   created_at: number;
 }
 
-/** The scope table name — reserved; the EvalDO `db` binding must refuse DDL/DML on it. */
+/** The scope table name — reserved; the eval kernel `db` binding must refuse DDL/DML on it. */
 export const SCOPE_TABLE = "repl_scopes";
 
 /**
- * Scope row storage backed directly by a synchronous in-DO SQLite handle. The EvalDO keeps only
+ * Scope row storage backed directly by a synchronous in-DO SQLite handle. The eval kernel keeps only
  * row metadata in SQLite; spilled scope values go through the supplied blob backend.
  */
 export class SqlScopeRowBackend implements ScopeRowBackend {

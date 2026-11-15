@@ -154,7 +154,7 @@ eval({
 
 > **Defensive coding:** When an inline UI component uses `props`, default the parameter (`{ props = {}, chat }`) and guard property access (`props?.items ?? []`). For small datasets, constants in the component source are simpler and more portable than `props`.
 
-`eval` runs server-side (in the `EvalDO`) and `inline_ui` compiles in the chat
+`eval` runs server-side (in the eval kernel) and `inline_ui` compiles in the chat
 panel. They have **separate module registries**: a package loaded in `eval` is
 not available to `inline_ui`. To use a non-default npm package in a component,
 put the component in a context-relative file and declare the dependency in the

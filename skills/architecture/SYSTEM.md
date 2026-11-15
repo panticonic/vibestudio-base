@@ -119,7 +119,7 @@ Panel (chat UI)  ⇄  Channel DO (pub/sub log)  ⇄  Agent Worker DO (embeds Pi 
   with one line per skill (name, path, description). The agent pulls full
   skill docs with `read()`; nothing else is pushed into context.
 - **Tools**: the agent's `eval` runs on the server in its own per-agent
-  `EvalDO`, as a normal `do`-principal caller. This guarantees reachability:
+  eval kernel, as a normal `do`-principal caller. This guarantees reachability:
   anything a DO can call, an agent can reach through eval, with the same
   permission checks and consent prompts. Direct tool allow-lists on host
   services are a UX convenience, not the capability model.

@@ -432,7 +432,7 @@ await credentials.fetch("https://api.example.com/v1/items", undefined, {
 For shared application data, use a worker Durable Object with SQLite
 (`this.sql`) and expose narrow RPC methods. Do not keep panel or app state that
 another runtime must read in the eval `db`; it is private to the agent's
-EvalDO.
+eval kernel.
 
 Resolve the service by protocol or name, optionally with an object key for a
 partitioned database, then call the DO target:
@@ -528,7 +528,7 @@ composition.
 
 ### Eval And Visible Panel Perspective
 
-In server-side eval, `panelTree.self()` is the EvalDO runtime, not the visible
+In server-side eval, `panelTree.self()` is the eval kernel runtime, not the visible
 chat panel. Use `getParent()` to get the owning agent's nearest
 visible panel ancestor. To inspect the panel tree the user is talking about,
 use bounded `panelTree.roots()`, `panelTree.children()`, and

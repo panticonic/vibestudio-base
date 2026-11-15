@@ -29,7 +29,6 @@ import {
   wireClientFor,
   type RpcWireClient,
 } from "@vibestudio/rpc/internal";
-import { EVAL_ENGINE_HOST_CONTRACT_VERSION } from "@vibestudio/service-schemas/evalEngine";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { mainRpcMethod, mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { ExecutionJournal } from "./executionJournal.js";
@@ -317,16 +316,13 @@ describe("EvalKernel cancellation + forced recovery", () => {
     expect(() => assertAdmissionOpen.call(instance)).not.toThrow();
   });
 
-  it("imports the template's own eval engine, at the contract version this runtime requires", async () => {
+  it("imports the template's own eval engine", async () => {
     const { instance } = await createTestDO(EvalKernel);
-    const ensureEngine = priv<
-      (execution: unknown) => Promise<{
-        EVAL_ENGINE_HOST_CONTRACT_VERSION: number;
-        executeSandbox: unknown;
-      }>
-    >(instance, "ensureEngine");
+    const ensureEngine = priv<(execution: unknown) => Promise<{ executeSandbox: unknown }>>(
+      instance,
+      "ensureEngine"
+    );
     const engine = await ensureEngine.call(instance, {});
-    expect(engine.EVAL_ENGINE_HOST_CONTRACT_VERSION).toBe(EVAL_ENGINE_HOST_CONTRACT_VERSION);
     expect(typeof engine.executeSandbox).toBe("function");
     // The same instance serves the next run and is what a cell importing the package gets.
     expect(await ensureEngine.call(instance, {})).toBe(engine);

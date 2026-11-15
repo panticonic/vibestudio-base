@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { execute, defaultCompileFunction, type CompileFunction } from "./execute.js";
 
 /**
- * The realm seam: realms where `new Function` is blocked (the workerd EvalDO kernel)
+ * The realm seam: realms where `new Function` is blocked (the workerd eval kernel kernel)
  * inject a compiler — via `ExecuteOptions.compileFunction` or the `__vibestudioCompileFunction__`
  * global. The default stays native `new Function` so panels/CLI are unaffected.
  */

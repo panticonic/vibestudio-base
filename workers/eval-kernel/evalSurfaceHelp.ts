@@ -3,7 +3,7 @@ import { jsonSchemaNumericType } from "@vibestudio/shared/jsonSchemaNumericType"
 
 /**
  * Eval-engine `help('<name>')` surface description — the pure core, so it can be unit-tested under Node
- * (evalDO.ts pulls worker-only imports). `EvalDO.describeInjectedSurface` gathers the live binding's
+ * (EvalKernel.ts pulls worker-only imports). `EvalKernel.describeInjectedSurface` gathers the live binding's
  * method names + the RPC-service schema and hands them here.
  */
 

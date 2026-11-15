@@ -271,7 +271,7 @@ import {
 const CHANNEL_STATE_CACHE_MS = 5_000;
 /** Final backstop cadence for undelivered deferred-eval cancel intents. The
  * primary triggers are lifecycle events (resume, retire); this alarm only
- * covers an EvalDO outage that outlives them. */
+ * covers an eval kernel outage that outlives them. */
 
 /** ~256KB of serialized session entries before compaction — comfortably
  *  under modern model context windows while keeping plenty of recent
@@ -1991,7 +1991,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   /**
    * Canonical model-free automation ingress. The exact revision source is
    * journaled as an ordinary eval invocation and runs in this agent/channel's
-   * EvalDO, so ambient `chat` publishes with this agent's durable identity.
+   * eval kernel, so ambient `chat` publishes with this agent's durable identity.
    */
   @rpc({
     website: {
@@ -3246,15 +3246,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   // ── chat proxy for server-side eval (chatOp) ─────────────────────────────
 
   /**
-   * Forwarded channel operation from THIS agent's own EvalDO sandbox `chat`
-   * binding. The EvalDO can only publish as its own non-agent identity and
+   * Forwarded channel operation from THIS agent's own eval kernel sandbox `chat`
+   * binding. The eval kernel can only publish as its own non-agent identity and
    * cannot receive a delivered method result, so it relays every
    * `ChatSandboxValue` op here and we perform it AS the agent (correct @agent
    * attribution) using our existing channel machinery. Return values mirror
    * `ChatSandboxValue`'s.
    *
-   * Auth: the caller MUST be this agent's own EvalDO. We re-derive that DO's
-   * objectKey the SAME way evalService does — sha256(ownerId + "\\0" + subKey),
+   * Auth: the caller MUST be this agent's own eval kernel. We re-derive that DO's
+   * objectKey the SAME way the host does — sha256(ownerId + "\\0" + subKey),
    * hex, first 40 chars — and require the verified caller id to be
    * `do:workers/session:SessionDO:<key>`. Any other caller is rejected; the
    * generic DO relay is open, so a sensitive receiver gates on receipt.
@@ -3427,7 +3427,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   /** Read-only half of the eval owner surface. Keeping this outside chatOp is
    * intentional: chatOp contains mutations and is therefore correctly
    * classified as write, while a self snapshot must remain usable from a
-   * read-only eval. The same own-EvalDO receiver check protects both routes. */
+   * read-only eval. The same own-eval kernel receiver check protects both routes. */
   @rpc({
     website: {
       kind: "closed",
@@ -3826,14 +3826,14 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   /** Re-derive the runtime id of the session entity that hosts this agent's own
-   *  eval kernel (evalService's formula exactly, `evalRuntimeId`: owner = this
+   *  eval kernel (the host's formula exactly, `evalRuntimeId`: owner = this
    *  agent's runtime id, scope = channelId) and require the verified caller to be it. */
   private async assertOwnEvalCaller(channelId: string): Promise<void> {
     const callerId = this.rpcCallerId;
     const expectedCaller = evalRuntimeId(this.participantId(), channelId);
     if (callerId !== expectedCaller) {
       throw new Error(
-        `chatOp: refusing caller ${callerId ?? "unknown"} — only this agent's own EvalDO may forward chat ops`
+        `chatOp: refusing caller ${callerId ?? "unknown"} — only this agent's own eval kernel may forward chat ops`
       );
     }
   }
@@ -3882,7 +3882,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   ): Promise<number | undefined> {
     // Self-gate: this helper is independently RPC-exposed (collectExposableMethods
     // reflects every method) over the open DO relay, so chatOp's assertOwnEvalCaller
-    // is bypassable by addressing it directly. Only this agent's own EvalDO may act
+    // is bypassable by addressing it directly. Only this agent's own eval kernel may act
     // as the agent.
     await this.assertOwnEvalCaller(channelId);
     const actor = this.cardActor(channelId, participantId);

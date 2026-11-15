@@ -4,7 +4,7 @@ The `chat` object lets panel-rendered components (`inline_ui`, action bars,
 `feedback_custom`) interact with the conversation.
 
 `chat` is also available in agent `eval`, bound to the agent's current channel.
-There, your `EvalDO` injects a `chat` proxy that forwards each call to the agent
+There, your eval kernel injects a `chat` proxy that forwards each call to the agent
 DO, so messages are published as the agent. Everything below works from agent
 eval except `chat.focusMessage`, which is panel-only and resolves `false`
 server-side. `chat.participantByHandle` must be awaited in both places, because
