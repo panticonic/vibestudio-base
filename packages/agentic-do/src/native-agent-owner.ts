@@ -671,6 +671,21 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     return harness;
   }
 
+  /**
+   * The commit of a closed turn (`nativeAgentCommitPolicy`), and the compaction check that follows it: a commit
+   * appends to the file and frees nothing, so a cell that is never collected grows by about 635 KB a turn
+   * (docs/dolt-redesign.md §6.11.8). The check runs later, between turns, in a block of the object, and only
+   * when no turn holds uncommitted work.
+   */
+  private agentCommitPolicy() {
+    const policy = nativeAgentCommitPolicy(() => this.versionedChangesPending());
+    return (...args: Parameters<typeof policy>) => {
+      const message = policy(...args);
+      if (message !== null) this.scheduleDoltGc();
+      return message;
+    };
+  }
+
   private async openAgent(): Promise<Harness> {
     try {
       let phaseStartedAt = Date.now();
@@ -701,9 +716,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             const storage = await CompositeSqliteStorage.open(
               database,
               // A Dolt cell commits at a closed turn; a SQLite cell (a test double) has no commit to make.
-              this.dolt
-                ? { commit: nativeAgentCommitPolicy(() => this.versionedChangesPending()) }
-                : {},
+              this.dolt ? { commit: this.agentCommitPolicy() } : {},
             );
             this.traceOwnerStartup("sqlite-open", sqliteStartedAt);
             return storage;

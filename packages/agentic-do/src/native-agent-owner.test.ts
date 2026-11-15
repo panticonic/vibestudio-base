@@ -1,5 +1,6 @@
 import { bindNativeChannelConversation } from "./native-channel-session.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { hostedCodeMethods } from "@vibestudio/service-schemas/dynamicCode";
 import { retainNativeToolInvocation, retainNativeModelInvocation, readRetainedNativeInvocationSource } from "./native-invocation-source.js";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,7 +54,6 @@ import type {
   LifecyclePrepareInput,
   LifecyclePrepareResult,
 } from "@workspace/runtime/worker/durable-base";
-import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 import {
   bindEvalRun,
   ensureEvalAwaitTask,
@@ -94,6 +94,59 @@ class Owner extends NativeAgentOwner {
   ownerCallOptions: RpcCallOptions = {};
   lastOwnerError: unknown;
   settings: NativeAgentOptions["settings"];
+  /**
+   * The calls the owner's pull makes on the entity that hosts its kernel, which is the owner itself:
+   * they reach its own methods (an agent's relay to its hosted kernel), recorded here and answered by
+   * the host fixture standing in for the kernel.
+   */
+  readonly kernelCalls: string[] = [];
+  private kernelCall<A extends unknown[], R>(
+    method: import("@vibestudio/rpc").RpcMethod<A, R>,
+    args: A,
+  ): Promise<R> {
+    this.kernelCalls.push(method.name);
+    return this.agentRpc.call("kernel-fixture", method, args);
+  }
+  @rpc({
+    website: { kind: "closed", reason: "Test kernel scope." },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async await(runId: string, options: { waitMs?: number }) {
+    return this.kernelCall(hostedCodeMethods.await, [runId, options]);
+  }
+  @rpc({
+    website: { kind: "closed", reason: "Test kernel scope." },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async events(runId: string, options: { after?: number; limit?: number }) {
+    return this.kernelCall(hostedCodeMethods.events, [runId, options]);
+  }
+  @rpc({
+    website: { kind: "closed", reason: "Test kernel scope." },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  async receipt(runId: string) {
+    return this.kernelCall(hostedCodeMethods.receipt, [runId]);
+  }
+  @rpc({
+    website: { kind: "closed", reason: "Test kernel scope." },
+    principals: ["host", "code"],
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  async acknowledge(runId: string, identity: { runDigest: string; resultDigest: string }) {
+    return this.kernelCall(hostedCodeMethods.acknowledge, [runId, identity]);
+  }
   @rpc({
     website: { kind: "closed", reason: "Test owner RPC scope." },
     principals: ["host"],
@@ -2169,15 +2222,16 @@ describe("native Pi entity activation and release", () => {
     const settled = await retainedEvalAdmission(session, runId, BACKGROUND_CONTEXT);
     await session.waitForTask(settled!.acknowledgement!, BACKGROUND_CONTEXT);
     expect(acknowledged).toBe(true);
-    // Every call of the pull is a call on the entity that hosts this owner's scope kernel.
-    const sessionId = evalRuntimeId(runtimeId, scopeKey);
+    // Every call of the pull is a call on the entity that hosts this owner's kernel: the owner itself,
+    // which relays to the kernel it hosts (the fixture answers as that kernel).
     const pulls = h.envelopes.filter((envelope) =>
       ["await", "events", "receipt", "acknowledge"].includes(
         (envelope.message as { method: string }).method,
       ),
     );
     expect(pulls.length).toBeGreaterThanOrEqual(4);
-    expect(pulls.every((envelope) => envelope.target === sessionId)).toBe(true);
+    expect(pulls.every((envelope) => envelope.target === "kernel-fixture")).toBe(true);
+    expect(fixture.instance.kernelCalls.length).toBe(pulls.length);
     // The owner exposes no completion hint: nothing a caller sends can settle a run.
     expect(
       (fixture.instance as unknown as { onEvalComplete?: unknown }).onEvalComplete,

@@ -19,7 +19,7 @@ import {
   createNativeEvalAcknowledgements,
   createNativeEvalAwait,
   ensureEvalAwaitTask,
-  evalSessionId,
+  evalHostId,
   recordEvalAdmission,
   retainedEvalAdmission,
   retainObservedEvalReceipt,
@@ -49,7 +49,7 @@ afterEach(async () => {
   );
 });
 const OWNER = "do:workers/agent:Agent:one";
-const sessionId = evalSessionId(OWNER, undefined);
+const sessionId = evalHostId(OWNER);
 const progress: unknown[] = [];
 async function fixture(
   call: EvalSessionRpc,
