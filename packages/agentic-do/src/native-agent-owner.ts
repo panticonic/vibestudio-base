@@ -359,6 +359,15 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
    * again for a fork, whose local tables came with their definitions and none of their rows. A read when there is
    * nothing to do.
    */
+  /** Whether a versioned table has changes no commit holds: the engine's own status, readable inside a transaction. */
+  private versionedChangesPending(): boolean {
+    return (
+      Number(
+        this.native.sql.exec("SELECT count(*) AS n FROM dolt_status").toArray()[0]?.["n"] ?? 0,
+      ) > 0
+    );
+  }
+
   private async ensureLocalPiTables(): Promise<void> {
     try {
       const row = this.native.sql
@@ -397,7 +406,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       .toArray()[0];
     if (recorded && JSON.parse(String(recorded["value"])) === PI_STORE_LAYOUT_VERSION) return;
     this.committedTransaction(
-      () => "migrate: the Pi store's tasks, submissions and operational documents move to the local set",
+      () =>
+        this.versionedChangesPending()
+          ? "migrate: the Pi store's tasks, submissions and operational documents move to the local set"
+          : null,
       () => {
         if (hasLegacyPiLayout(this.native.sql)) splitLegacyPiStore(this.native.sql);
         this.native.sql
@@ -689,7 +701,9 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             const storage = await CompositeSqliteStorage.open(
               database,
               // A Dolt cell commits at a closed turn; a SQLite cell (a test double) has no commit to make.
-              this.dolt ? { commit: nativeAgentCommitPolicy() } : {},
+              this.dolt
+                ? { commit: nativeAgentCommitPolicy(() => this.versionedChangesPending()) }
+                : {},
             );
             this.traceOwnerStartup("sqlite-open", sqliteStartedAt);
             return storage;

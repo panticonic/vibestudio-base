@@ -18,12 +18,15 @@ interface PublicationEvents {
  * The Dolt commit of an agent cell. A turn is closed by the storage transaction that creates the pending publication
  * of its `turn.closed` event, so that transaction ends in a commit: it sweeps in everything the turn wrote (entries,
  * the documents that are conversation knowledge) and names how much of the conversation it holds. Nothing else commits:
- * a commit per Pi write would cost a root record per write for nothing a fork could ask for.
+ * a commit per Pi write would cost a root record per write for nothing a fork could ask for. `versionedChangesPending`
+ * reads the engine's status of the versioned tables (the SQL table `dolt_status`, which a transaction may read).
  *
  * The commit is found again by `turnCommitEntryHigh` when a fork asks for the last closed turn at or before a
  * conversation entry.
  */
-export function nativeAgentCommitPolicy(): (
+export function nativeAgentCommitPolicy(
+  versionedChangesPending: () => boolean,
+): (
   writes: readonly StorageWrite[],
   seq: Seq,
   state: { readonly entryHigh: number },
@@ -36,6 +39,8 @@ export function nativeAgentCommitPolicy(): (
         (item) => item.event?.kind === "turn.closed",
       );
       if (!closed) continue;
+      // The engine refuses a commit with nothing to commit: a turn that changed no versioned row ends without one.
+      if (!versionedChangesPending()) return null;
       const turn = typeof closed.event?.turnId === "string" ? closed.event.turnId : "unknown";
       return `${TURN_COMMIT_PREFIX}${turn} entries<=${state.entryHigh}`;
     }

@@ -22,13 +22,23 @@ const publication = (state: string, events: unknown[]): StorageWrite =>
   }) as never;
 
 describe("the Dolt commit of an agent cell", () => {
-  const policy = nativeAgentCommitPolicy();
+  let pending = true;
+  const policy = nativeAgentCommitPolicy(() => pending);
   const closed = { event: { kind: "turn.closed", turnId: "native:1:2" }, key: "k" };
 
   it("commits the transaction that creates the pending publication of a closed turn, naming the turn and how much of the conversation it holds", () => {
     expect(policy([publication("pending", [closed])], 7 as never, { entryHigh: 41 })).toBe(
       "agent: turn closed native:1:2 entries<=41",
     );
+  });
+
+  it("commits nothing when the turn changed no versioned row, for the engine refuses an empty commit", () => {
+    pending = false;
+    try {
+      expect(policy([publication("pending", [closed])], 7 as never, { entryHigh: 41 })).toBeNull();
+    } finally {
+      pending = true;
+    }
   });
 
   it("commits nothing for any other write: an answer, an update of the publication, or a turn that opens", () => {
