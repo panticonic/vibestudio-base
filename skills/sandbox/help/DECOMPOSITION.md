@@ -136,3 +136,12 @@ calls; `docs-c` recovered a failed action and was rejected despite a final corre
 returned no matches before query-word indexing was fixed (`docs-d` also introduced an inline self-delegation).
 Sources changed during this development sequence, so it is not an unbiased acceptance-rate estimate.
 Qualification proves this canonical collection/admission path, not generalization to fresh documentation worlds.
+
+The post-merge whole-System typecheck exposed a separate stale ambient boundary:
+`skills/sandbox/help/services.d.ts` still described the former maxBytes-only read and omitted readdir.
+Inventory of all Base/System `natlang:services` ambient declarations found this is the sole filesystem copy;
+other skill declarations describe web, local models or logs. The generated service reference already had the
+correct complete contracts. Update the self-contained ambient subset to those same readText paging and
+readdir signatures; no external host type import enters portable model files. Original evaluator/native
+preflight inject actual service types and therefore did not exercise this standalone workspace declaration.
+The full System composition check, not another runtime pilot, verifies this typing-only correction.
