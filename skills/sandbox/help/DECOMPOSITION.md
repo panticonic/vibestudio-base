@@ -22,11 +22,35 @@ the actual source behavior rather than silently changing it during export.
 | Part | Form | Why |
 | --- | --- | --- |
 | Search terms | crisp: `docHelp/keywords.ts` | Identifiers (`launch_automation`, `vcs.commit`, `WORKSPACE_RPC_METHOD_UNDECLARED`) first, then content words; at most eight. |
-| Candidate files | crisp, in `locateDoc.ts` | One ripgrep over `*.md` (the scope's paths, or the whole workspace); files ranked by the distinct terms their hit lines carry; five read. |
-| Candidate sections | crisp: `docHelp/sections.ts` | Split by heading (code fences respected) into whole paragraphs of at most 1200 characters, each an exact slice. Ranked by the terms they contain (identifiers count three). |
-| Catalog entries | crisp | `docs.search` with the terms, `docs.describe` of the top two; the entry's own description is the candidate. |
-| Does a section answer the question | its own function, `docHelp/fits.nl` (`readout: decision`, `answers \| related \| no`) | Keyword search finds candidates but cannot tell an answer from a mention. A fixed label set per item, not a choice among the candidates. Six candidates at most: each is one scored decision. |
-| Result | crisp | The `answers` first, then `related`, three at most, quoted byte-exact with their path and heading. No synthesis step: writing is what failed in `researchBrief/writeBrief`. |
+| Candidate files | crisp, in `locateDoc.ts` | Grep is a fast path, never a completeness oracle when truncated. On truncation enumerate Markdown paths with `fs.readdir`; read the selected finite source set with paged `fs.readText`. No fixed file cutoff. Scope paths remain authoritative. |
+| Candidate sections | crisp: `docHelp/sections.ts` and `rank.ts` | Split by heading, preserve every exact text slice, then rank by query-term inverse document frequency and length-normalized frequency (BM25). Common words cannot tie all files simply because they occur once. Numerical ranking is search mechanism, not semantic answer selection. |
+| Catalog entries | crisp | `docs.search` supplies the service's default ranked result set; `docs.describe` supplies their real descriptions. The production catalog's own lexical index remains unchanged; the fixture preserves its recorded public search surface rather than becoming a second documentation policy. |
+| Does a section answer the question | its own function, `docHelp/fits.nl` (`readout: decision`, `answers \| related \| no`) | Judge successive batches of the finite ranked candidate list until a batch supplies an answer or the list is exhausted. The batch size only bounds concurrent calls; it never silently discards unjudged candidates. |
+| Result | crisp | The `answers` first, then `related`, three at most, quoted byte-exact with their path and heading. No synthesis step. |
+
+## Retrieval mechanism inventory and pilot correction (2026-11-17)
+
+The live Luna pilot exposed two recall defects: the broad OR query produced 1,631 matching lines in the original
+Base document world, beyond the grep service's 1,000-line result bound; later workspace-dev paths disappeared.
+Equal distinct-term ranking then permanently limited five files and six sections, even after all six semantic
+judgments rejected them. Search order became answer policy. The correction above removes these silent exclusions,
+retains exact service bounds through paging/fallback, and keeps semantic selection in the existing `fits.nl`.
+
+Consumers inventoried before implementation:
+
+- `docHelp/locateDoc.ts` is the one retrieval implementation, called both by `docHelp.nl` and
+  `recoverFromFailure.ts`. Both receive the same fix.
+- `docHelp/keywords.ts` extracts literal query terms; `sections.ts` preserves source slices; `rank.ts` performs
+  exact numerical ranking. No supplied expected answer, source path or case label enters any of them.
+- `suite.ts` supplies recorded filesystem/catalog services and independent quote grounding. It must implement
+  the real `fs.readdir` and paged `fs.readText` shapes; quality expectations remain unchanged.
+- The canonical IR serializer includes authored helper files and the source-world Markdown snapshot, so both
+  source execution and portable teacher execution receive the identical retrieval logic.
+- Production `docsService.ts` delegates to `catalog/catalogIndex.ts` (weighted name/body token overlap, capped
+  public result set); `fs` service schemas bound grep output and expose recursive readdir and readText continuation.
+  These service mechanisms do not select answer sections and need no policy fork.
+- Other templates do not implement docHelp retrieval. Host fixture tests and the Base focused tests cover the
+  service boundary and lexical recall; a genuine Luna rerun qualifies the semantic path.
 
 ## `recoverFromFailure(failure): { cause, by, next, remediation?, docs }`
 
@@ -40,3 +64,12 @@ the actual source behavior rather than silently changing it during export.
 ## Measurement
 
 See "Status" below.
+
+Validation: the original 1,631-line query now reaches the exact `checkPanel` passage in
+`skills/workspace-dev/TOOLS.md`; scripted semantic labels test retrieval mechanics only, not teacher quality.
+Nine Base helper tests and 22 host fixture/IR tests pass. The existing evaluator preflight compiles all 34 cases
+and exports 34 canonical IR records. Catalog snapshot search follows production compound-token splitting,
+name weight three/body weight one, lexical tie-breaking and the public default/cap; snapshot entries do not
+contain the production authority/member metadata, so that extra index information remains outside this recorded world.
+A source whitelist remains an authored partial oracle: an unexpected but actually sufficient source must be
+reviewed as a possible false negative, never silently treated as proof of a bad answer.
