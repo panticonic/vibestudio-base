@@ -7,7 +7,11 @@ export default function searchTerms(terms: readonly string[]): string[] {
     throw new Error(
       "Return at least one nonempty search word or phrase for the requested information.",
     );
-  return normalized;
+  const atoms = normalized.flatMap(
+    (query) =>
+      query.match(/[\p{L}\p{N}_$]+(?:[.:/_-][\p{L}\p{N}_$]+)*/gu) ?? [],
+  );
+  return [...new Set([...normalized, ...atoms])];
 }
 
 /** Treat a chosen search term literally rather than as regular-expression syntax. */

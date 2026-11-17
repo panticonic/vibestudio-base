@@ -22,7 +22,7 @@ the actual source behavior rather than silently changing it during export.
 | Part | Form | Why |
 | --- | --- | --- |
 | Search focus | its own function, `docHelp/keywords.nl` | Identify the requested action and object, excluding incidental timing/sequence/quantity context. Choose focused retrieval words or phrases, preserving named identifiers and using relevant synonyms when helpful. This is semantic policy; equal keyword weights cannot decide which part of a question is its intent. |
-| Search interface | crisp: `docHelp/searchTerms.ts` | Trim and deduplicate typed strings, require a nonempty query set, and escape regex metacharacters. Retrieval vocabulary is unconstrained: query terms are search requests, not answer claims. |
+| Search interface | crisp: `docHelp/searchTerms.ts` | Trim and deduplicate typed queries, add lexical atoms alongside original phrases, require a nonempty query set, and escape regex metacharacters. Retrieval vocabulary is unconstrained: query terms are search requests, not answer claims. |
 | Candidate files | crisp, in `locateDoc.ts` | Grep is a fast path, never a completeness oracle when truncated. On truncation enumerate Markdown paths with `fs.readdir`; read the selected finite source set with paged `fs.readText`. No fixed file cutoff. Scope paths remain authoritative. |
 | Candidate sections | crisp: `docHelp/sections.ts` and `rank.ts` | Split by heading, preserve every exact text slice, then rank by query-term inverse document frequency and length-normalized frequency (BM25). Common words cannot tie all files simply because they occur once. Numerical ranking is search mechanism, not semantic answer selection. |
 | Catalog entries | crisp | `docs.search` supplies the service's default ranked result set; `docs.describe` supplies their real descriptions. The production catalog's own lexical index remains unchanged; the fixture preserves its recorded public search surface rather than becoming a second documentation policy. |
@@ -101,3 +101,11 @@ queries may use phrases, reordered concepts, technical vocabulary or synonyms ab
 Their relevance belongs to `keywords.nl`; `fits.nl`, source authentication and semantic review judge the result.
 `searchTerms.ts` only trims/deduplicates nonempty strings and escapes regex syntax. The obsolete tokenizer and
 vocabulary guard are removed. Tests cover a useful inferred synonym and the observed multiword query.
+
+Two clean-source samples returned ordinary multiword search requests that had no exact whole-phrase corpus
+match. The remaining mechanism mismatch was in crisp query processing: `docs.search` tokenizes requests,
+while filesystem retrieval and BM25 used only entire phrase substrings. Normalize one shared query set into
+lexical atoms (preserving compound identifiers) plus original phrases for exact-match relevance. Both filesystem
+retrieval and ranking consume it; the catalog receives the same set and applies its own public index. This is
+standard lexical indexing, without semantic stopword selection, vocabulary restrictions, or a larger candidate cap.
+The regression replays the observed multiword requests against the original document world.

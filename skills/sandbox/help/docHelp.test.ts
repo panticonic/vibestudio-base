@@ -15,7 +15,15 @@ describe("search terms", () => {
         " ",
         "static analysis",
       ]),
-    ).toEqual(["typecheck", "single panel", "static analysis"]);
+    ).toEqual([
+      "typecheck",
+      "single panel",
+      "static analysis",
+      "single",
+      "panel",
+      "static",
+      "analysis",
+    ]);
     expect(() => searchTerms([" ", ""])).toThrow(
       "nonempty search word or phrase",
     );
