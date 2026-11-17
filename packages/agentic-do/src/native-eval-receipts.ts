@@ -21,7 +21,6 @@ import {
 } from "@vibestudio/service-schemas/eval";
 import { createDynamicCodeRunObserver } from "@vibestudio/service-schemas/dynamicCode";
 import type { RpcClient } from "@vibestudio/rpc";
-import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 
 export type EvalReceiptCommit = Pick<Harness, "commit">;
@@ -213,15 +212,19 @@ export interface EvalAcknowledgementInput {
 /** The calls the owner makes on the entity that hosts its kernel (a pull; nothing is pushed to the owner). */
 export type EvalSessionRpc = Pick<RpcClient, "call">;
 
-/** The session entity that hosts this owner's kernel for one scope (the host's own formula). */
-export function evalSessionId(ownerId: string, scopeKey: string | undefined): string {
-  return evalRuntimeId(ownerId, scopeKey ?? "default");
+/**
+ * The entity that hosts this owner's kernel: the owner itself (docs/dolt-redesign.md §6.11.6). Its
+ * class declares `hosts` for the kernel in its manifest, so the host admits its runs on it and
+ * creates no session entity (a class that does not declare it gets one, and the eval tool refuses its admission).
+ */
+export function evalHostId(ownerId: string): string {
+  return ownerId;
 }
 
 /** Both ordinary execution and cancellation discharge the same accepted domain debt. */
 export function createNativeEvalAcknowledgements(deps: {
   readonly rpc: EvalSessionRpc;
-  /** The owner's own runtime id: the session entity is named from it. */
+  /** The owner's own runtime id: it is the entity that hosts its kernel. */
   readonly ownerId: () => string;
 }) {
   const task = defineTask<
@@ -248,7 +251,7 @@ export function createNativeEvalAcknowledgements(deps: {
     context: Context,
   ) {
     try {
-      const hostId = evalSessionId(deps.ownerId(), input.route.scopeKey);
+      const hostId = evalHostId(deps.ownerId());
       const observer = createDynamicCodeRunObserver(deps.rpc, {
         hostId,
         runId: input.route.runId,
@@ -310,7 +313,7 @@ const EVAL_PULL_RETRY_MAX_MS = 60_000;
 /**
  * The background task that settles one eval run by pulling (docs/dolt-redesign.md §7.5).
  *
- * The run's kernel is hosted by a session entity and commits its terminal row in its own storage.
+ * The run's kernel is hosted by the owner itself and commits its terminal row in its own storage.
  * This task asks that entity for it (`await`, `events`), hands the run's events to `onEvents` as
  * they are read, and on the terminal row commits, in one transaction, the receipt acceptance that
  * resolves the parked tool call, the acknowledgement task, and its own completion. Nothing is
@@ -360,7 +363,7 @@ export function createNativeEvalAwait(deps: {
   ): Promise<void> {
     const { route } = input;
     const observer = createDynamicCodeRunObserver(deps.rpc, {
-      hostId: evalSessionId(deps.ownerId(), route.scopeKey),
+      hostId: evalHostId(deps.ownerId()),
       runId: route.runId,
     });
     const signal = rt.signal;

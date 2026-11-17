@@ -29,7 +29,7 @@ import { createNativeEvalExecution } from "./native-eval-tool.js";
 import {
   createNativeEvalAcknowledgements,
   createNativeEvalAwait,
-  evalSessionId,
+  evalHostId,
   retainedEvalAdmission,
 } from "./native-eval-receipts.js";
 import { bindNativeToolInvocation } from "./native-invocation-boundary.js";
@@ -95,7 +95,7 @@ async function fixture(
   const progress: unknown[] = [];
   const calls: string[] = [];
   const pulledEvents: unknown[] = [];
-  let sessionId = evalSessionId(owner.runtimeId, "channel:one");
+  let sessionId = evalHostId(owner.runtimeId);
   const terminal = (cancelled = false): EvalResultReceipt => ({
     runId,
     runDigest: "b".repeat(64),
@@ -137,10 +137,7 @@ async function fixture(
       admissions += 1;
       starts.push(args[0]);
       runId = (args[0] as { runId: string }).runId;
-      sessionId = evalSessionId(
-        owner.runtimeId,
-        (args[0] as { scope: { key: string } }).scope.key,
-      );
+      sessionId = evalHostId(owner.runtimeId);
       if (options.rejectStart) throw options.rejectStart;
       if (options.rejectAfterLostStart && admissions > 1)
         throw options.rejectAfterLostStart;
@@ -148,14 +145,14 @@ async function fixture(
         runId,
         runDigest: "b".repeat(64),
         authorityManifestDigest: "d".repeat(64),
-        host: { source: "workers/session", className: "SessionDO", objectKey: "k" },
+        host: { source: "workers/agent-worker", className: "AiChatWorker", objectKey: "k" },
         hostId: sessionId,
         nonce: "nonce-one",
         start: { runId },
       };
     }
     if (method === "dynamicCode.release") return { released: true };
-    // Everything else is a call on the session entity that hosts the kernel.
+    // Everything else is a call on the entity that hosts the kernel: the owner itself.
     expect(target).toBe(sessionId);
     if (method === "start") {
       kernelStarts.push(args);

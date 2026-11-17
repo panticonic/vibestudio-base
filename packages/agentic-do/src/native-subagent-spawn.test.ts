@@ -117,7 +117,7 @@ class SpawnVessel extends AgentVesselBase {
   }
   testHarness: Harness | null = null;
   activeEntity: JsonRepresentation<typeof entity> = detached(entity);
-  readonly events = new Map<string, ChannelEvent[]>();
+  readonly channelEvents = new Map<string, ChannelEvent[]>();
   readonly calls: Array<{
     target: string;
     method: string;
@@ -364,7 +364,7 @@ class SpawnVessel extends AgentVesselBase {
     return base;
   }
   protected override createChannelClient(id: string): ChannelClient {
-    const list = () => this.events.get(id) ?? [];
+    const list = () => this.channelEvents.get(id) ?? [];
     const replay = async (request: { after: number; throughSeq?: number }) => {
       const through =
         request.throughSeq ?? Math.max(0, ...list().map((e) => e.id));
@@ -439,7 +439,7 @@ class SpawnVessel extends AgentVesselBase {
           senderId: pid,
           ts: sequence,
         };
-        this.events.set(id, [...list(), envelope]);
+        this.channelEvents.set(id, [...list(), envelope]);
         const lostReply = this.losePublicationReply?.(event, key);
         if (lostReply) throw lostReply;
         return { id: sequence };
@@ -466,9 +466,9 @@ class SpawnVessel extends AgentVesselBase {
       .listStored()
       .find((row) => row.channelId === sourceChannelId);
     if (!subscription) throw new Error("No actual source membership");
-    const events = this.events.get(sourceChannelId) ?? [];
+    const events = this.channelEvents.get(sourceChannelId) ?? [];
     if (!events.some((original) => original.messageId === event.messageId))
-      this.events.set(sourceChannelId, [...events, event]);
+      this.channelEvents.set(sourceChannelId, [...events, event]);
     return {
       deliveryId: "delivery:" + sourceChannelId + ":" + event.messageId,
       channelId: sourceChannelId,
@@ -528,7 +528,7 @@ class SpawnVessel extends AgentVesselBase {
   execute(...args: Parameters<SpawnVessel["executeNativeSpawn"]>) {
     return this.executeNativeSpawn(...args);
   }
-  cancel(...args: Parameters<SpawnVessel["cancelNativeSpawn"]>) {
+  cancelSpawn(...args: Parameters<SpawnVessel["cancelNativeSpawn"]>) {
     return this.cancelNativeSpawn(...args);
   }
   async executeCancellation(
@@ -598,7 +598,7 @@ async function fixture(
     }),
     executionData: vessel.offer(),
     execute: (args, api, ctx) => vessel.execute(args, api, ctx),
-    cancel: (args, api, ctx) => vessel.cancel(args, api, ctx),
+    cancel: (args, api, ctx) => vessel.cancelSpawn(args, api, ctx),
   });
   const cancellation = defineTool({
     name: "cancel_subagent",
@@ -940,7 +940,7 @@ describe("native shipping subagent launch", () => {
     expect(started).toHaveLength(2);
     expect(started[1]).toEqual(started[0]);
     expect(
-      (f.vessel.events.get(channelId) ?? []).filter(
+      (f.vessel.channelEvents.get(channelId) ?? []).filter(
         (event) => (event.payload as AgenticEvent).kind === "task.started",
       ),
     ).toHaveLength(1);
@@ -1072,7 +1072,7 @@ describe("native shipping subagent launch", () => {
     expect(f.vessel.activeChildren.has(run.childEntityId)).toBe(false);
     expect([...f.vessel.created.entries()]).toEqual(retainedResources);
     expect(f.vessel.admittedContexts.has(run.childContextId)).toBe(true);
-    const terminal = (f.vessel.events.get(channelId) ?? []).filter(
+    const terminal = (f.vessel.channelEvents.get(channelId) ?? []).filter(
       (event) => (event.payload as AgenticEvent).kind === "task.cancelled",
     );
     expect(terminal).toHaveLength(2);
@@ -1120,7 +1120,7 @@ describe("native shipping subagent launch", () => {
     const task = await f.cancelRun(run.runId, "cancel-first-winner");
     await expect(f.terminal(task)).rejects.toThrow("original reply lost");
     const winner = copyJson(
-      (f.vessel.events.get(channelId) ?? []).find(
+      (f.vessel.channelEvents.get(channelId) ?? []).find(
         (event) => (event.payload as AgenticEvent).kind === "task.cancelled",
       )!,
     );
@@ -1133,7 +1133,7 @@ describe("native shipping subagent launch", () => {
       ),
     ).toHaveLength(1);
     expect(
-      (f.vessel.events.get(channelId) ?? []).filter(
+      (f.vessel.channelEvents.get(channelId) ?? []).filter(
         (event) => (event.payload as AgenticEvent).kind === "task.cancelled",
       ),
     ).toEqual([winner]);
@@ -1487,7 +1487,7 @@ describe("native shipping subagent launch", () => {
     expect(attempts[1]).toEqual(attempts[0]);
     expect(attempts[2]!.key).not.toBe(attempts[0]!.key);
     expect(
-      (f.vessel.events.get(channelId) ?? []).filter(
+      (f.vessel.channelEvents.get(channelId) ?? []).filter(
         (event) => (event.payload as AgenticEvent).kind === "task.failed",
       ),
     ).toHaveLength(2);
@@ -1514,7 +1514,7 @@ describe("native shipping subagent launch", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       },
     };
-    f.vessel.events.set(channelId, [event]);
+    f.vessel.channelEvents.set(channelId, [event]);
     f.faux.setResponses([
       fauxAssistantMessage("Original native parent answer"),
     ]);

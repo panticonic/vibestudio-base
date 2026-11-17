@@ -11,7 +11,6 @@ import {
   type AgenticEvent,
   type ParticipantRef,
 } from "@workspace/agentic-protocol";
-import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { ChannelEvent, ParticipantDescriptor } from "@workspace/harness";
 import type { ServerLogEvent } from "@workspace/pubsub";
 import type { VcsCompareResult, VcsStatusResult } from "@vibestudio/service-schemas/vcs";
@@ -740,9 +739,9 @@ function customChannelEvent(type: string, overrides: Partial<ServerLogEvent> = {
     ...overrides,
   };
 }
+// The kernel an agent hosts acts as the agent itself (docs/dolt-redesign.md §6.11.6).
 async function expectedEvalCaller(): Promise<string> {
-  const key = sha256HexSyncText(`${AGENT_ID}\0${CHANNEL}`).slice(0, 40);
-  return `do:workers/session:SessionDO:${key}`;
+  return AGENT_ID;
 }
 describe("canonical channel endpoint admission", () => {
   it.each(["before", "after"] as const)(
@@ -963,6 +962,55 @@ describe("AgentVesselBase activation-local inspection", () => {
     );
   });
 });
+describe("AgentVesselBase: the kernel it hosts (docs/dolt-redesign.md §6.11.6)", () => {
+  it("serves the agent itself and the host for the run controls, and nobody else", async () => {
+    const vessel = await makeVessel();
+    for (const caller of [
+      { id: "panel:other", kind: "panel" },
+      { id: "do:workers/session:SessionDO:someoneelse", kind: "do" },
+    ]) {
+      vessel.callerIdForTest = caller.id;
+      vessel.callerKindForTest = caller.kind;
+      await expect(vessel.await("run-1", { waitMs: 1 })).rejects.toThrow(
+        /serves only the agent itself/
+      );
+      await expect(vessel.cancel("run-1")).rejects.toThrow(/serves only the agent itself/);
+      await expect(vessel.acknowledge("run-1", { runDigest: "a", resultDigest: "b" })).rejects.toThrow(
+        /serves only the agent itself/
+      );
+    }
+  });
+
+  it("serves a call the agent makes to itself in-process (no verified caller)", async () => {
+    const vessel = await makeVessel();
+    vessel.callerIdForTest = null;
+    vessel.callerKindForTest = null;
+    // The call reaches the relay (and fails there, for lack of a hosting root), not the caller check.
+    await expect(vessel.await("run-1", { waitMs: 1 })).rejects.not.toThrow(
+      /serves only the agent itself/
+    );
+  });
+
+  it("keeps the scope reset and the host's interlocks for the host alone, the agent included", async () => {
+    const vessel = await makeVessel();
+    vessel.callerIdForTest = AGENT_ID;
+    vessel.callerKindForTest = "do";
+    await expect(vessel.reset()).rejects.toThrow(/for the host/);
+    await expect(vessel.executionRoots()).rejects.toThrow(/for the host/);
+    await expect(
+      vessel.recordAuthorityEvent("run-1", "authority-requested", {})
+    ).rejects.toThrow(/for the host/);
+    await expect(vessel.retainExecutionRoot("run-1", "@workspace/x", {})).rejects.toThrow(
+      /for the host/
+    );
+    // The host reaches them; an agent that never started a kernel has no roots and nothing to reset.
+    vessel.callerIdForTest = "server";
+    vessel.callerKindForTest = "server";
+    expect(await vessel.executionRoots()).toEqual([]);
+    expect(await vessel.reset()).toEqual({ ok: true });
+  });
+});
+
 describe("AgentVesselBase.chatOp", () => {
   it("rejects a caller that is not this agent's own eval kernel", async () => {
     const vessel = await makeVessel();
