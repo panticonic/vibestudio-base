@@ -1,7 +1,8 @@
 /** Search mechanically, then let fits judge successive finite batches until an answer or source exhaustion. */
 import { docs, fs } from "natlang:services";
 import fits from "./fits.nl";
-import keywords from "./keywords.js";
+import tokens from "./tokens.js";
+import keywords from "./keywords.nl";
 import sections from "./sections.js";
 import rank from "./rank.js";
 import type { Passage } from "./rank.js";
@@ -81,7 +82,9 @@ async function fileCandidates(
             !entry._isSymbolicLink &&
             entry.name.endsWith(".md")
           )
-            files.add(entry.name);
+            files.add(
+              path ? `${path.replace(/\/+$/u, "")}/${entry.name}` : entry.name,
+            );
         }
       }
     }
@@ -119,13 +122,28 @@ export default async function locateDoc(
   question: string,
   scope?: DocScope,
 ): Promise<Located> {
-  const terms = keywords(question);
-  if (terms.length === 0) return { found: [], tried: [] };
+  const available = tokens(question);
+  if (available.length === 0) return { found: [], tried: [] };
+  const selected = await keywords(question);
+  const terms = [
+    ...new Set(
+      selected.map((term) =>
+        available.find(
+          (literal) => literal.toLowerCase() === term.toLowerCase(),
+        ),
+      ),
+    ),
+  ];
+  if (!terms.length || terms.some((term) => term === undefined))
+    throw new Error(
+      "Choose a nonempty array of literal content words or identifiers from the question; remove invented search terms.",
+    );
+  const checked = terms as string[];
   const [files, catalog] = await Promise.all([
-    fileCandidates(terms, scope),
-    scope?.paths?.length ? Promise.resolve([]) : catalogCandidates(terms),
+    fileCandidates(checked, scope),
+    scope?.paths?.length ? Promise.resolve([]) : catalogCandidates(checked),
   ]);
-  const candidates = rank(terms, [...files, ...catalog]);
+  const candidates = rank(checked, [...files, ...catalog]);
   const answers: Found[] = [];
   const related: Found[] = [];
   const tried = new Set<string>();

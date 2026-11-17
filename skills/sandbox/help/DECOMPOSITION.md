@@ -21,7 +21,8 @@ the actual source behavior rather than silently changing it during export.
 
 | Part | Form | Why |
 | --- | --- | --- |
-| Search terms | crisp: `docHelp/keywords.ts` | Identifiers (`launch_automation`, `vcs.commit`, `WORKSPACE_RPC_METHOD_UNDECLARED`) first, then content words; at most eight. |
+| Search focus | its own function, `docHelp/keywords.nl` | Identify the requested action and object, excluding incidental timing/sequence/quantity context. Return literal query words or identifiers, never inferred tool names. This is semantic policy; equal keyword weights cannot decide which part of a question is its intent. |
+| Search term validation | crisp: `docHelp/tokens.ts`, `locateDoc.ts` | Tokenize the question and verify every selected term is actually present. Exact identifier spelling is retained; no arbitrary term count. Empty or invented terms get a corrective error. |
 | Candidate files | crisp, in `locateDoc.ts` | Grep is a fast path, never a completeness oracle when truncated. On truncation enumerate Markdown paths with `fs.readdir`; read the selected finite source set with paged `fs.readText`. No fixed file cutoff. Scope paths remain authoritative. |
 | Candidate sections | crisp: `docHelp/sections.ts` and `rank.ts` | Split by heading, preserve every exact text slice, then rank by query-term inverse document frequency and length-normalized frequency (BM25). Common words cannot tie all files simply because they occur once. Numerical ranking is search mechanism, not semantic answer selection. |
 | Catalog entries | crisp | `docs.search` supplies the service's default ranked result set; `docs.describe` supplies their real descriptions. The production catalog's own lexical index remains unchanged; the fixture preserves its recorded public search surface rather than becoming a second documentation policy. |
@@ -40,7 +41,7 @@ Consumers inventoried before implementation:
 
 - `docHelp/locateDoc.ts` is the one retrieval implementation, called both by `docHelp.nl` and
   `recoverFromFailure.ts`. Both receive the same fix.
-- `docHelp/keywords.ts` extracts literal query terms; `sections.ts` preserves source slices; `rank.ts` performs
+- `docHelp/keywords.nl` selects literal query terms; `tokens.ts` validates their spelling; `sections.ts` preserves source slices; `rank.ts` performs
   exact numerical ranking. No supplied expected answer, source path or case label enters any of them.
 - `suite.ts` supplies recorded filesystem/catalog services and independent quote grounding. It must implement
   the real `fs.readdir` and paged `fs.readText` shapes; quality expectations remain unchanged.
@@ -73,3 +74,14 @@ name weight three/body weight one, lexical tie-breaking and the public default/c
 contain the production authority/member metadata, so that extra index information remains outside this recorded world.
 A source whitelist remains an authored partial oracle: an unexpected but actually sufficient source must be
 reviewed as a possible false negative, never silently treated as proof of a bad answer.
+
+The first postfix Luna run (`docs-b`) confirmed recall alone is insufficient: its 39 fit decisions rejected the
+first lexical publication/context passages and exhausted the existing 40-call collection allowance before the
+actual typecheck section. This is a retrieval-policy defect, not a reason to increase the allowance. `keywords.nl`
+now identifies the question's actual requested operation and object before exact BM25 ranking. It receives no
+catalog, source labels, expected answer or invented API names. A separate semantic selection is necessary because
+contextual words can be rarer than the operation itself. The next genuine pilot tests this new stage.
+
+Production directory entries are relative to the listed directory (`fsDisk.ts:relativeDirentName`), even for
+recursive listings. Prefix that scope before `readText`; the fixture returns the same relative names, and a
+scoped truncated-search regression checks this boundary. Root listings naturally need no prefix.

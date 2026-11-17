@@ -1,28 +1,26 @@
 import { describe, expect, it } from "vitest";
-import keywords from "./docHelp/keywords.js";
+import tokens from "./docHelp/tokens.js";
 import sections from "./docHelp/sections.js";
 import typedCause from "./docHelp/typedCause.js";
 import nextStep from "./docHelp/nextStep.js";
 import type { Cause } from "./types.js";
 
-describe("keywords", () => {
-  it("puts identifiers first, then content words, at most eight", () => {
+describe("tokens", () => {
+  it("preserves literal identifiers and words without semantic filtering or a term-count cutoff", () => {
     expect(
-      keywords(
-        "Why does launch_automation fail with WORKSPACE_RPC_METHOD_UNDECLARED after vcs.commit?",
-      ),
+      tokens("Why launch_automation after vcs.commit and schemaVersion?"),
     ).toEqual([
+      "Why",
       "launch_automation",
-      "WORKSPACE_RPC_METHOD_UNDECLARED",
+      "after",
       "vcs.commit",
-      "fail",
+      "and",
+      "schemaVersion",
     ]);
     expect(
-      keywords(
-        "How do I typecheck one unit of my workspace before I publish it?",
-      ),
-    ).toEqual(["typecheck", "unit", "workspace", "before", "publish"]);
-    expect(keywords("a b c")).toEqual([]);
+      tokens("one two three four five six seven eight nine ten"),
+    ).toHaveLength(10);
+    expect(tokens("?!")).toEqual([]);
   });
 });
 

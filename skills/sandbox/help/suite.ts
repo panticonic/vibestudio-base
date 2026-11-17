@@ -113,7 +113,7 @@ function workspaceFs(root: string, passages: Map<string, string[]>) {
       for (const file of selected) {
         const relative = prefix ? file.slice(prefix.length + 1) : file;
         const parts = relative.split("/");
-        if (options.recursive) entries.set(file, true);
+        if (options.recursive) entries.set(relative, true);
         else entries.set(parts[0]!, parts.length === 1);
       }
       return [...entries].map(([name, file]) =>
