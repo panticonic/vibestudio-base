@@ -831,6 +831,10 @@ export abstract class DurableObjectBase {
         selfId:
           hostIdentity?.entityId ??
           `do:${source}:${className}:${this.objectKey}`,
+        // A hosted class presents its entity's id without being the entity: a call it makes to the
+        // entity (an agent's kernel calling `chatOp` on the agent) must leave the process, not be
+        // answered by the hosted class itself (docs/dolt-redesign.md §7.2).
+        ...(hostIdentity ? { loopback: false } : {}),
         serverUrl,
         authToken: token,
         callerKind: "do",
