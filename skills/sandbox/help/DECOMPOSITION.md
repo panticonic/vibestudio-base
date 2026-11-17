@@ -21,8 +21,8 @@ the actual source behavior rather than silently changing it during export.
 
 | Part | Form | Why |
 | --- | --- | --- |
-| Search focus | its own function, `docHelp/keywords.nl` | Identify the requested action and object, excluding incidental timing/sequence/quantity context. Return literal query words or identifiers, never inferred tool names. This is semantic policy; equal keyword weights cannot decide which part of a question is its intent. |
-| Search term validation | crisp: `docHelp/tokens.ts`, `locateDoc.ts` | Tokenize the question and verify every selected term is actually present. Exact identifier spelling is retained; no arbitrary term count. Empty or invented terms get a corrective error. |
+| Search focus | its own function, `docHelp/keywords.nl` | Identify the requested action and object, excluding incidental timing/sequence/quantity context. Choose focused retrieval words or phrases, preserving named identifiers and using relevant synonyms when helpful. This is semantic policy; equal keyword weights cannot decide which part of a question is its intent. |
+| Search interface | crisp: `docHelp/searchTerms.ts` | Trim and deduplicate typed strings, require a nonempty query set, and escape regex metacharacters. Retrieval vocabulary is unconstrained: query terms are search requests, not answer claims. |
 | Candidate files | crisp, in `locateDoc.ts` | Grep is a fast path, never a completeness oracle when truncated. On truncation enumerate Markdown paths with `fs.readdir`; read the selected finite source set with paged `fs.readText`. No fixed file cutoff. Scope paths remain authoritative. |
 | Candidate sections | crisp: `docHelp/sections.ts` and `rank.ts` | Split by heading, preserve every exact text slice, then rank by query-term inverse document frequency and length-normalized frequency (BM25). Common words cannot tie all files simply because they occur once. Numerical ranking is search mechanism, not semantic answer selection. |
 | Catalog entries | crisp | `docs.search` supplies the service's default ranked result set; `docs.describe` supplies their real descriptions. The production catalog's own lexical index remains unchanged; the fixture preserves its recorded public search surface rather than becoming a second documentation policy. |
@@ -41,7 +41,7 @@ Consumers inventoried before implementation:
 
 - `docHelp/locateDoc.ts` is the one retrieval implementation, called both by `docHelp.nl` and
   `recoverFromFailure.ts`. Both receive the same fix.
-- `docHelp/keywords.nl` selects literal query terms; `tokens.ts` validates their spelling; `sections.ts` preserves source slices; `rank.ts` performs
+- `docHelp/keywords.nl` chooses retrieval queries; `searchTerms.ts` normalizes strings and escapes regex syntax; `sections.ts` preserves source slices; `rank.ts` performs
   exact numerical ranking. No supplied expected answer, source path or case label enters any of them.
 - `suite.ts` supplies recorded filesystem/catalog services and independent quote grounding. It must implement
   the real `fs.readdir` and paged `fs.readText` shapes; quality expectations remain unchanged.
@@ -93,3 +93,11 @@ descriptions; the established generator renders both into Base
 template and host sources found no other copies. Correct both schema descriptions and regenerate the Base
 consumer with `scripts/generate-natlang-service-declarations.mjs`; runtime `fsDisk.ts:239,663` already has the
 correct listed-directory-relative behavior and is unchanged. The scoped fixture regression exercises it.
+
+The next genuine run (`docs-c`) reached quality one and exact replay, but admission correctly rejected its
+recovered failed action. The semantic selector had returned a valid phrase from the question; validation
+accepted only single tokens. The general correction removes question-membership validation entirely. Search
+queries may use phrases, reordered concepts, technical vocabulary or synonyms absent from the question.
+Their relevance belongs to `keywords.nl`; `fits.nl`, source authentication and semantic review judge the result.
+`searchTerms.ts` only trims/deduplicates nonempty strings and escapes regex syntax. The obsolete tokenizer and
+vocabulary guard are removed. Tests cover a useful inferred synonym and the observed multiword query.

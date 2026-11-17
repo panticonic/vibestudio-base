@@ -1,7 +1,7 @@
 /** Search mechanically, then let fits judge successive finite batches until an answer or source exhaustion. */
 import { docs, fs } from "natlang:services";
 import fits from "./fits.nl";
-import tokens from "./tokens.js";
+import searchTerms, { escapeTerm } from "./searchTerms.js";
 import keywords from "./keywords.nl";
 import sections from "./sections.js";
 import rank from "./rank.js";
@@ -11,7 +11,6 @@ import type { DocScope, Found, Located } from "../types.js";
 /** Concurrent decisions, never a cutoff on the finite search. */
 const BATCH = 6;
 const QUOTES = 3;
-const escape = (term: string) => term.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 async function readDocument(file: string): Promise<string> {
   const first = await fs.readText(file, {
@@ -56,7 +55,7 @@ async function fileCandidates(
   terms: readonly string[],
   scope: DocScope | undefined,
 ): Promise<Passage[]> {
-  const pattern = terms.map(escape).join("|");
+  const pattern = terms.map(escapeTerm).join("|");
   const roots = scope?.paths?.length ? scope.paths : [""];
   const files = new Set<string>();
   for (const path of roots) {
@@ -122,23 +121,7 @@ export default async function locateDoc(
   question: string,
   scope?: DocScope,
 ): Promise<Located> {
-  const available = tokens(question);
-  if (available.length === 0) return { found: [], tried: [] };
-  const selected = await keywords(question);
-  const terms = [
-    ...new Set(
-      selected.map((term) =>
-        available.find(
-          (literal) => literal.toLowerCase() === term.toLowerCase(),
-        ),
-      ),
-    ),
-  ];
-  if (!terms.length || terms.some((term) => term === undefined))
-    throw new Error(
-      "Choose a nonempty array of literal content words or identifiers from the question; remove invented search terms.",
-    );
-  const checked = terms as string[];
+  const checked = searchTerms(await keywords(question));
   const [files, catalog] = await Promise.all([
     fileCandidates(checked, scope),
     scope?.paths?.length ? Promise.resolve([]) : catalogCandidates(checked),

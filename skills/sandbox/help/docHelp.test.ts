@@ -1,26 +1,31 @@
 import { describe, expect, it } from "vitest";
-import tokens from "./docHelp/tokens.js";
+import searchTerms, { escapeTerm } from "./docHelp/searchTerms.js";
 import sections from "./docHelp/sections.js";
 import typedCause from "./docHelp/typedCause.js";
 import nextStep from "./docHelp/nextStep.js";
 import type { Cause } from "./types.js";
 
-describe("tokens", () => {
-  it("preserves literal identifiers and words without semantic filtering or a term-count cutoff", () => {
+describe("search terms", () => {
+  it("normalizes words and phrases without restricting retrieval vocabulary", () => {
     expect(
-      tokens("Why launch_automation after vcs.commit and schemaVersion?"),
-    ).toEqual([
-      "Why",
-      "launch_automation",
-      "after",
-      "vcs.commit",
-      "and",
-      "schemaVersion",
-    ]);
-    expect(
-      tokens("one two three four five six seven eight nine ten"),
-    ).toHaveLength(10);
-    expect(tokens("?!")).toEqual([]);
+      searchTerms([
+        " typecheck ",
+        "single panel",
+        "typecheck",
+        " ",
+        "static analysis",
+      ]),
+    ).toEqual(["typecheck", "single panel", "static analysis"]);
+    expect(() => searchTerms([" ", ""])).toThrow(
+      "nonempty search word or phrase",
+    );
+  });
+
+  it("escapes regex syntax in identifiers and phrases", () => {
+    const term = "vcs.commit(x) | [panel]";
+    const expression = new RegExp(escapeTerm(term), "u");
+    expect(expression.test(term)).toBe(true);
+    expect(expression.test("vcsXcommitXxX or panel")).toBe(false);
   });
 });
 
