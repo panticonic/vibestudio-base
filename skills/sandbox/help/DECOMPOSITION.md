@@ -80,7 +80,7 @@ first lexical publication/context passages and exhausted the existing 40-call co
 actual typecheck section. This is a retrieval-policy defect, not a reason to increase the allowance. `keywords.nl`
 now identifies the question's actual requested operation and object before exact BM25 ranking. It receives no
 catalog, source labels, expected answer or invented API names. A separate semantic selection is necessary because
-contextual words can be rarer than the operation itself. The next genuine pilot tests this new stage.
+contextual words can be rarer than the operation itself. The final docs-f pilot qualifies the corrected path below.
 
 Production directory entries are relative to the listed directory (`fsDisk.ts:relativeDirentName`), even for
 recursive listings. Prefix that scope before `readText`; the fixture returns the same relative names, and a
@@ -109,3 +109,30 @@ lexical atoms (preserving compound identifiers) plus original phrases for exact-
 retrieval and ranking consume it; the catalog receives the same set and applies its own public index. This is
 standard lexical indexing, without semantic stopword selection, vocabulary restrictions, or a larger candidate cap.
 The regression replays the observed multiword requests against the original document world.
+
+## Qualified canonical teacher pilot (2026-11-17)
+
+`docs-f` passed from Base `e24dd517acd34dc65f90268557e1e76ec34e3e73`, host
+`e710ef5e1815995f5a4b225fa06be70a3cf1477c`, and Natlang
+`67a3eb6935c69db259c3219963f311fb14268e83`, all clean. The actual `docHelp.nl` root called
+`keywords.nl` once and the finite `fits.nl` decision readout twelve times: fourteen captured Luna calls,
+one root and thirteen children, with zero failed tool actions. The suite scored quality one. All source,
+entry and root binding checks passed; no invented inline workflow replaced the authored source.
+
+The returned answering quote is the actual `@workspace-extensions/typecheck-service.checkPanel` passage in
+`skills/workspace-dev/TOOLS.md`. Exact replay verified all fourteen model requests. The separate semantic
+review accepted its actionable typecheck guidance and its distinction from the broader build report.
+`natlang.teacher-admission/1` admitted one sample, rejected none; the review is evidence, not a training target.
+The native decision replies are real sampled teacher outputs, not copied reference labels or invented scores.
+
+Evidence: `/home/werg/data/vibestudio-teacher-pilot-20261117/docs-f/admissions/t000000.json` and its bound
+ordinary canonical teacher pool under `docs-f/teacher`. The owned ledger unit
+`vibe-doc-querywords-luna-20261117` joined successfully (about 2 GB peak). The final source also passed
+26 host fixture/IR tests, ten Base helper tests, and all 34 case preflights/IR exports. The full reviewed inventory
+now contains 39 authored `.nl` sources across 18 suites and 450 cases.
+
+Earlier diagnostics stay excluded: the initial `docs` run missed the answer; `docs-b` exhausted forty model
+calls; `docs-c` recovered a failed action and was rejected despite a final correct answer; `docs-d` and `docs-e`
+returned no matches before query-word indexing was fixed (`docs-d` also introduced an inline self-delegation).
+Sources changed during this development sequence, so it is not an unbiased acceptance-rate estimate.
+Qualification proves this canonical collection/admission path, not generalization to fresh documentation worlds.
