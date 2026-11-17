@@ -85,3 +85,11 @@ contextual words can be rarer than the operation itself. The next genuine pilot 
 Production directory entries are relative to the listed directory (`fsDisk.ts:relativeDirentName`), even for
 recursive listings. Prefix that scope before `readText`; the fixture returns the same relative names, and a
 scoped truncated-search regression checks this boundary. Root listings naturally need no prefix.
+
+The canonical service-schema description also incorrectly called recursive names context-root-relative.
+Inventory: `packages/service-schemas/src/fs.ts` has the `dirent.name` and `readdirOptions.recursive`
+descriptions; the established generator renders both into Base
+`packages/natlang-services/src/serviceDeclarations.generated.ts`. Exact-phrase searches across all configured
+template and host sources found no other copies. Correct both schema descriptions and regenerate the Base
+consumer with `scripts/generate-natlang-service-declarations.mjs`; runtime `fsDisk.ts:239,663` already has the
+correct listed-directory-relative behavior and is unchanged. The scoped fixture regression exercises it.

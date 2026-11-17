@@ -206,10 +206,10 @@ export function readText(path: string, options?: {
 export function readdir(path: string, options?: {
   /** Return Dirent-shaped entries with type flags instead of bare name strings. */
   withFileTypes?: boolean;
-  /** Recurse into subdirectories, reporting root-relative paths. */
+  /** Recurse into subdirectories, reporting paths relative to the listed directory. */
   recursive?: boolean;
 }): Promise<string[] | {
-  /** Entry name; basename for flat listings, root-relative path for recursive ones. */
+  /** Entry name; basename for flat listings, path relative to the listed directory for recursive ones. */
   name: string;
   /** True if the entry is a regular file. */
   _isFile: boolean;
