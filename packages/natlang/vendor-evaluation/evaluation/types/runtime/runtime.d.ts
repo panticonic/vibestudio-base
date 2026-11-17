@@ -21,6 +21,11 @@ export type ModelDriver = ((request: ModelTurnRequest, signal?: AbortSignal, opt
     decide?: DecisionScorer;
     /** The backend's complete native store, reader identity and available writer; wrappers retain this binding. */
     neuraleseRuntime?: () => Promise<import('../native/neuralese.js').NeuraleseRuntimeOptions | undefined>;
+    /**
+     * The backend continues a reply cut off at its length limit (`ModelTurnRequest.continue`): the agent loop resumes a
+     * cut reply where it stopped instead of starting a new turn. The managed llama.cpp server does (assistant prefill).
+     */
+    continuesReplies?: boolean;
 };
 export type ModelConfig = {
     driver: ModelDriver;
@@ -180,6 +185,12 @@ export type NatlangRuntimeOptions = {
         captureAllOutputs?: boolean;
         maxBytes: number;
     };
+    /**
+     * Host-only scoring evidence: each call of a program's TypeScript function records the `stableHash` of its result as a
+     * `step_state` trace event (no node, so not part of the execution graph), so a plain loop over a step function shows
+     * the states an `iterateOn` trace would. Off unless a scorer asks (the collector, for iteration stop markers).
+     */
+    traceStepStates?: boolean;
     limits?: NatlangLimits;
     seed?: {
         mode: 'derived' | 'backend';

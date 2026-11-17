@@ -22,4 +22,6 @@ export type DriverCall = {
  * The host's driver as a worker thread sees it: `call` carries each request across the thread boundary. The worker
  * scores replies exactly when the host's driver does (`decisions`), so a call's readout is the host's, not a guess.
  */
-export declare function remoteDriver(call: (call: DriverCall) => Promise<unknown>, decisions: boolean): ModelDriver;
+export declare function remoteDriver(call: (call: DriverCall) => Promise<unknown>, decisions: boolean, 
+/** The host's driver continues cut-off replies (`ModelDriver.continuesReplies`), so the worker's does too. */
+continuesReplies?: boolean): ModelDriver;

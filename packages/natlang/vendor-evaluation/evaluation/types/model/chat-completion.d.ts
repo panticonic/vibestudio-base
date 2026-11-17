@@ -73,6 +73,12 @@ export type ChatCompletionOptions = {
      * request that names adapters instead of sending a field the server would ignore.
      */
     adapters?: boolean;
+    /**
+     * The server continues a final assistant message (llama.cpp's assistant prefill, reasoning included) and, asked
+     * without streaming, answers with the whole message parsed from what it was given and what it generated. A request
+     * with `continue` is sent that way; other adapters refuse it.
+     */
+    continuesReplies?: boolean;
 };
 /** Tool-call markup (Qwen-style XML or <tool_call> tags, LFM2's pythonic call markers) left in a reply's text. */
 export { TOOL_MARKUP } from '../native/tool-markup.js';

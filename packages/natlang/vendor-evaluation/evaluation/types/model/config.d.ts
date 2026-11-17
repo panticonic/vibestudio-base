@@ -33,8 +33,6 @@ export type ModelProfile = {
     native?: NativeModelSettings;
     /** Next explicitly configured profile for a live invocation handoff (`natlang run|call|ask`). */
     escalate?: string;
-    /** The endpoint is a vLLM server with LoRA enabled: each tuned call is routed to its whole-stack LoRA by name. */
-    vllm?: boolean;
     headers?: Record<string, string>;
     request?: Record<string, unknown>;
     piOptions?: Record<string, unknown>;
@@ -88,7 +86,6 @@ export type ResolvedModelChoice = (Common & {
     apiKeyEnv: string;
     request?: Record<string, unknown>;
     neuraleseServer?: true;
-    vllm?: true;
     managedNative?: NativeModelSettings;
 }) | (Common & {
     kind: 'pi-provider';

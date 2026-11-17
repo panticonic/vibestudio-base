@@ -75,6 +75,11 @@ export declare function isNeuraleseRef(value: unknown): value is NeuraleseRef;
 export declare function neuraleseSentinel(id: string, stopGradient?: boolean, sourceOccurrence?: string): string;
 /** Per-use derivative metadata survives conversation plumbing, never model tokens. */
 export declare function neuraleseRefSentinel(ref: NeuraleseRef): string;
+/**
+ * A Neuralese value as plain text, where no state can be shown (console output): one line that says what it is and what
+ * to do with it. The reference's JSON (`{"$neuralese":{…,"id":"nzs1_…"}}`) read as garbled data, and its id as a page to read.
+ */
+export declare function neuraleseDisplayText(ref: NeuraleseRef): string;
 /** The block a text consists of exactly, if it is one sentinel. */
 export declare function soleSentinel(text: string): string | undefined;
 export declare function soleSentinelUse(text: string): {

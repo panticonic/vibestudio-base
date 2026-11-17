@@ -42,9 +42,12 @@ export type GuidanceRun = {
     /** `off` (opt-out, the measurement baseline): no writer; a teacher gets the selected facts as text, a student has the
      * same text turn recorded for its OPSD twin (`text-twin`) and sees nothing. */
     writer?: 'native' | 'off';
+    /** Hindsight (teacher only): a verified successful run of the task as a `TrajectoryCall`
+     * (applications/guidance-writer/types.ts); the root call's guidance is the hint `writeHint` writes from it. */
+    trajectory?: Record<string, unknown>;
 };
 export type GuidancePolicyFunction = {
-    function: 'selectGuidanceFacts' | 'writeGuidance';
+    function: 'selectGuidanceFacts' | 'writeGuidance' | 'writeHint';
     sha256: string;
 };
 /** The guidance-writer package as loaded by the host: its two natural-language definitions and its crisp parts. */
@@ -57,6 +60,13 @@ export type GuidanceWriterPackage = {
         definition: CallableDefinition;
         sha256: string;
     };
+    /** writeHint.nl (hindsight hints from a verified run). */
+    hint: {
+        definition: CallableDefinition;
+        sha256: string;
+    };
+    /** trajectoryOverview.ts `trajectoryOverview`: the crisp cold-start view of a run the hint writer opens with. */
+    trajectoryOverview(call: unknown): unknown;
     /** visibility.ts `visibleFacts`. */
     visibleFacts(consumer: GuidanceConsumer, facts: readonly GuidanceFact[]): GuidanceFact[];
     /** crispSelection.ts `crispSelection`. */

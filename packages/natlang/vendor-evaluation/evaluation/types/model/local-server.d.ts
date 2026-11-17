@@ -38,6 +38,8 @@ export type ManagedModelSession = {
     /** The backend is one of natlang's servers (the native server or the managed llama.cpp fork): it applies guided
      * generation (the `guidance` request field). */
     readonly guidance?: boolean;
+    /** The backend continues a reply cut off at its length limit (`ModelTurnRequest.continue`): the managed llama.cpp server. */
+    readonly continuesReplies?: boolean;
     neuraleseRuntime?(): Promise<import('../native/neuralese.js').NeuraleseRuntimeOptions | undefined>;
     vllmStacks?(names: Iterable<string>): void;
     /** One turn; `options` carry the driver's turn options (`onDelta`) and, for a Pi provider backend, `onProgress`. */
@@ -58,6 +60,8 @@ export type ManagedModelSession = {
 };
 export type ManagedModelRuntimeOptions = {
     ensureRuntime?: (discovery: LlamaRuntimeDiscovery) => Promise<LlamaServerInspection | null>;
+    /** Consent to download a missing stock model (true: download it); without it a missing model is an error. */
+    ensureModel?: (release: LocalModelRelease) => Promise<boolean>;
     /** Tuned weight adapters (GGUF LoRA exports of the active release) to load at server start, keyed by artifact ID.
      * Each request then applies only its own call's stack through per-request `lora` scales. */
     loraAdapters?: () => readonly {

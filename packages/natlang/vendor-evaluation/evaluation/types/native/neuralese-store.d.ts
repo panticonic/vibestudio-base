@@ -111,8 +111,10 @@ export declare function nativeTensorArtifactDependencies(artifact: Pick<NativeTe
 /** Exact native state dependencies, including original producers and update DAGs. */
 export declare function nativeStateArtifactDependencies(artifact: Pick<NativeStateArtifact, 'metadata'>): string[];
 /** Archive either typed native family through one exact dependency mechanism. */
-export declare function archiveNativeArtifactFrom(remote: NeuraleseStore, archive: NeuraleseStore, id: string, active?: Set<string>): Promise<NativeStateArtifact | NativeTensorArtifact>;
-export declare function archiveNativeTensorFrom(remote: NeuraleseStore, archive: NeuraleseStore, id: string): Promise<NativeTensorArtifact>;
+/** Where archival reads native artifacts from: another store, a server's HTTP store or the page's engine. */
+export type NativeArtifactSource = Partial<Pick<NeuraleseStore, 'getNativeState' | 'getNativeStateWire' | 'getNativeTensorArtifact'>>;
+export declare function archiveNativeArtifactFrom(remote: NativeArtifactSource, archive: NeuraleseStore, id: string, active?: Set<string>): Promise<NativeStateArtifact | NativeTensorArtifact>;
+export declare function archiveNativeTensorFrom(remote: NativeArtifactSource, archive: NeuraleseStore, id: string): Promise<NativeTensorArtifact>;
 /** Restore a mixed native bundle in dependency order, sharing every archive writer. */
 export declare function importNativeArtifactBundle(store: Pick<NeuraleseStore, 'has' | 'putNativeState' | 'putNativeTensorArtifact'>, states: Map<string, NativeStateArtifact>, tensors: Map<string, NativeTensorArtifact>): Promise<void>;
 /** Exact executable dependency closure for retention and portable values. */
@@ -141,6 +143,14 @@ export interface NeuraleseStore {
     putNativeState(artifact: Omit<NativeStateArtifact, 'id'>): Promise<NativeStateArtifact>;
     getNativeState(id: string): Promise<NativeStateArtifact | undefined>;
     hasNativeState(id: string): Promise<boolean>;
+    /**
+     * The one handoff of native state between stores and engines: its wire (the `natlang.native-state/1` safetensors
+     * bytes, the Python block store's file format), kept as received. `putNativeStateWire` verifies it once (header,
+     * finite values and content ID in one pass over views; `verifiedId` when the caller verified exactly these bytes)
+     * and stores the bytes as they are; `getNativeStateWire` returns the stored bytes. Neither decodes into copies.
+     */
+    putNativeStateWire?(wire: Uint8Array, verifiedId?: string): Promise<NativeStateArtifact>;
+    getNativeStateWire?(id: string): Promise<Uint8Array | undefined>;
     putNativeTensorArtifact(artifact: Omit<NativeTensorArtifact, 'id'>): Promise<NativeTensorArtifact>;
     getNativeTensorArtifact(id: string): Promise<NativeTensorArtifact | undefined>;
     hasNativeTensorArtifact(id: string): Promise<boolean>;
@@ -166,11 +176,24 @@ export declare function decodeNativeTensorArtifact(bytes: Uint8Array): NativeTen
 export declare function nativeStateContentId(metadata: NativeStateMetadata, tensors: Record<string, NativeStateTensor>): string;
 /** Multi-tensor safetensors body matching Python `encode_native_state`. */
 export declare function encodeNativeState(artifact: Omit<NativeStateArtifact, 'id'>): Uint8Array;
-/** Decode and verify an immutable native state safetensors artifact. */
-export declare function decodeNativeState(bytes: Uint8Array): NativeStateArtifact;
+/** The content ID and wire of a native state (one hash pass, one copy into the wire). */
+export declare function encodeNativeStateWire(artifact: Omit<NativeStateArtifact, 'id'>): {
+    id: string;
+    wire: Uint8Array;
+};
+/**
+ * Decode and verify an immutable native state safetensors artifact. Tensors are views of `bytes` (no copy). With
+ * `verifiedId` (these exact bytes were verified before, e.g. by the store that holds them) only the header and layout
+ * are checked; otherwise every float is checked finite and the content ID recomputed in one pass.
+ */
+export declare function decodeNativeState(bytes: Uint8Array, verifiedId?: string): NativeStateArtifact;
+/** A caller's handle on a stored native state: its own metadata, tensors as views of the stored (immutable) bytes. */
+export declare function nativeStateView(artifact: NativeStateArtifact): NativeStateArtifact;
 /** Process-local store; the default for runtimes without a model-side store, and for tests. */
 export declare class MemoryNeuraleseStore implements NeuraleseStore {
+    /** Native states as their wires (kept as received) and the decoded views of them. */
     private readonly nativeStates;
+    private readonly nativeWires;
     private readonly nativeTensorArtifacts;
     /** Metadata of blocks held elsewhere (`note`). */
     private readonly noted;
@@ -178,7 +201,9 @@ export declare class MemoryNeuraleseStore implements NeuraleseStore {
     meta(id: string): Promise<NeuraleseBlockMeta | undefined>;
     has(id: string): Promise<boolean>;
     putNativeState(artifact: Omit<NativeStateArtifact, 'id'>): Promise<NativeStateArtifact>;
+    putNativeStateWire(wire: Uint8Array, verifiedId?: string): Promise<NativeStateArtifact>;
     getNativeState(id: string): Promise<NativeStateArtifact | undefined>;
+    getNativeStateWire(id: string): Promise<Uint8Array | undefined>;
     hasNativeState(id: string): Promise<boolean>;
     putNativeTensorArtifact(artifact: Omit<NativeTensorArtifact, 'id'>): Promise<NativeTensorArtifact>;
     getNativeTensorArtifact(id: string): Promise<NativeTensorArtifact | undefined>;

@@ -75,15 +75,10 @@ export type SoftState = {
     readonly state: string;
     readonly textSha256: string;
     readonly tokens: number;
-    /** The state as a llama.cpp native state span (`--native-state`), bound to the exact base GGUF. */
-    readonly exports?: {
-        readonly gguf?: {
-            readonly file: string;
-            readonly sha256: string;
-            readonly baseGgufSha256: string;
-        };
-    };
 };
+/** Every engine loads a soft state from the release's store file (`states/<state>.nzs`, the native-state format):
+ * the llama.cpp fork with `--native-state`, the in-page engine as `native_states`, native servers by upload. */
+export declare const softStateFile: (state: Pick<SoftState, "state">) => string;
 export type WeightManifest = {
     readonly schema: typeof WEIGHTS_SCHEMA;
     readonly program: {
