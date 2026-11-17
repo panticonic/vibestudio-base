@@ -11,6 +11,12 @@ result quote against them, and requires every answering source to belong to the 
 observation supplies authenticated passages to a separate semantic reviewer; a correctly named file alone is not
 verification. Recovery cases supply no documents, so an invented recovery citation fails the grounding gate.
 
+The canonical IR's document world snapshots public workspace Markdown and the capability catalog, excluding
+`DECOMPOSITION.md` and generated evaluation-result directories. Those files contain case feedback rather than
+user documentation and must not expose protected evaluation inputs to a training case. The ordinary `EVAL.md`
+API reference remains searchable. The live suite fixture uses the same exclusion, so serialized worlds preserve
+the actual source behavior rather than silently changing it during export.
+
 ## `locateDoc(question, scope?): { found, tried }`
 
 | Part | Form | Why |

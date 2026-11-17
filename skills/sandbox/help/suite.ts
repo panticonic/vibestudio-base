@@ -19,11 +19,11 @@ type Observation = {
 };
 type Metric = { quality: number; gates: Record<string, boolean>; metrics?: Record<string, number>; feedback: string };
 
-const SKIP = new Set(["node_modules", "dist", ".git", ".natlang"]);
+const SKIP = new Set(["node_modules", "dist", ".git", ".natlang", "test-results", "eval-results", "evaluation-results"]);
 
 function markdownFiles(root: string, directory: string): string[] {
   return readdirSync(path.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
-    if (entry.name.startsWith("vendor") || SKIP.has(entry.name)) return [];
+    if (entry.name.startsWith(".") || entry.name.startsWith("vendor") || SKIP.has(entry.name) || entry.name === "DECOMPOSITION.md") return [];
     const relative = directory ? `${directory}/${entry.name}` : entry.name;
     if (entry.isDirectory()) return markdownFiles(root, relative);
     return entry.isFile() && entry.name.endsWith(".md") ? [relative] : [];
