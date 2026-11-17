@@ -17,6 +17,7 @@ type Observation = {
   grounded: boolean;
   verifiedPassages: Array<{ source: string; text: string }>;
 };
+type Metric = { quality: number; gates: Record<string, boolean>; metrics?: Record<string, number>; feedback: string };
 
 const SKIP = new Set(["node_modules", "dist", ".git", ".natlang"]);
 
@@ -77,7 +78,7 @@ function recordedDocs(catalog: readonly CatalogEntry[], passages: Map<string, st
     async describe(id: string) {
       const entry = catalog.find((candidate) => candidate.id === id) ?? null;
       if (entry) passages.set(`docs:${entry.id}`, entry.description);
-      return entry;
+      return entry ? structuredClone(entry) : null;
     },
   };
 }
@@ -150,7 +151,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
       };
     },
   },
-  score(testCase, observation, outcome) {
+  score(testCase, observation, outcome): Metric {
     const observed = observation as Observation;
     const result = observed.result;
     if (outcome.kind !== "returned" || !result) {
