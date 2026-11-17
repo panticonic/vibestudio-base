@@ -5813,7 +5813,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     ) {
       throw new Error("retireSubagentExecution: caller does not own this subagent run");
     }
-    await this.interruptChannelAndCancelDeferredEvals(input.taskChannelId, true);
+    // Retirement owns background tools too. Flushing only the current input
+    // can acknowledge retirement while a separately owned tool still waits.
+    await this.interruptChannelAndCancelDeferredEvals(input.taskChannelId, false);
     return { retired: true };
   }
 

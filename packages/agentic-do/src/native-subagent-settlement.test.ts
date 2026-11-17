@@ -249,6 +249,39 @@ async function fixture(failure = false) {
 }
 
 describe("native shipping subagent input settlement", () => {
+  it.each([false, true])(
+    "joins the child's still-owned tools before acknowledging retirement (background=%s)",
+    async (background) => {
+      const f = await fixture();
+      const task = await f.conversation.invokeTool(
+        { id: "work-at-retirement", name: f.blocked.name, arguments: {} },
+        context,
+        { background },
+      );
+      await f.blockedEntered;
+      f.child.callerIdForTest = parentId;
+      await f.child.releaseForLifecycle({
+        epoch: "retire-live-child",
+        phase: "quiesce",
+        mode: "retire",
+        reason: "parent context retired",
+        deadlineMs: 0,
+      });
+      await expect(
+        f.child.retireSubagentExecution({
+          runId: identity.runId,
+          taskChannelId: identity.taskChannelId,
+          reason: "supervisor retired",
+        }),
+      ).resolves.toEqual({ retired: true });
+      expect(
+        (await f.harness.inspect(context)).tasks.map(({ record }) => record.id),
+      ).not.toContain(task);
+      expect(
+        (await f.harness.waitForTask(task, context)).state.outcome.status,
+      ).toBe("aborted");
+    },
+  );
   it("retires an existing child execution after lifecycle quiescence seals new admission", async () => {
     const f = await fixture();
     f.child.callerIdForTest = parentId;
