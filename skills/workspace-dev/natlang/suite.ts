@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { defineEvaluationSuite } from "@workspace/natlang/evaluation";
 import { executorIdentityForChoice, loadModelConfiguration } from "@workspace/natlang/model";
 
@@ -12,12 +12,14 @@ type Expected = { family: "brand" | "lucide" | "emoji"; accept: string[] };
 type Choice = { family: string; id: string };
 
 /** The shipped icon catalog, read from the skill's own assets the way the eval `fs` would list it. */
-const catalog = {
-  async readdir(path: string): Promise<string[]> {
-    const directory = path.replace("skills/workspace-dev/assets/icons/", "");
-    return fs.readdirSync(fileURLToPath(new URL(`../assets/icons/${directory}`, import.meta.url)));
-  },
-};
+function recordedCatalog(programRoot: string) {
+  return {
+    async readdir(request: string): Promise<string[]> {
+      const directory = request.replace("skills/workspace-dev/assets/icons/", "");
+      return fs.readdirSync(path.join(programRoot, "../assets/icons", directory));
+    },
+  };
+}
 
 // Gates for porting (DECOMPOSITION.md): mean quality of at least 0.8 on validation and on the locked test split.
 // A case scores half for the right family and half for a catalog id in its accepted set (any single emoji for "emoji").
@@ -32,7 +34,8 @@ export default defineEvaluationSuite({
   budget: { maxRollouts: 40, maxProposals: 0, maxModelCalls: 200 },
   fixture: {
     async create(testCase, context) {
-      const app = (await context.loadFreshProgram()) as { unitIcon(unit: Unit, fs: typeof catalog): Promise<Choice> };
+      const app = (await context.loadFreshProgram()) as { unitIcon(unit: Unit, fs: ReturnType<typeof recordedCatalog>): Promise<Choice> };
+      const catalog = recordedCatalog(context.programRoot);
       const unit = (testCase.input as { args: [Unit] }).args[0];
       return { execute: () => context.runtime.run(() => app.unitIcon(unit, catalog)) };
     },

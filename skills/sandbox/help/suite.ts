@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineEvaluationSuite } from "@workspace/natlang/evaluation";
 import { executorIdentityForChoice, loadModelConfiguration } from "@workspace/natlang/model";
 import type { Cause, FailedCall, Located, Recovery } from "./types.js";
@@ -14,24 +13,20 @@ type CaseExpected = { sources: string[] } | { cause: Cause };
 
 type CatalogEntry = { id: string; surface: string; qualifiedName: string; title: string; description: string };
 
-/** The workspace this suite runs in: the template's own documents are the corpus locateDoc searches. */
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-/** Real entries of the host capability catalog (blobstore, fs, docs, serverLog, credentials, build, missions). */
-const CATALOG = JSON.parse(readFileSync(new URL("./catalog.json", import.meta.url), "utf8")) as CatalogEntry[];
 const SKIP = new Set(["node_modules", "dist", ".git", ".natlang"]);
 
-function markdownFiles(directory: string): string[] {
-  return readdirSync(path.join(ROOT, directory), { withFileTypes: true }).flatMap((entry) => {
+function markdownFiles(root: string, directory: string): string[] {
+  return readdirSync(path.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
     if (entry.name.startsWith("vendor") || SKIP.has(entry.name)) return [];
     const relative = directory ? `${directory}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) return markdownFiles(relative);
+    if (entry.isDirectory()) return markdownFiles(root, relative);
     return entry.isFile() && entry.name.endsWith(".md") ? [relative] : [];
   });
 }
 
 /** `fs.grep` and `fs.readText` over the workspace's Markdown files, with the service's result shapes. */
-function workspaceFs() {
-  const files = markdownFiles("");
+function workspaceFs(root: string) {
+  const files = markdownFiles(root, "");
   return {
     async grep(pattern: string, options: { path?: string; caseInsensitive?: boolean; maxMatches?: number } = {}) {
       const expression = new RegExp(pattern, options.caseInsensitive ? "i" : "");
@@ -40,14 +35,14 @@ function workspaceFs() {
       const matches = files
         .filter((file) => !prefix || file === prefix || file.startsWith(`${prefix}/`))
         .flatMap((file) =>
-          readFileSync(path.join(ROOT, file), "utf8")
+          readFileSync(path.join(root, file), "utf8")
             .split("\n")
             .flatMap((line, index) => (expression.test(line) ? [{ file, lineNumber: index + 1, line, before: [], after: [] }] : [])),
         );
       return { matches: matches.slice(0, limit), matchCount: Math.min(matches.length, limit), truncated: matches.length > limit };
     },
     async readText(file: string, options: { maxBytes?: number } = {}) {
-      const text = readFileSync(path.join(ROOT, file), "utf8");
+      const text = readFileSync(path.join(root, file), "utf8");
       const limit = options.maxBytes ?? 50 * 1024;
       return { text: text.slice(0, limit), truncated: text.length > limit };
     },
@@ -55,11 +50,11 @@ function workspaceFs() {
 }
 
 /** `docs.search` (keyword overlap, as the catalog index ranks) and `docs.describe` over the recorded entries. */
-function recordedDocs() {
+function recordedDocs(catalog: readonly CatalogEntry[]) {
   return {
     async search(query: string, options: { limit?: number } = {}) {
       const words = query.toLowerCase().match(/[a-z0-9_.]{3,}/g) ?? [];
-      return CATALOG.map((entry) => {
+      return catalog.map((entry) => {
         const text = `${entry.qualifiedName} ${entry.description}`.toLowerCase();
         return { entry, score: words.filter((word) => text.includes(word)).length };
       })
@@ -69,7 +64,7 @@ function recordedDocs() {
         .map(({ entry }) => ({ id: entry.id, surface: entry.surface, qualifiedName: entry.qualifiedName, title: entry.title, description: entry.description }));
     },
     async describe(id: string) {
-      return CATALOG.find((entry) => entry.id === id) ?? null;
+      return catalog.find((entry) => entry.id === id) ?? null;
     },
   };
 }
@@ -113,7 +108,10 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
       };
       const input = testCase.input;
       if (input.function === "locateDoc") {
-        const services = { fs: workspaceFs(), docs: recordedDocs() };
+        // Evaluation modules are emitted elsewhere; assets belong to the source program snapshot.
+        const root = path.resolve(context.programRoot, "../../..");
+        const catalog = JSON.parse(readFileSync(path.join(context.programRoot, "catalog.json"), "utf8")) as CatalogEntry[];
+        const services = { fs: workspaceFs(root), docs: recordedDocs(catalog) };
         return { execute: () => context.runtime.run(() => app.docHelp(input.question), { services }) };
       }
       return {
