@@ -351,8 +351,10 @@ or import them from `@workspace/runtime`.
   custom-message cards, `registerMessageType`, `callMethod`, and so on. Agent
   eval only; see below.
 - **`agent`**: inspect and configure THIS agent: `await agent.describe()`,
-  `await agent.setModel("provider:model")`, and so on. Agent eval only; see
-  below.
+  `await agent.setModel("provider:model")`, and so on. Its self-snapshot includes
+  `storage.compaction`: current head, last collected head, and the bounded commit
+  count observed at that collection. Reading it neither walks history nor runs
+  collection. Agent eval only; see below.
 - **`nl`** and **`natlang`**: natural-language functions (a typed, traced
   small-model call in this cell's realm) when the workspace declares
   `providers.natlang`. They need no import and load only for a cell that

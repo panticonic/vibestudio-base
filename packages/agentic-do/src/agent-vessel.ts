@@ -6398,6 +6398,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       config: this.getAgentSettings(),
       channels: this.subscriptions.listAll(),
       tools: { active: activeTools },
+      storage: {
+        engine: this.dolt ? "dolt" : "sqlite",
+        compaction: this.doltGcState(),
+      },
       execution,
     };
   }

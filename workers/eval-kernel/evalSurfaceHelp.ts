@@ -14,7 +14,7 @@ import { jsonSchemaNumericType } from "@vibestudio/shared/jsonSchemaNumericType"
 export const EVAL_RUNTIME_METHOD_NOTES: Record<string, { description: string }> = {
   "agent.describe": {
     description:
-      "describe() → Promise<{ identity, config, channels, tools, execution }>. Await it. " +
+      "describe() → Promise<{ identity, config, channels, tools, storage, execution }>. Await it. " +
       "This is the owning agent’s self-inspection/debug snapshot and is available in read-only agent evals.",
   },
   "chat.callMethod": {

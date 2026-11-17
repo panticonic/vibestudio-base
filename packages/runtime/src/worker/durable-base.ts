@@ -128,6 +128,7 @@ import {
   committedTransactionSync,
   DEFAULT_DOLT_GC_POLICY,
   doltStorageOf,
+  readDoltGcState,
   type DoltGcPolicy,
   type DoltStorage,
   type DoltTransactionCommit,
@@ -366,6 +367,11 @@ export abstract class DurableObjectBase {
    */
   protected doltGcPolicy(): DoltGcPolicy | null {
     return DEFAULT_DOLT_GC_POLICY;
+  }
+
+  /** Read compaction metadata without scanning history or starting a collection. */
+  protected doltGcState() {
+    return readDoltGcState(this.dolt, { get: (key) => this.getStateValue(key) });
   }
 
   private doltGcTicks = 0;
