@@ -61,6 +61,7 @@ function hostService(name: ServiceName) {
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
   serverLog: hostService("serverLog"),
+  panelRepair: binding("panelRepair"),
   docs: hostService("docs"),
   localModels: (bindings) => {
     const extensions = requireBinding("localModels", bindings, "extensions") as {

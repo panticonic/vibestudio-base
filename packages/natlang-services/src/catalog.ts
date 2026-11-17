@@ -115,6 +115,25 @@ export const SERVICE_CATALOG = [
     },
     methods: [{ name: "inspect", params: ["runnerTargetId", "runId", "testName"] }],
   },
+  {
+    name: "panelRepair",
+    summary:
+      "Repair one caller-assigned live panel in its exact workspace context. Source edits are atomic and revision-guarded; browser actions are generation-bound. No publication authority is exposed.",
+    contract: {
+      origin: "base",
+      file: "packages/natlang-services/src/contracts.ts",
+      table: "panelRepairMethods",
+    },
+    methods: [
+      { name: "observe", params: [] },
+      { name: "interact", params: ["generation", "interaction"] },
+      { name: "listSource", params: ["revision"] },
+      { name: "readSource", params: ["revision", "paths"] },
+      { name: "apply", params: ["revision", "edits"] },
+      { name: "build", params: ["revision"] },
+      { name: "rebuild", params: ["revision"] },
+    ],
+  },
 ] as const satisfies readonly ServiceCatalogEntry[];
 
 export type ServiceName = (typeof SERVICE_CATALOG)[number]["name"];

@@ -260,3 +260,33 @@ describe("bindProgram", () => {
     expect(ran).toEqual(["task", "task"]);
   });
 });
+
+it("keeps explicit declared service adapters isolated across cached program loads", async () => {
+  const tasks: Array<{ services: Record<string, object> }> = [];
+  const loader = new ProgramLoader({
+    platform: platform(),
+    fs: memoryFs({
+      "skills/s/brief.nl": BRIEF,
+      "skills/s/services.d.ts": "declare module 'natlang:services' { export const web: unknown; }",
+    }),
+    bindings: {},
+    runTask: async (_run, task) => {
+      tasks.push(task);
+      throw new Error("bound task observed");
+    },
+  });
+  const adapter = (id: string) => ({ search: async () => id, fetch: async () => id, read: async () => id });
+  const first = (await loader.load("skills/s/brief.nl", { services: { web: adapter("first") } })) as (
+    ...args: unknown[]
+  ) => Promise<unknown>;
+  const second = (await loader.load("skills/s/brief.nl", { services: { web: adapter("second") } })) as (
+    ...args: unknown[]
+  ) => Promise<unknown>;
+  await expect(first("q")).rejects.toThrow("bound task observed");
+  await expect(second("q")).rejects.toThrow("bound task observed");
+  expect(await (tasks[0]!.services["web"] as { search(): Promise<string> }).search()).toBe("first");
+  expect(await (tasks[1]!.services["web"] as { search(): Promise<string> }).search()).toBe("second");
+  await expect(loader.load("skills/s/brief.nl", { services: { fs: {} } })).rejects.toThrow(
+    "does not declare service fs",
+  );
+});

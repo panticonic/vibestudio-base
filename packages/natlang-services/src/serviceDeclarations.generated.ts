@@ -393,4 +393,70 @@ export function inspect(runnerTargetId: string, runId: string, testName?: string
 } | {
   [key: string]: unknown;
 }>;`,
+  panelRepair: `/** Repair one caller-assigned live panel in its exact workspace context. Source edits are atomic and revision-guarded; browser actions are generation-bound. No publication authority is exposed. */
+
+/** Read source revision and exact rendered panel generation with real console evidence. */
+export function observe(): Promise<{
+  revision: string;
+  generation: string;
+  phase: string;
+  controls: string[];
+  console: string[];
+  buildDiagnostics: string[];
+}>;
+
+/** Perform accessible role/name actions on the assigned generation and return observed browser evidence. */
+export function interact(generation: string, interaction: {
+  steps: ({
+    kind: "click";
+    role: string;
+    name: string;
+  } | {
+    kind: "fill";
+    role: string;
+    name: string;
+    text: string;
+  } | {
+    kind: "inspect";
+    role: string;
+    name: string;
+  })[];
+}): Promise<{
+  observations: string[];
+}>;
+
+/** List all files in the assigned panel repository at the supplied current revision. */
+export function listSource(revision: string): Promise<string[]>;
+
+/** Read existing text files in the assigned panel repository at the supplied revision. */
+export function readSource(revision: string, paths: string[]): Promise<{
+  path: string;
+  text: string;
+}[]>;
+
+/** Atomically apply exact before/after file edits using the expected working head. No publication. */
+export function apply(revision: string, edits: {
+  path: string;
+  before: string;
+  after: string;
+}[]): Promise<{
+  revision: string;
+}>;
+
+/** Compile the assigned panel at this exact revision without publishing. */
+export function build(revision: string): Promise<{
+  revision: string;
+  passed: boolean;
+  diagnostics: string[];
+}>;
+
+/** Compile the assigned panel at this exact revision without publishing. */
+export function rebuild(revision: string): Promise<{
+  revision: string;
+  generation: string;
+  phase: string;
+  controls: string[];
+  console: string[];
+  buildDiagnostics: string[];
+}>;`,
 };

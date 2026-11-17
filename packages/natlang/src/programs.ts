@@ -254,10 +254,19 @@ export class ProgramLoader {
     return { path, root, program };
   }
 
-  async load(specifier: string): Promise<unknown> {
+  async load(specifier: string, options: { services?: Readonly<Record<string, object>> } = {}): Promise<unknown> {
     const { bindings, runTask } = this.options;
     const { path, root, program } = await this.compiledProgram(specifier);
-    const services = servicesFor(path, program.services, bindings);
+    const overrides = options.services ?? {};
+    for (const name of Object.keys(overrides)) {
+      if (!program.services.includes(name))
+        throw new NatlangProgramError(
+          `Program ${path} does not declare service ${name}; supply only its declared services.`,
+          path,
+          "services-unavailable",
+        );
+    }
+    const services = servicesFor(path, program.services, Object.freeze({ ...bindings, ...overrides }));
     return bindProgram(
       program.value,
       { services, serviceDeclarations: declarationsFor(program.services), programRoot: root },

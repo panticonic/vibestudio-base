@@ -12,6 +12,7 @@
   "dependencies": {
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@workspace/runtime": "workspace:*"
   }
 }

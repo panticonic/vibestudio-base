@@ -14,3 +14,5 @@ export { selectServices, type NatlangService, type ServiceBindings } from "./sel
 
 /** Declaration text per service name: the members of `declare namespace <name> { ... }`. */
 export const serviceDeclarations: Readonly<Record<string, string>> = generatedServiceDeclarations;
+
+export { createPanelRepair } from "./panelRepair.js";

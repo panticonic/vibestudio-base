@@ -48,3 +48,76 @@ export const systemTestsMethods = {
 } as const;
 
 export { systemTestInspectionSchema };
+
+const repairObservation = z.object({
+  revision: z.string(),
+  generation: z.string(),
+  phase: z.string(),
+  controls: z.array(z.string()),
+  console: z.array(z.string()),
+  buildDiagnostics: z.array(z.string()),
+});
+const repairInteraction = z.object({
+  steps: z.array(
+    z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("click"),
+        role: z.string(),
+        name: z.string(),
+      }),
+      z.object({
+        kind: z.literal("fill"),
+        role: z.string(),
+        name: z.string(),
+        text: z.string(),
+      }),
+      z.object({
+        kind: z.literal("inspect"),
+        role: z.string(),
+        name: z.string(),
+      }),
+    ]),
+  ),
+});
+export const panelRepairMethods = {
+  observe: {
+    description: "Read source revision and exact rendered panel generation with real console evidence.",
+    args: z.tuple([]),
+    returns: repairObservation,
+  },
+  interact: {
+    description:
+      "Perform accessible role/name actions on the assigned generation and return observed browser evidence.",
+    args: z.tuple([z.string(), repairInteraction]),
+    returns: z.object({ observations: z.array(z.string()) }),
+  },
+  listSource: {
+    description: "List all files in the assigned panel repository at the supplied current revision.",
+    args: z.tuple([z.string()]),
+    returns: z.array(z.string()),
+  },
+  readSource: {
+    description: "Read existing text files in the assigned panel repository at the supplied revision.",
+    args: z.tuple([z.string(), z.array(z.string())]),
+    returns: z.array(z.object({ path: z.string(), text: z.string() })),
+  },
+  apply: {
+    description: "Atomically apply exact before/after file edits using the expected working head. No publication.",
+    args: z.tuple([z.string(), z.array(z.object({ path: z.string(), before: z.string(), after: z.string() }))]),
+    returns: z.object({ revision: z.string() }),
+  },
+  build: {
+    description: "Compile the assigned panel at this exact revision without publishing.",
+    args: z.tuple([z.string()]),
+    returns: z.object({
+      revision: z.string(),
+      passed: z.boolean(),
+      diagnostics: z.array(z.string()),
+    }),
+  },
+  rebuild: {
+    description: "Compile the assigned panel at this exact revision without publishing.",
+    args: z.tuple([z.string()]),
+    returns: repairObservation,
+  },
+} as const;

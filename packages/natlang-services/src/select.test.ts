@@ -26,6 +26,7 @@ function evalBindings() {
   const extensions = { invoke: vi.fn(async (..._args: unknown[]): Promise<unknown> => []) };
   return {
     services: rawServices,
+    panelRepair: withExtras("panelRepair"),
     web: withExtras("web"),
     memory: withExtras("memory"),
     rpc,
