@@ -12,6 +12,11 @@ type CaseInput =
 type CaseExpected = { sources: string[] } | { cause: Cause };
 
 type CatalogEntry = { id: string; surface: string; qualifiedName: string; title: string; description: string };
+type Observation = {
+  result?: Located | Recovery;
+  grounded: boolean;
+  verifiedPassages: Array<{ source: string; text: string }>;
+};
 
 const SKIP = new Set(["node_modules", "dist", ".git", ".natlang"]);
 
@@ -25,8 +30,9 @@ function markdownFiles(root: string, directory: string): string[] {
 }
 
 /** `fs.grep` and `fs.readText` over the workspace's Markdown files, with the service's result shapes. */
-function workspaceFs(root: string) {
+function workspaceFs(root: string, passages: Map<string, string>) {
   const files = markdownFiles(root, "");
+  const allowed = new Set(files);
   return {
     async grep(pattern: string, options: { path?: string; caseInsensitive?: boolean; maxMatches?: number } = {}) {
       const expression = new RegExp(pattern, options.caseInsensitive ? "i" : "");
@@ -42,19 +48,22 @@ function workspaceFs(root: string) {
       return { matches: matches.slice(0, limit), matchCount: Math.min(matches.length, limit), truncated: matches.length > limit };
     },
     async readText(file: string, options: { maxBytes?: number } = {}) {
+      if (!allowed.has(file)) throw new Error("Read a workspace Markdown file named by fs.grep.");
       const text = readFileSync(path.join(root, file), "utf8");
       const limit = options.maxBytes ?? 50 * 1024;
-      return { text: text.slice(0, limit), truncated: text.length > limit };
+      const shown = text.slice(0, limit);
+      if ((passages.get(file)?.length ?? -1) < shown.length) passages.set(file, shown);
+      return { text: shown, truncated: text.length > limit };
     },
   };
 }
 
 /** `docs.search` (keyword overlap, as the catalog index ranks) and `docs.describe` over the recorded entries. */
-function recordedDocs(catalog: readonly CatalogEntry[]) {
+function recordedDocs(catalog: readonly CatalogEntry[], passages: Map<string, string>) {
   return {
     async search(query: string, options: { limit?: number } = {}) {
       const words = query.toLowerCase().match(/[a-z0-9_.]{3,}/g) ?? [];
-      return catalog.map((entry) => {
+      const results = catalog.map((entry) => {
         const text = `${entry.qualifiedName} ${entry.description}`.toLowerCase();
         return { entry, score: words.filter((word) => text.includes(word)).length };
       })
@@ -62,9 +71,13 @@ function recordedDocs(catalog: readonly CatalogEntry[]) {
         .sort((a, b) => b.score - a.score)
         .slice(0, options.limit ?? 20)
         .map(({ entry }) => ({ id: entry.id, surface: entry.surface, qualifiedName: entry.qualifiedName, title: entry.title, description: entry.description }));
+      for (const entry of results) passages.set(`docs:${entry.id}`, entry.description);
+      return results;
     },
     async describe(id: string) {
-      return catalog.find((entry) => entry.id === id) ?? null;
+      const entry = catalog.find((candidate) => candidate.id === id) ?? null;
+      if (entry) passages.set(`docs:${entry.id}`, entry.description);
+      return entry;
     },
   };
 }
@@ -111,17 +124,35 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
         // Evaluation modules are emitted elsewhere; assets belong to the source program snapshot.
         const root = path.resolve(context.programRoot, "../../..");
         const catalog = JSON.parse(readFileSync(path.join(context.programRoot, "catalog.json"), "utf8")) as CatalogEntry[];
-        const services = { fs: workspaceFs(root), docs: recordedDocs(catalog) };
-        return { execute: () => context.runtime.run(() => app.docHelp(input.question), { services }) };
+        const passages = new Map<string, string>();
+        const services = { fs: workspaceFs(root, passages), docs: recordedDocs(catalog, passages) };
+        return {
+          execute: () => context.runtime.run(() => app.docHelp(input.question), { services }),
+          observe(result): Observation {
+            const located = result as Located | undefined;
+            const found = located?.found ?? [];
+            const verifiedPassages = found.flatMap((entry) => {
+              const source = passages.get(entry.source);
+              const offset = source !== undefined && entry.quote.trim() ? source.indexOf(entry.quote) : -1;
+              return offset < 0 ? [] : [{ source: entry.source, text: source!.slice(offset, offset + entry.quote.length) }];
+            });
+            return { ...(located === undefined ? {} : { result: located }), grounded: located !== undefined && verifiedPassages.length === found.length, verifiedPassages };
+          },
+        };
       }
       return {
         execute: () =>
           context.runtime.run(() => app.docHelp.recoverFromFailure(input.failure), { services: noDocuments }),
+        observe(result): Observation {
+          const recovery = result as Recovery | undefined;
+          return { ...(recovery === undefined ? {} : { result: recovery }), grounded: recovery !== undefined && (recovery.docs ?? []).length === 0, verifiedPassages: [] };
+        },
       };
     },
   },
   score(testCase, observation, outcome) {
-    const result = (observation as { result?: Located | Recovery }).result;
+    const observed = observation as Observation;
+    const result = observed.result;
     if (outcome.kind !== "returned" || !result) {
       return { quality: 0, gates: { completed: false }, feedback: `No result: ${outcome.error?.message ?? "none"}` };
     }
@@ -130,21 +161,21 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
       const cause = (result as Recovery).cause;
       const exact = cause === expected.cause;
       return {
-        quality: exact ? 1 : 0,
-        gates: { completed: true },
-        feedback: exact ? "Correct." : `Expected ${expected.cause}; got ${cause} (${(result as Recovery).by}).`,
+        quality: exact && observed.grounded === true ? 1 : 0,
+        gates: { completed: true, grounded: observed.grounded === true },
+        feedback: observed.grounded !== true ? "Recovery returned documentation that this fixture did not supply." : exact ? "Correct." : `Expected ${expected.cause}; got ${cause} (${(result as Recovery).by}).`,
       };
     }
     const found = (result as Located).found;
     const answers = found.filter((entry) => entry.fit === "answers").map((entry) => entry.source);
-    // An answering section from an expected source; for a question the documents do not answer, no answering section.
+    // Every answer must come from an expected source; unrelated sources cannot piggyback on one correct hit.
     const exact =
-      expected.sources.length === 0 ? answers.length === 0 : answers.some((source) => expected.sources.includes(source));
+      expected.sources.length === 0 ? answers.length === 0 : answers.length > 0 && answers.every((source) => expected.sources.includes(source));
     return {
-      quality: exact ? 1 : 0,
+      quality: exact && observed.grounded === true ? 1 : 0,
       metrics: { answers: answers.length, related: found.length - answers.length, tried: (result as Located).tried.length },
-      gates: { completed: true },
-      feedback: exact
+      gates: { completed: true, grounded: observed.grounded === true, expectedSources: exact },
+      feedback: observed.grounded !== true ? "A returned quote is absent from the Markdown or catalog evidence the fixture supplied." : exact
         ? "Correct."
         : `Expected an answer from ${expected.sources.join(", ") || "nowhere"}; answers came from ${answers.join(", ") || "nowhere"}.`,
     };

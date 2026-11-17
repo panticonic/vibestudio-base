@@ -5,6 +5,12 @@ documentation through `locateDoc` and callable-folder code imports only its sibl
 catalog: `search`, `describe`) and `fs` (`grep`, `readText`), each a narrowed view of the caller's own `services.docs`
 and `services.fs`, the same catalog the `docs_search`/`docs_open` tools read and the same files the agent reads.
 
+The evaluation fixture loads its Markdown and catalog from the authored `programRoot`, independently of where the
+suite module was emitted. It records the exact source passages returned by those services, authenticates every
+result quote against them, and requires every answering source to belong to the case's expected source set. Its
+observation supplies authenticated passages to a separate semantic reviewer; a correctly named file alone is not
+verification. Recovery cases supply no documents, so an invented recovery citation fails the grounding gate.
+
 ## `locateDoc(question, scope?): { found, tried }`
 
 | Part | Form | Why |
