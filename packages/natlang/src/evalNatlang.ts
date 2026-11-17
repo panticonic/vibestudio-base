@@ -64,12 +64,15 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const gateway = createModelGatewayClient(rpc);
   const records = createNatlangRecordsClient(rpc);
   const directory = new ModelDirectory(rpc);
+  const store = new RecordsStore(records, host.owner, (message) => console.error(message));
   const { executor, executorIdentity, pinExecutor: nameExecutor, models } = modelsFor({
     gateway,
+    captureModelTurns: () => store.capturesModelTurns,
+    executorModel: () => store.capturedExecutorModel,
+    recordExchange: (exchange) => store.captureModelExchange(exchange),
     directory,
     turnPrefix: crypto.randomUUID().slice(0, 8),
   });
-  const store = new RecordsStore(records, host.owner, (message) => console.error(message));
   const platform: Platform = {
     ...core.workerdPlatform({ realm: confinedRealm(host.newFunction), callStore: () => store }),
     runFolderBash: folderBash,
@@ -124,7 +127,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   async function prepare(run: ActiveRun): Promise<void> {
     directory.newEpoch();
     try {
-      nameExecutor(await directory.resolve(EXECUTOR_ROLE));
+      nameExecutor(await directory.resolve(store.capturedExecutorModel ?? EXECUTOR_ROLE));
     } catch {
       // No usable model fills the role. A call that needs it fails with the reason (`executor-unavailable`), and a
       // cell whose calls all name another model does not need it.
@@ -161,8 +164,13 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const loader = new ProgramLoader({ platform, fs, bindings: host.bindings, runTask });
 
   const natlang = Object.freeze({
+    /** Explicitly record actual model exchanges for this eval run only; normal calls keep their existing retention. */
+    captureModelTurns: (options?: { executorModel?: string }) => {
+      if (!active || active.prepared) throw new Error("enable model turn capture before the first natlang call of the executing eval run");
+      store.enableModelTurnCapture(options);
+    },
     /** Load a workspace natlang program (a `.nl` file, a `.ts` module, or a folder). */
-    load: (path: string) => loader.load(path),
+    load: (path: string, options?: { services?: Record<string, object> }) => loader.load(path, options),
     /** A workspace program's functions with their typed signatures (from the compilation `load` runs). */
     describe: (path: string) => loader.describe(path),
     /**
@@ -176,6 +184,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
       if (options.raw) {
         return {
           callId,
+          summary: detail.summary,
           name: detail.summary.definition_name,
           outcome: detail.summary.outcome,
           model: detail.summary.model_id,

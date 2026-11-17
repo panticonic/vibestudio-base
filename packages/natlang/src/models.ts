@@ -1,3 +1,4 @@
+import type { ModelExchange } from './modelTurnCapture.js';
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import type { RpcCallerLike } from "@vibestudio/shared/workspaceServiceRpc";
 import {
@@ -101,6 +102,9 @@ export function modelsFor(options: {
   gateway: ModelGatewayClient;
   directory: ModelDirectory;
   turnPrefix: string;
+  recordExchange?: (exchange: ModelExchange) => void;
+  captureModelTurns?: () => boolean;
+  executorModel?: () => string | undefined;
 }): {
   executor: ModelConfig;
   /** What the runtime records as the executor: the model the role resolved to and how it is served. */
@@ -116,8 +120,10 @@ export function modelsFor(options: {
    */
   const driverFor = (model: string, guided: () => boolean): ModelDriver => {
     const driver = gatewayDriver({
+      recordExchange: options.recordExchange,
+      captureModelTurns: options.captureModelTurns,
       gateway: options.gateway,
-      resolver: options.directory,
+      resolver: { resolve: (ref) => options.directory.resolve(ref === EXECUTOR_ROLE ? options.executorModel?.() ?? ref : ref) },
       model,
       turnPrefix: `${options.turnPrefix}:${model}`,
     });

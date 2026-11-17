@@ -1,3 +1,4 @@
+import type { ModelExchange } from './modelTurnCapture.js';
 import type { NatlangRecordsClient } from "@workspace/natlang-records/client";
 import type { NatlangOwner, CallRecordJson, LiveEventJson } from "@workspace/natlang-records/contract";
 import type { CallStoreLike, LiveEvent } from "../vendor/workerd/natlang-workerd.js";
@@ -36,6 +37,8 @@ export interface RecordingRun {
   readonly runId: string;
   /** The root calls the run made, in the order their records arrived. */
   readonly calls: EvalNatlangCallSummary[];
+  captureModelTurns?: boolean;
+  executorModel?: string;
 }
 
 /**
@@ -49,6 +52,27 @@ export interface RecordingRun {
  * call keeps going: the summary of an unrecorded call simply carries no record id.
  */
 export class RecordsStore implements CallStoreLike {
+  private readonly modelTurns = new Map<string, ModelExchange[]>();
+
+  get capturesModelTurns(): boolean { return this.run?.captureModelTurns === true; }
+
+  get capturedExecutorModel(): string | undefined { return this.run?.executorModel; }
+
+  enableModelTurnCapture(options: { executorModel?: string } = {}): void {
+    if (!this.run) throw new Error("model turn capture requires an executing eval run");
+    if (options.executorModel !== undefined && (typeof options.executorModel !== "string" || !options.executorModel.includes(":")))
+      throw new TypeError("capture executorModel must be an actual provider:id model reference");
+    this.run.captureModelTurns = true;
+    this.run.executorModel = options.executorModel;
+  }
+
+  captureModelExchange(exchange: ModelExchange): void {
+    if (!this.capturesModelTurns) return;
+    const id = (exchange.request as { invocation_id?: unknown })?.invocation_id;
+    if (typeof id !== "string") { this.fail("natlang model exchange has no invocation identity", new Error("missing invocation_id")); return; }
+    const turns = this.modelTurns.get(id) ?? []; turns.push(exchange); this.modelTurns.set(id, turns);
+  }
+
   private queue: Promise<void> = Promise.resolve();
   private readonly latestProgress = new Map<string, string>();
   private run: RecordingRun | null = null;
@@ -65,6 +89,10 @@ export class RecordsStore implements CallStoreLike {
 
   /** Attribute the records that arrive from now on to `run`. */
   attach(run: RecordingRun | null): void {
+    if (!run && this.modelTurns.size) {
+      this.fail("natlang captured exchanges have no completed call record", new Error(String(this.modelTurns.size)));
+      this.modelTurns.clear();
+    }
     this.run = run;
   }
 
@@ -123,6 +151,7 @@ export class RecordsStore implements CallStoreLike {
 
   discard(callId: string): void {
     this.latestProgress.delete(callId);
+    this.modelTurns.delete(callId);
     this.write("discard", () => this.records.discard(callId));
   }
 
@@ -138,6 +167,9 @@ export class RecordsStore implements CallStoreLike {
     events?: string
   ): void {
     this.latestProgress.delete(record.call_id);
+    const exchanges = this.modelTurns.get(record.call_id);
+    this.modelTurns.delete(record.call_id);
+    if (exchanges) record = { ...record, model_turns: exchanges } as typeof record;
     const programRoot = record.program_root ?? this.programRoots.get(record.task_id) ?? null;
     if (programRoot !== record.program_root) record = { ...record, program_root: programRoot };
     const run = this.run;
