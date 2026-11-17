@@ -107,15 +107,14 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
   fixture: {
     async create(testCase, context) {
       const app = (await context.loadFreshProgram()) as {
-        docHelp: {
-          locateDoc(question: string): Promise<Located>;
+        docHelp: ((question: string) => Promise<Located>) & {
           recoverFromFailure(failure: FailedCall): Promise<Recovery>;
         };
       };
       const input = testCase.input;
       if (input.function === "locateDoc") {
         const services = { fs: workspaceFs(), docs: recordedDocs() };
-        return { execute: () => context.runtime.run(() => app.docHelp.locateDoc(input.question), { services }) };
+        return { execute: () => context.runtime.run(() => app.docHelp(input.question), { services }) };
       }
       return {
         execute: () =>

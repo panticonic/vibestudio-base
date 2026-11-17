@@ -16,8 +16,9 @@ import type { Citation, CitedBrief, Claim, Evidence } from "../types.js";
 export default async function researchBrief(
   question: string,
   sources: string[],
+  retrievedAt: number,
 ): Promise<CitedBrief> {
-  const retrieved = new Date().toISOString().slice(0, 10);
+  const retrieved = new Date(retrievedAt).toISOString().slice(0, 10);
   const { pages, notRead } = await gather(question, sources);
   let rejected = 0;
   const evidence: { claim: string; citation: Citation }[] = [];

@@ -20,7 +20,7 @@ type CaseExpected =
 
 type App = {
   semanticCommitMessage(compare: Compare): Promise<CommitProposal>;
-  summarizeChanges: { summarize(compare: Compare): Promise<ChangeSummary> };
+  summarizeChanges(compare: Compare): Promise<ChangeSummary>;
 };
 
 const mentionsAny = (text: string, terms: readonly string[]) =>
@@ -53,7 +53,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
           context.runtime.run<CommitProposal | ChangeSummary>(() =>
             which === "commit"
               ? app.semanticCommitMessage(compare)
-              : app.summarizeChanges.summarize(compare),
+              : app.summarizeChanges(compare),
           ),
       };
     },

@@ -117,3 +117,13 @@ supported providers, selection order, status, and revocation APIs.
   browser.
 - Keep quotations short; cite the exact URL near the supported claim.
 - Treat blob digests as content references, not public citations.
+
+## Natlang evaluation candidate
+
+`research/natlang.ts` exports `brief(question, sources, retrievedAt?)`, which runs
+the `researchBrief.nl` program. `retrievedAt` is a snapshot timestamp in Unix
+milliseconds; omitted, the host wrapper captures the current time once. Recorded
+cases pass their saved timestamp so replay preserves citation dates. A direct
+`natlang.load("skills/web-research/research/researchBrief.nl")` call takes all
+three arguments. This candidate has not met its quality gate; continue using the
+workflow above for ordinary research.
