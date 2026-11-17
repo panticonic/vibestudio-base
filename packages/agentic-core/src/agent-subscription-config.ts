@@ -27,6 +27,20 @@ export type AgentWakePolicy = "every-envelope" | "explicit" | "manual";
 export interface AgentObservationConfig {
   /** Exact non-agentic channel payload kinds that may wake this subscription. */
   payloadKinds: string[];
+  /**
+   * Causal wake bound (tendrils plan 4.3): the most consecutive turns that
+   * observations may start on this channel before further observations are
+   * recorded passively. Human input resets the count. Default 6, 1..64.
+   */
+  maxConsecutiveWakes?: number;
+}
+
+export const DEFAULT_MAX_CONSECUTIVE_OBSERVATION_WAKES = 6;
+export const MAX_MAX_CONSECUTIVE_OBSERVATION_WAKES = 64;
+
+export interface ResolvedAgentObservationConfig {
+  payloadKinds: ReadonlySet<string>;
+  maxConsecutiveWakes: number;
 }
 
 /**
@@ -170,14 +184,35 @@ const RESERVED_AGENT_OBSERVATION_PAYLOAD_KINDS = new Set([
 ]);
 
 /**
+ * Observations an agent takes without configuring any: events from the live
+ * pages (tendrils) it presents in the channel. Only the tendril kit publishes
+ * this kind, and the consecutive-wake bound applies as to any observation.
+ * A subscription that sets `observations` replaces this default entirely.
+ */
+export const DEFAULT_AGENT_OBSERVATIONS: AgentObservationConfig = {
+  payloadKinds: ["tendril.event"],
+};
+
+/**
  * Resolve the optional observation block at the runtime boundary. Invalid input
  * fails closed so a malformed subscription never broadens what reaches a model.
  */
 export function resolveAgentObservationConfig(
   value: unknown
-): { payloadKinds: ReadonlySet<string> } | null {
+): ResolvedAgentObservationConfig | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const payloadKinds = (value as Record<string, unknown>)["payloadKinds"];
+  const configuredWakes = (value as Record<string, unknown>)["maxConsecutiveWakes"];
+  const maxConsecutiveWakes =
+    configuredWakes === undefined ? DEFAULT_MAX_CONSECUTIVE_OBSERVATION_WAKES : configuredWakes;
+  if (
+    typeof maxConsecutiveWakes !== "number" ||
+    !Number.isSafeInteger(maxConsecutiveWakes) ||
+    maxConsecutiveWakes < 1 ||
+    maxConsecutiveWakes > MAX_MAX_CONSECUTIVE_OBSERVATION_WAKES
+  ) {
+    return null;
+  }
   if (
     !Array.isArray(payloadKinds) ||
     payloadKinds.length === 0 ||
@@ -197,7 +232,7 @@ export function resolveAgentObservationConfig(
     }
     normalized.add(kind);
   }
-  return { payloadKinds: normalized };
+  return { payloadKinds: normalized, maxConsecutiveWakes };
 }
 
 /** Validate worker-owned setup metadata before it enters agent configuration. */
@@ -209,7 +244,7 @@ export const agentSubscriptionConfigSchema: z.ZodType<AgentSubscriptionConfig> =
   respondPolicy: z.enum(RESPOND_POLICIES).optional(), respondFrom: z.array(z.string()).optional(),
   systemPrompt: z.string().optional(), systemPromptMode: z.enum(["append", "replace", "replace-vibestudio"]).optional(),
   handle: z.string().optional(), name: z.string().optional(), wakePolicy: z.enum(["every-envelope", "explicit", "manual"]).optional(),
-  observations: z.object({ payloadKinds: z.array(z.string()) }).optional(),
+  observations: z.object({ payloadKinds: z.array(z.string()), maxConsecutiveWakes: z.number().int().min(1).max(MAX_MAX_CONSECUTIVE_OBSERVATION_WAKES).optional() }).optional(),
   features: z.object({ resources: z.record(z.object({ kind: z.string(), id: z.string() })).optional(), tools: z.array(z.object({ kind: z.string(), resource: z.string().optional() })).optional() }).optional(),
 }).passthrough();
 

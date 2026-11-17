@@ -305,6 +305,8 @@ export interface ChatMessage {
   saliency?: "say";
   /** The UI selection this message carries (e.g. a `Choices` answer), from its `metadata.interaction`. */
   interaction?: MessageInteraction;
+  /** Sent from a tendril page's control (voice or typed there), from `metadata.tendril`. */
+  tendril?: { tendrilId: string; via: "voice" | "text" };
   /** Edit-fork provenance: the parent message this seed supersedes in the
    *  child channel. Rendered as a "substituted this turn" annotation. */
   replaces?: { messageId: string; seq: number };

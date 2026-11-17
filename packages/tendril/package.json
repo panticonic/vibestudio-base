@@ -1,0 +1,31 @@
+{
+  "name": "@workspace/tendril",
+  "version": "0.1.0",
+  "description": "Tendril kit: agent-written live panels bound to an agent conversation",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol.ts",
+    "./state": "./src/state.ts",
+    "./phrases": "./src/phrases.ts",
+    "./page": "./src/page-entry.ts",
+    "./agent": "./src/agent.ts",
+    "./outbox": "./src/outbox.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/agentic-protocol": "workspace:*",
+    "@workspace/pubsub": "workspace:*",
+    "@workspace/runtime": "workspace:*",
+    "@workspace/speech": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

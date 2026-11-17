@@ -788,6 +788,7 @@ function projectedMessageToChatMessages(
       ...(message.seq !== undefined ? { seq: message.seq } : {}),
       ...(message.saliency ? { saliency: message.saliency } : {}),
       ...(message.interaction ? { interaction: message.interaction } : {}),
+      ...(message.tendril ? { tendril: message.tendril } : {}),
       ...(message.replaces ? { replaces: message.replaces } : {}),
       ...(message.notify
         ? {

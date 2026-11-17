@@ -1501,6 +1501,111 @@ describe("panel runtime topology composition", () => {
     );
   });
 
+  it("appends a rebuild to history when asked, keeping the previous build reachable", async () => {
+    const { runtime, call } = runtimeHarness();
+
+    await runtime
+      .getPanelHandle("panel:tree/new")
+      .rebuild({ history: "append" });
+
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.commitPreparedNavigation",
+      [
+        expect.objectContaining({
+          slotId: "panel:tree/new",
+          mutation: expect.objectContaining({ kind: "append" }),
+        }),
+      ],
+      undefined,
+    );
+  });
+
+  it("pins an exact artifact through navigation into the entity and its history entry", async () => {
+    const { runtime, call } = runtimeHarness();
+    const artifact = {
+      buildKey: "b".repeat(64),
+      executionDigest: "a".repeat(64),
+    };
+
+    await runtime.panelTree
+      .get("panel:tree/new")
+      .navigate("panels/next", { contextId: "ctx:test", artifact });
+
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "runtime.createEntity",
+      [
+        expect.objectContaining({
+          execution: expect.objectContaining({
+            surface: "code",
+            source: "panels/next",
+            artifact,
+          }),
+        }),
+      ],
+      undefined,
+    );
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.commitPreparedNavigation",
+      [
+        expect.objectContaining({
+          mutation: expect.objectContaining({
+            kind: "append",
+            entry: expect.objectContaining({
+              options: expect.objectContaining({ artifact }),
+            }),
+          }),
+        }),
+      ],
+      undefined,
+    );
+  });
+
+  it("requests presentation on a device and lists the caller's presentation targets", async () => {
+    const { runtime, call } = runtimeHarness();
+    const original = call.getMockImplementation()!;
+    const targets = [
+      {
+        deviceId: "device-phone",
+        label: "Pixel",
+        platform: "mobile",
+        online: true,
+        clientSessionId: "session-1",
+      },
+    ];
+    call.mockImplementation(async (target, method, args, callOptions) => {
+      if (method === "panelRuntime.listPresentationTargets")
+        return targets as never;
+      if (method === "panelRuntime.requestPresentation")
+        return { state: "pushed" } as never;
+      return original(target, method, args, callOptions);
+    });
+
+    await expect(runtime.panelTree.listPresentationTargets()).resolves.toEqual(
+      targets,
+    );
+    await expect(
+      runtime
+        .getPanelHandle("panel:tree/new")
+        .requestPresentation({ deviceId: "device-phone", alert: "inbox" }),
+    ).resolves.toEqual({ state: "pushed" });
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "panelRuntime.requestPresentation",
+      [
+        {
+          slotId: "panel:tree/new",
+          deviceId: "device-phone",
+          focus: true,
+          alert: "inbox",
+        },
+      ],
+      undefined,
+    );
+  });
+
   it("reads bounded durable source usage through the panel tree", async () => {
     const { runtime, call } = runtimeHarness();
 

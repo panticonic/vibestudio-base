@@ -1,0 +1,78 @@
+{
+  "name": "@workspace-workers/tendril",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Tendrils",
+    "icon": "🌱",
+    "kind": "worker",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "TendrilDO"
+        }
+      ]
+    },
+    "authority": {
+      "provides": [],
+      "serviceRequests": [
+        {
+          "protocol": "vibestudio.channel.v1",
+          "availability": "required"
+        }
+      ],
+      "requests": [
+        {
+          "capability": "workspace-service:channel",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
+    },
+    "services": [
+      {
+        "action": "read or change a live page's shared state",
+        "authority": {
+          "binding": "declared",
+          "principals": [
+            "host",
+            "user",
+            "code"
+          ]
+        },
+        "description": "Shared state, presentations and exposed functions of agent-written live pages (tendrils).",
+        "durableObject": {
+          "className": "TendrilDO"
+        },
+        "name": "tendril",
+        "notability": "everyday",
+        "presentation": {
+          "domain": "computer",
+          "verb": "manage"
+        },
+        "protocols": [
+          "vibestudio.tendril.v1"
+        ],
+        "title": "Tendrils"
+      }
+    ]
+  },
+  "dependencies": {
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/pubsub": "workspace:*",
+    "@workspace/runtime": "workspace:*",
+    "@workspace/tendril": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
+    "vitest": "^3.2.7"
+  }
+}

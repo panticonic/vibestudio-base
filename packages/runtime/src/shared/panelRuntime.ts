@@ -62,6 +62,8 @@ import type {
   PanelFocusOptions,
   PanelHandle,
   PanelNavigateOptions,
+  PanelPresentationTarget,
+  PanelRebuildOptions,
   PanelWaitOptions,
 } from "../core/index.js";
 import type { RuntimeCodePanelEntityCreateSpec } from "@vibestudio/shared/runtime/entitySpec";
@@ -197,6 +199,11 @@ export interface PanelRuntimeTree {
   search(input: PanelTreeSearchInput): Promise<PanelRuntimeTreeSearchPage>;
   /** Durable, workspace-wide launch frequency grouped by panel source. */
   sourceUsage(limit?: number): Promise<PanelSourceUsage[]>;
+  /**
+   * The caller's own devices that can present a panel, for
+   * `handle.requestPresentation({ deviceId })`.
+   */
+  listPresentationTargets(): Promise<PanelPresentationTarget[]>;
   parent(id: string): PanelHandle | null;
   navigate(
     id: string,
@@ -1030,6 +1037,7 @@ export function createPanelRuntime(
     const storedOptions = entry.options
       ? (JSON.parse(entry.options) as {
           ref?: string;
+          artifact?: { buildKey: string; executionDigest: string };
         })
       : {};
     const spec = {
@@ -1040,6 +1048,9 @@ export function createPanelRuntime(
             surface: "code",
             source,
             ...(storedOptions.ref ? { ref: storedOptions.ref } : {}),
+            ...(storedOptions.artifact
+              ? { artifact: storedOptions.artifact }
+              : {}),
           } as const),
       key: entry.entry_key,
       contextId: entry.context_id,
@@ -1121,6 +1132,9 @@ export function createPanelRuntime(
             surface: "code",
             source,
             ref: selectedRef,
+            ...(navigateOptions?.artifact
+              ? { artifact: navigateOptions.artifact }
+              : {}),
           } as const),
       key: entryKey,
       contextId,
@@ -1157,6 +1171,9 @@ export function createPanelRuntime(
           options: {
             ...(nextEnv ? { env: nextEnv } : {}),
             ...(navigateOptions?.ref ? { ref: navigateOptions.ref } : {}),
+            ...(navigateOptions?.artifact
+              ? { artifact: navigateOptions.artifact }
+              : {}),
           },
         },
       },
@@ -1215,7 +1232,7 @@ export function createPanelRuntime(
   const rebuildPanel = async (
     id: string,
     detail: WorkspacePanelDetail,
-    waitOptions?: PanelWaitOptions,
+    rebuildOptions?: PanelRebuildOptions,
   ): Promise<PanelObservation> => {
     const storedOptions = detail.currentHistory.options
       ? (JSON.parse(detail.currentHistory.options) as {
@@ -1236,9 +1253,9 @@ export function createPanelRuntime(
           : {},
         ...(storedOptions.ref ? { ref: storedOptions.ref } : {}),
         ...(storedOptions.env ? { env: storedOptions.env } : {}),
-        ...(waitOptions?.signal ? { signal: waitOptions.signal } : {}),
+        ...(rebuildOptions?.signal ? { signal: rebuildOptions.signal } : {}),
       },
-      "replace",
+      rebuildOptions?.history ?? "replace",
     );
   };
 
@@ -1616,16 +1633,25 @@ export function createPanelRuntime(
         newParentId === null ? null : asPanelSlotId(newParentId),
         placement,
       ),
+    requestPresentation: (id, request) =>
+      rpc.call("main", mainRpcMethods["panelRuntime.requestPresentation"], [
+        {
+          slotId: id,
+          deviceId: request.deviceId,
+          focus: request.focus ?? true,
+          alert: request.alert ?? "none",
+        },
+      ]),
     takeOver: async (id) => {
       await rpc.call("main", mainRpcMethods["panelRuntime.takeOverSlot"], [id]);
       await options.focusPanel?.(id);
     },
     openDevTools: (id, mode) => callView("openPanelDevTools", [id, mode]),
-    rebuild: async (id, waitOptions) => {
+    rebuild: async (id, rebuildOptions) => {
       const result = await rebuildPanel(
         id,
         await requirePanelDetail(id),
-        waitOptions,
+        rebuildOptions,
       );
       options.onReload?.(id);
       recordOperation({ type: "reload", id });
@@ -1816,6 +1842,13 @@ export function createPanelRuntime(
     },
     sourceUsage(limit = 200) {
       return callState("panel.sourceUsage", [limit]);
+    },
+    listPresentationTargets() {
+      return rpc.call(
+        "main",
+        mainRpcMethods["panelRuntime.listPresentationTargets"],
+        [],
+      );
     },
     parent(id) {
       const parentId =

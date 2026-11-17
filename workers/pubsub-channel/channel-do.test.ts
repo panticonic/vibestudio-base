@@ -7791,6 +7791,44 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("stamps origin from the verified caller and ignores payload-supplied origin", async () => {
+    const { instance } = await createGadBackedChannel();
+    setRpcCaller(instance, "panel:trip", "panel", "slot-trip");
+    await instance.subscribe("panel:trip", {
+      contextId: "ctx-1",
+      name: "Trip",
+      type: "panel",
+    });
+    (
+      instance as unknown as { _currentVerifiedCaller: unknown }
+    )._currentVerifiedCaller = {
+      callerId: "panel:trip",
+      callerKind: "panel",
+      callerPanelId: "slot-trip",
+      callerPanelSource: "panels/trip",
+      callerDeviceId: "device-phone",
+    };
+
+    await instance.publish("panel:trip", "tendril.sensor", {
+      speed: 31,
+      origin: { surface: "agent" },
+      annotations: { origin: { surface: "host" } },
+    });
+
+    const row = canonicalLedger(instance)
+      .read({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((event) => event.payloadKind === "tendril.sensor")
+      .at(-1)!;
+    expect(row.annotations).toMatchObject({
+      origin: {
+        surface: "panel",
+        panelSource: "panels/trip",
+        slotId: "slot-trip",
+        deviceId: "device-phone",
+      },
+    });
+  });
+
   it("stamps agentHops into annotations without mutating the payload", async () => {
     const { instance } = await createGadBackedChannel();
     setRpcCaller(instance, "agent:one", "server");

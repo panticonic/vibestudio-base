@@ -337,5 +337,6 @@ export * from "./append-errors.js";
 export { readNativeModelStream, type NativeModelStream } from "./native-model-stream.js";
 
 export * from "./prepare-log-event.js";
+export * from "./envelope-origin.js";
 
 export { registryMutationFromLogEnvelope } from "./registry-event.js";
