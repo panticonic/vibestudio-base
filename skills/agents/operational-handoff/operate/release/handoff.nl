@@ -5,5 +5,6 @@ args:
  checkpoints: Checkpoint[]
 returns: Handoff
 ---
-Use the last actual checkpoint for decision and evidenceIds. Explain the change from the earlier checkpoint to the latest one and the evidence that changed. Do not claim the release was deployed: this workflow records a readiness handoff, not deployment. If no actual checkpoint exists, fail with the missing evidence.
-
+1. Read the supplied checkpoints. The caller has already restarted the worker, appended the new assessment and reread this exact persisted history. Use the supplied readback as the evidence for this function.
+2. Set latest to the last checkpoint. Copy latest.assessment.decision and latest.assessment.evidenceIds into the Handoff. An empty history means the caller lacks evidence and must receive a failure.
+3. Explain what changed from the preceding checkpoint and which recorded gates justify the latest decision. This is a readiness handoff. Leave deployment status outside the report.
