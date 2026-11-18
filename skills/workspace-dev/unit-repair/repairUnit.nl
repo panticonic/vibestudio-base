@@ -1,5 +1,6 @@
 ---
 description: Diagnose and repair an assigned workspace unit using real source, compiler reports and its declared complete-runtime test suite.
+budget: { maxTurns: 32 }
 args:
   request: Request
 returns: Report

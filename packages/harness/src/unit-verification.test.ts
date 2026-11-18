@@ -197,7 +197,13 @@ describe("shared complete-runtime test execution", () => {
     expect(details).toMatchObject({
       operation: "test",
       status: "passed",
-      report: { total: 1, failed: 0, runtime: "workerd" },
+      report: {
+        total: 1,
+        failed: 0,
+        runtime: "workerd",
+        artifactKey: test.selected.artifactKey,
+        executionDigest: test.selected.execution.executionDigest,
+      },
       receipt: {
         protocol: "unit-verification-receipt.v1",
         contextId: "ctx-owned",

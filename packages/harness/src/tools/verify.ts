@@ -15,7 +15,10 @@ import type {
 } from "@vibestudio/service-schemas/build";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import type { AgentToolFailure } from "@workspace/agentic-protocol";
-import type { TestExecutionResultV1, WorkspaceTestArtifactV1 } from "@vibestudio/service-schemas/build";
+import type {
+  TestExecutionResultV1,
+  WorkspaceTestArtifactV1,
+} from "@vibestudio/service-schemas/build";
 import { encodeUtf8 } from "./portable-bytes.js";
 
 const buildVerificationSchema = Type.Object(
@@ -363,14 +366,6 @@ export async function executeUnitVerification(
       ],
       { signal },
     );
-    if (
-      report.artifactKey !== artifactKey ||
-      report.executionDigest !== executionDigest
-    ) {
-      throw new Error(
-        "Native test adapter returned a mismatched execution identity",
-      );
-    }
   } else {
     if (!executeSandboxTest) {
       throw new Error(
@@ -424,6 +419,8 @@ export async function executeUnitVerification(
     report = {
       runtime: plan.runtime,
       status: result.status,
+      artifactKey: result.artifactKey,
+      executionDigest: result.executionDigest,
       summary:
         result.status === "no-tests"
           ? "No tests matched the execution filter"
@@ -438,6 +435,14 @@ export async function executeUnitVerification(
       pattern: `${plan.suite} (${plan.runtime})`,
       details: result.files,
     };
+  }
+  if (
+    report.artifactKey !== artifactKey ||
+    report.executionDigest !== executionDigest
+  ) {
+    throw new Error(
+      `${plan.runtime === "native" ? "Native" : "Sandbox"} test adapter returned a mismatched execution identity`,
+    );
   }
   const status = report.status;
   const bounded = boundTestReport(report);
@@ -538,9 +543,7 @@ function compilationFailureResult(
       {
         type: "text",
         text:
-          message +
-          "\n" +
-          JSON.stringify({ report: bounded.report, receipt }),
+          message + "\n" + JSON.stringify({ report: bounded.report, receipt }),
       },
     ],
     details: toolDetails({
@@ -764,7 +767,9 @@ function renderTests(
       : `Tests ${status} for ${target} in ${report.runtime}: ${report.passed} passed, ${report.failed} failed, ${report.total} total.`,
     ...errors,
     ...(status === "failed"
-      ? ["Inspect these failures, repair the source or tests, then rerun verify once."]
+      ? [
+          "Inspect these failures, repair the source or tests, then rerun verify once.",
+        ]
       : []),
   ].join("\n");
 }
