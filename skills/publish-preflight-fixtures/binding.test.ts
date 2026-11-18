@@ -10,7 +10,7 @@ import type {
   PublishPreflightReport,
   WebsiteReviewObservation,
 } from "../publish-preflight/types.js";
-import { createWebsiteReadback } from "./binding.js";
+import { createWebsiteReadback } from "../publish-preflight-bindings/index.js";
 import {
   publicationRequest,
   publicationWorlds,
