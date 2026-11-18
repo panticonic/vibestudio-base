@@ -52,14 +52,23 @@ export type HistoryReceipt = {
   check: HistoryCheck;
   exists: boolean;
   limited: boolean;
-  records: { ref: string; label: string; intent: string | null; tier: string | null; group: string | null; boundary: string | null }[];
+  records: { ref: string; source: string; label: string; intent: string | null; tier: ReasonTier | null; group: string | null; detail: string | null; boundary: string | null }[];
 };
 export type HistoryFinding = {
   check: HistoryCheck;
   status: "coordinate-absent" | "limited" | "recorded" | "none-visible";
   evidence: string[];
 };
-export type HistoryRequest = { kind: "live-history"; goal: string; checks: HistoryCheck[] };
+export type HistoryRequest = {
+  kind: "live-history";
+  goal: string;
+  checks: HistoryCheck[];
+  proposedProperty?: string;
+};
+export type ConstraintFinding = {
+  status: "supported" | "rejected" | "inconclusive" | "narrow-scope";
+  evidence: string[];
+};
 export type ProvenanceRequest =
   | HistoryRequest
   | {
@@ -77,7 +86,7 @@ export type EvidenceVote = {
   currentRejections: string[];
 };
 export type ProvenanceReport =
-  | { kind: "live-history"; findings: HistoryFinding[] }
+  | { kind: "live-history"; findings: HistoryFinding[]; constraint?: ConstraintFinding }
   | { kind: "route"; mechanism: ProvenanceMechanism }
   | {
       kind: "attribution";
@@ -86,8 +95,4 @@ export type ProvenanceReport =
       supportedIntent: string | null;
       boundary: string | null;
     }
-  | {
-      kind: "constraint";
-      status: "supported" | "rejected" | "inconclusive" | "narrow-scope";
-      evidence: string[];
-    };
+  | ({ kind: "constraint" } & ConstraintFinding);

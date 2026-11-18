@@ -32,3 +32,8 @@ assessHistoryReceipt. The System-testing adapter resolves the caller's repositor
 at one pinned semantic head, then walks cause, cohort, or rejections. It retains the raw
 node coordinates for verification and gives the model short refs. History reads carry
 no write authority. The verifier checks the authored rejection cases independently.
+
+When the task also proposes a change, assessProposedProperty prepares one constraint question from
+the pinned history. Its TypeScript helper preserves counteraction details and deduplicates repeated
+reasons. The existing weighConstraint skill decides whether those reasons support the proposal,
+reject a materially equivalent attempt, or leave it open. The report retains the original walk receipts.
