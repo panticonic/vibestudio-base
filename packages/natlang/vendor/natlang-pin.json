@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "50c9d1ea40664bd0ec5038a887176664a9c9d18c",
+  "commit": "2331e83f8dc442dd75b9d627fcdfd616ecbf6858",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "8bee5dbbdd814b9a5891542811c1ad40f9ac630d57aad3ddd50a7a8016daf4f8",
+    "workerd/natlang-workerd.js": "d0fb274485661b4802abb9118055bb4b0791aa8eec3614b634c9947dee372615",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "6719be678a97b1582bac89f17275183c6139d9588ad1632f0ad6a0b5a5d0e5c4",
@@ -73,7 +73,7 @@
     "workerd/types/native/scoped-fs.d.ts": "2822cefcd3c40b1fc0064c9dcf98b07cd687a9a8e9f87133215615772edfee39",
     "workerd/types/native/system-prompts.d.ts": "0f524759bde25e9cd622a3e652948b2657b077c99c5cdc86f19a71a26662a47e",
     "workerd/types/native/trace.d.ts": "915a063fb9fdea55a1b68c644ca12724a1c961e0c538aec0ab46977ffd40e3a4",
-    "workerd/types/native/training-guidance.d.ts": "19d51f840a96d7711943ba10275310c1f97abbcf40a1db4bbad67037757ebf7c",
+    "workerd/types/native/training-guidance.d.ts": "e1ba5c1c7d8b89a64ef54c741d9a1650778cc928a4eb09bf4a1ddbf6e8e2a72f",
     "workerd/types/native/types.d.ts": "4abca435a1b23ed2f2bd81e50142940bdb6e53055e485f61c2e2ac7fe5061fa4",
     "workerd/types/native/untrusted.d.ts": "635ac030a38702fb15a114d1aab3ebdb859368a04b0d39224fc4b048a926cc1c",
     "workerd/types/native/values.d.ts": "934208820b7ec0aa3a94b6693de9e8d8d5d63730829fd580c168d3b4db341e4d",

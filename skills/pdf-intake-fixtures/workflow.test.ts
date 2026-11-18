@@ -1,14 +1,16 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import { activate } from "../../extensions/pdf-ingest/index.js";
 import { makePdf } from "../../extensions/pdf-ingest/pdf/testPdf.js";
 import { ProgramLoader } from "../../packages/natlang/src/programs.js";
 import { confinedRealm } from "../../packages/natlang/src/realm.js";
+import { RecordsStore } from "../../packages/natlang/src/recordsStore.js";
 import { testNewFunction } from "../../packages/natlang/src/testSupport.js";
 import {
   createNatlangRuntime,
+  currentFrame,
   workerdPlatform,
 } from "../../packages/natlang/vendor/workerd/natlang-workerd.js";
 import { createPdfIntakeBindings } from "../pdf-intake-bindings/index.js";
@@ -18,6 +20,11 @@ import { verifyPdfIntake } from "./oracle.js";
 import { pdfIntakeWorlds } from "./worlds.js";
 
 const reference: Record<string, string> = {
+  runWorkflow: `
+    const selected = request.work[0];
+    const report = await domains.pdfIntake.extractPdfEvidence(selected.input);
+    return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
+  `,
   extractPdfEvidence: `
     const probe = await probeDocument(request.document);
     const plan = await choosePlan(request, probe);
@@ -67,11 +74,15 @@ const reference: Record<string, string> = {
   `,
 };
 
-function loader() {
+function loader(store?: RecordsStore) {
   const root = fileURLToPath(new URL("../..", import.meta.url));
-  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const platform = workerdPlatform({
+    realm: confinedRealm(testNewFunction()),
+    ...(store ? { callStore: () => store } : {}),
+  });
   const runtime = createNatlangRuntime({
     platform,
+    ...(store ? { calls: store } : {}),
     agent: async (session) => {
       const name = session.lam.functionName ?? "";
       const expected =
@@ -95,7 +106,16 @@ function loader() {
       readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
       stat: (path) => stat(join(root, path)),
     },
-    runTask: (run, task) => runtime.run(run, task),
+    runTask: async (run, task) => {
+      const value = await runtime.run(() => {
+        const frame = currentFrame();
+        if (store && frame && task.programRoot)
+          store.programRoots.set(frame.task.id, task.programRoot);
+        return run();
+      }, task);
+      await store?.flush();
+      return value;
+    },
   });
 }
 
@@ -120,6 +140,84 @@ it("executes each authored PDF task and checks citations against independent rec
     ).toBe(false);
   }
 });
+
+const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
+it.runIf(Boolean(host))(
+  "grades the actual Workerd run using its retained inputs and outputs",
+  async () => {
+    const runId = "scoped-pdf-workerd-test";
+    type WriteRecord = Parameters<
+      ConstructorParameters<typeof RecordsStore>[0]["record"]
+    >[0];
+    const rows = new Map<string, WriteRecord["record"]>();
+    const recordClient = {
+      async begin() {},
+      async progress() {},
+      async record(input: WriteRecord) {
+        rows.set(input.record.call_id, input.record);
+        return { recordId: input.record.call_id };
+      },
+    } as unknown as ConstructorParameters<typeof RecordsStore>[0];
+    const store = new RecordsStore(
+      recordClient,
+      {
+        kind: "agent",
+        channelId: "fixture",
+        agentRef: "fixture",
+        objectKey: "fixture",
+      },
+      (message) => {
+        throw new Error(message);
+      },
+    );
+    store.attach({ runId, calls: [] });
+    const program = loader(store);
+    const { runScopedNatlangWorkflow } = await import(
+      /* @vite-ignore */ pathToFileURL(
+        join(host!, "scripts/run-scoped-natlang-workflow.mjs"),
+      ).href
+    );
+    const configuration = await import(
+      /* @vite-ignore */ pathToFileURL(
+        join(host!, "src/dev/developmentTemplateConfig.cjs"),
+      ).href
+    );
+    const { checkouts } =
+      configuration.default.requireDevelopmentTemplateCheckouts(host);
+    const result = await runScopedNatlangWorkflow(
+      checkouts,
+      "pdf-intake-handover-date",
+      {
+        load: program.load.bind(program),
+        async calls(query: {
+          roots?: boolean;
+          name?: string;
+          parentCallId?: string;
+        }) {
+          return [...rows.values()]
+            .filter(
+              (row) =>
+                (query.roots
+                  ? row.parent_call_id === null
+                  : row.parent_call_id === query.parentCallId) &&
+                (!query.name || row.definition.name === query.name),
+            )
+            .map((row) => ({
+              callId: row.call_id,
+              parentCallId: row.parent_call_id,
+              name: row.definition.name,
+              runId,
+              outcome: row.outcome,
+            }));
+        },
+        async trace(callId: string) {
+          return { record: rows.get(callId) };
+        },
+      },
+    );
+    expect(result, JSON.stringify(result)).toMatchObject({ passed: true });
+  },
+);
 
 it("probes and cites a real PDF through the existing extension and the native call tree", async () => {
   const failIfStored = async () => {

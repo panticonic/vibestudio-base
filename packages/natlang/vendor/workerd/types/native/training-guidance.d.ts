@@ -77,6 +77,9 @@ export type GuidanceRun = {
     /** Hindsight (teacher only): a verified successful run of the task as a `TrajectoryCall`
      * (applications/guidance-writer/types.ts); the root call's guidance is the hint `writeHint` writes from it. */
     trajectory?: Record<string, unknown>;
+    /** Values no written guidance may carry (rl/privileged_context.py `answer_leaves`), checked by hintCheck.ts
+     * `checkGuidance` on every writer's result; never shown to the writer. */
+    withheld?: string[];
 };
 export type GuidancePolicyFunction = {
     function: 'selectGuidanceFacts' | 'writeGuidance' | 'writeHint';
@@ -101,6 +104,8 @@ export type GuidanceWriterPackage = {
     trajectoryOverview(call: unknown): unknown;
     /** hintCheck.ts `checkHint`: why a hint is rejected (one sentence), or undefined. */
     checkHint(hint: unknown, execution: unknown): string | undefined;
+    /** hintCheck.ts `checkGuidance`: why written guidance is rejected for carrying a withheld value, or undefined. */
+    checkGuidance(guidance: unknown, withheld: readonly string[]): string | undefined;
     /** visibility.ts `visibleFacts`. */
     visibleFacts(consumer: GuidanceConsumer, facts: readonly GuidanceFact[]): GuidanceFact[];
     /** crispSelection.ts `crispSelection`. */

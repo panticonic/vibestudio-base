@@ -232214,6 +232214,12 @@ var init_graph_custody = __esm({
 });
 
 // src/calls/snapshot.ts
+function plainPrototype(prototype) {
+  if (prototype === null || prototype === Object.prototype) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  return typeof constructor === "function" && Object.getOwnPropertyDescriptor(constructor, "prototype")?.value === prototype && Function.prototype.toString.call(constructor) === objectConstructorSource;
+}
 function portable(value, seen, depth2) {
   if (depth2 > 64) return false;
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
@@ -232222,8 +232228,7 @@ function portable(value, seen, depth2) {
   seen.add(value);
   try {
     if (Array.isArray(value)) return value.every((item) => portable(item, seen, depth2 + 1));
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return false;
+    if (!plainPrototype(Object.getPrototypeOf(value))) return false;
     return Object.entries(value).every(([, item]) => item !== void 0 && portable(item, seen, depth2 + 1));
   } finally {
     seen.delete(value);
@@ -232294,7 +232299,7 @@ function inputFeatures(inputs) {
   for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
   return out;
 }
-var typeLabel, preview2, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
+var typeLabel, objectConstructorSource, preview2, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
 var init_snapshot = __esm({
   "src/calls/snapshot.ts"() {
     "use strict";
@@ -232307,6 +232312,7 @@ var init_snapshot = __esm({
       const name = value.constructor?.name;
       return name && name !== "Object" ? name : "object";
     };
+    objectConstructorSource = Function.prototype.toString.call(Object);
     preview2 = (text3) => text3.length > 200 ? `${text3.slice(0, 200)}\u2026` : text3;
     MAX_FEATURES = 600;
     MAX_TOKENS_PER_STRING = 120;
