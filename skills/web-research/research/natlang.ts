@@ -5,7 +5,7 @@ import type { CitedBrief } from "./types.js";
 export function brief(
   question: string,
   sources: string[],
-  retrievedAt = Date.now(),
+  retrievedAt: number = Date.now(),
 ): Promise<CitedBrief> {
   return researchBrief(question, sources, retrievedAt);
 }
