@@ -1,8 +1,11 @@
+import { canonicalJson } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import {
   vcsAppliedChangeSchema,
   vcsChangeSchema,
+  vcsFileStateSchema,
   vcsIntegrationDecisionSchema,
+  vcsRepositoryStateSchema,
   vcsSemanticNodeRefSchema,
   vcsWorkApplicationSchema,
   vcsWorkUnitSchema,
@@ -17,7 +20,9 @@ import {
   committedWorkspaceEvent,
   workspaceApplicationsAt,
   workspaceCommitForRef,
+  workspaceEditBasisAt,
   workspaceMergeSourcesAt,
+  workspaceTransferBasisAt,
 } from "./doltWorkspaceState.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 import { MAX_ANCESTRY_EDGES, changeEffects, publicChangeKind } from "./semanticWorkspace.js";
@@ -214,10 +219,106 @@ function appendAppliedContentEdges(
     const to = vcsSemanticNodeRefSchema.parse(readJson(parent_ref_json));
     if (to.kind !== "file" && to.kind !== "applied-change")
       throw new SemanticVcsError("IntegrityFailure", "Workspace content edge has an invalid parent");
-    const kind = relation === "copies" ? "copies-content" : relation === "incorporates"
-      ? "incorporates-content" : "preserves-content";
-    edges.push({ kind, from: { kind: "applied-change", appliedChangeId: String(child_applied_change_id) }, to });
+    edges.push({
+      kind: contentRelation(relation),
+      from: { kind: "applied-change", appliedChangeId: String(child_applied_change_id) },
+      to,
+    });
   }
+}
+
+function contentRelation(relation: unknown) {
+  switch (relation) {
+    case "copies": return "copies-content";
+    case "incorporates": return "incorporates-content";
+    case "preserves": return "preserves-content";
+    default: throw new SemanticVcsError("IntegrityFailure", "Workspace content edge has an invalid relation");
+  }
+}
+
+type PlacementRef = Extract<VcsSemanticNodeRef, { kind: "file" | "repository" }>;
+
+function placementTombstone(sql: SqlStorage, revision: string, root: PlacementRef): string | null {
+  const query = root.kind === "file"
+    ? "SELECT tombstone_change_id FROM dolt_at_files(?) WHERE file_id = ?"
+    : "SELECT tombstone_change_id FROM dolt_at_repositories(?) WHERE repository_id = ?";
+  const id = root.kind === "file" ? root.fileId : root.repositoryId;
+  const tombstone = sql.exec(query, revision, id).toArray()[0]?.["tombstone_change_id"];
+  return typeof tombstone === "string" ? tombstone : null;
+}
+
+/** Follow the selected deletion through any saved or integrated versions that inherited it. */
+function priorPlacement(
+  sql: SqlStorage, revision: string, root: PlacementRef, tombstoneChangeId: string,
+): string {
+  let edges = 0;
+  for (let at = revision; edges < MAX_ANCESTRY_EDGES;) {
+    const parents = parentsAt(sql, at);
+    edges += parents.length;
+    const [basis] = parents;
+    if (!basis) throw new SemanticVcsError("IntegrityFailure", "Workspace deletion has no prior revision");
+    const inherited = parents.find((parent) => placementTombstone(sql, parent, root) === tombstoneChangeId);
+    if (!inherited) return basis;
+    at = inherited;
+  }
+  throw new SemanticVcsError("ScopeTooLarge", "Workspace deletion exceeds its ancestry bound");
+}
+
+function inspectPlacement(
+  sql: SqlStorage, at: string, root: PlacementRef, limit: number, edges: VcsProvenanceEdge[],
+): Extract<VcsInspectResult["node"], { kind: "file" | "repository" }> {
+  const { state, repositoryId } = root;
+  const revision = workspaceCommitForRef(sql, at, state);
+  if (!revision) throw new SemanticVcsError("InvalidReference", "Unknown workspace placement revision");
+  const basis = workspaceEditBasisAt(sql, revision);
+  const tombstoneChangeId = placementTombstone(sql, revision, root);
+  const prior = tombstoneChangeId ? priorPlacement(sql, revision, root, tombstoneChangeId) : revision;
+  if (root.kind === "repository") {
+    const repository = workspaceTransferBasisAt(sql, prior).presentRepository(repositoryId);
+    edges.push({ kind: "contains-repository", from: state, to: root });
+    return {
+      kind: "repository", state,
+      value: vcsRepositoryStateSchema.parse(tombstoneChangeId
+        ? { kind: "tombstone", repositoryId, priorPresentStateId: repository.repositoryStateId, tombstoneChangeId }
+        : { kind: "present", repositoryId, repoPath: repository.repoPath, manifestId: repository.fileManifestId }),
+    };
+  }
+
+  const { fileId } = root;
+  const file = (tombstoneChangeId ? workspaceEditBasisAt(sql, prior) : basis).file(fileId);
+  if (!file || file.repositoryId !== repositoryId)
+    throw new SemanticVcsError("InvalidReference", "File is outside the requested workspace repository");
+  const { fileStateId, presence: _presence, ...placed } = file;
+  if (!tombstoneChangeId) edges.push({ kind: "places-file", from: state, to: root });
+  const copies = sql.exec(
+    `SELECT change_id FROM dolt_at_gad_changes(?)
+      WHERE json_extract(source_json, '$.state') = ?
+        AND json_extract(source_json, '$.repositoryId') = ?
+        AND json_extract(source_json, '$.fileId') = ?
+      ORDER BY change_id LIMIT ?`,
+    at, canonicalJson(state), repositoryId, fileId, limit,
+  ).toArray();
+  for (const { change_id } of copies) {
+    edges.push({ kind: "authored-copy-source", from: { kind: "change", changeId: String(change_id) }, to: root });
+  }
+  const content = sql.exec(
+    `SELECT child_applied_change_id, relation FROM dolt_at_gad_content_edges(?)
+      WHERE parent_ref_json = ? ORDER BY content_edge_id LIMIT ?`,
+    at, canonicalJson(root), limit,
+  ).toArray();
+  for (const { child_applied_change_id, relation } of content) {
+    edges.push({
+      kind: contentRelation(relation),
+      from: { kind: "applied-change", appliedChangeId: String(child_applied_change_id) },
+      to: root,
+    });
+  }
+  return {
+    kind: "file", state,
+    value: vcsFileStateSchema.parse(tombstoneChangeId
+      ? { kind: "tombstone", fileId, priorPlacedStateId: fileStateId, tombstoneChangeId }
+      : { kind: "placed", ...placed }),
+  };
 }
 
 function inspectDecision(
@@ -422,6 +523,8 @@ export function inspectWorkspaceProvenance(
     node = { kind: "change", value: inspectChange(sql, at, root, edgeLimit + 1, edges) };
   } else if (root.kind === "decision") {
     node = { kind: "decision", value: inspectDecision(sql, at, root, edgeLimit + 1, edges) };
+  } else if (root.kind === "file" || root.kind === "repository") {
+    node = inspectPlacement(sql, at, root, edgeLimit + 1, edges);
   } else if (root.kind === "work-unit") {
     const { workUnitId } = root;
     const row = sql.exec(
