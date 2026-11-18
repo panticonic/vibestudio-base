@@ -21,6 +21,10 @@ type RuntimeProgramInput = {
     exactSameInput: boolean;
   };
   userRequestedRetry: boolean;
+  execution?: {
+    id: string;
+    state: "verified" | "unchecked" | "failed" | "stale";
+  };
 };
 type RuntimeEvalInput = {
   kind: "eval";
@@ -70,6 +74,7 @@ type ProgramNext = | "compile"
   | "inspect-trace"
   | "await-call"
   | "rerun-exact-input"
+  | "refresh-program-receipt"
   | "verified";
 type EvalNext = | "use-server-eval"
   | "open-target-workspace"
@@ -97,5 +102,5 @@ type RuntimeEvidenceReport = | { kind: "program"; next: ProgramNext; basis: stri
       activity: "idle" | "in-flight";
       basis: string;
     };
-declare const fn: NatlangFunction<[request: RuntimeEvidenceRequest], RuntimeEvidenceReport> & { readonly reviewEval: NatlangFunction<[request: RuntimeEvalInput], RuntimeEvidenceReport> & { readonly chooseSurface: NatlangFunction<[request: RuntimeEvalInput], EvalNext | "eligible">; readonly verifyReceipt: NatlangFunction<[request: RuntimeEvalInput], EvalNext> }; readonly reviewProgram: NatlangFunction<[request: RuntimeProgramInput], RuntimeEvidenceReport> & { readonly inspectCall: NatlangFunction<[request: RuntimeProgramInput], ProgramNext>; readonly inspectCompiler: NatlangFunction<[request: RuntimeProgramInput], ProgramNext | "compiled"> }; readonly reviewTrace: NatlangFunction<[request: RuntimeTraceInput], RuntimeEvidenceReport> & { readonly chooseTraceRead: NatlangFunction<[request: RuntimeTraceInput], TraceNext> } };
+declare const fn: NatlangFunction<[request: RuntimeEvidenceRequest], RuntimeEvidenceReport> & { readonly reviewEval: NatlangFunction<[request: RuntimeEvalInput], RuntimeEvidenceReport> & { readonly chooseSurface: NatlangFunction<[request: RuntimeEvalInput], EvalNext | "eligible">; readonly verifyReceipt: NatlangFunction<[request: RuntimeEvalInput], EvalNext> }; readonly reviewProgram: NatlangFunction<[request: RuntimeProgramInput], RuntimeEvidenceReport> & { readonly inspectCall: NatlangFunction<[request: RuntimeProgramInput], ProgramNext>; readonly inspectCompiler: NatlangFunction<[request: RuntimeProgramInput], ProgramNext | "compiled">; readonly inspectLoadedExecution: NatlangFunction<[receipt: RuntimeProgramInput["execution"]], ProgramNext> }; readonly reviewTrace: NatlangFunction<[request: RuntimeTraceInput], RuntimeEvidenceReport> & { readonly chooseTraceRead: NatlangFunction<[request: RuntimeTraceInput], TraceNext> } };
 export default fn;

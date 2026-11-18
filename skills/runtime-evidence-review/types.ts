@@ -17,6 +17,10 @@ export type RuntimeProgramInput = {
     exactSameInput: boolean;
   };
   userRequestedRetry: boolean;
+  execution?: {
+    id: string;
+    state: "verified" | "unchecked" | "failed" | "stale";
+  };
 };
 export type RuntimeEvalInput = {
   kind: "eval";
@@ -68,6 +72,7 @@ export type ProgramNext =
   | "inspect-trace"
   | "await-call"
   | "rerun-exact-input"
+  | "refresh-program-receipt"
   | "verified";
 export type EvalNext =
   | "use-server-eval"
