@@ -269,18 +269,26 @@ export function prepareDoltEditPlacement(
   };
 }
 
-/** List applications introduced on the first-parent lineage, oldest first. */
-function workspaceApplicationsAt(sql: SqlStorage, commit: string): string[] {
-  const rows = sql.exec(
-    `WITH RECURSIVE lineage(hash, parent, depth) AS (
+const firstParents = `WITH RECURSIVE lineage(hash, parent, depth) AS (
        SELECT commit_hash, parent_hash, 0 FROM dolt_commit_ancestors
-        WHERE commit_hash = ? AND parent_index = 0 AND parent_hash IS NOT NULL
+        WHERE commit_hash = ?1 AND parent_index = 0 AND parent_hash IS NOT NULL
+          AND (?2 IS NULL OR commit_hash <> ?2)
        UNION ALL
        SELECT parent.commit_hash, parent.parent_hash, child.depth + 1
          FROM lineage AS child JOIN dolt_commit_ancestors AS parent
            ON parent.commit_hash = child.parent
         WHERE parent.parent_index = 0 AND parent.parent_hash IS NOT NULL
-     )
+          AND (?2 IS NULL OR parent.commit_hash <> ?2)
+     )`;
+
+/** List applications introduced on the first-parent lineage, oldest first. */
+export function workspaceApplicationsAt(
+  sql: SqlStorage,
+  commit: string,
+  after: string | null = null,
+): string[] {
+  const rows = sql.exec(
+    `${firstParents}
      SELECT diff.to_application_id AS application_id, lineage.depth
        FROM lineage CROSS JOIN dolt_diff_applications(lineage.parent, lineage.hash) AS diff
       WHERE diff.diff_type = 'added' AND NOT EXISTS (
@@ -290,6 +298,7 @@ function workspaceApplicationsAt(sql: SqlStorage, commit: string): string[] {
            AND inherited.application_id = diff.to_application_id
       ) ORDER BY lineage.depth DESC`,
     commit,
+    after,
   ).toArray();
   const depths = new Set<number>();
   return rows.map((row) => {
@@ -300,6 +309,16 @@ function workspaceApplicationsAt(sql: SqlStorage, commit: string): string[] {
     depths.add(depth);
     return application_id;
   });
+}
+
+export function workspaceHasMergesAfter(sql: SqlStorage, commit: string, after: string): boolean {
+  return sql.exec(
+    `${firstParents}
+     SELECT 1 FROM lineage JOIN dolt_commit_ancestors AS parent
+       ON parent.commit_hash = lineage.hash AND parent.parent_index > 0 LIMIT 1`,
+    commit,
+    after,
+  ).toArray().length > 0;
 }
 
 /** Resolve the latest applied change or the original snapshot of each selected file. */

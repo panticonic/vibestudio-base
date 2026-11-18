@@ -3,7 +3,12 @@ import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import { vcsEditInputSchema, type VcsEditInput } from "@vibestudio/service-schemas/vcs";
+import {
+  vcsCommitInputSchema,
+  vcsEditInputSchema,
+  type VcsCommitInput,
+  type VcsEditInput,
+} from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
@@ -192,6 +197,11 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryProjection(input: { contextId: string }) {
+    return this.#history().projection(input.contextId);
+  }
+
+  @rpc(hostRead)
   async readHistoryContentOrigins(input: {
     contextId: string;
     state: StateNodeRef;
@@ -251,13 +261,12 @@ export class GadHistoryDO extends DurableObjectBase {
 
   @rpc(hostWrite)
   saveHistoryContext(input: {
-    contextId: string;
     head: string;
-    command: Parameters<ParticipantHistory["commitEvent"]>[2];
-    event: Parameters<ParticipantHistory["commitEvent"]>[3];
+    commit: VcsCommitInput;
+    cause: HistoryCommand["cause"];
   }) {
     this.#assertWritable();
-    return this.#history().commitEvent(input.contextId, input.head, input.command, input.event);
+    return this.#history().saveContext(input.head, vcsCommitInputSchema.parse(input.commit), input.cause);
   }
 
   @rpc(hostWrite)

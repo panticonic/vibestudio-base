@@ -10,18 +10,20 @@ import {
   type DoltRemoteTransport,
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
-import type { VcsEditInput } from "@vibestudio/service-schemas/vcs";
+import type { VcsCommitInput, VcsCommitResult, VcsEditInput } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
-import type { StateNodeRef } from "@workspace/vcs-engine";
+import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import {
   applyDoltWorkspaceState,
   committedWorkspaceEvent,
   prepareDoltEditPlacement,
   recordDoltWorkspaceApplication,
   recordDoltWorkspaceEvent,
+  workspaceApplicationsAt,
   workspaceCommitForRef,
   workspaceContentOriginsAt,
   workspaceEditBasisAt,
+  workspaceHasMergesAfter,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
   type WorkspacePlacementChange,
@@ -34,7 +36,7 @@ import type {
   WorkspaceEventRecord,
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
-import { SemanticWorkspace, type MutationDraft } from "./semanticWorkspace.js";
+import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -235,6 +237,27 @@ export class ParticipantHistory {
       const commit = this.#resolveState(contextId, ref);
       if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
       return workspaceRepositoriesAt(this.#storage.sql, commit);
+    });
+  }
+
+  projection(contextId: string) {
+    return this.#run(() => {
+      const { sql } = this.#storage;
+      const head = this.#dolt.hashOf(this.#contextBranch(contextId));
+      const saved = committedWorkspaceEvent(sql, head);
+      if (!saved) throw new SemanticVcsError("IntegrityFailure", "Workspace context has no saved event");
+      let state: StateNodeRef = { kind: "event", eventId: saved.eventId };
+      if (saved.head !== head) {
+        const applicationId = workspaceApplicationsAt(sql, head, saved.head).at(-1);
+        if (!applicationId) {
+          throw new SemanticVcsError("IntegrationIncomplete", "Workspace head has no semantic application");
+        }
+        state = { kind: "application", applicationId };
+        if (workspaceCommitForRef(sql, head, state) !== head) {
+          throw new SemanticVcsError("IntegrationIncomplete", "Workspace head has no exact semantic state");
+        }
+      }
+      return { head, state, repositories: workspaceRepositoriesAt(sql, head) };
     });
   }
 
@@ -461,76 +484,105 @@ export class ParticipantHistory {
     });
   }
 
-  /** Mark a prepared working revision as saved without changing any placements. */
-  commitEvent(
-    contextId: string,
+  /** Save the participant's exact working applications without changing placements. */
+  saveContext(
     expectedHead: string,
-    command: HistoryCommand,
-    event: WorkspaceEventRecord
-  ): Promise<{ readonly value: StateNodeRef; readonly head: string }> {
-    const value = { kind: "event" as const, eventId: event.eventId };
+    input: VcsCommitInput,
+    cause: HistoryCommand["cause"],
+  ): Promise<{ head: string; result: VcsCommitResult }> {
     return this.#run(() => {
       const { sql } = this.#storage;
-      if (
-        event.kind !== "commit" ||
-        event.commandId !== command.commandId ||
-        event.parentEventIds.length !== 1 ||
-        event.externalDeltaIds?.length
-      ) {
-        throw new SemanticVcsError(
-          "IntegrityFailure",
-          "Prepared event does not describe a linear workspace commit"
-        );
-      }
+      const { commandId, contextId } = input;
+      const command = { commandId, method: "commit", requestDigest: compactId("commit-request", input), cause };
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       if (this.#hasCommand(current, contextId, command)) {
-        const head = workspaceCommitForRef(sql, current, value);
-        if (
-          !head ||
-          sql
-            .exec(
-              "SELECT 1 FROM dolt_at_events(?) WHERE event_id = ? AND command_id = ?",
-              head,
-              event.eventId,
-              command.commandId
-            )
-            .toArray().length !== 1
-        ) {
-          throw new SemanticVcsError("CommandIdReuse", "Prepared command has a different event");
-        }
-        return { value, head };
+        return this.#committedSave(current, contextId, commandId);
       }
-      return this.#commit(
-        contextId,
-        expectedHead,
-        event.message || "Save workspace revision",
-        () => {
-          const parent = committedWorkspaceEvent(sql, expectedHead);
-        if (!parent || parent.eventId !== event.parentEventIds[0]) {
-            throw new SemanticVcsError(
-              "RevisionChanged",
-              "Prepared workspace event has a different parent"
-            );
-          }
-          if (parent.head === expectedHead)
-            throw new SemanticVcsError("NoEffect", "Workspace context has no working changes");
-          const applicationId = event.applicationIds.at(-1);
-          if (
-            !applicationId ||
-            workspaceCommitForRef(sql, expectedHead, { kind: "application", applicationId }) !==
-              expectedHead
-          ) {
-            throw new SemanticVcsError(
-              "RevisionChanged",
-              "Prepared workspace event has a different final application"
-            );
-          }
-          this.#recordCommand(contextId, command, event.createdAt);
-          recordDoltWorkspaceEvent(sql, event);
-          return value;
-        }
-      );
+      if (current !== expectedHead) throw new HistoryHeadChanged(expectedHead, current);
+
+      const parent = committedWorkspaceEvent(sql, current);
+      if (!parent) throw new SemanticVcsError("IntegrityFailure", "Workspace context has no saved event");
+      const applicationIds = workspaceApplicationsAt(sql, current, parent.head);
+      if (applicationIds.length > MAX_WORKING_APPLICATIONS) {
+        throw new SemanticVcsError("ScopeTooLarge", "Workspace has too many working applications to save");
+      }
+      if (input.concludes || workspaceHasMergesAfter(sql, current, parent.head) ||
+          sql.exec(
+            `SELECT 1 FROM dolt_at_applications(?1) AS app
+               JOIN json_each(?2) AS selected ON selected.value = app.application_id
+               JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+              WHERE work.kind = 'merge' LIMIT 1`,
+            current,
+            JSON.stringify(applicationIds),
+          ).toArray().length > 0) {
+        throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration needs a completed decision");
+      }
+      if (applicationIds.length === 0) {
+        throw new SemanticVcsError("RevisionChanged", "Nothing is working");
+      }
+      const expected = input.expectedWorkingHead;
+      if (expected.kind !== "application" ||
+          applicationIds.at(-1) !== expected.applicationId ||
+          workspaceCommitForRef(sql, current, expected) !== current) {
+        throw new SemanticVcsError("RevisionChanged", "Workspace save names a different working revision");
+      }
+      const fields = {
+        commandId,
+        kind: "commit" as const,
+        parentEventIds: [parent.eventId],
+        externalDeltaIds: [],
+        applicationIds,
+        resultWorkspaceFactRootId: current,
+        message: input.message ?? null,
+        createdAt: new Date().toISOString(),
+      };
+      const event: WorkspaceEventRecord = {
+        ...fields,
+        eventId: compactId("workspace-event", fields),
+        snapshotSource: null,
+      };
+      const result = this.#saveResult(contextId, event.eventId, applicationIds);
+      const { head } = this.#commit(contextId, expectedHead, input.message ?? "Save workspace revision", () => {
+        this.#recordCommand(contextId, command, event.createdAt);
+        recordDoltWorkspaceEvent(sql, event);
+      });
+      return { head, result };
     });
+  }
+
+  #committedSave(at: string, contextId: string, commandId: string): { head: string; result: VcsCommitResult } {
+    const { sql } = this.#storage;
+    const rows = sql.exec(
+      `SELECT event_id FROM dolt_at_events(?) WHERE command_id = ? AND kind = 'commit' LIMIT 2`,
+      at,
+      commandId,
+    ).toArray();
+    const eventId = rows[0]?.["event_id"];
+    if (rows.length !== 1 || typeof eventId !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Recorded save has no unique workspace event");
+    }
+    const head = workspaceCommitForRef(sql, at, { kind: "event", eventId });
+    if (!head) throw new SemanticVcsError("IntegrityFailure", "Recorded save has no commit");
+    const working = sql.exec(
+      `SELECT parent_hash FROM dolt_commit_ancestors WHERE commit_hash = ? AND parent_index = 0`,
+      head,
+    ).toArray()[0]?.["parent_hash"];
+    const previous = typeof working === "string" ? committedWorkspaceEvent(sql, working) : null;
+    if (!previous || typeof working !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Recorded save has no prior workspace event");
+    }
+    const applications = workspaceApplicationsAt(sql, working, previous.head);
+    return { head, result: this.#saveResult(contextId, eventId, applications) };
+  }
+
+  #saveResult(contextId: string, eventId: string, applicationIds: string[]): VcsCommitResult {
+    return {
+      contextId,
+      event: { kind: "event", eventId },
+      committedApplicationIds: applicationIds,
+      integrationSourceEventIds: [],
+      integrationSourceDeltaIds: [],
+    };
   }
 
   mergeMain(contextId: string, expectedHead: string, options: ResolvingMerge) {
