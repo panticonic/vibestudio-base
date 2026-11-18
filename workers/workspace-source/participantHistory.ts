@@ -51,6 +51,7 @@ import {
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
+import { historyMergePlacements } from "./doltMergeReview.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -77,6 +78,7 @@ export interface MainMergePreview {
   main: string;
   base: string;
   incoming: WorkspaceMergeScopeEntry[];
+  placements: ReturnType<typeof historyMergePlacements>;
   conflicts: Array<Omit<DoltMergeSession["conflicts"][number], "resolve" | "keepOurs" | "takeTheirs" | "resolved">>;
   violations: Array<Omit<DoltMergeSession["violations"][number], "resolve" | "resolved">>;
 }
@@ -1033,11 +1035,14 @@ export class ParticipantHistory {
         throw new SemanticVcsError("InvalidReference", "Workspace source and context share no history");
       }
       if (base === main) {
-        return { head, main, base, incoming: [], conflicts: [], violations: [] };
+        return { head, main, base, incoming: [], placements: [], conflicts: [], violations: [] };
       }
-      const incoming = [...workspaceMergeScope(this.#storage.sql, base, main).values()];
+      const { sql } = this.#storage;
+      const scope = workspaceMergeScope(sql, base, main);
+      const incoming = [...scope.values()];
+      const placements = historyMergePlacements(sql, { head, main, base }, scope);
       if (base === head) {
-        return { head, main, base, incoming, conflicts: [], violations: [] };
+        return { head, main, base, incoming, placements, conflicts: [], violations: [] };
       }
       this.#checkoutExpected(contextId, head);
       const rollback = new Error("Workspace merge preview complete");
@@ -1050,7 +1055,7 @@ export class ParticipantHistory {
               throw new Error("Workspace merge preview changed its selected revisions");
             }
             preview = {
-              head, main, base, incoming,
+              head, main, base, incoming, placements,
               conflicts: merge.conflicts.map(({ table, key, base, ours, theirs, ourChange, theirChange }) =>
                 ({ table, key, base, ours, theirs, ourChange, theirChange })
               ),
