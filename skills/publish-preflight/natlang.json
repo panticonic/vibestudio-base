@@ -1,0 +1,9 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "publish-preflight",
+  "version": "0.1.0",
+  "description": "Review an immutable, caller-assigned website package and existing publication evidence.",
+  "targets": { "main": { "entry": "preflightPublication.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": { "websiteReadback": ["preflightPublication.nl"] }
+}
