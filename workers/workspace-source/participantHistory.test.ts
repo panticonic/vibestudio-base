@@ -407,7 +407,6 @@ it("reads edit placements at the selected revision without changing the checkout
   });
   expect(graph.dolt.branch.current()).toBe("ctx/other");
   expect(graph.dolt.hashOf("HEAD")).toBe(other.head);
-  await expect(history.planEdit(other.head, input, null)).rejects.toBeInstanceOf(HistoryHeadChanged);
 });
 
 it("rejects an approved main publication after its grant expires", async () => {

@@ -52,13 +52,16 @@ export interface CommittedContext {
 
 export type HistoryEditPlan =
   | { kind: "read-content"; contentHashes: string[] }
+  | { kind: "committed"; head: string; result: HistoryEditResult & { workingHead: StateNodeRef } }
   | {
       kind: "planned";
+      command: HistoryCommand;
       application: HistoryApplicationPlan;
       blobs: NonNullable<MutationDraft["blobs"]>;
-      result: ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
+      result: HistoryEditResult;
     };
 
+type HistoryEditResult = ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
 export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
   placement: WorkspacePlacementChange | null;
 };
@@ -68,7 +71,7 @@ interface MergeSource extends CommittedContext {
 }
 
 type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
-type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
+export type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
 const APPROVED_MAIN_GRANT_LIFETIME_MS = 5 * 60_000;
 
 function branchSegment(value: string): string {
@@ -246,11 +249,19 @@ export class ParticipantHistory {
   planEdit(
     head: string,
     edit: VcsEditInput,
+    command: HistoryCommand,
     receipt: Record<string, unknown> | null,
     triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
   ): Promise<HistoryEditPlan> {
     return this.#run(() => {
-      this.#assertHead(this.#contextBranch(edit.contextId), head);
+      if (command.commandId !== edit.commandId || command.method !== "edit") {
+        throw new SemanticVcsError("IntegrityFailure", "Workspace edit and command differ");
+      }
+      const current = this.#dolt.hashOf(this.#contextBranch(edit.contextId));
+      if (this.#hasCommand(current, edit.contextId, command)) {
+        return this.#committedEdit(current, edit.contextId, command.commandId);
+      }
+      if (current !== head) throw new HistoryHeadChanged(head, current);
       const { sql } = this.#storage;
       if (workspaceCommitForRef(sql, head, edit.expectedWorkingHead) !== head) {
         throw new SemanticVcsError(
@@ -299,11 +310,53 @@ export class ParticipantHistory {
       });
       return {
         kind: "planned",
+        command,
         application: { ...prepared.plan, placement: prepared.placement },
         blobs: draft.blobs ?? [],
         result: prepared.result,
       };
     });
+  }
+
+  #committedEdit(at: string, contextId: string, commandId: string): HistoryEditPlan {
+    const { sql } = this.#storage;
+    const rows = sql.exec(
+      `SELECT app.application_id, app.work_unit_id
+         FROM dolt_at_applications(?1) AS app
+         JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+        WHERE work.command_id = ?2 LIMIT 2`,
+      at,
+      commandId,
+    ).toArray();
+    const { application_id: applicationId, work_unit_id: workUnitId } = rows[0] ?? {};
+    if (rows.length !== 1 || typeof applicationId !== "string" || typeof workUnitId !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Recorded workspace edit has no unique application");
+    }
+    const workingHead = { kind: "application" as const, applicationId };
+    const head = workspaceCommitForRef(sql, at, workingHead);
+    if (!head) throw new SemanticVcsError("IntegrityFailure", "Recorded workspace edit has no commit");
+    const changes = sql.exec(
+      `SELECT change_id FROM dolt_at_gad_changes(?)
+        WHERE work_unit_id = ? ORDER BY operation, ordinal`,
+      at,
+      workUnitId,
+    ).toArray();
+    return {
+      kind: "committed",
+      head,
+      result: {
+        commandId,
+        contextId,
+        workingHead,
+        workUnitId,
+        applicationId,
+        changeCount: changes.length,
+        changeIds: changes.slice(0, 200).map((row) => String(row["change_id"])),
+        incorporatedChangeCount: 0,
+        incorporatedChangeIds: [],
+        decisionIds: [],
+      },
+    };
   }
 
   placementHistoryRoots(): Promise<string[]> {

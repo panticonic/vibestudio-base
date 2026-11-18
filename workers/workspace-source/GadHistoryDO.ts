@@ -6,7 +6,7 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { vcsEditInputSchema, type VcsEditInput } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
-import type { StateNodeRef } from "@workspace/vcs-engine";
+import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import { committedWorkspaceEvent, createDoltWorkspaceState } from "./doltWorkspaceState.js";
 import {
   installPreparedReplayStep,
@@ -19,6 +19,7 @@ import {
   ParticipantHistory,
   retireParticipantHistory,
   revokeParticipantHistory,
+  type HistoryCommand,
   type HistoryEditPlan,
   type MainPublication,
 } from "./participantHistory.js";
@@ -218,13 +219,21 @@ export class GadHistoryDO extends DurableObjectBase {
   planHistoryEdit(input: {
     head: string;
     edit: VcsEditInput;
+    cause: HistoryCommand["cause"];
     receipt: Record<string, unknown> | null;
     triggerEvidence?: WorkUnitRecord["triggerEvidence"];
   }): Promise<HistoryEditPlan> {
     this.#assertWritable();
+    const edit = vcsEditInputSchema.parse(input.edit);
     return this.#history().planEdit(
       input.head,
-      vcsEditInputSchema.parse(input.edit),
+      edit,
+      {
+        commandId: edit.commandId,
+        method: "edit",
+        requestDigest: compactId("edit-request", edit),
+        cause: input.cause,
+      },
       input.receipt,
       input.triggerEvidence,
     );
