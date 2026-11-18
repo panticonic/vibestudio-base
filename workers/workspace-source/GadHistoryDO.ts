@@ -1,4 +1,4 @@
-import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
 import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
@@ -12,20 +12,28 @@ import {
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
-import { committedWorkspaceEvent, createDoltWorkspaceState } from "./doltWorkspaceState.js";
+import {
+  committedWorkspaceEvent,
+  createDoltWorkspaceState,
+  workspaceCommitForRef,
+  workspaceRepositoriesAt,
+} from "./doltWorkspaceState.js";
 import {
   installPreparedReplayStep,
   installReplayedMain,
   type PreparedReplayStep,
 } from "./legacyDoltReplay.js";
 import {
+  APPROVED_MAIN_GRANT_LIFETIME_MS,
   grantApprovedMain,
   grantParticipantHistory,
+  HistoryHeadChanged,
   ParticipantHistory,
   retireParticipantHistory,
   revokeParticipantHistory,
   type HistoryCommand,
   type HistoryEditPlan,
+  type HistoryPublicationApproval,
   type MainPublication,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
@@ -34,6 +42,7 @@ const source = "workers/workspace-source";
 const className = "GadHistoryDO";
 const canonicalKey = "canonical";
 const canonicalId = `do:${source}:${className}:${canonicalKey}`;
+type StoredHistoryApproval = { approval: HistoryPublicationApproval; expiresAt: number };
 const hostWrite = {
   principals: ["host"],
   website: {
@@ -226,6 +235,16 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryPublishedRevision(input: { eventId: string }) {
+    this.#assertCanonical();
+    const main = this.#remotes().hashOf("main");
+    const state = { kind: "event" as const, eventId: input.eventId };
+    const head = workspaceCommitForRef(this.sql, main, state);
+    if (!head) throw new Error("Workspace event is outside canonical history");
+    return { head, state, repositories: workspaceRepositoriesAt(this.sql, head) };
+  }
+
+  @rpc(hostRead)
   planHistoryEdit(input: {
     head: string;
     edit: VcsEditInput;
@@ -277,29 +296,98 @@ export class GadHistoryDO extends DurableObjectBase {
     return history.publishContext(input.contextId, input.head);
   }
 
-  /** The host owns approval and calls this with the exact reviewed transition. */
+  /** Called after the existing host gate prepares the exact publication. */
   @rpc(hostWrite)
-  grantHistoryPublication(input: { participantId: string; publication: MainPublication }) {
+  authorizeHistoryPublication(approval: HistoryPublicationApproval): { expiresAt: number } {
     this.#assertCanonical();
-    const target = workKey(input.participantId);
+    if (!approval.publicationId || !approval.previousEventId || !approval.proposedEventId) {
+      throw new Error("Workspace publication requires exact approval evidence");
+    }
+    if (approval.publication.previousHead === approval.publication.proposedHead) {
+      throw new Error("Workspace publication must advance main");
+    }
+    const key = this.#approvalKey(approval.publicationId);
+    const previous = this.#storedApproval(approval.publicationId);
+    if (previous && canonicalJson(previous.approval) !== canonicalJson(approval)) {
+      throw new Error("Workspace publication approval changed");
+    }
+    if (previous && (previous.expiresAt > Date.now() || this.#publishedApproval(approval))) {
+      return { expiresAt: previous.expiresAt };
+    }
+    const target = workKey(approval.participantId);
+    if (this.#allocationStatus(target) !== "active")
+      throw new Error("Workspace participant has no active history allocation");
+    const main = this.readHistoryMain();
+    if (main.head !== approval.publication.previousHead) {
+      throw new HistoryHeadChanged(approval.publication.previousHead, main.head);
+    }
+    if (main.eventId !== approval.previousEventId) {
+      throw new Error("Workspace publication approval names a different base event");
+    }
+    const expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS;
+    this.setStateValue(key, canonicalJson({ approval, expiresAt } satisfies StoredHistoryApproval));
+    return { expiresAt };
+  }
+
+  @rpc(hostWrite)
+  grantHistoryPublication(input: { publicationId: string }) {
+    this.#assertCanonical();
+    const receipt = this.#storedApproval(input.publicationId);
+    if (!receipt) throw new Error("Workspace publication has no durable approval");
+    const { approval, expiresAt } = receipt;
+    if (this.#publishedApproval(approval)) {
+      return { kind: "applied" as const, head: approval.publication.proposedHead };
+    }
+    if (expiresAt <= Date.now()) throw new Error("Workspace publication approval expired");
+    const target = workKey(approval.participantId);
     if (this.#allocationStatus(target) !== "active")
       throw new Error("Workspace participant has no active history allocation");
     const grant = grantApprovedMain(
       this.#remotes(),
-      input.publication,
-      `do:${source}:${className}:${target}`
+      approval.publication,
+      `do:${source}:${className}:${target}`,
+      expiresAt
     );
-    return { id: grant.id, origin: { ref: `${className}:${canonicalKey}`, token: grant.token } };
+    return {
+      kind: "grant" as const,
+      id: grant.id,
+      origin: { ref: `${className}:${canonicalKey}`, token: grant.token },
+    };
+  }
+
+  @rpc(hostRead)
+  readHistoryPublicationApproval(input: { publicationId: string }) {
+    this.#assertCanonical();
+    const receipt = this.#storedApproval(input.publicationId);
+    return receipt === null ? null : {
+      ...receipt,
+      applied: this.#publishedApproval(receipt.approval),
+    };
+  }
+
+  @rpc(hostWrite)
+  acknowledgeHistoryPublication(input: { publicationId: string }): void {
+    this.#assertCanonical();
+    const receipt = this.#storedApproval(input.publicationId);
+    if (!receipt) return;
+    if (!this.#publishedApproval(receipt.approval)) {
+      throw new Error("Workspace publication has no applied revision");
+    }
+    this.deleteStateValue(this.#approvalKey(input.publicationId));
   }
 
   @rpc(hostWrite)
   async publishApprovedHistory(input: {
     contextId: string;
     publication: MainPublication;
+    proposedEventId: string;
     origin: DoltRemoteTarget;
   }) {
     const history = this.#history();
-    await this.#assertSaved(history, input.contextId, input.publication.proposedHead);
+    const saved = await this.#assertSaved(history, input.contextId, input.publication.proposedHead);
+    if (saved.eventId !== input.proposedEventId) {
+      throw new Error("Workspace publication names a different saved event");
+    }
     this.#assertWritable();
     return history.publishApprovedMain(input.contextId, input.publication, input.origin);
   }
@@ -364,11 +452,12 @@ export class GadHistoryDO extends DurableObjectBase {
     history: ParticipantHistory,
     contextId: string,
     expectedHead: string
-  ): Promise<void> {
+  ): Promise<{ head: string; eventId: string }> {
     const { committed, workingHead } = await history.contextHeads(contextId);
     if (committed.head !== expectedHead || workingHead !== expectedHead) {
       throw new Error("Workspace publication requires the exact saved revision");
     }
+    return committed;
   }
 
   @rpc({ ...hostWrite, principals: ["code"], codeOnly: true })
@@ -397,6 +486,21 @@ export class GadHistoryDO extends DurableObjectBase {
     return this.sql
       .exec("SELECT status FROM gad_history_allocations WHERE target_key = ?", target)
       .toArray()[0]?.["status"];
+  }
+
+  #approvalKey(publicationId: string): string {
+    return `history-publication:${sha256HexSyncText(publicationId)}`;
+  }
+
+  #storedApproval(publicationId: string): StoredHistoryApproval | null {
+    const stored = this.getStateValue(this.#approvalKey(publicationId));
+    return stored === null ? null : JSON.parse(stored) as StoredHistoryApproval;
+  }
+
+  #publishedApproval(approval: HistoryPublicationApproval): boolean {
+    const main = this.#remotes().hashOf("main");
+    return workspaceCommitForRef(this.sql, main, { kind: "event", eventId: approval.proposedEventId })
+      === approval.publication.proposedHead;
   }
 
   #setAllocationStatus(target: string, status: "active" | "retiring" | "archived" | "retired"): void {

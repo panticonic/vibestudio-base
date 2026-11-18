@@ -47,6 +47,14 @@ export interface MainPublication {
   readonly proposedHead: string;
 }
 
+export interface HistoryPublicationApproval {
+  publicationId: string;
+  participantId: string;
+  previousEventId: string;
+  proposedEventId: string;
+  publication: MainPublication;
+}
+
 export interface CommittedContext {
   readonly contextId: string;
   readonly head: string;
@@ -74,7 +82,7 @@ interface MergeSource extends CommittedContext {
 
 type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
 export type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
-const APPROVED_MAIN_GRANT_LIFETIME_MS = 5 * 60_000;
+export const APPROVED_MAIN_GRANT_LIFETIME_MS = 5 * 60_000;
 
 function branchSegment(value: string): string {
   if (!value) throw new Error("Missing GAD branch identity");
@@ -151,6 +159,7 @@ export function grantApprovedMain(
   canonical: DoltRemoteStorage,
   publication: MainPublication,
   peer?: string,
+  expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS,
 ): DoltGrant {
   const actual = canonical.hashOf("main");
   if (actual !== publication.previousHead) {
@@ -160,7 +169,6 @@ export function grantApprovedMain(
     previous: publication.previousHead,
     next: publication.proposedHead,
   };
-  const expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS;
   const grant = canonical.remote.grant({
     push: ["main"],
     pushTransition,
