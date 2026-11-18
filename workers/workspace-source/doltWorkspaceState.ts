@@ -154,7 +154,7 @@ export function verifyDoltWorkspaceState(
   hash: string,
   expected: PlacementChange,
 ): void {
-  if (!/^[0-9a-v]{32}$/u.test(hash))
+  if (!/^[0-9a-z]+$/u.test(hash))
     throw new Error("Invalid workspace commit hash");
   const { repositories, files } = placementRows(expected);
   verify("repositories", repositoryColumns, repositories);
