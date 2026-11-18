@@ -365,6 +365,17 @@ export class GadHistoryDO extends DurableObjectBase {
     };
   }
 
+  @rpc(hostRead)
+  listHistoryAppliedPublications() {
+    this.#assertCanonical();
+    return this.sql.exec(
+      "SELECT value FROM state WHERE key LIKE 'history-publication:%' ORDER BY key"
+    ).toArray().flatMap((row) => {
+      const receipt = JSON.parse(String(row["value"])) as StoredHistoryApproval;
+      return this.#publishedApproval(receipt.approval) ? [{ ...receipt, applied: true as const }] : [];
+    });
+  }
+
   @rpc(hostWrite)
   acknowledgeHistoryPublication(input: { publicationId: string }): void {
     this.#assertCanonical();
