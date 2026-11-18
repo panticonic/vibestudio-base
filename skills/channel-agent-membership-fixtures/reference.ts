@@ -28,15 +28,18 @@ export const membershipReference: Record<string, string> = {
     if (decision === "hold") return { status, state, participantId };
     if (request.action === "inspect") return { status: "observed", state, participantId };
     if (decision === "confirm") return { status: "unchanged", state, participantId };
+    if (receipt.outcome === "blocked" || receipt.outcome === "rejected") {
+      return { status, state, participantId };
+    }
     if (state === "unavailable" || state === "conflict" ||
         (state === "member" && receipt.participantId && receipt.participantId !== participantId)) {
       return { status: "uncertain", state, participantId };
     }
     const matches = request.action === "attach" ? state === "member" && !!participantId : state === "absent";
-    if (receipt.outcome === "already" && matches) status = "unchanged";
-    if (receipt.outcome === "acknowledged" || receipt.outcome === "uncertain") {
-      status = matches ? "applied" : "uncertain";
-    }
+    if (!matches) return { status: "uncertain", state, participantId };
+    if (receipt.outcome === "already") status = "unchanged";
+    if (receipt.outcome === "acknowledged") status = "applied";
+    if (receipt.outcome === "uncertain") status = "reconciled";
     return { status, state, participantId };
   `,
 };

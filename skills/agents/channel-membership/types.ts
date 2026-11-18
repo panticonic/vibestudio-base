@@ -27,7 +27,13 @@ export type MembershipReceipt = {
 };
 
 export type ChannelAgentReport = {
-  status: "observed" | "unchanged" | "applied" | "held" | "uncertain";
+  status:
+    | "observed"
+    | "unchanged"
+    | "applied"
+    | "reconciled"
+    | "held"
+    | "uncertain";
   state: RosterStatus;
   participantId: string | null;
 };
