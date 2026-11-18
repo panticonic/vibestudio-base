@@ -1,5 +1,6 @@
 ---
 description: Repair the requested behavior of a live workspace panel and verify it in the browser.
+budget: { maxTurns: 32 }
 args:
   request: Request
 returns: Report

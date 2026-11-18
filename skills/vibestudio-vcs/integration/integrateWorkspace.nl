@@ -1,4 +1,5 @@
 ---
+budget: { maxTurns: 32 }
 description: Integrate the caller-assigned workspace source while preserving both supported intentions.
 args:
   request: Request

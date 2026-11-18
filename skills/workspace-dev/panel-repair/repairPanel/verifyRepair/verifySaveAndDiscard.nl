@@ -1,5 +1,6 @@
 ---
 description: Exercise save and discard against the candidate's currently observed saved value.
+budget: { maxTurns: 32 }
 args:
   expectedRevision: string
   checks: Checks
