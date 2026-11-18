@@ -16,8 +16,7 @@
   },
   "serviceScopes": {
     "projectWorkspace": [
-      "deliverProject.nl",
-      "deliverProject/reviewCandidate.nl"
+      "deliverProject.nl"
     ],
     "projectWorkspaceEdit": [
       "deliverProject.nl"
