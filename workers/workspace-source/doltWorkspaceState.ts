@@ -28,6 +28,57 @@ type PlacementChange = Pick<
   "repositoryUpdates" | "fileUpdates"
 >;
 
+/** Locate the most recent committed event on a context's first-parent chain. */
+export function committedWorkspaceEvent(
+  sql: SqlStorage,
+  head: string,
+): { head: string; eventId: string } | null {
+  let cursor = head;
+  for (;;) {
+    const parents: string[] = sql
+      .exec(
+        `SELECT parent_hash FROM dolt_commit_ancestors
+          WHERE commit_hash = ? AND parent_hash IS NOT NULL
+          ORDER BY parent_index`,
+        cursor,
+      )
+      .toArray()
+      .map((row) => String(row["parent_hash"]));
+    const [first, second] = parents;
+    if (!first) return null;
+    if (parents.length > 2)
+      throw new Error("A workspace event has too many parents");
+    // A merge brings the second parent's existing event rows with it. Only
+    // rows absent on both sides were introduced by the merge itself.
+    const introduced = second
+      ? sql.exec(
+          `SELECT diff.to_event_id FROM dolt_diff_events(?, ?) AS diff
+            WHERE diff.diff_type = 'added' AND NOT EXISTS (
+              SELECT 1 FROM dolt_at_events(?) AS other
+               WHERE other.event_id = diff.to_event_id
+            ) LIMIT 2`,
+          first,
+          cursor,
+          second,
+        ).toArray()
+      : sql.exec(
+          `SELECT to_event_id FROM dolt_diff_events(?, ?)
+            WHERE diff_type = 'added' LIMIT 2`,
+          first,
+          cursor,
+        ).toArray();
+    if (introduced.length > 1)
+      throw new Error("A workspace commit introduced multiple events");
+    if (introduced.length === 1) {
+      const eventId = introduced[0]?.["to_event_id"];
+      if (typeof eventId !== "string" || !eventId)
+        throw new Error("A workspace commit introduced an invalid event identity");
+      return { head: cursor, eventId };
+    }
+    cursor = first;
+  }
+}
+
 export function createDoltWorkspaceState(sql: SqlStorage): void {
   createSemanticHistoryTables(sql);
   sql.exec(`

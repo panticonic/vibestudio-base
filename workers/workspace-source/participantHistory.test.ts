@@ -6,10 +6,11 @@ import {
   createDoltWorkspaceState,
 } from "./doltWorkspaceState.js";
 import {
+  grantApprovedMain,
   grantParticipantHistory,
   HistoryHeadChanged,
   ParticipantHistory,
-  serveApprovedMain,
+  retireParticipantHistory,
 } from "./participantHistory.js";
 
 async function workspace() {
@@ -84,14 +85,13 @@ it("keeps participant changes private until publication and merges shared change
     previousHead: string,
     proposedHead: string,
   ) {
-    const approved = origin.remote.grant({ push: ["main"] });
     const publication = { previousHead, proposedHead };
+    const approved = grantApprovedMain(origin, publication);
     try {
       return await history.publishApprovedMain(
         "edit",
         publication,
         { id: canonical.id, token: approved.token },
-        async (request) => serveApprovedMain(origin, publication, request),
       );
     } finally {
       origin.remote.revoke(approved.id);
@@ -131,6 +131,30 @@ it("keeps participant changes private until publication and merges shared change
   expect(rows(canonical)).toEqual(rows(b.local));
 });
 
+it("merges an exact prefix of a published context without moving shared history", async () => {
+  const { genesis, origin, createParticipant, rows } = await workspace();
+  const a = await createParticipant("alice");
+  const b = await createParticipant("bob");
+  const first = await a.history.commit("edit", a.head, "First edit", () => {
+    a.local.sql.exec("INSERT INTO files VALUES ('first', 'first revision')");
+  });
+  const second = await a.history.commit("edit", first.head, "Second edit", () => {
+    a.local.sql.exec("INSERT INTO files VALUES ('second', 'second revision')");
+  });
+  const source = { participantId: "alice", contextId: "edit", head: first.head };
+  await expect(
+    b.history.mergeContext("edit", b.head, source, { resolve() {} }),
+  ).rejects.toMatchObject({ code: "ERR_DOLT_REMOTE_NOT_FOUND" });
+  await a.history.publishContext("edit", second.head);
+  const merged = await b.history.mergeContext("edit", b.head, source, { resolve() {} });
+  expect(merged.hash).toBe(first.head);
+  expect(rows(b.local)).toEqual([
+    { id: "first", body: "first revision" },
+    { id: "shared", body: "initial" },
+  ]);
+  expect(origin.hashOf("main")).toBe(genesis);
+});
+
 it("keeps an existing context and rejects a stale head before running a write", async () => {
   const { genesis, createParticipant } = await workspace();
   const { local, history, head } = await createParticipant("alice");
@@ -165,6 +189,63 @@ it("keeps an existing context and rejects a stale head before running a write", 
   );
   expect(local.dolt.hashOf("ctx/child")).toBe(committed.head);
   expect(local.dolt.hashOf("ctx/edit")).toBe(genesis);
+  await expect(history.discard("edit", genesis, committed.head)).rejects.toThrow(
+    "Committed tip is outside context edit",
+  );
+  expect(local.dolt.hashOf("ctx/edit")).toBe(genesis);
+});
+
+it("archives only committed work and preserves it across a failed retirement", async () => {
+  const { canonical, genesis, origin, createParticipant } = await workspace();
+  const { local, history, head } = await createParticipant("alice");
+  await createParticipant("bob");
+  await history.openContext("integrated", genesis);
+  const committed = await history.commit("edit", head, "Save work", () => {
+    local.sql.exec("UPDATE files SET body = 'committed'");
+  });
+  const working = await history.commit("edit", committed.head, "Apply edit", () => {
+    local.sql.exec("UPDATE files SET body = 'working changes'");
+  });
+  const grants = () => origin.remote.grants().map((item) => item.label).sort();
+  const archived = () => origin.branch.list().filter(({ name }) => name.startsWith("retired/"));
+  let destroyed = false;
+  await expect(retireParticipantHistory(
+    origin,
+    "alice",
+    (token, main) => history.archiveCommittedContexts(
+      [{ contextId: "integrated", head: working.head }],
+      main,
+      { id: canonical.id, token },
+    ),
+    async () => { destroyed = true; },
+  )).rejects.toThrow("Committed tip is outside context integrated");
+  expect(grants()).toEqual(["alice", "bob"]);
+  expect(archived()).toEqual([]);
+  expect(destroyed).toBe(false);
+
+  async function retire() {
+    await retireParticipantHistory(
+      origin,
+      "alice",
+      (token, main) => history.archiveCommittedContexts(
+        [{ contextId: "edit", head: committed.head }, { contextId: "integrated", head: genesis }],
+        main,
+        { id: canonical.id, token },
+      ),
+      async () => {
+        expect(grants()).toEqual(["bob"]);
+        if (!destroyed) {
+          destroyed = true;
+          throw new Error("Cell removal interrupted");
+        }
+      },
+    );
+  }
+  await expect(retire()).rejects.toThrow("Cell removal interrupted");
+  await expect(retire()).resolves.toBeUndefined();
+  expect(archived()).toMatchObject([{ name: "retired/alice/edit", hash: committed.head }]);
+  expect(origin.hashOf("main")).toBe(genesis);
+  expect(local.dolt.hashOf("ctx/edit")).toBe(working.head);
 });
 
 it("commits a prepared placement change atomically, including an exchange of occupied paths", async () => {
@@ -260,8 +341,8 @@ it("holds the approved revision while a fresh edit waits behind publication", as
   const proposed = await history.commit("edit", head, "Approved edit", () => {
     local.sql.exec("UPDATE files SET body = 'approved' WHERE id = 'shared'");
   });
-  const grant = origin.remote.grant({ push: ["main"] });
   const publication = { previousHead: genesis, proposedHead: proposed.head };
+  const grant = grantApprovedMain(origin, publication);
   let markStarted!: () => void;
   let resumePush!: () => void;
   const started = new Promise<void>((resolve) => {
@@ -270,18 +351,16 @@ it("holds the approved revision while a fresh edit waits behind publication", as
   const continuing = new Promise<void>((resolve) => {
     resumePush = resolve;
   });
-  const pushing = history.publishApprovedMain(
-    "edit",
-    publication,
-    { id: canonical.id, token: grant.token },
-    async (request) => {
+  const delayed = new ParticipantHistory("alice", local.storage, async (request) => {
       markStarted();
       await continuing;
-      return serveApprovedMain(origin, publication, request);
-    },
+      return origin.remote.serve(request);
+    });
+  const pushing = delayed.publishApprovedMain(
+    "edit", publication, { id: canonical.id, token: grant.token },
   );
   await started;
-  const editing = history.commit("edit", proposed.head, "Later edit", () => {
+  const editing = delayed.commit("edit", proposed.head, "Later edit", () => {
     local.sql.exec("UPDATE files SET body = 'later' WHERE id = 'shared'");
   });
   resumePush();

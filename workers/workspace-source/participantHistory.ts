@@ -1,4 +1,5 @@
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import type { SqlStorage } from "@vibestudio/durable";
 import {
   type DoltCapableStorage,
   type DoltCommitMessage,
@@ -10,6 +11,7 @@ import {
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
+import { committedWorkspaceEvent } from "./doltWorkspaceState.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -19,6 +21,17 @@ export interface MainPublication {
   readonly previousHead: string;
   readonly proposedHead: string;
 }
+
+export interface CommittedContext {
+  readonly contextId: string;
+  readonly head: string;
+}
+
+interface MergeSource extends CommittedContext {
+  readonly participantId?: string;
+}
+
+type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
 
 function branchSegment(value: string): string {
   if (!value) throw new Error("Missing GAD branch identity");
@@ -46,20 +59,60 @@ export function grantParticipantHistory(
   });
 }
 
+/** Run after stopping new turns and resolving the participant's committed tips. */
+export async function retireParticipantHistory(
+  canonical: DoltRemoteStorage,
+  participantId: string,
+  archive: (token: string, main: string) => Promise<void>,
+  destroy: () => Promise<void>,
+): Promise<void> {
+  const participant = branchSegment(participantId);
+  const label = `retire:${participant}`;
+  for (const grant of canonical.remote.grants()) {
+    if (grant.label === label) canonical.remote.revoke(grant.id);
+  }
+  const grant = canonical.remote.grant({
+    label,
+    fetch: true,
+    branches: ["main"],
+    push: [`retired/${participant}/*`],
+  });
+  try {
+    await archive(grant.token, canonical.hashOf("main"));
+  } finally {
+    canonical.remote.revoke(grant.id);
+  }
+  for (const grant of canonical.remote.grants()) {
+    if (grant.label === participant) canonical.remote.revoke(grant.id);
+  }
+  await destroy();
+}
+
 /**
- * The canonical owner calls this with the previous head from its verified
- * publication receipt. The comparison and Dolt's remote update share a turn.
+ * The canonical owner calls this after verifying the publication receipt.
+ * Dolt enforces the same two heads when the grant is used by any carrier.
  */
-export function serveApprovedMain(
+export function grantApprovedMain(
   canonical: DoltRemoteStorage,
   publication: MainPublication,
-  request: Uint8Array,
-): Uint8Array {
+): DoltGrant {
   const actual = canonical.hashOf("main");
   if (actual !== publication.previousHead) {
     throw new HistoryHeadChanged(publication.previousHead, actual);
   }
-  return canonical.remote.serve(request);
+  const pushTransition = {
+    previous: publication.previousHead,
+    next: publication.proposedHead,
+  };
+  const grant = canonical.remote.grant({ push: ["main"], pushTransition });
+  if (
+    grant.pushTransition?.previous !== pushTransition.previous ||
+    grant.pushTransition.next !== pushTransition.next
+  ) {
+    canonical.remote.revoke(grant.id);
+    throw new Error("GAD publication requires Dolt push transitions");
+  }
+  return grant;
 }
 
 export class HistoryHeadChanged extends Error {
@@ -78,14 +131,14 @@ export class HistoryHeadChanged extends Error {
  */
 export class ParticipantHistory {
   readonly #participant: string;
-  readonly #storage: DoltCapableStorage;
+  readonly #storage: WorkspaceStorage;
   readonly #dolt: DoltRemoteStorage;
   readonly #transport: DoltRemoteTransport;
   readonly #turns = new Map<string, Promise<unknown>>();
 
   constructor(
     participantId: string,
-    storage: DoltCapableStorage,
+    storage: WorkspaceStorage,
     transport: DoltRemoteTransport,
   ) {
     this.#participant = branchSegment(participantId);
@@ -98,13 +151,22 @@ export class ParticipantHistory {
 
   connect(origin: DoltRemoteTarget): Promise<string> {
     return this.#run(() => {
-      this.#dolt.remote.add("origin", origin);
+      this.#configureRemote("origin", origin);
       return this.#fetchMain();
     });
   }
 
   openContext(contextId: string, at: string): Promise<string> {
     return this.#run(() => this.#openBranch(contextId, at));
+  }
+
+  contextHeads(contextId: string) {
+    return this.#run(() => {
+      const workingHead = this.#dolt.hashOf(this.#contextBranch(contextId));
+      const committed = committedWorkspaceEvent(this.#storage.sql, workingHead);
+      if (!committed) throw new Error(`Context ${contextId} has no committed event`);
+      return { workingHead, committed };
+    });
   }
 
   forkContext(
@@ -124,7 +186,12 @@ export class ParticipantHistory {
     committedHead: string,
   ): Promise<string> {
     return this.#run(() => {
-      this.#checkoutExpected(contextId, expectedHead);
+      const branch = this.#contextBranch(contextId);
+      this.#assertHead(branch, expectedHead);
+      if (committedHead !== this.#mergeBase(branch, committedHead)) {
+        throw new Error(`Committed tip is outside context ${contextId}`);
+      }
+      if (this.#dolt.branch.current() !== branch) this.#dolt.checkout(branch);
       return this.#dolt.reset({ hard: true, to: committedHead });
     });
   }
@@ -150,6 +217,34 @@ export class ParticipantHistory {
     });
   }
 
+  mergeContext(
+    contextId: string,
+    expectedHead: string,
+    source: MergeSource,
+    options: ResolvingMerge,
+  ) {
+    return this.#run(async () => {
+      const context = this.#contextBranch(source.contextId);
+      let sourceBranch = context;
+      if (source.participantId !== undefined) {
+        const participant = branchSegment(source.participantId);
+        if (participant !== this.#participant) {
+          const published = `pub/${participant}/${context.slice("ctx/".length)}`;
+          await this.#dolt.fetch("origin", {
+            branches: [published],
+            transport: this.#transport,
+          });
+          sourceBranch = `origin/${published}`;
+        }
+      }
+      if (source.head !== this.#mergeBase(sourceBranch, source.head)) {
+        throw new Error("The requested commit is outside the source context");
+      }
+      this.#checkoutExpected(contextId, expectedHead);
+      return this.#dolt.merge(source.head, options);
+    });
+  }
+
   publishContext(contextId: string, expectedHead: string) {
     return this.#run(() => {
       const branch = this.#contextBranch(contextId);
@@ -165,16 +260,15 @@ export class ParticipantHistory {
     contextId: string,
     publication: MainPublication,
     grantTarget: DoltRemoteTarget,
-    transport: DoltRemoteTransport,
   ) {
     return this.#run(async () => {
       const branch = this.#contextBranch(contextId);
       this.#assertHead(branch, publication.proposedHead);
-      this.#dolt.remote.add("approved-main", grantTarget);
+      this.#configureRemote("approved-main", grantTarget);
       try {
         return await this.#dolt.push("approved-main", branch, {
           to: "main",
-          transport,
+          transport: this.#transport,
         });
       } finally {
         this.#dolt.remote.remove("approved-main");
@@ -182,8 +276,63 @@ export class ParticipantHistory {
     });
   }
 
+  archiveCommittedContexts(
+    contexts: readonly CommittedContext[],
+    main: string,
+    grantTarget: DoltRemoteTarget,
+  ): Promise<void> {
+    return this.#run(async () => {
+      const remote = "retirement";
+      this.#configureRemote(remote, grantTarget);
+      try {
+        await this.#dolt.fetch(remote, {
+          branches: ["main"],
+          transport: this.#transport,
+        });
+        // Resolve and check all tips before publishing anything. Applications
+        // after a committed tip can already be stored on the context branch.
+        const archives = contexts.flatMap(({ contextId, head }) => {
+          const context = this.#contextBranch(contextId);
+          const committed = this.#dolt.hashOf(head);
+          if (committed !== this.#mergeBase(context, committed)) {
+            throw new Error(`Committed tip is outside context ${contextId}`);
+          }
+          if (committed === this.#mergeBase(main, committed)) return [];
+          const branch = `retired/${this.#participant}/${context.slice("ctx/".length)}`;
+          return [{ branch, committed }];
+        });
+        for (const { branch, committed } of archives) {
+          if (!this.#dolt.branch.list().some((entry) => entry.name === branch)) {
+            this.#dolt.branch.create(branch, { from: committed });
+          }
+          this.#assertHead(branch, committed);
+          await this.#dolt.push(remote, branch, { transport: this.#transport });
+          this.#dolt.branch.delete(branch, { force: true });
+        }
+      } finally {
+        this.#dolt.remote.remove(remote);
+      }
+    });
+  }
+
+  #mergeBase(left: string, right: string): string | null {
+    const base = this.#dolt.query("SELECT dolt_merge_base(?1, ?2)", [
+      { index: 1, value: left },
+      { index: 2, value: right },
+    ]).rows[0]?.[0];
+    if (typeof base === "string" || base === null) return base;
+    throw new Error("GAD merge base query did not return a hash");
+  }
+
   #run<T>(turn: () => T | Promise<T>): Promise<T> {
     return serializeByKey(this.#turns, this.#participant, turn);
+  }
+
+  #configureRemote(name: string, target: DoltRemoteTarget): void {
+    if (this.#dolt.remote.list().some((remote) => remote.name === name)) {
+      this.#dolt.remote.remove(name);
+    }
+    this.#dolt.remote.add(name, target);
   }
 
   async #fetchMain(): Promise<string> {
