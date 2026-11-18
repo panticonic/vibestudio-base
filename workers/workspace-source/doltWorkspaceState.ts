@@ -447,12 +447,9 @@ export function workspaceMergeSourcesAt(
   after: string,
   applications: readonly string[],
 ): string[] {
-  const parents = sql.exec(
+  const lineage = sql.exec(
     `${firstParents}
-     SELECT lineage.hash, lineage.parent AS ours, parent.parent_hash AS theirs, parent.parent_index
-       FROM lineage JOIN dolt_commit_ancestors AS parent
-         ON parent.commit_hash = lineage.hash AND parent.parent_index > 0
-      ORDER BY lineage.depth DESC`,
+     SELECT hash, parent AS ours FROM lineage ORDER BY depth DESC`,
     commit,
     after,
   ).toArray();
@@ -473,9 +470,20 @@ export function workspaceMergeSourcesAt(
     "IntegrationIncomplete",
     "Workspace integration has no decision for its exact native parents",
   );
-  for (const { hash, ours, theirs, parent_index } of parents) {
-    if (typeof hash !== "string" || typeof ours !== "string" || typeof theirs !== "string" ||
-        parent_index !== 1) throw incomplete();
+  for (const { hash, ours } of lineage) {
+    if (typeof hash !== "string" || typeof ours !== "string") throw incomplete();
+    // Bind the exact revision so fetched commits participate even when the
+    // current checkout does not contain them.
+    const secondary = sql.exec(
+      `SELECT parent_hash, parent_index FROM dolt_commit_ancestors
+        WHERE commit_hash = ? AND parent_index > 0 ORDER BY parent_index`,
+      hash,
+    ).toArray();
+    if (secondary.length === 0) continue;
+    const theirs = secondary[0]?.["parent_hash"];
+    if (secondary.length !== 1 || typeof theirs !== "string" || secondary[0]?.["parent_index"] !== 1) {
+      throw incomplete();
+    }
     const introduced = workspaceApplicationsAt(sql, hash, ours);
     const decision = byApplication.get(introduced[0]);
     if (introduced.length !== 1 || !decision || decision["source_delta_id"] !== null) {

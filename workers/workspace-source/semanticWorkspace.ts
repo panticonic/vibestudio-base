@@ -791,7 +791,7 @@ const importedRepositories = (input: VcsImportSnapshotInput) =>
       }),
   }));
 
-const changeEffects = (
+export const changeEffects = (
   change: Pick<ChangeRecord, "kind" | "base" | "result" | "payload">,
 ) => {
   const base = change.base;
