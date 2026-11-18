@@ -202,6 +202,12 @@ export class GadHistoryDO extends DurableObjectBase {
       if (stored["status"] !== "reserved" && stored["status"] !== "active") {
         throw new Error("Workspace participant is retiring");
       }
+      const identityKey = `history-allocation-identity:${target}`;
+      const previousIdentity = this.getStateValue(identityKey);
+      if (previousIdentity !== null && previousIdentity !== input.participantId) {
+        throw new Error("Workspace participant allocation changed its identity");
+      }
+      if (previousIdentity === null) this.setStateValue(identityKey, input.participantId);
       const targetId = `do:${source}:${className}:${target}`;
       if (stored["status"] === "reserved") {
         const sourceRef = this.env["WORKER_SOURCE_REF"];
@@ -720,6 +726,28 @@ export class GadHistoryDO extends DurableObjectBase {
         peer
       );
     });
+  }
+
+  /** The host has joined the logical context before retiring its storage owners. */
+  @rpc(hostWrite)
+  async retireHistoryContext(input: { contextId: string }) {
+    this.#assertCanonical();
+    const rows = this.sql.exec(
+      "SELECT target_key, status FROM gad_history_allocations WHERE context_id = ? ORDER BY target_key",
+      input.contextId,
+    ).toArray();
+    const members = rows.map(({ target_key, status }) => {
+      if (typeof target_key !== "string") throw new Error("Invalid workspace participant allocation");
+      const participantId = this.getStateValue(`history-allocation-identity:${target_key}`);
+      if (status !== "retired" && (!participantId || workKey(participantId) !== target_key)) {
+        throw new Error("Workspace retirement has no verified participant identity");
+      }
+      return { target: target_key, participantId, retired: status === "retired" };
+    });
+    for (const { participantId, retired } of members) {
+      if (!retired && participantId) await this.retireHistoryParticipant({ participantId });
+    }
+    return { contextId: input.contextId, targets: members.map(({ target }) => target) };
   }
 
   @rpc({ ...hostWrite, principals: ["code"], codeOnly: true })
