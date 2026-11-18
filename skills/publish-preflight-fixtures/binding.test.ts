@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { readFile, writeFile } from "node:fs/promises";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   packageWebsite,
   verifyPublishedWebsite,
@@ -217,24 +218,51 @@ function referenceVerdict(
 }
 
 describe("Vibestudio publication preflight worlds", () => {
+  const fixtures = new Map<string, Awaited<ReturnType<typeof fixture>>>();
+  beforeAll(async () => {
+    for (const world of publicationWorlds)
+      fixtures.set(world.id, await fixture(world));
+    const captured = Object.fromEntries(
+      [...fixtures].map(([id, result]) => [id, result.observed]),
+    );
+    const output = process.env["VIBESTUDIO_PUBLICATION_OBSERVATIONS_OUT"];
+    if (output) {
+      await writeFile(output, JSON.stringify(captured, null, 2) + "\n");
+    } else {
+      const published = await readFile(
+        new URL("./observations.json", import.meta.url),
+        "utf8",
+      );
+      expect(captured).toEqual(JSON.parse(published));
+    }
+  });
+
   it.each(publicationWorlds)(
     "projects canonical package and readback receipts for $id",
     async (world) => {
-      const { call, observed } = await fixture(world);
+      const { call, observed } = fixtures.get(world.id)!;
       expect(call).toHaveBeenCalledWith("main", expect.anything(), [
         world.site,
         "state:reviewed",
       ]);
       const reference = referenceVerdict(world, observed);
-      expect(verifyPublicationOutcome(world, reference)).toBe(true);
+      expect(verifyPublicationOutcome(world, reference, observed)).toBe(true);
       expect(
-        verifyPublicationOutcome(world, {
-          ...reference,
-          blockers: [...reference.blockers, "different-request"],
-        }),
+        verifyPublicationOutcome(
+          world,
+          {
+            ...reference,
+            blockers: [...reference.blockers, "different-request"],
+          },
+          observed,
+        ),
       ).toBe(false);
       expect(
-        verifyPublicationOutcome(world, { ...reference, evidence: [] }),
+        verifyPublicationOutcome(
+          world,
+          { ...reference, evidence: [] },
+          observed,
+        ),
       ).toBe(false);
       expect(JSON.stringify(observed)).not.toContain("build-private");
       expect(JSON.stringify(observed)).not.toContain("https://owned.example/");

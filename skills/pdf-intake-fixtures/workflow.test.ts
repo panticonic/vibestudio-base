@@ -22,9 +22,68 @@ import { pdfIntakeWorlds } from "./worlds.js";
 const reference: Record<string, string> = {
   runWorkflow: `
     const selected = request.work[0];
-    const report = await domains.pdfIntake.extractPdfEvidence(selected.input);
+    let report;
+    if (selected.domain === "google") report = await domains.google.guideGoogleWorkspace(selected.input);
+    else if (selected.domain === "publication") report = await domains.publication.preflightPublication(selected.input);
+    else if (selected.domain === "localModel") report = await domains.localModel.prepareLocalModel(selected.input);
+    else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
+  guideGoogleWorkspace: `
+    const readiness = await googleWorkspaceRead.readiness();
+    if (readiness.state !== "ready") throw new Error("Inventory fixture Drive is unavailable");
+    return await inspectFolder(request);
+  `,
+  inspectFolder: `
+    const first = await googleWorkspaceRead.listFolder(request.folderId, null);
+    const next = await googleWorkspaceRead.listFolder(request.folderId, first.next);
+    const eligible = await eligibleRows(request, first.rows.concat(next.rows));
+    const ids = await selectRows(request, eligible);
+    return {status:"complete", ids, checkpoint:null, action:"none", findings:[String(ids.length) + " matching files"]};
+  `,
+  selectRows: "return rows.map(row => row.id);",
+  preflightPublication: `
+    const observed = await websiteReadback.observe();
+    const artifact = await reviewArtifact(observed.artifact);
+    const panel = await reviewPresentation(request, observed.presentation);
+    const previous = await reviewPublication(request, observed.publication);
+    const blockers = artifact.blockers.concat(panel.blockers, previous.blockers);
+    return {status:"ready-for-review", blockers, evidence:artifact.evidence.concat(panel.evidence,previous.evidence),
+      visual:await chooseReviewVisual(request, blockers, observed.publication)};
+  `,
+  reviewArtifact: "return await checkPublicFiles(artifact);",
+  checkPublicFiles: "return {blockers:[], evidence:[artifact.artifactDigest]};",
+  reviewPresentation:
+    "return await assessPublicLabels(request.audience, presentation);",
+  assessPublicLabels:
+    "return {blockers:[], evidence:presentation.observedProbes};",
+  reviewPublication:
+    "return {blockers:[], evidence:[request.intendedDestination.destination]};",
+  chooseReviewVisual:
+    'return request.goal.toLowerCase().includes("checklist") ? "Checklist" : "Prose";',
+  prepareLocalModel: `
+    const initial = await inspectSelected(request.modelRef);
+    const plan = await decideInstallation(request, initial);
+    if (plan !== "install") throw new Error("Expected an authorized fixture install");
+    const receipt = await applyInstallation(request.modelRef);
+    const checked = await readOutcome(request.modelRef, receipt);
+    return {ref:request.modelRef,state:checked.row.state,disposition:checked.disposition,receipt,handoff:null};
+  `,
+  inspectSelected: `
+    const row = await localModelTaskInventory.inspect(ref);
+    return {row,disposition:await interpretState(row)};
+  `,
+  interpretState:
+    'return row.state === "not-installed" ? "needs-install" : "usable";',
+  decideInstallation:
+    'return initial.disposition === "needs-install" && request.mayInstall ? "install" : "skip";',
+  applyInstallation: "return await localModelTaskInstall.installOnce(ref);",
+  readOutcome: `
+    const row = await localModelTaskInventory.inspect(ref);
+    const observed = await interpretState(row);
+    return {row,disposition:await resolveOutcome(observed, receipt)};
+  `,
+  resolveOutcome: "return observed;",
   extractPdfEvidence: `
     const probe = await probeDocument(request.document);
     const plan = await choosePlan(request, probe);
@@ -74,8 +133,31 @@ const reference: Record<string, string> = {
   `,
 };
 
-function loader(store?: RecordsStore) {
+const serviceScopes: Record<string, string[]> = {
+  probeDocument: ["pdfIntakeProbe"],
+  readBatch: ["pdfIntakeRead"],
+  guideGoogleWorkspace: ["googleWorkspaceRead"],
+  inspectFolder: ["googleWorkspaceRead"],
+  preflightPublication: ["websiteReadback"],
+  inspectSelected: ["localModelTaskInventory"],
+  readOutcome: ["localModelTaskInventory"],
+  applyInstallation: ["localModelTaskInstall"],
+};
+
+function loader(store?: RecordsStore, workspaceCheckouts: string[] = []) {
   const root = fileURLToPath(new URL("../..", import.meta.url));
+  const roots = [root, ...workspaceCheckouts];
+  async function locate(relative: string) {
+    for (const directory of roots) {
+      const filename = join(directory, relative);
+      try {
+        return { filename, info: await stat(filename) };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    throw new Error(`Not found in the configured templates: ${relative}`);
+  }
   const platform = workerdPlatform({
     realm: confinedRealm(testNewFunction()),
     ...(store ? { callStore: () => store } : {}),
@@ -85,13 +167,9 @@ function loader(store?: RecordsStore) {
     ...(store ? { calls: store } : {}),
     agent: async (session) => {
       const name = session.lam.functionName ?? "";
-      const expected =
-        name === "probeDocument"
-          ? ["pdfIntakeProbe"]
-          : name === "readBatch"
-            ? ["pdfIntakeRead"]
-            : [];
-      expect(Object.keys(session.availableServices()), name).toEqual(expected);
+      expect(Object.keys(session.availableServices()), name).toEqual(
+        serviceScopes[name] ?? [],
+      );
       const code = reference[name];
       if (!code) throw new Error(`No scripted reference for ${name}`);
       const action = await session.applyAsync("eval", { code, finish: true });
@@ -102,9 +180,32 @@ function loader(store?: RecordsStore) {
     platform,
     bindings: {},
     fs: {
-      readFile: (path) => readFile(join(root, path), "utf8"),
-      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
-      stat: (path) => stat(join(root, path)),
+      readFile: async (path) => readFile((await locate(path)).filename, "utf8"),
+      readdir: async (path) => {
+        if (path !== "skills")
+          return readdir((await locate(path)).filename, {
+            withFileTypes: true,
+          });
+        const entries = (
+          await Promise.all(
+            roots.map(async (directory) => {
+              try {
+                return await readdir(join(directory, path), {
+                  withFileTypes: true,
+                });
+              } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+                  throw error;
+                return [];
+              }
+            }),
+          )
+        ).flat();
+        return [
+          ...new Map(entries.map((entry) => [entry.name, entry])).values(),
+        ];
+      },
+      stat: async (path) => (await locate(path)).info,
     },
     runTask: async (run, task) => {
       const value = await runtime.run(() => {
@@ -143,7 +244,7 @@ it("executes each authored PDF task and checks citations against independent rec
 
 const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
 it.runIf(Boolean(host))(
-  "grades the actual Workerd run using its retained inputs and outputs",
+  "grades actual Workerd runs across template domains from retained inputs and outputs",
   async () => {
     const runId = "scoped-pdf-workerd-test";
     type WriteRecord = Parameters<
@@ -171,7 +272,6 @@ it.runIf(Boolean(host))(
       },
     );
     store.attach({ runId, calls: [] });
-    const program = loader(store);
     const { runScopedNatlangWorkflow } = await import(
       /* @vite-ignore */ pathToFileURL(
         join(host!, "scripts/run-scoped-natlang-workflow.mjs"),
@@ -184,10 +284,17 @@ it.runIf(Boolean(host))(
     );
     const { checkouts } =
       configuration.default.requireDevelopmentTemplateCheckouts(host);
-    const result = await runScopedNatlangWorkflow(
-      checkouts,
+    const program = loader(store, [
+      checkouts["google-workspace"],
+      checkouts.system,
+    ]);
+    for (const caseId of [
       "pdf-intake-handover-date",
-      {
+      "google-workspace-inventory-quarterly-sheets",
+      "publish-preflight-transit-map",
+      "local-model-task-cypress-download",
+    ]) {
+      const result = await runScopedNatlangWorkflow(checkouts, caseId, {
         load: program.load.bind(program),
         async calls(query: {
           roots?: boolean;
@@ -213,9 +320,9 @@ it.runIf(Boolean(host))(
         async trace(callId: string) {
           return { record: rows.get(callId) };
         },
-      },
-    );
-    expect(result, JSON.stringify(result)).toMatchObject({ passed: true });
+      });
+      expect(result, JSON.stringify(result)).toMatchObject({ passed: true });
+    }
   },
 );
 

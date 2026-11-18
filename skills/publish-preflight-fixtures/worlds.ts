@@ -5,6 +5,7 @@ import type {
   PublishPreflightRequest,
   PublishVisual,
   PublicationObservation,
+  WebsiteReviewObservation,
 } from "../publish-preflight/types.js";
 
 type Status = PublishPreflightReport["status"];
@@ -322,6 +323,7 @@ export function publicationRequest(
 export function verifyPublicationOutcome(
   world: PublishWorld,
   observed: PublishPreflightReport,
+  source: WebsiteReviewObservation,
 ): boolean {
   const expected = world.expected;
   return (
@@ -329,6 +331,13 @@ export function verifyPublicationOutcome(
     observed.visual === expected.visual &&
     observed.blockers.length === expected.blockers.length &&
     expected.blockers.every((blocker) => observed.blockers.includes(blocker)) &&
-    observed.evidence.some((item) => item.trim().length > 0)
+    observed.evidence.some((item) => item.trim().length > 0) &&
+    (source.matchesRequest
+      ? observed.evidence.some((item) =>
+          item.includes(source.artifact.artifactDigest),
+        )
+      : observed.evidence.every(
+          (item) => !item.includes(source.artifact.artifactDigest),
+        ))
   );
 }
