@@ -5,6 +5,7 @@ import {
   formatDiagnostics,
   loadVirtualCallables,
   loadVirtualNatlang,
+  NatlangSourceError,
   type Platform,
 } from "../vendor/workerd/natlang-workerd.js";
 import { describeProgram } from "./describe.js";
@@ -260,7 +261,25 @@ export class ProgramLoader {
     const key = programKey(files, declaredServiceNames(files));
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
-      program = compileProgram({ platform, files, entry, label: path, root });
+      try {
+        program = compileProgram({ platform, files, entry, label: path, root });
+      } catch (error) {
+        if (!(error instanceof NatlangSourceError)) throw error;
+        const relative = error.path.replace(/^\/?project\//u, "");
+        const source = root ? `${root}/${relative}` : relative;
+        const diagnostics = error.reason.split("\n").map((reason) => {
+          const position = /^(\d+):(\d+) (.*)$/u.exec(reason);
+          return position
+            ? `${source}:${position[1]}:${position[2]} error source: ${position[3]}`
+            : `${source}:${error.line ?? 0}:0 error source: ${reason}`;
+        });
+        if (error.hint) diagnostics.push(error.hint);
+        throw new NatlangProgramError(
+          `natlang program ${path} does not compile:\n${diagnostics.join("\n")}`,
+          path,
+          "does-not-compile"
+        );
+      }
       this.compiled.set(`${path}\u0000${key}`, program);
       if (this.compiled.size > PROGRAMS_KEPT) {
         this.compiled.delete(this.compiled.keys().next().value as string);

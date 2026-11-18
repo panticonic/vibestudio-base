@@ -195,6 +195,25 @@ describe("ProgramLoader", () => {
     expect(Object.keys(value as object).sort()).toEqual(["brief", "other"]);
   });
 
+  it("returns positioned source-policy rejections through both public inspection paths", async () => {
+    const loader = new ProgramLoader({
+      platform: platform(),
+      fs: memoryFs({
+        "skills/s/brief.nl": BRIEF,
+        "skills/s/step.ts": "export function step(): void { while (true) break; }\n",
+      }),
+      bindings: {},
+      runTask: (run) => run(),
+    });
+    for (const attempt of [() => loader.describe("skills/s"), () => loader.load("skills/s")]) {
+      await expect(attempt()).rejects.toMatchObject({
+        name: "NatlangProgramError",
+        message: expect.stringMatching(/skills\/s\/step\.ts:1:\d+ error source: .*loops are not allowed/u),
+        errorData: { reason: "does-not-compile", program: "skills/s" },
+      });
+    }
+  });
+
   it("describes a program's functions with typed, expanded signatures and field docs", async () => {
     const files: Record<string, string> = {
       "skills/s/types.ts": "export type Ticket = {\n  /** What the customer wrote. */\n  text: string;\n  tags?: string[];\n};\nexport type Verdict = 'urgent' | 'normal';\n",
