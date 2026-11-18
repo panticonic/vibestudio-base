@@ -3,7 +3,7 @@ import {
   batches,
   completeSelection,
   matchesBatch,
-} from "../pdf-intake/intakeChecks.js";
+} from "@workspace-skills/pdf-intake/checks";
 import type {
   BatchReceipt,
   ExtractionMode,
