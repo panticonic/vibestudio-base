@@ -1,5 +1,8 @@
 import type { SqlStorage } from "@vibestudio/durable";
 import {
+  vcsAppliedChangeSchema,
+  vcsChangeSchema,
+  vcsSemanticNodeRefSchema,
   vcsWorkApplicationSchema,
   vcsWorkUnitSchema,
   vcsWorkspaceEventSchema,
@@ -7,7 +10,7 @@ import {
   type VcsProvenanceEdge,
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
-import { SEMANTIC_PROTOCOL, type StateNodeRef } from "@workspace/vcs-engine";
+import { NORMALIZATION_PROTOCOL, SEMANTIC_PROTOCOL, type StateNodeRef } from "@workspace/vcs-engine";
 import { readHistoryWorkIntent } from "./doltMergeReview.js";
 import {
   committedWorkspaceEvent,
@@ -16,7 +19,7 @@ import {
   workspaceMergeSourcesAt,
 } from "./doltWorkspaceState.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import { changeEffects } from "./semanticWorkspace.js";
+import { MAX_ANCESTRY_EDGES, changeEffects, publicChangeKind } from "./semanticWorkspace.js";
 
 function parentsAt(sql: SqlStorage, revision: string) {
   return sql.exec(
@@ -83,27 +86,7 @@ function inspectApplication(sql: SqlStorage, revision: string, applicationId: st
   const [parent] = parentsAt(sql, revision);
   const basis = parent ? stateAt(sql, parent) : null;
   if (!basis) throw new SemanticVcsError("IntegrityFailure", "Workspace application has no exact native basis");
-  const appliedChanges = sql.exec(
-    `SELECT applied.applied_change_id, applied.change_id, applied.ordinal, applied.applied_base_json,
-            applied.applied_result_json, authored.kind, authored.payload_json,
-            (SELECT predicate_json FROM dolt_at_gad_applied_change_predicates(?1) AS predicates
-              WHERE predicates.applied_change_id = applied.applied_change_id
-              ORDER BY ordinal LIMIT 1) AS result_predicate
-       FROM dolt_at_gad_applied_changes(?1) AS applied
-       JOIN dolt_at_gad_changes(?1) AS authored USING (change_id)
-      WHERE applied.application_id = ?2 ORDER BY applied.ordinal LIMIT 200`,
-    revision, applicationId,
-  ).toArray().map((applied) => {
-    const json = (value: unknown) => typeof value === "string" ? JSON.parse(value) : null;
-    return {
-      appliedChangeId: applied["applied_change_id"], applicationId, changeId: applied["change_id"],
-      ordinal: applied["ordinal"], resultPredicate: json(applied["result_predicate"]),
-      appliedEffects: changeEffects({
-        kind: String(applied["kind"]), base: json(applied["applied_base_json"]),
-        result: json(applied["applied_result_json"]), payload: json(applied["payload_json"]),
-      }),
-    };
-  });
+  const appliedChanges = readAppliedChanges(sql, revision, "application_id", applicationId, 200);
   const count = sql.exec(
     "SELECT COUNT(*) AS count FROM dolt_at_gad_applied_changes(?) WHERE application_id = ?", revision, applicationId,
   ).toArray()[0]?.["count"];
@@ -111,6 +94,183 @@ function inspectApplication(sql: SqlStorage, revision: string, applicationId: st
     applicationId, revision, workUnitId: row["work_unit_id"], semanticProtocol: row["semantic_protocol"],
     basis, appliedChanges, appliedChangeCount: count,
   });
+}
+
+const readJson = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "string" ? JSON.parse(value) : null;
+
+function readAppliedChanges(
+  sql: SqlStorage,
+  revision: string,
+  column: "application_id" | "applied_change_id",
+  id: string,
+  limit: number,
+) {
+  return sql.exec(
+    `SELECT applied.applied_change_id, applied.application_id, applied.change_id, applied.ordinal, applied.applied_base_json,
+            applied.applied_result_json, authored.kind, authored.payload_json,
+            (SELECT predicate_json FROM dolt_at_gad_applied_change_predicates(?1) AS predicates
+              WHERE predicates.applied_change_id = applied.applied_change_id
+              ORDER BY ordinal LIMIT 1) AS result_predicate
+       FROM dolt_at_gad_applied_changes(?1) AS applied
+       JOIN dolt_at_gad_changes(?1) AS authored USING (change_id)
+      WHERE applied.${column} = ?2 ORDER BY applied.ordinal LIMIT ?3`,
+    revision, id, limit,
+  ).toArray().map((applied) => {
+    return vcsAppliedChangeSchema.parse({
+      appliedChangeId: applied["applied_change_id"], applicationId: applied["application_id"], changeId: applied["change_id"],
+      ordinal: applied["ordinal"], resultPredicate: readJson(applied["result_predicate"]),
+      appliedEffects: changeEffects({
+        kind: String(applied["kind"]), base: readJson(applied["applied_base_json"]),
+        result: readJson(applied["applied_result_json"]), payload: readJson(applied["payload_json"]) ?? {},
+      }),
+    });
+  });
+}
+
+function inspectChange(
+  sql: SqlStorage,
+  at: string,
+  root: Extract<VcsSemanticNodeRef, { kind: "change" }>,
+  limit: number,
+  edges: VcsProvenanceEdge[],
+) {
+  const { changeId } = root;
+  const row = sql.exec(
+    "SELECT * FROM dolt_at_gad_changes(?) WHERE change_id = ?", at, changeId,
+  ).toArray()[0];
+  if (!row || typeof row["work_unit_id"] !== "string" || typeof row["kind"] !== "string")
+    throw new SemanticVcsError("InvalidReference", "Unknown authored workspace change");
+  const workUnitId = row["work_unit_id"];
+  const effectPayload = readJson(row["payload_json"]);
+  const counters = sql.exec(
+    `SELECT change_id, counteracted_change_id FROM dolt_at_gad_change_counteractions(?1)
+      WHERE change_id = ?2 OR counteracted_change_id = ?2
+      ORDER BY change_id, ordinal LIMIT ?3`,
+    at, changeId, limit,
+  ).toArray();
+  const counteracts = sql.exec(
+    `SELECT counteracted_change_id FROM dolt_at_gad_change_counteractions(?)
+      WHERE change_id = ? ORDER BY ordinal LIMIT 200`,
+    at, changeId,
+  ).toArray().map(({ counteracted_change_id }) => String(counteracted_change_id));
+  const change = vcsChangeSchema.parse({
+    changeId, authoredByWorkUnitId: workUnitId, operation: row["operation"], kind: publicChangeKind(row["kind"]),
+    effects: changeEffects({ kind: row["kind"], base: readJson(row["base_json"]), result: readJson(row["result_json"]), payload: effectPayload ?? {} }),
+    counteractsChangeIds: counteracts, effectDigest: row["effect_digest"], normalizationProtocol: NORMALIZATION_PROTOCOL,
+  });
+  edges.push({ kind: "authored-change", from: { kind: "work-unit", workUnitId }, to: root });
+  const copySource = readJson(row["source_json"]);
+  if (copySource) {
+    const origin = vcsSemanticNodeRefSchema.parse({
+      kind: "file", state: copySource["state"], repositoryId: copySource["repositoryId"], fileId: copySource["fileId"],
+    });
+    edges.push({ kind: "authored-copy-source", from: root, to: origin });
+  }
+  for (const { change_id, counteracted_change_id } of counters) {
+    edges.push({
+      kind: "counteracts", from: { kind: "change", changeId: String(change_id) },
+      to: { kind: "change", changeId: String(counteracted_change_id) },
+    });
+  }
+  const applied = sql.exec(
+    `SELECT applied_change_id FROM dolt_at_gad_applied_changes(?) WHERE change_id = ?
+      ORDER BY applied_change_id LIMIT ?`,
+    at, changeId, limit,
+  ).toArray();
+  for (const { applied_change_id } of applied) {
+    edges.push({ kind: "realizes-change", from: { kind: "applied-change", appliedChangeId: String(applied_change_id) }, to: root });
+  }
+  const decisions = sql.exec(
+    `SELECT DISTINCT decisions.decision_id, decisions.work_unit_id
+       FROM dolt_at_gad_decision_source_changes(?1) AS source
+       JOIN dolt_at_gad_integration_decisions(?1) AS decisions USING (decision_id)
+      WHERE source.change_id = ?2 ORDER BY decisions.decision_id LIMIT ?3`,
+    at, changeId, limit,
+  ).toArray();
+  for (const { decision_id, work_unit_id } of decisions) {
+    edges.push({ kind: "decides-change", from: { kind: "decision", decisionId: String(decision_id) }, to: root });
+    edges.push({ kind: "incorporates-change", from: { kind: "work-unit", workUnitId: String(work_unit_id) }, to: root });
+  }
+  return change;
+}
+
+function appendAppliedContentEdges(
+  sql: SqlStorage,
+  at: string,
+  appliedChangeId: string,
+  limit: number,
+  edges: VcsProvenanceEdge[],
+) {
+  const rows = sql.exec(
+    `SELECT child_applied_change_id, parent_ref_json, relation
+      FROM dolt_at_gad_content_edges(?1)
+     WHERE child_applied_change_id = ?2 OR json_extract(parent_ref_json, '$.appliedChangeId') = ?2
+     ORDER BY content_edge_id LIMIT ?3`,
+    at, appliedChangeId, limit,
+  ).toArray();
+  for (const { child_applied_change_id, parent_ref_json, relation } of rows) {
+    const to = vcsSemanticNodeRefSchema.parse(readJson(parent_ref_json));
+    if (to.kind !== "file" && to.kind !== "applied-change")
+      throw new SemanticVcsError("IntegrityFailure", "Workspace content edge has an invalid parent");
+    const kind = relation === "copies" ? "copies-content" : relation === "incorporates"
+      ? "incorporates-content" : "preserves-content";
+    edges.push({ kind, from: { kind: "applied-change", appliedChangeId: String(child_applied_change_id) }, to });
+  }
+}
+
+/** Follow only native parents of the admitted tip, including after a remote fetch. */
+function appendStateBacklinks(
+  sql: SqlStorage,
+  at: string,
+  revision: string,
+  root: StateNodeRef,
+  limit: number,
+  edges: VcsProvenanceEdge[],
+) {
+  if (at === revision || edges.length >= limit) return;
+  const children = new Map<string, Array<{ head: string; first: boolean }>>();
+  const pending = [at];
+  const seen = new Set<string>();
+  let visitedEdges = 0;
+  while (pending.length > 0) {
+    const head = pending.pop()!;
+    if (head === revision || seen.has(head)) continue;
+    seen.add(head);
+    const parents = parentsAt(sql, head);
+    visitedEdges += parents.length;
+    if (visitedEdges > MAX_ANCESTRY_EDGES) {
+      throw new SemanticVcsError("ScopeTooLarge", "Workspace provenance exceeds its ancestry bound");
+    }
+    for (const [index, parent] of parents.entries()) {
+      const direct = children.get(parent) ?? [];
+      direct.push({ head, first: index === 0 });
+      children.set(parent, direct);
+      pending.push(parent);
+    }
+  }
+
+  const queue = (children.get(revision) ?? [])
+    .filter(({ first }) => first || root.kind === "event")
+    .map(({ head, first }) => ({ head, isBasis: first }));
+  const followed = new Set<string>();
+  for (const { head, isBasis } of queue) {
+    if (edges.length >= limit) return;
+    if (followed.has(head)) continue;
+    followed.add(head);
+    const node = stateAt(sql, head);
+    if (node?.kind === "event") {
+      edges.push({
+        kind: root.kind === "event" ? "parent-event" : "committed-by",
+        from: node, to: root,
+      });
+      continue;
+    }
+    if (isBasis && node?.kind === "application") edges.push({ kind: "basis-state", from: node, to: root });
+    for (const child of children.get(head) ?? []) {
+      if (child.first) queue.push({ head: child.head, isBasis: false });
+    }
+  }
 }
 
 function appendPlacementEdges(sql: SqlStorage, revision: string, root: StateNodeRef, limit: number, edges: VcsProvenanceEdge[]) {
@@ -176,7 +336,17 @@ export function inspectWorkspaceProvenance(
         edges.push({ kind: "applies-change", from: root, to: { kind: "applied-change", appliedChangeId } });
       }
     }
+    appendStateBacklinks(sql, at, revision, root, edgeLimit + 1, edges);
     appendPlacementEdges(sql, revision, root, edgeLimit + 1, edges);
+  } else if (root.kind === "applied-change") {
+    const value = readAppliedChanges(sql, at, "applied_change_id", root.appliedChangeId, 1)[0];
+    if (!value) throw new SemanticVcsError("InvalidReference", "Unknown applied workspace change");
+    node = { kind: "applied-change", value };
+    edges.push({ kind: "applies-change", from: { kind: "application", applicationId: value.applicationId }, to: root });
+    edges.push({ kind: "realizes-change", from: root, to: { kind: "change", changeId: value.changeId } });
+    appendAppliedContentEdges(sql, at, root.appliedChangeId, edgeLimit + 1, edges);
+  } else if (root.kind === "change") {
+    node = { kind: "change", value: inspectChange(sql, at, root, edgeLimit + 1, edges) };
   } else if (root.kind === "work-unit") {
     const { workUnitId } = root;
     const row = sql.exec(

@@ -160,7 +160,7 @@ type LatestAppliedFileChange = {
 };
 
 export const MAX_WORKING_APPLICATIONS = 10_000;
-const MAX_ANCESTRY_EDGES = 100_000;
+export const MAX_ANCESTRY_EDGES = 100_000;
 /** Walk bounds are query shapes, not policies: they are fixed server-side. */
 const MAX_CAUSE_MESSAGE_HOPS = 8;
 const MAX_REJECTION_ROWS = 200;
@@ -695,7 +695,7 @@ const inverseChangeKind = (
   }
 };
 
-const publicChangeKind = (kind: string): string => {
+export const publicChangeKind = (kind: string): string => {
   switch (kind) {
     case "text":
       return "text-edit";
