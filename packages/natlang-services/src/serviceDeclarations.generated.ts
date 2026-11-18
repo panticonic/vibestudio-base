@@ -554,4 +554,303 @@ export function merge(head: string, decisions: {
 }[]): Promise<{
   head: string;
 }>;`,
+  unitRepair: `/** Read the assigned worker's source and real compiler diagnostics at one working revision. */
+
+/** Read a real compiler report at the assigned worker's current revision. */
+export function observe(): Promise<{
+  revision: string;
+  build: {
+    stateHash: string;
+    repoPath: string;
+    status: "ok" | "failed" | "skipped";
+    builds: {
+      target: "runtime" | "library:panel" | "library:worker";
+      exportPath?: string;
+      buildKey?: string;
+      diagnosticIndexes: number[];
+    }[];
+    diagnostics: {
+      severity: "error" | "warning";
+      source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+      file: string;
+      line: number;
+      column: number;
+      message: string;
+      compilerCode?: number;
+    }[];
+  };
+  tests: {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+    report: {
+      status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+      runtime: "workerd";
+      artifactKey: string;
+      executionDigest: string;
+      contextId: string;
+      target: string;
+      passed: number;
+      failed: number;
+      total: number;
+      details: {
+        file: string;
+        status: "pass" | "fail" | "skip";
+        duration?: number;
+        errors?: string[];
+      }[];
+    };
+    truncatedFiles: number;
+    truncatedErrors: number;
+  } | {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "compilation-failed";
+    report: {
+      code: "TestCompilationFailed";
+      diagnostics: {
+        severity: "error" | "warning";
+        source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        compilerCode?: number;
+      }[];
+    };
+    truncatedDiagnostics: number;
+    truncatedDiagnosticText: number;
+  } | null;
+}>;
+
+/** List files in the assigned worker repository at the supplied revision. */
+export function listSource(revision: string): Promise<string[]>;
+
+/** Read exact text from the assigned worker repository at the supplied revision. */
+export function readSource(revision: string, paths: string[]): Promise<{
+  path: string;
+  text: string;
+}[]>;`,
+  unitRepairEdit: `/** Apply source edits and check the assigned worker using its original declared workerd suite. */
+
+/** Apply the exact production source edits atomically at the expected revision. */
+export function apply(revision: string, edits: {
+  path: string;
+  before: string;
+  after: string;
+}[]): Promise<{
+  revision: string;
+}>;
+
+/** Compile the assigned worker at the supplied revision and read its diagnostics. */
+export function build(revision: string): Promise<{
+  revision: string;
+  build: {
+    stateHash: string;
+    repoPath: string;
+    status: "ok" | "failed" | "skipped";
+    builds: {
+      target: "runtime" | "library:panel" | "library:worker";
+      exportPath?: string;
+      buildKey?: string;
+      diagnosticIndexes: number[];
+    }[];
+    diagnostics: {
+      severity: "error" | "warning";
+      source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+      file: string;
+      line: number;
+      column: number;
+      message: string;
+      compilerCode?: number;
+    }[];
+  };
+  tests: {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+    report: {
+      status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+      runtime: "workerd";
+      artifactKey: string;
+      executionDigest: string;
+      contextId: string;
+      target: string;
+      passed: number;
+      failed: number;
+      total: number;
+      details: {
+        file: string;
+        status: "pass" | "fail" | "skip";
+        duration?: number;
+        errors?: string[];
+      }[];
+    };
+    truncatedFiles: number;
+    truncatedErrors: number;
+  } | {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "compilation-failed";
+    report: {
+      code: "TestCompilationFailed";
+      diagnostics: {
+        severity: "error" | "warning";
+        source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        compilerCode?: number;
+      }[];
+    };
+    truncatedDiagnostics: number;
+    truncatedDiagnosticText: number;
+  } | null;
+}>;
+
+/** Run the original manifest-selected workerd suite at the compiled revision and read the actual receipt. */
+export function test(revision: string): Promise<{
+  revision: string;
+  build: {
+    stateHash: string;
+    repoPath: string;
+    status: "ok" | "failed" | "skipped";
+    builds: {
+      target: "runtime" | "library:panel" | "library:worker";
+      exportPath?: string;
+      buildKey?: string;
+      diagnosticIndexes: number[];
+    }[];
+    diagnostics: {
+      severity: "error" | "warning";
+      source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+      file: string;
+      line: number;
+      column: number;
+      message: string;
+      compilerCode?: number;
+    }[];
+  };
+  tests: {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+    report: {
+      status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+      runtime: "workerd";
+      artifactKey: string;
+      executionDigest: string;
+      contextId: string;
+      target: string;
+      passed: number;
+      failed: number;
+      total: number;
+      details: {
+        file: string;
+        status: "pass" | "fail" | "skip";
+        duration?: number;
+        errors?: string[];
+      }[];
+    };
+    truncatedFiles: number;
+    truncatedErrors: number;
+  } | {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "compilation-failed";
+    report: {
+      code: "TestCompilationFailed";
+      diagnostics: {
+        severity: "error" | "warning";
+        source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        compilerCode?: number;
+      }[];
+    };
+    truncatedDiagnostics: number;
+    truncatedDiagnosticText: number;
+  } | null;
+}>;`,
 };

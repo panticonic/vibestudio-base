@@ -1,0 +1,6 @@
+{
+  "serviceScopes": {
+    "unitRepair": ["repairUnit.nl", "repairUnit/diagnose.nl"],
+    "unitRepairEdit": ["repairUnit.nl"]
+  }
+}

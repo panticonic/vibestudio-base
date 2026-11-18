@@ -18,3 +18,5 @@ export const serviceDeclarations: Readonly<Record<string, string>> = generatedSe
 export { createPanelRepair } from "./panelRepair.js";
 
 export { createWorkspaceIntegration } from "./workspaceIntegration.js";
+
+export { createUnitRepair } from "./unitRepair.js";

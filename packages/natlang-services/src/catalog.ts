@@ -151,6 +151,26 @@ export const SERVICE_CATALOG = [
     contract: { origin: "base", file: "packages/natlang-services/src/workspaceIntegrationContracts.ts", table: "workspaceIntegrationMethods" },
     methods: [ { name: "observe", params: [] }, { name: "apply", params: ["head", "edits"] }, { name: "merge", params: ["head", "decisions"] } ],
   },
+  {
+    name: "unitRepair",
+    summary: "Read the assigned worker's source and real compiler diagnostics at one working revision.",
+    contract: { origin: "base", file: "packages/natlang-services/src/unitRepairContracts.ts", table: "unitRepairMethods" },
+    methods: [
+      { name: "observe", params: [] },
+      { name: "listSource", params: ["revision"] },
+      { name: "readSource", params: ["revision", "paths"] },
+    ],
+  },
+  {
+    name: "unitRepairEdit",
+    summary: "Apply source edits and check the assigned worker using its original declared workerd suite.",
+    contract: { origin: "base", file: "packages/natlang-services/src/unitRepairContracts.ts", table: "unitRepairMethods" },
+    methods: [
+      { name: "apply", params: ["revision", "edits"] },
+      { name: "build", params: ["revision"] },
+      { name: "test", params: ["revision"] },
+    ],
+  },
 ] as const satisfies readonly ServiceCatalogEntry[];
 
 export type ServiceName = (typeof SERVICE_CATALOG)[number]["name"];

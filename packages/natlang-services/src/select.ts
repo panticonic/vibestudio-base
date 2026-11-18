@@ -63,6 +63,8 @@ const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangServic
   serverLog: hostService("serverLog"),
   panelRepair: binding("panelRepair"),
   panelRepairEdit: binding("panelRepairEdit"),
+  unitRepair: binding("unitRepair"),
+  unitRepairEdit: binding("unitRepairEdit"),
   workspaceIntegration: binding("workspaceIntegration"),
   docs: hostService("docs"),
   localModels: (bindings) => {
