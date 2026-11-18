@@ -1,6 +1,6 @@
 # Grounded content-project delivery
 
-Native program root: program/deliverProject.nl. Private worlds/oracle/adapter stay outside program/. This is a separate workspace-dev project lifecycle, not panel repair, VCS merge, or unit repair.
+The shared Vibestudio workflow calls [deliverProject](../vibestudio-workflows/runWorkflow/deliverProject.nl) for the workspace-development project lifecycle. Private worlds, verification and adapters stay outside the program.
 
 1. deliverProject: NL orchestration of actual context preparation, authored documents, readback review, local commit. Root-only writer alias; children receive reader alias only.
 2. analyzeRequest: NL audience, deliverable roles, grounded constraints and ambiguities.

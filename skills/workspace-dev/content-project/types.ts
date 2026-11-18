@@ -1,9 +1,0 @@
-export type Fact = { id: string; text: string };
-export type Request = { goal: string; audience: string; facts: Fact[]; documentRoles: string[] };
-export type Brief = { audienceNeeds: string[]; constraints: string[]; ambiguities: string[] };
-export type PagePlan = { path: string; role: string; factIds: string[]; purpose: string };
-export type Plan = { pages: PagePlan[]; rationale: string; blockers: string[] };
-export type Draft = { path: string; text: string };
-export type Snapshot = { contextId: string; repoPath: string; repositoryId: string | null; head: string; mainEventId: string; committedEventId: string; clean: boolean; files: Draft[] };
-export type Review = { ready: boolean; coveredRoles: string[]; unsupportedClaims: string[]; blockers: string[]; reason: string };
-export type Report = { status: "committed" | "blocked"; repoPath: string; eventId: string | null; head: string; pages: string[]; review: Review | null; reason: string };

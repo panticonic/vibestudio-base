@@ -104,6 +104,8 @@ export interface CompiledProgram {
   readonly value: unknown;
   readonly services: readonly string[];
   readonly serviceScopes: Record<string, string[]>;
+  /** Shared programs can require the caller to supply only this run's bindings. */
+  readonly explicitServiceBindings: boolean;
   /** The `.d.nl.ts` declarations TypeScript reads for the program's `.nl` imports, by path relative to its root. */
   readonly declarations: Readonly<Record<string, string>>;
 }
@@ -126,6 +128,10 @@ export function compileProgram(options: {
   const { platform, files, entry, label, root = "" } = options;
   const services = declaredServiceNames(files);
   const serviceScopes = declaredServiceScopes(files, services, label);
+  const binding = JSON.parse(files["natlang.json"] ?? "{}")?.serviceBinding;
+  if (binding !== undefined && binding !== "explicit") {
+    throw new NatlangProgramError('Use "explicit" for natlang.json serviceBinding, or omit it.', label, "does-not-compile");
+  }
   const compiled = compileVirtualProject(
     { files, root: PROJECT_ROOT },
     core as unknown as Record<string, unknown>,
@@ -160,7 +166,7 @@ export function compileProgram(options: {
       text,
     ])
   );
-  return { value, services, serviceScopes, declarations };
+  return { value, services, serviceScopes, explicitServiceBindings: binding === "explicit", declarations };
 }
 
 /** Runs one call of a program as a task of its own, with the program's services. */
@@ -269,10 +275,11 @@ export class ProgramLoader {
           "services-unavailable",
         );
     }
-    const services = servicesFor(path, program.services, Object.freeze({ ...bindings, ...overrides }));
+    const names = program.explicitServiceBindings ? Object.keys(overrides) : program.services;
+    const services = servicesFor(path, names, Object.freeze({ ...bindings, ...overrides }));
     return bindProgram(
       program.value,
-      { services, serviceDeclarations: declarationsFor(program.services), serviceScopes: program.serviceScopes, programRoot: root },
+      { services, serviceDeclarations: declarationsFor(names), serviceScopes: program.serviceScopes, programRoot: root },
       runTask
     );
   }

@@ -26,7 +26,7 @@ import { openPanel, vcs, contextId } from "@workspace/runtime";
 import { createPanelRepair } from "@workspace/natlang-services";
 const panel = await openPanel(panelSource, { contextId });
 const panelRepair = createPanelRepair({ contextId, panelSource, panel, vcs, build: services.build });
-const repair = await natlang.load("skills/workspace-dev/panel-repair/repairPanel.nl", {
+const repair = await natlang.load("skills/vibestudio-workflows/runWorkflow.nl", {
   services: { panelRepair, panelRepairEdit: panelRepair },
 });
 return await repair({ panelSource, goal });

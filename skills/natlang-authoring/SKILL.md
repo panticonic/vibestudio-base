@@ -82,6 +82,11 @@ children. Items of one folder do not see each other: when `inspect` must call `d
 `natlang:services`, each a narrowed view of the calling eval's own binding: the caller's approvals and authority
 checks apply unchanged. A program returns proposals for consequential effects; the caller commits them.
 
+For a shared program with alternative workflows, set `"serviceBinding": "explicit"` in its
+`natlang.json`. In that mode, `natlang.load(path, { services: {...} })` binds only the declared
+services the caller explicitly supplies. Use `serviceScopes` to restrict them to the stages that need
+them. If a workflow needs an absent service, supply that particular declared binding in the caller.
+
 **Inline `nl` in a cell.** For one focused judgment inside ordinary code:
 
 ```ts

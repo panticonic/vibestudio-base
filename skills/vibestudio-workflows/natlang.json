@@ -1,0 +1,52 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-workflows",
+  "version": "0.1.0",
+  "description": "Typed Natlang skills for caller-owned Vibestudio work.",
+  "targets": {
+    "main": {
+      "entry": "runWorkflow.nl"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "panelRepair": [
+      "runWorkflow/repairPanel.nl",
+      "runWorkflow/repairPanel/reproduce.nl",
+      "runWorkflow/repairPanel/diagnose.nl",
+      "runWorkflow/repairPanel/verifyRepair.nl",
+      "runWorkflow/repairPanel/verifyRepair/verifySaveAndDiscard.nl"
+    ],
+    "panelRepairEdit": [
+      "runWorkflow/repairPanel.nl"
+    ],
+    "unitRepair": [
+      "runWorkflow/repairUnit.nl",
+      "runWorkflow/repairUnit/diagnose.nl"
+    ],
+    "unitRepairEdit": [
+      "runWorkflow/repairUnit.nl"
+    ],
+    "projectWorkspace": [
+      "runWorkflow/deliverProject.nl"
+    ],
+    "projectWorkspaceEdit": [
+      "runWorkflow/deliverProject.nl"
+    ],
+    "workspaceIntegration": [
+      "runWorkflow/integrateWorkspace.nl"
+    ],
+    "ownedOperations": [
+      "runWorkflow/operate.nl",
+      "runWorkflow/operate/incident.nl",
+      "runWorkflow/operate/release.nl"
+    ],
+    "localMessagingRead": [
+      "runWorkflow/routeMessage/inspectChannel.nl",
+      "runWorkflow/routeMessage/inspectDelivery.nl"
+    ],
+    "localMessagingSend": [
+      "runWorkflow/routeMessage/deliverMessage.nl"
+    ]
+  }
+}
