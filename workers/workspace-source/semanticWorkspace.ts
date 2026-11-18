@@ -103,7 +103,7 @@ import {
   type WorkUnitRecord,
   type ExternalDeltaRecord,
 } from "./semanticVcsStore.js";
-import { contentMappingFromRow } from "./semanticVcsContentMappingCodec.js";
+import { readAppliedBlameChange, readBlameMappings, traceContentBlame } from "./contentBlame.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 import { executeProvenanceQuery } from "./provenanceQuery.js";
 import {
@@ -1058,6 +1058,83 @@ const parseBlameCursor = (
 
 const blameCursor = (basis: Row, nextStart: number): string =>
   semanticCursor("blame", basis, { nextStart });
+
+/** Render exact byte or text lineage through either committed Dolt facts or the legacy replay source. */
+export function projectContentBlame(options: {
+  sql: SqlStorage;
+  revision?: string;
+  input: VcsBlameInput;
+  file: { contentKind: "text" | "bytes"; coordinateExtent: number };
+  readOrigin: () => ContentOriginRef | undefined;
+  intentTier: (workUnitId: string) => unknown;
+}): Row {
+  const { sql, revision, input, file, readOrigin, intentTier } = options;
+  if (input.range.end > file.coordinateExtent) {
+    throw new SemanticVcsError(
+      "InvalidReference",
+      "Blame range exceeds the exact file extent",
+    );
+  }
+  if (input.range.start === input.range.end) {
+    return {
+      state: input.state,
+      fileId: input.fileId,
+      coordinateKind: coordinateKindForFile(file),
+      spans: [],
+      nextCursor: null,
+    };
+  }
+  const coordinateKind = coordinateKindForFile(file);
+  const terminal = readOrigin();
+  if (!terminal)
+    throw new SemanticVcsError(
+      "IntegrityFailure",
+      `Placed file ${input.fileId} has no content origin`
+    );
+  const cursorBasis = {
+    ...(revision === undefined ? {} : { revision }),
+    state: input.state,
+    repositoryId: input.repositoryId,
+    fileId: input.fileId,
+    range: input.range,
+  };
+  const traceStart = parseBlameCursor(input.cursor, input.range, cursorBasis);
+  const spans = traceContentBlame(
+    sql, revision, terminal,
+    {
+      rootStart: traceStart,
+      rootEnd: input.range.end,
+      currentStart: traceStart,
+      currentEnd: input.range.end,
+      coordinateKind,
+      path: [],
+      visited: new Set(),
+    },
+    input.limit + 1,
+  );
+  const ordered = spans.sort(
+    (left, right) =>
+      Number(left["start"]) - Number(right["start"]) ||
+      Number(left["end"]) - Number(right["end"]),
+  );
+  const page = ordered.slice(0, input.limit).map((span) => {
+    if (span["stop"] === "snapshot-boundary") return span;
+    const workUnitId = String((span["workUnit"] as Row)["workUnitId"]);
+    return {
+      ...span,
+      workUnitId,
+      tier: intentTier(workUnitId),
+    };
+  });
+  const next = ordered[input.limit];
+  return {
+    state: input.state,
+    fileId: input.fileId,
+    coordinateKind,
+    spans: page,
+    nextCursor: next ? blameCursor(cursorBasis, Number(next["start"])) : null,
+  };
+}
 
 const causalCommandRef = (
   ingress: SemanticDispatchRequest["ingress"],
@@ -6178,72 +6255,11 @@ export class SemanticWorkspace {
         `Unknown file ${input.fileId}`,
       );
     }
-    if (input.range.end > point.state.coordinateExtent) {
-      throw new SemanticVcsError(
-        "InvalidReference",
-        "Blame range exceeds the exact file extent",
-      );
-    }
-    if (input.range.start === input.range.end) {
-      return {
-        state: input.state,
-        fileId: input.fileId,
-        coordinateKind: coordinateKindForFile(point.state),
-        spans: [],
-        nextCursor: null,
-      };
-    }
-    const coordinateKind = coordinateKindForFile(point.state);
-    const terminal = this.contentOriginsForFiles(asState(input.state), [input.fileId]).get(
-      input.fileId,
-    );
-    if (!terminal)
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Placed file ${input.fileId} has no content origin`
-      );
-    const cursorBasis = {
-      state: input.state,
-      repositoryId: input.repositoryId,
-      fileId: input.fileId,
-      range: input.range,
-    };
-    const traceStart = parseBlameCursor(input.cursor, input.range, cursorBasis);
-    const spans = this.traceBlameRange(
-      terminal.ref,
-      {
-        rootStart: traceStart,
-        rootEnd: input.range.end,
-        currentStart: traceStart,
-        currentEnd: input.range.end,
-        coordinateKind,
-        path: [],
-        visited: new Set(),
-      },
-      input.limit + 1,
-    );
-    const ordered = spans.sort(
-      (left, right) =>
-        Number(left["start"]) - Number(right["start"]) ||
-        Number(left["end"]) - Number(right["end"]),
-    );
-    const page = ordered.slice(0, input.limit).map((span) => {
-      if (span["stop"] === "snapshot-boundary") return span;
-      const workUnitId = String((span["workUnit"] as Row)["workUnitId"]);
-      return {
-        ...span,
-        workUnitId,
-        tier: this.intentForWorkUnit(workUnitId).tier,
-      };
+    return projectContentBlame({
+      sql: this.deps.sql, input, file: point.state,
+      readOrigin: () => this.contentOriginsForFiles(asState(input.state), [input.fileId]).get(input.fileId)?.ref,
+      intentTier: (workUnitId) => this.intentForWorkUnit(workUnitId).tier,
     });
-    const next = ordered[input.limit];
-    return {
-      state: input.state,
-      fileId: input.fileId,
-      coordinateKind,
-      spans: page,
-      nextCursor: next ? blameCursor(cursorBasis, Number(next["start"])) : null,
-    };
   }
 
   // -------------------------------------------------------------------------
@@ -7762,7 +7778,7 @@ export class SemanticWorkspace {
     const anchorAppliedChangeId = incorporation
       ? String((incorporation["from"] as Row)["appliedChangeId"] ?? "")
       : appliedChangeId;
-    const authored = this.appliedChangeMetadata(appliedChangeId);
+    const authored = readAppliedBlameChange(this.deps.sql, appliedChangeId);
     const row = this.deps.sql
       .exec(
         `SELECT decision.decision_id, entry.coordinate_id, entry.resolution, entry.rationale
@@ -14081,218 +14097,6 @@ export class SemanticWorkspace {
     }));
   }
 
-  private traceBlameRange(
-    origin: ContentOriginRef,
-    segment: {
-      rootStart: number;
-      rootEnd: number;
-      currentStart: number;
-      currentEnd: number;
-      coordinateKind: "utf16" | "byte";
-      path: Row[];
-      visited: Set<string>;
-    },
-    maximumSpans: number
-  ): Row[] {
-    if (maximumSpans <= 0) return [];
-    if (segment.path.length >= 200) {
-      throw new SemanticVcsError("ScopeTooLarge", "Blame lineage exceeds its edge bound", {
-        maximum: 200,
-      });
-    }
-    if (origin.kind === "file") {
-      const event = this.deps.sql
-        .exec(
-          `SELECT command_id, snapshot_json, created_at FROM gad_workspace_events WHERE event_id = ? AND kind = 'genesis'`,
-          origin.state.eventId
-        )
-        .toArray()[0] as Row | undefined;
-      if (!event || event["snapshot_json"] == null)
-        throw new SemanticVcsError("IntegrityFailure", "Content origin is not an initial snapshot");
-      return [
-        {
-          start: segment.rootStart,
-          end: segment.rootEnd,
-          origin,
-          source: JSON.parse(String(event["snapshot_json"])),
-          command: { kind: "command", commandId: String(event["command_id"]) },
-          createdAt: String(event["created_at"]),
-          path: segment.path,
-          stop: "snapshot-boundary",
-        },
-      ];
-    }
-    const appliedChangeId = origin.appliedChangeId;
-    const visit = `${appliedChangeId}:${segment.currentStart}:${segment.currentEnd}`;
-    if (segment.visited.has(visit)) {
-      throw new SemanticVcsError("IntegrityFailure", "Content lineage contains a cycle");
-    }
-    const visited = new Set(segment.visited).add(visit);
-    const current = this.appliedChangeMetadata(appliedChangeId);
-    const routes: Array<{
-      relation: "preserves-content" | "copies-content" | "incorporates-content";
-      parent: ContentOriginRef;
-      mappings: ContentMapping[];
-    }> = [];
-    const contentEdges = this.deps.sql
-      .exec(
-        `SELECT content_edge_id, parent_ref_json, relation
-           FROM gad_content_edges
-          WHERE child_applied_change_id = ?
-          ORDER BY content_edge_id`,
-        appliedChangeId
-      )
-      .toArray() as Row[];
-    for (const edge of contentEdges) {
-      routes.push({
-        relation:
-          edge["relation"] === "incorporates"
-            ? "incorporates-content"
-            : edge["relation"] === "copies"
-              ? "copies-content"
-              : "preserves-content",
-        parent: JSON.parse(String(edge["parent_ref_json"])) as ContentOriginRef,
-        mappings: this.contentMappings(String(edge["content_edge_id"])),
-      });
-    }
-
-    const routed: Array<{
-      childStart: number;
-      childEnd: number;
-      parentStart: number;
-      parentEnd: number;
-      route: (typeof routes)[number];
-    }> = [];
-    for (const route of routes) {
-      for (const mapping of route.mappings) {
-        if (mapping.coordinateKind !== segment.coordinateKind) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Content mapping ${mapping.digest} uses the wrong coordinate space`
-          );
-        }
-        const childStart = Math.max(segment.currentStart, mapping.childStart);
-        const childEnd = Math.min(segment.currentEnd, mapping.childEnd);
-        if (childStart >= childEnd) continue;
-        if (mapping.childEnd - mapping.childStart !== mapping.parentEnd - mapping.parentStart) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Content mapping ${mapping.digest} changes coordinate length`
-          );
-        }
-        const parentStart = mapping.parentStart + childStart - mapping.childStart;
-        routed.push({
-          childStart,
-          childEnd,
-          parentStart,
-          parentEnd: parentStart + childEnd - childStart,
-          route,
-        });
-      }
-    }
-    routed.sort(
-      (left, right) => left.childStart - right.childStart || left.childEnd - right.childEnd
-    );
-    for (let index = 1; index < routed.length; index += 1) {
-      if (routed[index]!.childStart < routed[index - 1]!.childEnd) {
-        throw new SemanticVcsError(
-          "IntegrityFailure",
-          `Applied change ${appliedChangeId} has overlapping blame routes`
-        );
-      }
-    }
-    const importTerminal = current.workKind === "import";
-    const terminal = (start: number, end: number): Row => ({
-      start: segment.rootStart + (start - segment.currentStart),
-      end: segment.rootStart + (end - segment.currentStart),
-      change: { kind: "change", changeId: current.changeId },
-      appliedChange: {
-        kind: "applied-change",
-        appliedChangeId: current.appliedChangeId,
-      },
-      workUnit: { kind: "work-unit", workUnitId: current.workUnitId },
-      command: { kind: "command", commandId: current.commandId },
-      path: segment.path,
-      stop: importTerminal ? "import-boundary" : "authored",
-    });
-    if (routed.length === 0) return [terminal(segment.currentStart, segment.currentEnd)];
-    const result: Row[] = [];
-    let cursor = segment.currentStart;
-    for (const route of routed) {
-      if (cursor < route.childStart) {
-        result.push(terminal(cursor, route.childStart));
-        if (result.length >= maximumSpans) return result;
-      }
-      const rootStart = segment.rootStart + route.childStart - segment.currentStart;
-      result.push(
-        ...this.traceBlameRange(
-          route.route.parent,
-          {
-            rootStart,
-            rootEnd: rootStart + route.childEnd - route.childStart,
-            currentStart: route.parentStart,
-            currentEnd: route.parentEnd,
-            coordinateKind: segment.coordinateKind,
-            path: [
-              ...segment.path,
-              {
-                kind: route.route.relation,
-                from: {
-                  kind: "applied-change",
-                  appliedChangeId: current.appliedChangeId,
-                },
-                to: route.route.parent,
-              },
-            ],
-            visited,
-          },
-          maximumSpans - result.length
-        )
-      );
-      if (result.length >= maximumSpans) return result;
-      cursor = route.childEnd;
-    }
-    if (cursor < segment.currentEnd && result.length < maximumSpans) {
-      result.push(terminal(cursor, segment.currentEnd));
-    }
-    return result;
-  }
-
-  private appliedChangeMetadata(appliedChangeId: string): {
-    appliedChangeId: string;
-    changeId: string;
-    workUnitId: string;
-    commandId: string;
-    kind: string;
-    workKind: string;
-  } {
-    const row = this.deps.sql
-      .exec(
-        `SELECT applied.applied_change_id, change.change_id, change.kind,
-                change.work_unit_id, work.command_id, work.kind AS work_kind
-           FROM gad_applied_changes applied
-           JOIN gad_changes change ON change.change_id = applied.change_id
-           JOIN gad_work_units work ON work.work_unit_id = change.work_unit_id
-          WHERE applied.applied_change_id = ?`,
-        appliedChangeId,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Content lineage reaches missing applied change ${appliedChangeId}`,
-      );
-    }
-    return {
-      appliedChangeId,
-      changeId: String(row["change_id"]),
-      workUnitId: String(row["work_unit_id"]),
-      commandId: String(row["command_id"]),
-      kind: String(row["kind"]),
-      workKind: String(row["work_kind"]),
-    };
-  }
-
   private static contentEndpoint(endpoint: Row | null): ContentEndpoint | null {
     if (
       endpoint?.["kind"] !== "file" ||
@@ -14310,19 +14114,6 @@ export class SemanticWorkspace {
       coordinateKind: endpoint["contentKind"] === "text" ? "utf16" : "byte",
       coordinateExtent: endpoint["coordinateExtent"],
     };
-  }
-
-  private contentMappings(contentEdgeId: string): ContentMapping[] {
-    return (
-      this.deps.sql
-        .exec(
-          `SELECT coordinate_kind, child_content_hash, child_start, child_end,
-                  parent_content_hash, parent_start, parent_end, digest
-             FROM gad_content_edge_mappings WHERE content_edge_id = ? ORDER BY ordinal`,
-          contentEdgeId,
-        )
-        .toArray() as Row[]
-    ).map(contentMappingFromRow);
   }
 
   /** A text counteraction restores the original base bytes, so its exact
@@ -14371,7 +14162,7 @@ export class SemanticWorkspace {
         `Counteracted text change ${counteractedChangeIds[0]} has no exact content lineage`,
       );
     }
-    return this.contentMappings(String(row["content_edge_id"])).map(
+    return readBlameMappings(this.deps.sql, String(row["content_edge_id"])).map(
       (mapping) => {
         if (
           mapping.coordinateKind !== child.coordinateKind ||

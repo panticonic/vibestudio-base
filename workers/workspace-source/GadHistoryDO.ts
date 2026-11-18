@@ -4,6 +4,7 @@ import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
+  vcsBlameInputSchema,
   vcsCompareInputSchema,
   vcsCommitInputSchema,
   vcsCopyInputSchema,
@@ -20,6 +21,7 @@ import {
   vcsSemanticNodeRefSchema,
   vcsStateNodeRefSchema,
   type VcsCompareInput,
+  type VcsBlameInput,
   type VcsCommitInput,
   type VcsCopyInput,
   type VcsDiscardInput,
@@ -368,6 +370,11 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryNeighbors(input: { contextId: string; neighbors: VcsNeighborsInput }) {
     return this.#history().neighbors(input.contextId, this.#workspaceId(), vcsNeighborsInputSchema.parse(input.neighbors));
+  }
+
+  @rpc(hostRead)
+  readHistoryBlame(input: { contextId: string; blame: VcsBlameInput }) {
+    return this.#history().blame(input.contextId, vcsBlameInputSchema.parse(input.blame));
   }
 
   #workspaceId(): string {

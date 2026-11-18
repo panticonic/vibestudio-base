@@ -12,6 +12,7 @@ import {
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
 import type {
+  VcsBlameInput,
   VcsCompareInput,
   VcsCommitInput,
   VcsCommitResult,
@@ -31,6 +32,7 @@ import type {
   VcsSemanticNodeRef,
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
+import { vcsBlameResultSchema } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -56,7 +58,7 @@ import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { inspectWorkspaceProvenance, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
-import { historyMergePlacements, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
+import { historyMergePlacements, readHistoryWorkUnitIntent, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -72,7 +74,7 @@ import type {
   WorkspaceEventRecord,
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
-import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
+import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, projectContentBlame, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -413,6 +415,21 @@ export class ParticipantHistory {
     return this.#run(async () => {
       const at = await this.#provenanceTip(contextId, input.root);
       return workspaceProvenanceNeighbors(this.#storage.sql, at, workspaceId, contextId, input);
+    });
+  }
+
+  blame(contextId: string, input: VcsBlameInput) {
+    return this.#run(async () => {
+      const revision = await this.#requireReadableState(contextId, input.state);
+      const { sql } = this.#storage;
+      const file = workspaceEditBasisAt(sql, revision).file(input.fileId);
+      if (!file || file.repositoryId !== input.repositoryId)
+        throw new SemanticVcsError("InvalidReference", `Unknown file ${input.fileId}`);
+      return vcsBlameResultSchema.parse(projectContentBlame({
+        sql, revision, input, file,
+        readOrigin: () => workspaceContentOriginsAt(sql, revision, [input.fileId]).get(input.fileId)?.ref,
+        intentTier: (id) => readHistoryWorkUnitIntent(sql, revision, id).tier,
+      }));
     });
   }
 

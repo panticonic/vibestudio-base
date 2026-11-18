@@ -376,8 +376,8 @@ export function settledHistoryMerge(
   const theirsOrigins = workspaceContentOriginsAt(sql, selection.main, composedFiles);
   const composed = composedFiles.map((id) => ({
     coordinate: { kind: "file" as const, id },
-    ours: contentParentIntent(sql, selection.head, oursOrigins.get(id)?.authoredByWorkUnitId),
-    theirs: contentParentIntent(sql, selection.main, theirsOrigins.get(id)?.authoredByWorkUnitId),
+    ours: readHistoryWorkUnitIntent(sql, selection.head, oursOrigins.get(id)?.authoredByWorkUnitId),
+    theirs: readHistoryWorkUnitIntent(sql, selection.main, theirsOrigins.get(id)?.authoredByWorkUnitId),
   }));
   return {
     ...mutation,
@@ -393,8 +393,8 @@ export function settledHistoryMerge(
   };
 }
 
-function contentParentIntent(sql: SqlStorage, at: string, workUnitId: string | null | undefined) {
-  if (!workUnitId) throw new SemanticVcsError("IntegrityFailure", "Composed text parent has no work unit");
+export function readHistoryWorkUnitIntent(sql: SqlStorage, at: string, workUnitId: string | null | undefined) {
+  if (!workUnitId) throw new SemanticVcsError("IntegrityFailure", "Workspace content origin has no work unit");
   const row = sql.exec(
     `SELECT kind, intent_summary, trigger_excerpt, trigger_sender_json
       FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ?`,
@@ -402,6 +402,6 @@ function contentParentIntent(sql: SqlStorage, at: string, workUnitId: string | n
     workUnitId,
   ).toArray()[0];
   if (!row || typeof row["kind"] !== "string")
-    throw new SemanticVcsError("IntegrityFailure", "Composed text parent has no intent evidence");
+    throw new SemanticVcsError("IntegrityFailure", "Workspace work unit has no intent evidence");
   return readHistoryWorkIntent(sql, at, workUnitId, row["kind"], row["intent_summary"], row["trigger_excerpt"], row["trigger_sender_json"]);
 }
