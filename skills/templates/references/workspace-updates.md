@@ -95,6 +95,12 @@ main or installing a different app. Once the user asks to prepare an update:
 4. Run focused validation and show the result before asking for approval to
    publish.
 
+The joint Natlang workflow exposes `templateCandidate.stageTemplateCandidate`
+for steps 1 and 2. It rereads the selected cached offer, stages an explicitly
+authorized exact target in an isolated VCS context, and checks the readback
+against protected main before handing it off for conflict resolution or
+semantic validation.
+
 ## Compatibility
 
 `meta/vibestudio.yml` declares `systemEpoch`, which equals the workspace

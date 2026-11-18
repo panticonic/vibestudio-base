@@ -40,6 +40,24 @@ const scopedAgentFile = "packages/natlang-services/src/scopedAgentContracts.ts";
 
 export const SERVICE_CATALOG = [
   {
+    name: "templateOffer",
+    summary: "Read cached upstream status for the caller-assigned template source.",
+    contract: { origin: "base", file: "packages/natlang-services/src/templateCandidateContracts.ts", table: "templateOfferMethods" },
+    methods: [{ name: "read", params: [], description: "Read the identified cached offer and its compatibility evidence." }],
+  },
+  {
+    name: "templateCandidatePrepare",
+    summary: "Prepare the caller-authorized exact template pin in an isolated review context.",
+    contract: { origin: "base", file: "packages/natlang-services/src/templateCandidateContracts.ts", table: "templateCandidatePrepareMethods" },
+    methods: [{ name: "prepare", params: [], description: "Request the original exact pin under the caller-issued operation ID." }],
+  },
+  {
+    name: "templateCandidateReview",
+    summary: "Read the assigned preparation and protected main event after the attempt.",
+    contract: { origin: "base", file: "packages/natlang-services/src/templateCandidateContracts.ts", table: "templateCandidateReviewMethods" },
+    methods: [{ name: "read", params: [], description: "Read the isolated review and protected main independently." }],
+  },
+  {
     name: "scratchHandoffRead",
     summary: "Read the bounded UTF-8 snapshot of a caller-assigned workspace file.",
     contract: { origin: "base", file: "packages/natlang-services/src/scratchHandoffContracts.ts", table: "scratchHandoffReadMethods" },

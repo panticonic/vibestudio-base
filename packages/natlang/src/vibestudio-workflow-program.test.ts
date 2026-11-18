@@ -306,6 +306,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "reviewMediaAndImport",
         "extractPdfEvidence",
         "assembleHandoff",
+        "stageTemplateCandidate",
       ],
     ],
     [

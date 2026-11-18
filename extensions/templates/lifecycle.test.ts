@@ -254,3 +254,131 @@ it.each([0, 1])(
     });
   },
 );
+
+it("stages via the Natlang binding and reuses the durable isolated review context", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const { bindTemplateCandidate } =
+    await import("../../skills/template-candidate-bindings/index.js");
+  const root = await mkdtemp(join(tmpdir(), "template-candidate-test-"));
+  try {
+    const incoming = { ...pin, commit: "b".repeat(40) };
+    const state = { kind: "event" as const, eventId: "main:base" };
+    vi.spyOn(workspace, "observeWorkspace").mockResolvedValue({
+      installation: null,
+      mainEventId: state.eventId,
+      mainState: state,
+      runtimeTop: { systemEpoch: 0 },
+      manifest: { top: { systemEpoch: 0 }, dependencies: [] },
+      localRepoPaths: new Set(),
+      templateDependencies: [],
+      templateSources: [pin],
+    });
+    const call = vi.fn(
+      async (_target: string, method: string, args: unknown[]) => {
+        const input = args[0] as {
+          contextId?: string;
+          sources?: (typeof pin)[];
+        };
+        if (method === "workspaceTemplateSource.composeExact")
+          return {
+            sources: input.sources,
+            installation: {
+              sources: input.sources?.map((pin) => ({
+                pin,
+                manifest: "systemEpoch: 0\n",
+              })),
+            },
+            repositories: [],
+          };
+        if (method === "runtime.createContext")
+          return { contextId: input.contextId };
+        if (method === "vcs.status")
+          return {
+            contextId: input.contextId,
+            committed: state,
+            workingHead: state,
+            clean: true,
+            mainEventId: state.eventId,
+            mainRelation: "at",
+            workingCounts: { applications: 0, workUnits: 0, changes: 0 },
+            integrating: [],
+          };
+        throw new Error(`Unexpected preparation operation ${method}`);
+      },
+    );
+    const lifecycle = createTemplateLifecycle(
+      {
+        storage: { root },
+        rpc: schemaRpcMock({ call }),
+      } as unknown as ExtensionContextLike,
+      {
+        resolve: async () => {
+          throw new Error("Must keep the exact assigned pin");
+        },
+        inspect: async () => {
+          throw new Error("Compose uses exact pins");
+        },
+      },
+    );
+    const assignment = {
+      goal: "Prepare the pinned release in an isolated review",
+      intent: "stage" as const,
+      sourceUrl: pin.url,
+      installedCommit: pin.commit,
+      incomingCommit: incoming.commit,
+      checkedAfterMs: 10,
+      commandId: "candidate:exact",
+    };
+    async function run() {
+      const binding = bindTemplateCandidate(
+        {
+          ...lifecycle,
+          async updateStatus() {
+            return {
+              workspaceEpoch: 0,
+              workspaceAppVersion: "0.1.106",
+              currentAppVersion: "0.1.106",
+              checks: [
+                {
+                  source: pin,
+                  target: incoming,
+                  checkedAt: 15,
+                  targetEpoch: 0,
+                  status: "available",
+                },
+              ],
+            };
+          },
+        },
+        async () => state.eventId,
+        assignment,
+      );
+      const result = await binding.templateCandidatePrepare.prepare();
+      expect(result.outcome).toBe("acknowledged");
+      const readback = await binding.templateCandidateReview.read();
+      expect(readback).toEqual({
+        review: result.review,
+        mainEventId: state.eventId,
+      });
+      return result.review?.contextId;
+    }
+    const contextId = await run();
+    expect(contextId).toMatch(/^template-update-/u);
+    expect(await run()).toBe(contextId);
+    expect(call.mock.calls.map((entry) => entry[1])).toEqual([
+      "workspaceTemplateSource.composeExact",
+      "workspaceTemplateSource.composeExact",
+      "runtime.createContext",
+      "vcs.status",
+      "vcs.status",
+    ]);
+    expect(call.mock.calls[1]?.[2]).toContainEqual({
+      purpose: "use",
+      sources: [incoming],
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

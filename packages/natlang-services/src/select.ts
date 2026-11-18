@@ -60,6 +60,9 @@ function hostService(name: ServiceName) {
 }
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  templateOffer: binding("templateOffer"),
+  templateCandidatePrepare: binding("templateCandidatePrepare"),
+  templateCandidateReview: binding("templateCandidateReview"),
   scratchHandoffRead: binding("scratchHandoffRead"),
   scratchHandoffWrite: binding("scratchHandoffWrite"),
   automationLifecycleRead: binding("automationLifecycleRead"),

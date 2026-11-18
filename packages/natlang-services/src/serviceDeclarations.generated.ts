@@ -6,6 +6,69 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  templateOffer: `/** Read cached upstream status for the caller-assigned template source. */
+
+/** Read the identified cached offer and its compatibility evidence. */
+export function read(): Promise<{
+  installedCommit: string;
+  incomingCommit: string | null;
+  checkedAt: number;
+  workspaceAppVersion: string;
+  currentAppVersion: string;
+  targetAppVersion: string | null;
+  minimumAppVersion: string | null;
+  hostUnavailable: boolean;
+  status: "current" | "available" | "different-epoch" | "requires-app-update" | "error";
+} | null>;`,
+  templateCandidatePrepare: `/** Prepare the caller-authorized exact template pin in an isolated review context. */
+
+/** Request the original exact pin under the caller-issued operation ID. */
+export function prepare(): Promise<{
+  outcome: "acknowledged";
+  review: {
+    operationId: string;
+    contextId: string;
+    mainEventId: string;
+    incomingCommit: string;
+    state: "review" | "published";
+    repositories: {
+      repoPath: string;
+      kind: "added" | "changed" | "removed";
+    }[];
+    conflicts: {
+      repoPath: string;
+      deltaId: string;
+      kind: "file" | "repository";
+      id: string;
+    }[];
+  };
+} | {
+  outcome: "offer-changed" | "unconfirmed";
+  review: "null" | null;
+}>;`,
+  templateCandidateReview: `/** Read the assigned preparation and protected main event after the attempt. */
+
+/** Read the isolated review and protected main independently. */
+export function read(): Promise<{
+  review: {
+    operationId: string;
+    contextId: string;
+    mainEventId: string;
+    incomingCommit: string;
+    state: "review" | "published";
+    repositories: {
+      repoPath: string;
+      kind: "added" | "changed" | "removed";
+    }[];
+    conflicts: {
+      repoPath: string;
+      deltaId: string;
+      kind: "file" | "repository";
+      id: string;
+    }[];
+  };
+  mainEventId: string | null;
+} | null>;`,
   scratchHandoffRead: `/** Read the bounded UTF-8 snapshot of a caller-assigned workspace file. */
 
 /** Read the selected source by its assigned identifier and return original lines. */

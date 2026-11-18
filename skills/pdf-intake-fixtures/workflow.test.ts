@@ -21,6 +21,12 @@ import type {
   HandoffReport,
   HandoffRequest,
 } from "../scratch-handoff/types.js";
+import { createTemplateCandidateFixture } from "../template-candidate-fixtures/fixture.js";
+import { templateCandidateWorlds } from "../template-candidate-fixtures/worlds.js";
+import type {
+  CandidateReport,
+  CandidateRequest,
+} from "../template-candidate/types.js";
 import { createPdfIntakeFixture } from "./fixture.js";
 import { verifyPdfIntake } from "./oracle.js";
 import { pdfIntakeWorlds } from "./worlds.js";
@@ -33,6 +39,7 @@ const reference: Record<string, string> = {
     else if (selected.domain === "publication") report = await domains.publication.preflightPublication(selected.input);
     else if (selected.domain === "localModel") report = await domains.localModel.prepareLocalModel(selected.input);
     else if (selected.domain === "scratchHandoff") report = await domains.scratchHandoff.assembleHandoff(selected.input);
+    else if (selected.domain === "templateCandidate") report = await domains.templateCandidate.stageTemplateCandidate(selected.input);
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
@@ -126,6 +133,44 @@ const reference: Record<string, string> = {
     return request.purpose === "layout" && canOcr ? "local-fallback" : "embedded";
   `,
   readBatch: "return await pdfIntakeRead.read(document, pages, mode);",
+  stageTemplateCandidate: `
+    const {decision, offer} = await inspectOffer(request);
+    if (decision !== "prepare") return {status:decision,offer,operationId:null,candidate:null};
+    const receipt = await prepareCandidate();
+    if (receipt.outcome === "offer-changed") return {status:"offer-changed",offer,operationId:null,candidate:null};
+    const result = await reconcileCandidate(request, receipt);
+    return {status:result.status,offer,operationId:request.commandId,candidate:result.candidate};
+  `,
+  inspectOffer: `
+    const offer = await readOffer();
+    return {offer,decision:await assessOffer(request, offer)};
+  `,
+  readOffer: "return await templateOffer.read();",
+  assessOffer: `
+    if (offer === null) return "discover";
+    if (offer.checkedAt < request.checkedAfterMs) return "refresh";
+    if (offer.installedCommit !== request.installedCommit) return "target-changed";
+    if (offer.status === "error") return "discovery-error";
+    if (offer.incomingCommit !== request.incomingCommit) return "target-changed";
+    if (offer.status === "current") return "current";
+    if (offer.hostUnavailable) return "matching-host-required";
+    if (offer.status === "requires-app-update") return "app-update-required";
+    if (offer.status === "different-epoch") return "epoch-review-required";
+    return request.intent === "stage" ? "prepare" : "available";
+  `,
+  prepareCandidate: "return await requestPreparation();",
+  requestPreparation: "return await templateCandidatePrepare.prepare();",
+  reconcileCandidate: `
+    const checked = await candidateIdentity.verify(request, receipt, await readCandidate());
+    if (checked.state !== "verified") return {status:checked.state,candidate:null};
+    return {status:await chooseReview(checked.candidate),candidate:checked.candidate};
+  `,
+  readCandidate: "return await templateCandidateReview.read();",
+  chooseReview: `
+    if (candidate.state === "published") return "already-published";
+    if (candidate.conflicts.length) return "resolve-conflicts";
+    return "validate-candidate";
+  `,
   assembleHandoff: `
     const {observed, missing} = await inspectSources(request.sources);
     if (missing.length) return {status:"source-unavailable",artifact:null,missingSources:missing,unanswered:[]};
@@ -174,6 +219,9 @@ const reference: Record<string, string> = {
 };
 
 const serviceScopes: Record<string, string[]> = {
+  readOffer: ["templateOffer"],
+  requestPreparation: ["templateCandidatePrepare"],
+  readCandidate: ["templateCandidateReview"],
   readSource: ["scratchHandoffRead"],
   commitHandoff: ["scratchHandoffWrite"],
   probeDocument: ["pdfIntakeProbe"],
@@ -310,6 +358,27 @@ it("stages or holds every authored scratch handoff through the scoped Workerd ca
   }
 });
 
+it("prepares or holds each template candidate using the exact native operation and readback", async () => {
+  const runtime = loader();
+  for (const world of templateCandidateWorlds) {
+    const fixture = createTemplateCandidateFixture(world);
+    const workflow = (await runtime.load(
+      "skills/template-candidate/stageTemplateCandidate.nl",
+      {
+        services: fixture.bindings,
+      },
+    )) as (request: CandidateRequest) => Promise<CandidateReport>;
+    const report = await workflow(world.request);
+    expect(
+      fixture.verify(report),
+      JSON.stringify({ id: world.id, report }),
+    ).toBe(true);
+    expect(JSON.stringify(report)).not.toMatch(
+      /private-binding-credential|private upstream diagnostic/u,
+    );
+  }
+});
+
 const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
 it.runIf(Boolean(host))(
   "grades actual Workerd runs across template domains from retained inputs and outputs",
@@ -359,6 +428,7 @@ it.runIf(Boolean(host))(
     for (const caseId of [
       "pdf-intake-handover-date",
       "scratch-handoff-incident-reversal",
+      "template-candidate-coupled-conflicts",
       "google-workspace-inventory-quarterly-sheets",
       "publish-preflight-transit-map",
       "local-model-task-cypress-download",
