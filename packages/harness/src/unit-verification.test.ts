@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { parseSha256 } from "@vibestudio/shared/execution/identity";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type {
   WorkspaceTestArtifactV1,
@@ -20,7 +21,7 @@ function artifact(runtime: "browser" | "workerd"): WorkspaceTestArtifactV1 {
       sourceState: {
         kind: "workspace",
         workspaceId: "workspace:owned",
-        effectiveVersion: "a".repeat(64),
+        effectiveVersion: parseSha256("a".repeat(64)),
         state: { kind: "event", eventId: "event:owned" },
         contentRoots: [
           {
@@ -28,12 +29,12 @@ function artifact(runtime: "browser" | "workerd"): WorkspaceTestArtifactV1 {
             stateHash: `state:${"a".repeat(64)}`,
           },
         ],
-        sourceClosureDigest: "d".repeat(64),
+        sourceClosureDigest: parseSha256("d".repeat(64)),
       },
-      recipeDigest: "e".repeat(64),
-      buildKey: "f".repeat(64),
-      artifactDigest: "b".repeat(64),
-      executionDigest: "c".repeat(64),
+      recipeDigest: parseSha256("e".repeat(64)),
+      buildKey: parseSha256("f".repeat(64)),
+      artifactDigest: parseSha256("b".repeat(64)),
+      executionDigest: parseSha256("c".repeat(64)),
     },
   };
 }
@@ -77,7 +78,7 @@ function setup(runtime: "browser" | "workerd" = "workerd") {
           kind: "worker",
           source: {
             repoPath: "workers/owned",
-            effectiveVersion: "a".repeat(64),
+            effectiveVersion: parseSha256("a".repeat(64)),
           },
           contextId: "ctx-owned",
           targetId: "worker:owned",
