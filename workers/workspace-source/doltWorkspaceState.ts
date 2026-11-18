@@ -545,6 +545,36 @@ export function workspaceMergeScope(sql: SqlStorage, base: string, source: strin
   return scope;
 }
 
+/** Exact workspace-rooted paths touched between two immutable placements. */
+export function workspaceChangedLocations(sql: SqlStorage, before: string, after: string) {
+  if (before === after) return [];
+  return sql.exec(
+    `WITH file_changes AS (SELECT * FROM dolt_diff_files(?1, ?2)),
+      repository_changes AS (SELECT * FROM dolt_diff_repositories(?1, ?2))
+     SELECT 'folder' AS kind, from_repo_path AS path FROM repository_changes WHERE from_presence = 'present'
+     UNION
+     SELECT 'folder', to_repo_path FROM repository_changes WHERE to_presence = 'present'
+     UNION
+     SELECT 'file', CASE WHEN repo.repo_path = '' THEN file.from_path ELSE repo.repo_path || '/' || file.from_path END
+       FROM file_changes AS file LEFT JOIN dolt_at_repositories(?1) AS repo
+         ON repo.repository_id = file.from_repository_id AND repo.presence = 'present'
+      WHERE file.from_presence = 'placed'
+     UNION
+     SELECT 'file', CASE WHEN repo.repo_path = '' THEN file.to_path ELSE repo.repo_path || '/' || file.to_path END
+       FROM file_changes AS file LEFT JOIN dolt_at_repositories(?2) AS repo
+         ON repo.repository_id = file.to_repository_id AND repo.presence = 'present'
+      WHERE file.to_presence = 'placed'
+     ORDER BY kind, path`,
+    before,
+    after,
+  ).toArray().map(({ kind, path }) => {
+    if ((kind !== "file" && kind !== "folder") || typeof path !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Workspace change has an invalid placement");
+    }
+    return { kind, path };
+  });
+}
+
 /** Resolve the latest applied change or the original snapshot of each selected file. */
 export function workspaceContentOriginsAt(
   sql: SqlStorage,

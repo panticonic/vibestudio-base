@@ -15,6 +15,7 @@ import {
   vcsReadFilesInputSchema,
   vcsResolveRepositoryInputSchema,
   vcsSemanticNodeRefSchema,
+  vcsStateNodeRefSchema,
   type VcsCommitInput,
   type VcsCopyInput,
   type VcsDiscardInput,
@@ -295,6 +296,13 @@ export class GadHistoryDO extends DurableObjectBase {
     });
     if (node.kind !== "repository") throw new Error("Workspace repository location requires a repository");
     return this.#history().repositoryLocation(input.contextId, node.state, node.repositoryId);
+  }
+
+  @rpc(hostRead)
+  readHistoryChangedLocations(input: { contextId: string; target: StateNodeRef; source: StateNodeRef }) {
+    return this.#history().changedLocations(
+      input.contextId, vcsStateNodeRefSchema.parse(input.target), vcsStateNodeRefSchema.parse(input.source),
+    );
   }
 
   @rpc(hostRead)

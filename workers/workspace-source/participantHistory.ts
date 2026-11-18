@@ -36,6 +36,7 @@ import {
   recordDoltWorkspaceApplication,
   recordDoltWorkspaceEvent,
   workspaceApplicationsAt,
+  workspaceChangedLocations,
   workspaceCommitForRef,
   workspaceContentOriginsAt,
   workspaceEditBasisAt,
@@ -361,6 +362,14 @@ export class ParticipantHistory {
       const commit = await this.#requireReadableState(contextId, state);
       const repository = workspaceEditBasisAt(this.#storage.sql, commit).repository(repositoryId);
       return repository ? { ...repository, state } : null;
+    });
+  }
+
+  changedLocations(contextId: string, target: StateNodeRef, source: StateNodeRef) {
+    return this.#run(async () => {
+      const before = await this.#requireReadableState(contextId, target);
+      const after = await this.#requireReadableState(contextId, source);
+      return { target, source, locations: workspaceChangedLocations(this.#storage.sql, before, after) };
     });
   }
 
