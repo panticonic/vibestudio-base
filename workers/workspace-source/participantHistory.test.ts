@@ -1,7 +1,10 @@
 import { doltRemotesOf } from "@vibestudio/durable/dolt";
 import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
 import { expect, it } from "vitest";
-import { applyDoltWorkspaceState, createDoltWorkspaceState } from "./doltWorkspaceState.js";
+import {
+  applyDoltWorkspaceState,
+  createDoltWorkspaceState,
+} from "./doltWorkspaceState.js";
 import {
   grantParticipantHistory,
   HistoryHeadChanged,
@@ -11,7 +14,9 @@ import {
 
 async function workspace() {
   const canonical = await FakeDoltStorage.create();
-  canonical.sql.exec("CREATE TABLE files (id TEXT PRIMARY KEY, body TEXT NOT NULL)");
+  canonical.sql.exec(
+    "CREATE TABLE files (id TEXT PRIMARY KEY, body TEXT NOT NULL)",
+  );
   canonical.sql.exec("INSERT INTO files VALUES ('shared', 'initial')");
   const genesis = canonical.dolt.commit("workspace genesis");
   const origin = doltRemotesOf(canonical.storage)!;
@@ -20,8 +25,11 @@ async function workspace() {
     const local = await canonical.fork({ at: genesis });
     const history = new ParticipantHistory(id, local.storage, transport);
     const grant = grantParticipantHistory(origin, id);
-    history.connect({ id: canonical.id, token: grant.token });
-    return { local, history, head: history.openContext("edit", genesis) };
+    const main = await history.connect({
+      id: canonical.id,
+      token: grant.token,
+    });
+    return { local, history, head: await history.openContext("edit", main) };
   }
   const rows = (storage: FakeDoltStorage) =>
     storage.sql.exec("SELECT id, body FROM files ORDER BY id").toArray();
@@ -29,34 +37,53 @@ async function workspace() {
 }
 
 it("keeps participant changes private until publication and merges shared changes in the participant", async () => {
-  const { canonical, genesis, origin, transport, createParticipant, rows } = await workspace();
+  const { canonical, genesis, origin, transport, createParticipant, rows } =
+    await workspace();
   const a = await createParticipant("alice");
   const b = await createParticipant("bob");
-  const aliceCommit = a.history.commit("edit", a.head, "Alice edits", () => {
-    a.local.sql.exec("UPDATE files SET body = 'alice' WHERE id = 'shared'");
-    a.local.sql.exec("INSERT INTO files VALUES ('alice-file', 'new')");
-  });
-  const bobCommit = b.history.commit("edit", b.head, "Bob edits", () => {
+  const aliceCommit = await a.history.commit(
+    "edit",
+    a.head,
+    "Alice edits",
+    () => {
+      a.local.sql.exec("UPDATE files SET body = 'alice' WHERE id = 'shared'");
+      a.local.sql.exec("INSERT INTO files VALUES ('alice-file', 'new')");
+    },
+  );
+  const bobCommit = await b.history.commit("edit", b.head, "Bob edits", () => {
     b.local.sql.exec("UPDATE files SET body = 'bob' WHERE id = 'shared'");
     b.local.sql.exec("INSERT INTO files VALUES ('bob-file', 'new')");
   });
 
   expect(rows(canonical)).toEqual([{ id: "shared", body: "initial" }]);
-  expect(rows(b.local)).toEqual([{ id: "bob-file", body: "new" }, { id: "shared", body: "bob" }]);
-  await expect(a.history.publishContext("edit", aliceCommit.head)).resolves.toMatchObject({
+  expect(rows(b.local)).toEqual([
+    { id: "bob-file", body: "new" },
+    { id: "shared", body: "bob" },
+  ]);
+  await expect(
+    a.history.publishContext("edit", aliceCommit.head),
+  ).resolves.toMatchObject({
     branch: "pub/alice/edit",
     hash: aliceCommit.head,
   });
   const alice = doltRemotesOf(a.local.storage)!;
-  await expect(alice.push("origin", "ctx/edit", { to: "main", transport })).rejects.toMatchObject({
+  await expect(
+    alice.push("origin", "ctx/edit", { to: "main", transport }),
+  ).rejects.toMatchObject({
     code: "ERR_DOLT_REMOTE_FORBIDDEN",
   });
-  await expect(alice.push("origin", "ctx/edit", { to: "pub/bob/edit", transport })).rejects.toMatchObject({
+  await expect(
+    alice.push("origin", "ctx/edit", { to: "pub/bob/edit", transport }),
+  ).rejects.toMatchObject({
     code: "ERR_DOLT_REMOTE_FORBIDDEN",
   });
   expect(origin.hashOf("main")).toBe(genesis);
 
-  async function publish(history: ParticipantHistory, previousHead: string, proposedHead: string) {
+  async function publish(
+    history: ParticipantHistory,
+    previousHead: string,
+    proposedHead: string,
+  ) {
     const approved = origin.remote.grant({ push: ["main"] });
     const publication = { previousHead, proposedHead };
     try {
@@ -70,10 +97,14 @@ it("keeps participant changes private until publication and merges shared change
       origin.remote.revoke(approved.id);
     }
   }
-  await expect(publish(a.history, genesis, aliceCommit.head)).resolves.toMatchObject({
+  await expect(
+    publish(a.history, genesis, aliceCommit.head),
+  ).resolves.toMatchObject({
     hash: aliceCommit.head,
   });
-  await expect(publish(b.history, genesis, bobCommit.head)).rejects.toBeInstanceOf(HistoryHeadChanged);
+  await expect(
+    publish(b.history, genesis, bobCommit.head),
+  ).rejects.toBeInstanceOf(HistoryHeadChanged);
 
   let resolutions = 0;
   const merged = await b.history.mergeMain("edit", bobCommit.head, {
@@ -92,7 +123,9 @@ it("keeps participant changes private until publication and merges shared change
     { id: "bob-file", body: "new" },
     { id: "shared", body: "bob" },
   ]);
-  await expect(publish(b.history, aliceCommit.head, merged.hash)).resolves.toMatchObject({
+  await expect(
+    publish(b.history, aliceCommit.head, merged.hash),
+  ).resolves.toMatchObject({
     hash: merged.hash,
   });
   expect(rows(canonical)).toEqual(rows(b.local));
@@ -101,18 +134,37 @@ it("keeps participant changes private until publication and merges shared change
 it("keeps an existing context and rejects a stale head before running a write", async () => {
   const { genesis, createParticipant } = await workspace();
   const { local, history, head } = await createParticipant("alice");
-  const committed = history.commit("edit", head, "edit file", () => {
+  const committed = await history.commit("edit", head, "edit file", () => {
     local.sql.exec("INSERT INTO files VALUES ('alice-file', 'new')");
-    return local.sql.exec("SELECT body FROM files WHERE id = 'alice-file'").one()["body"];
+    return local.sql
+      .exec("SELECT body FROM files WHERE id = 'alice-file'")
+      .one()["body"];
   });
   expect(committed.value).toBe("new");
-  expect(history.openContext("edit", genesis)).toBe(committed.head);
-  expect(() =>
+  await expect(history.openContext("edit", genesis)).resolves.toBe(
+    committed.head,
+  );
+  await expect(
     history.commit("edit", head, "stale write", () => {
       throw new Error("stale write ran");
     }),
-  ).toThrow(HistoryHeadChanged);
-  expect(() => history.openContext("../main", genesis)).toThrow("Invalid GAD branch segment");
+  ).rejects.toBeInstanceOf(HistoryHeadChanged);
+  await expect(history.openContext("", genesis)).rejects.toThrow(
+    "Missing GAD branch identity",
+  );
+  const encodedHead = await history.openContext("context:lineage/one", genesis);
+  expect(encodedHead).toBe(genesis);
+  expect(local.dolt.branch.list().map(({ name }) => name)).toContainEqual(
+    expect.stringMatching(/^ctx\/id-[a-f0-9]{64}$/u),
+  );
+  await expect(
+    history.forkContext("edit", committed.head, "child"),
+  ).resolves.toBe(committed.head);
+  await expect(history.discard("edit", committed.head, genesis)).resolves.toBe(
+    genesis,
+  );
+  expect(local.dolt.hashOf("ctx/child")).toBe(committed.head);
+  expect(local.dolt.hashOf("ctx/edit")).toBe(genesis);
 });
 
 it("commits a prepared placement change atomically, including an exchange of occupied paths", async () => {
@@ -120,45 +172,121 @@ it("commits a prepared placement change atomically, including an exchange of occ
   const sql = graph.sql;
   createDoltWorkspaceState(sql);
   const file = (fileId: string, path: string) => ({
-    fileId, path, fileStateId: `${fileId}:${path}`, repositoryId: "repo",
-    presence: "placed" as const, contentHash: fileId, mode: 0o644,
-    contentKind: "text" as const, byteLength: 1, coordinateExtent: 1,
+    fileId,
+    path,
+    fileStateId: `${fileId}:${path}`,
+    repositoryId: "repo",
+    presence: "placed" as const,
+    contentHash: fileId,
+    mode: 0o644,
+    contentKind: "text" as const,
+    byteLength: 1,
+    coordinateExtent: 1,
   });
   const first = file("first", "one");
   const second = file("second", "two");
   applyDoltWorkspaceState(sql, {
-    repositoryUpdates: [{
-      repositoryId: "repo",
-      expected: null,
-      result: {
-        repositoryId: "repo", repositoryStateId: "genesis-repo", presence: "present",
-        repoPath: ".", fileManifestId: "genesis-files",
+    repositoryUpdates: [
+      {
+        repositoryId: "repo",
+        expected: null,
+        result: {
+          repositoryId: "repo",
+          repositoryStateId: "genesis-repo",
+          presence: "present",
+          repoPath: ".",
+          fileManifestId: "genesis-files",
+        },
       },
-    }],
-    fileUpdates: [first, second].map((result) => ({ fileId: result.fileId, result, expected: null })),
+    ],
+    fileUpdates: [first, second].map((result) => ({
+      fileId: result.fileId,
+      result,
+      expected: null,
+    })),
   });
   const genesis = graph.dolt.commit("workspace genesis");
   const work = new ParticipantHistory("alice", graph.storage, async () => {
     throw new Error("Unexpected network operation");
   });
-  const head = work.openContext("edit", genesis);
-  const switched = work.commit("edit", head, "Exchange paths", () => {
+  const head = await work.openContext("edit", genesis);
+  const switched = await work.commit("edit", head, "Exchange paths", () => {
     applyDoltWorkspaceState(sql, {
       repositoryUpdates: [],
       fileUpdates: [
-        { fileId: first.fileId, expected: first, result: file(first.fileId, second.path) },
-        { fileId: second.fileId, expected: second, result: file(second.fileId, first.path) },
+        {
+          fileId: first.fileId,
+          expected: first,
+          result: file(first.fileId, second.path),
+        },
+        {
+          fileId: second.fileId,
+          expected: second,
+          result: file(second.fileId, first.path),
+        },
       ],
     });
   });
-  const files = () => sql.exec("SELECT file_id, path FROM files ORDER BY file_id").toArray();
-  expect(files()).toEqual([{ file_id: "first", path: "two" }, { file_id: "second", path: "one" }]);
-  expect(() => work.commit("edit", switched.head, "Occupied path", () => {
-    applyDoltWorkspaceState(sql, {
-      repositoryUpdates: [],
-      fileUpdates: [{ fileId: second.fileId, expected: second, result: file(second.fileId, "two") }],
-    });
-  })).toThrow();
+  const files = () =>
+    sql.exec("SELECT file_id, path FROM files ORDER BY file_id").toArray();
+  expect(files()).toEqual([
+    { file_id: "first", path: "two" },
+    { file_id: "second", path: "one" },
+  ]);
+  await expect(
+    work.commit("edit", switched.head, "Occupied path", () => {
+      applyDoltWorkspaceState(sql, {
+        repositoryUpdates: [],
+        fileUpdates: [
+          {
+            fileId: second.fileId,
+            expected: second,
+            result: file(second.fileId, "two"),
+          },
+        ],
+      });
+    }),
+  ).rejects.toThrow();
   expect(graph.dolt.hashOf("HEAD")).toBe(switched.head);
-  expect(files()).toEqual([{ file_id: "first", path: "two" }, { file_id: "second", path: "one" }]);
+  expect(files()).toEqual([
+    { file_id: "first", path: "two" },
+    { file_id: "second", path: "one" },
+  ]);
+});
+
+it("holds the approved revision while a fresh edit waits behind publication", async () => {
+  const { canonical, genesis, origin, createParticipant } = await workspace();
+  const { local, history, head } = await createParticipant("alice");
+  const proposed = await history.commit("edit", head, "Approved edit", () => {
+    local.sql.exec("UPDATE files SET body = 'approved' WHERE id = 'shared'");
+  });
+  const grant = origin.remote.grant({ push: ["main"] });
+  const publication = { previousHead: genesis, proposedHead: proposed.head };
+  let markStarted!: () => void;
+  let resumePush!: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const continuing = new Promise<void>((resolve) => {
+    resumePush = resolve;
+  });
+  const pushing = history.publishApprovedMain(
+    "edit",
+    publication,
+    { id: canonical.id, token: grant.token },
+    async (request) => {
+      markStarted();
+      await continuing;
+      return serveApprovedMain(origin, publication, request);
+    },
+  );
+  await started;
+  const editing = history.commit("edit", proposed.head, "Later edit", () => {
+    local.sql.exec("UPDATE files SET body = 'later' WHERE id = 'shared'");
+  });
+  resumePush();
+  await expect(pushing).resolves.toMatchObject({ hash: proposed.head });
+  const later = await editing;
+  expect(origin.hashOf("main")).toBe(proposed.head);
+  expect(later.head).not.toBe(proposed.head);
 });
