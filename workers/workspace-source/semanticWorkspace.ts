@@ -8530,6 +8530,35 @@ export class SemanticWorkspace {
     workingHead: StateNodeRef;
     decisionIds: string[];
   } {
+    const prepared = this.prepareWorkingMutation(input, draft, commandId);
+    const applicationPersistenceStartedAt = Date.now();
+    const context = this.deps.store.applyApplication(prepared.plan);
+    // Derived-but-frozen intent and the search index share the transaction
+    // with the provenance rows they describe.
+    this.recordDerivedWorkUnitIndex(prepared.plan.workUnit.workUnitId);
+    const profileCompletedAt = Date.now();
+    const totalMs = profileCompletedAt - prepared.profileStartedAt;
+    if (totalMs >= 100) {
+      console.info("[VcsProfile] working mutation persistence", {
+        ...prepared.timings,
+        prepareMs: applicationPersistenceStartedAt - prepared.profileStartedAt,
+        applicationPersistenceMs: profileCompletedAt - applicationPersistenceStartedAt,
+        totalMs,
+      });
+    }
+    return { ...prepared.result, workingHead: context.working.ref };
+  }
+
+  /** Prepare the semantic application before an owner decides how to commit it. */
+  private prepareWorkingMutation(
+    input: {
+      contextId: string;
+      expectedWorkingHead: VcsStateNodeRef;
+      commandId: string;
+    },
+    draft: MutationDraft,
+    commandId: string,
+  ) {
     const profileStartedAt = Date.now();
     const basis = asState(input.expectedWorkingHead);
     const basisRoot = this.deps.store.stateRoot(basis);
@@ -8951,15 +8980,11 @@ export class SemanticWorkspace {
           changeId: value.changeId,
         })),
     };
-    const applicationPersistenceStartedAt = Date.now();
-    const context = this.deps.store.applyApplication(plan);
-    // Derived-but-frozen intent and the search index are written in the same
-    // transaction as the rows they describe, by the one loader.
-    this.recordDerivedWorkUnitIndex(workUnitIdValue);
-    const profileCompletedAt = Date.now();
-    const totalMs = profileCompletedAt - profileStartedAt;
-    if (totalMs >= 100) {
-      console.info("[VcsProfile] working mutation persistence", {
+    const planCompletedAt = Date.now();
+    return {
+      plan,
+      profileStartedAt,
+      timings: {
         changes: changes.length,
         repositories: repoTransitions.length,
         files: fileTransitions.length,
@@ -8968,29 +8993,21 @@ export class SemanticWorkspace {
         transitionsMs: transitionsCompletedAt - changesCompletedAt,
         workspacePlanMs: workspacePlanCompletedAt - transitionsCompletedAt,
         workspaceProofMs: workspaceProofCompletedAt - workspacePlanCompletedAt,
-        applicationIdentitiesMs:
-          applicationIdentityCompletedAt - workspaceProofCompletedAt,
-        contentEdgesMs:
-          contentEdgesCompletedAt - applicationIdentityCompletedAt,
-        planAssemblyMs:
-          applicationPersistenceStartedAt - contentEdgesCompletedAt,
-        prepareMs: applicationPersistenceStartedAt - profileStartedAt,
-        applicationPersistenceMs:
-          profileCompletedAt - applicationPersistenceStartedAt,
-        totalMs,
-      });
-    }
-    return {
-      commandId,
-      contextId: input.contextId,
-      workUnitId: workUnitIdValue,
-      applicationId: applicationIdValue,
-      changeCount: changes.length,
-      changeIds: changes.slice(0, 200).map((value) => value.changeId),
-      incorporatedChangeCount: draft.incorporatedChangeIds.length,
-      incorporatedChangeIds: draft.incorporatedChangeIds.slice(0, 200),
-      workingHead: context.working.ref,
-      decisionIds: decisions.map((value) => value.decisionId),
+        applicationIdentitiesMs: applicationIdentityCompletedAt - workspaceProofCompletedAt,
+        contentEdgesMs: contentEdgesCompletedAt - applicationIdentityCompletedAt,
+        planAssemblyMs: planCompletedAt - contentEdgesCompletedAt,
+      },
+      result: {
+        commandId,
+        contextId: input.contextId,
+        workUnitId: workUnitIdValue,
+        applicationId: applicationIdValue,
+        changeCount: changes.length,
+        changeIds: changes.slice(0, 200).map((value) => value.changeId),
+        incorporatedChangeCount: draft.incorporatedChangeIds.length,
+        incorporatedChangeIds: draft.incorporatedChangeIds.slice(0, 200),
+        decisionIds: decisions.map((value) => value.decisionId),
+      },
     };
   }
 

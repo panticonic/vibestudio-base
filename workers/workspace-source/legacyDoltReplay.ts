@@ -7,6 +7,7 @@ import {
 import type { StateNodeRef } from "@workspace/vcs-engine";
 import {
   applyDoltWorkspaceState,
+  recordDoltWorkspaceApplication,
   recordDoltWorkspaceEvent,
   verifyDoltWorkspaceState,
 } from "./doltWorkspaceState.js";
@@ -40,12 +41,18 @@ interface ReplayedStep {
   readonly legacyRoot: string;
 }
 
+export interface WorkspaceReplay {
+  readonly main: string | null;
+  readonly contexts: ReadonlyArray<{ id: string; committed: string; working: string }>;
+  readonly commits: ReadonlyMap<string, ReplayedStep>;
+}
+
 /** Replay the frozen workspace and locate its old main and working context tips. */
 export function replayLegacyWorkspace(
   source: SemanticVcsStore,
   target: ReplayTarget,
   schemaHead: string,
-) {
+): WorkspaceReplay {
   const { main, history, contexts } = source.legacyReplayPlan();
   const commits = replayIntoDolt(source, target, schemaHead, history);
   for (const { hash, legacyRoot } of commits.values()) {
@@ -72,6 +79,31 @@ export function replayLegacyWorkspace(
     })),
     commits,
   };
+}
+
+/** Publish a verified offline replay into its empty destination, including after a lost reply. */
+export function installReplayedMain(
+  target: DoltCapableStorage,
+  schemaHead: string,
+  replay: WorkspaceReplay,
+): string {
+  const dolt = doltStorageOf(target);
+  if (!dolt || !replay.main) throw new Error("Workspace replay has no main to install");
+  const current = dolt.hashOf("main");
+  if (current !== schemaHead && current !== replay.main) {
+    throw new Error("Workspace main already has a different history");
+  }
+  dolt.checkout("main");
+  if (current === replay.main) return current;
+  const result = dolt.merge(replay.main, {
+    resolve() {
+      throw new Error("Workspace replay main does not descend from the destination schema");
+    },
+  });
+  if (result.hash !== replay.main || !result.fastForward) {
+    throw new Error("Workspace replay installation did not fast-forward to the verified commit");
+  }
+  return result.hash;
 }
 
 function replayBranch(ref: StateNodeRef): string {
@@ -126,6 +158,8 @@ export function replayIntoDolt(
         writeLegacyProvenance(target.sql, provenance);
         if (step.kind === "event")
           recordDoltWorkspaceEvent(target.sql, step.record);
+        else
+          recordDoltWorkspaceApplication(target.sql, step.record);
       };
       if (other) {
         const merged = dolt.merge(other.branch, {

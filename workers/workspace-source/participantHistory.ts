@@ -11,7 +11,18 @@ import {
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
-import { committedWorkspaceEvent } from "./doltWorkspaceState.js";
+import type { StateNodeRef } from "@workspace/vcs-engine";
+import {
+  applyDoltWorkspaceState,
+  committedWorkspaceEvent,
+  recordDoltWorkspaceApplication,
+  recordDoltWorkspaceEvent,
+  workspaceCommitForRef,
+  workspaceRepositoriesAt,
+} from "./doltWorkspaceState.js";
+import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
+import { SemanticVcsError } from "./semanticVcsErrors.js";
+import type { ApplicationPersistencePlan, JournalCommand, WorkspaceEventRecord } from "./semanticVcsStore.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -32,6 +43,7 @@ interface MergeSource extends CommittedContext {
 }
 
 type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
+type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
 
 function branchSegment(value: string): string {
   if (!value) throw new Error("Missing GAD branch identity");
@@ -115,12 +127,12 @@ export function grantApprovedMain(
   return grant;
 }
 
-export class HistoryHeadChanged extends Error {
+export class HistoryHeadChanged extends SemanticVcsError {
   constructor(
     readonly expected: string,
     readonly actual: string,
   ) {
-    super("The workspace history head has changed");
+    super("RevisionChanged", "The workspace history head has changed", { expected, actual });
     this.name = "HistoryHeadChanged";
   }
 }
@@ -136,11 +148,7 @@ export class ParticipantHistory {
   readonly #transport: DoltRemoteTransport;
   readonly #turns = new Map<string, Promise<unknown>>();
 
-  constructor(
-    participantId: string,
-    storage: WorkspaceStorage,
-    transport: DoltRemoteTransport,
-  ) {
+  constructor(participantId: string, storage: WorkspaceStorage, transport: DoltRemoteTransport) {
     this.#participant = branchSegment(participantId);
     this.#storage = storage;
     const dolt = doltRemotesOf(storage);
@@ -169,22 +177,26 @@ export class ParticipantHistory {
     });
   }
 
-  forkContext(
-    parentId: string,
-    expectedHead: string,
-    childId: string,
-  ): Promise<string> {
+  resolveState(contextId: string, ref: StateNodeRef): Promise<string | null> {
+    return this.#run(() => this.#resolveState(contextId, ref));
+  }
+
+  materialization(contextId: string, ref: StateNodeRef) {
+    return this.#run(() => {
+      const commit = this.#resolveState(contextId, ref);
+      if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
+      return workspaceRepositoriesAt(this.#storage.sql, commit);
+    });
+  }
+
+  forkContext(parentId: string, expectedHead: string, childId: string): Promise<string> {
     return this.#run(() => {
       this.#assertHead(this.#contextBranch(parentId), expectedHead);
       return this.#openBranch(childId, expectedHead);
     });
   }
 
-  discard(
-    contextId: string,
-    expectedHead: string,
-    committedHead: string,
-  ): Promise<string> {
+  discard(contextId: string, expectedHead: string, committedHead: string): Promise<string> {
     return this.#run(() => {
       const branch = this.#contextBranch(contextId);
       this.#assertHead(branch, expectedHead);
@@ -200,12 +212,144 @@ export class ParticipantHistory {
     contextId: string,
     expectedHead: string,
     message: DoltCommitMessage,
-    write: () => T,
+    write: () => T
   ): Promise<{ readonly value: T; readonly head: string }> {
+    return this.#run(() => this.#commit(contextId, expectedHead, message, write));
+  }
+
+  /** Persist one prepared semantic mutation atomically with its placement and provenance. */
+  applyApplication(
+    expectedHead: string,
+    command: HistoryCommand,
+    plan: ApplicationPersistencePlan
+  ): Promise<{ readonly value: StateNodeRef; readonly head: string }> {
+    const { contextId, application, workUnit } = plan;
+    const value = { kind: "application" as const, applicationId: application.applicationId };
     return this.#run(() => {
-      const branch = this.#checkoutExpected(contextId, expectedHead);
-      const value = this.#storage.transactionSync(write, { commit: message });
-      return { value, head: this.#dolt.hashOf(branch) };
+      const { sql } = this.#storage;
+      if (command.commandId !== workUnit.commandId || workUnit.authorContextId !== contextId) {
+        throw new SemanticVcsError(
+          "IntegrityFailure",
+          "Prepared command ownership differs from the work unit"
+        );
+      }
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      if (this.#hasCommand(current, contextId, command)) {
+        const head = workspaceCommitForRef(sql, current, value);
+        if (!head)
+          throw new SemanticVcsError(
+            "CommandIdReuse",
+            "Prepared command has a different application"
+          );
+        const rows = sql
+          .exec(
+            `SELECT 1 FROM dolt_at_applications(?) app
+           JOIN dolt_at_gad_work_units(?) work USING (work_unit_id)
+           WHERE app.application_id = ? AND work.command_id = ?`,
+            head,
+            head,
+            value.applicationId,
+            command.commandId
+          )
+          .toArray();
+        if (rows.length !== 1)
+          throw new SemanticVcsError(
+            "CommandIdReuse",
+            "Application belongs to a different command"
+          );
+        return { value, head };
+      }
+      return this.#commit(contextId, expectedHead, `Workspace ${command.method}`, () => {
+        validateApplicationPlan(plan);
+        if (
+          stateNodeKey(plan.expectedWorkingHead) !== stateNodeKey(application.basis) ||
+          workspaceCommitForRef(sql, expectedHead, application.basis) !== expectedHead
+        ) {
+          throw new SemanticVcsError("RevisionChanged", "Prepared workspace revision has changed");
+        }
+        this.#recordCommand(contextId, command, workUnit.createdAt);
+        if (plan.workspaceFacts) applyDoltWorkspaceState(sql, plan.workspaceFacts.changeSet);
+        const provenance = new SemanticProvenanceWriter(sql);
+        provenance.persistWorkUnit(workUnit);
+        provenance.persistChanges(plan.changes);
+        provenance.persistAppliedChanges(plan.appliedChanges);
+        for (const edge of plan.contentEdges) provenance.persistContentEdge(edge);
+        for (const decision of plan.decisions) provenance.persistDecision(decision);
+        recordDoltWorkspaceApplication(sql, application);
+        return value;
+      });
+    });
+  }
+
+  /** Mark a prepared working revision as saved without changing any placements. */
+  commitEvent(
+    contextId: string,
+    expectedHead: string,
+    command: HistoryCommand,
+    event: WorkspaceEventRecord
+  ): Promise<{ readonly value: StateNodeRef; readonly head: string }> {
+    const value = { kind: "event" as const, eventId: event.eventId };
+    return this.#run(() => {
+      const { sql } = this.#storage;
+      if (
+        event.kind !== "commit" ||
+        event.commandId !== command.commandId ||
+        event.parentEventIds.length !== 1 ||
+        event.externalDeltaIds?.length
+      ) {
+        throw new SemanticVcsError(
+          "IntegrityFailure",
+          "Prepared event does not describe a linear workspace commit"
+        );
+      }
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      if (this.#hasCommand(current, contextId, command)) {
+        const head = workspaceCommitForRef(sql, current, value);
+        if (
+          !head ||
+          sql
+            .exec(
+              "SELECT 1 FROM dolt_at_events(?) WHERE event_id = ? AND command_id = ?",
+              head,
+              event.eventId,
+              command.commandId
+            )
+            .toArray().length !== 1
+        ) {
+          throw new SemanticVcsError("CommandIdReuse", "Prepared command has a different event");
+        }
+        return { value, head };
+      }
+      return this.#commit(
+        contextId,
+        expectedHead,
+        event.message || "Save workspace revision",
+        () => {
+          const parent = committedWorkspaceEvent(sql, expectedHead);
+        if (!parent || parent.eventId !== event.parentEventIds[0]) {
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              "Prepared workspace event has a different parent"
+            );
+          }
+          if (parent.head === expectedHead)
+            throw new SemanticVcsError("NoEffect", "Workspace context has no working changes");
+          const applicationId = event.applicationIds.at(-1);
+          if (
+            !applicationId ||
+            workspaceCommitForRef(sql, expectedHead, { kind: "application", applicationId }) !==
+              expectedHead
+          ) {
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              "Prepared workspace event has a different final application"
+            );
+          }
+          this.#recordCommand(contextId, command, event.createdAt);
+          recordDoltWorkspaceEvent(sql, event);
+          return value;
+        }
+      );
     });
   }
 
@@ -221,7 +365,7 @@ export class ParticipantHistory {
     contextId: string,
     expectedHead: string,
     source: MergeSource,
-    options: ResolvingMerge,
+    options: ResolvingMerge
   ) {
     return this.#run(async () => {
       const context = this.#contextBranch(source.contextId);
@@ -259,7 +403,7 @@ export class ParticipantHistory {
   publishApprovedMain(
     contextId: string,
     publication: MainPublication,
-    grantTarget: DoltRemoteTarget,
+    grantTarget: DoltRemoteTarget
   ) {
     return this.#run(async () => {
       const branch = this.#contextBranch(contextId);
@@ -279,7 +423,7 @@ export class ParticipantHistory {
   archiveCommittedContexts(
     contexts: readonly CommittedContext[],
     main: string,
-    grantTarget: DoltRemoteTarget,
+    grantTarget: DoltRemoteTarget
   ): Promise<void> {
     return this.#run(async () => {
       const remote = "retirement";
@@ -324,6 +468,64 @@ export class ParticipantHistory {
     throw new Error("GAD merge base query did not return a hash");
   }
 
+  #resolveState(contextId: string, ref: StateNodeRef): string | null {
+    return workspaceCommitForRef(
+      this.#storage.sql,
+      this.#dolt.hashOf(this.#contextBranch(contextId)),
+      ref
+    );
+  }
+
+  #commit<T>(contextId: string, expectedHead: string, message: DoltCommitMessage, write: () => T) {
+    const branch = this.#checkoutExpected(contextId, expectedHead);
+    const value = this.#storage.transactionSync(write, { commit: message });
+    return { value, head: this.#dolt.hashOf(branch) };
+  }
+
+  #hasCommand(at: string, contextId: string, command: HistoryCommand): boolean {
+    const prior = this.#storage.sql
+      .exec(
+        `SELECT scope_kind, scope_id, method, request_digest, cause_log_id, cause_head, cause_invocation_id
+         FROM dolt_at_commands(?) WHERE command_id = ?`,
+        at,
+        command.commandId
+      )
+      .toArray()[0];
+    if (!prior) return false;
+    const cause = command.cause.parent;
+    if (
+      prior["scope_kind"] !== "context" ||
+      prior["scope_id"] !== contextId ||
+      prior["method"] !== command.method ||
+      prior["request_digest"] !== command.requestDigest ||
+      prior["cause_log_id"] !== (cause?.logId ?? null) ||
+      prior["cause_head"] !== (cause?.head ?? null) ||
+      prior["cause_invocation_id"] !== (cause?.invocationId ?? null)
+    ) {
+      throw new SemanticVcsError(
+        "CommandIdReuse",
+        `Workspace command ${command.commandId} changed`
+      );
+    }
+    return true;
+  }
+
+  #recordCommand(contextId: string, command: HistoryCommand, createdAt: string): void {
+    const cause = command.cause.parent;
+    this.#storage.sql.exec(
+      `INSERT INTO commands (command_id, scope_kind, scope_id, method, request_digest,
+        cause_log_id, cause_head, cause_invocation_id, created_at) VALUES (?, 'context', ?, ?, ?, ?, ?, ?, ?)`,
+      command.commandId,
+      contextId,
+      command.method,
+      command.requestDigest,
+      cause?.logId ?? null,
+      cause?.head ?? null,
+      cause?.invocationId ?? null,
+      createdAt
+    );
+  }
+
   #run<T>(turn: () => T | Promise<T>): Promise<T> {
     return serializeByKey(this.#turns, this.#participant, turn);
   }
@@ -351,9 +553,7 @@ export class ParticipantHistory {
 
   #openBranch(contextId: string, at: string): string {
     const branch = this.#contextBranch(contextId);
-    if (
-      !this.#dolt.branch.list().some((candidate) => candidate.name === branch)
-    ) {
+    if (!this.#dolt.branch.list().some((candidate) => candidate.name === branch)) {
       this.#dolt.branch.create(branch, { from: at });
     }
     return this.#dolt.hashOf(branch);
@@ -361,8 +561,7 @@ export class ParticipantHistory {
 
   #assertHead(branch: string, expectedHead: string): void {
     const actual = this.#dolt.hashOf(branch);
-    if (actual !== expectedHead)
-      throw new HistoryHeadChanged(expectedHead, actual);
+    if (actual !== expectedHead) throw new HistoryHeadChanged(expectedHead, actual);
   }
 
   #checkoutExpected(contextId: string, expectedHead: string): string {
