@@ -2,7 +2,7 @@ import type { Audit } from "./ownedOperations.js";
 export type Expected = { kind: "incident-handoff" | "release-continuation";
   roles: Record<string, { decision?: string; decisions?: string[]; evidenceIds: string[] }>; decision: string };
 /** Test-owned exact oracle. Its private audit comes from fresh persisted-state/lifecycle readbacks, never the model's report. */
-export function verifyOwnedOperations(audit: Audit, expected: Expected, report: { handoff: { decision: string } }) {
+export function verifyOwnedOperations(audit: Audit, expected: Expected, report: { kind: string; handoff: { decision: string; evidenceIds: string[] }; handles: Audit["opened"][number]["handle"][]; cleanup: { retiredIds: string[]; destroyedContextIds: string[] } }) {
   const checks: Record<string, boolean> = {};
   const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
   const handles = audit.opened.map(row => row.handle);
@@ -28,6 +28,12 @@ export function verifyOwnedOperations(audit: Audit, expected: Expected, report: 
     checks["sameWorkerContinuity"] = before.length === 1 && after.length === 1 && before[0]?.handle.id === after[0]?.handle.id &&
       JSON.stringify(before[0]?.value) === JSON.stringify(after[0]?.value);
   } else checks["noUnrequestedRestart"] = audit.restarts.length === 0;
+  checks["programRequestedCleanup"] = audit.programRequestedCleanup;
+  checks["reportedWorkflowKind"] = report.kind === expected.kind;
+  checks["reportedHandles"] = report.handles.length === handles.length && handles.every(handle =>
+    report.handles.some(value => Object.keys(handle).every(key => value[key as keyof typeof value] === handle[key as keyof typeof handle])));
+  checks["reportedCleanup"] = sameSet(report.cleanup.retiredIds, audit.retiredIds) && sameSet(report.cleanup.destroyedContextIds, audit.destroyedContextIds);
+  checks["reportedEvidence"] = sameSet(report.handoff.evidenceIds, [...new Set(Object.values(expected.roles).flatMap(role => role.evidenceIds))]);
   checks["reportMatchesPersistedDecision"] = report.handoff.decision === expected.decision;
   checks["exactRetiredWorkers"] = sameSet(audit.retiredIds, handles.map(row => row.id));
   checks["exactDestroyedContexts"] = sameSet(audit.destroyedContextIds, handles.map(row => row.contextId));

@@ -1,6 +1,6 @@
 # Owned operational handoffs
 
-Policy is six typed natural-language stages. The program owns no host identities by guessing names.
+Policy is eight typed natural-language stages. The program owns no host identities by guessing names.
 
 | Existing product behavior | Port | Reason |
 |---|---|---|
@@ -17,3 +17,5 @@ Two scenarios are deliberately different: parallel incident roles with a synthes
 
 No local world simulator stands in for product execution. The service factory receives the actual initialized WorkspaceRuntime; its private audit is not exposed to the model. The worker stores typed reports in SQLite. An independent oracle reads the stored checkpoints through fresh RPC immediately before cleanup and checks authoritative absence after cleanup. The runtime source/build identity is preserved on the actual handle. Do not launch before service catalog registration and installed worker build are verified.
 
+
+The independent oracle also requires an actual program-issued cleanup request and compares reported handles, evidence IDs and cleanup IDs with the private actual readbacks. Host finally cleanup alone cannot turn an incomplete demonstration into a passing one. Model prose remains subject to independent semantic review; the exact oracle validates state and lifecycle facts.

@@ -25,3 +25,5 @@ export { createOwnedOperations } from "./ownedOperations.js";
 export { verifyOwnedOperations } from "./ownedOperationsOracle.js";
 export { createProjectDelivery } from "./contentProject.js";
 export { contentProjectRequestSchema, type ContentProjectRequest } from "./contentProjectContracts.js";
+
+export { ownedOperationsRequestSchema } from "./ownedOperationsContracts.js";

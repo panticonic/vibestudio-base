@@ -7,6 +7,7 @@ type Handle = z.infer<typeof ownedHandleSchema>;
 type Snapshot = z.infer<typeof snapshotSchema>;
 type Runtime = WorkspaceRuntime["runtime"];
 export type Audit = {
+  programRequestedCleanup: boolean;
   opened: Array<{ handle: Handle; original: unknown }>;
   snapshots: Array<{ handle: Handle; value: Snapshot; phase: "before-restart" | "after-restart" | "before-cleanup" }>;
   restarts: Array<{ handle: Handle; before: unknown; after: unknown }>;
@@ -22,7 +23,7 @@ export function createOwnedOperations(options: {
   const issued = new Map<string, Handle>();
   const contexts = new Set<string>();
   const retired = new Set<string>(), destroyed = new Set<string>();
-  const audit: Audit = { opened: [], snapshots: [], restarts: [], retiredIds: [], destroyedContextIds: [], remainingEntityIds: [], remainingContextIds: [] };
+  const audit: Audit = { programRequestedCleanup: false, opened: [], snapshots: [], restarts: [], retiredIds: [], destroyedContextIds: [], remainingEntityIds: [], remainingContextIds: [] };
   let closing: Promise<{ retiredIds: string[]; destroyedContextIds: string[] }> | undefined;
   const exact = (input: Handle) => {
     const handle = ownedHandleSchema.parse(input), original = issued.get(handle.id);
@@ -95,7 +96,7 @@ export function createOwnedOperations(options: {
       audit.snapshots.push({ handle, value, phase: "after-restart" });
       return value;
     }); },
-    close,
+    close: () => { audit.programRequestedCleanup = true; return close(); },
   });
   return { service, close, audit: () => structuredClone(audit) };
 }

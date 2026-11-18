@@ -24,3 +24,8 @@ export const ownedOperationsMethods = {
   close: { args: z.tuple([]), returns: cleanupSchema,
     description: "Retire only issued resources, destroy their owned contexts and independently confirm their absence. The caller also invokes this in finally." },
 } as const;
+
+export const ownedOperationsRequestSchema = z.discriminatedUnion("kind", [
+ z.object({ kind: z.literal("incident-handoff"), goal: z.string().min(1), signals: z.array(z.object({id:z.string().min(1),text:z.string().min(1)}).strict()).min(1) }).strict(),
+ z.object({ kind: z.literal("release-continuation"), goal: z.string().min(1), before: z.array(z.object({id:z.string().min(1),state:z.enum(["approved","pending","rejected"])}).strict()).min(1), after: z.array(z.object({id:z.string().min(1),state:z.enum(["approved","pending","rejected"])}).strict()).min(1) }).strict()
+]);
