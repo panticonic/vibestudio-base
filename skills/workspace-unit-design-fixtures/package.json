@@ -1,0 +1,11 @@
+{
+  "name": "@workspace-skills/workspace-unit-design-fixtures",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/natlang": "workspace:*",
+    "vitest": "^3.2.7"
+  }
+}
