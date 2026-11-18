@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
+import { createNatlangRuntime, workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import {
   NatlangProgramError,
@@ -289,4 +289,48 @@ it("keeps explicit declared service adapters isolated across cached program load
   await expect(loader.load("skills/s/brief.nl", { services: { fs: {} } })).rejects.toThrow(
     "does not declare service fs",
   );
+});
+
+it("limits an authored editing service to the exact root of a loaded program", async () => {
+  const deployed = platform();
+  const visible: Record<string, string[]> = {};
+  const edits: string[] = [];
+  const runtime = createNatlangRuntime({
+    platform: deployed,
+    agent: async (session) => {
+      const name = session.lam.functionName;
+      visible[name] = Object.keys(session.availableServices());
+      const result = await session.applyAsync("eval", {
+        code: name === "brief"
+          ? "await panelRepairEdit.apply('observed', []); return await inspectStage(text);"
+          : "return text;",
+        finish: true,
+      });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform: deployed,
+    fs: memoryFs({
+      "skills/s/brief.nl": BRIEF,
+      "skills/s/brief/inspectStage.nl": BRIEF,
+      "skills/s/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+      "skills/s/natlang.json": '{"serviceScopes":{"panelRepairEdit":["brief.nl"]}}',
+    }),
+    bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const run = await loader.load("skills/s/brief.nl", {
+    services: {
+      panelRepairEdit: {
+        apply: async (basis: string) => { edits.push(basis); return { revision: "new" }; },
+        build: async () => ({}),
+        rebuild: async () => ({}),
+      },
+    },
+  }) as (text: string) => Promise<string>;
+  await expect(run("actual input")).resolves.toBe("actual input");
+  expect(edits).toEqual(["observed"]);
+  expect(visible["brief"]).toContain("panelRepairEdit");
+  expect(visible["inspectStage"]).not.toContain("panelRepairEdit");
 });

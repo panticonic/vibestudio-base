@@ -118,7 +118,7 @@ export const SERVICE_CATALOG = [
   {
     name: "panelRepair",
     summary:
-      "Repair one caller-assigned live panel in its exact workspace context. Source edits are atomic and revision-guarded; browser actions are generation-bound. No publication authority is exposed.",
+      "Observe and interact with the assigned panel. Read its exact workspace revision and source files.",
     contract: {
       origin: "base",
       file: "packages/natlang-services/src/contracts.ts",
@@ -129,6 +129,17 @@ export const SERVICE_CATALOG = [
       { name: "interact", params: ["generation", "interaction"] },
       { name: "listSource", params: ["revision"] },
       { name: "readSource", params: ["revision", "paths"] },
+    ],
+  },
+  {
+    name: "panelRepairEdit",
+    summary: "Apply and activate the assigned panel repair at the observed revision.",
+    contract: {
+      origin: "base",
+      file: "packages/natlang-services/src/contracts.ts",
+      table: "panelRepairMethods",
+    },
+    methods: [
       { name: "apply", params: ["revision", "edits"] },
       { name: "build", params: ["revision"] },
       { name: "rebuild", params: ["revision"] },

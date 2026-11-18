@@ -393,7 +393,7 @@ export function inspect(runnerTargetId: string, runId: string, testName?: string
 } | {
   [key: string]: unknown;
 }>;`,
-  panelRepair: `/** Repair one caller-assigned live panel in its exact workspace context. Source edits are atomic and revision-guarded; browser actions are generation-bound. No publication authority is exposed. */
+  panelRepair: `/** Observe and interact with the assigned panel. Read its exact workspace revision and source files. */
 
 /** Read source revision and exact rendered panel generation with real console evidence. */
 export function observe(): Promise<{
@@ -464,7 +464,8 @@ export function listSource(revision: string): Promise<string[]>;
 export function readSource(revision: string, paths: string[]): Promise<{
   path: string;
   text: string;
-}[]>;
+}[]>;`,
+  panelRepairEdit: `/** Apply and activate the assigned panel repair at the observed revision. */
 
 /** Atomically apply exact before/after file edits using the expected working head. No publication. */
 export function apply(revision: string, edits: {

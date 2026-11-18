@@ -26,7 +26,9 @@ import { openPanel, vcs, contextId } from "@workspace/runtime";
 import { createPanelRepair } from "@workspace/natlang-services";
 const panel = await openPanel(panelSource, { contextId });
 const panelRepair = createPanelRepair({ contextId, panelSource, panel, vcs, build: services.build });
-const repair = await natlang.load("skills/workspace-dev/panel-repair/repairPanel.nl", { services: { panelRepair } });
+const repair = await natlang.load("skills/workspace-dev/panel-repair/repairPanel.nl", {
+  services: { panelRepair, panelRepairEdit: panelRepair },
+});
 return await repair({ panelSource, goal });
 ```
 
@@ -37,6 +39,9 @@ rebuild must activate that same key before its rendered evidence is returned. In
 value and rendered text. The CDP target inventory uses the same browser-side role and accessible-name rules
 as its action locators. Reobserve when the candidate generation or rendered controls change. Every returned service value
 is fresh data; no browser/VCS handle or mutable oracle object is returned to model code.
+
+`natlang.json` grants the editing service only to the authored root. Diagnosis reads current evidence,
+and the verification child exercises the running candidate.
 
 Validation: initial focused run passed 28 tests (factory, selector, loader), and the strengthened factory's three
 focused tests passed in isolation after a repeated parallel suite exceeded a 2 GB quota. The full Base composition

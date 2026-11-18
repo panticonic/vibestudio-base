@@ -10,7 +10,7 @@ import {
 import { describeProgram } from "./describe.js";
 import type { ProgramDescription } from "./describeTypes.js";
 import { NatlangProgramError } from "./programError.js";
-import { declarationsFor, declaredServiceNames, servicesFor } from "./services.js";
+import { declarationsFor, declaredServiceNames, declaredServiceScopes, servicesFor } from "./services.js";
 
 export { NatlangProgramError };
 
@@ -103,6 +103,7 @@ export interface CompiledProgram {
   /** The callable, record of callables, or module exports the path names, not yet bound to a task. */
   readonly value: unknown;
   readonly services: readonly string[];
+  readonly serviceScopes: Record<string, string[]>;
   /** The `.d.nl.ts` declarations TypeScript reads for the program's `.nl` imports, by path relative to its root. */
   readonly declarations: Readonly<Record<string, string>>;
 }
@@ -124,13 +125,14 @@ export function compileProgram(options: {
 }): CompiledProgram {
   const { platform, files, entry, label, root = "" } = options;
   const services = declaredServiceNames(files);
+  const serviceScopes = declaredServiceScopes(files, services, label);
   const compiled = compileVirtualProject(
     { files, root: PROJECT_ROOT },
     core as unknown as Record<string, unknown>,
     {
       platform,
       programId: label,
-      ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: {} } } : {}),
+      ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: serviceScopes } } : {}),
     }
   );
   if (!compiled.ok) {
@@ -158,7 +160,7 @@ export function compileProgram(options: {
       text,
     ])
   );
-  return { value, services, declarations };
+  return { value, services, serviceScopes, declarations };
 }
 
 /** Runs one call of a program as a task of its own, with the program's services. */
@@ -167,6 +169,7 @@ export type TaskRunner = <T>(
   task: {
     services: Record<string, object>;
     serviceDeclarations: Record<string, string>;
+    serviceScopes?: Record<string, string[]>;
     /** The workspace folder of the program the task runs: recorded with each of its calls. */
     programRoot?: string;
   }
@@ -269,7 +272,7 @@ export class ProgramLoader {
     const services = servicesFor(path, program.services, Object.freeze({ ...bindings, ...overrides }));
     return bindProgram(
       program.value,
-      { services, serviceDeclarations: declarationsFor(program.services), programRoot: root },
+      { services, serviceDeclarations: declarationsFor(program.services), serviceScopes: program.serviceScopes, programRoot: root },
       runTask
     );
   }

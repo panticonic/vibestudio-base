@@ -27,6 +27,7 @@ function evalBindings() {
   return {
     services: rawServices,
     panelRepair: withExtras("panelRepair"),
+    panelRepairEdit: withExtras("panelRepairEdit"),
     workspaceIntegration: withExtras("workspaceIntegration"),
     web: withExtras("web"),
     memory: withExtras("memory"),

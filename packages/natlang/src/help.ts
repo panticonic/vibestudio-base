@@ -29,6 +29,7 @@ export function natlangHelp(): string {
     "  services its services.d.ts declares (declare module 'natlang:services' { export const serverLog: ... })",
     "  or its TypeScript modules import from 'natlang:services', each a narrowed view of your own binding: your",
     "  approvals and authority checks apply unchanged. Available services: " + SERVICE_NAMES.join(", ") + ".",
+    "  In natlang.json, serviceScopes maps service names to their permitted .nl files. A path ending in /** includes descendants.",
     "  A program returns proposals for consequential effects; you commit them.",
     "",
     "Models and budgets: calls run on the executor model by default, within its budget (" +

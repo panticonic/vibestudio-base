@@ -1,0 +1,5 @@
+{
+  "serviceScopes": {
+    "panelRepairEdit": ["repairPanel.nl"]
+  }
+}
