@@ -14,12 +14,14 @@ import {
 import type {
   VcsCommitInput,
   VcsCommitResult,
+  VcsCopyInput,
   VcsDiscardInput,
   VcsDiscardResult,
   VcsEditInput,
   VcsListDirectoryInput,
   VcsListFilesInput,
   VcsMergeInput,
+  VcsMoveInput,
   VcsReadFilesInput,
   VcsResolveRepositoryInput,
   VcsSemanticNodeRef,
@@ -41,6 +43,7 @@ import {
   workspaceMergeScope,
   workspaceMergeSourcesAt,
   workspaceRepositoriesAt,
+  workspaceTransferBasisAt,
   type WorkspacePlacementChange,
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
@@ -62,7 +65,7 @@ import type {
   WorkspaceEventRecord,
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
-import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, type MutationDraft } from "./semanticWorkspace.js";
+import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -95,15 +98,15 @@ export interface CommittedContext {
   readonly head: string;
 }
 
-export type HistoryEditPlan =
+export type HistoryMutationPlan =
   | { kind: "read-content"; contentHashes: string[] }
-  | { kind: "committed"; head: string; result: HistoryEditResult & { workingHead: StateNodeRef } }
+  | { kind: "committed"; head: string; result: HistoryMutationResult & { workingHead: StateNodeRef } }
   | {
       kind: "planned";
       command: HistoryCommand;
       application: HistoryApplicationPlan;
       blobs: NonNullable<MutationDraft["blobs"]>;
-      result: HistoryEditResult;
+      result: HistoryMutationResult;
     };
 
 export type HistoryMergeResult =
@@ -116,7 +119,7 @@ interface HistoryMergeContent {
   contentHashes?: readonly string[];
 }
 
-type HistoryEditResult = ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
+type HistoryMutationResult = ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
 export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
   placement: WorkspacePlacementChange | null;
 };
@@ -454,14 +457,14 @@ export class ParticipantHistory {
     command: HistoryCommand,
     receipt: Record<string, unknown> | null,
     triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
-  ): Promise<HistoryEditPlan> {
-    return this.#run(() => {
+  ): Promise<HistoryMutationPlan> {
+    return this.#run<HistoryMutationPlan>(async () => {
       if (command.commandId !== edit.commandId || command.method !== "edit") {
         throw new SemanticVcsError("IntegrityFailure", "Workspace edit and command differ");
       }
       const current = this.#dolt.hashOf(this.#contextBranch(edit.contextId));
       if (this.#hasCommand(current, edit.contextId, command)) {
-        return this.#committedEdit(current, edit.contextId, command.commandId);
+        return this.#committedMutation(current, edit.contextId, command.commandId);
       }
       if (current !== head) throw new HistoryHeadChanged(head, current);
       const { sql } = this.#storage;
@@ -477,47 +480,116 @@ export class ParticipantHistory {
         if (contentHashes.length > 0) return { kind: "read-content", contentHashes };
       }
       const draft = SemanticWorkspace.planEdit(edit, receipt, basis);
-      const fileIds = draft.changes.flatMap(({ base }) =>
-        base?.["kind"] === "file" && typeof base["fileId"] === "string" ? [base["fileId"]] : [],
-      );
-      const origins = workspaceContentOriginsAt(sql, head, fileIds);
-      for (const fileId of fileIds) {
+      return this.#prepareMutation(head, edit, command, draft, triggerEvidence);
+    });
+  }
+
+  planTransfer(
+    head: string,
+    transfer: { method: "move"; value: VcsMoveInput } | { method: "copy"; value: VcsCopyInput },
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
+  ): Promise<HistoryMutationPlan> {
+    return this.#run(async () => {
+      const { value, method } = transfer;
+      const { contextId, commandId, expectedWorkingHead } = value;
+      const command = { commandId, method, requestDigest: compactId(`${method}-request`, value), cause };
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      if (this.#hasCommand(current, contextId, command)) {
+        return this.#committedMutation(current, contextId, commandId);
+      }
+      if (current !== head) throw new HistoryHeadChanged(head, current);
+      const { sql } = this.#storage;
+      if (workspaceCommitForRef(sql, head, expectedWorkingHead) !== head) {
+        throw new SemanticVcsError("RevisionChanged", "Workspace transfer names a different working revision");
+      }
+      const target = workspaceTransferBasisAt(sql, head);
+      if (transfer.method === "move") {
+        return this.#prepareMutation(head, value, command, SemanticWorkspace.planMove(transfer.value, target), triggerEvidence);
+      }
+      const sources = new Map<string, ReturnType<typeof workspaceTransferBasisAt>>();
+      for (const { source } of transfer.value.copies) {
+        const key = stateNodeKey(source.state);
+        if (!sources.has(key)) {
+          const at = key === stateNodeKey(expectedWorkingHead) ? head : await this.#requireReadableState(contextId, source.state);
+          sources.set(key, workspaceTransferBasisAt(sql, at));
+        }
+      }
+      const draft = SemanticWorkspace.planCopy(transfer.value, target, (state) => {
+        const source = sources.get(stateNodeKey(state));
+        if (!source) throw new SemanticVcsError("IntegrityFailure", "Workspace copy lost its source revision");
+        return source;
+      });
+      return this.#prepareMutation(head, value, command, draft, triggerEvidence);
+    });
+  }
+
+  async #prepareMutation(
+    head: string,
+    input: { contextId: string; expectedWorkingHead: StateNodeRef },
+    command: HistoryCommand,
+    draft: MutationDraft,
+    triggerEvidence: WorkUnitRecord["triggerEvidence"],
+  ): Promise<Extract<HistoryMutationPlan, { kind: "planned" }>> {
+    const { contextId, expectedWorkingHead } = input;
+    const basisKey = stateNodeKey(expectedWorkingHead);
+    const needed = new Map<string, { state: StateNodeRef; files: Set<string> }>();
+    for (const { source, base } of draft.changes) {
+      const prior = base?.["kind"] === "file" && typeof base["contentHash"] === "string" ? base["fileId"] : null;
+      const fileId = source?.fileId ?? prior;
+      if (typeof fileId !== "string") continue;
+      const state = source?.state ?? expectedWorkingHead;
+      const key = stateNodeKey(state);
+      const selection = needed.get(key);
+      if (selection) selection.files.add(fileId);
+      else needed.set(key, { state, files: new Set([fileId]) });
+    }
+    const originsAt = new Map<string, Map<string, FileContentOrigin>>();
+    for (const [key, { state, files }] of needed) {
+      const at = key === basisKey ? head : await this.#requireReadableState(contextId, state);
+      const origins = workspaceContentOriginsAt(this.#storage.sql, at, [...files]);
+      for (const fileId of files) {
         if (!origins.has(fileId))
           throw new SemanticVcsError("IntegrityFailure", `File ${fileId} has no content origin`);
       }
-      const externalKeys = [...new Set([...origins.values()].flatMap((origin) => origin.externalKeys))]
-        .sort(compareUtf16CodeUnits);
-      if (externalKeys.length > 256) {
-        throw new SemanticVcsError(
-          "ScopeTooLarge",
-          "A semantic mutation cannot persist more than 256 external lineage keys",
-        );
-      }
-      const prepared = SemanticWorkspace.prepareApplication(edit, draft, edit.commandId, {
-        now: () => new Date().toISOString(),
-        workUnitEvidence: () => ({ authorContextId: edit.contextId, triggerEvidence }),
-        contentIntegrity: () => ({
-          class: externalKeys.length ? "external" : "internal",
-          externalKeys,
-          contentOrigins: new Map(),
-        }),
-        contentOrigins: (_state, selected) => new Map(selected.flatMap((id) => {
-          const origin = origins.get(id);
+      originsAt.set(key, origins);
+    }
+    const origins = [...originsAt.values()].flatMap((entries) => [...entries.values()]);
+    const externalKeys = [...new Set(origins.flatMap((origin) => origin.externalKeys))]
+      .sort(compareUtf16CodeUnits);
+    if (externalKeys.length > 256) {
+      throw new SemanticVcsError(
+        "ScopeTooLarge",
+        "A semantic mutation cannot persist more than 256 external lineage keys",
+      );
+    }
+    const prepared = SemanticWorkspace.prepareApplication(input, draft, command.commandId, {
+      now: () => new Date().toISOString(),
+      workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
+      contentIntegrity: () => ({
+        class: origins.some((origin) => origin.contentClass === "external") ? "external" : "internal",
+        externalKeys,
+        contentOrigins: new Map(),
+      }),
+      contentOrigins: (state, selected) => {
+        const exact = originsAt.get(stateNodeKey(state));
+        return new Map(selected.flatMap((id) => {
+          const origin = exact?.get(id);
           return origin ? [[id, origin] as const] : [];
-        })),
-        invertedCounteractions: () => {
-          throw new SemanticVcsError("IntegrityFailure", "An edit cannot counteract a change");
-        },
-        preparePlacement: (files, repositories) => prepareDoltEditPlacement(head, files, repositories),
-      });
-      return {
-        kind: "planned",
-        command,
-        application: { ...prepared.plan, placement: prepared.placement },
-        blobs: draft.blobs ?? [],
-        result: prepared.result,
-      };
+        }));
+      },
+      invertedCounteractions: () => {
+        throw new SemanticVcsError("IntegrityFailure", "An edit or transfer cannot counteract a change");
+      },
+      preparePlacement: (files, repositories) => prepareDoltEditPlacement(head, files, repositories),
     });
+    return {
+      kind: "planned",
+      command,
+      application: { ...prepared.plan, placement: prepared.placement },
+      blobs: draft.blobs ?? [],
+      result: prepared.result,
+    };
   }
 
   #applicationForCommand(at: string, commandId: string) {
@@ -540,7 +612,7 @@ export class ParticipantHistory {
     return { workingHead, workUnitId, head };
   }
 
-  #committedEdit(at: string, contextId: string, commandId: string): HistoryEditPlan {
+  #committedMutation(at: string, contextId: string, commandId: string): HistoryMutationPlan {
     const { sql } = this.#storage;
     const { workingHead, workUnitId, head } = this.#applicationForCommand(at, commandId);
     const changes = sql.exec(

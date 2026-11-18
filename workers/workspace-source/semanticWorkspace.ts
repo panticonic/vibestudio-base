@@ -126,6 +126,13 @@ export interface WorkspaceEditBasis {
   emptyRepository(repository: RepositoryPlacement): PresentRepositoryState | null;
   hasFileAtPath(repositoryId: string, path: string): boolean;
 }
+export interface WorkspaceTransferBasis {
+  placedFile(repositoryId: string, fileId: string): { state: PlacedFileState; repository: RepositoryPlacement };
+  repositoryPlacement(repositoryId: string): RepositoryPlacement;
+  presentRepository(repositoryId: string): PresentRepositoryState;
+  fileAtPath(repositoryId: string, path: string): PlacedFileState | null;
+  repositoryAtPath(path: string): { repositoryId: string } | null;
+}
 type ContentEndpoint = {
   fileId: string;
   contentHash: string;
@@ -2748,6 +2755,177 @@ export class SemanticWorkspace {
     };
   }
 
+  private transferBasis(root: string): WorkspaceTransferBasis {
+    return {
+      placedFile: (repositoryId, fileId) => this.placedFile(root, repositoryId, fileId),
+      repositoryPlacement: (id) => this.presentRepository(root, id),
+      presentRepository: (id) => this.presentRepository(root, id),
+      fileAtPath: (repositoryId, path) => {
+        const state = this.deps.store.facts.fileAtPath(root, repositoryId, path)?.state;
+        return state?.presence === "placed" ? state : null;
+      },
+      repositoryAtPath: (path) => this.deps.store.facts.repositoryAtPath(root, path),
+    };
+  }
+
+  static planMove(input: VcsMoveInput, basis: WorkspaceTransferBasis): MutationDraft {
+    const changes: MutationDraft["changes"] = [];
+    const fileResults: MutationDraft["fileResults"] = [];
+    const repositoryResults: MutationDraft["repositoryResults"] = [];
+    const movingFileIds = new Set<string>();
+    const movingRepositoryIds = new Set<string>();
+    const fileDestinations = new Set<string>();
+    const repositoryDestinations = new Set<string>();
+    const plannedRepositoryPaths = new Map<string, string>();
+    for (const move of input.moves) {
+      if (move.kind === "file") {
+        if (movingFileIds.has(move.fileId)) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `File ${move.fileId} is moved more than once`,
+          );
+        }
+        movingFileIds.add(move.fileId);
+        const destination = `${move.destinationRepositoryId}:${move.destinationPath}`;
+        if (fileDestinations.has(destination)) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Multiple files target ${move.destinationPath}`,
+            {
+              repositoryId: move.destinationRepositoryId,
+              path: move.destinationPath,
+            },
+          );
+        }
+        fileDestinations.add(destination);
+      } else {
+        if (movingRepositoryIds.has(move.repositoryId)) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository ${move.repositoryId} is moved more than once`,
+          );
+        }
+        movingRepositoryIds.add(move.repositoryId);
+        if (repositoryDestinations.has(move.destinationPath)) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Multiple repositories target ${move.destinationPath}`,
+            { path: move.destinationPath },
+          );
+        }
+        repositoryDestinations.add(move.destinationPath);
+        plannedRepositoryPaths.set(move.repositoryId, move.destinationPath);
+      }
+    }
+    input.moves.forEach((move, operation) => {
+      if (move.kind === "file") {
+        const point = basis.placedFile(move.repositoryId, move.fileId);
+        const destination = basis.repositoryPlacement(move.destinationRepositoryId);
+        if (
+          point.state.repositoryId === move.destinationRepositoryId &&
+          point.state.path === move.destinationPath
+        ) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `File ${move.fileId} is already at ${move.destinationPath}`,
+          );
+        }
+        const occupied = basis.fileAtPath(move.destinationRepositoryId, move.destinationPath);
+        if (
+          occupied && !movingFileIds.has(occupied.fileId)
+        ) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Destination ${move.destinationPath} is occupied`,
+            {
+              repositoryId: move.destinationRepositoryId,
+              path: move.destinationPath,
+            },
+          );
+        }
+        const { fileStateId: _priorFileStateId, ...prior } = point.state;
+        const result = {
+          ...prior,
+          repositoryId: move.destinationRepositoryId,
+          path: move.destinationPath,
+        };
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: "file-move",
+          base: endpointForFile(point.state, point.repository),
+          result: endpointForFile(
+            { ...result, fileStateId: "planned" },
+            {
+              ...destination,
+              repoPath:
+                plannedRepositoryPaths.get(move.destinationRepositoryId) ??
+                destination.repoPath,
+            },
+          ),
+          payload: move as unknown as Row,
+        });
+        fileResults.push({
+          fileId: move.fileId,
+          expected: point.state,
+          result,
+          newFile: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      } else {
+        const repository = basis.presentRepository(move.repositoryId);
+        const occupied = basis.repositoryAtPath(move.destinationPath);
+        if (repository.repoPath === move.destinationPath) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository ${move.repositoryId} is already at ${move.destinationPath}`,
+          );
+        }
+        if (occupied && !movingRepositoryIds.has(occupied.repositoryId)) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Repository path ${move.destinationPath} is occupied`,
+            {
+              repositoryId: occupied.repositoryId,
+              path: move.destinationPath,
+            },
+          );
+        }
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: "repo-move",
+          base: {
+            kind: "repository",
+            repositoryId: move.repositoryId,
+            repoPath: repository.repoPath,
+          },
+          result: {
+            kind: "repository",
+            repositoryId: move.repositoryId,
+            repoPath: move.destinationPath,
+          },
+          payload: move as unknown as Row,
+        });
+        repositoryResults.push({
+          repositoryId: move.repositoryId,
+          expected: repository,
+          resultPath: move.destinationPath,
+          newRepository: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      }
+    });
+    return {
+      kind: "file-transfer",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds: [],
+      changes,
+      fileResults,
+      repositoryResults,
+    };
+  }
+
   private move(
     input: VcsMoveInput,
     request: SemanticDispatchRequest,
@@ -2756,172 +2934,7 @@ export class SemanticWorkspace {
       const root = this.deps.store.stateRoot(
         asState(input.expectedWorkingHead),
       );
-      const changes: MutationDraft["changes"] = [];
-      const fileResults: MutationDraft["fileResults"] = [];
-      const repositoryResults: MutationDraft["repositoryResults"] = [];
-      const movingFileIds = new Set<string>();
-      const movingRepositoryIds = new Set<string>();
-      const fileDestinations = new Set<string>();
-      const repositoryDestinations = new Set<string>();
-      const plannedRepositoryPaths = new Map<string, string>();
-      for (const move of input.moves) {
-        if (move.kind === "file") {
-          if (movingFileIds.has(move.fileId)) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `File ${move.fileId} is moved more than once`,
-            );
-          }
-          movingFileIds.add(move.fileId);
-          const destination = `${move.destinationRepositoryId}:${move.destinationPath}`;
-          if (fileDestinations.has(destination)) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Multiple files target ${move.destinationPath}`,
-              {
-                repositoryId: move.destinationRepositoryId,
-                path: move.destinationPath,
-              },
-            );
-          }
-          fileDestinations.add(destination);
-        } else {
-          if (movingRepositoryIds.has(move.repositoryId)) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository ${move.repositoryId} is moved more than once`,
-            );
-          }
-          movingRepositoryIds.add(move.repositoryId);
-          if (repositoryDestinations.has(move.destinationPath)) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Multiple repositories target ${move.destinationPath}`,
-              { path: move.destinationPath },
-            );
-          }
-          repositoryDestinations.add(move.destinationPath);
-          plannedRepositoryPaths.set(move.repositoryId, move.destinationPath);
-        }
-      }
-      input.moves.forEach((move, operation) => {
-        if (move.kind === "file") {
-          const point = this.placedFile(root, move.repositoryId, move.fileId);
-          const destination = this.presentRepository(
-            root,
-            move.destinationRepositoryId,
-          );
-          if (
-            point.state.repositoryId === move.destinationRepositoryId &&
-            point.state.path === move.destinationPath
-          ) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `File ${move.fileId} is already at ${move.destinationPath}`,
-            );
-          }
-          const occupied = this.deps.store.facts.fileAtPath(
-            root,
-            move.destinationRepositoryId,
-            move.destinationPath,
-          );
-          if (
-            occupied?.state.presence === "placed" &&
-            !movingFileIds.has(occupied.state.fileId)
-          ) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Destination ${move.destinationPath} is occupied`,
-              {
-                repositoryId: move.destinationRepositoryId,
-                path: move.destinationPath,
-              },
-            );
-          }
-          const { fileStateId: _priorFileStateId, ...prior } = point.state;
-          const result = {
-            ...prior,
-            repositoryId: move.destinationRepositoryId,
-            path: move.destinationPath,
-          };
-          changes.push({
-            operation,
-            ordinal: 0,
-            kind: "file-move",
-            base: endpointForFile(point.state, point.repository),
-            result: endpointForFile(
-              { ...result, fileStateId: "planned" },
-              {
-                ...destination,
-                repoPath:
-                  plannedRepositoryPaths.get(move.destinationRepositoryId) ??
-                  destination.repoPath,
-              },
-            ),
-            payload: move as unknown as Row,
-          });
-          fileResults.push({
-            fileId: move.fileId,
-            expected: point.state,
-            result,
-            newFile: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        } else {
-          const repository = this.presentRepository(root, move.repositoryId);
-          const occupied = this.deps.store.facts.repositoryAtPath(
-            root,
-            move.destinationPath,
-          );
-          if (repository.repoPath === move.destinationPath) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository ${move.repositoryId} is already at ${move.destinationPath}`,
-            );
-          }
-          if (occupied && !movingRepositoryIds.has(occupied.repositoryId)) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Repository path ${move.destinationPath} is occupied`,
-              {
-                repositoryId: occupied.repositoryId,
-                path: move.destinationPath,
-              },
-            );
-          }
-          changes.push({
-            operation,
-            ordinal: 0,
-            kind: "repo-move",
-            base: {
-              kind: "repository",
-              repositoryId: move.repositoryId,
-              repoPath: repository.repoPath,
-            },
-            result: {
-              kind: "repository",
-              repositoryId: move.repositoryId,
-              repoPath: move.destinationPath,
-            },
-            payload: move as unknown as Row,
-          });
-          repositoryResults.push({
-            repositoryId: move.repositoryId,
-            expected: repository,
-            resultPath: move.destinationPath,
-            newRepository: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        }
-      });
-      const draft: MutationDraft = {
-        kind: "file-transfer",
-        intentSummary: input.intentSummary ?? null,
-        incorporatedChangeIds: [],
-        changes,
-        fileResults,
-        repositoryResults,
-      };
+      const draft = SemanticWorkspace.planMove(input, this.transferBasis(root));
       const result = this.persistWorkingMutation(input, draft, input.commandId);
       const effect = this.queueRealization(
         input.contextId,
@@ -2943,6 +2956,88 @@ export class SemanticWorkspace {
     });
   }
 
+  static planCopy(
+    input: VcsCopyInput,
+    target: WorkspaceTransferBasis,
+    sourceBasis: (state: StateNodeRef) => WorkspaceTransferBasis,
+  ): MutationDraft {
+    const changes: MutationDraft["changes"] = [];
+    const fileResults: MutationDraft["fileResults"] = [];
+    input.copies.forEach((copy, operation) => {
+      const sourceState = asState(copy.source.state);
+      const source = sourceBasis(sourceState).placedFile(copy.source.repositoryId, copy.source.fileId);
+      const destination = target.repositoryPlacement(copy.destination.repositoryId);
+      if (
+        target.fileAtPath(copy.destination.repositoryId, copy.destination.path)
+      ) {
+        throw new SemanticVcsError(
+          "DestinationOccupied",
+          `Destination ${copy.destination.path} is occupied`,
+          {
+            repositoryId: copy.destination.repositoryId,
+            path: copy.destination.path,
+          },
+        );
+      }
+      const fileId = compactId("file", {
+        commandId: input.commandId,
+        operation,
+        sourceFileId: copy.source.fileId,
+        destination: copy.destination,
+      });
+      const result = {
+        fileId,
+        presence: "placed" as const,
+        repositoryId: copy.destination.repositoryId,
+        path: copy.destination.path,
+        contentHash: source.state.contentHash,
+        mode: source.state.mode,
+        contentKind: source.state.contentKind,
+        byteLength: source.state.byteLength,
+        coordinateExtent: source.state.coordinateExtent,
+      };
+      changes.push({
+        operation,
+        ordinal: 0,
+        kind: "file-copy",
+        source: {
+          kind: "file",
+          state: sourceState,
+          repositoryId: copy.source.repositoryId,
+          repoPath: source.repository.repoPath,
+          fileId: copy.source.fileId,
+          path: source.state.path,
+          contentHash: source.state.contentHash,
+          mode: source.state.mode,
+          contentKind: source.state.contentKind,
+          byteLength: source.state.byteLength,
+          coordinateExtent: source.state.coordinateExtent,
+        },
+        base: missingEndpoint(result, destination.repoPath),
+        result: endpointForFile(
+          { ...result, fileStateId: "planned" },
+          destination,
+        ),
+        payload: { destination: copy.destination },
+      });
+      fileResults.push({
+        fileId,
+        expected: null,
+        result,
+        newFile: true,
+        changeRef: { kind: "authored", ordinal: operation },
+      });
+    });
+    return {
+      kind: "file-transfer",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds: [],
+      changes,
+      fileResults,
+      repositoryResults: [],
+    };
+  }
+
   private copy(
     input: VcsCopyInput,
     request: SemanticDispatchRequest,
@@ -2951,93 +3046,11 @@ export class SemanticWorkspace {
       const targetRoot = this.deps.store.stateRoot(
         asState(input.expectedWorkingHead),
       );
-      const changes: MutationDraft["changes"] = [];
-      const fileResults: MutationDraft["fileResults"] = [];
-      input.copies.forEach((copy, operation) => {
-        const sourceState = asState(copy.source.state);
-        const sourceRoot = this.deps.store.stateRoot(sourceState);
-        const source = this.placedFile(
-          sourceRoot,
-          copy.source.repositoryId,
-          copy.source.fileId,
-        );
-        const destination = this.presentRepository(
-          targetRoot,
-          copy.destination.repositoryId,
-        );
-        if (
-          this.deps.store.facts.fileAtPath(
-            targetRoot,
-            copy.destination.repositoryId,
-            copy.destination.path,
-          )
-        ) {
-          throw new SemanticVcsError(
-            "DestinationOccupied",
-            `Destination ${copy.destination.path} is occupied`,
-            {
-              repositoryId: copy.destination.repositoryId,
-              path: copy.destination.path,
-            },
-          );
-        }
-        const fileId = compactId("file", {
-          commandId: input.commandId,
-          operation,
-          sourceFileId: copy.source.fileId,
-          destination: copy.destination,
-        });
-        const result = {
-          fileId,
-          presence: "placed" as const,
-          repositoryId: copy.destination.repositoryId,
-          path: copy.destination.path,
-          contentHash: source.state.contentHash,
-          mode: source.state.mode,
-          contentKind: source.state.contentKind,
-          byteLength: source.state.byteLength,
-          coordinateExtent: source.state.coordinateExtent,
-        };
-        changes.push({
-          operation,
-          ordinal: 0,
-          kind: "file-copy",
-          source: {
-            kind: "file",
-            state: sourceState,
-            repositoryId: copy.source.repositoryId,
-            repoPath: source.repository.repoPath,
-            fileId: copy.source.fileId,
-            path: source.state.path,
-            contentHash: source.state.contentHash,
-            mode: source.state.mode,
-            contentKind: source.state.contentKind,
-            byteLength: source.state.byteLength,
-            coordinateExtent: source.state.coordinateExtent,
-          },
-          base: missingEndpoint(result, destination.repoPath),
-          result: endpointForFile(
-            { ...result, fileStateId: "planned" },
-            destination,
-          ),
-          payload: { destination: copy.destination },
-        });
-        fileResults.push({
-          fileId,
-          expected: null,
-          result,
-          newFile: true,
-          changeRef: { kind: "authored", ordinal: operation },
-        });
-      });
-      const draft: MutationDraft = {
-        kind: "file-transfer",
-        intentSummary: input.intentSummary ?? null,
-        incorporatedChangeIds: [],
-        changes,
-        fileResults,
-        repositoryResults: [],
-      };
+      const draft = SemanticWorkspace.planCopy(
+        input,
+        this.transferBasis(targetRoot),
+        (state) => this.transferBasis(this.deps.store.stateRoot(state)),
+      );
       const result = this.persistWorkingMutation(input, draft, input.commandId);
       const effect = this.queueRealization(
         input.contextId,

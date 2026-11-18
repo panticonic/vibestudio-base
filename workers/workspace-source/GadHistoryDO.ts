@@ -5,20 +5,24 @@ import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
   vcsCommitInputSchema,
+  vcsCopyInputSchema,
   vcsDiscardInputSchema,
   vcsEditInputSchema,
   vcsListDirectoryInputSchema,
   vcsListFilesInputSchema,
   vcsMergeInputSchema,
+  vcsMoveInputSchema,
   vcsReadFilesInputSchema,
   vcsResolveRepositoryInputSchema,
   vcsSemanticNodeRefSchema,
   type VcsCommitInput,
+  type VcsCopyInput,
   type VcsDiscardInput,
   type VcsEditInput,
   type VcsListDirectoryInput,
   type VcsListFilesInput,
   type VcsMergeInput,
+  type VcsMoveInput,
   type VcsReadFilesInput,
   type VcsResolveRepositoryInput,
   type VcsSemanticNodeRef,
@@ -47,7 +51,7 @@ import {
   retireParticipantHistory,
   revokeParticipantHistory,
   type HistoryCommand,
-  type HistoryEditPlan,
+  type HistoryMutationPlan,
   type HistoryPublicationApproval,
   type MainPublication,
   type MergeSource,
@@ -320,7 +324,7 @@ export class GadHistoryDO extends DurableObjectBase {
     cause: HistoryCommand["cause"];
     receipt: Record<string, unknown> | null;
     triggerEvidence?: WorkUnitRecord["triggerEvidence"];
-  }): Promise<HistoryEditPlan> {
+  }): Promise<HistoryMutationPlan> {
     this.#assertWritable();
     const edit = vcsEditInputSchema.parse(input.edit);
     return this.#history().planEdit(
@@ -335,6 +339,23 @@ export class GadHistoryDO extends DurableObjectBase {
       input.receipt,
       input.triggerEvidence,
     );
+  }
+
+  @rpc(hostWrite)
+  planHistoryTransfer(input: {
+    head: string;
+    transfer: { method: "move"; value: VcsMoveInput } | { method: "copy"; value: VcsCopyInput };
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+  }): Promise<HistoryMutationPlan> {
+    this.#assertWritable();
+    if (input.transfer.method !== "move" && input.transfer.method !== "copy") {
+      throw new Error("Workspace transfer method is invalid");
+    }
+    const transfer = input.transfer.method === "move"
+      ? { method: "move" as const, value: vcsMoveInputSchema.parse(input.transfer.value) }
+      : { method: "copy" as const, value: vcsCopyInputSchema.parse(input.transfer.value) };
+    return this.#history().planTransfer(input.head, transfer, input.cause, input.triggerEvidence);
   }
 
   @rpc(hostWrite)

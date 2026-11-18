@@ -23,6 +23,7 @@ import {
   type FileTransition,
   type RepositoryTransition,
   type WorkspaceEditBasis,
+  type WorkspaceTransferBasis,
 } from "./semanticWorkspace.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 
@@ -230,6 +231,52 @@ export function workspaceEditBasisAt(sql: SqlStorage, commit: string): Workspace
       return state;
     },
     hasFileAtPath: (id, path) => hasFile("repository_id = ? AND path = ?", id, path),
+  };
+}
+
+export function workspaceTransferBasisAt(sql: SqlStorage, commit: string): WorkspaceTransferBasis {
+  const basis = workspaceEditBasisAt(sql, commit);
+  const repositoryPlacement = (repositoryId: string) => {
+    const repository = basis.repository(repositoryId);
+    if (!repository) throw new SemanticVcsError("InvalidReference", `Repository ${repositoryId} is not present`);
+    return repository;
+  };
+  return {
+    repositoryPlacement,
+    repositoryAtPath: basis.repositoryAtPath,
+    placedFile(repositoryId, fileId) {
+      const state = basis.file(fileId);
+      if (!state || state.repositoryId !== repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `File ${fileId} is not placed in repository ${repositoryId}`);
+      }
+      return { state, repository: repositoryPlacement(repositoryId) };
+    },
+    fileAtPath(repositoryId, path) {
+      const id = sql.exec(
+        "SELECT file_id FROM dolt_at_files(?) WHERE repository_id = ? AND path = ? AND presence = 'placed'",
+        commit, repositoryId, path,
+      ).toArray()[0]?.["file_id"];
+      return typeof id === "string" ? basis.file(id) : null;
+    },
+    presentRepository(repositoryId) {
+      const repository = repositoryPlacement(repositoryId);
+      const files = sql.exec(
+        "SELECT path, content_hash, mode FROM dolt_at_files(?) WHERE repository_id = ? AND presence = 'placed'",
+        commit, repositoryId,
+      ).toArray().map(({ path, content_hash, mode }) => {
+        if (typeof path !== "string" || typeof content_hash !== "string" || typeof mode !== "number") {
+          throw new SemanticVcsError("IntegrityFailure", "Workspace repository has an invalid file placement");
+        }
+        return { path, contentHash: content_hash, mode };
+      }).sort((left, right) => compareUtf16CodeUnits(left.path, right.path));
+      const state = workspaceRepositoryStateIdentity({
+        ...repository,
+        presence: "present",
+        fileManifestId: compactId("dolt-file-manifest", files),
+      });
+      if (state.presence !== "present") throw new Error("Workspace repository has no present state");
+      return state;
+    },
   };
 }
 
