@@ -1,3 +1,4 @@
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { doltRemotesOf } from "@vibestudio/durable/dolt";
 import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
 import type { VcsEditInput } from "@vibestudio/service-schemas/vcs";
@@ -343,7 +344,7 @@ it("reads edit placements at the selected revision without changing the checkout
   const { sql } = graph;
   createDoltWorkspaceState(sql);
   sql.exec("INSERT INTO repositories VALUES ('repo', 'projects/example', 'present', NULL)");
-  const original = "a".repeat(64);
+  const original = sha256HexSyncText("a");
   sql.exec(
     "INSERT INTO files VALUES ('file', 'repo', 'note.txt', ?, 420, 'text', 1, 1, 'placed', NULL)",
     original,
@@ -371,7 +372,8 @@ it("reads edit placements at the selected revision without changing the checkout
       return sql.exec(withRevision, ...bindings);
     },
   };
-  const plan = SemanticWorkspace.planEdit(input, null, workspaceEditBasisAt(historicalSql, genesis));
+  const basis = workspaceEditBasisAt(historicalSql, genesis);
+  const plan = SemanticWorkspace.planEdit(input, null, basis);
   expect(plan).toMatchObject({
     fileResults: [
       {
@@ -380,6 +382,28 @@ it("reads edit placements at the selected revision without changing the checkout
         result: { contentHash: original, mode: 0o755 },
       },
     ],
+  });
+  const text: VcsEditInput = {
+    ...input,
+    changes: [{
+      kind: "text-edit",
+      repositoryId: "repo",
+      fileId: "file",
+      edits: [{ start: 0, end: 1, text: "z" }],
+    }],
+  };
+  expect(SemanticWorkspace.editContentHashes(text, basis)).toEqual([original]);
+  expect(() => SemanticWorkspace.planEdit(
+    text,
+    { files: [{ contentHash: original, base64: "Yg==" }] },
+    basis,
+  )).toThrow("Observed content differs");
+  expect(SemanticWorkspace.planEdit(
+    text,
+    { files: [{ contentHash: original, base64: "YQ==" }] },
+    basis,
+  )).toMatchObject({
+    fileResults: [{ expected: { contentHash: original }, result: { contentHash: sha256HexSyncText("z") } }],
   });
   expect(graph.dolt.branch.current()).toBe("ctx/other");
   expect(graph.dolt.hashOf("HEAD")).toBe(other.head);

@@ -42,6 +42,10 @@ export interface CommittedContext {
   readonly head: string;
 }
 
+export type HistoryEditPlan =
+  | { kind: "read-content"; contentHashes: string[] }
+  | { kind: "planned"; draft: MutationDraft };
+
 interface MergeSource extends CommittedContext {
   readonly participantId?: string;
 }
@@ -218,7 +222,7 @@ export class ParticipantHistory {
     head: string,
     edit: VcsEditInput,
     receipt: Record<string, unknown> | null,
-  ): Promise<MutationDraft> {
+  ): Promise<HistoryEditPlan> {
     return this.#run(() => {
       this.#assertHead(this.#contextBranch(edit.contextId), head);
       const { sql } = this.#storage;
@@ -228,7 +232,12 @@ export class ParticipantHistory {
           "Workspace edit names a different working revision",
         );
       }
-      return SemanticWorkspace.planEdit(edit, receipt, workspaceEditBasisAt(sql, head));
+      const basis = workspaceEditBasisAt(sql, head);
+      if (receipt === null) {
+        const contentHashes = SemanticWorkspace.editContentHashes(edit, basis);
+        if (contentHashes.length > 0) return { kind: "read-content", contentHashes };
+      }
+      return { kind: "planned", draft: SemanticWorkspace.planEdit(edit, receipt, basis) };
     });
   }
 

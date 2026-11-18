@@ -19,9 +19,9 @@ import {
   ParticipantHistory,
   retireParticipantHistory,
   revokeParticipantHistory,
+  type HistoryEditPlan,
   type MainPublication,
 } from "./participantHistory.js";
-import type { MutationDraft } from "./semanticWorkspace.js";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -208,7 +208,7 @@ export class GadHistoryDO extends DurableObjectBase {
     head: string;
     edit: VcsEditInput;
     receipt: Record<string, unknown> | null;
-  }): Promise<MutationDraft> {
+  }): Promise<HistoryEditPlan> {
     this.#assertWritable();
     return this.#history().planEdit(input.head, vcsEditInputSchema.parse(input.edit), input.receipt);
   }

@@ -2264,39 +2264,20 @@ export class SemanticWorkspace {
         hasFileAtPath: (repositoryId, path) =>
           facts.fileAtPath(root, repositoryId, path) !== null,
       };
-      const textFiles = input.changes.filter(
-        (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
-          change.kind === "text-edit"
-      );
-      if (textFiles.length > 0 && !observed) {
-        const contentHashes = new Set<string>();
-        for (const change of textFiles) {
-          const file = basis.file(change.fileId);
-          if (!file) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Unknown file ${change.fileId}`,
-            );
-          }
-          if (file.contentKind !== "text") {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Text edit requires text content for ${change.fileId}`,
-              { referenceKind: "text-file", reference: change.fileId },
-            );
-          }
-          contentHashes.add(file.contentHash);
+      if (!observed) {
+        const contentHashes = SemanticWorkspace.editContentHashes(input, basis);
+        if (contentHashes.length > 0) {
+          return {
+            kind: "host-read",
+            request: {
+              kind: "read-merge-content",
+              operation: "edit",
+              input: input as unknown as Row,
+              ingress: request.ingress as unknown as Row,
+              contentHashes,
+            },
+          };
         }
-        return {
-          kind: "host-read",
-          request: {
-            kind: "read-merge-content",
-            operation: "edit",
-            input: input as unknown as Row,
-            ingress: request.ingress as unknown as Row,
-            contentHashes: [...contentHashes].sort(compareUtf16CodeUnits),
-          },
-        };
       }
       const draft = SemanticWorkspace.planEdit(
         input,
@@ -2340,6 +2321,27 @@ export class SemanticWorkspace {
     });
   }
 
+  /** Resolve the content a text edit needs from its pinned placement, before accepting bytes. */
+  static editContentHashes(input: VcsEditInput, basis: WorkspaceEditBasis): string[] {
+    const hashes = new Set<string>();
+    for (const change of input.changes) {
+      if (change.kind !== "text-edit") continue;
+      const file = basis.file(change.fileId);
+      if (!file || file.repositoryId !== change.repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `Unknown file ${change.fileId}`);
+      }
+      if (file.contentKind !== "text") {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Text edit requires text content for ${change.fileId}`,
+          { referenceKind: "text-file", reference: change.fileId },
+        );
+      }
+      hashes.add(file.contentHash);
+    }
+    return [...hashes].sort(compareUtf16CodeUnits);
+  }
+
   static planEdit(
     input: VcsEditInput,
     receipt: Row | null,
@@ -2347,23 +2349,7 @@ export class SemanticWorkspace {
   ): MutationDraft {
     const observed = new Map<string, Uint8Array>();
     if (receipt) {
-      const expectedContentHashes = new Set(
-        input.changes
-          .filter(
-            (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
-              change.kind === "text-edit"
-          )
-          .map((change) => {
-            const file = basis.file(change.fileId);
-            if (!file) {
-              throw new SemanticVcsError(
-                "InvalidReference",
-                `Unknown file ${change.fileId}`,
-              );
-            }
-            return file.contentHash;
-          }),
-      );
+      const expectedContentHashes = new Set(SemanticWorkspace.editContentHashes(input, basis));
       const rows = receipt["files"];
       if (!Array.isArray(rows)) {
         throw internalSemanticIntegrityFailure(
