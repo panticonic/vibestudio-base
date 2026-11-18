@@ -5,6 +5,7 @@ import {
   type DoltCommitMessage,
   type DoltGrant,
   type DoltMergeOptions,
+  type DoltMergeSession,
   type DoltRemoteStorage,
   type DoltRemoteTarget,
   type DoltRemoteTransport,
@@ -41,6 +42,14 @@ import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, type MutationDraft } from 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
 };
+
+export interface MainMergePreview {
+  head: string;
+  main: string;
+  base: string;
+  conflicts: Array<Omit<DoltMergeSession["conflicts"][number], "resolve" | "keepOurs" | "takeTheirs" | "resolved">>;
+  violations: Array<Omit<DoltMergeSession["violations"][number], "resolve" | "resolved">>;
+}
 
 export interface MainPublication {
   readonly previousHead: string;
@@ -593,6 +602,74 @@ export class ParticipantHistory {
     };
   }
 
+  /** Install a fast-forward from the exact shared revision, or retain both divergent tips. */
+  pullMain(contextId: string, expectedHead: string, expectedMain: string) {
+    return this.#run(async () => {
+      const branch = this.#contextBranch(contextId);
+      const current = this.#dolt.hashOf(branch);
+      if (current !== expectedHead) {
+        if (current === expectedMain && this.#mergeBase(expectedHead, current) === expectedHead) {
+          return { kind: "advanced" as const, head: current };
+        }
+        throw new HistoryHeadChanged(expectedHead, current);
+      }
+      const main = await this.#fetchExpectedMain(expectedMain);
+      const base = this.#mergeBase(current, main);
+      if (base === main) return { kind: "unchanged" as const, head: current };
+      if (!base) {
+        throw new SemanticVcsError("InvalidReference", "Workspace main and context share no history");
+      }
+      if (base !== current) return { kind: "diverged" as const, head: current, main, base };
+      this.#checkoutExpected(contextId, current);
+      const advanced = this.#dolt.merge(main, {
+        resolve() { throw new Error("Workspace pull stopped being a fast-forward"); },
+      });
+      if (!advanced.fastForward || advanced.hash !== main)
+        throw new Error("Workspace pull did not install the selected main revision");
+      return { kind: "advanced" as const, head: advanced.hash };
+    });
+  }
+
+  /** Inspect F1's exact conflict and violation rows before accepting resolutions. */
+  previewMainMerge(contextId: string, head: string, expectedMain: string): Promise<MainMergePreview> {
+    return this.#run(async () => {
+      this.#assertHead(this.#contextBranch(contextId), head);
+      const main = await this.#fetchExpectedMain(expectedMain);
+      const base = this.#mergeBase(head, main);
+      if (!base) {
+        throw new SemanticVcsError("InvalidReference", "Workspace main and context share no history");
+      }
+      if (base === head || base === main) return { head, main, base, conflicts: [], violations: [] };
+      this.#checkoutExpected(contextId, head);
+      const rollback = new Error("Workspace merge preview complete");
+      let preview: MainMergePreview | undefined;
+      try {
+        this.#dolt.merge(main, {
+          fastForward: false,
+          resolve(merge) {
+            if (merge.ours !== head || merge.theirs !== main || merge.base !== base) {
+              throw new Error("Workspace merge preview changed its selected revisions");
+            }
+            preview = {
+              head, main, base,
+              conflicts: merge.conflicts.map(({ table, key, base, ours, theirs, ourChange, theirChange }) =>
+                ({ table, key, base, ours, theirs, ourChange, theirChange })
+              ),
+              violations: merge.violations.map(({ table, type, info, row }) => ({ table, type, info, row })),
+            };
+            throw rollback;
+          },
+        });
+      } catch (error) {
+        if (error !== rollback) throw error;
+      }
+      if (!preview || this.#dolt.hashOf(this.#contextBranch(contextId)) !== head) {
+        throw new Error("Workspace merge preview changed the working revision");
+      }
+      return preview;
+    });
+  }
+
   mergeMain(contextId: string, expectedHead: string, options: ResolvingMerge) {
     return this.#run(async () => {
       await this.#fetchMain();
@@ -797,6 +874,12 @@ export class ParticipantHistory {
     const head = branches["main"];
     if (!head) throw new Error("Canonical GAD main is unavailable");
     return head;
+  }
+
+  async #fetchExpectedMain(expected: string): Promise<string> {
+    const main = await this.#fetchMain();
+    if (main !== expected) throw new HistoryHeadChanged(expected, main);
+    return main;
   }
 
   #contextBranch(contextId: string): string {

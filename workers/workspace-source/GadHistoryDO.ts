@@ -289,6 +289,17 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
+  pullHistoryMain(input: { contextId: string; head: string; main: string }) {
+    this.#assertWritable();
+    return this.#history().pullMain(input.contextId, input.head, input.main);
+  }
+
+  @rpc(hostRead)
+  previewHistoryMainMerge(input: { contextId: string; head: string; main: string }) {
+    return this.#history().previewMainMerge(input.contextId, input.head, input.main);
+  }
+
+  @rpc(hostWrite)
   async publishHistoryContext(input: { contextId: string; head: string }) {
     const history = this.#history();
     await this.#assertSaved(history, input.contextId, input.head);
