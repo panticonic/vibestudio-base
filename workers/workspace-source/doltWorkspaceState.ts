@@ -8,8 +8,13 @@ import {
   type StateNodeRef,
   type WorkspaceFactChangeSet,
 } from "@workspace/vcs-engine";
-import type { ApplicationRecord, WorkspaceEventRecord } from "./semanticVcsStore.js";
+import type {
+  ApplicationRecord,
+  IntegrationDecisionRecord,
+  WorkspaceEventRecord,
+} from "./semanticVcsStore.js";
 import { createSemanticHistoryTables } from "./semanticHistorySchema.js";
+import { SemanticVcsError } from "./semanticVcsErrors.js";
 import {
   SemanticWorkspace,
   type FileContentOrigin,
@@ -311,14 +316,108 @@ export function workspaceApplicationsAt(
   });
 }
 
-export function workspaceHasMergesAfter(sql: SqlStorage, commit: string, after: string): boolean {
-  return sql.exec(
+/** Verify that every reported integration names the saved revision on its second parent. */
+export function workspaceMergeSourcesAt(
+  sql: SqlStorage,
+  commit: string,
+  after: string,
+  applications: readonly string[],
+): string[] {
+  const parents = sql.exec(
     `${firstParents}
-     SELECT 1 FROM lineage JOIN dolt_commit_ancestors AS parent
-       ON parent.commit_hash = lineage.hash AND parent.parent_index > 0 LIMIT 1`,
+     SELECT lineage.hash, lineage.parent AS ours, parent.parent_hash AS theirs, parent.parent_index
+       FROM lineage JOIN dolt_commit_ancestors AS parent
+         ON parent.commit_hash = lineage.hash AND parent.parent_index > 0
+      ORDER BY lineage.depth DESC`,
     commit,
     after,
-  ).toArray().length > 0;
+  ).toArray();
+  const decisions = sql.exec(
+    `SELECT app.application_id, decision.source_event_id, decision.source_delta_id,
+            decision.target_state_kind, decision.target_state_id
+       FROM dolt_at_applications(?1) AS app
+       JOIN json_each(?2) AS selected ON selected.value = app.application_id
+       JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+       LEFT JOIN dolt_at_gad_integration_decisions(?1) AS decision USING (work_unit_id)
+      WHERE work.kind = 'merge'`,
+    commit,
+    JSON.stringify(applications),
+  ).toArray();
+  const byApplication = new Map(decisions.map((row) => [row["application_id"], row]));
+  const sources = new Set<string>();
+  const incomplete = () => new SemanticVcsError(
+    "IntegrationIncomplete",
+    "Workspace integration has no decision for its exact native parents",
+  );
+  for (const { hash, ours, theirs, parent_index } of parents) {
+    if (typeof hash !== "string" || typeof ours !== "string" || typeof theirs !== "string" ||
+        parent_index !== 1) throw incomplete();
+    const introduced = workspaceApplicationsAt(sql, hash, ours);
+    const decision = byApplication.get(introduced[0]);
+    if (introduced.length !== 1 || !decision || decision["source_delta_id"] !== null) {
+      throw incomplete();
+    }
+    const source = decision["source_event_id"];
+    const target = decision["target_state_id"];
+    const kind = decision["target_state_kind"];
+    let basis: StateNodeRef | null = null;
+    if (typeof target === "string") {
+      if (kind === "event") basis = { kind, eventId: target };
+      if (kind === "application") basis = { kind, applicationId: target };
+    }
+    const savedSource = committedWorkspaceEvent(sql, theirs);
+    if (typeof source !== "string" || savedSource?.head !== theirs || savedSource.eventId !== source ||
+        !basis || workspaceCommitForRef(sql, ours, basis) !== ours) throw incomplete();
+    byApplication.delete(introduced[0]);
+    sources.add(source);
+  }
+  if (byApplication.size > 0) throw incomplete();
+  return [...sources];
+}
+
+/** The changed placements and the incoming applications that account for them. */
+export interface WorkspaceMergeScopeEntry {
+  coordinate: IntegrationDecisionRecord["entries"][number]["coordinate"];
+  changeIds: string[];
+}
+
+export function workspaceMergeScope(sql: SqlStorage, base: string, source: string) {
+  const rows = sql.exec(
+    `WITH changed(kind, id) AS (
+       SELECT 'file', COALESCE(to_file_id, from_file_id) FROM dolt_diff_files(?1, ?2)
+       UNION
+       SELECT 'repository', COALESCE(to_repository_id, from_repository_id)
+         FROM dolt_diff_repositories(?1, ?2)
+     ), incoming_changes AS (
+       SELECT DISTINCT applied.change_id,
+              CASE WHEN coord.file_id IS NOT NULL THEN 'file' ELSE 'repository' END AS kind,
+              COALESCE(coord.file_id, coord.repository_id) AS id
+         FROM dolt_at_applications(?2) AS app
+         LEFT JOIN dolt_at_applications(?1) AS common USING (application_id)
+         JOIN dolt_at_gad_applied_changes(?2) AS applied ON applied.application_id = app.application_id
+         JOIN dolt_at_gad_change_coordinates(?2) AS coord ON coord.change_id = applied.change_id
+        WHERE common.application_id IS NULL
+     )
+     SELECT placement.kind, placement.id, effect.change_id
+       FROM changed AS placement LEFT JOIN incoming_changes AS effect USING (kind, id)
+      ORDER BY placement.kind, placement.id, effect.change_id`,
+    base,
+    source,
+  ).toArray();
+  const scope = new Map<string, WorkspaceMergeScopeEntry>();
+  for (const { kind, id, change_id } of rows) {
+    if ((kind !== "file" && kind !== "repository") || typeof id !== "string") {
+      throw new Error("Workspace merge encountered an invalid placement coordinate");
+    }
+    const key = canonicalJson([kind, id]);
+    let entry = scope.get(key);
+    if (!entry) {
+      entry = { coordinate: { kind, id }, changeIds: [] };
+      scope.set(key, entry);
+    }
+    if (typeof change_id === "string") entry.changeIds.push(change_id);
+  }
+  return scope;
 }
 
 /** Resolve the latest applied change or the original snapshot of each selected file. */
