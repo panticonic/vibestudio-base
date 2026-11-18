@@ -22,6 +22,7 @@ import {
   type HistoryEditPlan,
   type MainPublication,
 } from "./participantHistory.js";
+import type { WorkUnitRecord } from "./semanticVcsStore.js";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -190,6 +191,16 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  async readHistoryContentOrigins(input: {
+    contextId: string;
+    state: StateNodeRef;
+    fileIds: string[];
+  }) {
+    const origins = await this.#history().contentOrigins(input.contextId, input.state, input.fileIds);
+    return [...origins].map(([fileId, origin]) => ({ fileId, origin }));
+  }
+
+  @rpc(hostRead)
   readHistoryHeads(input: { contextId: string }) {
     return this.#history().contextHeads(input.contextId);
   }
@@ -208,9 +219,15 @@ export class GadHistoryDO extends DurableObjectBase {
     head: string;
     edit: VcsEditInput;
     receipt: Record<string, unknown> | null;
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
   }): Promise<HistoryEditPlan> {
     this.#assertWritable();
-    return this.#history().planEdit(input.head, vcsEditInputSchema.parse(input.edit), input.receipt);
+    return this.#history().planEdit(
+      input.head,
+      vcsEditInputSchema.parse(input.edit),
+      input.receipt,
+      input.triggerEvidence,
+    );
   }
 
   @rpc(hostWrite)

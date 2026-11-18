@@ -10,7 +10,13 @@ import {
 } from "@workspace/vcs-engine";
 import type { ApplicationRecord, WorkspaceEventRecord } from "./semanticVcsStore.js";
 import { createSemanticHistoryTables } from "./semanticHistorySchema.js";
-import type { WorkspaceEditBasis } from "./semanticWorkspace.js";
+import {
+  SemanticWorkspace,
+  type FileContentOrigin,
+  type FileTransition,
+  type RepositoryTransition,
+  type WorkspaceEditBasis,
+} from "./semanticWorkspace.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 
 const repositoryColumns = [
@@ -208,6 +214,155 @@ export function workspaceEditBasisAt(sql: SqlStorage, commit: string): Workspace
     },
     hasFileAtPath: (id, path) => hasFile("repository_id = ? AND path = ?", id, path),
   };
+}
+
+/** Turn authored transitions into the exact rows the participant transaction compares and writes. */
+export function prepareDoltEditPlacement(
+  commit: string,
+  files: readonly FileTransition[],
+  repositories: readonly RepositoryTransition[],
+) {
+  const repositoryUpdates: Array<WorkspacePlacementChange["repositoryUpdates"][number]> = [];
+  for (const { repositoryId, resultPath, expected, tombstoneChangeId } of repositories) {
+    if (resultPath === undefined) continue;
+    if (resultPath === null) {
+      if (!expected || !tombstoneChangeId) {
+        throw new Error("A deleted repository requires its prior placement and authored change");
+      }
+      repositoryUpdates.push({
+        repositoryId,
+        expected,
+        result: workspaceRepositoryStateIdentity({
+          repositoryId,
+          presence: "deleted",
+          priorRepositoryStateId: expected.repositoryStateId,
+          tombstoneChangeId,
+        }),
+      });
+      continue;
+    }
+    const entries = files.flatMap(({ result }) =>
+      result.presence === "placed" && result.repositoryId === repositoryId
+        ? [{ path: result.path, contentHash: result.contentHash, mode: result.mode }]
+        : [],
+    );
+    entries.sort((left, right) => compareUtf16CodeUnits(left.path, right.path));
+    repositoryUpdates.push({
+      repositoryId,
+      expected,
+      result: workspaceRepositoryStateIdentity({
+        repositoryId,
+        presence: "present",
+        repoPath: resultPath,
+        fileManifestId: compactId("dolt-file-manifest", entries),
+      }),
+    });
+  }
+  const fileUpdates = files.map(({ fileId, expected, result }) => ({ fileId, expected, result }));
+  const placement = repositoryUpdates.length || fileUpdates.length
+    ? { repositoryUpdates, fileUpdates }
+    : null;
+  return {
+    placement,
+    resultRoot: placement ? compactId("dolt-workspace-transition", { commit, placement }) : commit,
+    workspacePlanCompletedAt: Date.now(),
+  };
+}
+
+/** List applications introduced on the first-parent lineage, oldest first. */
+function workspaceApplicationsAt(sql: SqlStorage, commit: string): string[] {
+  const rows = sql.exec(
+    `WITH RECURSIVE lineage(hash, parent, depth) AS (
+       SELECT commit_hash, parent_hash, 0 FROM dolt_commit_ancestors
+        WHERE commit_hash = ? AND parent_index = 0 AND parent_hash IS NOT NULL
+       UNION ALL
+       SELECT parent.commit_hash, parent.parent_hash, child.depth + 1
+         FROM lineage AS child JOIN dolt_commit_ancestors AS parent
+           ON parent.commit_hash = child.parent
+        WHERE parent.parent_index = 0 AND parent.parent_hash IS NOT NULL
+     )
+     SELECT diff.to_application_id AS application_id, lineage.depth
+       FROM lineage CROSS JOIN dolt_diff_applications(lineage.parent, lineage.hash) AS diff
+      WHERE diff.diff_type = 'added' AND NOT EXISTS (
+        SELECT 1 FROM dolt_commit_ancestors AS parent
+         CROSS JOIN dolt_at_applications(parent.parent_hash) AS inherited
+         WHERE parent.commit_hash = lineage.hash AND parent.parent_index > 0
+           AND inherited.application_id = diff.to_application_id
+      ) ORDER BY lineage.depth DESC`,
+    commit,
+  ).toArray();
+  const depths = new Set<number>();
+  return rows.map((row) => {
+    const { application_id, depth } = row;
+    if (typeof application_id !== "string" || typeof depth !== "number" || depths.has(depth)) {
+      throw new Error(`Invalid application lineage at ${commit}`);
+    }
+    depths.add(depth);
+    return application_id;
+  });
+}
+
+/** Resolve the latest applied change or the original snapshot of each selected file. */
+export function workspaceContentOriginsAt(
+  sql: SqlStorage,
+  commit: string,
+  fileIds: readonly string[],
+): Map<string, FileContentOrigin> {
+  const origins = new Map<string, FileContentOrigin>();
+  if (fileIds.length === 0) return origins;
+  const applied = SemanticWorkspace.readAppliedFileChanges(
+    sql,
+    workspaceApplicationsAt(sql, commit),
+    fileIds,
+    commit,
+  );
+  for (const [fileId, change] of applied) {
+    origins.set(fileId, {
+      ref: { kind: "applied-change", appliedChangeId: change.appliedChangeId },
+      content: change.content,
+      authoredChangeId: change.changeId,
+      authoredByWorkUnitId: change.workUnitId,
+      contentClass: change.contentClass,
+      externalKeys: change.externalKeys,
+    });
+  }
+  const missing = new Set(fileIds.filter((fileId) => !origins.has(fileId)));
+  if (missing.size === 0) return origins;
+  const snapshots = sql.exec(
+    `SELECT event_id, snapshot_source FROM dolt_at_events(?)
+      WHERE kind = 'genesis' AND snapshot_source IS NOT NULL`,
+    commit,
+  ).toArray();
+  for (const { event_id, snapshot_source } of snapshots) {
+    if (typeof event_id !== "string" || typeof snapshot_source !== "string")
+      throw new Error(`Invalid workspace snapshot at ${commit}`);
+    const state = { kind: "event" as const, eventId: event_id };
+    const at = workspaceCommitForRef(sql, commit, state);
+    if (!at) throw new Error(`Workspace snapshot ${event_id} has no origin`);
+    const snapshot = JSON.parse(snapshot_source) as Record<string, unknown>;
+    if (typeof snapshot["sourceUri"] !== "string" || typeof snapshot["snapshotRevision"] !== "string")
+      throw new Error(`Invalid workspace snapshot source at ${at}`);
+    const basis = workspaceEditBasisAt(sql, at);
+    for (const fileId of missing) {
+      const file = basis.file(fileId);
+      if (!file) continue;
+      origins.set(fileId, {
+        ref: { kind: "file", state, repositoryId: file.repositoryId, fileId },
+        content: {
+          fileId,
+          contentHash: file.contentHash,
+          coordinateKind: file.contentKind === "text" ? "utf16" : "byte",
+          coordinateExtent: file.coordinateExtent,
+        },
+        authoredChangeId: null,
+        authoredByWorkUnitId: null,
+        contentClass: "external",
+        externalKeys: [`repo:${snapshot["sourceUri"]}@${snapshot["snapshotRevision"]}`],
+      });
+      missing.delete(fileId);
+    }
+  }
+  return origins;
 }
 
 /** Rebuild the placement roots directly from the retained commit graph. */

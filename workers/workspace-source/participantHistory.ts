@@ -1,4 +1,4 @@
-import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import { compareUtf16CodeUnits, sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import {
   type DoltCapableStorage,
@@ -16,9 +16,11 @@ import type { StateNodeRef } from "@workspace/vcs-engine";
 import {
   applyDoltWorkspaceState,
   committedWorkspaceEvent,
+  prepareDoltEditPlacement,
   recordDoltWorkspaceApplication,
   recordDoltWorkspaceEvent,
   workspaceCommitForRef,
+  workspaceContentOriginsAt,
   workspaceEditBasisAt,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
@@ -26,7 +28,12 @@ import {
 } from "./doltWorkspaceState.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import type { ApplicationPersistencePlan, JournalCommand, WorkspaceEventRecord } from "./semanticVcsStore.js";
+import type {
+  ApplicationPersistencePlan,
+  JournalCommand,
+  WorkspaceEventRecord,
+  WorkUnitRecord,
+} from "./semanticVcsStore.js";
 import { SemanticWorkspace, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
@@ -45,7 +52,12 @@ export interface CommittedContext {
 
 export type HistoryEditPlan =
   | { kind: "read-content"; contentHashes: string[] }
-  | { kind: "planned"; draft: MutationDraft };
+  | {
+      kind: "planned";
+      application: HistoryApplicationPlan;
+      blobs: NonNullable<MutationDraft["blobs"]>;
+      result: ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
+    };
 
 export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
   placement: WorkspacePlacementChange | null;
@@ -223,10 +235,19 @@ export class ParticipantHistory {
     });
   }
 
+  contentOrigins(contextId: string, ref: StateNodeRef, fileIds: readonly string[]) {
+    return this.#run(() => {
+      const commit = this.#resolveState(contextId, ref);
+      if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
+      return workspaceContentOriginsAt(this.#storage.sql, commit, fileIds);
+    });
+  }
+
   planEdit(
     head: string,
     edit: VcsEditInput,
     receipt: Record<string, unknown> | null,
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
   ): Promise<HistoryEditPlan> {
     return this.#run(() => {
       this.#assertHead(this.#contextBranch(edit.contextId), head);
@@ -242,7 +263,46 @@ export class ParticipantHistory {
         const contentHashes = SemanticWorkspace.editContentHashes(edit, basis);
         if (contentHashes.length > 0) return { kind: "read-content", contentHashes };
       }
-      return { kind: "planned", draft: SemanticWorkspace.planEdit(edit, receipt, basis) };
+      const draft = SemanticWorkspace.planEdit(edit, receipt, basis);
+      const fileIds = draft.changes.flatMap(({ base }) =>
+        base?.["kind"] === "file" && typeof base["fileId"] === "string" ? [base["fileId"]] : [],
+      );
+      const origins = workspaceContentOriginsAt(sql, head, fileIds);
+      for (const fileId of fileIds) {
+        if (!origins.has(fileId))
+          throw new SemanticVcsError("IntegrityFailure", `File ${fileId} has no content origin`);
+      }
+      const externalKeys = [...new Set([...origins.values()].flatMap((origin) => origin.externalKeys))]
+        .sort(compareUtf16CodeUnits);
+      if (externalKeys.length > 256) {
+        throw new SemanticVcsError(
+          "ScopeTooLarge",
+          "A semantic mutation cannot persist more than 256 external lineage keys",
+        );
+      }
+      const prepared = SemanticWorkspace.prepareApplication(edit, draft, edit.commandId, {
+        now: () => new Date().toISOString(),
+        workUnitEvidence: () => ({ authorContextId: edit.contextId, triggerEvidence }),
+        contentIntegrity: () => ({
+          class: externalKeys.length ? "external" : "internal",
+          externalKeys,
+          contentOrigins: new Map(),
+        }),
+        contentOrigins: (_state, selected) => new Map(selected.flatMap((id) => {
+          const origin = origins.get(id);
+          return origin ? [[id, origin] as const] : [];
+        })),
+        invertedCounteractions: () => {
+          throw new SemanticVcsError("IntegrityFailure", "An edit cannot counteract a change");
+        },
+        preparePlacement: (files, repositories) => prepareDoltEditPlacement(head, files, repositories),
+      });
+      return {
+        kind: "planned",
+        application: { ...prepared.plan, placement: prepared.placement },
+        blobs: draft.blobs ?? [],
+        result: prepared.result,
+      };
     });
   }
 

@@ -132,7 +132,7 @@ type ContentEndpoint = {
   coordinateKind: "utf16" | "byte";
   coordinateExtent: number;
 };
-type FileContentOrigin = {
+export type FileContentOrigin = {
   ref: ContentOriginRef;
   content: ContentEndpoint | null;
   authoredChangeId: string | null;
@@ -263,7 +263,7 @@ interface SemanticWorkspaceDeps {
   transaction<T>(fn: () => T): T;
 }
 
-interface FileTransition {
+export interface FileTransition {
   fileId: string;
   expected: WorkspaceFileState | null;
   result: WorkspaceFileState;
@@ -272,7 +272,7 @@ interface FileTransition {
   newFile: boolean;
 }
 
-interface RepositoryTransition {
+export interface RepositoryTransition {
   repositoryId: string;
   expected: WorkspaceRepositoryMember | null;
   /** `undefined` preserves the member while files change; `null` deletes it. */
@@ -14401,16 +14401,31 @@ export class SemanticWorkspace {
     fileIds: readonly string[],
   ): Map<string, LatestAppliedFileChange> {
     if (fileIds.length === 0) return new Map();
-    const applications = this.firstParentLineage(state).applicationIds;
-    const rows = this.deps.sql
+    return SemanticWorkspace.readAppliedFileChanges(
+      this.deps.sql,
+      this.firstParentLineage(state).applicationIds,
+      fileIds,
+    );
+  }
+
+  /** Interpret candidate lineage rows in chronological application order at one immutable state. */
+  static readAppliedFileChanges(
+    sql: SqlStorage,
+    applications: readonly string[],
+    fileIds: readonly string[],
+    revision?: string,
+  ): Map<string, LatestAppliedFileChange> {
+    if (applications.length === 0 || fileIds.length === 0) return new Map();
+    const table = (name: string) => revision === undefined ? name : `dolt_at_${name}(?3)`;
+    const rows = sql
       .exec(
         `WITH selected_applications AS (
            SELECT CAST(key AS INTEGER) AS application_ordinal,
                   CAST(value AS TEXT) AS application_id
-             FROM json_each(?)
+             FROM json_each(?1)
          ),
          selected_files AS (
-           SELECT CAST(value AS TEXT) AS file_id FROM json_each(?)
+           SELECT CAST(value AS TEXT) AS file_id FROM json_each(?2)
          ),
          candidates AS (
            SELECT coordinate.file_id, applied.applied_change_id,
@@ -14419,11 +14434,11 @@ export class SemanticWorkspace {
                   change.work_unit_id, work.command_id, work.content_class,
                   work.external_lineage_json
              FROM selected_applications selected
-             JOIN gad_applied_changes applied
+             JOIN ${table("gad_applied_changes")} applied
                ON applied.application_id = selected.application_id
-             JOIN gad_changes change ON change.change_id = applied.change_id
-             JOIN gad_work_units work ON work.work_unit_id = change.work_unit_id
-             JOIN gad_change_coordinates coordinate ON coordinate.change_id = change.change_id
+             JOIN ${table("gad_changes")} change ON change.change_id = applied.change_id
+             JOIN ${table("gad_work_units")} work ON work.work_unit_id = change.work_unit_id
+             JOIN ${table("gad_change_coordinates")} coordinate ON coordinate.change_id = change.change_id
              JOIN selected_files file ON file.file_id = coordinate.file_id
            UNION
            SELECT CAST(json_extract(predicate.predicate_json, '$.fileId') AS TEXT),
@@ -14433,11 +14448,11 @@ export class SemanticWorkspace {
                   change.work_unit_id, work.command_id, work.content_class,
                   work.external_lineage_json
              FROM selected_applications selected
-             JOIN gad_applied_changes applied
+             JOIN ${table("gad_applied_changes")} applied
                ON applied.application_id = selected.application_id
-             JOIN gad_changes change ON change.change_id = applied.change_id
-             JOIN gad_work_units work ON work.work_unit_id = change.work_unit_id
-             JOIN gad_applied_change_predicates predicate
+             JOIN ${table("gad_changes")} change ON change.change_id = applied.change_id
+             JOIN ${table("gad_work_units")} work ON work.work_unit_id = change.work_unit_id
+             JOIN ${table("gad_applied_change_predicates")} predicate
                ON predicate.applied_change_id = applied.applied_change_id
              JOIN selected_files file
                ON file.file_id =
@@ -14458,6 +14473,7 @@ export class SemanticWorkspace {
           WHERE lineage_rank = 1`,
         canonicalJson(applications),
         canonicalJson([...new Set(fileIds)]),
+        ...(revision === undefined ? [] : [revision]),
       )
       .toArray() as Row[];
     const result = new Map<string, LatestAppliedFileChange>();
