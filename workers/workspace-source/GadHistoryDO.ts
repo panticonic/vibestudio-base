@@ -1,4 +1,4 @@
-import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
+import { canonicalJson, compareUtf16CodeUnits, sha256HexSyncText } from "@vibestudio/content-addressing";
 import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
@@ -66,6 +66,8 @@ const className = "GadHistoryDO";
 const canonicalKey = "canonical";
 const canonicalId = `do:${source}:${className}:${canonicalKey}`;
 type StoredHistoryApproval = { approval: HistoryPublicationApproval; expiresAt: number };
+type ReplayContextTip = { id: string; committed: string; working: string };
+type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[] };
 const hostWrite = {
   principals: ["host"],
   website: {
@@ -122,19 +124,50 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
-  finishHistoryReplay(input: { eventId: string; head: string }): { head: string } {
+  finishHistoryReplay(input: { eventId: string; head: string; contexts?: ReplayContextTip[] }): { head: string } {
     this.#assertCanonical();
+    const contexts = [...(input.contexts ?? [])].sort((left, right) => compareUtf16CodeUnits(left.id, right.id));
+    const receipt = { head: input.head, eventId: input.eventId, contexts };
+    const recorded = this.readHistoryReplayReceipt();
+    if (recorded) {
+      if (canonicalJson(recorded) !== canonicalJson(receipt))
+        throw new Error("Workspace replay receipt names different revisions");
+      return { head: recorded.head };
+    }
     const staged = committedWorkspaceEvent(this.sql, input.head);
     if (!staged || staged.head !== input.head || staged.eventId !== input.eventId) {
       throw new Error("Workspace replay did not produce the verified main event");
+    }
+    const seen = new Set<string>();
+    for (const { id, committed, working } of contexts) {
+      if (!id || !committed || !working || seen.has(id) ||
+          committedWorkspaceEvent(this.sql, working)?.head !== committed) {
+        throw new Error("Workspace replay context has no verified saved and working revisions");
+      }
+      seen.add(id);
     }
     const head = installReplayedMain(this.ctx.storage, this.#schemaHead(), {
       main: input.head,
       contexts: [],
       commits: new Map(),
     });
-    this.setStateValue("history-installed", head);
+    this.ctx.storage.transactionSync(() => {
+      this.setStateValue("history-installed", head);
+      this.setStateValue("history-replay-receipt", canonicalJson(receipt));
+    });
     return { head };
+  }
+
+  @rpc(hostRead)
+  readHistoryReplayReceipt(): ReplayReceipt | null {
+    this.#assertCanonical();
+    const stored = this.getStateValue("history-replay-receipt");
+    if (!stored) return null;
+    const receipt = JSON.parse(stored) as ReplayReceipt;
+    if (receipt.head !== this.getStateValue("history-installed")) {
+      throw new Error("Workspace replay receipt has a different installed head");
+    }
+    return receipt;
   }
 
   @rpc(hostWrite)
