@@ -467,4 +467,62 @@ export function rebuild(revision: string): Promise<{
   console: string[];
   buildDiagnostics: string[];
 }>;`,
+  workspaceIntegration: `/** Integrate one caller-assigned workspace source in its exact context, using real VCS evidence and explicit coordinate decisions. No publication. */
+
+/** Read actual current/source comparison, assigned files and intent evidence for the fixed source/context. */
+export function observe(): Promise<{
+  head: string;
+  source: string;
+  currentIntent: string[];
+  sourceIntent: string[];
+  coordinates: ({
+    kind: "file";
+    /** Stable file identity. */
+    id: string;
+  } | {
+    kind: "repository";
+    /** Stable repository identity. */
+    id: string;
+  })[];
+  remaining: ({
+    kind: "file";
+    /** Stable file identity. */
+    id: string;
+  } | {
+    kind: "repository";
+    /** Stable repository identity. */
+    id: string;
+  })[];
+  files: {
+    path: string;
+    text: string;
+  }[];
+  evidence: string[];
+}>;
+
+/** Apply exact assigned-file edits in one expected-head VCS command. It does not publish or perform a merge. */
+export function apply(head: string, edits: {
+  path: string;
+  before: string;
+  after: string;
+}[]): Promise<{
+  head: string;
+}>;
+
+/** Resolve explicit offered coordinates of the fixed source at the observed current head; preserve actual partial effects on error. */
+export function merge(head: string, decisions: {
+  coordinate: {
+    kind: "file";
+    /** Stable file identity. */
+    id: string;
+  } | {
+    kind: "repository";
+    /** Stable repository identity. */
+    id: string;
+  };
+  resolution: "composed" | "theirs" | "ours" | "current";
+  rationale: string;
+}[]): Promise<{
+  head: string;
+}>;`,
 };

@@ -16,3 +16,5 @@ export { selectServices, type NatlangService, type ServiceBindings } from "./sel
 export const serviceDeclarations: Readonly<Record<string, string>> = generatedServiceDeclarations;
 
 export { createPanelRepair } from "./panelRepair.js";
+
+export { createWorkspaceIntegration } from "./workspaceIntegration.js";

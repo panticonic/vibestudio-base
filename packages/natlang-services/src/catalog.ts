@@ -134,6 +134,12 @@ export const SERVICE_CATALOG = [
       { name: "rebuild", params: ["revision"] },
     ],
   },
+  {
+    name: "workspaceIntegration",
+    summary: "Integrate one caller-assigned workspace source in its exact context, using real VCS evidence and explicit coordinate decisions. No publication.",
+    contract: { origin: "base", file: "packages/natlang-services/src/workspaceIntegrationContracts.ts", table: "workspaceIntegrationMethods" },
+    methods: [ { name: "observe", params: [] }, { name: "apply", params: ["head", "edits"] }, { name: "merge", params: ["head", "decisions"] } ],
+  },
 ] as const satisfies readonly ServiceCatalogEntry[];
 
 export type ServiceName = (typeof SERVICE_CATALOG)[number]["name"];
