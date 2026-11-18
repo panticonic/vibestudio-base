@@ -60,6 +60,8 @@ function hostService(name: ServiceName) {
 }
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  pdfIntakeProbe: binding("pdfIntakeProbe"),
+  pdfIntakeRead: binding("pdfIntakeRead"),
   channelAgentRead: binding("channelAgentRead"),
   channelAgentAttach: binding("channelAgentAttach"),
   channelAgentDetach: binding("channelAgentDetach"),

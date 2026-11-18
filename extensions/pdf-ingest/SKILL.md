@@ -11,6 +11,14 @@ extension bundles its own engines and reports their status.
 
 ## Fast Path
 
+For a typed evidence task, use
+`runWorkflow.domains.pdfIntake.extractPdfEvidence` from the shared Natlang
+program. Bind the PDF bytes and authorized page selection with
+`createPdfIntakeBindings` from `@workspace-skills/pdf-intake-bindings`.
+The workflow preserves the source digest and cites original lines with page
+geometry. Its report distinguishes missing pages, missing evidence, and
+partially answered questions.
+
 ```ts
 import { extensions } from "@workspace/runtime";
 

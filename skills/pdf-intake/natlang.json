@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-pdf-intake",
+  "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "targets": { "main": { "entry": "extractPdfEvidence.nl" } },
+  "serviceScopes": {
+    "pdfIntakeProbe": ["extractPdfEvidence/probeDocument.nl"],
+    "pdfIntakeRead": ["extractPdfEvidence/readBatch.nl"]
+  }
+}

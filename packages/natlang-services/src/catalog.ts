@@ -40,6 +40,18 @@ const scopedAgentFile = "packages/natlang-services/src/scopedAgentContracts.ts";
 
 export const SERVICE_CATALOG = [
   {
+    name: "pdfIntakeProbe",
+    summary: "Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness.",
+    contract: { origin: "base", file: "packages/natlang-services/src/pdfIntakeContracts.ts", table: "pdfIntakeProbeMethods" },
+    methods: [{ name: "probe", params: ["document"], description: "Read the assigned local document's probe receipt." }],
+  },
+  {
+    name: "pdfIntakeRead",
+    summary: "Extract layout-preserving evidence from one assigned PDF batch.",
+    contract: { origin: "base", file: "packages/natlang-services/src/pdfIntakeContracts.ts", table: "pdfIntakeReadMethods" },
+    methods: [{ name: "read", params: ["document", "pages", "mode"], description: "Read the next exact page batch using an authorized local extraction mode." }],
+  },
+  {
     name: "channelAgentRead",
     summary: "Read the assigned worker's durable membership in the selected channel.",
     contract: { origin: "base", file: scopedAgentFile, table: "channelAgentReadMethods" },

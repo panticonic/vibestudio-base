@@ -303,6 +303,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "reviewConversation",
         "manageChannelAgent",
         "reviewMediaAndImport",
+        "extractPdfEvidence",
       ],
     ],
     [

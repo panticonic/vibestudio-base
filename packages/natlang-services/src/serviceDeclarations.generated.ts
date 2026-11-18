@@ -6,6 +6,32 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  pdfIntakeProbe: `/** Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness. */
+
+/** Read the assigned local document's probe receipt. */
+export function probe(document: string): Promise<{
+  digest: string;
+  pageCount: number;
+  selectedPages: number[];
+  encrypted: boolean;
+  embedded: boolean;
+  localOcr: boolean;
+}>;`,
+  pdfIntakeRead: `/** Extract layout-preserving evidence from one assigned PDF batch. */
+
+/** Read the next exact page batch using an authorized local extraction mode. */
+export function read(document: string, pages: number[], mode: "embedded" | "local-fallback" | "local-ocr"): Promise<{
+  digest: string;
+  pages: {
+    number: number;
+    lines: {
+      text: string;
+      bounds: number[];
+      source: "embedded-text" | "ocr";
+      confidence: number | null;
+    }[];
+  }[];
+}>;`,
   channelAgentRead: `/** Read the assigned worker's durable membership in the selected channel. */
 
 /** Read the selected handle and its exact roster identity. */

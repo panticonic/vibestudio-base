@@ -20,6 +20,7 @@
     "runWorkflow/domains/localModel": "skills/local-model-task",
     "runWorkflow/domains/mediaImport": "skills/media-and-import-review",
     "runWorkflow/domains/news": "skills/news-workflows",
+    "runWorkflow/domains/pdfIntake": "skills/pdf-intake",
     "runWorkflow/domains/personal": "skills/personal-workflows",
     "runWorkflow/domains/personalFacility": "skills/personal-facility-review",
     "runWorkflow/domains/problems": "skills/problem-reporting/natlang",
