@@ -14,6 +14,8 @@ import {
 import type {
   VcsCommitInput,
   VcsCommitResult,
+  VcsDiscardInput,
+  VcsDiscardResult,
   VcsEditInput,
   VcsMergeInput,
   VcsReadFilesInput,
@@ -100,6 +102,22 @@ export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspace
 interface MergeSource extends CommittedContext {
   readonly participantId?: string;
 }
+
+interface HistoryDiscardReceipt {
+  commandId: string;
+  requestDigest: string;
+  head: string;
+  result: { head: string; discard: VcsDiscardResult };
+}
+
+interface HistoryDiscardJournal {
+  get(key: string): string | null;
+  set(key: string, value: string): void;
+  delete(key: string): void;
+}
+
+const PENDING_DISCARD_KEY = "history-discard-pending";
+const discardReceiptKey = (id: string) => `history-discard:${sha256HexSyncText(id)}`;
 
 type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
 export type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
@@ -226,15 +244,23 @@ export class ParticipantHistory {
   readonly #storage: WorkspaceStorage;
   readonly #dolt: DoltRemoteStorage;
   readonly #transport: DoltRemoteTransport;
+  readonly #discardJournal: HistoryDiscardJournal | undefined;
+  #discardJournalReady = false;
   readonly #turns = new Map<string, Promise<unknown>>();
 
-  constructor(participantId: string, storage: WorkspaceStorage, transport: DoltRemoteTransport) {
+  constructor(
+    participantId: string,
+    storage: WorkspaceStorage,
+    transport: DoltRemoteTransport,
+    discardJournal?: HistoryDiscardJournal,
+  ) {
     this.#participant = branchSegment(participantId);
     this.#storage = storage;
     const dolt = doltRemotesOf(storage);
     if (!dolt) throw new Error("GAD work cells require Dolt remotes");
     this.#dolt = dolt;
     this.#transport = transport;
+    this.#discardJournal = discardJournal;
   }
 
   connect(origin: DoltRemoteTarget): Promise<string> {
@@ -519,6 +545,72 @@ export class ParticipantHistory {
       if (this.#dolt.branch.current() !== branch) this.#dolt.checkout(branch);
       return this.#dolt.reset({ hard: true, to: committedHead });
     });
+  }
+
+  /** Discard only the selected unsaved applications and keep the exact retry receipt. */
+  discardWorkingContext(
+    head: string,
+    input: VcsDiscardInput,
+    cause: HistoryCommand["cause"],
+  ): Promise<HistoryDiscardReceipt["result"]> {
+    return this.#run(() => {
+      const journal = this.#discardJournal;
+      if (!journal) throw new Error("Workspace discard requires local receipt storage");
+      const { commandId, contextId } = input;
+      const requestDigest = compactId("discard-request", { head, input, cause });
+      const key = discardReceiptKey(commandId);
+      const stored = journal.get(key);
+      if (stored !== null) {
+        const receipt = JSON.parse(stored) as HistoryDiscardReceipt;
+        if (receipt.requestDigest !== requestDigest) {
+          throw new SemanticVcsError("CommandIdReuse", "Workspace discard command has changed");
+        }
+        return receipt.result;
+      }
+      const working = this.#contextState(contextId);
+      if (working.head !== head) throw new HistoryHeadChanged(head, working.head);
+      if (stateNodeKey(input.expectedWorkingHead) !== stateNodeKey(working.state)) {
+        throw new SemanticVcsError("RevisionChanged", "Workspace discard names a different working revision");
+      }
+      this.#hasCommand(head, contextId, { commandId, cause, method: "discard", requestDigest });
+      const receipt: HistoryDiscardReceipt = {
+        commandId, requestDigest, head,
+        result: {
+          head: working.saved.head,
+          discard: {
+            contextId,
+            workingHead: { kind: "event", eventId: working.saved.eventId },
+            discardedApplicationIds: working.applications,
+          },
+        },
+      };
+      this.#discardJournalReady = false;
+      journal.set(PENDING_DISCARD_KEY, canonicalJson(receipt));
+      this.#restoreDiscard();
+      return receipt.result;
+    });
+  }
+
+  #restoreDiscard(): void {
+    const journal = this.#discardJournal;
+    if (!journal || this.#discardJournalReady) return;
+    const stored = journal.get(PENDING_DISCARD_KEY);
+    if (stored !== null) {
+      const receipt = JSON.parse(stored) as HistoryDiscardReceipt;
+      const { head, discard } = receipt.result;
+      const current = this.#dolt.hashOf(this.#contextBranch(discard.contextId));
+      if (current !== head) {
+        this.#checkoutExpected(discard.contextId, receipt.head);
+        if (this.#dolt.reset({ hard: true, to: head }) !== head) {
+          throw new Error("Workspace discard did not recover its saved revision");
+        }
+      }
+      this.#storage.transactionSync(() => {
+        journal.set(discardReceiptKey(receipt.commandId), stored);
+        journal.delete(PENDING_DISCARD_KEY);
+      });
+    }
+    this.#discardJournalReady = true;
   }
 
   commit<T>(
@@ -1044,6 +1136,9 @@ export class ParticipantHistory {
   }
 
   #hasCommand(at: string, contextId: string, command: HistoryCommand): boolean {
+    if (this.#discardJournal?.get(discardReceiptKey(command.commandId)) != null) {
+      throw new SemanticVcsError("CommandIdReuse", "This workspace command was recorded as a discard");
+    }
     const prior = this.#storage.sql
       .exec(
         `SELECT scope_kind, scope_id, method, request_digest, cause_log_id, cause_head, cause_invocation_id
@@ -1088,7 +1183,10 @@ export class ParticipantHistory {
   }
 
   #run<T>(turn: () => T | Promise<T>): Promise<T> {
-    return serializeByKey(this.#turns, this.#participant, turn);
+    return serializeByKey(this.#turns, this.#participant, () => {
+      this.#restoreDiscard();
+      return turn();
+    });
   }
 
   #configureRemote(name: string, target: DoltRemoteTarget): void {

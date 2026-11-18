@@ -5,11 +5,13 @@ import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
   vcsCommitInputSchema,
+  vcsDiscardInputSchema,
   vcsEditInputSchema,
   vcsMergeInputSchema,
   vcsReadFilesInputSchema,
   vcsSemanticNodeRefSchema,
   type VcsCommitInput,
+  type VcsDiscardInput,
   type VcsEditInput,
   type VcsMergeInput,
   type VcsReadFilesInput,
@@ -334,6 +336,16 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
+  discardHistoryContext(input: {
+    head: string;
+    discard: VcsDiscardInput;
+    cause: HistoryCommand["cause"];
+  }) {
+    this.#assertWritable();
+    return this.#history().discardWorkingContext(input.head, vcsDiscardInputSchema.parse(input.discard), input.cause);
+  }
+
+  @rpc(hostWrite)
   pullHistoryMain(input: { contextId: string; head: string; main: string }) {
     this.#assertWritable();
     return this.#history().pullMain(input.contextId, input.head, input.main);
@@ -617,8 +629,15 @@ export class GadHistoryDO extends DurableObjectBase {
     const participant = this.getStateValue("history-participant");
     if (!participant || this.objectKey !== workKey(participant))
       throw new Error("Workspace participant has no connected history");
-    return (this.#participant ??= new ParticipantHistory(participant, this.ctx.storage, (bytes) =>
-      this.rpc.call(canonicalId, relay.serveHistoryRemote, [bytes])
+    return (this.#participant ??= new ParticipantHistory(
+      participant,
+      this.ctx.storage,
+      (bytes) => this.rpc.call(canonicalId, relay.serveHistoryRemote, [bytes]),
+      {
+        get: (key) => this.getStateValue(key),
+        set: (key, value) => this.setStateValue(key, value),
+        delete: (key) => this.deleteStateValue(key),
+      },
     ));
   }
 }
