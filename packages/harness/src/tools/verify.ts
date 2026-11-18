@@ -208,266 +208,301 @@ export function createVerifyTool(
         },
         executionContext,
       );
-      if (command.operation === "build") {
-        const exactContextId = contextId();
-        const report = await rpc.call(
-        "main", mainRpcMethods["build.getBuildReport"],
-          [command.target, `ctx:${exactContextId}`],
-          { signal },
-        );
-        const bounded = boundBuildReport(report);
-        const failed = report.status !== "ok";
-        const errorDiagnostics = report.diagnostics.filter(
-          (diagnostic) => diagnostic.severity === "error",
-        );
-        const hasInfrastructureFailure = errorDiagnostics.some(
-          (diagnostic) => diagnostic.source === "infrastructure",
-        );
-        const sourceFailure =
-          report.status === "failed" &&
-          errorDiagnostics.length > 0 &&
-          !hasInfrastructureFailure;
-        const receipt = buildVerificationReceipt(
-          command.target,
-          exactContextId,
-          report,
-          bounded,
-        );
-        const failure =
-          report.status === "failed" && !sourceFailure
-            ? hasInfrastructureFailure
-              ? verificationFailure({
-                  code: "build_verification_failed",
-                  kind: "infrastructure",
-                  retryPolicy: "reobserve",
-                  message: `Build verification for ${command.target} encountered an infrastructure failure.`,
-                  recovery: {
-                    action: "reobserve",
-                    instruction:
-                      "Inspect the infrastructure diagnostics and restore the required provider, dependency, or service. Do not repair user source based on this report; rerun verify after the infrastructure issue is resolved.",
-                  },
-                })
-              : verificationFailure({
-                  code: "build_report_inconsistent",
-                  kind: "integrity",
-                  message: `Build report for ${command.target} is failed but contains no error diagnostics.`,
-                  recovery: {
-                    action: "stop",
-                    instruction:
-                      "Keep the original report and receipt, and stop. The failed status has no error diagnostic to guide a source repair; inspect the build report producer.",
-                  },
-                })
-            : report.status === "skipped"
-              ? verificationFailure({
-                  code: "build_target_not_buildable",
-                  message: `Build skipped for ${command.target} because it resolves to ${report.kind} content with no build targets.`,
-                  retryPolicy: "correct-input",
-                  recovery: {
-                    action: "correct-request",
-                    instruction:
-                      "Use receipt.unit.repoPath to identify the requested content, then select the owning buildable unit before retrying.",
-                  },
-                })
-              : undefined;
-        return {
-          output: [
-            {
-              type: "text",
-              text: renderBuild(command.target, bounded.report, receipt, failure),
-            },
-          ],
-          details: toolDetails({
-            operation: "build",
-            target: command.target,
-            status: report.status,
-            report: bounded.report,
-            receipt,
-            provenance: {
-              ref: `ctx:${exactContextId}`,
-              scope: "context-candidate",
-              publication: "unchanged",
-              liveRuntime: "unchanged",
-            },
-            truncatedDiagnostics: bounded.truncatedDiagnostics,
-            truncatedDiagnosticText: bounded.truncatedDiagnosticText,
-            ...(failure ? { failure } : {}),
-          }),
-          isError: failed && !sourceFailure,
-        };
-      }
-
-      const exactContextId = contextId();
-      const ref = `ctx:${exactContextId}`;
-      const plan = await rpc.call(
-        "main", mainRpcMethods["build.resolveTestSuite"],
-        [command.target, ref, command.suite],
-        { signal },
+      return executeUnitVerification(
+        rpc,
+        contextId,
+        executeSandboxTest,
+        command,
+        signal,
       );
-      let report: TestRunResult;
-      let artifactKey: string;
-      let executionDigest: string;
-      if (plan.runtime === "native") {
-        executionDigest = sha256Hex(
-          encodeUtf8(
-            JSON.stringify({
-              protocol: "native-test-execution.v1",
-              stateHash: plan.stateHash,
-              target: command.target,
-              suite: plan.suite,
-              file: command.file ?? null,
-            }),
-          ),
-        );
-        artifactKey = `native:${executionDigest}`;
-        report = await rpc.call("main", testRunnerRpcMethods.runNative, [{
-          target: command.target, suite: plan.suite, contextId: exactContextId, artifactKey, executionDigest,
-          ...(command.file ? { fileFilter: command.file } : {}), ...(command.testName ? { testName: command.testName } : {}),
-        }], { signal });
-        if (
-          report.artifactKey !== artifactKey ||
-          report.executionDigest !== executionDigest
-        ) {
-          throw new Error(
-            "Native test adapter returned a mismatched execution identity",
-          );
-        }
-      } else {
-        if (!executeSandboxTest) {
-          throw new Error(
-            `No ${plan.runtime} test executor is installed for verify`,
-          );
-        }
-        let artifact: WorkspaceTestArtifactV1;
-        try {
-          artifact = await rpc.call(
-        "main", mainRpcMethods["build.getTestArtifact"],
-            [
-              command.target,
-              ref,
-              {
-                suite: plan.suite,
-                ...(command.file ? { file: command.file } : {}),
-              },
-            ],
-            { signal },
-          );
-        } catch (error) {
-          const parsed = workspaceTestCompilationFailureSchema.safeParse(
-            (error as { errorData?: unknown } | null)?.errorData,
-          );
-          if (
-            !parsed.success ||
-            parsed.data.target !== plan.target ||
-            parsed.data.suite !== plan.suite ||
-            parsed.data.runtime !== plan.runtime ||
-            parsed.data.stateHash !== plan.stateHash ||
-            !parsed.data.diagnostics.some(
-              (diagnostic) => diagnostic.severity === "error",
-            ) ||
-            parsed.data.diagnostics.some(
-              (diagnostic) => diagnostic.source === "infrastructure",
-            )
-          ) {
-            throw error;
-          }
-          return compilationFailureResult(
-            parsed.data,
-            command.target,
-            exactContextId,
-            ref,
-          );
-        }
-        const result = await executeSandboxTest(
-          artifact,
-          command.testName,
-          signal,
-        );
-        artifactKey = artifact.artifactKey;
-        executionDigest = artifact.execution.executionDigest;
-        report = {
-          runtime: plan.runtime,
-          status: result.status,
-          summary:
-            result.status === "no-tests"
-              ? "No tests matched the execution filter"
-              : result.failed > 0
-                ? `${result.failed} of ${result.passed + result.failed} tests failed`
-                : `${result.passed} tests passed`,
-          passed: result.passed,
-          failed: result.failed,
-          total: result.passed + result.failed,
-          contextId: exactContextId,
-          target: command.target,
-          pattern: `${plan.suite} (${plan.runtime})`,
-          details: result.files,
-        };
-      }
-      const status = report.status;
-      const bounded = boundTestReport(report);
-      const receipt: UnitVerificationReceiptV1 = {
-        protocol: "unit-verification-receipt.v1",
-        operation: "test",
-        target: command.target,
-        contextId: exactContextId,
-        ref,
-        stateHash: plan.stateHash,
-        reportDigest: sha256Hex(encodeUtf8(JSON.stringify(report))),
-        suite: plan.suite,
-        runtime: plan.runtime,
-        artifactKey,
-        executionDigest,
-        status,
-      };
-      const failure =
-        status === "no-tests"
+    },
+  };
+}
+
+/** Canonical operation behind tool and typed workflow entry points; no tool execution API is needed. */
+export async function executeUnitVerification(
+  rpc: Pick<import("@vibestudio/rpc").RpcCaller, "call">,
+  contextId: () => string,
+  executeSandboxTest:
+    | ((
+        artifact: WorkspaceTestArtifactV1,
+        testName: string | undefined,
+        signal?: AbortSignal,
+      ) => Promise<TestExecutionResultV1>)
+    | undefined,
+  command: VerifyToolInput,
+  signal?: AbortSignal,
+): Promise<ToolExecutionResult<JsonRepresentation<VerifyToolDetails>>> {
+  if (signal?.aborted) throw signal.reason ?? new Error("Operation aborted");
+  if (command.operation === "build") {
+    const exactContextId = contextId();
+    const report = await rpc.call(
+      "main",
+      mainRpcMethods["build.getBuildReport"],
+      [command.target, `ctx:${exactContextId}`],
+      { signal },
+    );
+    const bounded = boundBuildReport(report);
+    const failed = report.status !== "ok";
+    const errorDiagnostics = report.diagnostics.filter(
+      (diagnostic) => diagnostic.severity === "error",
+    );
+    const hasInfrastructureFailure = errorDiagnostics.some(
+      (diagnostic) => diagnostic.source === "infrastructure",
+    );
+    const sourceFailure =
+      report.status === "failed" &&
+      errorDiagnostics.length > 0 &&
+      !hasInfrastructureFailure;
+    const receipt = buildVerificationReceipt(
+      command.target,
+      exactContextId,
+      report,
+      bounded,
+    );
+    const failure =
+      report.status === "failed" && !sourceFailure
+        ? hasInfrastructureFailure
           ? verificationFailure({
-              code: "no_tests_discovered",
-              message: `No tests were discovered for ${command.target}.`,
+              code: "build_verification_failed",
+              kind: "infrastructure",
+              retryPolicy: "reobserve",
+              message: `Build verification for ${command.target} encountered an infrastructure failure.`,
+              recovery: {
+                action: "reobserve",
+                instruction:
+                  "Inspect the infrastructure diagnostics and restore the required provider, dependency, or service. Do not repair user source based on this report; rerun verify after the infrastructure issue is resolved.",
+              },
+            })
+          : verificationFailure({
+              code: "build_report_inconsistent",
+              kind: "integrity",
+              message: `Build report for ${command.target} is failed but contains no error diagnostics.`,
+              recovery: {
+                action: "stop",
+                instruction:
+                  "Keep the original report and receipt, and stop. The failed status has no error diagnostic to guide a source repair; inspect the build report producer.",
+              },
+            })
+        : report.status === "skipped"
+          ? verificationFailure({
+              code: "build_target_not_buildable",
+              message: `Build skipped for ${command.target} because it resolves to ${report.kind} content with no build targets.`,
               retryPolicy: "correct-input",
               recovery: {
                 action: "correct-request",
                 instruction:
-                  "Inspect the unit's test files and correct target, file, or testName before retrying.",
+                  "Use receipt.unit.repoPath to identify the requested content, then select the owning buildable unit before retrying.",
               },
             })
-          : status === "cancelled" || status === "infrastructure-error"
-            ? verificationFailure({
-                code: `test_execution_${status.replaceAll("-", "_")}`,
-                kind: status === "cancelled" ? "cancelled" : "infrastructure",
-                message: `Test execution ${status} for ${command.target}; partial counts do not prove verification.`,
-                recovery: {
-                  action: "stop",
-                  instruction:
-                    "Inspect the execution failure before starting a new verification attempt.",
-                },
-              })
-            : undefined;
-      return {
-        output: [
+          : undefined;
+    return {
+      output: [
+        {
+          type: "text",
+          text: renderBuild(command.target, bounded.report, receipt, failure),
+        },
+      ],
+      details: toolDetails({
+        operation: "build",
+        target: command.target,
+        status: report.status,
+        report: bounded.report,
+        receipt,
+        provenance: {
+          ref: `ctx:${exactContextId}`,
+          scope: "context-candidate",
+          publication: "unchanged",
+          liveRuntime: "unchanged",
+        },
+        truncatedDiagnostics: bounded.truncatedDiagnostics,
+        truncatedDiagnosticText: bounded.truncatedDiagnosticText,
+        ...(failure ? { failure } : {}),
+      }),
+      isError: failed && !sourceFailure,
+    };
+  }
+
+  const exactContextId = contextId();
+  const ref = `ctx:${exactContextId}`;
+  const plan = await rpc.call(
+    "main",
+    mainRpcMethods["build.resolveTestSuite"],
+    [command.target, ref, command.suite],
+    { signal },
+  );
+  let report: TestRunResult;
+  let artifactKey: string;
+  let executionDigest: string;
+  if (plan.runtime === "native") {
+    executionDigest = sha256Hex(
+      encodeUtf8(
+        JSON.stringify({
+          protocol: "native-test-execution.v1",
+          stateHash: plan.stateHash,
+          target: command.target,
+          suite: plan.suite,
+          file: command.file ?? null,
+        }),
+      ),
+    );
+    artifactKey = `native:${executionDigest}`;
+    report = await rpc.call(
+      "main",
+      testRunnerRpcMethods.runNative,
+      [
+        {
+          target: command.target,
+          suite: plan.suite,
+          contextId: exactContextId,
+          artifactKey,
+          executionDigest,
+          ...(command.file ? { fileFilter: command.file } : {}),
+          ...(command.testName ? { testName: command.testName } : {}),
+        },
+      ],
+      { signal },
+    );
+    if (
+      report.artifactKey !== artifactKey ||
+      report.executionDigest !== executionDigest
+    ) {
+      throw new Error(
+        "Native test adapter returned a mismatched execution identity",
+      );
+    }
+  } else {
+    if (!executeSandboxTest) {
+      throw new Error(
+        `No ${plan.runtime} test executor is installed for verify`,
+      );
+    }
+    let artifact: WorkspaceTestArtifactV1;
+    try {
+      artifact = await rpc.call(
+        "main",
+        mainRpcMethods["build.getTestArtifact"],
+        [
+          command.target,
+          ref,
           {
-            type: "text",
-            text:
-              renderTests(command.target, bounded.report, status) +
-              "\n" +
-              JSON.stringify({ report: bounded.report, receipt }),
+            suite: plan.suite,
+            ...(command.file ? { file: command.file } : {}),
           },
         ],
-        details: toolDetails({
-          operation: "test",
-          target: command.target,
-          status,
-          report: bounded.report,
-          receipt,
-          truncatedFiles: bounded.truncatedFiles,
-          truncatedErrors: bounded.truncatedErrors,
-          ...(failure ? { failure } : {}),
-        }),
-        isError:
-          status === "no-tests" ||
-          status === "cancelled" ||
-          status === "infrastructure-error",
-      };
-    },
+        { signal },
+      );
+    } catch (error) {
+      const parsed = workspaceTestCompilationFailureSchema.safeParse(
+        (error as { errorData?: unknown } | null)?.errorData,
+      );
+      if (
+        !parsed.success ||
+        parsed.data.target !== plan.target ||
+        parsed.data.suite !== plan.suite ||
+        parsed.data.runtime !== plan.runtime ||
+        parsed.data.stateHash !== plan.stateHash ||
+        !parsed.data.diagnostics.some(
+          (diagnostic) => diagnostic.severity === "error",
+        ) ||
+        parsed.data.diagnostics.some(
+          (diagnostic) => diagnostic.source === "infrastructure",
+        )
+      ) {
+        throw error;
+      }
+      return compilationFailureResult(
+        parsed.data,
+        command.target,
+        exactContextId,
+        ref,
+      );
+    }
+    const result = await executeSandboxTest(artifact, command.testName, signal);
+    artifactKey = artifact.artifactKey;
+    executionDigest = artifact.execution.executionDigest;
+    report = {
+      runtime: plan.runtime,
+      status: result.status,
+      summary:
+        result.status === "no-tests"
+          ? "No tests matched the execution filter"
+          : result.failed > 0
+            ? `${result.failed} of ${result.passed + result.failed} tests failed`
+            : `${result.passed} tests passed`,
+      passed: result.passed,
+      failed: result.failed,
+      total: result.passed + result.failed,
+      contextId: exactContextId,
+      target: command.target,
+      pattern: `${plan.suite} (${plan.runtime})`,
+      details: result.files,
+    };
+  }
+  const status = report.status;
+  const bounded = boundTestReport(report);
+  const receipt: UnitVerificationReceiptV1 = {
+    protocol: "unit-verification-receipt.v1",
+    operation: "test",
+    target: command.target,
+    contextId: exactContextId,
+    ref,
+    stateHash: plan.stateHash,
+    reportDigest: sha256Hex(encodeUtf8(JSON.stringify(report))),
+    suite: plan.suite,
+    runtime: plan.runtime,
+    artifactKey,
+    executionDigest,
+    status,
+  };
+  const failure =
+    status === "no-tests"
+      ? verificationFailure({
+          code: "no_tests_discovered",
+          message: `No tests were discovered for ${command.target}.`,
+          retryPolicy: "correct-input",
+          recovery: {
+            action: "correct-request",
+            instruction:
+              "Inspect the unit's test files and correct target, file, or testName before retrying.",
+          },
+        })
+      : status === "cancelled" || status === "infrastructure-error"
+        ? verificationFailure({
+            code: `test_execution_${status.replaceAll("-", "_")}`,
+            kind: status === "cancelled" ? "cancelled" : "infrastructure",
+            message: `Test execution ${status} for ${command.target}; partial counts do not prove verification.`,
+            recovery: {
+              action: "stop",
+              instruction:
+                "Inspect the execution failure before starting a new verification attempt.",
+            },
+          })
+        : undefined;
+  return {
+    output: [
+      {
+        type: "text",
+        text:
+          renderTests(command.target, bounded.report, status) +
+          "\n" +
+          JSON.stringify({ report: bounded.report, receipt }),
+      },
+    ],
+    details: toolDetails({
+      operation: "test",
+      target: command.target,
+      status,
+      report: bounded.report,
+      receipt,
+      truncatedFiles: bounded.truncatedFiles,
+      truncatedErrors: bounded.truncatedErrors,
+      ...(failure ? { failure } : {}),
+    }),
+    isError:
+      status === "no-tests" ||
+      status === "cancelled" ||
+      status === "infrastructure-error",
   };
 }
 
