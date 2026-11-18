@@ -1,0 +1,26 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "content-project-lifecycle",
+  "version": "0.1.0",
+  "description": "Grounded Vibestudio content-project preparation, review and local commit.",
+  "include": [
+    "deliverProject.nl",
+    "deliverProject",
+    "types.ts",
+    "services.d.ts"
+  ],
+  "targets": {
+    "main": {
+      "entry": "deliverProject.nl"
+    }
+  },
+  "serviceScopes": {
+    "projectWorkspace": [
+      "deliverProject.nl",
+      "deliverProject/reviewCandidate.nl"
+    ],
+    "projectWorkspaceEdit": [
+      "deliverProject.nl"
+    ]
+  }
+}

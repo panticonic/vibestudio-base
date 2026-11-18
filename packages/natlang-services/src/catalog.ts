@@ -152,6 +152,16 @@ export const SERVICE_CATALOG = [
     methods: [ { name: "observe", params: [] }, { name: "apply", params: ["head", "edits"] }, { name: "merge", params: ["head", "decisions"] } ],
   },
   {
+    name:"projectWorkspace", summary:"Read the assigned content project's exact local state and source files.",
+    contract:{origin:"base",file:"packages/natlang-services/src/contentProjectContracts.ts",table:"contentProjectMethods"},
+    methods:[{name:"observe",params:[]}],
+  },
+  {
+    name:"projectWorkspaceEdit", summary:"Prepare, author and locally commit the assigned content project without publication.",
+    contract:{origin:"base",file:"packages/natlang-services/src/contentProjectContracts.ts",table:"contentProjectMethods"},
+    methods:[{name:"prepare",params:["head"]},{name:"writeDocuments",params:["head","documents"]},{name:"commit",params:["head","message"]}],
+  },
+  {
     name: "unitRepair",
     summary: "Read the assigned worker's source and real compiler diagnostics at one working revision.",
     contract: { origin: "base", file: "packages/natlang-services/src/unitRepairContracts.ts", table: "unitRepairMethods" },

@@ -20,3 +20,6 @@ export { createPanelRepair } from "./panelRepair.js";
 export { createWorkspaceIntegration } from "./workspaceIntegration.js";
 
 export { createUnitRepair } from "./unitRepair.js";
+
+export { createProjectDelivery } from "./contentProject.js";
+export { contentProjectRequestSchema, type ContentProjectRequest } from "./contentProjectContracts.js";
