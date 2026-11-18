@@ -6,4 +6,6 @@ args:
   source: SourceFile[]
 returns: Edit[]
 ---
-Identify the smallest source change that fixes the diagnosed mechanism and preserves existing related behavior. Return edits whose before text exactly matches the supplied current source and whose after text is the replacement. Keep the change within the diagnosed panel. If the evidence is insufficient to justify an edit, return an empty list.
+1. Read request.goal, diagnosis.cause, diagnosis.evidence, and the supplied source. Pick the smallest source change that directly addresses the cause and preserves neighboring behavior.
+2. From the supplied source, copy the exact complete text of each file you plan to change into before. Produce the complete replacement text in after, using the same path as the source entry.
+3. Return the Edit[] to the caller. The caller owns applying the edits and checking the rebuilt panel. When the supplied evidence supports no change, return an empty array.

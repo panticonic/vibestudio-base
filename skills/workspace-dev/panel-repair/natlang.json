@@ -1,5 +1,12 @@
 {
   "serviceScopes": {
+    "panelRepair": [
+      "repairPanel.nl",
+      "repairPanel/reproduce.nl",
+      "repairPanel/diagnose.nl",
+      "repairPanel/verifyRepair.nl",
+      "repairPanel/verifyRepair/verifySaveAndDiscard.nl"
+    ],
     "panelRepairEdit": ["repairPanel.nl"]
   }
 }
