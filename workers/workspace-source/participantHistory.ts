@@ -45,6 +45,7 @@ interface MergeSource extends CommittedContext {
 
 type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
 type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
+const APPROVED_MAIN_GRANT_LIFETIME_MS = 5 * 60_000;
 
 function branchSegment(value: string): string {
   if (!value) throw new Error("Missing GAD branch identity");
@@ -130,13 +131,20 @@ export function grantApprovedMain(
     previous: publication.previousHead,
     next: publication.proposedHead,
   };
-  const grant = canonical.remote.grant({ push: ["main"], pushTransition, ...(peer === undefined ? {} : { peer }) });
+  const expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS;
+  const grant = canonical.remote.grant({
+    push: ["main"],
+    pushTransition,
+    expiresAt,
+    ...(peer === undefined ? {} : { peer }),
+  });
   if (
     grant.pushTransition?.previous !== pushTransition.previous ||
-    grant.pushTransition.next !== pushTransition.next
+    grant.pushTransition.next !== pushTransition.next ||
+    grant.expiresAt !== expiresAt
   ) {
     canonical.remote.revoke(grant.id);
-    throw new Error("GAD publication requires Dolt push transitions");
+    throw new Error("GAD publication requires an expiring grant for the exact Dolt push transition");
   }
   return grant;
 }

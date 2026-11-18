@@ -13,8 +13,8 @@ import {
   retireParticipantHistory,
 } from "./participantHistory.js";
 
-async function workspace() {
-  const canonical = await FakeDoltStorage.create();
+async function workspace(now = Date.now) {
+  const canonical = await FakeDoltStorage.create({ now });
   canonical.sql.exec(
     "CREATE TABLE files (id TEXT PRIMARY KEY, body TEXT NOT NULL)",
   );
@@ -333,6 +333,23 @@ it("commits a prepared placement change atomically, including an exchange of occ
     { file_id: "first", path: "two" },
     { file_id: "second", path: "one" },
   ]);
+});
+
+it("rejects an approved main publication after its grant expires", async () => {
+  let now = Date.now();
+  const { canonical, genesis, origin, createParticipant } = await workspace(() => now);
+  const { local, history, head } = await createParticipant("alice");
+  const proposed = await history.commit("edit", head, "Approved edit", () => {
+    local.sql.exec("UPDATE files SET body = 'approved' WHERE id = 'shared'");
+  });
+  const publication = { previousHead: genesis, proposedHead: proposed.head };
+  const grant = grantApprovedMain(origin, publication);
+  expect(grant.expiresAt).toBeGreaterThan(now);
+  now = grant.expiresAt!;
+  await expect(
+    history.publishApprovedMain("edit", publication, { id: canonical.id, token: grant.token }),
+  ).rejects.toMatchObject({ code: "ERR_DOLT_REMOTE_FORBIDDEN" });
+  expect(origin.hashOf("main")).toBe(genesis);
 });
 
 it("holds the approved revision while a fresh edit waits behind publication", async () => {
