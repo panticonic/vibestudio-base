@@ -82,6 +82,12 @@ export const SERVICE_CATALOG = [
     methods: [{ name: "apply", params: ["missionId", "revisionDigest", "action"], description: "Request the assigned pause or resume through the Missions client." }],
   },
   {
+    name: "onboardingRead",
+    summary: "Read the actual setup owners and the caller's assigned catalog selection.",
+    contract: { origin: "base", file: "packages/natlang-services/src/onboardingContracts.ts", table: "onboardingReadMethods" },
+    methods: [{ name: "inspect", params: [], description: "Return the assigned owner observations and resolved product route once." }],
+  },
+  {
     name: "decisionRecall",
     summary: "Search for decision leads in the caller's assigned scope.",
     contract: { origin: "base", file: "packages/natlang-services/src/verifiedMemoryContracts.ts", table: "decisionRecallMethods" },

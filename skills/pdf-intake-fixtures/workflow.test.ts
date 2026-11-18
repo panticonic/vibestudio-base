@@ -46,6 +46,20 @@ const reference: Record<string, string> = {
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
+  planSetup: `
+    const observed = await observeSetup();
+    const notes = await reviewOwnerState(observed.rows);
+    const status = await reviewSelection(request.intent, observed.route);
+    return {...observed,...notes,status};
+  `,
+  observeSetup: "return await readOwnerSnapshot();",
+  readOwnerSnapshot: "return await onboardingRead.inspect();",
+  reviewOwnerState: `return {
+    unknown: rows.filter(row => !row.observed || row.state === "unknown").map(row => row.id),
+    needsVerification: rows.filter(row => row.observed && row.state === "connected-unverified").map(row => row.id)
+  };`,
+  reviewSelection: "return await chooseSurface(intent, route);",
+  chooseSurface: `return intent === "selection" && route?.via === "model-settings" ? "route-owner" : "invalid-selection";`,
   recallDecision: `
     const lead = await findDecision(request);
     return lead ? await verifyAtRevision(lead, request.field) : {status:"no-lead",leadId:null,citation:null};
@@ -370,6 +384,7 @@ const reference: Record<string, string> = {
 };
 
 const serviceScopes: Record<string, string[]> = {
+  readOwnerSnapshot: ["onboardingRead"],
   searchHistory: ["decisionRecall"],
   readDecisionFile: ["decisionSource"],
   readAssignedProgram: ["authoringCompiler"],
@@ -547,6 +562,86 @@ it("prepares or holds each template candidate using the exact native operation a
 });
 
 const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
+it.runIf(Boolean(host))(
+  "retains onboarding owner state through the shared Workerd tree",
+  async () => {
+    const config = await import(
+      /* @vite-ignore */ pathToFileURL(
+        join(host!, "src/dev/developmentTemplateConfig.cjs"),
+      ).href
+    );
+    const { checkouts } =
+      config.default.requireDevelopmentTemplateCheckouts(host);
+    const program = loader(
+      undefined,
+      [checkouts.personal],
+      `
+    const work = request.work[0];
+    const report = await domains.onboarding.planSetup(work.input);
+    return {results:[{kind:"domain",domain:work.domain,operation:work.operation,report}],remaining:[]};
+  `,
+    );
+    const receipt = {
+      receipt: "owned-snapshot",
+      rows: [
+        {
+          id: "connection.ai-provider",
+          state: "connected-unverified",
+          observed: true,
+        },
+        { id: "connection.device", state: "unknown", observed: true },
+      ],
+      route: {
+        capabilityId: "connection.ai-provider",
+        action: "setup",
+        via: "model-settings",
+        destination: null,
+      },
+    };
+    let reads = 0;
+    const run = (await program.load(
+      "skills/vibestudio-workflows/runWorkflow.nl",
+      {
+        services: {
+          onboardingRead: {
+            async inspect() {
+              reads++;
+              return receipt;
+            },
+          },
+        },
+      },
+    )) as (input: unknown) => Promise<unknown>;
+    const goal = "Follow the assigned setup selection for the AI model";
+    const value = await run({
+      goal,
+      work: [
+        {
+          kind: "domain",
+          domain: "onboarding",
+          operation: "planSetup",
+          input: { goal, intent: "selection" },
+        },
+      ],
+    });
+    expect(reads).toBe(1);
+    expect(value).toMatchObject({
+      remaining: [],
+      results: [
+        {
+          operation: "planSetup",
+          report: {
+            ...receipt,
+            status: "route-owner",
+            unknown: ["connection.device"],
+            needsVerification: ["connection.ai-provider"],
+          },
+        },
+      ],
+    });
+  },
+);
+
 it.runIf(Boolean(host))(
   "runs Personal's verification stages through the shared Workerd tree",
   async () => {

@@ -23,6 +23,7 @@
     "runWorkflow/domains/mediaImport": "skills/media-and-import-review",
     "runWorkflow/domains/natlangAuthoring": "skills/natlang-authoring",
     "runWorkflow/domains/news": "skills/news-workflows",
+    "runWorkflow/domains/onboarding": "skills/onboarding/prepareSetup",
     "runWorkflow/domains/pdfIntake": "skills/pdf-intake",
     "runWorkflow/domains/personal": "skills/personal-workflows",
     "runWorkflow/domains/personalFacility": "skills/personal-facility-review",

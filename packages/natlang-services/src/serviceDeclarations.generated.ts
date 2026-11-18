@@ -95,6 +95,23 @@ export function observe(missionId: string): Promise<{
 
 /** Request the assigned pause or resume through the Missions client. */
 export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
+  onboardingRead: `/** Read the actual setup owners and the caller's assigned catalog selection. */
+
+/** Return the assigned owner observations and resolved product route once. */
+export function inspect(): Promise<{
+  receipt: string;
+  rows: {
+    id: string;
+    state: "connected" | "connected-unverified" | "configured" | "using-defaults" | "not-configured" | "in-progress" | "needs-attention" | "unavailable" | "unknown";
+    observed: boolean;
+  }[];
+  route: {
+    capabilityId: string;
+    action: string;
+    via: "owner-skill" | "about-page" | "model-settings" | "panel" | "shell-navigation" | "conversation";
+    destination: string | null;
+  } | null;
+}>;`,
   decisionRecall: `/** Search for decision leads in the caller's assigned scope. */
 
 /** Return actual scoped workspace memory hits for the assigned query. */
