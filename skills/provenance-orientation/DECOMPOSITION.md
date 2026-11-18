@@ -26,3 +26,9 @@ selector and keeps evidence weight, rejection matching, origin selection and
 intent attribution as independently callable stages. Source operations stay
 with the caller's bounded VCS, provenance or memory reads. Typed receipts
 preserve visibility boundaries and compact references.
+
+The live-history path delegates exact VCS reads to readAssignedHistory and interpretation to
+assessHistoryReceipt. The System-testing adapter resolves the caller's repository and paths
+at one pinned semantic head, then walks cause, cohort, or rejections. It retains the raw
+node coordinates for verification and gives the model short refs. History reads carry
+no write authority. The verifier checks the authored rejection cases independently.

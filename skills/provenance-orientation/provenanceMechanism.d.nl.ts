@@ -45,7 +45,22 @@ type ConstraintQuestion = {
   evidence: ProvenanceFact[];
   boundary: ProvenanceRefusal;
 };
-type ProvenanceRequest = | {
+type HistoryWalk = "cause" | "cohort" | "rejections";
+type HistoryCheck = { path: string; walk: HistoryWalk; scope: "work-unit" | "turn" };
+type HistoryReceipt = {
+  check: HistoryCheck;
+  exists: boolean;
+  limited: boolean;
+  records: { ref: string; label: string; intent: string | null; tier: string | null; group: string | null; boundary: string | null }[];
+};
+type HistoryFinding = {
+  check: HistoryCheck;
+  status: "coordinate-absent" | "limited" | "recorded" | "none-visible";
+  evidence: string[];
+};
+type HistoryRequest = { kind: "live-history"; goal: string; checks: HistoryCheck[] };
+type ProvenanceRequest = | HistoryRequest
+  | {
       kind: "route";
       goal: string;
       memoryInstalled: boolean;
@@ -59,7 +74,8 @@ type EvidenceVote = {
   historicAssumptions: string[];
   currentRejections: string[];
 };
-type ProvenanceReport = | { kind: "route"; mechanism: ProvenanceMechanism }
+type ProvenanceReport = | { kind: "live-history"; findings: HistoryFinding[] }
+  | { kind: "route"; mechanism: ProvenanceMechanism }
   | {
       kind: "attribution";
       origin: ProvenanceOrigin;

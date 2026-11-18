@@ -45,7 +45,22 @@ type ConstraintQuestion = {
   evidence: ProvenanceFact[];
   boundary: ProvenanceRefusal;
 };
-type ProvenanceRequest = | {
+type HistoryWalk = "cause" | "cohort" | "rejections";
+type HistoryCheck = { path: string; walk: HistoryWalk; scope: "work-unit" | "turn" };
+type HistoryReceipt = {
+  check: HistoryCheck;
+  exists: boolean;
+  limited: boolean;
+  records: { ref: string; label: string; intent: string | null; tier: string | null; group: string | null; boundary: string | null }[];
+};
+type HistoryFinding = {
+  check: HistoryCheck;
+  status: "coordinate-absent" | "limited" | "recorded" | "none-visible";
+  evidence: string[];
+};
+type HistoryRequest = { kind: "live-history"; goal: string; checks: HistoryCheck[] };
+type ProvenanceRequest = | HistoryRequest
+  | {
       kind: "route";
       goal: string;
       memoryInstalled: boolean;
@@ -59,7 +74,8 @@ type EvidenceVote = {
   historicAssumptions: string[];
   currentRejections: string[];
 };
-type ProvenanceReport = | { kind: "route"; mechanism: ProvenanceMechanism }
+type ProvenanceReport = | { kind: "live-history"; findings: HistoryFinding[] }
+  | { kind: "route"; mechanism: ProvenanceMechanism }
   | {
       kind: "attribution";
       origin: ProvenanceOrigin;
@@ -72,5 +88,5 @@ type ProvenanceReport = | { kind: "route"; mechanism: ProvenanceMechanism }
       status: "supported" | "rejected" | "inconclusive" | "narrow-scope";
       evidence: string[];
     };
-declare const fn: NatlangFunction<[request: ProvenanceRequest], ProvenanceReport> & { readonly attributeOrigin: NatlangFunction<[request: {kind:"attribution"; goal:string; receipt:AttributionReceipt}], ProvenanceReport> & { readonly selectOriginReferences: NatlangFunction<[receipt: AttributionReceipt], string[]>; readonly selectRecordedPurpose: NatlangFunction<[receipt: AttributionReceipt], {supportedIntent:string|null; boundary:string|null}> }; readonly weighConstraint: NatlangFunction<[request: ConstraintQuestion], ProvenanceReport> & { readonly compareProperty: NatlangFunction<[property: string, facts: ProvenanceFact[]], EvidenceVote>; readonly judgeConstraint: NatlangFunction<[vote: EvidenceVote, boundary: ProvenanceRefusal], {status:"supported"|"rejected"|"inconclusive"|"narrow-scope"; evidence:string[]}> }; readonly provenanceMechanism: NatlangFunction<[question: string], ProvenanceMechanism> };
+declare const fn: NatlangFunction<[request: ProvenanceRequest], ProvenanceReport> & { readonly attributeOrigin: NatlangFunction<[request: {kind:"attribution"; goal:string; receipt:AttributionReceipt}], ProvenanceReport> & { readonly selectOriginReferences: NatlangFunction<[receipt: AttributionReceipt], string[]>; readonly selectRecordedPurpose: NatlangFunction<[receipt: AttributionReceipt], {supportedIntent:string|null; boundary:string|null}> }; readonly reviewLiveHistory: NatlangFunction<[request: HistoryRequest], ProvenanceReport> & { readonly assessHistoryReceipt: NatlangFunction<[receipt: HistoryReceipt], HistoryFinding>; readonly readAssignedHistory: NatlangFunction<[check: HistoryCheck], HistoryReceipt> }; readonly weighConstraint: NatlangFunction<[request: ConstraintQuestion], ProvenanceReport> & { readonly compareProperty: NatlangFunction<[property: string, facts: ProvenanceFact[]], EvidenceVote>; readonly judgeConstraint: NatlangFunction<[vote: EvidenceVote, boundary: ProvenanceRefusal], {status:"supported"|"rejected"|"inconclusive"|"narrow-scope"; evidence:string[]}> }; readonly provenanceMechanism: NatlangFunction<[question: string], ProvenanceMechanism> };
 export default fn;
