@@ -385,9 +385,9 @@ export abstract class DurableObjectBase {
    * thins the check for a cell that commits per event.
    */
   protected scheduleDoltGc(every = 1): void {
-    if (!this.dolt || this.doltGcScheduled || typeof this.ctx.waitUntil !== "function")
-      return;
-    if (++this.doltGcTicks % every !== 0) return;
+    if (!this.dolt || typeof this.ctx.waitUntil !== "function") return;
+    // A queued check covers overlapping commits, but they still count toward the next cadence.
+    if (++this.doltGcTicks % every !== 0 || this.doltGcScheduled) return;
     const policy = this.doltGcPolicy();
     if (!policy) return;
     this.doltGcScheduled = true;
