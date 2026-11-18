@@ -7,8 +7,11 @@ import type {
 
 type Missions = {
   get(missionId: string): Promise<MissionObservation | null>;
-  pause(missionId: string): Promise<MissionObservation>;
-  resume(missionId: string): Promise<MissionObservation>;
+  transitionAtRevision(
+    missionId: string,
+    action: LifecycleAction,
+    expectedRevisionDigest: string,
+  ): Promise<MissionObservation>;
 };
 
 /** The caller supplies its normal Missions client and one authorized transition. */
@@ -67,13 +70,20 @@ export function bindAutomationLifecycle(
     if (current.state !== (action === "pause" ? "active" : "paused"))
       return "blocked";
     try {
-      const changed = await missions[action](id);
+      const changed = await missions.transitionAtRevision(id, action, digest);
       return changed.missionId === id &&
         changed.revisionDigest === digest &&
         changed.state === desired
         ? "acknowledged"
         : "uncertain";
-    } catch {
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "MISSION_REVISION_CHANGED"
+      )
+        return "blocked";
       return "uncertain";
     }
   }

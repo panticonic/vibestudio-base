@@ -122,7 +122,9 @@ it("runs authored lifecycle cases through the shared root and checks actual miss
 });
 
 it("does not admit a different mission, action or revision and admits only one effect", async () => {
-  const world = automationLifecycleWorlds[0]!;
+  const world = automationLifecycleWorlds.find(
+    (world) => world.id === "automation-lifecycle-maintenance-window",
+  )!;
   const fixture = createAutomationLifecycleFixture(world);
   const { automationLifecycleRead, automationLifecycleChange } =
     fixture.bindings;
@@ -147,4 +149,5 @@ it("does not admit a different mission, action or revision and admits only one e
     "get",
     "pause",
   ]);
+  expect(fixture.audit().at(-1)?.expectedRevisionDigest).toBe(revisionDigest);
 });

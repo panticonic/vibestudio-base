@@ -842,6 +842,73 @@ describe("MissionsDO", () => {
     });
   });
 
+  it("rejects stale guarded lifecycle controls before mutating the active definition", async () => {
+    const harness = await createMissions();
+    const launched = await harness.callAs(alice, "launch", {
+      name: "Daily summary",
+      authorityPlan: policy(),
+      charter: agentCharter(),
+    });
+    harness.setPolicyDigest(HASH_B);
+    const edited = await harness.callAs(alice, "edit", launched.missionId, {
+      charter: agentCharter("Prepare the revised summary"),
+      authorityPlan: policy(HASH_B),
+    });
+    expect(edited.revisionDigest).not.toBe(launched.revisionDigest);
+    await expect(
+      harness.callAs(
+        bob,
+        "transitionAtRevision",
+        launched.missionId,
+        "pause",
+        edited.revisionDigest,
+      ),
+    ).rejects.toThrow(/Unknown automation/);
+    await expect(
+      harness.callAs(
+        alice,
+        "transitionAtRevision",
+        launched.missionId,
+        "pause",
+        launched.revisionDigest,
+      ),
+    ).rejects.toMatchObject({ code: "MISSION_REVISION_CHANGED" });
+    expect(await harness.callAs(alice, "get", launched.missionId)).toEqual(
+      edited,
+    );
+    const paused = await harness.callAs(
+      alice,
+      "transitionAtRevision",
+      launched.missionId,
+      "pause",
+      edited.revisionDigest,
+    );
+    await expect(
+      harness.callAs(
+        alice,
+        "transitionAtRevision",
+        launched.missionId,
+        "resume",
+        launched.revisionDigest,
+      ),
+    ).rejects.toMatchObject({ code: "MISSION_REVISION_CHANGED" });
+    expect(await harness.callAs(alice, "get", launched.missionId)).toEqual(
+      paused,
+    );
+    await expect(
+      harness.callAs(
+        alice,
+        "transitionAtRevision",
+        launched.missionId,
+        "resume",
+        edited.revisionDigest,
+      ),
+    ).resolves.toMatchObject({
+      state: "active",
+      revisionDigest: edited.revisionDigest,
+    });
+  });
+
   it("edits by creating a new immutable revision subject and policy", async () => {
     const harness = await createMissions();
     const launched = await harness.callAs(alice, "launch", {

@@ -8,11 +8,22 @@ import type { automationLifecycleWorlds } from "./worlds.js";
 type World = (typeof automationLifecycleWorlds)[number];
 
 export function createAutomationLifecycleFixture(world: World) {
-  const operations: { action: LifecycleAction | "get"; missionId: string }[] =
-    [];
+  const operations: {
+    action: LifecycleAction | "get";
+    missionId: string;
+    expectedRevisionDigest?: string;
+  }[] = [];
   let readCount = 0;
-  async function transition(action: LifecycleAction, missionId: string) {
-    operations.push({ action, missionId });
+  async function transition(
+    action: LifecycleAction,
+    missionId: string,
+    expectedRevisionDigest: string,
+  ) {
+    operations.push({ action, missionId, expectedRevisionDigest });
+    if (world.effect === "revision-conflict")
+      throw Object.assign(new Error("The automation definition changed."), {
+        code: "MISSION_REVISION_CHANGED",
+      });
     if (!world.effect || world.effect === "acknowledgment-lost")
       throw new Error("No acknowledged transition.");
     return {
@@ -31,8 +42,8 @@ export function createAutomationLifecycleFixture(world: World) {
           throw new Error("Readback is unavailable.");
         return structuredClone(observed);
       },
-      pause: (missionId) => transition("pause", missionId),
-      resume: (missionId) => transition("resume", missionId),
+      transitionAtRevision: (missionId, action, digest) =>
+        transition(action, missionId, digest),
     },
     world.request,
   );
@@ -54,8 +65,11 @@ export function verifyAutomationLifecycle(
   return (
     operations.length === steps.length &&
     operations.every(
-      ({ action, missionId }, index) =>
-        action === steps[index] && missionId === world.request.missionId,
+      ({ action, missionId, expectedRevisionDigest }, index) =>
+        action === steps[index] &&
+        missionId === world.request.missionId &&
+        expectedRevisionDigest ===
+          (action === "get" ? undefined : world.request.revisionDigest),
     ) &&
     report?.missionId === world.expected.missionId &&
     report?.status === world.expected.status &&

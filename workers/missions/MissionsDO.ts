@@ -1048,7 +1048,36 @@ export class MissionsDO extends DurableObjectBase {
 
   @schemaRpc()
   pause(missionId: string): MissionRecord {
+    return this.pauseScheduling(this.requireMission(missionId));
+  }
+
+  @schemaRpc()
+  resume(missionId: string): MissionRecord {
+    return this.resumeScheduling(this.requireMission(missionId));
+  }
+
+  @schemaRpc()
+  transitionAtRevision(
+    missionId: string,
+    action: "pause" | "resume",
+    expectedRevisionDigest: string,
+  ): MissionRecord {
     const mission = this.requireMission(missionId);
+    if (mission.revisionDigest !== expectedRevisionDigest) {
+      throw Object.assign(
+        new Error(
+          "The automation definition changed. Read its current revision before changing scheduling.",
+        ),
+        { code: "MISSION_REVISION_CHANGED" },
+      );
+    }
+    return action === "pause"
+      ? this.pauseScheduling(mission)
+      : this.resumeScheduling(mission);
+  }
+
+  private pauseScheduling(mission: MissionRecord): MissionRecord {
+    const { missionId } = mission;
     if (mission.state === "paused") return mission;
     this.requireActive(mission);
     this.sql.exec(
@@ -1059,9 +1088,8 @@ export class MissionsDO extends DurableObjectBase {
     return this.requireMission(missionId);
   }
 
-  @schemaRpc()
-  resume(missionId: string): MissionRecord {
-    const mission = this.requireMission(missionId);
+  private resumeScheduling(mission: MissionRecord): MissionRecord {
+    const { missionId } = mission;
     if (mission.state === "active") return mission;
     if (mission.state !== "paused")
       throw denied("Only paused automations can resume");

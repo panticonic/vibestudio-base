@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   LifecycleAction,
   LifecycleReport,
@@ -14,7 +15,11 @@ type Readback =
   | null;
 type Options = {
   reads: Readback[];
-  effect?: LifecycleState | "acknowledgment-lost" | "wrong-receipt";
+  effect?:
+    | LifecycleState
+    | "acknowledgment-lost"
+    | "wrong-receipt"
+    | "revision-conflict";
   result: LifecycleReport["status"];
 };
 
@@ -26,12 +31,20 @@ function author(
   options: Options,
 ) {
   const missionId = "fixture-mission-" + slug;
-  const revisionDigest = "reviewed-" + slug;
+  const digest = (label: string) =>
+    createHash("sha256")
+      .update(label + ":" + slug)
+      .digest("hex");
+  const revisionDigest = digest("reviewed");
   const request: LifecycleRequest = { goal, action, missionId, revisionDigest };
   function adapt(row: Readback): MissionObservation | "offline" | null {
     if (row === null || row === "offline") return row;
     if (row === "different-revision")
-      return { missionId, revisionDigest: "replacement", state: "active" };
+      return {
+        missionId,
+        revisionDigest: digest("replacement"),
+        state: "active",
+      };
     if (row === "different-id")
       return { missionId: "unrelated", revisionDigest, state: "paused" };
     return { missionId, revisionDigest, state: row };
@@ -59,6 +72,17 @@ function author(
 }
 
 export const automationLifecycleWorlds = [
+  author(
+    "edited-before-controller",
+    "revision-race",
+    "Pause the reviewed reminder only if its definition still matches when the controller acts.",
+    "pause",
+    {
+      reads: ["active", "active", "different-revision"],
+      effect: "revision-conflict",
+      result: "held",
+    },
+  ),
   author(
     "maintenance-window",
     "pause-confirmed",
