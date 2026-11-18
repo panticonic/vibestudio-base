@@ -42,6 +42,13 @@ import {
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import {
+  composeHistoryText,
+  historyTextMergeInputs,
+  readHistoryMergeObservations,
+  type HistoryMergeObservation,
+  type HistoryMergeSelection,
+} from "./doltTextMerge.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 import type {
@@ -93,6 +100,11 @@ export type HistoryEditPlan =
       blobs: NonNullable<MutationDraft["blobs"]>;
       result: HistoryEditResult;
     };
+
+export type HistoryMergeResult =
+  | { kind: "read-content"; contentHashes: string[] }
+  | { kind: "prepare-content"; blobs: NonNullable<MutationDraft["blobs"]> }
+  | { kind: "committed"; value: StateNodeRef; head: string };
 
 type HistoryEditResult = ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
 export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
@@ -871,12 +883,13 @@ export class ParticipantHistory {
 
   /** Resolve the selected whole-row conflicts and write provenance in the native merge. */
   mergeReviewedMain(
-    selection: { head: string; base: string; main: string },
+    selection: HistoryMergeSelection,
     input: VcsMergeInput,
     cause: HistoryCommand["cause"],
     triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
-  ): Promise<{ readonly value: StateNodeRef; readonly head: string }> {
-    return this.#run(async () => {
+    content: { observation: HistoryMergeObservation; contentHashes?: readonly string[] } | null = null,
+  ): Promise<HistoryMergeResult> {
+    return this.#run<HistoryMergeResult>(async () => {
       const { sql } = this.#storage;
       const { commandId, contextId } = input;
       const command: HistoryCommand = {
@@ -885,7 +898,7 @@ export class ParticipantHistory {
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       if (this.#hasCommand(current, contextId, command)) {
         const { head, workingHead } = this.#applicationForCommand(current, commandId);
-        return { value: workingHead, head };
+        return { kind: "committed", value: workingHead, head };
       }
 
       if (input.source.kind !== "event") {
@@ -913,6 +926,41 @@ export class ParticipantHistory {
       if (declared.size !== resolutions.length) {
         throw new SemanticVcsError("IntegrityFailure", "Workspace integration repeats a placement");
       }
+      const candidates = [...scope.values()].flatMap(({ coordinate, changeIds }) => {
+        if (coordinate.kind !== "file") return [];
+        const choice = declared.get(keyOf(coordinate)) ?? fallback;
+        if (choice && choice.resolution !== "composed") return [];
+        const coordinates = historyTextMergeInputs(sql, selection, coordinate.id);
+        return coordinates ? [{ coordinate, coordinates, changeIds }] : [];
+      });
+      const requiredHashes = [...new Set(candidates.flatMap(({ coordinates }) => [
+        coordinates.before.contentHash, coordinates.ours.contentHash, coordinates.theirs.contentHash,
+      ]))].sort(compareUtf16CodeUnits);
+      if (requiredHashes.length > 0 && !content) {
+        return { kind: "read-content", contentHashes: requiredHashes };
+      }
+      const composed = new Map<string, NonNullable<ReturnType<typeof composeHistoryText>>>();
+      if (content) {
+        const observed = readHistoryMergeObservations(requiredHashes, content.observation);
+        for (const { coordinate, coordinates, changeIds } of candidates) {
+          const result = composeHistoryText(sql, selection, coordinates, observed, composed.size, changeIds);
+          if (result) composed.set(keyOf(coordinate), result);
+        }
+      }
+      const prepared = [...composed.values()];
+      const blobs = [...new Map(prepared.map(({ blob }) => [blob.contentHash, blob])).values()];
+      if (blobs.length > 0 && !content?.contentHashes) {
+        return { kind: "prepare-content", blobs };
+      }
+      if (content?.contentHashes &&
+          canonicalJson(content.contentHashes) !== canonicalJson(blobs.map(({ contentHash }) => contentHash).sort(compareUtf16CodeUnits))) {
+        throw new SemanticVcsError("IntegrityFailure", "Prepared text merge bytes do not match the selected revisions");
+      }
+      const origins = prepared.flatMap(({ localOrigin, sourceOrigin }) => [localOrigin, sourceOrigin]);
+      const externalKeys = [...new Set(origins.flatMap(({ externalKeys }) => externalKeys))].sort(compareUtf16CodeUnits);
+      if (externalKeys.length > 256) {
+        throw new SemanticVcsError("ScopeTooLarge", "Text merge has too many external lineage keys");
+      }
       this.#checkoutExpected(contextId, head);
       let value: StateNodeRef | undefined;
       const merged = this.#dolt.merge(main, {
@@ -926,13 +974,36 @@ export class ParticipantHistory {
             throw new SemanticVcsError("ConflictPresent", "Workspace integration has placement violations");
           }
           const entries: NonNullable<MutationDraft["decisions"]>[number]["entries"] = [];
+          let resolvedText = 0;
           for (const conflict of merge.conflicts) {
             const key = conflict.table === "files" ? canonicalJson(["file", conflict.key["file_id"]])
               : conflict.table === "repositories" ? canonicalJson(["repository", conflict.key["repository_id"]])
               : null;
             const incoming = key === null ? undefined : scope.get(key);
             const selected = key === null ? undefined : declared.get(key) ?? fallback;
-            if (!key || !incoming?.changeIds.length || !selected || selected.resolution === "composed") {
+            if (!key || !incoming?.changeIds.length) {
+              throw new SemanticVcsError("ConflictPresent", "Workspace integration needs an exact row resolution");
+            }
+            const text = composed.get(key);
+            if (text && text.file.result.presence === "placed") {
+              const { fileId, contentHash, contentKind, byteLength, coordinateExtent } = text.file.result;
+              sql.exec(
+                "UPDATE files SET content_hash = ?, content_kind = ?, byte_length = ?, coordinate_extent = ? WHERE file_id = ?",
+                contentHash, contentKind, byteLength, coordinateExtent, fileId,
+              );
+              conflict.resolve();
+              entries.push({
+                coordinate: incoming.coordinate,
+                resolution: "composed",
+                accountedSourceChangeIds: incoming.changeIds,
+                rationale: selected?.rationale ?? null,
+                resultChangeRef: text.file.changeRef,
+              });
+              resolvedText += 1;
+              declared.delete(key);
+              continue;
+            }
+            if (!selected || selected.resolution === "composed") {
               throw new SemanticVcsError("ConflictPresent", "Workspace integration needs an exact row resolution");
             }
             if (selected.resolution === "theirs") conflict.takeTheirs();
@@ -945,7 +1016,7 @@ export class ParticipantHistory {
             });
             declared.delete(key);
           }
-          if (declared.size > 0) {
+          if (declared.size > 0 || resolvedText !== composed.size) {
             throw new SemanticVcsError("RevisionChanged", "Prepared resolutions differ from the native conflict");
           }
           entries.sort((left, right) =>
@@ -955,15 +1026,20 @@ export class ParticipantHistory {
             kind: "merge",
             intentSummary: input.intentSummary ?? null,
             incorporatedChangeIds: entries.flatMap((entry) => entry.accountedSourceChangeIds),
-            changes: [],
-            fileResults: [],
+            changes: prepared.map(({ change }) => change),
+            fileResults: prepared.map(({ file }) => file),
             repositoryResults: [],
+            contentDerivations: prepared.flatMap(({ derivations }) => derivations),
             decisions: [{ targetState: input.expectedWorkingHead, sourceEventId: source.eventId, sourceDeltaId: null, entries }],
           };
           const { plan } = SemanticWorkspace.prepareApplication(input, draft, commandId, {
             now: () => new Date().toISOString(),
             workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
-            contentIntegrity: () => ({ class: "internal", externalKeys: [], contentOrigins: new Map() }),
+            contentIntegrity: () => ({
+              class: origins.some(({ contentClass }) => contentClass === "external") ? "external" : "internal",
+              externalKeys,
+              contentOrigins: new Map(),
+            }),
             contentOrigins: () => new Map(),
             invertedCounteractions: () => {
               throw new SemanticVcsError("IntegrityFailure", "A whole-row merge cannot counteract a change");
@@ -983,7 +1059,7 @@ export class ParticipantHistory {
       if (merged.fastForward || merged.upToDate || !value) {
         throw new Error("Workspace integration did not record its two parents and application");
       }
-      return { value, head: merged.hash };
+      return { kind: "committed", value, head: merged.hash };
     });
   }
 

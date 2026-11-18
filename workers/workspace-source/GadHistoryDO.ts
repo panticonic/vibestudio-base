@@ -364,6 +364,7 @@ export class GadHistoryDO extends DurableObjectBase {
     merge: VcsMergeInput;
     cause: HistoryCommand["cause"];
     triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+    content?: Parameters<ParticipantHistory["mergeReviewedMain"]>[4];
   }) {
     this.#assertWritable();
     return this.#history().mergeReviewedMain(
@@ -371,6 +372,7 @@ export class GadHistoryDO extends DurableObjectBase {
       vcsMergeInputSchema.parse(input.merge),
       input.cause,
       input.triggerEvidence,
+      input.content,
     );
   }
 

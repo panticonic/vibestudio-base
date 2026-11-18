@@ -451,7 +451,7 @@ const bytesFromBase64 = (value: string): Uint8Array => {
   return bytes;
 };
 
-const base64FromBytes = (value: Uint8Array): string => {
+export const base64FromBytes = (value: Uint8Array): string => {
   let binary = "";
   const chunk = 0x8000;
   for (let index = 0; index < value.length; index += chunk) {
