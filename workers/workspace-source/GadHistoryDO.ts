@@ -6,8 +6,10 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
   vcsCommitInputSchema,
   vcsEditInputSchema,
+  vcsReadFilesInputSchema,
   type VcsCommitInput,
   type VcsEditInput,
+  type VcsReadFilesInput,
 } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
@@ -208,6 +210,16 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryProjection(input: { contextId: string }) {
     return this.#history().projection(input.contextId);
+  }
+
+  @rpc(hostRead)
+  readHistoryStatus(input: { contextId: string }) {
+    return this.#history().status(input.contextId);
+  }
+
+  @rpc(hostRead)
+  readHistoryFiles(input: { contextId: string; read: VcsReadFilesInput }) {
+    return this.#history().readFiles(input.contextId, vcsReadFilesInputSchema.parse(input.read));
   }
 
   @rpc(hostRead)

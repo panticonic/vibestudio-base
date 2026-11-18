@@ -1,5 +1,7 @@
 import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
+import type { VcsReadFilesInput } from "@vibestudio/service-schemas/vcs";
+import { semanticFileHostReadSchema } from "@vibestudio/service-schemas/workspaceSource";
 import type { WorkspaceMaterializationRepository } from "@vibestudio/shared/vcs/workspaceProjection";
 import {
   compactId,
@@ -221,6 +223,71 @@ export function workspaceEditBasisAt(sql: SqlStorage, commit: string): Workspace
   };
 }
 
+/** Resolve a batch of exact file coordinates with their content lineage. */
+export function workspaceFileReadsAt(sql: SqlStorage, commit: string, input: VcsReadFilesInput) {
+  if (input.files.length === 0) return [];
+  const rows = sql.exec(
+    `WITH selectors AS (
+       SELECT CAST(key AS INTEGER) AS ordinal,
+              json_extract(value, '$.repositoryId') AS repository_id,
+              json_extract(value, '$.file.fileId') AS file_id,
+              json_extract(value, '$.file.path') AS path
+         FROM json_each(?2)
+     )
+     SELECT selector.ordinal, file.file_id, file.repository_id, repo.repo_path, file.path,
+            file.content_hash, file.content_kind, file.byte_length, file.coordinate_extent, file.mode
+       FROM selectors AS selector
+       JOIN dolt_at_repositories(?1) AS repo
+         ON repo.repository_id = selector.repository_id AND repo.presence = 'present'
+       JOIN dolt_at_files(?1) AS file
+         ON file.repository_id = repo.repository_id AND file.presence = 'placed'
+        AND (file.file_id = selector.file_id OR file.path = selector.path)
+      ORDER BY selector.ordinal`,
+    commit,
+    JSON.stringify(input.files),
+  ).toArray();
+  const fileIds = rows.map((row) => {
+    const id = row["file_id"];
+    if (typeof id !== "string") throw new SemanticVcsError("IntegrityFailure", "Invalid workspace file identity");
+    return id;
+  });
+  const origins = workspaceContentOriginsAt(sql, commit, fileIds);
+  const result: Array<ReturnType<typeof semanticFileHostReadSchema.parse> | null> =
+    input.files.map(() => null);
+  for (const row of rows) {
+    const { ordinal, file_id, repository_id, repo_path, path, content_hash, content_kind,
+      byte_length, coordinate_extent, mode } = row;
+    if (typeof ordinal !== "number" || !Number.isInteger(ordinal) || result[ordinal] !== null) {
+      throw new SemanticVcsError("IntegrityFailure", "Invalid workspace file selector match");
+    }
+    const origin = origins.get(String(file_id));
+    if (!origin?.content || origin.content.contentHash !== content_hash ||
+        origin.content.coordinateExtent !== coordinate_extent ||
+        origin.content.coordinateKind !== (content_kind === "text" ? "utf16" : "byte")) {
+      throw new SemanticVcsError("IntegrityFailure", `File ${String(file_id)} has no matching content origin`);
+    }
+    const { authoredChangeId, authoredByWorkUnitId, contentClass, externalKeys } = origin;
+    result[ordinal] = semanticFileHostReadSchema.parse({
+      kind: "read-semantic-blob",
+      state: input.state,
+      repositoryId: repository_id,
+      fileId: file_id,
+      repoPath: repo_path,
+      path,
+      contentHash: content_hash,
+      contentKind: content_kind,
+      byteLength: byte_length,
+      coordinateExtent: coordinate_extent,
+      authoredChangeId,
+      authoredByWorkUnitId,
+      contentClass,
+      externalKeys,
+      mode,
+    });
+  }
+  return result;
+}
+
 /** Turn authored transitions into the exact rows the participant transaction compares and writes. */
 export function prepareDoltEditPlacement(
   commit: string,
@@ -366,10 +433,11 @@ export function workspaceMergeSourcesAt(
       if (kind === "application") basis = { kind, applicationId: target };
     }
     const savedSource = committedWorkspaceEvent(sql, theirs);
-    if (typeof source !== "string" || savedSource?.head !== theirs || savedSource.eventId !== source ||
-        !basis || workspaceCommitForRef(sql, ours, basis) !== ours) throw incomplete();
+    if (savedSource?.head !== theirs) throw incomplete();
+    if (source !== null && (source !== savedSource.eventId ||
+        !basis || workspaceCommitForRef(sql, ours, basis) !== ours)) throw incomplete();
     byApplication.delete(introduced[0]);
-    sources.add(source);
+    sources.add(savedSource.eventId);
   }
   if (byApplication.size > 0) throw incomplete();
   return [...sources];
@@ -428,24 +496,116 @@ export function workspaceContentOriginsAt(
 ): Map<string, FileContentOrigin> {
   const origins = new Map<string, FileContentOrigin>();
   if (fileIds.length === 0) return origins;
-  const applied = SemanticWorkspace.readAppliedFileChanges(
-    sql,
-    workspaceApplicationsAt(sql, commit),
-    fileIds,
-    commit,
-  );
-  for (const [fileId, change] of applied) {
-    origins.set(fileId, {
-      ref: { kind: "applied-change", appliedChangeId: change.appliedChangeId },
-      content: change.content,
-      authoredChangeId: change.changeId,
-      authoredByWorkUnitId: change.workUnitId,
-      contentClass: change.contentClass,
-      externalKeys: change.externalKeys,
-    });
+  const pending = new Map([[commit, new Set(fileIds)]]);
+  for (const [at, selected] of pending) {
+    pending.delete(at);
+    const merge = nearestPlacementMerge(sql, at);
+    const applied = SemanticWorkspace.readAppliedFileChanges(
+      sql,
+      workspaceApplicationsAt(sql, at, merge?.ours),
+      [...selected],
+      at,
+    );
+    for (const [fileId, change] of applied) {
+      origins.set(fileId, {
+        ref: { kind: "applied-change", appliedChangeId: change.appliedChangeId },
+        content: change.content,
+        authoredChangeId: change.changeId,
+        authoredByWorkUnitId: change.workUnitId,
+        contentClass: change.contentClass,
+        externalKeys: change.externalKeys,
+      });
+      selected.delete(fileId);
+    }
+    if (selected.size === 0) continue;
+    if (!merge) {
+      addSnapshotOrigins(sql, at, selected, origins);
+      continue;
+    }
+    for (const [fileId, parent] of placementMergeParents(sql, merge, [...selected])) {
+      const group = pending.get(parent);
+      if (group) group.add(fileId);
+      else pending.set(parent, new Set([fileId]));
+    }
   }
-  const missing = new Set(fileIds.filter((fileId) => !origins.has(fileId)));
-  if (missing.size === 0) return origins;
+  return origins;
+}
+
+function nearestPlacementMerge(sql: SqlStorage, commit: string) {
+  const rows = sql.exec(
+    `WITH RECURSIVE lineage(hash, ours) AS (
+       SELECT commit_hash, parent_hash FROM dolt_commit_ancestors
+        WHERE commit_hash = ? AND parent_index = 0 AND parent_hash IS NOT NULL
+       UNION ALL
+       SELECT parent.commit_hash, parent.parent_hash
+         FROM lineage AS child JOIN dolt_commit_ancestors AS parent ON parent.commit_hash = child.ours
+        WHERE parent.parent_index = 0 AND parent.parent_hash IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM dolt_commit_ancestors AS extra
+             WHERE extra.commit_hash = child.hash AND extra.parent_index > 0
+          )
+     )
+     SELECT lineage.hash, lineage.ours, extra.parent_hash AS theirs
+       FROM lineage JOIN dolt_commit_ancestors AS extra ON extra.commit_hash = lineage.hash
+      WHERE extra.parent_index > 0 LIMIT 2`,
+    commit,
+  ).toArray();
+  if (rows.length === 0) return null;
+  const { hash, ours, theirs } = rows[0]!;
+  if (rows.length !== 1 || typeof hash !== "string" || typeof ours !== "string" || typeof theirs !== "string") {
+    throw new SemanticVcsError("IntegrityFailure", "Workspace merge has invalid placement parents");
+  }
+  return { hash, ours, theirs };
+}
+
+/** Prefer a matching placement, then the parent whose content survives a combined row. */
+function placementMergeParents(
+  sql: SqlStorage,
+  merge: { hash: string; ours: string; theirs: string },
+  fileIds: readonly string[],
+): Array<[string, string]> {
+  const rows = sql.exec(
+    `WITH revisions(side, head) AS (VALUES ('merge', ?1), ('ours', ?2), ('theirs', ?3)),
+          placements AS MATERIALIZED (
+            SELECT selected.value AS id, revisions.side,
+                   json_array(file.repository_id, file.path, file.mode, file.presence, file.tombstone_change_id,
+                              file.content_hash, file.content_kind, file.byte_length, file.coordinate_extent) AS placement,
+                   json_array(file.content_hash, file.content_kind, file.byte_length, file.coordinate_extent) AS content
+              FROM revisions CROSS JOIN json_each(?4) AS selected
+              LEFT JOIN dolt_at_files(revisions.head) AS file ON file.file_id = selected.value
+          )
+     SELECT merged.id, CASE
+              WHEN merged.placement = ours.placement THEN ?2
+              WHEN merged.placement = theirs.placement THEN ?3
+              WHEN merged.content = ours.content THEN ?2
+              WHEN merged.content = theirs.content THEN ?3
+            END AS parent
+       FROM placements AS merged
+       JOIN placements AS ours ON ours.id = merged.id AND ours.side = 'ours'
+       JOIN placements AS theirs ON theirs.id = merged.id AND theirs.side = 'theirs'
+      WHERE merged.side = 'merge'`,
+    merge.hash,
+    merge.ours,
+    merge.theirs,
+    JSON.stringify(fileIds),
+  ).toArray();
+  if (rows.length !== fileIds.length) {
+    throw new SemanticVcsError("IntegrityFailure", "Workspace merge could not locate all file origins");
+  }
+  return rows.map(({ id, parent }) => {
+    if (typeof id !== "string" || typeof parent !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Workspace merge content has no recorded origin");
+    }
+    return [id, parent];
+  });
+}
+
+function addSnapshotOrigins(
+  sql: SqlStorage,
+  commit: string,
+  missing: Set<string>,
+  origins: Map<string, FileContentOrigin>,
+): void {
   const snapshots = sql.exec(
     `SELECT event_id, snapshot_source FROM dolt_at_events(?)
       WHERE kind = 'genesis' AND snapshot_source IS NOT NULL`,
@@ -480,7 +640,6 @@ export function workspaceContentOriginsAt(
       missing.delete(fileId);
     }
   }
-  return origins;
 }
 
 /** Rebuild the placement roots directly from the retained commit graph. */
