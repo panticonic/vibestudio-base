@@ -1,0 +1,388 @@
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
+import { DurableObjectBase, rpc } from "@vibestudio/durable";
+import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
+import { rpcBytesOf } from "@vibestudio/rpc";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
+import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
+import type { StateNodeRef } from "@workspace/vcs-engine";
+import { committedWorkspaceEvent, createDoltWorkspaceState } from "./doltWorkspaceState.js";
+import {
+  installPreparedReplayStep,
+  installReplayedMain,
+  type PreparedReplayStep,
+} from "./legacyDoltReplay.js";
+import {
+  grantApprovedMain,
+  grantParticipantHistory,
+  ParticipantHistory,
+  retireParticipantHistory,
+  revokeParticipantHistory,
+  type MainPublication,
+} from "./participantHistory.js";
+
+const source = "workers/workspace-source";
+const className = "GadHistoryDO";
+const canonicalKey = "canonical";
+const canonicalId = `do:${source}:${className}:${canonicalKey}`;
+const hostWrite = {
+  principals: ["host"],
+  website: {
+    kind: "closed",
+    reason: "Workspace history ownership and migration are managed by the host.",
+  },
+  effect: { kind: "open" },
+  tier: "open",
+  sensitivity: "write",
+} as const;
+const hostRead = { ...hostWrite, sensitivity: "read" } as const;
+
+const relay = createReceiverRpcMethods<
+  Pick<GadHistoryDO, "serveHistoryRemote" | "archiveHistoryParticipant">
+>(["serveHistoryRemote", "archiveHistoryParticipant"]);
+
+function workKey(participantId: string): string {
+  if (!participantId) throw new Error("Missing workspace participant identity");
+  return `work-${sha256HexSyncText(participantId)}`;
+}
+
+/** The hosted, versioned history owner. The workspace's trajectory mirror lives separately. */
+export class GadHistoryDO extends DurableObjectBase {
+  readonly #allocations = new Map<string, Promise<unknown>>();
+  #participant: ParticipantHistory | undefined;
+
+  protected createTables(): void {
+    createDoltWorkspaceState(this.sql);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS gad_history_allocations (
+      target_key TEXT PRIMARY KEY,
+      context_id TEXT NOT NULL,
+      fork_head TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved','active','retiring','archived','retired'))
+    )`);
+  }
+
+  protected override requiredTables(): readonly string[] {
+    return [
+      "repositories",
+      "files",
+      "events",
+      "applications",
+      "commands",
+      "gad_history_allocations",
+    ];
+  }
+
+  @rpc(hostWrite)
+  stageHistoryReplayStep(input: PreparedReplayStep): { head: string } {
+    this.#assertCanonical();
+    const head = this.#schemaHead();
+    const sealed = this.getStateValue("history-installed") !== null;
+    return { head: installPreparedReplayStep(this.ctx.storage, head, input, sealed).hash };
+  }
+
+  @rpc(hostWrite)
+  finishHistoryReplay(input: { eventId: string; head: string }): { head: string } {
+    this.#assertCanonical();
+    const staged = committedWorkspaceEvent(this.sql, input.head);
+    if (!staged || staged.head !== input.head || staged.eventId !== input.eventId) {
+      throw new Error("Workspace replay did not produce the verified main event");
+    }
+    const head = installReplayedMain(this.ctx.storage, this.#schemaHead(), {
+      main: input.head,
+      contexts: [],
+      commits: new Map(),
+    });
+    this.setStateValue("history-installed", head);
+    return { head };
+  }
+
+  @rpc(hostWrite)
+  reserveHistoryParticipant(input: { participantId: string; contextId: string }): Promise<{
+    targetId: string;
+    head: string;
+    origin: DoltRemoteTarget;
+  }> {
+    this.#assertCanonical();
+    const target = workKey(input.participantId);
+    return serializeByKey(this.#allocations, target, async () => {
+      const dolt = this.#remotes();
+      const main = dolt.hashOf("main");
+      if (!committedWorkspaceEvent(this.sql, main))
+        throw new Error("Workspace history has no installed main");
+      this.sql.exec(
+        `INSERT OR IGNORE INTO gad_history_allocations (target_key, context_id, fork_head) VALUES (?, ?, ?)`,
+        target,
+        input.contextId,
+        main
+      );
+      const stored = this.sql
+        .exec(
+          "SELECT context_id, fork_head, status FROM gad_history_allocations WHERE target_key = ?",
+          target
+        )
+        .one();
+      if (stored["context_id"] !== input.contextId || typeof stored["fork_head"] !== "string") {
+        throw new Error("Workspace participant allocation changed its owner context");
+      }
+      const forkHead = stored["fork_head"];
+      if (stored["status"] !== "reserved" && stored["status"] !== "active") {
+        throw new Error("Workspace participant is retiring");
+      }
+      const sourceRef = this.env["WORKER_SOURCE_REF"];
+      const handle = await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
+        {
+          kind: "do",
+          className,
+          key: target,
+          contextId: input.contextId,
+          execution: {
+            surface: "code",
+            source,
+            ...(typeof sourceRef === "string" ? { ref: sourceRef } : {}),
+          },
+          forkStorage: { at: forkHead },
+        },
+      ]);
+      if (
+        handle.targetId !== `do:${source}:${className}:${target}` ||
+        handle.contextId !== input.contextId
+      ) {
+        throw new Error("Runtime returned a different workspace participant allocation");
+      }
+      this.#setAllocationStatus(target, "active");
+      const grant = grantParticipantHistory(dolt, input.participantId, handle.targetId);
+      return {
+        targetId: handle.targetId,
+        head: forkHead,
+        origin: { ref: `${className}:${canonicalKey}`, token: grant.token },
+      };
+    });
+  }
+
+  @rpc(hostWrite)
+  async connectHistoryParticipant(input: {
+    participantId: string;
+    origin: DoltRemoteTarget;
+  }): Promise<string> {
+    this.ensureReady();
+    if (
+      this.objectKey !== workKey(input.participantId) ||
+      input.origin.ref !== `${className}:${canonicalKey}`
+    ) {
+      throw new Error("Workspace history origin does not match the participant allocation");
+    }
+    this.#assertWritable();
+    this.setStateValue("history-participant", input.participantId);
+    return this.#history().connect(input.origin);
+  }
+
+  @rpc(hostWrite)
+  openHistoryContext(input: { contextId: string; head: string }): Promise<string> {
+    this.#assertWritable();
+    return this.#history().openContext(input.contextId, input.head);
+  }
+
+  @rpc(hostRead)
+  readHistoryContext(input: { contextId: string; state: StateNodeRef }) {
+    return this.#history().materialization(input.contextId, input.state);
+  }
+
+  @rpc(hostRead)
+  readHistoryHeads(input: { contextId: string }) {
+    return this.#history().contextHeads(input.contextId);
+  }
+
+  @rpc(hostRead)
+  readHistoryMain() {
+    this.#assertCanonical();
+    const head = this.#remotes().hashOf("main");
+    const main = committedWorkspaceEvent(this.sql, head);
+    if (main?.head !== head) throw new Error("Workspace main is missing its committed event");
+    return main;
+  }
+
+  @rpc(hostWrite)
+  applyHistoryApplication(input: {
+    head: string;
+    command: Parameters<ParticipantHistory["applyApplication"]>[1];
+    plan: Parameters<ParticipantHistory["applyApplication"]>[2];
+  }) {
+    this.#assertWritable();
+    return this.#history().applyApplication(input.head, input.command, input.plan);
+  }
+
+  @rpc(hostWrite)
+  saveHistoryContext(input: {
+    contextId: string;
+    head: string;
+    command: Parameters<ParticipantHistory["commitEvent"]>[2];
+    event: Parameters<ParticipantHistory["commitEvent"]>[3];
+  }) {
+    this.#assertWritable();
+    return this.#history().commitEvent(input.contextId, input.head, input.command, input.event);
+  }
+
+  @rpc(hostWrite)
+  async publishHistoryContext(input: { contextId: string; head: string }) {
+    const history = this.#history();
+    await this.#assertSaved(history, input.contextId, input.head);
+    this.#assertWritable();
+    return history.publishContext(input.contextId, input.head);
+  }
+
+  /** The host owns approval and calls this with the exact reviewed transition. */
+  @rpc(hostWrite)
+  grantHistoryPublication(input: { participantId: string; publication: MainPublication }) {
+    this.#assertCanonical();
+    const target = workKey(input.participantId);
+    if (this.#allocationStatus(target) !== "active")
+      throw new Error("Workspace participant has no active history allocation");
+    const grant = grantApprovedMain(
+      this.#remotes(),
+      input.publication,
+      `do:${source}:${className}:${target}`
+    );
+    return { id: grant.id, origin: { ref: `${className}:${canonicalKey}`, token: grant.token } };
+  }
+
+  @rpc(hostWrite)
+  async publishApprovedHistory(input: {
+    contextId: string;
+    publication: MainPublication;
+    origin: DoltRemoteTarget;
+  }) {
+    const history = this.#history();
+    await this.#assertSaved(history, input.contextId, input.publication.proposedHead);
+    this.#assertWritable();
+    return history.publishApprovedMain(input.contextId, input.publication, input.origin);
+  }
+
+  @rpc(hostWrite)
+  releaseHistoryGrant(input: { id: string }): void {
+    this.#assertCanonical();
+    const remote = this.#remotes().remote;
+    if (remote.grants().some((grant) => grant.id === input.id)) remote.revoke(input.id);
+  }
+
+  @rpc(hostWrite)
+  retireHistoryParticipant(input: { participantId: string }): Promise<void> {
+    this.#assertCanonical();
+    const target = workKey(input.participantId);
+    const peer = `do:${source}:${className}:${target}`;
+    return serializeByKey(this.#allocations, target, async () => {
+      const status = this.#allocationStatus(target);
+      if (status === undefined || status === "retired") return;
+      const dolt = this.#remotes();
+      const destroy = async () => {
+        await this.rpc.call("main", mainRpcMethods["runtime.retireEntity"], [{ id: peer }]);
+        this.#setAllocationStatus(target, "retired");
+      };
+      if (status === "reserved" || status === "archived") {
+        this.#setAllocationStatus(target, "archived");
+        revokeParticipantHistory(dolt, input.participantId, peer);
+        await destroy();
+        return;
+      }
+      this.#setAllocationStatus(target, "retiring");
+      await retireParticipantHistory(
+        dolt,
+        input.participantId,
+        async (token, main) => {
+          await this.rpc.call(peer, relay.archiveHistoryParticipant, [
+            { main, origin: { ref: `${className}:${canonicalKey}`, token } },
+          ]);
+          this.#setAllocationStatus(target, "archived");
+        },
+        destroy,
+        peer
+      );
+    });
+  }
+
+  @rpc({ ...hostWrite, principals: ["code"], codeOnly: true })
+  async archiveHistoryParticipant(input: {
+    main: string;
+    origin: DoltRemoteTarget;
+  }): Promise<void> {
+    if (this.rpcCallerId !== canonicalId)
+      throw new Error("Workspace retirement requires its canonical owner");
+    this.ensureReady();
+    this.setStateValue("history-retiring", "true");
+    if (this.getStateValue("history-participant") !== null) {
+      await this.#history().archiveAllCommittedContexts(input.main, input.origin);
+    }
+  }
+
+  async #assertSaved(
+    history: ParticipantHistory,
+    contextId: string,
+    expectedHead: string
+  ): Promise<void> {
+    const { committed, workingHead } = await history.contextHeads(contextId);
+    if (committed.head !== expectedHead || workingHead !== expectedHead) {
+      throw new Error("Workspace publication requires the exact saved revision");
+    }
+  }
+
+  @rpc({ ...hostWrite, principals: ["code"], codeOnly: true })
+  serveHistoryRemote(bytes: Uint8Array): Uint8Array {
+    this.#assertCanonical();
+    const prefix = `do:${source}:${className}:`;
+    const caller = this.rpcCallerId;
+    const status = caller?.startsWith(prefix)
+      ? this.#allocationStatus(caller.slice(prefix.length))
+      : undefined;
+    if (!caller || (status !== "active" && status !== "retiring")) {
+      throw new Error("Workspace history remote requires an allocated participant");
+    }
+    const request = rpcBytesOf(bytes);
+    if (!request) throw new Error("Invalid workspace history remote request");
+    return this.#remotes().remote.serve(request, { peer: caller });
+  }
+
+  #assertCanonical(): void {
+    this.ensureReady();
+    if (this.objectKey !== canonicalKey)
+      throw new Error("Only the canonical workspace history owns this operation");
+  }
+
+  #allocationStatus(target: string): unknown {
+    return this.sql
+      .exec("SELECT status FROM gad_history_allocations WHERE target_key = ?", target)
+      .toArray()[0]?.["status"];
+  }
+
+  #setAllocationStatus(target: string, status: "active" | "retiring" | "archived" | "retired"): void {
+    this.sql.exec("UPDATE gad_history_allocations SET status = ? WHERE target_key = ?", status, target);
+  }
+
+  #assertWritable(): void {
+    this.ensureReady();
+    if (this.getStateValue("history-retiring") !== null)
+      throw new Error("Workspace participant is retiring");
+  }
+
+  #schemaHead(): string {
+    const existing = this.getStateValue("history-schema-head");
+    if (existing) return existing;
+    const head = this.#remotes().hashOf("main");
+    this.setStateValue("history-schema-head", head);
+    return head;
+  }
+
+  #remotes() {
+    const dolt = doltRemotesOf(this.ctx.storage);
+    if (!dolt) throw new Error("Hosted workspace history requires Dolt remotes");
+    return dolt;
+  }
+
+  #history(): ParticipantHistory {
+    this.ensureReady();
+    const participant = this.getStateValue("history-participant");
+    if (!participant || this.objectKey !== workKey(participant))
+      throw new Error("Workspace participant has no connected history");
+    return (this.#participant ??= new ParticipantHistory(participant, this.ctx.storage, (bytes) =>
+      this.rpc.call(canonicalId, relay.serveHistoryRemote, [bytes])
+    ));
+  }
+}

@@ -1,8 +1,8 @@
 import type { SqlStorage } from "@vibestudio/durable";
 
 /** Versioned workspace facts retained by both history stores during replay. */
-export function createSemanticHistoryTables(sql: SqlStorage): void {
-  sql.exec(`
+export function createSemanticHistoryTables(sql: SqlStorage, engine: "sqlite" | "dolt" = "sqlite"): void {
+  const ddl = `
     CREATE TABLE IF NOT EXISTS workspace_template_installations (
       event_id TEXT PRIMARY KEY,
       installation_json TEXT NOT NULL CHECK (json_valid(installation_json) = 1)
@@ -256,5 +256,7 @@ export function createSemanticHistoryTables(sql: SqlStorage): void {
       PRIMARY KEY (event_id, ordinal),
       UNIQUE (event_id, delta_id)
     );
-  `);
+  `;
+  // Preserve the legacy SQLite schema fingerprint while using Dolt's comment-free DDL.
+  sql.exec(engine === "dolt" ? ddl.replace(/^[\t ]*--[^\n]*\n/gmu, "") : ddl);
 }

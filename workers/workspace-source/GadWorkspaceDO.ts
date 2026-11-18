@@ -1,4 +1,8 @@
 import { registryMutationFromLogEnvelope, isAgenticLogKind } from "@workspace/agentic-protocol";
+export { GadHistoryDO } from "./GadHistoryDO.js";
+import { prepareReplayStep, type PreparedReplayStep } from "./legacyDoltReplay.js";
+import { legacyHistoryReplay } from "./legacyHistoryReplay.js";
+import type { StateNodeRef } from "@workspace/vcs-engine";
 import { prepareLogEvent, agenticLogCausality as agenticCausality, type PreparedLogEvent, type LogAppendEventInput } from "@workspace/agentic-protocol";
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
@@ -1323,6 +1327,34 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   private semanticVcsStore(): SemanticVcsStore {
     return new SemanticVcsStore(this.sql, nowIso);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  exportHistoryReplayPlan() {
+    this.ensureReady();
+    const store = this.semanticVcsStore();
+    const { main, history, contexts } = store.legacyReplayPlan();
+    return {
+      main,
+      contexts,
+      steps: Array.from(legacyHistoryReplay(store, history), (step): StateNodeRef =>
+        step.kind === "event" ? { kind: "event", eventId: step.record.eventId }
+          : { kind: "application", applicationId: step.record.applicationId }),
+    };
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  exportHistoryReplayStep(ref: StateNodeRef): PreparedReplayStep {
+    this.ensureReady();
+    return prepareReplayStep(this.semanticVcsStore(), ref);
   }
 
   private semanticWorkspace(): SemanticWorkspace {

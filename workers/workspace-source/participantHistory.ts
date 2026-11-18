@@ -62,6 +62,7 @@ function branchSegment(value: string): string {
 export function grantParticipantHistory(
   canonical: DoltRemoteStorage,
   participantId: string,
+  peer?: string,
 ): DoltGrant {
   const participant = branchSegment(participantId);
   return canonical.remote.grant({
@@ -69,6 +70,7 @@ export function grantParticipantHistory(
     fetch: true,
     branches: ["main", "pub/*"],
     push: [`pub/${participant}/*`],
+    ...(peer === undefined ? {} : { peer }),
   });
 }
 
@@ -78,6 +80,7 @@ export async function retireParticipantHistory(
   participantId: string,
   archive: (token: string, main: string) => Promise<void>,
   destroy: () => Promise<void>,
+  peer?: string,
 ): Promise<void> {
   const participant = branchSegment(participantId);
   const label = `retire:${participant}`;
@@ -89,16 +92,25 @@ export async function retireParticipantHistory(
     fetch: true,
     branches: ["main"],
     push: [`retired/${participant}/*`],
+    ...(peer === undefined ? {} : { peer }),
   });
   try {
     await archive(grant.token, canonical.hashOf("main"));
   } finally {
     canonical.remote.revoke(grant.id);
   }
-  for (const grant of canonical.remote.grants()) {
-    if (grant.label === participant) canonical.remote.revoke(grant.id);
-  }
+  revokeParticipantHistory(canonical, participantId, peer);
   await destroy();
+}
+
+export function revokeParticipantHistory(canonical: DoltRemoteStorage, participantId: string, peer?: string): void {
+  const participant = branchSegment(participantId);
+  for (const grant of canonical.remote.grants()) {
+    if (grant.label === participant || grant.label === `retire:${participant}` ||
+        (peer !== undefined && grant.peer === peer)) {
+      canonical.remote.revoke(grant.id);
+    }
+  }
 }
 
 /**
@@ -108,6 +120,7 @@ export async function retireParticipantHistory(
 export function grantApprovedMain(
   canonical: DoltRemoteStorage,
   publication: MainPublication,
+  peer?: string,
 ): DoltGrant {
   const actual = canonical.hashOf("main");
   if (actual !== publication.previousHead) {
@@ -117,7 +130,7 @@ export function grantApprovedMain(
     previous: publication.previousHead,
     next: publication.proposedHead,
   };
-  const grant = canonical.remote.grant({ push: ["main"], pushTransition });
+  const grant = canonical.remote.grant({ push: ["main"], pushTransition, ...(peer === undefined ? {} : { peer }) });
   if (
     grant.pushTransition?.previous !== pushTransition.previous ||
     grant.pushTransition.next !== pushTransition.next
@@ -433,27 +446,40 @@ export class ParticipantHistory {
     main: string,
     grantTarget: DoltRemoteTarget
   ): Promise<void> {
-    return this.#run(async () => {
-      const remote = "retirement";
-      this.#configureRemote(remote, grantTarget);
-      try {
-        await this.#dolt.fetch(remote, {
-          branches: ["main"],
-          transport: this.#transport,
-        });
+    return this.#run(() => {
         // Resolve and check all tips before publishing anything. Applications
         // after a committed tip can already be stored on the context branch.
-        const archives = contexts.flatMap(({ contextId, head }) => {
+        const archives = contexts.map(({ contextId, head }) => {
           const context = this.#contextBranch(contextId);
           const committed = this.#dolt.hashOf(head);
           if (committed !== this.#mergeBase(context, committed)) {
             throw new Error(`Committed tip is outside context ${contextId}`);
           }
-          if (committed === this.#mergeBase(main, committed)) return [];
-          const branch = `retired/${this.#participant}/${context.slice("ctx/".length)}`;
-          return [{ branch, committed }];
+          return { context, committed };
         });
-        for (const { branch, committed } of archives) {
+        return this.#archiveCommittedBranches(archives, main, grantTarget);
+    });
+  }
+
+  archiveAllCommittedContexts(main: string, grantTarget: DoltRemoteTarget): Promise<void> {
+    return this.#run(() => {
+      const archives = this.#dolt.branch.list().filter(({name}) => name.startsWith("ctx/")).map(({name, hash}) => {
+        const event = committedWorkspaceEvent(this.#storage.sql, hash);
+        if (!event) throw new Error(`Workspace history lacks a committed event for ${name}`);
+        return { context: name, committed: event.head };
+      });
+      return this.#archiveCommittedBranches(archives, main, grantTarget);
+    });
+  }
+
+  async #archiveCommittedBranches(archives: readonly { context: string; committed: string }[], main: string, grantTarget: DoltRemoteTarget): Promise<void> {
+      const remote = "retirement";
+      this.#configureRemote(remote, grantTarget);
+      try {
+        await this.#dolt.fetch(remote, { branches: ["main"], transport: this.#transport });
+        for (const { context, committed } of archives) {
+          if (committed === this.#mergeBase(main, committed)) continue;
+          const branch = `retired/${this.#participant}/${context.slice("ctx/".length)}`;
           if (!this.#dolt.branch.list().some((entry) => entry.name === branch)) {
             this.#dolt.branch.create(branch, { from: committed });
           }
@@ -464,7 +490,6 @@ export class ParticipantHistory {
       } finally {
         this.#dolt.remote.remove(remote);
       }
-    });
   }
 
   #mergeBase(left: string, right: string): string | null {

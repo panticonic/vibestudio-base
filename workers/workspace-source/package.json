@@ -13,6 +13,12 @@
         {
           "className": "GadWorkspaceDO",
           "rpcSchema": "vibestudio.gad.workspace.v1"
+        },
+        {
+          "className": "GadHistoryDO",
+          "storage": "dolt",
+          "doltRemotes": true,
+          "doltLocal": ["gad_history_allocations"]
         }
       ]
     },

@@ -190,7 +190,7 @@ export function committedWorkspaceEvent(
 }
 
 export function createDoltWorkspaceState(sql: SqlStorage): void {
-  createSemanticHistoryTables(sql);
+  createSemanticHistoryTables(sql, "dolt");
   sql.exec(`
     CREATE TABLE IF NOT EXISTS repositories (
       repository_id TEXT PRIMARY KEY,
@@ -385,6 +385,34 @@ export function verifyDoltWorkspaceState(
       throw new Error(`Workspace replay has different ${table} at ${hash}`);
     }
   }
+}
+
+function canonicalPlacementRows(rows: {
+  repositories: readonly (readonly unknown[])[];
+  files: readonly (readonly unknown[])[];
+}): string {
+  const byIdentity = (left: readonly unknown[], right: readonly unknown[]) =>
+    compareUtf16CodeUnits(String(left[0]), String(right[0]));
+  return compactId("workspace-placement-proof", {
+    repositories: [...rows.repositories].sort(byIdentity),
+    files: [...rows.files].sort(byIdentity),
+  });
+}
+
+export function expectedPlacementProof(change: PlacementChange): string {
+  return canonicalPlacementRows(placementRows(change));
+}
+
+export function workspacePlacementProof(sql: SqlStorage, at?: string): string {
+  function rows(table: "repositories" | "files", columns: readonly string[]) {
+    const target = at === undefined ? table : `dolt_at_${table}(?)`;
+    return sql.exec(`SELECT ${columns.join(", ")} FROM ${target}`, ...(at === undefined ? [] : [at]))
+      .toArray().map((row) => columns.map((key) => row[key]));
+  }
+  return canonicalPlacementRows({
+    repositories: rows("repositories", repositoryColumns),
+    files: rows("files", fileColumns),
+  });
 }
 
 function placementRows(change: PlacementChange, side: "result" | "expected" = "result") {
