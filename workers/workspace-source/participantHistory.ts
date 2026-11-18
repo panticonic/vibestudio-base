@@ -18,6 +18,7 @@ import {
   recordDoltWorkspaceApplication,
   recordDoltWorkspaceEvent,
   workspaceCommitForRef,
+  workspacePlacementRoots,
   workspaceRepositoriesAt,
 } from "./doltWorkspaceState.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
@@ -187,6 +188,13 @@ export class ParticipantHistory {
       if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
       return workspaceRepositoriesAt(this.#storage.sql, commit);
     });
+  }
+
+  placementHistoryRoots(): Promise<string[]> {
+    return this.#run(() => workspacePlacementRoots(
+      this.#storage.sql,
+      this.#dolt.branch.list().map(({ hash }) => hash),
+    ));
   }
 
   forkContext(parentId: string, expectedHead: string, childId: string): Promise<string> {

@@ -121,6 +121,21 @@ export function workspaceRepositoriesAt(
     .sort((left, right) => compareUtf16CodeUnits(left.repoPath, right.repoPath));
 }
 
+/** Rebuild the placement roots directly from the retained commit graph. */
+export function workspacePlacementRoots(sql: SqlStorage, retained: readonly string[]): string[] {
+  const rows = sql.exec(
+    `SELECT DISTINCT files.content_hash
+       FROM json_each(?) AS tips CROSS JOIN dolt_history_files(tips.value) AS files
+      WHERE files.content_hash IS NOT NULL ORDER BY files.content_hash`,
+    JSON.stringify([...new Set(retained)]),
+  ).toArray();
+  return rows.map((row) => {
+    const hash = row["content_hash"];
+    if (typeof hash !== "string" || !hash) throw new Error("Invalid workspace content identity");
+    return hash;
+  });
+}
+
 /** Locate the most recent committed event on a context's first-parent chain. */
 export function committedWorkspaceEvent(
   sql: SqlStorage,
