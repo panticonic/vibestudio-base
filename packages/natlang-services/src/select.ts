@@ -60,6 +60,8 @@ function hostService(name: ServiceName) {
 }
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  localMessagingRead: binding("localMessagingRead"),
+  localMessagingSend: binding("localMessagingSend"),
   serverLog: hostService("serverLog"),
   panelRepair: binding("panelRepair"),
   panelRepairEdit: binding("panelRepairEdit"),

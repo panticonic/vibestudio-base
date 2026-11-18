@@ -187,6 +187,8 @@ export const SERVICE_CATALOG = [
       { name: "test", params: ["revision"] },
     ],
   },
+  {name:"localMessagingRead",summary:"Inspect the owned synthetic conversation and actual local delivery evidence.",contract:{origin:"base",file:"packages/natlang-services/src/localMessagingContracts.ts",table:"localMessagingReadMethods"},methods:[{name:"inspect",params:["recipientPhrase"]},{name:"inspectDelivery",params:["receipt"]}]},
+  {name:"localMessagingSend",summary:"Deliver the exact requested note to one owned local synthetic agent through original notify.",contract:{origin:"base",file:"packages/natlang-services/src/localMessagingContracts.ts",table:"localMessagingSendMethods"},methods:[{name:"send",params:["revision","recipientPhrase","ref","content"]}]},
 ] as const satisfies readonly ServiceCatalogEntry[];
 
 export type ServiceName = (typeof SERVICE_CATALOG)[number]["name"];

@@ -5,9 +5,11 @@
   "type": "module",
   "description": "Message anyone with the notify tool: its addressee grammar, the escalation ladder, and resolving a named recipient.",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./local-workflow": "./local-messaging.ts"
   },
   "dependencies": {
-    "@workspace/agentic-protocol": "workspace:*"
+    "@workspace/agentic-protocol": "workspace:*",
+    "@vibestudio/content-addressing": "workspace:*"
   }
 }

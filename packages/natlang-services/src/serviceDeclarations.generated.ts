@@ -986,4 +986,54 @@ export function test(revision: string): Promise<{
     truncatedDiagnosticText: number;
   } | null;
 }>;`,
+  localMessagingRead: `/** Inspect the owned synthetic conversation and actual local delivery evidence. */
+
+/** Read the actual owned synthetic roster and exact canonical recipient resolution. */
+export function inspect(recipientPhrase: string): Promise<{
+  fixtureId: string;
+  channelId: string;
+  revision: string;
+  rows: {
+    ref: string;
+    kind: string;
+    note: string;
+  }[];
+  resolution: {
+    kind: "ref";
+    ref: string;
+    note: string;
+  } | {
+    kind: "ambiguous";
+    reason: "none" | "several";
+    candidates: {
+      ref: string;
+      kind: string;
+      note: string;
+    }[];
+  };
+}>;
+
+/** Read original committed local message evidence without sending. */
+export function inspectDelivery(receipt: {
+  messageId: string;
+  channelId: string;
+  to: string;
+  alert: "none";
+} | null): Promise<{
+  channelId: string;
+  messageId: string | null;
+  committed: boolean;
+  recipientRefs: string[];
+  content: string | null;
+  evidence: string[];
+}>;`,
+  localMessagingSend: `/** Deliver the exact requested note to one owned local synthetic agent through original notify. */
+
+/** Send the exact requested note through original notify to one owned local synthetic agent, with stable operation identity. */
+export function send(revision: string, recipientPhrase: string, ref: string, content: string): Promise<{
+  messageId: string;
+  channelId: string;
+  to: string;
+  alert: "none";
+}>;`,
 };

@@ -25,6 +25,7 @@ function evalBindings() {
   const rpc = { call: vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ runId: "run-1" })) };
   const extensions = { invoke: vi.fn(async (..._args: unknown[]): Promise<unknown> => []) };
   return {
+    ...Object.fromEntries(SERVICE_NAMES.map(name => [name, withExtras(name)])),
     services: rawServices,
     panelRepair: withExtras("panelRepair"),
     panelRepairEdit: withExtras("panelRepairEdit"),
@@ -39,7 +40,7 @@ function evalBindings() {
 describe("selectServices", () => {
   it("refuses unknown service names instead of ignoring them", () => {
     expect(() => selectServices(evalBindings(), ["serverLog", "serverLogs", "shell"])).toThrow(
-      /unknown natlang services "serverLogs", "shell"; available: serverLog, docs/
+      `unknown natlang services "serverLogs", "shell"; available: ${SERVICE_NAMES.join(", ")}`
     );
     expect(() => selectServices(evalBindings(), ["toString"])).toThrow(/unknown natlang service "toString"/);
   });

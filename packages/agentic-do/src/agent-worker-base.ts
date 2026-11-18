@@ -1,3 +1,4 @@
+import { createLocalMessaging, type OwnedMessagingLease } from "@workspace-skills/messaging/local-workflow";
 import { executeSandboxTest } from "@workspace/harness/unit-verification";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
@@ -922,6 +923,11 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
    *  `resolveAddressee`: every row prints the exact ref `notify` accepts, so
    *  "who can I message" and "how do I message them" are one answer, not two
    *  vocabularies the agent has to translate between. */
+  /** Actual conversation rows used by list_addressees and native workflow resolution. */
+  protected conversationAddressees(channelId: string, metadata?: AgentToolExecutionContext["metadata"]) {
+    return listAddressees(this.conversationAddresseeContext(channelId, metadata));
+  }
+
   protected createDiscoveryTools(
     channelId: string,
     toolRpc: RpcClient = this.rpc,
@@ -939,7 +945,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
           additionalProperties: false,
         }),
         execute: async () => {
-          const rows = listAddressees(this.conversationAddresseeContext(channelId, execution?.metadata));
+          const rows = this.conversationAddressees(channelId, execution?.metadata);
           return {
             output: [{ type: "text", text: formatAddresseeRows(rows) }],
             details: copyJson({ addressees: rows }, { omitUndefinedProperties: true }),
@@ -1029,7 +1035,6 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
     fs: ReturnType<typeof createRpcFs>,
     execution?: AgentToolExecutionContext
   ): ToolRegistration {
-    const toolRpc = execution?.rpc ?? this.rpc;
     return {
       name: "notify",
 
@@ -1107,7 +1112,58 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         },
         required: ["content"],
       }),
-      execute: async (params, _api, _executionContext) => {
+      execute: async (params, _api, _executionContext) =>
+        this.notifyConversation(channelId, fs, params, execution),
+    };
+  }
+
+  /** Bind the real discovery/notify operations to an independently owned synthetic fixture. */
+  protected localMessagingBindings(options: {
+    lease: OwnedMessagingLease;
+    assertOwnedFixture: () => Promise<OwnedMessagingLease>;
+    inspectCommitted: Parameters<typeof createLocalMessaging>[0]["inspectCommitted"];
+  }) {
+    const { lease } = options;
+    return createLocalMessaging({
+      ...options,
+      addressees: async () => this.conversationAddressees(lease.channelId),
+      notify: async (input, operationId) => {
+        await options.assertOwnedFixture();
+        if (this.subscriptions.getParticipantId(lease.channelId) !== lease.senderParticipantId)
+          throw new Error("The synthetic fixture sender no longer owns this channel subscription.");
+        const context = await this.addresseeContext(lease.channelId);
+        for (const ref of input.to) {
+          const resolved = resolveAddressee(ref, context);
+          const recipient = lease.recipients.find(value => value.ref === ref);
+          if (!recipient || isAddresseeError(resolved) || resolved.channelId !== lease.channelId ||
+              !((resolved.kind === "participant" && resolved.ref.kind === "agent") ||
+                (resolved.kind === "agent" && !resolved.foreign)) ||
+              resolved.participantId !== recipient.participantId)
+            throw new Error("Notify requires the exact owned local synthetic agent recipient.");
+        }
+        const result = await this.notifyConversation(lease.channelId, createRpcFs(this.rpc), input, {
+          invocationId: operationId, rpc: this.rpc,
+        });
+        const details = result.details;
+        if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Notify returned no structured original receipt.");
+        const sent = details["sent"];
+        if (!Array.isArray(sent) || sent.length !== 1) throw new Error("Owned local notify returned an unexpected delivery set.");
+        const entry = sent[0];
+        if (!entry || typeof entry !== "object" || Array.isArray(entry) || typeof entry["messageId"] !== "string" || entry["channelId"] !== lease.channelId)
+          throw new Error("Owned notify returned no original local message receipt.");
+        return { messageId: entry["messageId"], channelId: lease.channelId };
+      },
+    });
+  }
+
+  /** Original notify operation shared by tool and owned workflow callers; no tool UI API is required. */
+  protected async notifyConversation(
+    channelId: string,
+    fs: ReturnType<typeof createRpcFs>,
+    params: unknown,
+    execution?: Pick<AgentToolExecutionContext, "rpc" | "metadata" | "invocationId">,
+  ) {
+    const toolRpc = execution?.rpc ?? this.rpc;
         const toolCallId = execution?.invocationId;
         if (!toolCallId) throw new Error("Native tool requires its attributed invocation");
         const input = params as {
@@ -1394,11 +1450,9 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         }
 
         return {
-          output: [{ type: "text", text: results.join("; ") }],
+          output: [{ type: "text" as const, text: results.join("; ") }],
           details: copyJson({ alert, sent }, { omitUndefinedProperties: true }),
         };
-      },
-    };
   }
 
   /** Native child launch waits are owned by the vessel; inspection and messaging
