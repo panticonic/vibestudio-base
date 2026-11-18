@@ -175,7 +175,9 @@ export class GadHistoryDO extends DurableObjectBase {
             kind: "do",
             className,
             key: target,
-            contextId: input.contextId,
+            // This cell owns a storage copy. The host admits and binds the
+            // participant's logical context separately; the runtime inherits
+            // this history service's context for the physical storage entity.
             execution: {
               surface: "code",
               source,
@@ -184,7 +186,7 @@ export class GadHistoryDO extends DurableObjectBase {
             forkStorage: { at: forkHead },
           },
         ]);
-        if (handle.targetId !== targetId || handle.contextId !== input.contextId) {
+        if (handle.targetId !== targetId) {
           throw new Error("Runtime returned a different workspace participant allocation");
         }
         this.#setAllocationStatus(target, "active");
@@ -426,6 +428,11 @@ export class GadHistoryDO extends DurableObjectBase {
   }) {
     this.#assertWritable();
     return this.#history().saveContext(input.head, vcsCommitInputSchema.parse(input.commit), input.cause);
+  }
+
+  @rpc(hostRead)
+  hasHistoryDiscardReceipt(input: { discard: VcsDiscardInput; cause: HistoryCommand["cause"] }) {
+    return this.#history().hasDiscardReceipt(vcsDiscardInputSchema.parse(input.discard), input.cause);
   }
 
   @rpc(hostWrite)

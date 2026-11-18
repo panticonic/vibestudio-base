@@ -684,6 +684,23 @@ export class ParticipantHistory {
     });
   }
 
+  hasDiscardReceipt(input: VcsDiscardInput, cause: HistoryCommand["cause"]): Promise<boolean> {
+    return this.#run(() => this.#discardReceipt(input, cause) !== null);
+  }
+
+  #discardReceipt(input: VcsDiscardInput, cause: HistoryCommand["cause"]): HistoryDiscardReceipt | null {
+    const stored = this.#discardJournal?.get(discardReceiptKey(input.commandId));
+    if (stored == null) return null;
+    const receipt = JSON.parse(stored) as HistoryDiscardReceipt;
+    // Receipts created before public routing included the original physical head.
+    const digest = compactId("discard-request", { input, cause });
+    const priorDigest = compactId("discard-request", { head: receipt.head, input, cause });
+    if (receipt.requestDigest !== digest && receipt.requestDigest !== priorDigest) {
+      throw new SemanticVcsError("CommandIdReuse", "Workspace discard command has changed");
+    }
+    return receipt;
+  }
+
   /** Discard only the selected unsaved applications and keep the exact retry receipt. */
   discardWorkingContext(
     head: string,
@@ -694,16 +711,9 @@ export class ParticipantHistory {
       const journal = this.#discardJournal;
       if (!journal) throw new Error("Workspace discard requires local receipt storage");
       const { commandId, contextId } = input;
-      const requestDigest = compactId("discard-request", { head, input, cause });
-      const key = discardReceiptKey(commandId);
-      const stored = journal.get(key);
-      if (stored !== null) {
-        const receipt = JSON.parse(stored) as HistoryDiscardReceipt;
-        if (receipt.requestDigest !== requestDigest) {
-          throw new SemanticVcsError("CommandIdReuse", "Workspace discard command has changed");
-        }
-        return receipt.result;
-      }
+      const requestDigest = compactId("discard-request", { input, cause });
+      const prior = this.#discardReceipt(input, cause);
+      if (prior) return prior.result;
       const working = this.#contextState(contextId);
       if (working.head !== head) throw new HistoryHeadChanged(head, working.head);
       if (stateNodeKey(input.expectedWorkingHead) !== stateNodeKey(working.state)) {
