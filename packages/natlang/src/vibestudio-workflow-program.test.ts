@@ -143,9 +143,15 @@ it("describes the typed workflows in the installed template domains", async () =
   const templateRoot = join(base, "..");
   const workspaceRoots = [
     base,
-    ...["google-workspace", "personal", "system"].map((name) =>
-      join(templateRoot, name),
-    ),
+    ...[
+      "examples",
+      "google-workspace",
+      "news",
+      "personal",
+      "spectrolite",
+      "system",
+      "system-testing",
+    ].map((name) => join(templateRoot, name)),
   ];
   async function resolve(path: string) {
     for (const root of workspaceRoots) {
@@ -159,8 +165,60 @@ it("describes the typed workflows in the installed template domains", async () =
     throw new Error(`Missing installed workspace path ${path}`);
   }
 
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const validated = "The assigned callable accepted the fixture input";
+  const stagedCalls: string[] = [];
+  let runReference = false;
+  const referenceSteps: Record<string, string> = {
+    runWorkflow: `
+      const system = request.work[1];
+      const report = await domains.system.investigateSystem(system.input);
+      const results = [{kind: "domain", domain: system.domain, operation: system.operation, report}];
+      if (report.status !== "attention") return {results, remaining: ["No established regression"]};
+      const next = request.work[0];
+      results.push({kind: "domain", domain: next.domain, operation: next.operation,
+        report: await domains.automation.prepareAutomation(next.input)});
+      return {results, remaining: []};
+    `,
+    investigateSystem: "return await comparePerformance(request);",
+    comparePerformance:
+      "return await interpretComparison(await compare(input), [input.baseline.id, input.candidate.id]);",
+    interpretComparison:
+      'return {status: comparison.verdict === "regression" ? "attention" : "inconclusive", findings: [{code: comparison.verdict, evidenceIds: runIds}]};',
+    prepareAutomation:
+      "await classifyIntent(request.goal); return await draftLaunch(request);",
+    classifyIntent: 'return "launch";',
+    draftLaunch: `
+      const executor = await chooseExecutor(request.goal);
+      const reading = await readSchedule(request.goal);
+      const trigger = await schedule.toTrigger(reading, {timezone: request.timezone, now: request.now});
+      const conversation = await chooseConversation(request.goal, trigger);
+      const operations = await declareOperations(request.goal, executor, request.availableOperations);
+      const draft = {kind: "launch", executor, trigger, conversation, operations};
+      await reviewLaunch(request, draft);
+      return draft;
+    `,
+    chooseExecutor: 'return "notify";',
+    readSchedule:
+      'return {cadence:"interval",everyMinutes:45,hour:null,minute:null,weekdays:[],dayOfMonth:null,timezone:null,lastDay:null,forDays:null,maxRuns:null};',
+    chooseConversation: 'return "continue";',
+    declareOperations: "return [];",
+    reviewLaunch: "return [];",
+  };
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      if (!runReference) throw new Error(validated);
+      const name = session.lam.functionName;
+      const code = name && referenceSteps[name];
+      if (!code) throw new Error(`No scripted reference for ${name}`);
+      stagedCalls.push(name);
+      const action = await session.applyAsync("eval", { code, finish: true });
+      if (action.kind === "rejected") throw new Error(action.text);
+    },
+  });
   const loader = new ProgramLoader({
-    platform: workerdPlatform({ realm: confinedRealm(testNewFunction()) }),
+    platform,
     fs: {
       readFile: async (path) =>
         readFile((await resolve(path)).candidate, "utf8"),
@@ -189,17 +247,39 @@ it("describes the typed workflows in the installed template domains", async () =
       },
     },
     bindings: {},
-    runTask: (run) => run(),
+    runTask: (run, task) => runtime.run(run, task),
   });
 
   const description = await loader.describe(
     "skills/vibestudio-workflows/runWorkflow.nl",
   );
   const expected = new Map([
-    [base, ["prepareAutomation", "preflightPublication"]],
-    [join(templateRoot, "google-workspace"), ["guideGoogleWorkspace"]],
-    [join(templateRoot, "personal"), ["runPersonalWorkflow"]],
+    [
+      base,
+      [
+        "prepareAutomation",
+        "preflightPublication",
+        "reviewTemplate",
+        "reviewProblem",
+        "reviewProvenance",
+        "reviewDeviceAndTerminal",
+        "reviewResearchIntake",
+        "reviewWorkspaceUnit",
+        "reviewRuntimeEvidence",
+        "reviewConversation",
+        "reviewMediaAndImport",
+      ],
+    ],
+    [join(templateRoot, "google-workspace"), ["guideGoogleWorkspace", "reviewGmailWorkflow"]],
+    [
+      join(templateRoot, "personal"),
+      ["runPersonalWorkflow", "reviewPersonalFacility"],
+    ],
     [join(templateRoot, "system"), ["investigateSystem"]],
+    [join(templateRoot, "system-testing"), ["reviewSystemTest", "reviewSessionTest"]],
+    [join(templateRoot, "examples"), ["reviewExample"]],
+    [join(templateRoot, "news"), ["reviewNews"]],
+    [join(templateRoot, "spectrolite"), ["reviewSpectrolite"]],
   ]);
   for (const [directory, names] of expected) {
     if (!(await stat(directory).catch(() => null))?.isDirectory()) continue;
@@ -215,4 +295,78 @@ it("describes the typed workflows in the installed template domains", async () =
       expect(definition?.result.problem).toBeUndefined();
     }
   }
-});
+  // The host writes this file from the authoritative cross-template catalog.
+  // Run the real callable's input boundary and stop before model execution.
+  const manifest = process.env["VIBESTUDIO_WORKFLOW_BANK_JSONL"];
+  if (!manifest) return;
+  const program = (await loader.load(
+    "skills/vibestudio-workflows/runWorkflow.nl",
+  )) as ((request: unknown) => Promise<unknown>) & {
+    domains: Record<
+      string,
+      Record<string, (input: unknown) => Promise<unknown>>
+    >;
+  };
+  const cases = (await readFile(manifest, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line)) as Array<{
+    id: string;
+    execution: string;
+    request?: {
+      work: {
+        kind: string;
+        domain: string;
+        operation: string;
+        input: unknown;
+      }[];
+    };
+  }>;
+  let checked = 0;
+  for (const scenario of cases) {
+    if (scenario.execution !== "scoped-fixture") continue;
+    expect(scenario.request?.work.length, scenario.id).toBeGreaterThan(0);
+    for (const item of scenario.request!.work) {
+      expect(item.kind, scenario.id).toBe("domain");
+      const callable = program.domains[item.domain]?.[item.operation];
+      expect(typeof callable, scenario.id).toBe("function");
+      await expect(callable!(item.input), scenario.id).rejects.toThrow(
+        validated,
+      );
+      checked += 1;
+    }
+  }
+  expect(checked).toBeGreaterThanOrEqual(
+    cases.filter((scenario) => scenario.execution === "scoped-fixture").length,
+  );
+  // Exercise the actual mounted TS arithmetic and the shared-root branch under a scripted agent.
+  const regression = cases.find(
+    (scenario) => scenario.id === "combined-editor-latency-followup",
+  );
+  const incomparable = cases.find(
+    (scenario) => scenario.id === "combined-cold-and-warm-samples-hold",
+  );
+  expect(regression?.request).toBeDefined();
+  expect(incomparable?.request).toBeDefined();
+  runReference = true;
+  await expect(program(regression?.request)).resolves.toMatchObject({
+    results: [
+      { domain: "system", report: { status: "attention" } },
+      {
+        domain: "automation",
+        report: { trigger: { kind: "schedule", everyMs: 2_700_000 } },
+      },
+    ],
+    remaining: [],
+  });
+  expect(stagedCalls).toContain("interpretComparison");
+  expect(stagedCalls.indexOf("investigateSystem")).toBeLessThan(
+    stagedCalls.indexOf("prepareAutomation"),
+  );
+  stagedCalls.length = 0;
+  await expect(program(incomparable?.request)).resolves.toMatchObject({
+    results: [{ domain: "system", report: { status: "inconclusive" } }],
+    remaining: ["No established regression"],
+  });
+  expect(stagedCalls).not.toContain("prepareAutomation");
+}, 120_000);

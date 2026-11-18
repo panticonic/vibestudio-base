@@ -11,10 +11,26 @@
   "serviceBinding": "explicit",
   "workspaceModules": {
     "runWorkflow/domains/automation": "skills/automations",
+    "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
+    "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",
+    "runWorkflow/domains/examples": "skills/examples-review",
+    "runWorkflow/domains/gmailReview": "skills/gmail-workflow-review",
     "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
+    "runWorkflow/domains/mediaImport": "skills/media-and-import-review",
+    "runWorkflow/domains/news": "skills/news-workflows",
     "runWorkflow/domains/personal": "skills/personal-workflows",
+    "runWorkflow/domains/personalFacility": "skills/personal-facility-review",
+    "runWorkflow/domains/problems": "skills/problem-reporting/natlang",
+    "runWorkflow/domains/provenance": "skills/provenance-orientation",
     "runWorkflow/domains/publication": "skills/publish-preflight",
-    "runWorkflow/domains/system": "skills/system-investigation"
+    "runWorkflow/domains/research": "skills/research-intake",
+    "runWorkflow/domains/runtimeEvidence": "skills/runtime-evidence-review",
+    "runWorkflow/domains/sessionTest": "skills/session-test-review",
+    "runWorkflow/domains/spectrolite": "skills/spectrolite-review",
+    "runWorkflow/domains/system": "skills/system-investigation",
+    "runWorkflow/domains/templates": "skills/templates",
+    "runWorkflow/domains/testReview": "skills/system-testing/triage",
+    "runWorkflow/domains/unitDesign": "skills/workspace-unit-design"
   },
   "serviceScopes": {
     "panelRepair": [

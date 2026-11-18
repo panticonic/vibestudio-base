@@ -49,3 +49,12 @@ not call. Its labels were written by the author; the 18 cases seed adaptation or
 
 Reference model (the agent's own): not measured; no agent-class model is available in the harness. The labels were
 written by the author from the skill text and the system test prompts.
+
+## Shared problem review
+
+`reviewProblem` composes the existing defect classification stage with
+selection and attribution, local draft and revision policy, and scoped
+submission readiness. It assesses actual caller-supplied report and attachment
+receipts. The existing host continues to enforce identity, durable append,
+sanitization, submission approval and transport. The program returns a typed
+decision for the caller's next operation.

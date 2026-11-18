@@ -206,8 +206,12 @@ export function bindProgram(value: unknown, task: Parameters<TaskRunner>[1], run
       }
       return bound;
     }
-    if (item !== null && typeof item === "object" && Object.getPrototypeOf(item) === Object.prototype) {
-      return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, bind(child)]));
+    if (item !== null && typeof item === "object") {
+      const prototype = Object.getPrototypeOf(item);
+      if (prototype === null || prototype === Object.prototype) {
+        const record = Object.fromEntries(Object.entries(item).map(([key, child]) => [key, bind(child)]));
+        return prototype === null ? Object.setPrototypeOf(record, null) : record;
+      }
     }
     return item;
   };

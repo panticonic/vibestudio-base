@@ -1,0 +1,12 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-problem-review",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewProblem.nl" } },
+  "include": [
+    "reviewProblem.nl",
+    "reviewProblem",
+    "classifyDefect.nl",
+    "types.ts"
+  ]
+}
