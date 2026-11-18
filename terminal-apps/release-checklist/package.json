@@ -1,0 +1,18 @@
+{
+  "name": "@workspace-terminal-apps/release-checklist",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Release checklist",
+    "description": "Track release preparation in a durable terminal session.",
+    "entry": "index.ts",
+    "authority": {
+      "provides": [],
+      "requests": []
+    }
+  },
+  "dependencies": {
+    "@workspace/terminal-app": "workspace:*"
+  }
+}

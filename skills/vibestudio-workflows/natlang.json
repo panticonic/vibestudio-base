@@ -37,6 +37,7 @@
     "runWorkflow/domains/spectrolite": "skills/spectrolite-review",
     "runWorkflow/domains/system": "skills/system-investigation",
     "runWorkflow/domains/templateCandidate": "skills/template-candidate",
+    "runWorkflow/domains/terminalChecklist": "skills/terminal-apps/checklist",
     "runWorkflow/domains/templates": "skills/templates",
     "runWorkflow/domains/testReview": "skills/system-testing/triage",
     "runWorkflow/domains/unitDesign": "skills/workspace-unit-design",

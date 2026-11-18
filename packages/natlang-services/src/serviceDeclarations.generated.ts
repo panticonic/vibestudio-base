@@ -95,6 +95,36 @@ export function observe(missionId: string): Promise<{
 
 /** Request the assigned pause or resume through the Missions client. */
 export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
+  checklistOpen: `/** Open the assigned workspace terminal checklist. */
+
+/** Launch the caller-owned checklist once and read its initial screen. */
+export function launch(): Promise<{
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ("1" | "2" | "3")[];
+}>;`,
+  checklistKeys: `/** Toggle one assigned checklist item through the current terminal. */
+
+/** Send the next permitted item key and retain the observed screen. */
+export function toggle(key: "1" | "2" | "3"): Promise<{
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ("1" | "2" | "3")[];
+}>;`,
+  checklistResume: `/** Continue the caller-owned terminal checklist. */
+
+/** Reattach or restart as assigned and observe the resulting viewport and state. */
+export function resume(kind: "reattach" | "restart"): Promise<{
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ("1" | "2" | "3")[];
+}>;`,
   onboardingRead: `/** Read the actual setup owners and the caller's assigned catalog selection. */
 
 /** Return the assigned owner observations and resolved product route once. */

@@ -82,6 +82,24 @@ export const SERVICE_CATALOG = [
     methods: [{ name: "apply", params: ["missionId", "revisionDigest", "action"], description: "Request the assigned pause or resume through the Missions client." }],
   },
   {
+    name: "checklistOpen",
+    summary: "Open the assigned workspace terminal checklist.",
+    contract: { origin: "base", file: "packages/natlang-services/src/checklistContracts.ts", table: "checklistOpenMethods" },
+    methods: [{ name: "launch", params: [], description: "Launch the caller-owned checklist once and read its initial screen." }],
+  },
+  {
+    name: "checklistKeys",
+    summary: "Toggle one assigned checklist item through the current terminal.",
+    contract: { origin: "base", file: "packages/natlang-services/src/checklistContracts.ts", table: "checklistKeysMethods" },
+    methods: [{ name: "toggle", params: ["key"], description: "Send the next permitted item key and retain the observed screen." }],
+  },
+  {
+    name: "checklistResume",
+    summary: "Continue the caller-owned terminal checklist.",
+    contract: { origin: "base", file: "packages/natlang-services/src/checklistContracts.ts", table: "checklistResumeMethods" },
+    methods: [{ name: "resume", params: ["kind"], description: "Reattach or restart as assigned and observe the resulting viewport and state." }],
+  },
+  {
     name: "onboardingRead",
     summary: "Read the actual setup owners and the caller's assigned catalog selection.",
     contract: { origin: "base", file: "packages/natlang-services/src/onboardingContracts.ts", table: "onboardingReadMethods" },
