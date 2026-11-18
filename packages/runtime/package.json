@@ -42,7 +42,8 @@
     "./images": "./src/shared/images.ts",
     "./image-loader": "./src/shared/imageLoader.ts",
     "./problem-reports": "./src/shared/problemReports.ts",
-    "./vcs-publish": "./src/shared/vcsPublish.ts"
+    "./vcs-publish": "./src/shared/vcsPublish.ts",
+    "./vcs-client": "./src/shared/vcsClient.ts"
   },
   "dependencies": {
     "@vibestudio/automation": "workspace:*",
