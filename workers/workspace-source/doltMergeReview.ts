@@ -1,8 +1,8 @@
 import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
-import type { VcsCompareInput, VcsCompareResult, VcsMergeCoordinateRef } from "@vibestudio/service-schemas/vcs";
+import type { VcsCompareInput, VcsCompareResult, VcsMergeCoordinateRef, VcsMergeResult, VcsWorkingMutationResult } from "@vibestudio/service-schemas/vcs";
 import { classifyMergeAspect, resolveIntent } from "@workspace/vcs-engine";
-import { workspaceEditBasisAt, workspaceMergeScope, type WorkspaceMergeScopeEntry } from "./doltWorkspaceState.js";
+import { workspaceContentOriginsAt, workspaceEditBasisAt, workspaceMergeScope, type WorkspaceMergeScopeEntry } from "./doltWorkspaceState.js";
 import { composeHistoryText, historyTextMergeInputs, readHistoryMergeObservations, type HistoryMergeObservation, type HistoryMergeSelection } from "./doltTextMerge.js";
 import type { MainMergePreview } from "./participantHistory.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
@@ -126,7 +126,12 @@ export type HistoryMergeReview =
   | { kind: "read-content"; contentHashes: string[] }
   | { kind: "reviewed"; result: VcsCompareResult };
 
-function reviewIntents(sql: SqlStorage, preview: MainMergePreview, coordinates: Coordinate[]) {
+function reviewIntents(
+  sql: SqlStorage,
+  preview: HistoryMergeSelection,
+  coordinates: Coordinate[],
+  decisions?: ReadonlyMap<string, { resolution: string }>,
+) {
   const intents: VcsCompareResult["intents"] = [];
   const intentCounts: VcsCompareResult["intentCounts"] = { merged: 0, settled: 0, split: 0, contested: 0, pending: 0 };
   for (const side of ["theirs", "ours"] as const) {
@@ -165,6 +170,10 @@ function reviewIntents(sql: SqlStorage, preview: MainMergePreview, coordinates: 
         : readHistoryWorkIntent(sql, at, work_unit_id, kind, intent_summary, trigger_excerpt, trigger_sender_json);
       const conflicts = selected.filter(({ status }) => status === "conflict").length;
       const state = side === "ours" ? undefined
+        : decisions ? (selected.every(({ coordinate, status }) => {
+            const resolution = decisions.get(canonicalJson([coordinate.kind, coordinate.id]))?.resolution;
+            return status === "convergent" || resolution === "ours" || resolution === "current";
+          }) ? "settled" : "merged")
         : conflicts === selected.length ? "contested"
         : conflicts > 0 ? "split"
         : selected.some(({ status }) => status === "adopt" || status === "composed") ? "pending"
@@ -307,4 +316,92 @@ export function reviewHistoryMerge(
       nextCursor,
     },
   };
+}
+
+/** Rebuild the public receipt from the merge's immutable application and decisions. */
+export function settledHistoryMerge(
+  sql: SqlStorage,
+  selection: HistoryMergeSelection,
+  committedHead: string,
+  mutation: VcsWorkingMutationResult,
+): Extract<VcsMergeResult, { status: "working" }> {
+  const scope = workspaceMergeScope(sql, selection.base, selection.main);
+  const placements = historyMergePlacements(sql, selection, scope);
+  const decisions = new Map<string, { decisionId: string; resolution: string }>();
+  if (mutation.decisionIds.length > 0) {
+    const rows = sql.exec(
+      `SELECT entry.decision_id, entry.coordinate_kind, entry.coordinate_id, entry.resolution
+        FROM json_each(?2) AS selected
+        JOIN dolt_at_gad_merge_decision_entries(?1) AS entry ON entry.decision_id = selected.value`,
+      committedHead,
+      JSON.stringify(mutation.decisionIds),
+    ).toArray();
+    for (const { decision_id, coordinate_kind, coordinate_id, resolution } of rows) {
+      if (typeof decision_id !== "string" || typeof coordinate_id !== "string" ||
+          (coordinate_kind !== "file" && coordinate_kind !== "repository") || typeof resolution !== "string") {
+        throw new SemanticVcsError("IntegrityFailure", "Invalid recorded merge decision");
+      }
+      const key = canonicalJson([coordinate_kind, coordinate_id]);
+      if (decisions.has(key))
+        throw new SemanticVcsError("IntegrityFailure", "Workspace merge recorded multiple decisions for a placement");
+      decisions.set(key, { decisionId: decision_id, resolution });
+    }
+  }
+  const outcomes: Coordinate[] = placements.map((placement) => {
+    const { kind, id, paths } = placement.coordinate;
+    const decision = decisions.get(canonicalJson([kind, id]));
+    const composed = decision?.resolution === "composed";
+    const aspects = placement.aspects.map((aspect) =>
+      composed && aspect.aspect === "content" ? { ...aspect, status: "composed" as const } : aspect,
+    );
+    const adopted = aspects.some(({ status }) => status === "adopt");
+    const kept = aspects.some(({ status }) => status === "ours");
+    const status = composed || (!decision && adopted && kept) ? "composed"
+      : decision ? "resolved" : adopted ? "adopt" : "convergent";
+    return {
+      ...placement, aspects, status,
+      ...(decision ? { decisionId: decision.decisionId } : {}),
+      resolutions: [],
+      summary: `${status} ${kind} ${paths.theirs ?? paths.ours ?? id}`,
+    };
+  });
+  const counts: VcsCompareResult["counts"] = { adopt: 0, convergent: 0, composed: 0, conflict: 0, resolved: 0 };
+  for (const { status } of outcomes) counts[status]++;
+  const { intents, intentsTruncated } = reviewIntents(sql, selection, outcomes, decisions);
+  const composedFiles = outcomes.filter(({ coordinate }) =>
+    coordinate.kind === "file" &&
+    decisions.get(canonicalJson([coordinate.kind, coordinate.id]))?.resolution === "composed",
+  ).slice(0, 500).map(({ coordinate }) => coordinate.id);
+  const oursOrigins = workspaceContentOriginsAt(sql, selection.head, composedFiles);
+  const theirsOrigins = workspaceContentOriginsAt(sql, selection.main, composedFiles);
+  const composed = composedFiles.map((id) => ({
+    coordinate: { kind: "file" as const, id },
+    ours: contentParentIntent(sql, selection.head, oursOrigins.get(id)?.authoredByWorkUnitId),
+    theirs: contentParentIntent(sql, selection.main, theirsOrigins.get(id)?.authoredByWorkUnitId),
+  }));
+  return {
+    ...mutation,
+    status: "working",
+    ...(mutation.decisionIds[0] ? { decisionId: mutation.decisionIds[0] } : {}),
+    outcomes: outcomes.slice(0, 500),
+    resolution: { remainingCoordinateCount: 0, complete: true, concluded: true },
+    counts,
+    intents, intentsTruncated,
+    composed,
+    conflicts: [],
+    nextConflictCursor: null,
+  };
+}
+
+function contentParentIntent(sql: SqlStorage, at: string, workUnitId: string | null | undefined) {
+  if (!workUnitId) throw new SemanticVcsError("IntegrityFailure", "Composed text parent has no work unit");
+  const row = sql.exec(
+    `SELECT kind, intent_summary, trigger_excerpt, trigger_sender_json
+      FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ?`,
+    at,
+    workUnitId,
+  ).toArray()[0];
+  if (!row || typeof row["kind"] !== "string")
+    throw new SemanticVcsError("IntegrityFailure", "Composed text parent has no intent evidence");
+  return readHistoryWorkIntent(sql, at, workUnitId, row["kind"], row["intent_summary"], row["trigger_excerpt"], row["trigger_sender_json"]);
 }

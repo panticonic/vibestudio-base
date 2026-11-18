@@ -479,6 +479,13 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryMergeLocations(input: { contextId: string; target: StateNodeRef; source: StateNodeRef }) {
+    return this.#history().mainMergeLocations(
+      input.contextId, vcsStateNodeRefSchema.parse(input.target), vcsStateNodeRefSchema.parse(input.source),
+    );
+  }
+
+  @rpc(hostRead)
   previewHistoryContextMerge(input: { contextId: string; head: string; source: MergeSource }) {
     return this.#history().previewContextMerge(input.contextId, input.head, input.source);
   }

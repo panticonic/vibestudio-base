@@ -22,6 +22,7 @@ import type {
   VcsListDirectoryInput,
   VcsListFilesInput,
   VcsMergeInput,
+  VcsMergeResult,
   VcsMoveInput,
   VcsReadFilesInput,
   VcsResolveRepositoryInput,
@@ -52,7 +53,7 @@ import {
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
-import { historyMergePlacements, reviewHistoryMerge } from "./doltMergeReview.js";
+import { historyMergePlacements, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -116,7 +117,12 @@ export type HistoryMutationPlan =
 export type HistoryMergeResult =
   | { kind: "read-content"; contentHashes: string[] }
   | { kind: "prepare-content"; blobs: NonNullable<MutationDraft["blobs"]> }
-  | (Extract<HistoryMutationPlan, { kind: "committed" }> & { value: StateNodeRef });
+  | {
+      kind: "committed";
+      head: string;
+      value: StateNodeRef;
+      result: Extract<VcsMergeResult, { status: "working" }>;
+    };
 
 interface HistoryMergeContent {
   observation: HistoryMergeObservation;
@@ -1036,6 +1042,25 @@ export class ParticipantHistory {
     return this.#run(() => reviewHistoryMerge(this.#storage.sql, input, this.#stateAt(base).state, preview, observation));
   }
 
+  async mainMergeLocations(contextId: string, target: StateNodeRef, source: StateNodeRef) {
+    if (source.kind !== "event")
+      throw new SemanticVcsError("InvalidReference", "Workspace integration requires a published event");
+    const selection = await this.resolveMainMerge(contextId, target, source.eventId);
+    return this.#run(() => {
+      const { sql } = this.#storage;
+      const scope = workspaceMergeScope(sql, selection.base, selection.main);
+      const review = historyMergePlacements(sql, selection, scope);
+      const locations = new Map<string, { kind: "folder" | "file"; path: string }>();
+      for (const { coordinate } of review) {
+        const kind = coordinate.kind === "file" ? "file" : "folder";
+        for (const path of Object.values(coordinate.paths)) {
+          locations.set(canonicalJson([kind, path]), { kind, path });
+        }
+      }
+      return { target, source, locations: [...locations.values()] };
+    });
+  }
+
   async previewContextMerge(contextId: string, head: string, source: MergeSource) {
     const { main, ...preview } = await this.#previewMerge(
       contextId, head, () => this.#resolveContextSource(source),
@@ -1113,6 +1138,16 @@ export class ParticipantHistory {
     return this.#mergeReviewed({ ...selection, main: source.head }, input, cause, triggerEvidence, content, source);
   }
 
+  #mergeReceipt(at: string, selection: HistoryMergeSelection, contextId: string, commandId: string) {
+    const receipt = this.#committedMutation(at, contextId, commandId, true);
+    return {
+      kind: "committed" as const,
+      head: receipt.head,
+      value: receipt.result.workingHead,
+      result: settledHistoryMerge(this.#storage.sql, selection, receipt.head, receipt.result),
+    };
+  }
+
   #mergeReviewed(
     selection: HistoryMergeSelection,
     input: VcsMergeInput,
@@ -1131,8 +1166,7 @@ export class ParticipantHistory {
       };
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       if (this.#hasCommand(current, contextId, command)) {
-        const receipt = this.#committedMutation(current, contextId, commandId, true);
-        return { ...receipt, value: receipt.result.workingHead };
+        return this.#mergeReceipt(current, selection, contextId, commandId);
       }
 
       if (input.source.kind !== "event") {
@@ -1312,11 +1346,11 @@ export class ParticipantHistory {
       if (merged.fastForward || merged.upToDate || !value) {
         throw new Error("Workspace integration did not record its two parents and application");
       }
-      const receipt = this.#committedMutation(merged.hash, contextId, commandId, true);
-      if (receipt.head !== merged.hash || stateNodeKey(receipt.result.workingHead) !== stateNodeKey(value)) {
+      const receipt = this.#mergeReceipt(merged.hash, selection, contextId, commandId);
+      if (receipt.head !== merged.hash || stateNodeKey(receipt.value) !== stateNodeKey(value)) {
         throw new SemanticVcsError("IntegrityFailure", "Native merge recorded a different application");
       }
-      return { ...receipt, value };
+      return receipt;
     });
   }
 
