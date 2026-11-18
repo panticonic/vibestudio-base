@@ -6,6 +6,18 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  automationLifecycleRead: `/** Observe the exact caller-assigned automation and its revision. */
+
+/** Read the authoritative current lifecycle state of the assigned mission. */
+export function observe(missionId: string): Promise<{
+  missionId: string;
+  revisionDigest: string;
+  state: "active" | "paused" | "completed" | "retired";
+} | null>;`,
+  automationLifecycleChange: `/** Perform one caller-authorized reversible automation transition. */
+
+/** Request the assigned pause or resume through the Missions client. */
+export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
   pdfIntakeProbe: `/** Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness. */
 
 /** Read the assigned local document's probe receipt. */

@@ -292,6 +292,7 @@ it("describes the typed workflows in the installed template domains", async () =
       base,
       [
         "prepareAutomation",
+        "reconcileAutomation",
         "preflightPublication",
         "reviewTemplate",
         "reviewProblem",

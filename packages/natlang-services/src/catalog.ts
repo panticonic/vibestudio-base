@@ -40,6 +40,18 @@ const scopedAgentFile = "packages/natlang-services/src/scopedAgentContracts.ts";
 
 export const SERVICE_CATALOG = [
   {
+    name: "automationLifecycleRead",
+    summary: "Observe the exact caller-assigned automation and its revision.",
+    contract: { origin: "base", file: "packages/natlang-services/src/automationLifecycleContracts.ts", table: "automationLifecycleReadMethods" },
+    methods: [{ name: "observe", params: ["missionId"], description: "Read the authoritative current lifecycle state of the assigned mission." }],
+  },
+  {
+    name: "automationLifecycleChange",
+    summary: "Perform one caller-authorized reversible automation transition.",
+    contract: { origin: "base", file: "packages/natlang-services/src/automationLifecycleContracts.ts", table: "automationLifecycleChangeMethods" },
+    methods: [{ name: "apply", params: ["missionId", "revisionDigest", "action"], description: "Request the assigned pause or resume through the Missions client." }],
+  },
+  {
     name: "pdfIntakeProbe",
     summary: "Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness.",
     contract: { origin: "base", file: "packages/natlang-services/src/pdfIntakeContracts.ts", table: "pdfIntakeProbeMethods" },

@@ -13,6 +13,14 @@ service.
 
 ## Native control
 
+For a typed Natlang task with a selected mission ID, revision digest and
+authorized pause or resume, bind the caller's existing `missions` client
+with `bindAutomationLifecycle` from
+`@workspace-skills/automation-lifecycle-bindings`. Call
+`runWorkflow.domains.automationLifecycle.reconcileAutomation` with that
+assignment. The result carries the observed state and says whether a
+controller acknowledgment established the transition.
+
 ```ts
 type AgentAutomationControl = {
   action: "pause" | "resume" | "run_now" | "retire";

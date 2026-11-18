@@ -1,7 +1,8 @@
 # Automations: what is natural language and what is crisp
 
 Ported sub-procedures: choosing the executor of an automation, and reading a scheduling request into a trigger.
-Everything that commits (`launch_automation`, `control_automation`) stays with the agent: a program here returns a proposal.
+This package produces proposals. The mounted [automation lifecycle workflow](../automation-lifecycle/DECOMPOSITION.md)
+applies a caller-assigned pause or resume through the normal Missions client and verifies the current state.
 
 | Part | Form | Why |
 | --- | --- | --- |
