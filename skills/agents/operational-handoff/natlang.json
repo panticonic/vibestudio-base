@@ -1,0 +1,9 @@
+{
+  "serviceScopes": {
+    "ownedOperations": [
+      "operate.nl",
+      "operate/incident.nl",
+      "operate/release.nl"
+    ]
+  }
+}

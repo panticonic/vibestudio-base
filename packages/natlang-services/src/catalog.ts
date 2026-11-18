@@ -37,6 +37,12 @@ export interface ServiceCatalogEntry {
 }
 
 export const SERVICE_CATALOG = [
+  { name: "ownedOperations", summary: "Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable.",
+    contract: { origin: "base", file: "packages/natlang-services/src/ownedOperationsContracts.ts", table: "ownedOperationsMethods" },
+    methods: [{ name: "open", params: ["role"] }, { name: "read", params: ["handle"] },
+      { name: "append", params: ["handle", "expectedRevision", "assessment"] },
+      { name: "restart", params: ["handle"] }, { name: "close", params: [] }] },
+
   {
     name: "serverLog",
     summary:

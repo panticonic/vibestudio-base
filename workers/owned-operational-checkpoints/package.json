@@ -1,0 +1,5 @@
+{
+ "name":"@workspace-workers/owned-operational-checkpoints","version":"0.1.0","private":true,"type":"module",
+ "dependencies":{"@workspace/runtime":"workspace:*","@workspace/natlang-services":"workspace:*","zod":"^3.25.76"},
+ "vibestudio":{"title":"Operational checkpoints","icon":"🧭","kind":"worker","entry":"index.ts","durable":{"classes":[{"className":"OwnedCheckpointDO"}]}}
+}

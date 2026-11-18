@@ -6,6 +6,83 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  ownedOperations: `/** Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable. */
+
+/** Create one actual caller-owned context and durable checkpoint worker for a semantic role. Retain its returned exact handle. */
+export function open(role: "impact" | "recovery" | "release"): Promise<{
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}>;
+
+/** Fresh RPC read of an issued owned worker's durable checkpoints. */
+export function read(handle: {
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}): Promise<{
+  revision: number;
+  checkpoints: {
+    revision: number;
+    assessment: {
+      role: "impact" | "recovery" | "release";
+      evidenceIds: string[];
+      decision: "ready" | "blocked";
+      reason: string;
+    };
+  }[];
+}>;
+
+/** Append an assessment for the worker's assigned role at its exact observed revision; conflict fails without an invented update. */
+export function append(handle: {
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}, expectedRevision: number, assessment: {
+  role: "impact" | "recovery" | "release";
+  evidenceIds: string[];
+  decision: "ready" | "blocked";
+  reason: string;
+}): Promise<{
+  revision: number;
+  checkpoints: {
+    revision: number;
+    assessment: {
+      role: "impact" | "recovery" | "release";
+      evidenceIds: string[];
+      decision: "ready" | "blocked";
+      reason: string;
+    };
+  }[];
+}>;
+
+/** Restart the exact issued worker through runtime supervision and freshly reread its retained durable state. */
+export function restart(handle: {
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}): Promise<{
+  revision: number;
+  checkpoints: {
+    revision: number;
+    assessment: {
+      role: "impact" | "recovery" | "release";
+      evidenceIds: string[];
+      decision: "ready" | "blocked";
+      reason: string;
+    };
+  }[];
+}>;
+
+/** Retire only issued resources, destroy their owned contexts and independently confirm their absence. The caller also invokes this in finally. */
+export function close(): Promise<{
+  retiredIds: string[];
+  destroyedContextIds: string[];
+}>;`,
   serverLog: `/** Read-only access to the workspace server's host log ring buffer for the current boot. Records are redacted of secrets at capture. Cite serverBootId and latestSeq so the evidence can be found again. */
 
 /** Return the last N server host log records (default 500) in ascending seq order — the starting snapshot for a live tail; then subscribe to the server-log:append event and dedupe by seq. */

@@ -20,3 +20,6 @@ export { createPanelRepair } from "./panelRepair.js";
 export { createWorkspaceIntegration } from "./workspaceIntegration.js";
 
 export { createUnitRepair } from "./unitRepair.js";
+
+export { createOwnedOperations } from "./ownedOperations.js";
+export { verifyOwnedOperations } from "./ownedOperationsOracle.js";
