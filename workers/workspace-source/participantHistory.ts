@@ -25,6 +25,7 @@ import type {
   VcsMergeInput,
   VcsMergeResult,
   VcsMoveInput,
+  VcsNeighborsInput,
   VcsReadFilesInput,
   VcsResolveRepositoryInput,
   VcsSemanticNodeRef,
@@ -52,7 +53,7 @@ import {
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
-import { inspectWorkspaceProvenance } from "./doltWorkspaceProvenance.js";
+import { inspectWorkspaceProvenance, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
 import { historyMergePlacements, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
@@ -403,13 +404,26 @@ export class ParticipantHistory {
 
   inspect(contextId: string, workspaceId: string, input: VcsInspectInput) {
     return this.#run(async () => {
-      const { sql } = this.#storage;
-      const local = this.#dolt.hashOf(this.#contextBranch(contextId));
-      const at = workspaceReferenceAt(sql, local, input.node) ? local : await this.#fetchMain();
-      if (!workspaceReferenceAt(sql, at, input.node))
-        throw new SemanticVcsError("InvalidReference", "Workspace provenance is outside the admitted history");
-      return inspectWorkspaceProvenance(sql, at, workspaceId, input.node, input.edgeLimit);
+      const at = await this.#provenanceTip(contextId, input.node);
+      return inspectWorkspaceProvenance(this.#storage.sql, at, workspaceId, input.node, input.edgeLimit);
     });
+  }
+
+  neighbors(contextId: string, workspaceId: string, input: VcsNeighborsInput) {
+    return this.#run(async () => {
+      const at = await this.#provenanceTip(contextId, input.root);
+      return workspaceProvenanceNeighbors(this.#storage.sql, at, workspaceId, contextId, input);
+    });
+  }
+
+  async #provenanceTip(contextId: string, node: VcsSemanticNodeRef): Promise<string> {
+    const { sql } = this.#storage;
+    const local = this.#dolt.hashOf(this.#contextBranch(contextId));
+    if (workspaceReferenceAt(sql, local, node)) return local;
+    const main = await this.#fetchMain();
+    if (!workspaceReferenceAt(sql, main, node))
+      throw new SemanticVcsError("InvalidReference", "Workspace provenance is outside the admitted history");
+    return main;
   }
 
   projection(contextId: string) {

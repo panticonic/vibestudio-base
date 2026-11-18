@@ -14,6 +14,7 @@ import {
   vcsListFilesInputSchema,
   vcsMergeInputSchema,
   vcsMoveInputSchema,
+  vcsNeighborsInputSchema,
   vcsReadFilesInputSchema,
   vcsResolveRepositoryInputSchema,
   vcsSemanticNodeRefSchema,
@@ -28,6 +29,7 @@ import {
   type VcsListFilesInput,
   type VcsMergeInput,
   type VcsMoveInput,
+  type VcsNeighborsInput,
   type VcsReadFilesInput,
   type VcsResolveRepositoryInput,
   type VcsSemanticNodeRef,
@@ -360,9 +362,18 @@ export class GadHistoryDO extends DurableObjectBase {
 
   @rpc(hostRead)
   inspectHistoryNode(input: { contextId: string; inspect: VcsInspectInput }) {
+    return this.#history().inspect(input.contextId, this.#workspaceId(), vcsInspectInputSchema.parse(input.inspect));
+  }
+
+  @rpc(hostRead)
+  readHistoryNeighbors(input: { contextId: string; neighbors: VcsNeighborsInput }) {
+    return this.#history().neighbors(input.contextId, this.#workspaceId(), vcsNeighborsInputSchema.parse(input.neighbors));
+  }
+
+  #workspaceId(): string {
     const workspaceId = this.env["WORKSPACE_ID"];
     if (typeof workspaceId !== "string" || !workspaceId) throw new Error("Workspace history has no workspace identity");
-    return this.#history().inspect(input.contextId, workspaceId, vcsInspectInputSchema.parse(input.inspect));
+    return workspaceId;
   }
 
   @rpc(hostRead)

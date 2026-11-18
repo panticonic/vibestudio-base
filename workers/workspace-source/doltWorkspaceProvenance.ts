@@ -11,6 +11,8 @@ import {
   vcsWorkUnitSchema,
   vcsWorkspaceEventSchema,
   type VcsInspectResult,
+  type VcsNeighborsInput,
+  type VcsNeighborsResult,
   type VcsProvenanceEdge,
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
@@ -25,7 +27,13 @@ import {
   workspaceTransferBasisAt,
 } from "./doltWorkspaceState.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import { MAX_ANCESTRY_EDGES, changeEffects, publicChangeKind } from "./semanticWorkspace.js";
+import {
+  MAX_ANCESTRY_EDGES,
+  changeEffects,
+  parseSemanticCursor,
+  publicChangeKind,
+  semanticCursor,
+} from "./semanticWorkspace.js";
 
 function parentsAt(sql: SqlStorage, revision: string) {
   return sql.exec(
@@ -634,4 +642,26 @@ export function inspectWorkspaceProvenance(
     throw new SemanticVcsError("InvalidReference", "Workspace history does not yet inspect this kind of node");
   }
   return { root, node, edges: edges.slice(0, edgeLimit), hasMoreEdges: edges.length > edgeLimit };
+}
+
+export function workspaceProvenanceNeighbors(
+  sql: SqlStorage, at: string, workspaceId: string, contextId: string, input: VcsNeighborsInput,
+): VcsNeighborsResult {
+  const { root, cursor, limit } = input;
+  const basis = { workspaceId, contextId, at, root };
+  const position = parseSemanticCursor(cursor, "native-neighbors", basis);
+  const offset = position ? position["offset"] : 0;
+  if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || offset > MAX_ANCESTRY_EDGES) {
+    throw new SemanticVcsError("InvalidReference", "Workspace neighbor cursor has an invalid position");
+  }
+  const end = Math.min(offset + limit, MAX_ANCESTRY_EDGES);
+  const { edges, hasMoreEdges } = inspectWorkspaceProvenance(sql, at, workspaceId, root, end);
+  if (hasMoreEdges && end === MAX_ANCESTRY_EDGES) {
+    throw new SemanticVcsError("ScopeTooLarge", "Workspace provenance exceeds its adjacency bound");
+  }
+  return {
+    root,
+    edges: edges.slice(offset, end),
+    nextCursor: hasMoreEdges ? semanticCursor("native-neighbors", basis, { offset: end }) : null,
+  };
 }
