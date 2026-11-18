@@ -6,10 +6,14 @@ import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
   vcsCommitInputSchema,
   vcsEditInputSchema,
+  vcsMergeInputSchema,
   vcsReadFilesInputSchema,
+  vcsSemanticNodeRefSchema,
   type VcsCommitInput,
   type VcsEditInput,
+  type VcsMergeInput,
   type VcsReadFilesInput,
+  type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
@@ -18,6 +22,7 @@ import {
   committedWorkspaceEvent,
   createDoltWorkspaceState,
   workspaceCommitForRef,
+  workspacePlacementRoots,
   workspaceRepositoriesAt,
 } from "./doltWorkspaceState.js";
 import {
@@ -223,6 +228,34 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryReferenceVisibility(input: { contextIds: string[]; references: VcsSemanticNodeRef[] }) {
+    return this.#history().referencesReachable(
+      input.contextIds,
+      input.references.map((reference) => vcsSemanticNodeRefSchema.parse(reference)),
+    );
+  }
+
+  @rpc(hostRead)
+  listHistoryRetainedParticipants(): string[] {
+    this.#assertCanonical();
+    return this.sql.exec(
+      `SELECT target_key FROM gad_history_allocations
+        WHERE status IN ('active', 'retiring') ORDER BY target_key`,
+    ).toArray().map(({ target_key }) => {
+      if (typeof target_key !== "string" || !/^work-[0-9a-f]{64}$/u.test(target_key)) {
+        throw new Error("Workspace history has an invalid retained participant");
+      }
+      return target_key;
+    });
+  }
+
+  @rpc(hostRead)
+  readHistoryContentRoots(): string[] {
+    this.ensureReady();
+    return workspacePlacementRoots(this.sql, this.#remotes().branch.list().map(({ hash }) => hash));
+  }
+
+  @rpc(hostRead)
   async readHistoryContentOrigins(input: {
     contextId: string;
     state: StateNodeRef;
@@ -316,15 +349,16 @@ export class GadHistoryDO extends DurableObjectBase {
     head: string;
     base: string;
     main: string;
-    command: Parameters<ParticipantHistory["mergePreparedMain"]>[2];
-    plan: Parameters<ParticipantHistory["mergePreparedMain"]>[3];
+    merge: VcsMergeInput;
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
   }) {
     this.#assertWritable();
-    return this.#history().mergePreparedMain(
-      input.head,
-      { base: input.base, main: input.main },
-      input.command,
-      input.plan,
+    return this.#history().mergeReviewedMain(
+      { head: input.head, base: input.base, main: input.main },
+      vcsMergeInputSchema.parse(input.merge),
+      input.cause,
+      input.triggerEvidence,
     );
   }
 

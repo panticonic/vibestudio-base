@@ -11,7 +11,15 @@ import {
   type DoltRemoteTransport,
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
-import type { VcsCommitInput, VcsCommitResult, VcsEditInput, VcsReadFilesInput, VcsStatusResult } from "@vibestudio/service-schemas/vcs";
+import type {
+  VcsCommitInput,
+  VcsCommitResult,
+  VcsEditInput,
+  VcsMergeInput,
+  VcsReadFilesInput,
+  VcsSemanticNodeRef,
+  VcsStatusResult,
+} from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -27,11 +35,11 @@ import {
   workspaceFileReadsAt,
   workspaceMergeScope,
   workspaceMergeSourcesAt,
-  workspacePlacementRoots,
   workspaceRepositoriesAt,
   type WorkspacePlacementChange,
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
+import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 import type {
@@ -262,12 +270,29 @@ export class ParticipantHistory {
   }
 
   readFiles(contextId: string, input: VcsReadFilesInput) {
-    return this.#run(() => {
-      const commit = this.#resolveState(contextId, input.state);
+    return this.#run(async () => {
+      const commit = await this.#resolveReadableState(contextId, input.state);
       if (!commit) {
         throw new SemanticVcsError("InvalidReference", "File read names a state outside this workspace context");
       }
       return workspaceFileReadsAt(this.#storage.sql, commit, input);
+    });
+  }
+
+  referencesReachable(contextIds: readonly string[], references: readonly VcsSemanticNodeRef[]) {
+    return this.#run(async () => {
+      const { sql } = this.#storage;
+      const requested = new Set(contextIds.map((id) => this.#contextBranch(id)));
+      const tips = [...new Set(this.#dolt.branch.list()
+        .filter(({ name }) => requested.has(name))
+        .map(({ hash }) => hash))];
+      if (tips.length === 0) return false;
+      const unresolved = references.filter((ref) =>
+        !tips.some((tip) => workspaceReferenceAt(sql, tip, ref)),
+      );
+      if (unresolved.length === 0) return true;
+      const main = await this.#fetchMain();
+      return !tips.includes(main) && unresolved.every((ref) => workspaceReferenceAt(sql, main, ref));
     });
   }
 
@@ -351,8 +376,8 @@ export class ParticipantHistory {
   }
 
   contentOrigins(contextId: string, ref: StateNodeRef, fileIds: readonly string[]) {
-    return this.#run(() => {
-      const commit = this.#resolveState(contextId, ref);
+    return this.#run(async () => {
+      const commit = await this.#resolveReadableState(contextId, ref);
       if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
       return workspaceContentOriginsAt(this.#storage.sql, commit, fileIds);
     });
@@ -430,7 +455,7 @@ export class ParticipantHistory {
     });
   }
 
-  #committedEdit(at: string, contextId: string, commandId: string): HistoryEditPlan {
+  #applicationForCommand(at: string, commandId: string) {
     const { sql } = this.#storage;
     const rows = sql.exec(
       `SELECT app.application_id, app.work_unit_id
@@ -442,11 +467,17 @@ export class ParticipantHistory {
     ).toArray();
     const { application_id: applicationId, work_unit_id: workUnitId } = rows[0] ?? {};
     if (rows.length !== 1 || typeof applicationId !== "string" || typeof workUnitId !== "string") {
-      throw new SemanticVcsError("IntegrityFailure", "Recorded workspace edit has no unique application");
+      throw new SemanticVcsError("IntegrityFailure", "Recorded workspace command has no unique application");
     }
     const workingHead = { kind: "application" as const, applicationId };
     const head = workspaceCommitForRef(sql, at, workingHead);
-    if (!head) throw new SemanticVcsError("IntegrityFailure", "Recorded workspace edit has no commit");
+    if (!head) throw new SemanticVcsError("IntegrityFailure", "Recorded workspace application has no commit");
+    return { workingHead, workUnitId, head };
+  }
+
+  #committedEdit(at: string, contextId: string, commandId: string): HistoryEditPlan {
+    const { sql } = this.#storage;
+    const { workingHead, workUnitId, head } = this.#applicationForCommand(at, commandId);
     const changes = sql.exec(
       `SELECT change_id FROM dolt_at_gad_changes(?)
         WHERE work_unit_id = ? ORDER BY operation, ordinal`,
@@ -461,7 +492,7 @@ export class ParticipantHistory {
         contextId,
         workingHead,
         workUnitId,
-        applicationId,
+        applicationId: workingHead.applicationId,
         changeCount: changes.length,
         changeIds: changes.slice(0, 200).map((row) => String(row["change_id"])),
         incorporatedChangeCount: 0,
@@ -469,13 +500,6 @@ export class ParticipantHistory {
         decisionIds: [],
       },
     };
-  }
-
-  placementHistoryRoots(): Promise<string[]> {
-    return this.#run(() => workspacePlacementRoots(
-      this.#storage.sql,
-      this.#dolt.branch.list().map(({ hash }) => hash),
-    ));
   }
 
   forkContext(parentId: string, expectedHead: string, childId: string): Promise<string> {
@@ -753,61 +777,52 @@ export class ParticipantHistory {
     });
   }
 
-  /** Commit an accounted whole-row integration and its provenance in the F1 transaction. */
-  mergePreparedMain(
-    head: string,
-    selection: { base: string; main: string },
-    command: HistoryCommand,
-    plan: HistoryApplicationPlan,
+  /** Resolve the selected whole-row conflicts and write provenance in the native merge. */
+  mergeReviewedMain(
+    selection: { head: string; base: string; main: string },
+    input: VcsMergeInput,
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
   ): Promise<{ readonly value: StateNodeRef; readonly head: string }> {
     return this.#run(async () => {
       const { sql } = this.#storage;
-      const { contextId, workUnit, application } = plan;
-      const value = { kind: "application" as const, applicationId: application.applicationId };
-      validateApplicationPlan(plan);
-      const decision = plan.decisions[0];
-      if (
-        command.method !== "merge" || command.commandId !== workUnit.commandId ||
-        workUnit.authorContextId !== contextId || workUnit.kind !== "merge" ||
-        !decision || !decision.sourceEventId || decision.sourceDeltaId !== null ||
-        plan.placement !== null || plan.changes.length || plan.appliedChanges.length ||
-        plan.newFiles.length || plan.newRepositories.length
-      ) {
-        throw new SemanticVcsError("IntegrityFailure", "Invalid prepared workspace integration");
-      }
+      const { commandId, contextId } = input;
+      const command: HistoryCommand = {
+        commandId, method: "merge", requestDigest: compactId("merge-request", { selection, input }), cause,
+      };
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       if (this.#hasCommand(current, contextId, command)) {
-        return this.#applicationReceipt(current, command, value);
+        const { head, workingHead } = this.#applicationForCommand(current, commandId);
+        return { value: workingHead, head };
       }
+
+      if (input.source.kind !== "event") {
+        throw new SemanticVcsError("InvalidReference", "Shared main integration requires its saved event");
+      }
+      if (input.coordinates?.length) {
+        throw new SemanticVcsError("IntegrationIncomplete", "Shared main integration requires the complete source revision");
+      }
+      const { head } = selection;
       if (current !== head) throw new HistoryHeadChanged(head, current);
       const main = await this.#fetchExpectedMain(selection.main);
       const base = this.#mergeBase(head, main);
       const source = committedWorkspaceEvent(sql, main);
       if (!base || base !== selection.base || base === head || base === main ||
-          source?.head !== main || source.eventId !== decision.sourceEventId ||
-          stateNodeKey(decision.targetState) !== stateNodeKey(application.basis) ||
-          stateNodeKey(plan.expectedWorkingHead) !== stateNodeKey(application.basis) ||
-          workspaceCommitForRef(sql, head, application.basis) !== head) {
+          source?.head !== main || source.eventId !== input.source.eventId ||
+          workspaceCommitForRef(sql, head, input.expectedWorkingHead) !== head) {
         throw new SemanticVcsError("RevisionChanged", "Workspace integration changed its reviewed revisions");
       }
+
       const scope = workspaceMergeScope(sql, base, main);
-      const choices = new Map(decision.entries.map((entry) => [
-        canonicalJson([entry.coordinate.kind, entry.coordinate.id]), entry,
-      ]));
-      if (choices.size !== decision.entries.length) {
-        throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration repeats a placement");
-      }
-      for (const [key, choice] of choices) {
-        const incoming = scope.get(key);
-        if (!incoming?.changeIds.length ||
-            canonicalJson([...choice.accountedSourceChangeIds].sort(compareUtf16CodeUnits)) !==
-              canonicalJson([...incoming.changeIds].sort(compareUtf16CodeUnits)) ||
-            (choice.resolution !== "ours" && choice.resolution !== "adopt") ||
-            choice.resultChangeId !== null) {
-          throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration does not account for incoming changes");
-        }
+      const resolutions = Array.isArray(input.resolutions) ? input.resolutions : [];
+      const fallback = Array.isArray(input.resolutions) ? undefined : input.resolutions?.allRemaining;
+      const keyOf = ({ kind, id }: WorkspaceMergeScopeEntry["coordinate"]) => canonicalJson([kind, id]);
+      const declared = new Map(resolutions.map((resolution) => [keyOf(resolution.coordinate), resolution]));
+      if (declared.size !== resolutions.length) {
+        throw new SemanticVcsError("IntegrityFailure", "Workspace integration repeats a placement");
       }
       this.#checkoutExpected(contextId, head);
+      let value: StateNodeRef | undefined;
       const merged = this.#dolt.merge(main, {
         fastForward: false,
         message: "Integrate shared workspace history",
@@ -816,33 +831,65 @@ export class ParticipantHistory {
             throw new SemanticVcsError("RevisionChanged", "Native merge changed its reviewed revisions");
           }
           if (merge.violations.length > 0) {
-            throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration has placement violations");
+            throw new SemanticVcsError("ConflictPresent", "Workspace integration has placement violations");
           }
-          const resolved = new Set<string>();
+          const entries: NonNullable<MutationDraft["decisions"]>[number]["entries"] = [];
           for (const conflict of merge.conflicts) {
-            const kind = conflict.table === "files" ? "file" : conflict.table === "repositories" ? "repository" : null;
-            const id = kind === "file" ? conflict.key["file_id"] : conflict.key["repository_id"];
-            const key = canonicalJson([kind, id]);
-            const choice = choices.get(key);
-            if (!kind || typeof id !== "string" || !choice) {
-              throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration omits a conflicting placement");
+            const key = conflict.table === "files" ? canonicalJson(["file", conflict.key["file_id"]])
+              : conflict.table === "repositories" ? canonicalJson(["repository", conflict.key["repository_id"]])
+              : null;
+            const incoming = key === null ? undefined : scope.get(key);
+            const selected = key === null ? undefined : declared.get(key) ?? fallback;
+            if (!key || !incoming?.changeIds.length || !selected || selected.resolution === "composed") {
+              throw new SemanticVcsError("ConflictPresent", "Workspace integration needs an exact row resolution");
             }
-            if (choice.resolution === "ours") {
-              conflict.keepOurs();
-            } else {
-              conflict.takeTheirs();
-            }
-            resolved.add(key);
+            if (selected.resolution === "theirs") conflict.takeTheirs();
+            else conflict.keepOurs();
+            entries.push({
+              coordinate: incoming.coordinate,
+              resolution: selected.resolution === "theirs" ? "adopt" : selected.resolution,
+              accountedSourceChangeIds: incoming.changeIds,
+              rationale: selected.rationale ?? null,
+            });
+            declared.delete(key);
           }
-          if (resolved.size !== choices.size) {
-            throw new SemanticVcsError("IntegrationIncomplete", "Prepared resolution no longer matches the native conflict");
+          if (declared.size > 0) {
+            throw new SemanticVcsError("RevisionChanged", "Prepared resolutions differ from the native conflict");
           }
-          this.#recordCommand(contextId, command, workUnit.createdAt);
-          this.#persistApplication(decision.entries.length ? plan : { ...plan, decisions: [] });
+          entries.sort((left, right) =>
+            compareUtf16CodeUnits(keyOf(left.coordinate), keyOf(right.coordinate)),
+          );
+          const draft: MutationDraft = {
+            kind: "merge",
+            intentSummary: input.intentSummary ?? null,
+            incorporatedChangeIds: entries.flatMap((entry) => entry.accountedSourceChangeIds),
+            changes: [],
+            fileResults: [],
+            repositoryResults: [],
+            decisions: [{ targetState: input.expectedWorkingHead, sourceEventId: source.eventId, sourceDeltaId: null, entries }],
+          };
+          const { plan } = SemanticWorkspace.prepareApplication(input, draft, commandId, {
+            now: () => new Date().toISOString(),
+            workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
+            contentIntegrity: () => ({ class: "internal", externalKeys: [], contentOrigins: new Map() }),
+            contentOrigins: () => new Map(),
+            invertedCounteractions: () => {
+              throw new SemanticVcsError("IntegrityFailure", "A whole-row merge cannot counteract a change");
+            },
+            preparePlacement: () => ({
+              placement: null,
+              resultRoot: compactId("dolt-merge-transition", { head, base, main, entries }),
+              workspacePlanCompletedAt: Date.now(),
+            }),
+          });
+          validateApplicationPlan(plan);
+          this.#recordCommand(contextId, command, plan.workUnit.createdAt);
+          this.#persistApplication({ ...plan, placement: null, decisions: entries.length ? plan.decisions : [] });
+          value = { kind: "application", applicationId: plan.application.applicationId };
         },
       });
-      if (merged.fastForward || merged.upToDate) {
-        throw new Error("Workspace integration did not record both native parents");
+      if (merged.fastForward || merged.upToDate || !value) {
+        throw new Error("Workspace integration did not record its two parents and application");
       }
       return { value, head: merged.hash };
     });
@@ -981,6 +1028,13 @@ export class ParticipantHistory {
       this.#dolt.hashOf(this.#contextBranch(contextId)),
       ref
     );
+  }
+
+  async #resolveReadableState(contextId: string, ref: StateNodeRef): Promise<string | null> {
+    const local = this.#resolveState(contextId, ref);
+    if (local) return local;
+    const main = await this.#fetchMain();
+    return workspaceCommitForRef(this.#storage.sql, main, ref);
   }
 
   #commit<T>(contextId: string, expectedHead: string, message: DoltCommitMessage, write: () => T) {
