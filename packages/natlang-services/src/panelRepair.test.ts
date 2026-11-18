@@ -29,6 +29,7 @@ function world() {
         consoleHistory: vi.fn(async () => ({ entries: [] })),
         session: vi.fn(async () => ({
           page: {
+            roleTargets: async () => [{ role: "button", name: "Save" }],
             getByRole: () => ({
               click,
               fill: click,
@@ -82,6 +83,8 @@ describe("panelRepair authority binding", () => {
   it("applies one exact revision-protected command and rebuilds only its successful build", async () => {
     const { service, ports } = world();
     const initial = await service.observe();
+    expect(initial.controls).toEqual([{ role: "button", name: "Save" }]);
+    expect(initial.visibleText).toContain("Save");
     await expect(service.rebuild(initial.revision)).rejects.toThrow("Build this exact revision");
     const applied = await service.apply(initial.revision, [
       { path: "panels/demo/App.tsx", before: "broken", after: "fixed" },

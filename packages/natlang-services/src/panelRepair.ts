@@ -40,7 +40,8 @@ export function createPanelRepair(options: {
   const observe = async (): Promise<Observation> => {
     const value = await scoped();
     const console = (await panel.cdp.consoleHistory()).entries.map((entry) => entry.message);
-    const controls: string[] = [];
+    let controls: Observation["controls"] = [];
+    let visibleText = "";
     if (value.phase === "ready") {
       const snapshot = await panel.snapshot();
       if (
@@ -50,7 +51,9 @@ export function createPanelRepair(options: {
         snapshot.buildKey !== value.buildKey
       )
         throw new Error("Rendered snapshot belongs to a different panel attempt; observe the current generation.");
-      controls.push(snapshot.document.text, JSON.stringify(snapshot.document.structure));
+      visibleText = snapshot.document.text;
+      const { page } = await panel.cdp.session();
+      controls = await page.roleTargets();
       if (generation(await scoped()) !== generation(value))
         throw new Error("Panel changed while observing its rendered document.");
     }
@@ -59,6 +62,7 @@ export function createPanelRepair(options: {
       generation: generation(value),
       phase: value.phase,
       controls,
+      visibleText,
       console,
       buildDiagnostics: value.failure ? [JSON.stringify(value.failure)] : [],
     };
@@ -95,8 +99,9 @@ export function createPanelRepair(options: {
           name: step.name,
           exact: true,
         });
-        if ((await locator.count()) !== 1)
-          throw new Error("Choose exactly one control by its observed role and accessible name.");
+        const count = await locator.count();
+        if (count !== 1)
+          throw new Error(`Found ${count} matches for role ${JSON.stringify(step.role)} and name ${JSON.stringify(step.name)}. Observe the current panel to choose one matching control.`);
         if (step.kind === "click") await locator.click();
         else if (step.kind === "fill") await locator.fill(step.text);
         const control =

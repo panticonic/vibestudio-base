@@ -400,7 +400,11 @@ export function observe(): Promise<{
   revision: string;
   generation: string;
   phase: string;
-  controls: string[];
+  controls: {
+    role: string;
+    name: string;
+  }[];
+  visibleText: string;
   console: string[];
   buildDiagnostics: string[];
 }>;
@@ -455,7 +459,11 @@ export function rebuild(revision: string): Promise<{
   revision: string;
   generation: string;
   phase: string;
-  controls: string[];
+  controls: {
+    role: string;
+    name: string;
+  }[];
+  visibleText: string;
   console: string[];
   buildDiagnostics: string[];
 }>;`,

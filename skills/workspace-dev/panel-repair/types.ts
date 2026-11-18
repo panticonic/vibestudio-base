@@ -12,7 +12,8 @@ export type Observation = {
   revision: string;
   generation: string;
   phase: string;
-  controls: string[];
+  controls: { role: string; name: string }[];
+  visibleText: string;
   console: string[];
   buildDiagnostics: string[];
 };

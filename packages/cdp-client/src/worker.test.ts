@@ -665,6 +665,35 @@ describe("worker CDP client", () => {
     await browser.close();
   });
 
+  it("reports visible role targets with the exact names used by locators", async () => {
+    installFakeWebSocket();
+    const browser = await BrowserImpl.connect("ws://cdp");
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.roleTargets();
+    await page.getByRole("textbox", { name: "Topic", exact: true }).count();
+    const expressions = FakeWebSocket.sent
+      .filter((entry) => entry.method === "Runtime.evaluate")
+      .map((entry) => String(entry.params?.["expression"] ?? ""));
+    const control = (tagName: string, name: string, width: number) => ({
+      tagName,
+      getAttribute: (attribute: string) => attribute === "aria-label" ? name : null,
+      getBoundingClientRect: () => ({ width, height: 20 }),
+    });
+    const world = {
+      document: { querySelectorAll: () => [
+        control("INPUT", "Topic", 20),
+        control("BUTTON", "Save", 20),
+        control("BUTTON", "Hidden", 0),
+      ] },
+      getComputedStyle: () => ({ display: "block", visibility: "visible" }),
+    };
+    await expect(runInNewContext(expressions.find((value) => value.includes('"op":"roleTargets"'))!, world))
+      .resolves.toEqual([{ role: "textbox", name: "Topic" }, { role: "button", name: "Save" }]);
+    await expect(runInNewContext(expressions.find((value) => value.includes('"op":"count"'))!, world))
+      .resolves.toBe(1);
+    await browser.close();
+  });
+
   it("resolves associated and ARIA labels on output elements without treating plain button text as a label", async () => {
     installFakeWebSocket();
     const browser = await BrowserImpl.connect("ws://cdp");

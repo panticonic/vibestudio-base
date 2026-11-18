@@ -53,7 +53,8 @@ const repairObservation = z.object({
   revision: z.string(),
   generation: z.string(),
   phase: z.string(),
-  controls: z.array(z.string()),
+  controls: z.array(z.object({ role: z.string(), name: z.string() })),
+  visibleText: z.string(),
   console: z.array(z.string()),
   buildDiagnostics: z.array(z.string()),
 });

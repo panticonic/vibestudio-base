@@ -360,6 +360,8 @@ export interface CdpFrameLocator {
 }
 
 export interface CdpPage {
+  /** Visible roles and names computed by the same matcher as getByRole. */
+  roleTargets(): Promise<Array<{ role: string; name: string }>>;
   waitForPopup(): Promise<CdpPopup>;
   waitForDownload(): Promise<CdpDownload>;
   downloads(): Promise<CdpDownload[]>;

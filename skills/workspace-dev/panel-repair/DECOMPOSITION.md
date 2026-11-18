@@ -33,8 +33,9 @@ return await repair({ panelSource, goal });
 The load option is checked against the program's declared service names and narrowed by the existing selector.
 Cached compiled code never caches a caller's adapters. This does not inject an outer agent or a new authority map.
 The assigned handle must follow `ctx:<contextId>`. A successful build must identify an actual runtime build key;
-rebuild must activate that same key before its rendered evidence is returned. Inspection reads the real chosen
-control's value/text and the current synthesized document, including its structure. Every returned service value
+rebuild must activate that same key before its rendered evidence is returned. Inspection reads the control's
+value and rendered text. The CDP target inventory uses the same browser-side role and accessible-name rules
+as its action locators. Reobserve when the candidate generation or rendered controls change. Every returned service value
 is fresh data; no browser/VCS handle or mutable oracle object is returned to model code.
 
 Validation: initial focused run passed 28 tests (factory, selector, loader), and the strengthened factory's three
