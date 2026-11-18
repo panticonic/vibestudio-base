@@ -44,6 +44,7 @@ import {
   type HistoryEditPlan,
   type HistoryPublicationApproval,
   type MainPublication,
+  type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
 
@@ -356,6 +357,11 @@ export class GadHistoryDO extends DurableObjectBase {
     return this.#history().previewMainMerge(input.contextId, input.head, input.main);
   }
 
+  @rpc(hostRead)
+  previewHistoryContextMerge(input: { contextId: string; head: string; source: MergeSource }) {
+    return this.#history().previewContextMerge(input.contextId, input.head, input.source);
+  }
+
   @rpc(hostWrite)
   mergeHistoryMain(input: {
     head: string;
@@ -369,6 +375,27 @@ export class GadHistoryDO extends DurableObjectBase {
     this.#assertWritable();
     return this.#history().mergeReviewedMain(
       { head: input.head, base: input.base, main: input.main },
+      vcsMergeInputSchema.parse(input.merge),
+      input.cause,
+      input.triggerEvidence,
+      input.content,
+    );
+  }
+
+  @rpc(hostWrite)
+  mergeHistoryContext(input: {
+    head: string;
+    base: string;
+    source: MergeSource;
+    merge: VcsMergeInput;
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+    content?: Parameters<ParticipantHistory["mergeReviewedContext"]>[5];
+  }) {
+    this.#assertWritable();
+    return this.#history().mergeReviewedContext(
+      { head: input.head, base: input.base },
+      input.source,
       vcsMergeInputSchema.parse(input.merge),
       input.cause,
       input.triggerEvidence,

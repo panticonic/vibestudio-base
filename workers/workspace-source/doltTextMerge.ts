@@ -1,6 +1,7 @@
 import { canonicalJson, sha256Hex, sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import {
+  classifyMergeAspect,
   contentMappingDigest,
   threeWayTextMerge,
   type ContentMapping,
@@ -21,26 +22,47 @@ export interface HistoryMergeObservation {
 
 type PlacedFile = NonNullable<ReturnType<WorkspaceEditBasis["file"]>>;
 
+function unambiguous<T>(aspect: "placement" | "mode" | "path", base: T, ours: T, theirs: T): T | undefined {
+  const status = classifyMergeAspect({
+    aspect,
+    base: canonicalJson(base),
+    ours: canonicalJson(ours),
+    theirs: canonicalJson(theirs),
+  });
+  if (status === "conflict") return undefined;
+  return status === "adopt" ? theirs : ours;
+}
+
 export function historyTextMergeInputs(
   sql: SqlStorage, selection: HistoryMergeSelection, fileId: string,
 ) {
-  const before = workspaceEditBasisAt(sql, selection.base).file(fileId);
+  const common = workspaceEditBasisAt(sql, selection.base);
+  const before = common.file(fileId);
   if (before?.contentKind !== "text") return null;
   const local = workspaceEditBasisAt(sql, selection.head);
   const ours = local.file(fileId);
   if (ours?.contentKind !== "text" || ours.contentHash === before.contentHash) return null;
-  const theirs = workspaceEditBasisAt(sql, selection.main).file(fileId);
+  const incoming = workspaceEditBasisAt(sql, selection.main);
+  const theirs = incoming.file(fileId);
   if (theirs?.contentKind !== "text" || theirs.contentHash === before.contentHash ||
       theirs.contentHash === ours.contentHash) {
     return null;
   }
-  const placement = (file: PlacedFile) => canonicalJson([file.repositoryId, file.path, file.mode]);
-  if (placement(before) !== placement(ours) || placement(ours) !== placement(theirs)) {
-    return null;
-  }
-  const repository = local.repository(ours.repositoryId);
-  if (!repository) throw new SemanticVcsError("IntegrityFailure", "Text merge file has no repository");
-  return { before, ours, theirs, repoPath: repository.repoPath };
+  const placement = (file: PlacedFile) => ({ repositoryId: file.repositoryId, path: file.path });
+  const target = unambiguous("placement", placement(before), placement(ours), placement(theirs));
+  const mode = unambiguous("mode", before.mode, ours.mode, theirs.mode);
+  if (!target || mode === undefined) return null;
+  const { repositoryId } = target;
+  const repoPath = unambiguous(
+    "path",
+    common.repository(repositoryId)?.repoPath ?? null,
+    local.repository(repositoryId)?.repoPath ?? null,
+    incoming.repository(repositoryId)?.repoPath ?? null,
+  );
+  if (repoPath == null) return null;
+  const localRepoPath = local.repository(ours.repositoryId)?.repoPath;
+  if (localRepoPath === undefined) throw new SemanticVcsError("IntegrityFailure", "Text merge file has no repository");
+  return { before, ours, theirs, localRepoPath, target: { ...target, mode, repoPath } };
 }
 
 export function readHistoryMergeObservations(
@@ -72,7 +94,7 @@ export function composeHistoryText(
   ordinal: number,
   sourceChangeIds: readonly string[],
 ) {
-  const { before, ours, theirs, repoPath } = inputs;
+  const { before, ours, theirs, localRepoPath, target } = inputs;
   const { fileId } = ours;
   const text = (file: PlacedFile) => {
     const value = observed.get(file.contentHash);
@@ -97,15 +119,15 @@ export function composeHistoryText(
   const result = {
     presence: "placed" as const,
     fileId,
-    repositoryId: ours.repositoryId,
-    path: ours.path,
-    mode: ours.mode,
+    repositoryId: target.repositoryId,
+    path: target.path,
+    mode: target.mode,
     contentHash,
     contentKind: "text" as const,
     byteLength: bytes.length,
     coordinateExtent: merged.text.length,
   };
-  const coordinates = (file: PlacedFile | typeof result) => ({
+  const coordinates = (file: PlacedFile | typeof result, repoPath: string) => ({
     kind: "file",
     fileId,
     repoPath,
@@ -130,8 +152,8 @@ export function composeHistoryText(
     kind: "merge",
     operation: ordinal,
     ordinal: 0,
-    base: coordinates(ours),
-    result: coordinates(result),
+    base: coordinates(ours, localRepoPath),
+    result: coordinates(result, target.repoPath),
     payload: { mergesChangeIds: [...new Set([
       ...sourceChangeIds,
       ...(localOrigin.authoredChangeId ? [localOrigin.authoredChangeId] : []),

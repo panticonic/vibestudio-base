@@ -42,6 +42,7 @@ import {
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -106,12 +107,17 @@ export type HistoryMergeResult =
   | { kind: "prepare-content"; blobs: NonNullable<MutationDraft["blobs"]> }
   | { kind: "committed"; value: StateNodeRef; head: string };
 
+interface HistoryMergeContent {
+  observation: HistoryMergeObservation;
+  contentHashes?: readonly string[];
+}
+
 type HistoryEditResult = ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
 export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
   placement: WorkspacePlacementChange | null;
 };
 
-interface MergeSource extends CommittedContext {
+export interface MergeSource extends CommittedContext {
   readonly participantId?: string;
 }
 
@@ -840,12 +846,23 @@ export class ParticipantHistory {
 
   /** Inspect F1's exact conflict and violation rows before accepting resolutions. */
   previewMainMerge(contextId: string, head: string, expectedMain: string): Promise<MainMergePreview> {
+    return this.#previewMerge(contextId, head, () => this.#fetchExpectedMain(expectedMain));
+  }
+
+  async previewContextMerge(contextId: string, head: string, source: MergeSource) {
+    const { main, ...preview } = await this.#previewMerge(
+      contextId, head, () => this.#resolveContextSource(source),
+    );
+    return { ...preview, source: main };
+  }
+
+  #previewMerge(contextId: string, head: string, readSource: () => Promise<string>): Promise<MainMergePreview> {
     return this.#run(async () => {
       this.#assertHead(this.#contextBranch(contextId), head);
-      const main = await this.#fetchExpectedMain(expectedMain);
+      const main = await readSource();
       const base = this.#mergeBase(head, main);
       if (!base) {
-        throw new SemanticVcsError("InvalidReference", "Workspace main and context share no history");
+        throw new SemanticVcsError("InvalidReference", "Workspace source and context share no history");
       }
       if (base === head || base === main) {
         return { head, main, base, incoming: [], conflicts: [], violations: [] };
@@ -887,13 +904,37 @@ export class ParticipantHistory {
     input: VcsMergeInput,
     cause: HistoryCommand["cause"],
     triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
-    content: { observation: HistoryMergeObservation; contentHashes?: readonly string[] } | null = null,
+    content: HistoryMergeContent | null = null,
+  ): Promise<HistoryMergeResult> {
+    return this.#mergeReviewed(selection, input, cause, triggerEvidence, content);
+  }
+
+  mergeReviewedContext(
+    selection: { head: string; base: string },
+    source: MergeSource,
+    input: VcsMergeInput,
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
+    content: HistoryMergeContent | null = null,
+  ): Promise<HistoryMergeResult> {
+    return this.#mergeReviewed({ ...selection, main: source.head }, input, cause, triggerEvidence, content, source);
+  }
+
+  #mergeReviewed(
+    selection: HistoryMergeSelection,
+    input: VcsMergeInput,
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"],
+    content: HistoryMergeContent | null,
+    sourceContext?: MergeSource,
   ): Promise<HistoryMergeResult> {
     return this.#run<HistoryMergeResult>(async () => {
       const { sql } = this.#storage;
       const { commandId, contextId } = input;
       const command: HistoryCommand = {
-        commandId, method: "merge", requestDigest: compactId("merge-request", { selection, input }), cause,
+        commandId, method: "merge",
+        requestDigest: compactId("merge-request", { selection, input, ...(sourceContext ? { sourceContext } : {}) }),
+        cause,
       };
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       if (this.#hasCommand(current, contextId, command)) {
@@ -902,14 +943,16 @@ export class ParticipantHistory {
       }
 
       if (input.source.kind !== "event") {
-        throw new SemanticVcsError("InvalidReference", "Shared main integration requires its saved event");
+        throw new SemanticVcsError("InvalidReference", "Workspace integration requires a saved source event");
       }
       if (input.coordinates?.length) {
-        throw new SemanticVcsError("IntegrationIncomplete", "Shared main integration requires the complete source revision");
+        throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration requires the complete source revision");
       }
       const { head } = selection;
       if (current !== head) throw new HistoryHeadChanged(head, current);
-      const main = await this.#fetchExpectedMain(selection.main);
+      const main = sourceContext
+        ? await this.#resolveContextSource(sourceContext)
+        : await this.#fetchExpectedMain(selection.main);
       const base = this.#mergeBase(head, main);
       const source = committedWorkspaceEvent(sql, main);
       if (!base || base !== selection.base || base === head || base === main ||
@@ -970,9 +1013,6 @@ export class ParticipantHistory {
           if (merge.ours !== head || merge.theirs !== main || merge.base !== base) {
             throw new SemanticVcsError("RevisionChanged", "Native merge changed its reviewed revisions");
           }
-          if (merge.violations.length > 0) {
-            throw new SemanticVcsError("ConflictPresent", "Workspace integration has placement violations");
-          }
           const entries: NonNullable<MutationDraft["decisions"]>[number]["entries"] = [];
           let resolvedText = 0;
           for (const conflict of merge.conflicts) {
@@ -986,10 +1026,11 @@ export class ParticipantHistory {
             }
             const text = composed.get(key);
             if (text && text.file.result.presence === "placed") {
-              const { fileId, contentHash, contentKind, byteLength, coordinateExtent } = text.file.result;
+              const { fileId, repositoryId, path, mode, contentHash, contentKind, byteLength, coordinateExtent } = text.file.result;
               sql.exec(
-                "UPDATE files SET content_hash = ?, content_kind = ?, byte_length = ?, coordinate_extent = ? WHERE file_id = ?",
-                contentHash, contentKind, byteLength, coordinateExtent, fileId,
+                `UPDATE files SET repository_id = ?, path = ?, mode = ?, content_hash = ?,
+                    content_kind = ?, byte_length = ?, coordinate_extent = ? WHERE file_id = ?`,
+                repositoryId, path, mode, contentHash, contentKind, byteLength, coordinateExtent, fileId,
               );
               conflict.resolve();
               entries.push({
@@ -1016,6 +1057,25 @@ export class ParticipantHistory {
             });
             declared.delete(key);
           }
+          declineHistoryFileCollisions(sql, merge, (fileId) => {
+            const key = keyOf({ kind: "file", id: fileId });
+            const prior = entries.find(({ coordinate }) => keyOf(coordinate) === key);
+            const selected = prior ?? declared.get(key) ?? fallback;
+            const incoming = scope.get(key);
+            if (!incoming?.changeIds.length ||
+                (selected?.resolution !== "ours" && selected?.resolution !== "current")) {
+              throw new SemanticVcsError("ConflictPresent", "Workspace integration needs an exact placement resolution");
+            }
+            if (!prior) {
+              entries.push({
+                coordinate: incoming.coordinate,
+                resolution: selected.resolution,
+                accountedSourceChangeIds: incoming.changeIds,
+                rationale: selected.rationale ?? null,
+              });
+            }
+            declared.delete(key);
+          });
           if (declared.size > 0 || resolvedText !== composed.size) {
             throw new SemanticVcsError("RevisionChanged", "Prepared resolutions differ from the native conflict");
           }
@@ -1078,25 +1138,33 @@ export class ParticipantHistory {
     options: ResolvingMerge
   ) {
     return this.#run(async () => {
-      const context = this.#contextBranch(source.contextId);
-      let sourceBranch = context;
-      if (source.participantId !== undefined) {
-        const participant = branchSegment(source.participantId);
-        if (participant !== this.#participant) {
-          const published = `pub/${participant}/${context.slice("ctx/".length)}`;
-          await this.#dolt.fetch("origin", {
-            branches: [published],
-            transport: this.#transport,
-          });
-          sourceBranch = `origin/${published}`;
-        }
-      }
-      if (source.head !== this.#mergeBase(sourceBranch, source.head)) {
-        throw new Error("The requested commit is outside the source context");
-      }
+      const sourceHead = await this.#resolveContextSource(source);
       this.#checkoutExpected(contextId, expectedHead);
-      return this.#dolt.merge(source.head, options);
+      return this.#dolt.merge(sourceHead, options);
     });
+  }
+
+  async #resolveContextSource(source: MergeSource): Promise<string> {
+    const context = this.#contextBranch(source.contextId);
+    let sourceBranch = context;
+    if (source.participantId !== undefined) {
+      const participant = branchSegment(source.participantId);
+      if (participant !== this.#participant) {
+        const published = `pub/${participant}/${context.slice("ctx/".length)}`;
+        const fetched = await this.#dolt.fetch("origin", {
+          branches: [published],
+          transport: this.#transport,
+        });
+        if (!fetched.branches[published]) {
+          throw new SemanticVcsError("InvalidReference", "Published workspace source context is unavailable");
+        }
+        sourceBranch = `origin/${published}`;
+      }
+    }
+    if (source.head !== this.#mergeBase(sourceBranch, source.head)) {
+      throw new SemanticVcsError("InvalidReference", "The requested commit is outside the source context");
+    }
+    return source.head;
   }
 
   publishContext(contextId: string, expectedHead: string) {

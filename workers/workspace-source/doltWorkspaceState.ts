@@ -44,6 +44,16 @@ const fileColumns = [
   "presence",
   "tombstone_change_id",
 ] as const;
+
+export function restoreDoltFileRow(sql: SqlStorage, at: string, fileId: string): void {
+  const columns = fileColumns.join(", ");
+  sql.exec("DELETE FROM files WHERE file_id = ?", fileId);
+  sql.exec(
+    `INSERT INTO files (${columns}) SELECT ${columns} FROM dolt_at_files(?) WHERE file_id = ?`,
+    at,
+    fileId,
+  );
+}
 export type WorkspacePlacementChange = Pick<
   WorkspaceFactChangeSet,
   "repositoryUpdates" | "fileUpdates"
