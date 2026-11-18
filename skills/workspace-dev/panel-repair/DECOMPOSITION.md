@@ -26,10 +26,13 @@ import { openPanel, vcs, contextId } from "@workspace/runtime";
 import { createPanelRepair } from "@workspace/natlang-services";
 const panel = await openPanel(panelSource, { contextId });
 const panelRepair = createPanelRepair({ contextId, panelSource, panel, vcs, build: services.build });
-const repair = await natlang.load("skills/vibestudio-workflows/runWorkflow.nl", {
+const runWorkflow = await natlang.load("skills/vibestudio-workflows/runWorkflow.nl", {
   services: { panelRepair, panelRepairEdit: panelRepair },
 });
-return await repair({ panelSource, goal });
+return await runWorkflow({
+  goal,
+  work: [{ kind: "repairPanel", input: { panelSource, goal } }],
+});
 ```
 
 The load option is checked against the program's declared service names and narrowed by the existing selector.
@@ -40,7 +43,7 @@ value and rendered text. The CDP target inventory uses the same browser-side rol
 as its action locators. Reobserve when the candidate generation or rendered controls change. Every returned service value
 is fresh data; no browser/VCS handle or mutable oracle object is returned to model code.
 
-`natlang.json` grants the editing service only to the authored root. Diagnosis reads current evidence,
+`natlang.json` grants the editing service only to the panel-repair skill. Diagnosis reads current evidence,
 and the verification child exercises the running candidate.
 
 Validation: initial focused run passed 28 tests (factory, selector, loader), and the strengthened factory's three

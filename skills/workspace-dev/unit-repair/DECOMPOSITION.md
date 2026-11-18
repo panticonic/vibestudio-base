@@ -1,9 +1,10 @@
 # Repair an assigned worker with real compilation and workerd tests
 
 The task starts from the workspace-development skill's compiler-driven repair guidance and the project lifecycle,
-build verification, and unit-diagnostic system tests. Two label-normalizer fixtures fail in distinct ways. One
-contains a type mismatch and the other references a missing source helper. Both preserve the original suite and
-the caller's requested behavior.
+build verification, and unit-diagnostic system tests. Ten authored fixtures cover nine worker contracts, including
+label normalization, routing precedence, job ordering, deadlines, and quotas. Each requires the original suite
+and the caller's requested behavior to be preserved. The shared Vibestudio workflow calls the typed
+[repairUnit](../../vibestudio-workflows/runWorkflow/repairUnit.nl) skill with the assigned worker and goal.
 
 | Responsibility | Implementation |
 | --- | --- |
