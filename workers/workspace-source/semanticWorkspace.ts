@@ -203,7 +203,7 @@ const boundedMemoryText = (value: string, maximum: number): string | null => {
     : `${normalized.slice(0, Math.max(0, maximum - 1)).trimEnd()}…`;
 };
 
-const trajectorySenderRef = (value: unknown) => {
+export const trajectorySenderRef = (value: unknown) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Row;
   const parsed = vcsTrajectorySenderRefSchema.safeParse({
@@ -711,6 +711,31 @@ const publicChangeKind = (kind: string): string => {
       return kind;
   }
 };
+
+function semanticCoordinatePath(endpoint: Row): string | undefined {
+  if (endpoint["kind"] === "repository" && typeof endpoint["repoPath"] === "string")
+    return endpoint["repoPath"];
+  if (endpoint["kind"] === "file" && typeof endpoint["repoPath"] === "string" &&
+      typeof endpoint["path"] === "string") return `${endpoint["repoPath"]}/${endpoint["path"]}`;
+  return undefined;
+}
+
+export function describeSemanticEffects(
+  workKind: string,
+  changes: readonly Pick<ChangeRecord, "kind" | "result" | "base">[],
+): string {
+  if (changes.length === 0) return `${workKind} decision with no fact transition`;
+  const descriptions = changes.map((change) => {
+    const endpoint = change.result ?? change.base ?? {};
+    const subject = semanticCoordinatePath(endpoint) ??
+      (typeof endpoint["fileId"] === "string" ? endpoint["fileId"]
+        : typeof endpoint["repositoryId"] === "string" ? endpoint["repositoryId"] : "workspace coordinate");
+    return `${publicChangeKind(change.kind)} ${subject}`;
+  });
+  const unique = [...new Set(descriptions)];
+  const visible = unique.slice(0, 12).join("; ");
+  return unique.length > 12 ? `${visible}; and ${unique.length - 12} more effects` : visible;
+}
 
 type ObservedContentDescriptor = {
   contentKind: "text" | "bytes";
@@ -5728,24 +5753,7 @@ export class SemanticWorkspace {
         )
         .toArray() as Row[]
     ).map((entry) => this.changeRequired(String(entry["change_id"])));
-    if (changes.length === 0)
-      return `${workKind} decision with no fact transition`;
-    const summaries = changes.map((change) => {
-      const endpoint = change.result ?? change.base ?? {};
-      const subject =
-        this.coordinatePath(endpoint) ??
-        (typeof endpoint["fileId"] === "string"
-          ? String(endpoint["fileId"])
-          : typeof endpoint["repositoryId"] === "string"
-            ? String(endpoint["repositoryId"])
-            : "workspace coordinate");
-      return `${publicChangeKind(change.kind)} ${subject}`;
-    });
-    const unique = [...new Set(summaries)];
-    const visible = unique.slice(0, 12).join("; ");
-    return unique.length > 12
-      ? `${visible}; and ${unique.length - 12} more effects`
-      : visible;
+    return describeSemanticEffects(workKind, changes);
   }
 
   private intentProjection(comparison: NetMergeComparison): {
@@ -10139,20 +10147,7 @@ export class SemanticWorkspace {
   }
 
   private coordinatePath(endpoint: Row): string | undefined {
-    if (
-      endpoint["kind"] === "repository" &&
-      typeof endpoint["repoPath"] === "string"
-    ) {
-      return endpoint["repoPath"];
-    }
-    if (
-      endpoint["kind"] === "file" &&
-      typeof endpoint["repoPath"] === "string" &&
-      typeof endpoint["path"] === "string"
-    ) {
-      return `${endpoint["repoPath"]}/${endpoint["path"]}`;
-    }
-    return undefined;
+    return semanticCoordinatePath(endpoint);
   }
 
   private mergeChangeCoordinate(change: ChangeRecord): MergeCoordinate | null {

@@ -4,6 +4,7 @@ import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
+  vcsCompareInputSchema,
   vcsCommitInputSchema,
   vcsCopyInputSchema,
   vcsDiscardInputSchema,
@@ -16,6 +17,7 @@ import {
   vcsResolveRepositoryInputSchema,
   vcsSemanticNodeRefSchema,
   vcsStateNodeRefSchema,
+  type VcsCompareInput,
   type VcsCommitInput,
   type VcsCopyInput,
   type VcsDiscardInput,
@@ -462,6 +464,17 @@ export class GadHistoryDO extends DurableObjectBase {
     if (source.kind !== "event") throw new Error("Workspace main integration requires an event");
     return this.#history().resolveMainMerge(
       input.contextId, vcsStateNodeRefSchema.parse(input.target), source.eventId,
+    );
+  }
+
+  @rpc(hostRead)
+  reviewHistoryMainMerge(input: {
+    contextId: string;
+    compare: VcsCompareInput;
+    observation?: Parameters<ParticipantHistory["reviewMainMerge"]>[2];
+  }) {
+    return this.#history().reviewMainMerge(
+      input.contextId, vcsCompareInputSchema.parse(input.compare), input.observation ?? null,
     );
   }
 

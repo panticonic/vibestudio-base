@@ -1,11 +1,13 @@
-import { canonicalJson } from "@vibestudio/content-addressing";
+import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
-import type { VcsCompareResult, VcsMergeCoordinateRef } from "@vibestudio/service-schemas/vcs";
-import { classifyMergeAspect } from "@workspace/vcs-engine";
+import type { VcsCompareInput, VcsCompareResult, VcsMergeCoordinateRef } from "@vibestudio/service-schemas/vcs";
+import { classifyMergeAspect, resolveIntent } from "@workspace/vcs-engine";
 import { workspaceEditBasisAt, workspaceMergeScope, type WorkspaceMergeScopeEntry } from "./doltWorkspaceState.js";
-import type { HistoryMergeSelection } from "./doltTextMerge.js";
+import { composeHistoryText, historyTextMergeInputs, readHistoryMergeObservations, type HistoryMergeObservation, type HistoryMergeSelection } from "./doltTextMerge.js";
+import type { MainMergePreview } from "./participantHistory.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import type { WorkspaceEditBasis } from "./semanticWorkspace.js";
+import type { ChangeRecord } from "./semanticVcsStore.js";
+import { describeSemanticEffects, parseSemanticCursor, semanticCursor, trajectorySenderRef, type WorkspaceEditBasis } from "./semanticWorkspace.js";
 
 type Coordinate = VcsCompareResult["coordinates"][number];
 type Side = "base" | "ours" | "theirs";
@@ -118,4 +120,191 @@ export function historyMergePlacements(
       },
     };
   });
+}
+
+export type HistoryMergeReview =
+  | { kind: "read-content"; contentHashes: string[] }
+  | { kind: "reviewed"; result: VcsCompareResult };
+
+function reviewIntents(sql: SqlStorage, preview: MainMergePreview, coordinates: Coordinate[]) {
+  const intents: VcsCompareResult["intents"] = [];
+  const intentCounts: VcsCompareResult["intentCounts"] = { merged: 0, settled: 0, split: 0, contested: 0, pending: 0 };
+  for (const side of ["theirs", "ours"] as const) {
+    const work = new Map<string, Coordinate[]>();
+    for (const coordinate of coordinates) {
+      const authors = new Set(coordinate.attribution[side].map(({ workUnitId }) => workUnitId));
+      for (const id of authors) {
+        const owned = work.get(id) ?? [];
+        owned.push(coordinate);
+        work.set(id, owned);
+      }
+    }
+    if (work.size === 0) continue;
+    const at = side === "theirs" ? preview.main : preview.head;
+    const rows = sql.exec(
+      `SELECT work.work_unit_id, work.kind, work.intent_summary, work.trigger_excerpt, work.trigger_sender_json,
+              work.resolved_intent_text, work.resolved_intent_tier
+         FROM json_each(?2) AS selected
+         JOIN dolt_at_gad_work_units(?1) AS work ON work.work_unit_id = selected.value
+        ORDER BY work.work_unit_id`,
+      at,
+      JSON.stringify([...work.keys()]),
+    ).toArray();
+    if (rows.length !== work.size)
+      throw new SemanticVcsError("IntegrityFailure", "Merge comparison is missing a work unit");
+    for (const row of rows) {
+      const { work_unit_id, kind, intent_summary, trigger_excerpt, trigger_sender_json,
+        resolved_intent_text: text, resolved_intent_tier: tier } = row;
+      const selected = typeof work_unit_id === "string" ? work.get(work_unit_id) : undefined;
+      if (!selected || typeof work_unit_id !== "string" || typeof kind !== "string") {
+        throw new SemanticVcsError("IntegrityFailure", "Invalid merge work unit");
+      }
+      const intent: VcsCompareResult["intents"][number]["intent"] =
+        typeof text === "string" && text && (tier === "stated" || tier === "trigger" || tier === "mechanical")
+        ? { text, tier }
+        : readHistoryWorkIntent(sql, at, work_unit_id, kind, intent_summary, trigger_excerpt, trigger_sender_json);
+      const conflicts = selected.filter(({ status }) => status === "conflict").length;
+      const state = side === "ours" ? undefined
+        : conflicts === selected.length ? "contested"
+        : conflicts > 0 ? "split"
+        : selected.some(({ status }) => status === "adopt" || status === "composed") ? "pending"
+        : selected.some(({ status }) => status === "convergent") ? "settled" : "merged";
+      if (state) intentCounts[state]++;
+      intents.push({
+        workUnitId: work_unit_id,
+        side,
+        intent,
+        coordinates: selected.slice(0, 500).map(({ coordinate: { kind, id } }) => ({ kind, id })),
+        ...(state ? { state } : {}),
+      });
+    }
+  }
+  return { intents: intents.slice(0, 500), intentCounts, intentsTruncated: intents.length > 500 };
+}
+
+function readHistoryWorkIntent(
+  sql: SqlStorage, at: string, workUnitId: string, kind: string,
+  statement: unknown, excerpt: unknown, senderJson: unknown,
+) {
+  const sender = typeof senderJson === "string" ? trajectorySenderRef(JSON.parse(senderJson)) : null;
+  const changes = sql.exec(
+    `SELECT kind, result_json, base_json FROM dolt_at_gad_changes(?)
+      WHERE work_unit_id = ? ORDER BY operation, ordinal, change_id`,
+    at,
+    workUnitId,
+  ).toArray().map(({ kind, result_json, base_json }) => ({
+    kind: kind as ChangeRecord["kind"],
+    result: typeof result_json === "string" ? JSON.parse(result_json) as ChangeRecord["result"] : null,
+    base: typeof base_json === "string" ? JSON.parse(base_json) as ChangeRecord["base"] : null,
+  }));
+  return resolveIntent({
+    stated: typeof statement === "string" ? statement : null,
+    trigger: typeof excerpt === "string" && sender ? { text: excerpt, sender: sender.id } : null,
+    mechanical: describeSemanticEffects(kind, changes),
+  });
+}
+
+/** Project actual native conflicts while keeping immutable paths and authors visible. */
+export function reviewHistoryMerge(
+  sql: SqlStorage,
+  input: VcsCompareInput,
+  base: VcsCompareResult["base"],
+  preview: MainMergePreview,
+  observation: HistoryMergeObservation | null,
+): HistoryMergeReview {
+  const rowConflicts = new Set<string>();
+  for (const { table, key } of preview.conflicts) {
+    const id = table === "files" ? key["file_id"] : table === "repositories" ? key["repository_id"] : null;
+    if (typeof id !== "string")
+      throw new SemanticVcsError("ConflictPresent", "Native merge has a conflict outside workspace placements");
+    rowConflicts.add(canonicalJson([table === "files" ? "file" : "repository", id]));
+  }
+  const pathCollisions = new Map<string, VcsMergeCoordinateRef[]>();
+  for (const { table, row } of preview.violations) {
+    const file = table === "files";
+    const id = file ? row["file_id"] : row["repository_id"];
+    const path = file ? [row["repository_id"], row["path"]] : [row["repo_path"]];
+    if ((table !== "files" && table !== "repositories") || typeof id !== "string" ||
+        path.some((part) => typeof part !== "string")) {
+      throw new SemanticVcsError("ConflictPresent", "Native merge has an unsupported placement violation");
+    }
+    const group = canonicalJson([table, ...path]);
+    const members = pathCollisions.get(group) ?? [];
+    members.push({ kind: file ? "file" : "repository", id });
+    pathCollisions.set(group, members);
+  }
+  const groups = new Map<string, { group: string; peers: VcsMergeCoordinateRef[] }>();
+  for (const [group, members] of pathCollisions) {
+    for (const member of members) {
+      groups.set(canonicalJson([member.kind, member.id]), {
+        group,
+        peers: members.filter(({ id }) => id !== member.id),
+      });
+    }
+  }
+  const candidates = new Map(preview.placements.flatMap(({ coordinate }) => {
+    const key = canonicalJson([coordinate.kind, coordinate.id]);
+    if (coordinate.kind !== "file" || groups.has(key) || !rowConflicts.has(key)) return [];
+    const inputs = historyTextMergeInputs(sql, preview, coordinate.id);
+    return inputs ? [[key, inputs] as const] : [];
+  }));
+  const hashes = [...new Set([...candidates.values()].flatMap(({ before, ours, theirs }) =>
+    [before.contentHash, ours.contentHash, theirs.contentHash],
+  ))].sort(compareUtf16CodeUnits);
+  if (hashes.length > 0 && !observation) return { kind: "read-content", contentHashes: hashes };
+  const observed = observation ? readHistoryMergeObservations(hashes, observation) : new Map<string, string>();
+  const incoming = new Map(preview.incoming.map(({ coordinate, changeIds }) =>
+    [canonicalJson([coordinate.kind, coordinate.id]), changeIds] as const,
+  ));
+  const coordinates: Coordinate[] = preview.placements.map((placement) => {
+    const { kind, id, paths } = placement.coordinate;
+    const key = canonicalJson([kind, id]);
+    const collision = groups.get(key);
+    const candidate = candidates.get(key);
+    const composed = candidate && composeHistoryText(sql, preview, candidate, observed, 0, incoming.get(key) ?? []);
+    const aspects = placement.aspects.map((aspect) =>
+      composed && aspect.aspect === "content" ? { ...aspect, status: "composed" as const } : aspect,
+    );
+    let status: Coordinate["status"];
+    if (collision || (rowConflicts.has(key) && !composed)) status = "conflict";
+    else if (composed || (aspects.some(({ status }) => status === "adopt") &&
+        aspects.some(({ status }) => status === "ours"))) status = "composed";
+    else if (aspects.some(({ status }) => status === "adopt")) status = "adopt";
+    else status = "convergent";
+    return {
+      ...placement,
+      aspects,
+      status,
+      ...(collision && collision.peers.length > 0 ? { group: collision.group, structuralConflicts: collision.peers } : {}),
+      resolutions: collision ? (kind === "file" ? ["ours", "current"] : [])
+        : composed ? ["composed", "theirs", "ours", "current"] : ["theirs", "ours", "current"],
+      summary: `${status} ${kind} ${paths.theirs ?? paths.ours ?? id}`,
+    };
+  });
+  const counts: VcsCompareResult["counts"] = { adopt: 0, convergent: 0, composed: 0, conflict: 0, resolved: 0 };
+  for (const { status } of coordinates) counts[status]++;
+  const remaining = counts.adopt + counts.composed + counts.conflict;
+  const { target, source, statusFilter, cursor, limit } = input;
+  const basis = { target, source, ...(statusFilter ? { statusFilter } : {}) };
+  const position = parseSemanticCursor(cursor, "compare", basis);
+  const offset = position?.["offset"] ?? 0;
+  if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0) {
+    throw new SemanticVcsError("InvalidReference", "Invalid workspace comparison position");
+  }
+  const filtered = statusFilter ? coordinates.filter(({ status }) => status === statusFilter) : coordinates;
+  const shown = filtered.slice(offset, offset + limit);
+  const nextCursor = offset + limit < filtered.length
+    ? semanticCursor("compare", basis, { offset: offset + limit })
+    : null;
+  return {
+    kind: "reviewed",
+    result: {
+      target, source, base,
+      counts,
+      resolution: { remainingCoordinateCount: remaining, complete: remaining === 0, concluded: preview.main === preview.base },
+      coordinates: shown,
+      ...reviewIntents(sql, preview, coordinates),
+      nextCursor,
+    },
+  };
 }

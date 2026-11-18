@@ -12,6 +12,7 @@ import {
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
 import type {
+  VcsCompareInput,
   VcsCommitInput,
   VcsCommitResult,
   VcsCopyInput,
@@ -51,7 +52,7 @@ import {
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
-import { historyMergePlacements } from "./doltMergeReview.js";
+import { historyMergePlacements, reviewHistoryMerge } from "./doltMergeReview.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -449,8 +450,11 @@ export class ParticipantHistory {
   }
 
   #contextState(contextId: string) {
+    return this.#stateAt(this.#dolt.hashOf(this.#contextBranch(contextId)));
+  }
+
+  #stateAt(head: string) {
     const { sql } = this.#storage;
-    const head = this.#dolt.hashOf(this.#contextBranch(contextId));
     const saved = committedWorkspaceEvent(sql, head);
     if (!saved) throw new SemanticVcsError("IntegrityFailure", "Workspace context has no saved event");
     const applications = saved.head === head ? [] : workspaceApplicationsAt(sql, head, saved.head);
@@ -1017,6 +1021,19 @@ export class ParticipantHistory {
       }
       return { head, main, base };
     });
+  }
+
+  async reviewMainMerge(contextId: string, input: VcsCompareInput, observation: HistoryMergeObservation | null) {
+    if (input.source.kind !== "event")
+      throw new SemanticVcsError("InvalidReference", "Shared workspace comparison requires a published event");
+    const { head, main, base } = await this.resolveMainMerge(contextId, input.target, input.source.eventId);
+    if (main === base) {
+      throw new SemanticVcsError("SourceIsAncestor", "The compare source is already in the target's history", {
+        target: input.target, source: input.source,
+      });
+    }
+    const preview = await this.previewMainMerge(contextId, head, main);
+    return this.#run(() => reviewHistoryMerge(this.#storage.sql, input, this.#stateAt(base).state, preview, observation));
   }
 
   async previewContextMerge(contextId: string, head: string, source: MergeSource) {
