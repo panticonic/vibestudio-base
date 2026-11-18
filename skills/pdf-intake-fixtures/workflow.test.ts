@@ -23,6 +23,7 @@ import type {
 } from "../scratch-handoff/types.js";
 import { createTemplateCandidateFixture } from "../template-candidate-fixtures/fixture.js";
 import { templateCandidateWorlds } from "../template-candidate-fixtures/worlds.js";
+import { presentationWorlds } from "../visualization-fixtures/worlds.js";
 import type {
   CandidateReport,
   CandidateRequest,
@@ -40,9 +41,69 @@ const reference: Record<string, string> = {
     else if (selected.domain === "localModel") report = await domains.localModel.prepareLocalModel(selected.input);
     else if (selected.domain === "scratchHandoff") report = await domains.scratchHandoff.assembleHandoff(selected.input);
     else if (selected.domain === "templateCandidate") report = await domains.templateCandidate.stageTemplateCandidate(selected.input);
+    else if (selected.domain === "visualize") report = await domains.visualize.preparePresentation(selected.input);
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
+  planPresentation: `return ${JSON.stringify(
+    Object.fromEntries(
+      presentationWorlds.map(({ request, expected }) => [
+        request.goal,
+        expected.map(({ id }) => id),
+      ]),
+    ),
+  )}[request.goal];`,
+  preparePresentation: `
+    const order = await planPresentation(request);
+    const views = [];
+    for (const id of order) views.push(await prepareSection(request.sections.find(section => section.id === id)));
+    return {views, omitted:request.sections.filter(section => !order.includes(section.id)).map(section => section.id)};
+  `,
+  prepareSection: `
+    const component = await chooseComponent(section.data, section.ask);
+    const id = section.id;
+    if (component === "Prose") return {id, status:"plain"};
+    if (["Calculator", "Diagram", "OneOff"].includes(component)) return {id, status:"deferred", component};
+    const availability = await checkAvailability(section, component);
+    if (availability.status === "rejected") return {id, status:"needs-review", reason:availability.reason};
+    const spec = await readProps(section.data, component, section.ask);
+    const readback = await checkReadback(section, component, spec);
+    if (readback.status === "rejected") return {id, status:"needs-review", reason:readback.reason};
+    return {id, status:"ready", rendered:await render.renderComponent(spec)};
+  `,
+  chooseComponent: `return ${JSON.stringify(
+    Object.fromEntries(
+      presentationWorlds.flatMap(({ request, expected }) =>
+        expected.map(({ id, outcome }) => [
+          request.sections.find((section) => section.id === id)!.data,
+          outcome.status === "ready"
+            ? outcome.spec.component
+            : outcome.status === "plain"
+              ? "Prose"
+              : outcome.component,
+        ]),
+      ),
+    ),
+  )}[data];`,
+  checkAvailability: `return section.id === "staffing" ? {status:"rejected", reason:"No staffing capacity was confirmed."} : {status:"accepted"};`,
+  readProps: `return ${JSON.stringify(
+    Object.fromEntries(
+      presentationWorlds.flatMap(({ request, expected }) =>
+        expected.flatMap(({ id, outcome }) =>
+          outcome.status === "ready"
+            ? [
+                [
+                  request.sections.find((section) => section.id === id)!.data,
+                  outcome.spec,
+                ],
+              ]
+            : [],
+        ),
+      ),
+    ),
+  )}[data];`,
+  checkReadback:
+    "return selected === spec.component ? {status:'accepted'} : {status:'rejected',reason:'The component changed.'};",
   guideGoogleWorkspace: `
     const readiness = await googleWorkspaceRead.readiness();
     if (readiness.state !== "ready") throw new Error("Inventory fixture Drive is unavailable");
@@ -263,7 +324,8 @@ function loader(store?: RecordsStore, workspaceCheckouts: string[] = []) {
       const code = reference[name];
       if (!code) throw new Error(`No scripted reference for ${name}`);
       const action = await session.applyAsync("eval", { code, finish: true });
-      if (action.kind === "rejected") throw new Error(action.text);
+      if (action.kind === "rejected" || action.kind === "error")
+        throw new Error(`${name}: ${action.text}`);
     },
   });
   return new ProgramLoader({
@@ -432,6 +494,7 @@ it.runIf(Boolean(host))(
       "google-workspace-inventory-quarterly-sheets",
       "publish-preflight-transit-map",
       "local-model-task-cypress-download",
+      ...presentationWorlds.map(({ id }) => id),
     ]) {
       const result = await runScopedNatlangWorkflow(checkouts, caseId, {
         load: program.load.bind(program),
@@ -459,6 +522,8 @@ it.runIf(Boolean(host))(
         async trace(callId: string) {
           return { record: rows.get(callId) };
         },
+      }).catch((error: unknown) => {
+        throw new Error(`Scoped workflow ${caseId} failed`, { cause: error });
       });
       expect(result, JSON.stringify(result)).toMatchObject({ passed: true });
     }

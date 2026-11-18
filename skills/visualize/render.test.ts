@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ComponentPropsError, renderComponent } from "./render.js";
+import { ComponentPropsError, renderComponent } from "./preparePresentation/prepareSection/render.js";
 import type { ComponentSpec } from "./types.js";
 
 describe("renderComponent", () => {

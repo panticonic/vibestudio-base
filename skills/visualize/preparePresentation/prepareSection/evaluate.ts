@@ -1,7 +1,7 @@
 import chooseComponent from "./chooseComponent.nl";
 import readProps from "./readProps.nl";
 import { renderComponent } from "./render.js";
-import type { DataComponent, RenderedComponent } from "./types.js";
+import type { DataComponent, RenderedComponent } from "../../types.js";
 
 export { chooseComponent };
 

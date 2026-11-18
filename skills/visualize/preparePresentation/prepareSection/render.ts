@@ -1,4 +1,4 @@
-import type { ComponentSpec, RenderedComponent } from "./types.js";
+import type { ComponentSpec, RenderedComponent } from "../../types.js";
 
 /** Props the component does not accept, or accepts in another form. The message names the fix. */
 export class ComponentPropsError extends Error {

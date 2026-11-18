@@ -22,6 +22,13 @@ Skip visuals for single facts, one-step answers, a fixed calculation with one
 result, simple edits, and anything a short paragraph already makes clear.
 Compact notation and small code examples are not visualizations.
 
+For a response grounded in several supplied sections, call the shared Natlang
+workflow's `domains.visualize.preparePresentation` with each section's id,
+question, source facts and required flag. Ready views include validated MDX.
+Use the original facts for plain sections. Deferred views identify the component
+that needs authoring. A needs-review result names the missing or conflicting
+input to resolve before showing the view.
+
 ## Three tiers
 
 | Tier                                | Write                                                                                   | Use when                                                                                                                                                     |
