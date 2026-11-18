@@ -2,6 +2,7 @@ import type { SqlStorage } from "@vibestudio/durable";
 import {
   vcsAppliedChangeSchema,
   vcsChangeSchema,
+  vcsIntegrationDecisionSchema,
   vcsSemanticNodeRefSchema,
   vcsWorkApplicationSchema,
   vcsWorkUnitSchema,
@@ -219,6 +220,78 @@ function appendAppliedContentEdges(
   }
 }
 
+function inspectDecision(
+  sql: SqlStorage,
+  at: string,
+  root: Extract<VcsSemanticNodeRef, { kind: "decision" }>,
+  limit: number,
+  edges: VcsProvenanceEdge[],
+) {
+  const { decisionId } = root;
+  const decision = sql.exec(
+    "SELECT * FROM dolt_at_gad_integration_decisions(?) WHERE decision_id = ?",
+    at, decisionId,
+  ).toArray()[0];
+  if (!decision) throw new SemanticVcsError("InvalidReference", "Unknown workspace integration decision");
+  const workUnitId = String(decision["work_unit_id"]);
+  const intentOf = (id: string) => {
+    const row = sql.exec(
+      "SELECT kind, intent_summary, trigger_excerpt, trigger_sender_json FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ?",
+      at, id,
+    ).toArray()[0];
+    if (!row || typeof row["kind"] !== "string")
+      throw new SemanticVcsError("IntegrityFailure", "Workspace integration decision has missing intent evidence");
+    return readHistoryWorkIntent(sql, at, id, row["kind"], row["intent_summary"], row["trigger_excerpt"], row["trigger_sender_json"]);
+  };
+  const entries = sql.exec(
+    `SELECT coordinate_kind, coordinate_id, resolution, result_change_id, rationale
+       FROM dolt_at_gad_merge_decision_entries(?)
+      WHERE decision_id = ? ORDER BY coordinate_kind, coordinate_id LIMIT 500`,
+    at, decisionId,
+  ).toArray().map((entry) => ({
+    coordinate: { kind: entry["coordinate_kind"], id: entry["coordinate_id"] },
+    resolution: entry["resolution"],
+    accountedSourceChangeIds: sql.exec(
+      `SELECT change_id FROM dolt_at_gad_decision_source_changes(?)
+        WHERE decision_id = ? AND coordinate_kind = ? AND coordinate_id = ? ORDER BY change_id LIMIT 10000`,
+      at, decisionId, entry["coordinate_kind"], entry["coordinate_id"],
+    ).toArray().map(({ change_id }) => change_id),
+    resultChangeId: entry["result_change_id"] ?? undefined,
+    rationale: entry["rationale"] ?? undefined,
+  }));
+  const sourceIntents = sql.exec(
+    `SELECT DISTINCT authored.work_unit_id
+       FROM dolt_at_gad_decision_source_changes(?1) AS source
+       JOIN dolt_at_gad_changes(?1) AS authored USING (change_id)
+      WHERE source.decision_id = ?2 ORDER BY authored.work_unit_id LIMIT 500`,
+    at, decisionId,
+  ).toArray().map(({ work_unit_id }) => ({
+    workUnitId: work_unit_id,
+    intent: intentOf(String(work_unit_id)),
+  }));
+  edges.push({ kind: "records-decision", from: { kind: "work-unit", workUnitId }, to: root });
+  const sources = sql.exec(
+    `SELECT DISTINCT change_id FROM dolt_at_gad_decision_source_changes(?)
+      WHERE decision_id = ? ORDER BY change_id LIMIT ?`,
+    at, decisionId, limit,
+  ).toArray();
+  for (const { change_id } of sources) {
+    edges.push({ kind: "decides-change", from: root, to: { kind: "change", changeId: String(change_id) } });
+  }
+  return vcsIntegrationDecisionSchema.parse({
+    decisionId,
+    intent: intentOf(workUnitId),
+    sourceIntents,
+    sourceState: decision["source_delta_id"] === null
+      ? { kind: "event", eventId: decision["source_event_id"] }
+      : { kind: "external-delta", deltaId: decision["source_delta_id"] },
+    targetBasis: decision["target_state_kind"] === "event"
+      ? { kind: "event", eventId: decision["target_state_id"] }
+      : { kind: "application", applicationId: decision["target_state_id"] },
+    entries,
+  });
+}
+
 /** Follow only native parents of the admitted tip, including after a remote fetch. */
 function appendStateBacklinks(
   sql: SqlStorage,
@@ -347,6 +420,8 @@ export function inspectWorkspaceProvenance(
     appendAppliedContentEdges(sql, at, root.appliedChangeId, edgeLimit + 1, edges);
   } else if (root.kind === "change") {
     node = { kind: "change", value: inspectChange(sql, at, root, edgeLimit + 1, edges) };
+  } else if (root.kind === "decision") {
+    node = { kind: "decision", value: inspectDecision(sql, at, root, edgeLimit + 1, edges) };
   } else if (root.kind === "work-unit") {
     const { workUnitId } = root;
     const row = sql.exec(
