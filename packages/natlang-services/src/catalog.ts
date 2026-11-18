@@ -82,6 +82,12 @@ export const SERVICE_CATALOG = [
     methods: [{ name: "apply", params: ["missionId", "revisionDigest", "action"], description: "Request the assigned pause or resume through the Missions client." }],
   },
   {
+    name: "authoringCompiler",
+    summary: "Inspect the assigned candidate or baseline through the workspace Natlang compiler.",
+    contract: { origin: "base", file: "packages/natlang-services/src/authoringContracts.ts", table: "authoringCompilerMethods" },
+    methods: [{ name: "inspect", params: ["role"], description: "Read one assigned program's compiler evidence and exact revision." }],
+  },
+  {
     name: "mobileInventory",
     summary: "Read installed Android tooling and the caller's foreground device inventory.",
     contract: { origin: "base", file: "packages/natlang-services/src/mobileScenarioContracts.ts", table: "mobileInventoryMethods" },

@@ -95,6 +95,31 @@ export function observe(missionId: string): Promise<{
 
 /** Request the assigned pause or resume through the Missions client. */
 export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
+  authoringCompiler: `/** Inspect the assigned candidate or baseline through the workspace Natlang compiler. */
+
+/** Read one assigned program's compiler evidence and exact revision. */
+export function inspect(role: "candidate" | "baseline"): Promise<{
+  role: "candidate" | "baseline";
+  revision: string;
+  state: "compiled";
+  functions: {
+    source: string;
+    parameters: string[];
+    returns: string;
+  }[];
+  services: string[];
+} | {
+  role: "candidate" | "baseline";
+  revision: string;
+  state: "rejected";
+  diagnostics: {
+    source: string;
+    line: number;
+    column: number;
+    code: string;
+    message: string;
+  }[];
+}>;`,
   mobileInventory: `/** Read installed Android tooling and the caller's foreground device inventory. */
 
 /** Read installed Android tooling and the caller's foreground device inventory. */

@@ -29,6 +29,13 @@ Every call is listed in the eval result (`[natlang]` lines): name, outcome or fa
 its record id, which is the `callId` the methods above take. Calls take seconds on a hosted model and can take minutes
 on the local CPU model: check first, then call deliberately.
 
+Use the shared `domains.natlangAuthoring.reviewProgram` workflow for a candidate
+with an existing interface contract or an assigned baseline. Its
+`authoringCompiler` binding supplies the exact program revisions and compiler
+readbacks. The review covers the entry signature, declared services, and
+required helper paths. A rejected snapshot keeps the compiler's source
+location so the next edit can address that specific diagnostic.
+
 Template developers also have, from a Vibestudio source checkout: the static check of every program in a template
 (`workspacePrograms.test.ts`, through `pnpm test:userland -- --template T`) and evaluation suites
 (`suite.ts` and `cases.jsonl` beside a program, `pnpm natlang:eval -- --template T --suite PATH`). Neither runs inside

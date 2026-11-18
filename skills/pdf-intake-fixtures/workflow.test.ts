@@ -46,6 +46,30 @@ const reference: Record<string, string> = {
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
+  reviewProgram: `
+    const sources = await inspectRevisions(request.compare);
+    const findings = await reviewContract(request.contract, sources.candidate, sources.baseline);
+    return {status:findings.length ? "changes-required" : "ready",candidateRevision:sources.candidate.revision,
+      baselineRevision:sources.baseline?.revision ?? null,findings};
+  `,
+  inspectRevisions: `
+    const candidate = await readAssignedProgram("candidate");
+    return {candidate,baseline:compare ? await readAssignedProgram("baseline") : null};
+  `,
+  readAssignedProgram: "return await authoringCompiler.inspect(role);",
+  reviewContract: `
+    const signature = await checkSignature(contract,candidate.functions,baseline?.functions ?? []);
+    const authority = await checkServices(contract,candidate.services,baseline?.services ?? []);
+    const topology = await checkTopology(contract.requiredHelpers,candidate.functions);
+    return signature.concat(authority,topology);
+  `,
+  checkSignature: `
+    const entry = candidate.find(item => item.source === contract.entry);
+    if (!entry) return [{code:"missing-entry",subject:contract.entry,observed:"missing",recovery:"Restore the entry."}];
+    return entry.returns === contract.expectedReturn ? [] : [{code:"return-change",subject:entry.source,observed:entry.returns,recovery:"Restore the result type."}];
+  `,
+  checkServices: `return candidate.filter(name => !contract.declaredServices.includes(name)).map(name => ({code:"unexpected-service",subject:name,observed:"declared",recovery:"Remove the declaration."}));`,
+  checkTopology: `return required.filter(path => !functions.some(fn => fn.source === path)).map(path => ({code:"missing-helper",subject:path,observed:"missing",recovery:"Restore the helper."}));`,
   runMobileScenario: `
     const target = await reviewSetup(request);
     if (target.status === "blocked") return await explainBlocker(target.blocker, request.deviceId);
@@ -329,6 +353,7 @@ const reference: Record<string, string> = {
 };
 
 const serviceScopes: Record<string, string[]> = {
+  readAssignedProgram: ["authoringCompiler"],
   readInventory: ["mobileInventory"],
   pairDevice: ["mobilePairing"],
   readWorkspace: ["mobileWorkspace"],
@@ -349,7 +374,11 @@ const serviceScopes: Record<string, string[]> = {
   applyInstallation: ["localModelTaskInstall"],
 };
 
-function loader(store?: RecordsStore, workspaceCheckouts: string[] = []) {
+function loader(
+  store?: RecordsStore,
+  workspaceCheckouts: string[] = [],
+  runWorkflowCode?: string,
+) {
   const root = fileURLToPath(new URL("../..", import.meta.url));
   const roots = [root, ...workspaceCheckouts];
   async function locate(relative: string) {
@@ -375,7 +404,10 @@ function loader(store?: RecordsStore, workspaceCheckouts: string[] = []) {
       expect(Object.keys(session.availableServices()), name).toEqual(
         serviceScopes[name] ?? [],
       );
-      const code = reference[name];
+      const code =
+        name === "runWorkflow" && runWorkflowCode
+          ? runWorkflowCode
+          : reference[name];
       if (!code) throw new Error(`No scripted reference for ${name}`);
       const action = await session.applyAsync("eval", { code, finish: true });
       if (action.kind === "rejected" || action.kind === "error")
@@ -496,6 +528,93 @@ it("prepares or holds each template candidate using the exact native operation a
 });
 
 const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
+it("reviews a live compiler description from the shared Workerd program", async () => {
+  const program = loader(
+    undefined,
+    [],
+    `
+    const work = request.work[0];
+    const report = await domains.natlangAuthoring.reviewProgram(work.input);
+    return {results:[{kind:"domain",domain:work.domain,operation:work.operation,report}],remaining:[]};
+  `,
+  );
+  const reads: string[] = [];
+  const run = (await program.load(
+    "skills/vibestudio-workflows/runWorkflow.nl",
+    {
+      services: {
+        authoringCompiler: {
+          async inspect(role: string) {
+            reads.push(role);
+            const shape = await program.describe("skills/pdf-intake");
+            return {
+              role,
+              revision: "owned-source",
+              state: "compiled",
+              functions: shape.functions.map(({ source, params, returns }) => ({
+                source,
+                parameters: params,
+                returns,
+              })),
+              services: shape.services,
+            };
+          },
+        },
+      },
+    },
+  )) as (input: unknown) => Promise<unknown>;
+  const goal =
+    "Review the PDF skill's typed return, declared services, and callable helpers.";
+  const actual = await run({
+    goal,
+    work: [
+      {
+        kind: "domain",
+        domain: "natlangAuthoring",
+        operation: "reviewProgram",
+        input: {
+          goal,
+          compare: false,
+          contract: {
+            entry: "extractPdfEvidence.nl",
+            expectedParameters: null,
+            expectedReturn: "string",
+            declaredServices: ["pdfIntakeProbe"],
+            requiredHelpers: ["extractPdfEvidence/missing.nl"],
+            preserveBaseline: false,
+          },
+        },
+      },
+    ],
+  });
+  expect(reads).toEqual(["candidate"]);
+  expect(actual).toMatchObject({
+    remaining: [],
+    results: [
+      {
+        operation: "reviewProgram",
+        report: {
+          status: "changes-required",
+          candidateRevision: "owned-source",
+          baselineRevision: null,
+          findings: [
+            {
+              code: "return-change",
+              subject: "extractPdfEvidence.nl",
+              observed: "PdfIntakeReport",
+            },
+            { code: "unexpected-service", subject: "pdfIntakeRead" },
+            {
+              code: "missing-helper",
+              subject: "extractPdfEvidence/missing.nl",
+            },
+          ],
+        },
+      },
+    ],
+  });
+});
+
 it.runIf(Boolean(host))(
   "grades actual Workerd runs across template domains from retained inputs and outputs",
   async () => {
