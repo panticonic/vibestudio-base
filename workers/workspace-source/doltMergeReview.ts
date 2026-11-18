@@ -191,7 +191,7 @@ function reviewIntents(
   return { intents: intents.slice(0, 500), intentCounts, intentsTruncated: intents.length > 500 };
 }
 
-function readHistoryWorkIntent(
+export function readHistoryWorkIntent(
   sql: SqlStorage, at: string, workUnitId: string, kind: string,
   statement: unknown, excerpt: unknown, senderJson: unknown,
 ) {

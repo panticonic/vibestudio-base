@@ -9,6 +9,7 @@ import {
   vcsCopyInputSchema,
   vcsDiscardInputSchema,
   vcsEditInputSchema,
+  vcsInspectInputSchema,
   vcsListDirectoryInputSchema,
   vcsListFilesInputSchema,
   vcsMergeInputSchema,
@@ -22,6 +23,7 @@ import {
   type VcsCopyInput,
   type VcsDiscardInput,
   type VcsEditInput,
+  type VcsInspectInput,
   type VcsListDirectoryInput,
   type VcsListFilesInput,
   type VcsMergeInput,
@@ -354,6 +356,13 @@ export class GadHistoryDO extends DurableObjectBase {
       input.contextIds,
       input.references.map((reference) => vcsSemanticNodeRefSchema.parse(reference)),
     );
+  }
+
+  @rpc(hostRead)
+  inspectHistoryNode(input: { contextId: string; inspect: VcsInspectInput }) {
+    const workspaceId = this.env["WORKSPACE_ID"];
+    if (typeof workspaceId !== "string" || !workspaceId) throw new Error("Workspace history has no workspace identity");
+    return this.#history().inspect(input.contextId, workspaceId, vcsInspectInputSchema.parse(input.inspect));
   }
 
   @rpc(hostRead)

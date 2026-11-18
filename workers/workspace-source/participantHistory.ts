@@ -19,6 +19,7 @@ import type {
   VcsDiscardInput,
   VcsDiscardResult,
   VcsEditInput,
+  VcsInspectInput,
   VcsListDirectoryInput,
   VcsListFilesInput,
   VcsMergeInput,
@@ -51,6 +52,7 @@ import {
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import { inspectWorkspaceProvenance } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
 import { historyMergePlacements, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
@@ -396,6 +398,17 @@ export class ParticipantHistory {
       if (unresolved.length === 0) return true;
       const main = await this.#fetchMain();
       return !tips.includes(main) && unresolved.every((ref) => workspaceReferenceAt(sql, main, ref));
+    });
+  }
+
+  inspect(contextId: string, workspaceId: string, input: VcsInspectInput) {
+    return this.#run(async () => {
+      const { sql } = this.#storage;
+      const local = this.#dolt.hashOf(this.#contextBranch(contextId));
+      const at = workspaceReferenceAt(sql, local, input.node) ? local : await this.#fetchMain();
+      if (!workspaceReferenceAt(sql, at, input.node))
+        throw new SemanticVcsError("InvalidReference", "Workspace provenance is outside the admitted history");
+      return inspectWorkspaceProvenance(sql, at, workspaceId, input.node, input.edgeLimit);
     });
   }
 
