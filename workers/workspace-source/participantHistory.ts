@@ -356,6 +356,14 @@ export class ParticipantHistory {
     });
   }
 
+  repositoryLocation(contextId: string, state: StateNodeRef, repositoryId: string) {
+    return this.#run(async () => {
+      const commit = await this.#requireReadableState(contextId, state);
+      const repository = workspaceEditBasisAt(this.#storage.sql, commit).repository(repositoryId);
+      return repository ? { ...repository, state } : null;
+    });
+  }
+
   referencesReachable(contextIds: readonly string[], references: readonly VcsSemanticNodeRef[]) {
     return this.#run(async () => {
       const { sql } = this.#storage;

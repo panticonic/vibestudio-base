@@ -289,6 +289,15 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryRepositoryLocation(input: { contextId: string; state: StateNodeRef; repositoryId: string }) {
+    const node = vcsSemanticNodeRefSchema.parse({
+      kind: "repository", state: input.state, repositoryId: input.repositoryId,
+    });
+    if (node.kind !== "repository") throw new Error("Workspace repository location requires a repository");
+    return this.#history().repositoryLocation(input.contextId, node.state, node.repositoryId);
+  }
+
+  @rpc(hostRead)
   readHistoryReferenceVisibility(input: { contextIds: string[]; references: VcsSemanticNodeRef[] }) {
     return this.#history().referencesReachable(
       input.contextIds,
