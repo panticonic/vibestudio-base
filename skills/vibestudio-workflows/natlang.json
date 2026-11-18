@@ -11,11 +11,13 @@
   "serviceBinding": "explicit",
   "workspaceModules": {
     "runWorkflow/domains/automation": "skills/automations",
+    "runWorkflow/domains/channelAgent": "skills/agents/channel-membership",
     "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
     "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",
     "runWorkflow/domains/examples": "skills/examples-review",
     "runWorkflow/domains/gmailReview": "skills/gmail-workflow-review",
     "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
+    "runWorkflow/domains/localModel": "skills/local-model-task",
     "runWorkflow/domains/mediaImport": "skills/media-and-import-review",
     "runWorkflow/domains/news": "skills/news-workflows",
     "runWorkflow/domains/personal": "skills/personal-workflows",

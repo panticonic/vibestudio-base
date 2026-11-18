@@ -5,6 +5,13 @@ description: Add or remove a worker-backed agent from a chat channel.
 
 # Adding an agent to a channel
 
+For a typed Natlang membership task, use
+`runWorkflow.domains.channelAgent.manageChannelAgent` from the shared workflow
+program. The caller can bind its exact channel and worker with
+`createChannelMembershipServices` from
+`@workspace-skills/agents/channel-membership`. The operation returns the
+confirmed roster result or the evidence that still needs reconciliation.
+
 This skill adds and removes existing agents. To write or change the chat
 panel, agent worker/runtime, channel, or protocol, read [agentic
 development](../agentic-development/SKILL.md).

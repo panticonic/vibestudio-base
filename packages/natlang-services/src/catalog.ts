@@ -36,7 +36,39 @@ export interface ServiceCatalogEntry {
   readonly methods: readonly DeclaredMethod[];
 }
 
+const scopedAgentFile = "packages/natlang-services/src/scopedAgentContracts.ts";
+
 export const SERVICE_CATALOG = [
+  {
+    name: "channelAgentRead",
+    summary: "Read the assigned worker's durable membership in the selected channel.",
+    contract: { origin: "base", file: scopedAgentFile, table: "channelAgentReadMethods" },
+    methods: [{ name: "read", params: ["request"], description: "Read the selected handle and its exact roster identity." }],
+  },
+  {
+    name: "channelAgentAttach",
+    summary: "Attach the assigned worker once, using the caller's exact model, response and replay choices.",
+    contract: { origin: "base", file: scopedAgentFile, table: "channelAgentAttachMethods" },
+    methods: [{ name: "attach", params: ["request", "options"], description: "Apply the caller's attach options and return the effect receipt." }],
+  },
+  {
+    name: "channelAgentDetach",
+    summary: "Detach the exact assigned worker from the assigned channel once.",
+    contract: { origin: "base", file: scopedAgentFile, table: "channelAgentDetachMethods" },
+    methods: [{ name: "detach", params: ["request"], description: "Remove the assigned existing membership and retain the effect receipt." }],
+  },
+  {
+    name: "localModelTaskInventory",
+    summary: "Inspect current readiness for the exact model selected by the caller.",
+    contract: { origin: "base", file: scopedAgentFile, table: "localModelTaskInventoryMethods" },
+    methods: [{ name: "inspect", params: ["ref"], description: "Read the live catalog row for the selected model." }],
+  },
+  {
+    name: "localModelTaskInstall",
+    summary: "Use the caller's scoped installation operation for an explicitly authorized model.",
+    contract: { origin: "base", file: scopedAgentFile, table: "localModelTaskInstallMethods" },
+    methods: [{ name: "installOnce", params: ["ref"], description: "Install the selected model once if current state and the caller's authorization permit it." }],
+  },
   {
     name: "websiteReadback",
     summary: "Observe the caller-assigned public bundle, panel presentation, and existing publication receipts.",

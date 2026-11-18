@@ -9,6 +9,9 @@ import {
 } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import { testNewFunction } from "./testSupport.js";
+import { bindChannelMembership } from "../../../skills/agents/channelMembershipBoundary.js";
+import { localReviewerWorlds } from "../../../skills/channel-agent-membership-fixtures/localReviewerWorlds.js";
+import { membershipReference } from "../../../skills/channel-agent-membership-fixtures/reference.js";
 
 it("runs two skill trees from the same package using only the caller's scoped bindings", async () => {
   const root = fileURLToPath(new URL("../../..", import.meta.url));
@@ -170,8 +173,20 @@ it("describes the typed workflows in the installed template domains", async () =
   const stagedCalls: string[] = [];
   let runReference = false;
   const referenceSteps: Record<string, string> = {
+    ...membershipReference,
     runWorkflow: `
       const system = request.work[1];
+      if (system.domain === "localModel") {
+        const report = await domains.localModel.prepareLocalModel(system.input);
+        const results = [{kind: "domain", domain: system.domain, operation: system.operation, report}];
+        const channel = request.work[0];
+        if (report.disposition !== "ready-to-delegate" || report.handoff?.ref !== channel.input.options.modelRef) {
+          return {results, remaining: ["Selected model is not eligible"]};
+        }
+        const membership = await domains.channelAgent.manageChannelAgent(channel.input);
+        results.push({kind: "domain", domain: channel.domain, operation: channel.operation, report: membership});
+        return {results, remaining: []};
+      }
       const report = await domains.system.investigateSystem(system.input);
       const results = [{kind: "domain", domain: system.domain, operation: system.operation, report}];
       if (report.status !== "attention") return {results, remaining: ["No established regression"]};
@@ -204,6 +219,25 @@ it("describes the typed workflows in the installed template domains", async () =
     chooseConversation: 'return "continue";',
     declareOperations: "return [];",
     reviewLaunch: "return [];",
+    prepareLocalModel: `
+      const initial = await inspectSelected(request.modelRef);
+      await decideInstallation(request, initial);
+      const decision = initial.disposition === "usable"
+        ? await planDelegation(request, initial.row) : {disposition: initial.disposition, handoff: null};
+      return {...decision, ref: request.modelRef, state: initial.row?.state ?? null, receipt: null};
+    `,
+    inspectSelected: `
+      const row = await localModelTaskInventory.inspect(ref);
+      return {row, disposition: await interpretState(row)};
+    `,
+    interpretState:
+      'return row.state === "downloading" ? "wait-for-progress" : "usable";',
+    decideInstallation: 'return "skip";',
+    planDelegation: `
+      if (!row.toolsCapable && request.needsTools) return {disposition: "unsupported-tools", handoff: null};
+      if (row.contextWindow < request.minimumContext) return {disposition: "context-too-small", handoff: null};
+      return {disposition: "ready-to-delegate", handoff: {ref: row.ref, mode: "fresh"}};
+    `,
   };
   const runtime = createNatlangRuntime({
     platform,
@@ -267,16 +301,23 @@ it("describes the typed workflows in the installed template domains", async () =
         "reviewWorkspaceUnit",
         "reviewRuntimeEvidence",
         "reviewConversation",
+        "manageChannelAgent",
         "reviewMediaAndImport",
       ],
     ],
-    [join(templateRoot, "google-workspace"), ["guideGoogleWorkspace", "reviewGmailWorkflow"]],
+    [
+      join(templateRoot, "google-workspace"),
+      ["guideGoogleWorkspace", "reviewGmailWorkflow"],
+    ],
     [
       join(templateRoot, "personal"),
       ["runPersonalWorkflow", "reviewPersonalFacility"],
     ],
-    [join(templateRoot, "system"), ["investigateSystem"]],
-    [join(templateRoot, "system-testing"), ["reviewSystemTest", "reviewSessionTest"]],
+    [join(templateRoot, "system"), ["investigateSystem", "prepareLocalModel"]],
+    [
+      join(templateRoot, "system-testing"),
+      ["reviewSystemTest", "reviewSessionTest"],
+    ],
     [join(templateRoot, "examples"), ["reviewExample"]],
     [join(templateRoot, "news"), ["reviewNews"]],
     [join(templateRoot, "spectrolite"), ["reviewSpectrolite"]],
@@ -369,4 +410,73 @@ it("describes the typed workflows in the installed template domains", async () =
     remaining: ["No established regression"],
   });
   expect(stagedCalls).not.toContain("prepareAutomation");
+  for (const world of localReviewerWorlds) {
+    const catalog = cases.find((scenario) => scenario.id === world.id);
+    expect(catalog?.request, world.id).toBeDefined();
+    const assignment = world.request.work[0].input;
+    const effects: string[] = [];
+    let participantId: string | null = null;
+    const services = bindChannelMembership(assignment, {
+      async roster() {
+        return participantId
+          ? { state: "member", participantId }
+          : { state: "absent", participantId: null };
+      },
+      async add(options) {
+        expect(options).toEqual(assignment.options);
+        effects.push("attach");
+        participantId = "verified-review-worker";
+        return { outcome: "acknowledged", participantId };
+      },
+      async remove() {
+        throw new Error("Local reviewer tasks do not remove an agent");
+      },
+    });
+    const localReviewer = (await loader.load(
+      "skills/vibestudio-workflows/runWorkflow.nl",
+      {
+        services: {
+          ...services,
+          localModelTaskInventory: {
+            inspect: async (ref: string) =>
+              ref === world.inventory.ref ? world.inventory : null,
+          },
+        },
+      },
+    )) as (input: unknown) => Promise<unknown>;
+    stagedCalls.length = 0;
+    await expect(
+      localReviewer(catalog?.request),
+      world.id,
+    ).resolves.toMatchObject({
+      results: [
+        {
+          domain: "localModel",
+          report: { disposition: world.expected.disposition },
+        },
+        ...(world.expected.attach
+          ? [
+              {
+                domain: "channelAgent",
+                report: {
+                  status: "applied",
+                  participantId: "verified-review-worker",
+                },
+              },
+            ]
+          : []),
+      ],
+      remaining: world.expected.attach
+        ? []
+        : ["Selected model is not eligible"],
+    });
+    expect(effects, world.id).toEqual(world.expected.attach ? ["attach"] : []);
+    if (world.expected.attach) {
+      expect(stagedCalls.indexOf("planDelegation")).toBeLessThan(
+        stagedCalls.indexOf("attach"),
+      );
+    } else {
+      expect(stagedCalls).not.toContain("manageChannelAgent");
+    }
+  }
 }, 120_000);

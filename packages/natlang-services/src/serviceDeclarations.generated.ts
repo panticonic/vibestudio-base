@@ -6,6 +6,90 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  channelAgentRead: `/** Read the assigned worker's durable membership in the selected channel. */
+
+/** Read the selected handle and its exact roster identity. */
+export function read(request: {
+  goal: string;
+  channelId: string;
+  contextId: string;
+  handle: string;
+  action: "attach" | "detach" | "inspect";
+  options: {
+    replay: boolean;
+    response: "inherit" | "mentioned-strict";
+    modelRef: string | null;
+  } | null;
+}): Promise<{
+  state: "member" | "absent" | "conflict" | "unavailable";
+  participantId: string | null;
+}>;`,
+  channelAgentAttach: `/** Attach the assigned worker once, using the caller's exact model, response and replay choices. */
+
+/** Apply the caller's attach options and return the effect receipt. */
+export function attach(request: {
+  goal: string;
+  channelId: string;
+  contextId: string;
+  handle: string;
+  action: "attach" | "detach" | "inspect";
+  options: {
+    replay: boolean;
+    response: "inherit" | "mentioned-strict";
+    modelRef: string | null;
+  } | null;
+}, options: {
+  replay: boolean;
+  response: "inherit" | "mentioned-strict";
+  modelRef: string | null;
+}): Promise<{
+  outcome: "acknowledged" | "already" | "blocked" | "rejected" | "uncertain";
+  participantId: string | null;
+}>;`,
+  channelAgentDetach: `/** Detach the exact assigned worker from the assigned channel once. */
+
+/** Remove the assigned existing membership and retain the effect receipt. */
+export function detach(request: {
+  goal: string;
+  channelId: string;
+  contextId: string;
+  handle: string;
+  action: "attach" | "detach" | "inspect";
+  options: {
+    replay: boolean;
+    response: "inherit" | "mentioned-strict";
+    modelRef: string | null;
+  } | null;
+}): Promise<{
+  outcome: "acknowledged" | "already" | "blocked" | "rejected" | "uncertain";
+  participantId: string | null;
+}>;`,
+  localModelTaskInventory: `/** Inspect current readiness for the exact model selected by the caller. */
+
+/** Read the live catalog row for the selected model. */
+export function inspect(ref: string): Promise<{
+  ref: string;
+  state: "ready" | "startable" | "not-installed" | "starting" | "downloading" | "error";
+  fit: "full-gpu" | "partial-offload" | "cpu-only" | "too-big";
+  toolsCapable: boolean;
+  contextWindow: number;
+  progress: number | null;
+  errorMessage: string | null;
+} | null>;`,
+  localModelTaskInstall: `/** Use the caller's scoped installation operation for an explicitly authorized model. */
+
+/** Install the selected model once if current state and the caller's authorization permit it. */
+export function installOnce(ref: string): Promise<{
+  kind: "installed";
+  ref: string;
+  jobId: string;
+} | {
+  kind: "validated-existing";
+  ref: string;
+} | {
+  kind: "state-changed";
+  ref: string;
+}>;`,
   websiteReadback: `/** Observe the caller-assigned public bundle, panel presentation, and existing publication receipts. */
 
 /** Read the original evidence for this assigned artifact and publication intent. */

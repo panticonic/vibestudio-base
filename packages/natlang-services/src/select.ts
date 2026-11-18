@@ -60,6 +60,11 @@ function hostService(name: ServiceName) {
 }
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  channelAgentRead: binding("channelAgentRead"),
+  channelAgentAttach: binding("channelAgentAttach"),
+  channelAgentDetach: binding("channelAgentDetach"),
+  localModelTaskInventory: binding("localModelTaskInventory"),
+  localModelTaskInstall: binding("localModelTaskInstall"),
   websiteReadback: binding("websiteReadback"),
   googleWorkspaceRead: binding("googleWorkspaceRead"),
   localMessagingRead: binding("localMessagingRead"),
