@@ -117,6 +117,15 @@ type PresentRepositoryState = Extract<
   WorkspaceRepositoryMember,
   { presence: "present" }
 >;
+type RepositoryPlacement = Pick<PresentRepositoryState, "repositoryId" | "repoPath">;
+/** Placement reads pinned to the edit's exact expected working revision. */
+export interface WorkspaceEditBasis {
+  file(fileId: string): PlacedFileState | null;
+  repository(repositoryId: string): RepositoryPlacement | null;
+  repositoryAtPath(path: string): { repositoryId: string } | null;
+  emptyRepository(repository: RepositoryPlacement): PresentRepositoryState | null;
+  hasFileAtPath(repositoryId: string, path: string): boolean;
+}
 type ContentEndpoint = {
   fileId: string;
   contentHash: string;
@@ -278,7 +287,7 @@ type DraftChangeRef =
   | { kind: "authored"; ordinal: number }
   | { kind: "existing"; changeId: string };
 
-interface MutationDraft {
+export interface MutationDraft {
   kind: WorkUnitRecord["kind"];
   intentSummary: string | null;
   externalSnapshot?: {
@@ -480,7 +489,7 @@ const contentDescriptorFromEndpoint = (
 
 const endpointForFile = (
   state: PlacedFileState,
-  repository: Extract<WorkspaceRepositoryMember, { presence: "present" }>,
+  repository: Pick<RepositoryPlacement, "repoPath">,
 ): Row => ({
   kind: "file",
   fileId: state.fileId,
@@ -2233,31 +2242,50 @@ export class SemanticWorkspace {
         input.contextId,
         asState(input.expectedWorkingHead),
       );
+      const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+      const facts = this.deps.store.facts;
+      const basis: WorkspaceEditBasis = {
+        file: (fileId) => {
+          const state = facts.file(root, fileId)?.state;
+          return state?.presence === "placed" ? state : null;
+        },
+        repository: (repositoryId) => {
+          const state = facts.member(root, repositoryId);
+          return state?.presence === "present" ? state : null;
+        },
+        repositoryAtPath: (path) => facts.repositoryAtPath(root, path),
+        emptyRepository: ({ repositoryId }) => {
+          const state = facts.member(root, repositoryId);
+          if (state?.presence !== "present") return null;
+          return facts.pageManifest(state.fileManifestId, { limit: 1 }).values.length
+            ? null
+            : state;
+        },
+        hasFileAtPath: (repositoryId, path) =>
+          facts.fileAtPath(root, repositoryId, path) !== null,
+      };
       const textFiles = input.changes.filter(
         (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
           change.kind === "text-edit"
       );
       if (textFiles.length > 0 && !observed) {
-        const root = this.deps.store.stateRoot(
-          asState(input.expectedWorkingHead),
-        );
         const contentHashes = new Set<string>();
         for (const change of textFiles) {
-          const point = this.deps.store.facts.file(root, change.fileId);
-          if (!point || point.state.presence !== "placed") {
+          const file = basis.file(change.fileId);
+          if (!file) {
             throw new SemanticVcsError(
               "InvalidReference",
               `Unknown file ${change.fileId}`,
             );
           }
-          if (point.state.contentKind !== "text") {
+          if (file.contentKind !== "text") {
             throw new SemanticVcsError(
               "InvalidReference",
               `Text edit requires text content for ${change.fileId}`,
               { referenceKind: "text-file", reference: change.fileId },
             );
           }
-          contentHashes.add(point.state.contentHash);
+          contentHashes.add(file.contentHash);
         }
         return {
           kind: "host-read",
@@ -2270,7 +2298,7 @@ export class SemanticWorkspace {
           },
         };
       }
-      const draft = this.planEdit(
+      const draft = SemanticWorkspace.planEdit(
         input,
         observed
           ? {
@@ -2280,6 +2308,7 @@ export class SemanticWorkspace {
               })),
             }
           : null,
+        basis,
       );
       const preparation = this.prepareContent(
         "edit",
@@ -2311,8 +2340,11 @@ export class SemanticWorkspace {
     });
   }
 
-  private planEdit(input: VcsEditInput, receipt: Row | null): MutationDraft {
-    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+  static planEdit(
+    input: VcsEditInput,
+    receipt: Row | null,
+    basis: WorkspaceEditBasis,
+  ): MutationDraft {
     const observed = new Map<string, Uint8Array>();
     if (receipt) {
       const expectedContentHashes = new Set(
@@ -2322,14 +2354,14 @@ export class SemanticWorkspace {
               change.kind === "text-edit"
           )
           .map((change) => {
-            const point = this.deps.store.facts.file(root, change.fileId);
-            if (!point || point.state.presence !== "placed") {
+            const file = basis.file(change.fileId);
+            if (!file) {
               throw new SemanticVcsError(
                 "InvalidReference",
                 `Unknown file ${change.fileId}`,
               );
             }
-            return point.state.contentHash;
+            return file.contentHash;
           }),
       );
       const rows = receipt["files"];
@@ -2387,10 +2419,7 @@ export class SemanticWorkspace {
     const touched = new Set<string>();
     input.changes.forEach((change, operation) => {
       if (change.kind === "repository-create") {
-        const occupied = this.deps.store.facts.repositoryAtPath(
-          root,
-          change.repoPath,
-        );
+        const occupied = basis.repositoryAtPath(change.repoPath);
         if (occupied) {
           throw new SemanticVcsError(
             "DestinationOccupied",
@@ -2469,18 +2498,21 @@ export class SemanticWorkspace {
         );
       }
       if ("fileId" in change) touched.add(change.fileId);
-      const repository = this.presentRepository(root, change.repositoryId);
+      const repository = basis.repository(change.repositoryId);
+      if (!repository) {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Unknown repository ${change.repositoryId}`,
+        );
+      }
       if (change.kind === "repository-delete") {
         if (repository.repoPath === "meta")
           throw new SemanticVcsError(
             "InvalidReference",
             "The workspace metadata repository cannot be removed",
           );
-        if (
-          this.deps.store.facts.pageManifest(repository.fileManifestId, {
-            limit: 1,
-          }).values.length
-        )
+        const empty = basis.emptyRepository(repository);
+        if (!empty)
           throw new SemanticVcsError(
             "InvalidReference",
             "Resolve contained file changes before removing a repository",
@@ -2494,7 +2526,7 @@ export class SemanticWorkspace {
             kind: "repository",
             repositoryId: change.repositoryId,
             repoPath: repository.repoPath,
-            fileManifestId: repository.fileManifestId,
+            fileManifestId: empty.fileManifestId,
           },
           result: {
             kind: "repository",
@@ -2505,7 +2537,7 @@ export class SemanticWorkspace {
         });
         repositoryResults.push({
           repositoryId: change.repositoryId,
-          expected: repository,
+          expected: empty,
           resultPath: null,
           newRepository: false,
           changeRef: { kind: "authored", ordinal },
@@ -2514,13 +2546,7 @@ export class SemanticWorkspace {
       }
       if (change.kind === "file-create") {
         assertSemanticVcsPathAdmissible(change.path);
-        if (
-          this.deps.store.facts.fileAtPath(
-            root,
-            change.repositoryId,
-            change.path,
-          )
-        ) {
+        if (basis.hasFileAtPath(change.repositoryId, change.path)) {
           throw new SemanticVcsError(
             "DestinationOccupied",
             `Destination ${change.path} is occupied`,
@@ -2567,7 +2593,11 @@ export class SemanticWorkspace {
         blobs.push({ contentHash, base64: base64FromBytes(bytes) });
         return;
       }
-      const point = this.placedFile(root, change.repositoryId, change.fileId);
+      const file = basis.file(change.fileId);
+      if (!file || file.repositoryId !== change.repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `Unknown file ${change.fileId}`);
+      }
+      const point = { state: file, repository };
       const base = endpointForFile(point.state, point.repository);
       if (change.kind === "file-delete") {
         changes.push({

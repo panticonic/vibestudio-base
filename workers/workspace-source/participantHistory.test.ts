@@ -1,9 +1,11 @@
 import { doltRemotesOf } from "@vibestudio/durable/dolt";
 import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
+import type { VcsEditInput } from "@vibestudio/service-schemas/vcs";
 import { expect, it } from "vitest";
 import {
   applyDoltWorkspaceState,
   createDoltWorkspaceState,
+  workspaceEditBasisAt,
 } from "./doltWorkspaceState.js";
 import {
   grantApprovedMain,
@@ -12,6 +14,7 @@ import {
   ParticipantHistory,
   retireParticipantHistory,
 } from "./participantHistory.js";
+import { SemanticWorkspace } from "./semanticWorkspace.js";
 
 async function workspace(now = Date.now) {
   const canonical = await FakeDoltStorage.create({ now });
@@ -333,6 +336,54 @@ it("commits a prepared placement change atomically, including an exchange of occ
     { file_id: "first", path: "two" },
     { file_id: "second", path: "one" },
   ]);
+});
+
+it("reads edit placements at the selected revision without changing the checkout", async () => {
+  const graph = await FakeDoltStorage.create();
+  const { sql } = graph;
+  createDoltWorkspaceState(sql);
+  sql.exec("INSERT INTO repositories VALUES ('repo', 'projects/example', 'present', NULL)");
+  const original = "a".repeat(64);
+  sql.exec(
+    "INSERT INTO files VALUES ('file', 'repo', 'note.txt', ?, 420, 'text', 1, 1, 'placed', NULL)",
+    original,
+  );
+  const genesis = graph.dolt.commit("workspace genesis");
+  const history = new ParticipantHistory("alice", graph.storage, async () => {
+    throw new Error("Unexpected network operation");
+  });
+  await history.openContext("edit", genesis);
+  await history.openContext("other", genesis);
+  const other = await history.commit("other", genesis, "Change other copy", () => {
+    sql.exec("UPDATE files SET content_hash = ? WHERE file_id = 'file'", "b".repeat(64));
+  });
+  const input: VcsEditInput = {
+    commandId: "change-mode",
+    contextId: "edit",
+    expectedWorkingHead: { kind: "event", eventId: "genesis" },
+    changes: [{ kind: "file-mode", repositoryId: "repo", fileId: "file", mode: 0o755 }],
+  };
+  const historicalSql = {
+    exec(query: string, revision: unknown, ...bindings: unknown[]) {
+      // This fixture implements literal revisions for Dolt time travel.
+      expect(revision).toBe(genesis);
+      const withRevision = query.replace(/(dolt_at_\w+)\(\?\)/u, `$1('${genesis}')`);
+      return sql.exec(withRevision, ...bindings);
+    },
+  };
+  const plan = SemanticWorkspace.planEdit(input, null, workspaceEditBasisAt(historicalSql, genesis));
+  expect(plan).toMatchObject({
+    fileResults: [
+      {
+        fileId: "file",
+        expected: { contentHash: original, mode: 0o644 },
+        result: { contentHash: original, mode: 0o755 },
+      },
+    ],
+  });
+  expect(graph.dolt.branch.current()).toBe("ctx/other");
+  expect(graph.dolt.hashOf("HEAD")).toBe(other.head);
+  await expect(history.planEdit(other.head, input, null)).rejects.toBeInstanceOf(HistoryHeadChanged);
 });
 
 it("rejects an approved main publication after its grant expires", async () => {

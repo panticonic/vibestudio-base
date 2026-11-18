@@ -10,6 +10,7 @@ import {
   type DoltRemoteTransport,
   doltRemotesOf,
 } from "@vibestudio/durable/dolt";
+import type { VcsEditInput } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import type { StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -18,12 +19,14 @@ import {
   recordDoltWorkspaceApplication,
   recordDoltWorkspaceEvent,
   workspaceCommitForRef,
+  workspaceEditBasisAt,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
 } from "./doltWorkspaceState.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 import type { ApplicationPersistencePlan, JournalCommand, WorkspaceEventRecord } from "./semanticVcsStore.js";
+import { SemanticWorkspace, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -208,6 +211,24 @@ export class ParticipantHistory {
       const commit = this.#resolveState(contextId, ref);
       if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
       return workspaceRepositoriesAt(this.#storage.sql, commit);
+    });
+  }
+
+  planEdit(
+    head: string,
+    edit: VcsEditInput,
+    receipt: Record<string, unknown> | null,
+  ): Promise<MutationDraft> {
+    return this.#run(() => {
+      this.#assertHead(this.#contextBranch(edit.contextId), head);
+      const { sql } = this.#storage;
+      if (workspaceCommitForRef(sql, head, edit.expectedWorkingHead) !== head) {
+        throw new SemanticVcsError(
+          "RevisionChanged",
+          "Workspace edit names a different working revision",
+        );
+      }
+      return SemanticWorkspace.planEdit(edit, receipt, workspaceEditBasisAt(sql, head));
     });
   }
 

@@ -1,9 +1,16 @@
 import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import type { WorkspaceMaterializationRepository } from "@vibestudio/shared/vcs/workspaceProjection";
-import { compactId, type StateNodeRef, type WorkspaceFactChangeSet } from "@workspace/vcs-engine";
+import {
+  compactId,
+  workspaceFileStateIdentity,
+  workspaceRepositoryStateIdentity,
+  type StateNodeRef,
+  type WorkspaceFactChangeSet,
+} from "@workspace/vcs-engine";
 import type { ApplicationRecord, WorkspaceEventRecord } from "./semanticVcsStore.js";
 import { createSemanticHistoryTables } from "./semanticHistorySchema.js";
+import type { WorkspaceEditBasis } from "./semanticWorkspace.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 
 const repositoryColumns = [
@@ -119,6 +126,85 @@ export function workspaceRepositoriesAt(
       };
     })
     .sort((left, right) => compareUtf16CodeUnits(left.repoPath, right.repoPath));
+}
+
+/** Read the edit planner's placement coordinates without checking out a branch. */
+export function workspaceEditBasisAt(sql: SqlStorage, commit: string): WorkspaceEditBasis {
+  const repository = (column: "repository_id" | "repo_path", value: string) => {
+    const row = sql.exec(
+      `SELECT repository_id, repo_path FROM dolt_at_repositories(?)
+        WHERE ${column} = ? AND presence = 'present'`,
+      commit,
+      value,
+    ).toArray()[0];
+    if (!row) return null;
+    if (typeof row["repository_id"] !== "string" || typeof row["repo_path"] !== "string") {
+      throw new Error(`Invalid repository placement at ${commit}`);
+    }
+    return { repositoryId: row["repository_id"], repoPath: row["repo_path"] };
+  };
+  const hasFile = (
+    condition: "repository_id = ?" | "repository_id = ? AND path = ?",
+    ...bindings: string[]
+  ) =>
+    sql.exec(
+      `SELECT 1 FROM dolt_at_files(?)
+        WHERE presence = 'placed' AND ${condition} LIMIT 1`,
+      commit,
+      ...bindings,
+    ).toArray().length > 0;
+  return {
+    file(fileId) {
+      const row = sql.exec(
+        `SELECT repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent
+           FROM dolt_at_files(?) WHERE file_id = ? AND presence = 'placed'`,
+        commit,
+        fileId,
+      ).toArray()[0];
+      if (!row) return null;
+      const {
+        repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent,
+      } = row;
+      if (
+        typeof repository_id !== "string" ||
+        typeof path !== "string" ||
+        typeof content_hash !== "string" ||
+        typeof mode !== "number" ||
+        (content_kind !== "text" && content_kind !== "bytes") ||
+        typeof byte_length !== "number" ||
+        typeof coordinate_extent !== "number"
+      ) {
+        throw new Error(`Invalid file placement at ${commit}`);
+      }
+      const file = workspaceFileStateIdentity({
+        fileId,
+        presence: "placed",
+        repositoryId: repository_id,
+        path,
+        contentHash: content_hash,
+        mode,
+        contentKind: content_kind,
+        byteLength: byte_length,
+        coordinateExtent: coordinate_extent,
+      });
+      if (file.presence !== "placed") throw new Error(`Invalid placed file identity at ${commit}`);
+      return file;
+    },
+    repository: (id) => repository("repository_id", id),
+    repositoryAtPath: (path) => repository("repo_path", path),
+    emptyRepository(placement) {
+      if (hasFile("repository_id = ?", placement.repositoryId)) return null;
+      const state = workspaceRepositoryStateIdentity({
+        ...placement,
+        presence: "present",
+        fileManifestId: compactId("dolt-file-manifest", []),
+      });
+      if (state.presence !== "present")
+        throw new Error(`Invalid present repository identity at ${commit}`);
+      return state;
+    },
+    hasFileAtPath: (id, path) => hasFile("repository_id = ? AND path = ?", id, path),
+  };
 }
 
 /** Rebuild the placement roots directly from the retained commit graph. */

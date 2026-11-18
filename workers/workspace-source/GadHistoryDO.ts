@@ -3,6 +3,7 @@ import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { vcsEditInputSchema, type VcsEditInput } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import type { StateNodeRef } from "@workspace/vcs-engine";
@@ -20,6 +21,7 @@ import {
   revokeParticipantHistory,
   type MainPublication,
 } from "./participantHistory.js";
+import type { MutationDraft } from "./semanticWorkspace.js";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -199,6 +201,16 @@ export class GadHistoryDO extends DurableObjectBase {
     const main = committedWorkspaceEvent(this.sql, head);
     if (main?.head !== head) throw new Error("Workspace main is missing its committed event");
     return main;
+  }
+
+  @rpc(hostRead)
+  planHistoryEdit(input: {
+    head: string;
+    edit: VcsEditInput;
+    receipt: Record<string, unknown> | null;
+  }): Promise<MutationDraft> {
+    this.#assertWritable();
+    return this.#history().planEdit(input.head, vcsEditInputSchema.parse(input.edit), input.receipt);
   }
 
   @rpc(hostWrite)
