@@ -305,6 +305,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "manageChannelAgent",
         "reviewMediaAndImport",
         "extractPdfEvidence",
+        "assembleHandoff",
       ],
     ],
     [

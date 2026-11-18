@@ -6,6 +6,20 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  scratchHandoffRead: `/** Read the bounded UTF-8 snapshot of a caller-assigned workspace file. */
+
+/** Read the selected source by its assigned identifier and return original lines. */
+export function read(id: string): Promise<{
+  id: string;
+  lines: string[];
+} | null>;`,
+  scratchHandoffWrite: `/** Stage one verified handoff in a fresh workspace scratch directory. */
+
+/** Write the prepared handoff and return a receipt after exact byte readback. */
+export function stage(body: string): Promise<{
+  path: string;
+  bytes: number;
+} | null>;`,
   automationLifecycleRead: `/** Observe the exact caller-assigned automation and its revision. */
 
 /** Read the authoritative current lifecycle state of the assigned mission. */

@@ -29,6 +29,7 @@
     "runWorkflow/domains/publication": "skills/publish-preflight",
     "runWorkflow/domains/research": "skills/research-intake",
     "runWorkflow/domains/runtimeEvidence": "skills/runtime-evidence-review",
+    "runWorkflow/domains/scratchHandoff": "skills/scratch-handoff",
     "runWorkflow/domains/sessionTest": "skills/session-test-review",
     "runWorkflow/domains/spectrolite": "skills/spectrolite-review",
     "runWorkflow/domains/system": "skills/system-investigation",

@@ -60,6 +60,8 @@ function hostService(name: ServiceName) {
 }
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  scratchHandoffRead: binding("scratchHandoffRead"),
+  scratchHandoffWrite: binding("scratchHandoffWrite"),
   automationLifecycleRead: binding("automationLifecycleRead"),
   automationLifecycleChange: binding("automationLifecycleChange"),
   pdfIntakeProbe: binding("pdfIntakeProbe"),

@@ -15,6 +15,12 @@ import {
 } from "../../packages/natlang/vendor/workerd/natlang-workerd.js";
 import { createPdfIntakeBindings } from "../pdf-intake-bindings/index.js";
 import type { PdfIntakeReport, PdfIntakeRequest } from "../pdf-intake/types.js";
+import { createScratchHandoffFixture } from "../scratch-handoff-fixtures/fixture.js";
+import { scratchHandoffWorlds } from "../scratch-handoff-fixtures/worlds.js";
+import type {
+  HandoffReport,
+  HandoffRequest,
+} from "../scratch-handoff/types.js";
 import { createPdfIntakeFixture } from "./fixture.js";
 import { verifyPdfIntake } from "./oracle.js";
 import { pdfIntakeWorlds } from "./worlds.js";
@@ -26,6 +32,7 @@ const reference: Record<string, string> = {
     if (selected.domain === "google") report = await domains.google.guideGoogleWorkspace(selected.input);
     else if (selected.domain === "publication") report = await domains.publication.preflightPublication(selected.input);
     else if (selected.domain === "localModel") report = await domains.localModel.prepareLocalModel(selected.input);
+    else if (selected.domain === "scratchHandoff") report = await domains.scratchHandoff.assembleHandoff(selected.input);
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
@@ -119,6 +126,39 @@ const reference: Record<string, string> = {
     return request.purpose === "layout" && canOcr ? "local-fallback" : "embedded";
   `,
   readBatch: "return await pdfIntakeRead.read(document, pages, mode);",
+  assembleHandoff: `
+    const {observed, missing} = await inspectSources(request.sources);
+    if (missing.length) return {status:"source-unavailable",artifact:null,missingSources:missing,unanswered:[]};
+    const prepared = await prepareHandoff(request, observed);
+    if (prepared.body === null) return {status:"unanswered",artifact:null,missingSources:[],unanswered:prepared.unanswered};
+    return await deliverHandoff(prepared.body);
+  `,
+  inspectSources: `
+    const observed = [];
+    const missing = [];
+    for (const source of sources) {
+      const snapshot = await readSource(source.id);
+      if (snapshot === null) missing.push(source.id);
+      else observed.push(snapshot);
+    }
+    return {observed,missing};
+  `,
+  readSource: "return await scratchHandoffRead.read(id);",
+  prepareHandoff:
+    "return await handoffChecks.prepare(request.questions, observed, await selectEvidence(request, observed));",
+  selectEvidence: `return ${JSON.stringify(
+    Object.fromEntries(
+      scratchHandoffWorlds.map((world) => [
+        world.request.goal,
+        world.selection,
+      ]),
+    ),
+  )}[request.goal];`,
+  deliverHandoff: `
+    const artifact = await commitHandoff(body);
+    return {status:artifact === null ? "unverified" : "staged",artifact,missingSources:[],unanswered:[]};
+  `,
+  commitHandoff: "return await scratchHandoffWrite.stage(body);",
   findEvidence: `
     const locations = [];
     const unanswered = [];
@@ -134,6 +174,8 @@ const reference: Record<string, string> = {
 };
 
 const serviceScopes: Record<string, string[]> = {
+  readSource: ["scratchHandoffRead"],
+  commitHandoff: ["scratchHandoffWrite"],
   probeDocument: ["pdfIntakeProbe"],
   readBatch: ["pdfIntakeRead"],
   guideGoogleWorkspace: ["googleWorkspaceRead"],
@@ -242,6 +284,32 @@ it("executes each authored PDF task and checks citations against independent rec
   }
 });
 
+it("stages or holds every authored scratch handoff through the scoped Workerd call tree", async () => {
+  const runtime = loader();
+  for (const world of scratchHandoffWorlds) {
+    const fixture = createScratchHandoffFixture(world);
+    const workflow = (await runtime.load(
+      "skills/scratch-handoff/assembleHandoff.nl",
+      {
+        services: fixture.bindings,
+      },
+    )) as (request: HandoffRequest) => Promise<HandoffReport>;
+    const report = await workflow(world.request);
+    expect(
+      fixture.verify(report),
+      JSON.stringify({ id: world.id, report }),
+    ).toBe(true);
+    if (report.artifact) {
+      expect(
+        fixture.verify({
+          ...report,
+          artifact: { ...report.artifact, bytes: 0 },
+        }),
+      ).toBe(false);
+    }
+  }
+});
+
 const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
 it.runIf(Boolean(host))(
   "grades actual Workerd runs across template domains from retained inputs and outputs",
@@ -290,6 +358,7 @@ it.runIf(Boolean(host))(
     ]);
     for (const caseId of [
       "pdf-intake-handover-date",
+      "scratch-handoff-incident-reversal",
       "google-workspace-inventory-quarterly-sheets",
       "publish-preflight-transit-map",
       "local-model-task-cypress-download",

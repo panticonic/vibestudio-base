@@ -40,6 +40,18 @@ const scopedAgentFile = "packages/natlang-services/src/scopedAgentContracts.ts";
 
 export const SERVICE_CATALOG = [
   {
+    name: "scratchHandoffRead",
+    summary: "Read the bounded UTF-8 snapshot of a caller-assigned workspace file.",
+    contract: { origin: "base", file: "packages/natlang-services/src/scratchHandoffContracts.ts", table: "scratchHandoffReadMethods" },
+    methods: [{ name: "read", params: ["id"], description: "Read the selected source by its assigned identifier and return original lines." }],
+  },
+  {
+    name: "scratchHandoffWrite",
+    summary: "Stage one verified handoff in a fresh workspace scratch directory.",
+    contract: { origin: "base", file: "packages/natlang-services/src/scratchHandoffContracts.ts", table: "scratchHandoffWriteMethods" },
+    methods: [{ name: "stage", params: ["body"], description: "Write the prepared handoff and return a receipt after exact byte readback." }],
+  },
+  {
     name: "automationLifecycleRead",
     summary: "Observe the exact caller-assigned automation and its revision.",
     contract: { origin: "base", file: "packages/natlang-services/src/automationLifecycleContracts.ts", table: "automationLifecycleReadMethods" },
