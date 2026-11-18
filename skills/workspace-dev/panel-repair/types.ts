@@ -18,6 +18,12 @@ export type Observation = {
   buildDiagnostics: string[];
 };
 
+export type InteractionObservation = {
+  step: InteractionStep;
+  control: string | null;
+  after: Observation;
+};
+
 export type Reproduction = {
   interaction: Interaction;
   expected: string;

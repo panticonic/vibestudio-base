@@ -90,7 +90,13 @@ export const panelRepairMethods = {
     description:
       "Perform accessible role/name actions on the assigned generation and return observed browser evidence.",
     args: z.tuple([z.string(), repairInteraction]),
-    returns: z.object({ observations: z.array(z.string()) }),
+    returns: z.object({
+      observations: z.array(z.object({
+        step: repairInteraction.shape.steps.element,
+        control: z.string().nullable(),
+        after: repairObservation,
+      })),
+    }),
   },
   listSource: {
     description: "List all files in the assigned panel repository at the supplied current revision.",

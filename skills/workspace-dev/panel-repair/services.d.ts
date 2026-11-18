@@ -4,7 +4,7 @@ declare module "natlang:services" {
     interact(
       generation: string,
       interaction: import("./types.js").Interaction,
-    ): Promise<{ observations: string[] }>;
+    ): Promise<{ observations: import("./types.js").InteractionObservation[] }>;
     listSource(revision: string): Promise<string[]>;
     readSource(revision: string, paths: string[]): Promise<import("./types.js").SourceFile[]>;
     apply(revision: string, edits: import("./types.js").Edit[]): Promise<{ revision: string }>;

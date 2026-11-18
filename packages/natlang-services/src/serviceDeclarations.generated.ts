@@ -426,7 +426,35 @@ export function interact(generation: string, interaction: {
     name: string;
   })[];
 }): Promise<{
-  observations: string[];
+  observations: {
+    step: {
+      kind: "click";
+      role: string;
+      name: string;
+    } | {
+      kind: "fill";
+      role: string;
+      name: string;
+      text: string;
+    } | {
+      kind: "inspect";
+      role: string;
+      name: string;
+    };
+    control: string | null;
+    after: {
+      revision: string;
+      generation: string;
+      phase: string;
+      controls: {
+        role: string;
+        name: string;
+      }[];
+      visibleText: string;
+      console: string[];
+      buildDiagnostics: string[];
+    };
+  }[];
 }>;
 
 /** List all files in the assigned panel repository at the supplied current revision. */

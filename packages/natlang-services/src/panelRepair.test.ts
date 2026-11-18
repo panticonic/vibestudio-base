@@ -125,4 +125,13 @@ describe("panelRepair authority binding", () => {
     state.contextId = "other";
     await expect(service.observe()).rejects.toThrow("selected workspace");
   });
+
+  it("returns the observed control value and current view as structured evidence", async () => {
+    const { service } = world();
+    const initial = await service.observe();
+    const step = { kind: "inspect", role: "button", name: "Save" } as const;
+    await expect(service.interact(initial.generation, { steps: [step] })).resolves.toEqual({
+      observations: [{ step, control: "Save", after: initial }],
+    });
+  });
 });

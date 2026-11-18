@@ -88,7 +88,7 @@ export function createPanelRepair(options: {
   return Object.freeze({
     observe,
     async interact(expected: string, interaction: Interaction) {
-      const observations: string[] = [];
+      const observations = [];
       for (const step of interaction.steps) {
         if (generation(await scoped()) !== expected)
           throw new Error("Panel generation changed; observe again and choose controls from the current document.");
@@ -111,7 +111,7 @@ export function createPanelRepair(options: {
         const after = await observe();
         if (after.generation !== expected)
           throw new Error("Panel generation changed during interaction; observe its new attempt before continuing.");
-        observations.push(JSON.stringify({ step, control, after }));
+        observations.push({ step, control, after });
       }
       return { observations };
     },
