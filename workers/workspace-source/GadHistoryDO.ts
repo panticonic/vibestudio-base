@@ -166,33 +166,47 @@ export class GadHistoryDO extends DurableObjectBase {
       if (stored["status"] !== "reserved" && stored["status"] !== "active") {
         throw new Error("Workspace participant is retiring");
       }
-      const sourceRef = this.env["WORKER_SOURCE_REF"];
-      const handle = await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
-        {
-          kind: "do",
-          className,
-          key: target,
-          contextId: input.contextId,
-          execution: {
-            surface: "code",
-            source,
-            ...(typeof sourceRef === "string" ? { ref: sourceRef } : {}),
+      const targetId = `do:${source}:${className}:${target}`;
+      if (stored["status"] === "reserved") {
+        const sourceRef = this.env["WORKER_SOURCE_REF"];
+        const handle = await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
+          {
+            kind: "do",
+            className,
+            key: target,
+            contextId: input.contextId,
+            execution: {
+              surface: "code",
+              source,
+              ...(typeof sourceRef === "string" ? { ref: sourceRef } : {}),
+            },
+            forkStorage: { at: forkHead },
           },
-          forkStorage: { at: forkHead },
-        },
-      ]);
-      if (
-        handle.targetId !== `do:${source}:${className}:${target}` ||
-        handle.contextId !== input.contextId
-      ) {
-        throw new Error("Runtime returned a different workspace participant allocation");
+        ]);
+        if (handle.targetId !== targetId || handle.contextId !== input.contextId) {
+          throw new Error("Runtime returned a different workspace participant allocation");
+        }
+        this.#setAllocationStatus(target, "active");
       }
-      this.#setAllocationStatus(target, "active");
-      const grant = grantParticipantHistory(dolt, input.participantId, handle.targetId);
+      const receiptKey = `history-origin:${target}`;
+      const storedGrant = this.getStateValue(receiptKey);
+      let receipt: { id: string; token: string } | null = storedGrant === null
+        ? null
+        : JSON.parse(storedGrant) as { id: string; token: string };
+      if (!receipt || !dolt.remote.grants().some((grant) => grant.id === receipt?.id && grant.peer === targetId)) {
+        const grant = grantParticipantHistory(dolt, input.participantId, targetId);
+        for (const prior of dolt.remote.grants()) {
+          if (prior.id !== grant.id && prior.label === grant.label && prior.peer === targetId) {
+            dolt.remote.revoke(prior.id);
+          }
+        }
+        receipt = { id: grant.id, token: grant.token };
+        this.setStateValue(receiptKey, canonicalJson(receipt));
+      }
       return {
-        targetId: handle.targetId,
+        targetId,
         head: forkHead,
-        origin: { ref: `${className}:${canonicalKey}`, token: grant.token },
+        origin: { ref: `${className}:${canonicalKey}`, token: receipt.token },
       };
     });
   }
@@ -202,6 +216,22 @@ export class GadHistoryDO extends DurableObjectBase {
     participantId: string;
     origin: DoltRemoteTarget;
   }): Promise<string> {
+    this.#recordHistoryOrigin(input);
+    return this.#history().connect(input.origin);
+  }
+
+  @rpc(hostWrite)
+  bindHistoryContext(input: {
+    participantId: string;
+    origin: DoltRemoteTarget;
+    contextId: string;
+    replayedHead?: string;
+  }): Promise<string> {
+    this.#recordHistoryOrigin(input);
+    return this.#history().bindContext(input.contextId, input.origin, input.replayedHead);
+  }
+
+  #recordHistoryOrigin(input: { participantId: string; origin: DoltRemoteTarget }): void {
     this.ensureReady();
     if (
       this.objectKey !== workKey(input.participantId) ||
@@ -210,8 +240,11 @@ export class GadHistoryDO extends DurableObjectBase {
       throw new Error("Workspace history origin does not match the participant allocation");
     }
     this.#assertWritable();
-    this.setStateValue("history-participant", input.participantId);
-    return this.#history().connect(input.origin);
+    const prior = this.getStateValue("history-participant");
+    if (prior !== null && prior !== input.participantId) {
+      throw new Error("Workspace participant has a different recorded owner");
+    }
+    if (prior === null) this.setStateValue("history-participant", input.participantId);
   }
 
   @rpc(hostWrite)
@@ -577,6 +610,7 @@ export class GadHistoryDO extends DurableObjectBase {
       if (status === undefined || status === "retired") return;
       const dolt = this.#remotes();
       const destroy = async () => {
+        this.deleteStateValue(`history-origin:${target}`);
         await this.rpc.call("main", mainRpcMethods["runtime.retireEntity"], [{ id: peer }]);
         this.#setAllocationStatus(target, "retired");
       };

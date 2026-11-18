@@ -271,6 +271,7 @@ export class ParticipantHistory {
   readonly #transport: DoltRemoteTransport;
   readonly #discardJournal: HistoryDiscardJournal | undefined;
   #discardJournalReady = false;
+  #connectedOrigin: string | undefined;
   readonly #turns = new Map<string, Promise<unknown>>();
 
   constructor(
@@ -289,9 +290,17 @@ export class ParticipantHistory {
   }
 
   connect(origin: DoltRemoteTarget): Promise<string> {
-    return this.#run(() => {
-      this.#configureRemote("origin", origin);
-      return this.#fetchMain();
+    return this.#run(() => this.#connectOrigin(origin, this.#originIdentity(origin)));
+  }
+
+  bindContext(contextId: string, origin: DoltRemoteTarget, replayedHead?: string): Promise<string> {
+    return this.#run(async () => {
+      const identity = this.#originIdentity(origin);
+      const branch = this.#contextBranch(contextId);
+      const known = this.#dolt.branch.list().find(({ name }) => name === branch);
+      if (known && this.#connectedOrigin === identity) return known.hash;
+      const main = await this.#connectOrigin(origin, identity);
+      return known?.hash ?? this.#openBranch(contextId, replayedHead ?? main);
     });
   }
 
@@ -1439,6 +1448,23 @@ export class ParticipantHistory {
       this.#dolt.remote.remove(name);
     }
     this.#dolt.remote.add(name, target);
+  }
+
+  #originIdentity(origin: DoltRemoteTarget): string {
+    return sha256HexSyncText(canonicalJson({
+      ref: origin.ref ?? origin.id?.toString() ?? null,
+      token: origin.token,
+    }));
+  }
+
+  async #connectOrigin(origin: DoltRemoteTarget, identity: string): Promise<string> {
+    if (identity !== this.#connectedOrigin) {
+      this.#connectedOrigin = undefined;
+      this.#configureRemote("origin", origin);
+    }
+    const main = await this.#fetchMain();
+    this.#connectedOrigin = identity;
+    return main;
   }
 
   async #fetchMain(): Promise<string> {
