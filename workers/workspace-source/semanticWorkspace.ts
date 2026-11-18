@@ -283,6 +283,31 @@ interface RepositoryTransition {
   newRepository: boolean;
 }
 
+interface MutationPreparation<Placement> {
+  now(): string;
+  workUnitEvidence(
+    contextId: string,
+    commandId: string,
+  ): Pick<WorkUnitRecord, "authorContextId" | "triggerEvidence">;
+  contentIntegrity(basis: StateNodeRef, draft: MutationDraft): MutationContentIntegrity;
+  contentOrigins(state: StateNodeRef, fileIds: readonly string[]): Map<string, FileContentOrigin>;
+  invertedCounteractions(
+    changeIds: readonly string[],
+    child: ContentEndpoint,
+    parent: ContentEndpoint,
+  ): ContentMapping[];
+  preparePlacement(
+    files: readonly FileTransition[],
+    repositories: readonly RepositoryTransition[],
+  ): { placement: Placement; resultRoot: string; workspacePlanCompletedAt: number };
+}
+
+type MutationContentIntegrity = {
+  class: "internal" | "external";
+  externalKeys: string[];
+  contentOrigins: Map<string, FileContentOrigin>;
+};
+
 type DraftChangeRef =
   | { kind: "authored"; ordinal: number }
   | { kind: "existing"; changeId: string };
@@ -3583,8 +3608,8 @@ export class SemanticWorkspace {
             },
           });
           changeRef = { kind: "authored", ordinal };
-          const resultContent = this.contentEndpoint(resultEndpoint);
-          const sourceContent = this.contentEndpoint(theirsEndpoint);
+          const resultContent = SemanticWorkspace.contentEndpoint(resultEndpoint);
+          const sourceContent = SemanticWorkspace.contentEndpoint(theirsEndpoint);
           if (
             contentDerivations.length === 0 &&
             resultContent &&
@@ -8350,7 +8375,7 @@ export class SemanticWorkspace {
             repositoryId: file.repositoryId,
             fileId,
           },
-          content: this.contentEndpoint({ kind: "file", ...file }),
+          content: SemanticWorkspace.contentEndpoint({ kind: "file", ...file }),
           authoredChangeId: null,
           authoredByWorkUnitId: null,
           contentClass: "external",
@@ -8428,11 +8453,7 @@ export class SemanticWorkspace {
   private contentIntegrityForMutation(
     basis: StateNodeRef,
     draft: MutationDraft,
-  ): {
-    class: "internal" | "external";
-    externalKeys: string[];
-    contentOrigins: Map<string, FileContentOrigin>;
-  } {
+  ): MutationContentIntegrity {
     const externalKeys = new Set<string>();
     const workUnitIds = new Set<string>();
     const contentOrigins = new Map<string, FileContentOrigin>();
@@ -8576,11 +8597,45 @@ export class SemanticWorkspace {
     commandId: string,
   ) {
     const profileStartedAt = Date.now();
+    const basisRoot = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+    const prepared = SemanticWorkspace.prepareApplication(input, draft, commandId, {
+      now: () => this.deps.now(),
+      workUnitEvidence: (contextId, id) => this.workUnitEvidence(contextId, id),
+      contentIntegrity: (basis, mutation) => this.contentIntegrityForMutation(basis, mutation),
+      contentOrigins: (state, fileIds) => this.contentOriginsForFiles(state, fileIds),
+      invertedCounteractions: (changeIds, child, parent) =>
+        this.invertedCounteractionMappings(changeIds, child, parent),
+      preparePlacement: (files, repositories) => {
+        const changeSet = files.length || repositories.length
+          ? this.planWorkspaceFacts(basisRoot, files, repositories)
+          : null;
+        const workspacePlanCompletedAt = Date.now();
+        const placement = changeSet ? this.deps.store.facts.prepare(changeSet) : null;
+        return {
+          placement,
+          resultRoot: placement?.persistence.resultRoot.workspaceFactRootId ?? basisRoot,
+          workspacePlanCompletedAt,
+        };
+      },
+    }, profileStartedAt);
+    return {
+      ...prepared,
+      plan: { ...prepared.plan, workspaceFacts: prepared.placement } satisfies ApplicationPersistencePlan,
+    };
+  }
+
+  /** Build provenance once, using the exact placement and lineage reads of its owner. */
+  static prepareApplication<Placement>(
+    input: { contextId: string; expectedWorkingHead: VcsStateNodeRef },
+    draft: MutationDraft,
+    commandId: string,
+    preparation: MutationPreparation<Placement>,
+    profileStartedAt = Date.now(),
+  ) {
     const basis = asState(input.expectedWorkingHead);
-    const basisRoot = this.deps.store.stateRoot(basis);
-    const createdAt = this.deps.now();
-    const contentIntegrity = this.contentIntegrityForMutation(basis, draft);
-    const evidence = this.workUnitEvidence(input.contextId, commandId);
+    const createdAt = preparation.now();
+    const contentIntegrity = preparation.contentIntegrity(basis, draft);
+    const evidence = preparation.workUnitEvidence(input.contextId, commandId);
     const workUnitIdValue = workUnitIdentity({
       commandId,
       kind: draft.kind,
@@ -8657,22 +8712,9 @@ export class SemanticWorkspace {
     const workspaceFileTransitions = fileTransitions.filter(
       ({ expected, result }) => expected?.fileStateId !== result.fileStateId,
     );
-    const workspaceChangeSet =
-      workspaceFileTransitions.length || repoTransitions.length
-        ? this.planWorkspaceFacts(
-            basisRoot,
-            workspaceFileTransitions,
-            repoTransitions,
-          )
-        : null;
-    const workspacePlanCompletedAt = Date.now();
-    const workspaceFacts = workspaceChangeSet
-      ? this.deps.store.facts.prepare(workspaceChangeSet)
-      : null;
+    const { placement, resultRoot, workspacePlanCompletedAt } =
+      preparation.preparePlacement(workspaceFileTransitions, repoTransitions);
     const workspaceProofCompletedAt = Date.now();
-    const resultRoot = workspaceFacts
-      ? workspaceFacts.persistence.resultRoot.workspaceFactRootId
-      : basisRoot;
     const appliedChangeSources = [
       ...changes,
       ...(draft.appliedSourceChanges ?? []),
@@ -8756,8 +8798,8 @@ export class SemanticWorkspace {
     };
     for (const change of appliedChangeSources) {
       const child =
-        this.contentEndpoint(change.result) ??
-        this.contentEndpoint(change.base);
+        SemanticWorkspace.contentEndpoint(change.result) ??
+        SemanticWorkspace.contentEndpoint(change.base);
       if (!child) continue;
       if (change.kind === "file-copy") {
         if (change.source) {
@@ -8775,14 +8817,14 @@ export class SemanticWorkspace {
       const missingFileIds = [...selection.fileIds].filter(
         (fileId) => !contentParents.has(stateFileKey(selection.state, fileId)),
       );
-      for (const [fileId, parent] of this.contentOriginsForFiles(selection.state, missingFileIds)) {
+      for (const [fileId, parent] of preparation.contentOrigins(selection.state, missingFileIds)) {
         contentParents.set(stateFileKey(selection.state, fileId), parent);
       }
     }
     const derivedContentEdges = appliedChanges.flatMap((appliedChange, ordinal) => {
         const change = appliedChangeSources[ordinal];
         if (!change) return [];
-      const child = this.contentEndpoint(change.result) ?? this.contentEndpoint(change.base);
+      const child = SemanticWorkspace.contentEndpoint(change.result) ?? SemanticWorkspace.contentEndpoint(change.base);
         if (!child) {
           if (change.kind === "file-copy") {
             throw new SemanticVcsError(
@@ -8861,7 +8903,7 @@ export class SemanticWorkspace {
             }),
           ];
         } else if (change.kind === "text") {
-          const base = this.contentEndpoint(change.base);
+          const base = SemanticWorkspace.contentEndpoint(change.base);
           if (
             !base ||
             base.coordinateKind !== "utf16" ||
@@ -8873,10 +8915,10 @@ export class SemanticWorkspace {
             return [];
           }
           relation = "incorporates";
-          const counteractedChangeIds = this.counteractedChangeIds(change);
+          const counteractedChangeIds = SemanticWorkspace.counteractedChangeIds(change);
           mappings =
             counteractedChangeIds.length > 0
-            ? this.invertedCounteractionMappings(counteractedChangeIds, child, parentEndpoint)
+            ? preparation.invertedCounteractions(counteractedChangeIds, child, parentEndpoint)
               : mappingsForTextEdits({
                   childContentHash: child.contentHash,
                   childExtent: child.coordinateExtent,
@@ -8974,7 +9016,7 @@ export class SemanticWorkspace {
       normalizationProtocol: NORMALIZATION_PROTOCOL,
       createdAt,
     };
-    const plan: ApplicationPersistencePlan = {
+    const plan: Omit<ApplicationPersistencePlan, "workspaceFacts"> = {
       contextId: input.contextId,
       expectedWorkingHead: basis,
       workUnit,
@@ -8983,7 +9025,6 @@ export class SemanticWorkspace {
       appliedChanges,
       contentEdges,
       decisions,
-      workspaceFacts,
       newRepositories: repoTransitions
         .filter((value) => value.newRepository)
         .map(({ repositoryId }) => ({ repositoryId })),
@@ -8999,6 +9040,7 @@ export class SemanticWorkspace {
     const planCompletedAt = Date.now();
     return {
       plan,
+      placement,
       profileStartedAt,
       timings: {
         changes: changes.length,
@@ -11659,7 +11701,7 @@ export class SemanticWorkspace {
     ).map((row) => String(row["source_delta_id"]));
   }
 
-  private counteractedChangeIds(change: ChangeRecord): string[] {
+  private static counteractedChangeIds(change: ChangeRecord): string[] {
     const values = change.payload["counteractsChangeIds"];
     return Array.isArray(values)
       ? values.filter((value): value is string => typeof value === "string")
@@ -11679,7 +11721,7 @@ export class SemanticWorkspace {
       const change = changes[index]!;
       if (suppressed.has(change.changeId)) continue;
       active.add(change.changeId);
-      for (const counteractedId of this.counteractedChangeIds(change)) {
+      for (const counteractedId of SemanticWorkspace.counteractedChangeIds(change)) {
         suppressed.add(counteractedId);
       }
     }
@@ -14243,7 +14285,7 @@ export class SemanticWorkspace {
     };
   }
 
-  private contentEndpoint(endpoint: Row | null): ContentEndpoint | null {
+  private static contentEndpoint(endpoint: Row | null): ContentEndpoint | null {
     if (
       endpoint?.["kind"] !== "file" ||
       typeof endpoint["fileId"] !== "string" ||
@@ -14456,8 +14498,8 @@ export class SemanticWorkspace {
         contentClass,
         externalKeys,
         content:
-          this.contentEndpoint(appliedResult) ??
-          this.contentEndpoint(appliedBase),
+          SemanticWorkspace.contentEndpoint(appliedResult) ??
+          SemanticWorkspace.contentEndpoint(appliedBase),
       });
     }
     return result;

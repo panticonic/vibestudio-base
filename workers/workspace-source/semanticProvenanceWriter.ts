@@ -19,7 +19,10 @@ import { execBatchedInsert } from "./sqlBatch.js";
 export const stateNodeKey = (ref: StateNodeRef): string =>
   ref.kind === "event" ? `event:${ref.eventId}` : `application:${ref.applicationId}`;
 
-export function validateApplicationPlan(plan: ApplicationPersistencePlan): void {
+export function validateApplicationPlan(plan: Pick<
+  ApplicationPersistencePlan,
+  "workUnit" | "changes" | "application" | "appliedChanges" | "contentEdges" | "decisions"
+>): void {
   const authored = plan.changes.map((change) => change.changeId);
   const decision = plan.decisions[0];
   const incorporated = decision?.entries.flatMap((entry) => entry.accountedSourceChangeIds) ?? [];

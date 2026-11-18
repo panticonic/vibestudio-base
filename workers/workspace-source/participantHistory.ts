@@ -22,6 +22,7 @@ import {
   workspaceEditBasisAt,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
+  type WorkspacePlacementChange,
 } from "./doltWorkspaceState.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
@@ -45,6 +46,10 @@ export interface CommittedContext {
 export type HistoryEditPlan =
   | { kind: "read-content"; contentHashes: string[] }
   | { kind: "planned"; draft: MutationDraft };
+
+export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
+  placement: WorkspacePlacementChange | null;
+};
 
 interface MergeSource extends CommittedContext {
   readonly participantId?: string;
@@ -280,7 +285,7 @@ export class ParticipantHistory {
   applyApplication(
     expectedHead: string,
     command: HistoryCommand,
-    plan: ApplicationPersistencePlan
+    plan: HistoryApplicationPlan
   ): Promise<{ readonly value: StateNodeRef; readonly head: string }> {
     const { contextId, application, workUnit } = plan;
     const value = { kind: "application" as const, applicationId: application.applicationId };
@@ -327,7 +332,10 @@ export class ParticipantHistory {
           throw new SemanticVcsError("RevisionChanged", "Prepared workspace revision has changed");
         }
         this.#recordCommand(contextId, command, workUnit.createdAt);
-        if (plan.workspaceFacts) applyDoltWorkspaceState(sql, plan.workspaceFacts.changeSet);
+        if (plan.placement === undefined) {
+          throw new SemanticVcsError("IntegrityFailure", "Prepared workspace placement is missing");
+        }
+        if (plan.placement !== null) applyDoltWorkspaceState(sql, plan.placement);
         const provenance = new SemanticProvenanceWriter(sql);
         provenance.persistWorkUnit(workUnit);
         provenance.persistChanges(plan.changes);

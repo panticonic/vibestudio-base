@@ -31,7 +31,10 @@ const fileColumns = [
   "presence",
   "tombstone_change_id",
 ] as const;
-type PlacementChange = Pick<WorkspaceFactChangeSet, "repositoryUpdates" | "fileUpdates">;
+export type WorkspacePlacementChange = Pick<
+  WorkspaceFactChangeSet,
+  "repositoryUpdates" | "fileUpdates"
+>;
 
 /** Resolve a public state identity against one reachable history. */
 export function workspaceCommitForRef(
@@ -374,7 +377,7 @@ export function recordDoltWorkspaceEvent(
 }
 
 /** Apply a prepared semantic change inside the context's committed transaction. */
-export function applyDoltWorkspaceState(sql: SqlStorage, change: PlacementChange): void {
+export function applyDoltWorkspaceState(sql: SqlStorage, change: WorkspacePlacementChange): void {
   const expected = placementRows(change, "expected");
   assertWorkspaceRows(
     sql,
@@ -447,7 +450,7 @@ function assertWorkspaceRows(
 export function verifyDoltWorkspaceState(
   sql: SqlStorage,
   hash: string,
-  expected: PlacementChange
+  expected: WorkspacePlacementChange
 ): void {
   if (!/^[0-9a-z]+$/u.test(hash)) throw new Error("Invalid workspace commit hash");
   const { repositories, files } = placementRows(expected);
@@ -485,7 +488,7 @@ function canonicalPlacementRows(rows: {
   });
 }
 
-export function expectedPlacementProof(change: PlacementChange): string {
+export function expectedPlacementProof(change: WorkspacePlacementChange): string {
   return canonicalPlacementRows(placementRows(change));
 }
 
@@ -501,7 +504,7 @@ export function workspacePlacementProof(sql: SqlStorage, at?: string): string {
   });
 }
 
-function placementRows(change: PlacementChange, side: "result" | "expected" = "result") {
+function placementRows(change: WorkspacePlacementChange, side: "result" | "expected" = "result") {
   return {
     repositories: change.repositoryUpdates
       .flatMap((row) => row[side] ?? [])
