@@ -14,7 +14,8 @@ into a portable scratch handoff for another agent or operator.
 | Report the verified location or explain why staging could not be verified | `deliverHandoff`. Surface only the binding's successful receipt. |
 
 Call `bindScratchHandoff(fs, request)` from Vibestudio eval with the
-current context's `@workspace/runtime` filesystem. Pass the returned services
+current context's `@workspace/runtime` filesystem. The managed runner passes a bounded reader using `fs.readBytes` for
+both source snapshots and the staged artifact. Pass the returned services
 when loading the joint workflow. Inputs are one to eight caller-selected text
 files and one to eight questions. The output goes in a fresh `/.tmp` directory.
 The handoff stays in the current context until the caller explicitly moves it.

@@ -53,7 +53,14 @@ async function readBytes(
 }
 
 /** Bind the current workspace's runtime filesystem and a single caller-owned assignment. */
-export function bindScratchHandoff(fs: ScratchFs, request: HandoffRequest) {
+export function bindScratchHandoff(
+  fs: ScratchFs,
+  request: HandoffRequest,
+  readBounded: (path: string, limit: number) => Promise<Uint8Array> = (
+    path,
+    limit,
+  ) => readBytes(fs, path, limit),
+) {
   const paths = new Map(request.sources.map(({ id, path }) => [id, path]));
   if (
     !request.goal.trim() ||
@@ -78,7 +85,8 @@ export function bindScratchHandoff(fs: ScratchFs, request: HandoffRequest) {
         const path = paths.get(id);
         if (!path) return null;
         try {
-          const bytes = await readBytes(fs, path, maxSourceBytes);
+          const bytes = await readBounded(path, maxSourceBytes);
+          if (bytes.length > maxSourceBytes) return null;
           const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
           if (text.includes("\0")) return null;
           const lines = text.split(/\r?\n/u);
@@ -102,7 +110,7 @@ export function bindScratchHandoff(fs: ScratchFs, request: HandoffRequest) {
           const path = `${directory}/handoff.json`;
           await fs.writeFile(pending, body);
           await fs.rename(pending, path);
-          const actual = await readBytes(fs, path, expected.length);
+          const actual = await readBounded(path, expected.length);
           if (
             actual.length === expected.length &&
             actual.every((byte, index) => byte === expected[index])
