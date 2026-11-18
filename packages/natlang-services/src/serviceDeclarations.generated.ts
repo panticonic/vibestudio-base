@@ -631,6 +631,62 @@ export function merge(head: string, decisions: {
 }[]): Promise<{
   head: string;
 }>;`,
+  projectWorkspace: `/** Read the assigned content project's exact local state and source files. */
+
+/** Read actual assigned repository files and working/committed state in the fixed execution context. */
+export function observe(): Promise<{
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {
+    path: string;
+    text: string;
+  }[];
+}>;`,
+  projectWorkspaceEdit: `/** Prepare, author and locally commit the assigned content project without publication. */
+
+/** Prepare the assigned initially absent content project through the ordinary project helper at the exact observed head. */
+export function prepare(head: string): Promise<{
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {
+    path: string;
+    text: string;
+  }[];
+}>;
+
+/** Atomically write canonical assigned Markdown paths plus the immutable original source ledger at the exact observed head. */
+export function writeDocuments(head: string, documents: {
+  path: string;
+  text: string;
+}[]): Promise<{
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {
+    path: string;
+    text: string;
+  }[];
+}>;
+
+/** Locally commit this exact observed candidate. This operation never pushes or activates code. */
+export function commit(head: string, message: string): Promise<{
+  eventId: string;
+  head: string;
+}>;`,
   unitRepair: `/** Read the assigned worker's source and real compiler diagnostics at one working revision. */
 
 /** Read a real compiler report at the assigned worker's current revision. */

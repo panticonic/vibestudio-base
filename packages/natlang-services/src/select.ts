@@ -67,6 +67,8 @@ const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangServic
   ownedOperations: binding("ownedOperations"),
   unitRepairEdit: binding("unitRepairEdit"),
   workspaceIntegration: binding("workspaceIntegration"),
+  projectWorkspace: binding("projectWorkspace"),
+  projectWorkspaceEdit: binding("projectWorkspaceEdit"),
   docs: hostService("docs"),
   localModels: (bindings) => {
     const extensions = requireBinding("localModels", bindings, "extensions") as {
