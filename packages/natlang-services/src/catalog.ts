@@ -82,6 +82,36 @@ export const SERVICE_CATALOG = [
     methods: [{ name: "apply", params: ["missionId", "revisionDigest", "action"], description: "Request the assigned pause or resume through the Missions client." }],
   },
   {
+    name: "mobileInventory",
+    summary: "Read installed Android tooling and the caller's foreground device inventory.",
+    contract: { origin: "base", file: "packages/natlang-services/src/mobileScenarioContracts.ts", table: "mobileInventoryMethods" },
+    methods: [{ name: "read", params: [], description: "Read installed Android tooling and the caller's foreground device inventory." }],
+  },
+  {
+    name: "mobilePairing",
+    summary: "Provision the single assigned Android target and retain the pairing receipt.",
+    contract: { origin: "base", file: "packages/natlang-services/src/mobileScenarioContracts.ts", table: "mobilePairingMethods" },
+    methods: [{ name: "pair", params: ["deviceId"], description: "Provision the single assigned Android target and retain the pairing receipt." }],
+  },
+  {
+    name: "mobileWorkspace",
+    summary: "Read readiness for the device created by the current pairing.",
+    contract: { origin: "base", file: "packages/natlang-services/src/mobileScenarioContracts.ts", table: "mobileWorkspaceMethods" },
+    methods: [{ name: "read", params: ["pairedDevice"], description: "Read readiness for the device created by the current pairing." }],
+  },
+  {
+    name: "mobileDevelopment",
+    summary: "Launch the assigned development installation with the caller's reset policy.",
+    contract: { origin: "base", file: "packages/natlang-services/src/mobileScenarioContracts.ts", table: "mobileDevelopmentMethods" },
+    methods: [{ name: "install", params: ["deviceId"], description: "Launch the assigned development installation with the caller's reset policy." }],
+  },
+  {
+    name: "mobileApp",
+    summary: "Verify rendering for the exact package and device from the current install.",
+    contract: { origin: "base", file: "packages/natlang-services/src/mobileScenarioContracts.ts", table: "mobileAppMethods" },
+    methods: [{ name: "verify", params: ["deviceId", "packageName"], description: "Verify rendering for the exact package and device from the current install." }],
+  },
+  {
     name: "pdfIntakeProbe",
     summary: "Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness.",
     contract: { origin: "base", file: "packages/natlang-services/src/pdfIntakeContracts.ts", table: "pdfIntakeProbeMethods" },

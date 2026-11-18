@@ -95,6 +95,57 @@ export function observe(missionId: string): Promise<{
 
 /** Request the assigned pause or resume through the Missions client. */
 export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
+  mobileInventory: `/** Read installed Android tooling and the caller's foreground device inventory. */
+
+/** Read installed Android tooling and the caller's foreground device inventory. */
+export function read(): Promise<{
+  workspace: string;
+  provider: string | null;
+  foreground: boolean;
+  tooling: boolean;
+  devices: {
+    id: string;
+    state: "ready" | "unauthorized" | "offline";
+  }[];
+}>;`,
+  mobilePairing: `/** Provision the single assigned Android target and retain the pairing receipt. */
+
+/** Provision the single assigned Android target and retain the pairing receipt. */
+export function pair(deviceId: string): Promise<{
+  provider: string;
+  workspace: string;
+  attachedDevice: string;
+  pairedDevice: string;
+  install: "installed" | "already-compatible";
+} | null>;`,
+  mobileWorkspace: `/** Read readiness for the device created by the current pairing. */
+
+/** Read readiness for the device created by the current pairing. */
+export function read(pairedDevice: string): Promise<{
+  pairedDevice: string;
+  status: "opening" | "ready" | "failed";
+  message: string;
+} | null>;`,
+  mobileDevelopment: `/** Launch the assigned development installation with the caller's reset policy. */
+
+/** Launch the assigned development installation with the caller's reset policy. */
+export function install(deviceId: string): Promise<{
+  deviceId: string;
+  packageName: string;
+  reset: boolean;
+} | null>;`,
+  mobileApp: `/** Verify rendering for the exact package and device from the current install. */
+
+/** Verify rendering for the exact package and device from the current install. */
+export function verify(deviceId: string, packageName: string): Promise<{
+  deviceId: string;
+  packageName: string;
+  installed: boolean;
+  bundleActive: boolean;
+  rendering: boolean;
+  screenshotBytes: number;
+  issues: string[];
+} | null>;`,
   pdfIntakeProbe: `/** Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness. */
 
 /** Read the assigned local document's probe receipt. */

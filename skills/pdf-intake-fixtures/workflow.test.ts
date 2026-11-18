@@ -41,10 +41,59 @@ const reference: Record<string, string> = {
     else if (selected.domain === "localModel") report = await domains.localModel.prepareLocalModel(selected.input);
     else if (selected.domain === "scratchHandoff") report = await domains.scratchHandoff.assembleHandoff(selected.input);
     else if (selected.domain === "templateCandidate") report = await domains.templateCandidate.stageTemplateCandidate(selected.input);
+    else if (selected.domain === "mobileSystem") report = await domains.mobileSystem.runMobileScenario(selected.input);
     else if (selected.domain === "visualize") report = await domains.visualize.preparePresentation(selected.input);
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
+  runMobileScenario: `
+    const target = await reviewSetup(request);
+    if (target.status === "blocked") return await explainBlocker(target.blocker, request.deviceId);
+    if (request.authority === "inspect") return {status:"target-ready",deviceId:target.deviceId};
+    const report = request.scenario === "pair" ? await exercisePairing(target.deviceId) : await exerciseDevelopment(target.deviceId);
+    return report.status === "blocked" ? await explainBlocker(report.blocker, target.deviceId, report.next) : report;
+  `,
+  reviewSetup: `
+    const inventory = await readInventory();
+    if (inventory.workspace !== request.workspace) return {status:"blocked",blocker:"wrong-workspace"};
+    if (!inventory.tooling) return {status:"blocked",blocker:"missing-tooling"};
+    if (request.authority === "execute" && !inventory.foreground) return {status:"blocked",blocker:"foreground-required"};
+    if (request.scenario === "pair" && !inventory.provider) return {status:"blocked",blocker:"no-provider"};
+    return await selectTarget(inventory.devices, request.deviceId);
+  `,
+  readInventory: "return await mobileInventory.read();",
+  selectTarget: `
+    const matching = requested === null ? devices.filter(x => x.state === "ready") : devices.filter(x => x.id === requested);
+    if (matching.length > 1) return {status:"blocked",blocker:"ambiguous-device"};
+    const device = matching[0] ?? (requested === null && devices.length === 1 ? devices[0] : undefined);
+    if (!device) return {status:"blocked",blocker:"no-device"};
+    if (device.state === "unauthorized") return {status:"blocked",blocker:"device-unauthorized"};
+    if (device.state === "offline") return {status:"blocked",blocker:"device-offline"};
+    return {status:"ready",deviceId:device.id};
+  `,
+  exercisePairing: `
+    const receipt = await pairDevice(deviceId);
+    if (!receipt) return {status:"blocked",deviceId,blocker:"invalid-receipt",next:"Check the receipt."};
+    const readback = await readWorkspace(receipt.pairedDevice);
+    if (!readback) return {status:"blocked",deviceId,blocker:"invalid-receipt",next:"Read the assigned pairing."};
+    if (readback.status === "ready") return {status:"paired-ready",deviceId,receipt,readback};
+    return {status:"blocked",deviceId,blocker:readback.status === "opening" ? "workspace-opening" : "workspace-failed",next:readback.message};
+  `,
+  pairDevice: "return await mobilePairing.pair(deviceId);",
+  readWorkspace: "return await mobileWorkspace.read(pairedDevice);",
+  exerciseDevelopment: `
+    const receipt = await installApp(deviceId);
+    if (!receipt) return {status:"blocked",deviceId,blocker:"invalid-receipt",next:"Check the installation receipt."};
+    const readback = await readInstalledApp(deviceId, receipt.packageName);
+    if (!readback) return {status:"blocked",deviceId,blocker:"invalid-receipt",next:"Read the assigned app."};
+    if (readback.installed && readback.bundleActive && readback.rendering && readback.screenshotBytes > 0 && !readback.issues.length)
+      return {status:"development-ready",deviceId,receipt,readback};
+    return {status:"blocked",deviceId,blocker:"app-unverified",next:readback.issues.join(" ") || "Verify a nonempty screenshot."};
+  `,
+  installApp: "return await mobileDevelopment.install(deviceId);",
+  readInstalledApp: "return await mobileApp.verify(deviceId, packageName);",
+  explainBlocker:
+    'return {status:"blocked",blocker,deviceId,next:observed ?? blocker};',
   planPresentation: `return ${JSON.stringify(
     Object.fromEntries(
       presentationWorlds.map(({ request, expected }) => [
@@ -280,6 +329,11 @@ const reference: Record<string, string> = {
 };
 
 const serviceScopes: Record<string, string[]> = {
+  readInventory: ["mobileInventory"],
+  pairDevice: ["mobilePairing"],
+  readWorkspace: ["mobileWorkspace"],
+  installApp: ["mobileDevelopment"],
+  readInstalledApp: ["mobileApp"],
   readOffer: ["templateOffer"],
   requestPreparation: ["templateCandidatePrepare"],
   readCandidate: ["templateCandidateReview"],
@@ -483,9 +537,18 @@ it.runIf(Boolean(host))(
     );
     const { checkouts } =
       configuration.default.requireDevelopmentTemplateCheckouts(host);
+    const mobile = (await import(
+      /* @vite-ignore */ pathToFileURL(
+        join(
+          checkouts["system-testing"],
+          "skills/mobile-system-testing-fixtures/worlds.ts",
+        ),
+      ).href
+    )) as { mobileScenarioWorlds: { id: string }[] };
     const program = loader(store, [
       checkouts["google-workspace"],
       checkouts.system,
+      checkouts["system-testing"],
     ]);
     for (const caseId of [
       "pdf-intake-handover-date",
@@ -495,6 +558,7 @@ it.runIf(Boolean(host))(
       "publish-preflight-transit-map",
       "local-model-task-cypress-download",
       ...presentationWorlds.map(({ id }) => id),
+      ...mobile.mobileScenarioWorlds.map(({ id }) => id),
     ]) {
       const result = await runScopedNatlangWorkflow(checkouts, caseId, {
         load: program.load.bind(program),
