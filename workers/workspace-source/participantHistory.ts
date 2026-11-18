@@ -113,7 +113,7 @@ export type HistoryMutationPlan =
 export type HistoryMergeResult =
   | { kind: "read-content"; contentHashes: string[] }
   | { kind: "prepare-content"; blobs: NonNullable<MutationDraft["blobs"]> }
-  | { kind: "committed"; value: StateNodeRef; head: string };
+  | (Extract<HistoryMutationPlan, { kind: "committed" }> & { value: StateNodeRef });
 
 interface HistoryMergeContent {
   observation: HistoryMergeObservation;
@@ -638,15 +638,35 @@ export class ParticipantHistory {
     return { workingHead, workUnitId, head };
   }
 
-  #committedMutation(at: string, contextId: string, commandId: string): HistoryMutationPlan {
+  #committedMutation(
+    at: string,
+    contextId: string,
+    commandId: string,
+    merge = false,
+  ): Extract<HistoryMutationPlan, { kind: "committed" }> {
     const { sql } = this.#storage;
     const { workingHead, workUnitId, head } = this.#applicationForCommand(at, commandId);
     const changes = sql.exec(
       `SELECT change_id FROM dolt_at_gad_changes(?)
         WHERE work_unit_id = ? ORDER BY operation, ordinal`,
-      at,
+      head,
       workUnitId,
     ).toArray();
+    const incorporated = merge ? sql.exec(
+      `SELECT applied.change_id
+         FROM dolt_at_gad_applied_changes(?1) AS applied
+         JOIN dolt_at_gad_changes(?1) AS authored USING (change_id)
+        WHERE applied.application_id = ?2 AND authored.work_unit_id <> ?3
+        ORDER BY applied.ordinal`,
+      head,
+      workingHead.applicationId,
+      workUnitId,
+    ).toArray() : [];
+    const decisions = merge ? sql.exec(
+      `SELECT decision_id FROM dolt_at_gad_integration_decisions(?) WHERE work_unit_id = ?`,
+      head,
+      workUnitId,
+    ).toArray() : [];
     return {
       kind: "committed",
       head,
@@ -658,9 +678,9 @@ export class ParticipantHistory {
         applicationId: workingHead.applicationId,
         changeCount: changes.length,
         changeIds: changes.slice(0, 200).map((row) => String(row["change_id"])),
-        incorporatedChangeCount: 0,
-        incorporatedChangeIds: [],
-        decisionIds: [],
+        incorporatedChangeCount: incorporated.length,
+        incorporatedChangeIds: incorporated.slice(0, 200).map((row) => String(row["change_id"])),
+        decisionIds: decisions.map((row) => String(row["decision_id"])),
       },
     };
   }
@@ -978,6 +998,25 @@ export class ParticipantHistory {
     return this.#previewMerge(contextId, head, () => this.#fetchExpectedMain(expectedMain));
   }
 
+  /** Resolve the stable public inputs even when the context later advances on a retry. */
+  resolveMainMerge(contextId: string, target: StateNodeRef, sourceEventId: string): Promise<HistoryMergeSelection> {
+    return this.#run(async () => {
+      const { sql } = this.#storage;
+      const head = this.#resolveState(contextId, target);
+      const published = await this.#fetchMain();
+      const source = { kind: "event" as const, eventId: sourceEventId };
+      const main = workspaceCommitForRef(sql, published, source);
+      if (!head || !main) {
+        throw new SemanticVcsError("InvalidReference", "Workspace integration names an unavailable target or shared event");
+      }
+      const base = this.#mergeBase(head, main);
+      if (!base) {
+        throw new SemanticVcsError("InvalidReference", "Workspace source and context share no history");
+      }
+      return { head, main, base };
+    });
+  }
+
   async previewContextMerge(contextId: string, head: string, source: MergeSource) {
     const { main, ...preview } = await this.#previewMerge(
       contextId, head, () => this.#resolveContextSource(source),
@@ -993,10 +1032,13 @@ export class ParticipantHistory {
       if (!base) {
         throw new SemanticVcsError("InvalidReference", "Workspace source and context share no history");
       }
-      if (base === head || base === main) {
+      if (base === main) {
         return { head, main, base, incoming: [], conflicts: [], violations: [] };
       }
       const incoming = [...workspaceMergeScope(this.#storage.sql, base, main).values()];
+      if (base === head) {
+        return { head, main, base, incoming, conflicts: [], violations: [] };
+      }
       this.#checkoutExpected(contextId, head);
       const rollback = new Error("Workspace merge preview complete");
       let preview: MainMergePreview | undefined;
@@ -1067,8 +1109,8 @@ export class ParticipantHistory {
       };
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       if (this.#hasCommand(current, contextId, command)) {
-        const { head, workingHead } = this.#applicationForCommand(current, commandId);
-        return { kind: "committed", value: workingHead, head };
+        const receipt = this.#committedMutation(current, contextId, commandId, true);
+        return { ...receipt, value: receipt.result.workingHead };
       }
 
       if (input.source.kind !== "event") {
@@ -1084,7 +1126,7 @@ export class ParticipantHistory {
         : await this.#fetchExpectedMain(selection.main);
       const base = this.#mergeBase(head, main);
       const source = committedWorkspaceEvent(sql, main);
-      if (!base || base !== selection.base || base === head || base === main ||
+      if (!base || base !== selection.base || base === main ||
           source?.head !== main || source.eventId !== input.source.eventId ||
           workspaceCommitForRef(sql, head, input.expectedWorkingHead) !== head) {
         throw new SemanticVcsError("RevisionChanged", "Workspace integration changed its reviewed revisions");
@@ -1248,7 +1290,11 @@ export class ParticipantHistory {
       if (merged.fastForward || merged.upToDate || !value) {
         throw new Error("Workspace integration did not record its two parents and application");
       }
-      return { kind: "committed", value, head: merged.hash };
+      const receipt = this.#committedMutation(merged.hash, contextId, commandId, true);
+      if (receipt.head !== merged.hash || stateNodeKey(receipt.result.workingHead) !== stateNodeKey(value)) {
+        throw new SemanticVcsError("IntegrityFailure", "Native merge recorded a different application");
+      }
+      return { ...receipt, value };
     });
   }
 

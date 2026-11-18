@@ -457,6 +457,15 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  resolveHistoryMainMerge(input: { contextId: string; target: StateNodeRef; sourceEventId: string }) {
+    const source = vcsSemanticNodeRefSchema.parse({ kind: "event", eventId: input.sourceEventId });
+    if (source.kind !== "event") throw new Error("Workspace main integration requires an event");
+    return this.#history().resolveMainMerge(
+      input.contextId, vcsStateNodeRefSchema.parse(input.target), source.eventId,
+    );
+  }
+
+  @rpc(hostRead)
   previewHistoryContextMerge(input: { contextId: string; head: string; source: MergeSource }) {
     return this.#history().previewContextMerge(input.contextId, input.head, input.source);
   }
