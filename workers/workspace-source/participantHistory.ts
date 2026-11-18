@@ -17,8 +17,11 @@ import type {
   VcsDiscardInput,
   VcsDiscardResult,
   VcsEditInput,
+  VcsListDirectoryInput,
+  VcsListFilesInput,
   VcsMergeInput,
   VcsReadFilesInput,
+  VcsResolveRepositoryInput,
   VcsSemanticNodeRef,
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
@@ -42,6 +45,7 @@ import {
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
 import {
   composeHistoryText,
@@ -315,11 +319,28 @@ export class ParticipantHistory {
 
   readFiles(contextId: string, input: VcsReadFilesInput) {
     return this.#run(async () => {
-      const commit = await this.#resolveReadableState(contextId, input.state);
-      if (!commit) {
-        throw new SemanticVcsError("InvalidReference", "File read names a state outside this workspace context");
-      }
+      const commit = await this.#requireReadableState(contextId, input.state);
       return workspaceFileReadsAt(this.#storage.sql, commit, input);
+    });
+  }
+
+  listFiles(contextId: string, input: VcsListFilesInput) {
+    return this.#run(async () =>
+      workspaceListFilesAt(this.#storage.sql, await this.#requireReadableState(contextId, input.state), input),
+    );
+  }
+
+  listDirectory(contextId: string, input: VcsListDirectoryInput) {
+    return this.#run(async () =>
+      workspaceListDirectoryAt(this.#storage.sql, await this.#requireReadableState(contextId, input.state), input),
+    );
+  }
+
+  resolveRepository(contextId: string, input: VcsResolveRepositoryInput) {
+    return this.#run(async () => {
+      const commit = await this.#requireReadableState(contextId, input.state);
+      const repository = workspaceEditBasisAt(this.#storage.sql, commit).repositoryAtPath(input.repoPath);
+      return repository ? { state: input.state, repoPath: input.repoPath, repositoryId: repository.repositoryId } : null;
     });
   }
 
@@ -1271,6 +1292,14 @@ export class ParticipantHistory {
     if (local) return local;
     const main = await this.#fetchMain();
     return workspaceCommitForRef(this.#storage.sql, main, ref);
+  }
+
+  async #requireReadableState(contextId: string, ref: StateNodeRef): Promise<string> {
+    const commit = await this.#resolveReadableState(contextId, ref);
+    if (!commit) {
+      throw new SemanticVcsError("InvalidReference", "Workspace read names a state outside this workspace context");
+    }
+    return commit;
   }
 
   #commit<T>(contextId: string, expectedHead: string, message: DoltCommitMessage, write: () => T) {

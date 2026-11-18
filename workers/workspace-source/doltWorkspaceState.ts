@@ -616,20 +616,7 @@ function addSnapshotOrigins(
   missing: Set<string>,
   origins: Map<string, FileContentOrigin>,
 ): void {
-  const snapshots = sql.exec(
-    `SELECT event_id, snapshot_source FROM dolt_at_events(?)
-      WHERE kind = 'genesis' AND snapshot_source IS NOT NULL`,
-    commit,
-  ).toArray();
-  for (const { event_id, snapshot_source } of snapshots) {
-    if (typeof event_id !== "string" || typeof snapshot_source !== "string")
-      throw new Error(`Invalid workspace snapshot at ${commit}`);
-    const state = { kind: "event" as const, eventId: event_id };
-    const at = workspaceCommitForRef(sql, commit, state);
-    if (!at) throw new Error(`Workspace snapshot ${event_id} has no origin`);
-    const snapshot = JSON.parse(snapshot_source) as Record<string, unknown>;
-    if (typeof snapshot["sourceUri"] !== "string" || typeof snapshot["snapshotRevision"] !== "string")
-      throw new Error(`Invalid workspace snapshot source at ${at}`);
+  for (const { at, state, externalKeys } of workspaceSnapshotOriginsAt(sql, commit)) {
     const basis = workspaceEditBasisAt(sql, at);
     for (const fileId of missing) {
       const file = basis.file(fileId);
@@ -645,11 +632,32 @@ function addSnapshotOrigins(
         authoredChangeId: null,
         authoredByWorkUnitId: null,
         contentClass: "external",
-        externalKeys: [`repo:${snapshot["sourceUri"]}@${snapshot["snapshotRevision"]}`],
+        externalKeys,
       });
       missing.delete(fileId);
     }
   }
+}
+
+export function workspaceSnapshotOriginsAt(sql: SqlStorage, commit: string) {
+  const snapshots = sql.exec(
+    `SELECT event_id, snapshot_source FROM dolt_at_events(?)
+      WHERE kind = 'genesis' AND snapshot_source IS NOT NULL`,
+    commit,
+  ).toArray();
+  return snapshots.map(({ event_id, snapshot_source }) => {
+    if (typeof event_id !== "string" || typeof snapshot_source !== "string")
+      throw new Error(`Invalid workspace snapshot at ${commit}`);
+    const state = { kind: "event" as const, eventId: event_id };
+    const at = workspaceCommitForRef(sql, commit, state);
+    if (!at) throw new Error(`Workspace snapshot ${event_id} has no origin`);
+    const snapshot = JSON.parse(snapshot_source) as Record<string, unknown>;
+    if (typeof snapshot["sourceUri"] !== "string" || typeof snapshot["snapshotRevision"] !== "string")
+      throw new Error(`Invalid workspace snapshot source at ${at}`);
+    return {
+      at, state, externalKeys: [`repo:${snapshot["sourceUri"]}@${snapshot["snapshotRevision"]}`],
+    };
+  });
 }
 
 /** Rebuild the placement roots directly from the retained commit graph. */

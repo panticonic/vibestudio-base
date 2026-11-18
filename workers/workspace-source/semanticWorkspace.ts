@@ -858,7 +858,7 @@ const bytesFromBase64Url = (value: string): Uint8Array => {
   );
 };
 
-const semanticCursor = (kind: string, basis: Row, position: Row): string => {
+export const semanticCursor = (kind: string, basis: Row, position: Row): string => {
   // The resumable position must cross the tool boundary, but the often-large
   // typed basis need not. Bind that exact basis into the digest so a compact
   // cursor still fails closed when either the request or token changes.
@@ -870,7 +870,7 @@ const semanticCursor = (kind: string, basis: Row, position: Row): string => {
   return `semantic-page-v2.${digest}.${base64UrlFromBytes(payloadBytes)}`;
 };
 
-const parseSemanticCursor = (
+export const parseSemanticCursor = (
   cursor: string | undefined,
   kind: string,
   basis: Row,

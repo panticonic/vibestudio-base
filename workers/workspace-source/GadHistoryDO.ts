@@ -7,14 +7,20 @@ import {
   vcsCommitInputSchema,
   vcsDiscardInputSchema,
   vcsEditInputSchema,
+  vcsListDirectoryInputSchema,
+  vcsListFilesInputSchema,
   vcsMergeInputSchema,
   vcsReadFilesInputSchema,
+  vcsResolveRepositoryInputSchema,
   vcsSemanticNodeRefSchema,
   type VcsCommitInput,
   type VcsDiscardInput,
   type VcsEditInput,
+  type VcsListDirectoryInput,
+  type VcsListFilesInput,
   type VcsMergeInput,
   type VcsReadFilesInput,
+  type VcsResolveRepositoryInput,
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
@@ -228,6 +234,21 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryFiles(input: { contextId: string; read: VcsReadFilesInput }) {
     return this.#history().readFiles(input.contextId, vcsReadFilesInputSchema.parse(input.read));
+  }
+
+  @rpc(hostRead)
+  listHistoryFiles(input: { contextId: string; list: VcsListFilesInput }) {
+    return this.#history().listFiles(input.contextId, vcsListFilesInputSchema.parse(input.list));
+  }
+
+  @rpc(hostRead)
+  listHistoryDirectory(input: { contextId: string; list: VcsListDirectoryInput }) {
+    return this.#history().listDirectory(input.contextId, vcsListDirectoryInputSchema.parse(input.list));
+  }
+
+  @rpc(hostRead)
+  resolveHistoryRepository(input: { contextId: string; repository: VcsResolveRepositoryInput }) {
+    return this.#history().resolveRepository(input.contextId, vcsResolveRepositoryInputSchema.parse(input.repository));
   }
 
   @rpc(hostRead)
