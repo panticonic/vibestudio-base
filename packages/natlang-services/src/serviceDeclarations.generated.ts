@@ -95,6 +95,23 @@ export function observe(missionId: string): Promise<{
 
 /** Request the assigned pause or resume through the Missions client. */
 export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
+  decisionRecall: `/** Search for decision leads in the caller's assigned scope. */
+
+/** Return actual scoped workspace memory hits for the assigned query. */
+export function search(query: string): Promise<{
+  id: string;
+  eventId: string;
+  snippet: string;
+}[]>;`,
+  decisionSource: `/** Read the exact historical file behind one assigned memory lead. */
+
+/** Open the caller-assigned VCS file for the selected lead and preserve source identity. */
+export function read(leadId: string): Promise<{
+  eventId: string;
+  path: string;
+  contentHash: string;
+  text: string;
+} | null>;`,
   authoringCompiler: `/** Inspect the assigned candidate or baseline through the workspace Natlang compiler. */
 
 /** Read one assigned program's compiler evidence and exact revision. */

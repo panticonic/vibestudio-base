@@ -46,6 +46,23 @@ const reference: Record<string, string> = {
     else report = await domains.pdfIntake.extractPdfEvidence(selected.input);
     return {results:[{kind:"domain",domain:selected.domain,operation:selected.operation,report}],remaining:[]};
   `,
+  recallDecision: `
+    const lead = await findDecision(request);
+    return lead ? await verifyAtRevision(lead, request.field) : {status:"no-lead",leadId:null,citation:null};
+  `,
+  findDecision: `return await chooseLead(request, await searchHistory(request.query));`,
+  searchHistory: "return await decisionRecall.search(query);",
+  chooseLead:
+    "return leads.find(lead => lead.eventId === request.eventId) ?? null;",
+  verifyAtRevision: `
+    const file = await readDecisionFile(lead.id);
+    if (!file) return {status:"missing-source",leadId:lead.id,citation:null};
+    const line = await locateField(field, file.text);
+    const citation = await quoteLine.cite(file, field, line);
+    return {status:citation ? "verified" : "missing-field",leadId:lead.id,citation};
+  `,
+  readDecisionFile: "return await decisionSource.read(leadId);",
+  locateField: "return 1;",
   reviewProgram: `
     const sources = await inspectRevisions(request.compare);
     const findings = await reviewContract(request.contract, sources.candidate, sources.baseline);
@@ -353,6 +370,8 @@ const reference: Record<string, string> = {
 };
 
 const serviceScopes: Record<string, string[]> = {
+  searchHistory: ["decisionRecall"],
+  readDecisionFile: ["decisionSource"],
   readAssignedProgram: ["authoringCompiler"],
   readInventory: ["mobileInventory"],
   pairDevice: ["mobilePairing"],
@@ -528,6 +547,99 @@ it("prepares or holds each template candidate using the exact native operation a
 });
 
 const host = process.env["VIBESTUDIO_SCOPED_WORKFLOW_HOST"];
+it.runIf(Boolean(host))(
+  "runs Personal's verification stages through the shared Workerd tree",
+  async () => {
+    const config = await import(
+      /* @vite-ignore */ pathToFileURL(
+        join(host!, "src/dev/developmentTemplateConfig.cjs"),
+      ).href
+    );
+    const { checkouts } =
+      config.default.requireDevelopmentTemplateCheckouts(host);
+    const program = loader(
+      undefined,
+      [checkouts.personal],
+      `
+    const work = request.work[0];
+    const report = await domains.verifiedMemory.recallDecision(work.input);
+    return {results:[{kind:"domain",domain:work.domain,operation:work.operation,report}],remaining:[]};
+  `,
+    );
+    const request = {
+      goal: "Verify the old chosen limit",
+      query: "bench limit",
+      eventId: "owned-event",
+      field: "Bench limit",
+    };
+    const calls: string[] = [];
+    const run = (await program.load(
+      "skills/vibestudio-workflows/runWorkflow.nl",
+      {
+        services: {
+          decisionRecall: {
+            async search(query: string) {
+              calls.push(query);
+              return [
+                {
+                  id: "other",
+                  eventId: "new-event",
+                  snippet: "Changed the limit.",
+                },
+                {
+                  id: "selected",
+                  eventId: "owned-event",
+                  snippet: "Recorded the first limit.",
+                },
+              ];
+            },
+          },
+          decisionSource: {
+            async read(id: string) {
+              calls.push(id);
+              return {
+                eventId: "owned-event",
+                path: "projects/fixture/decision.md",
+                contentHash: "owned-file",
+                text: "# Decision\nBench limit: 12",
+              };
+            },
+          },
+        },
+      },
+    )) as (input: unknown) => Promise<unknown>;
+    const value = await run({
+      goal: request.goal,
+      work: [
+        {
+          kind: "domain",
+          domain: "verifiedMemory",
+          operation: "recallDecision",
+          input: request,
+        },
+      ],
+    });
+    expect(calls).toEqual(["bench limit", "selected"]);
+    expect(value).toMatchObject({
+      remaining: [],
+      results: [
+        {
+          operation: "recallDecision",
+          report: {
+            status: "verified",
+            leadId: "selected",
+            citation: {
+              eventId: "owned-event",
+              line: 2,
+              quote: "Bench limit: 12",
+            },
+          },
+        },
+      ],
+    });
+  },
+);
+
 it("reviews a live compiler description from the shared Workerd program", async () => {
   const program = loader(
     undefined,

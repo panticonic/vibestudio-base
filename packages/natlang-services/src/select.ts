@@ -67,6 +67,8 @@ const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangServic
   scratchHandoffWrite: binding("scratchHandoffWrite"),
   automationLifecycleRead: binding("automationLifecycleRead"),
   automationLifecycleChange: binding("automationLifecycleChange"),
+  decisionRecall: binding("decisionRecall"),
+  decisionSource: binding("decisionSource"),
   authoringCompiler: binding("authoringCompiler"),
   mobileInventory: binding("mobileInventory"),
   mobilePairing: binding("mobilePairing"),

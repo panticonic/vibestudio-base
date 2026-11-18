@@ -82,6 +82,18 @@ export const SERVICE_CATALOG = [
     methods: [{ name: "apply", params: ["missionId", "revisionDigest", "action"], description: "Request the assigned pause or resume through the Missions client." }],
   },
   {
+    name: "decisionRecall",
+    summary: "Search for decision leads in the caller's assigned scope.",
+    contract: { origin: "base", file: "packages/natlang-services/src/verifiedMemoryContracts.ts", table: "decisionRecallMethods" },
+    methods: [{ name: "search", params: ["query"], description: "Return actual scoped workspace memory hits for the assigned query." }],
+  },
+  {
+    name: "decisionSource",
+    summary: "Read the exact historical file behind one assigned memory lead.",
+    contract: { origin: "base", file: "packages/natlang-services/src/verifiedMemoryContracts.ts", table: "decisionSourceMethods" },
+    methods: [{ name: "read", params: ["leadId"], description: "Open the caller-assigned VCS file for the selected lead and preserve source identity." }],
+  },
+  {
     name: "authoringCompiler",
     summary: "Inspect the assigned candidate or baseline through the workspace Natlang compiler.",
     contract: { origin: "base", file: "packages/natlang-services/src/authoringContracts.ts", table: "authoringCompilerMethods" },
