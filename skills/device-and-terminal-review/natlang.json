@@ -1,0 +1,7 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-device-and-terminal-review",
+  "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "targets": { "main": { "entry": "reviewDeviceAndTerminal.nl" } }
+}
