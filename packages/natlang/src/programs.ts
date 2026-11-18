@@ -11,6 +11,7 @@ import { describeProgram } from "./describe.js";
 import type { ProgramDescription } from "./describeTypes.js";
 import { NatlangProgramError } from "./programError.js";
 import { declarationsFor, declaredServiceNames, declaredServiceScopes, servicesFor } from "./services.js";
+import { linkWorkspaceModules } from "./workspaceModules.js";
 
 export { NatlangProgramError };
 
@@ -250,7 +251,8 @@ export class ProgramLoader {
         "invalid-path"
       );
     }
-    const files = await readProjectFiles(fs, root || ".");
+    const directoryPath = root || ".";
+    const files = await linkWorkspaceModules(fs, directoryPath, await readProjectFiles(fs, directoryPath), readProjectFiles);
     const key = programKey(files, declaredServiceNames(files));
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
@@ -276,7 +278,8 @@ export class ProgramLoader {
         );
     }
     const names = program.explicitServiceBindings ? Object.keys(overrides) : program.services;
-    const services = servicesFor(path, names, Object.freeze({ ...bindings, ...overrides }));
+    const services = servicesFor(path, names, Object.freeze({ ...bindings, ...overrides }),
+      program.explicitServiceBindings ? overrides : undefined);
     return bindProgram(
       program.value,
       { services, serviceDeclarations: declarationsFor(names), serviceScopes: program.serviceScopes, programRoot: root },

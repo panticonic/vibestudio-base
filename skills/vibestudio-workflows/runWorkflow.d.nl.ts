@@ -16,16 +16,41 @@ type UnitReport = {
   detail: string;
   evidence: string[];
 };
-type ContentRequest = { goal: string; audience: string; facts: ContentFact[]; documentRoles: string[] };
-type ContentReport = { status: "committed" | "blocked"; repoPath: string; eventId: string | null; head: string; pages: string[]; review: ContentReview | null; reason: string };
 type ContentFact = { id: string; text: string };
-type ContentReview = { ready: boolean; coveredRoles: string[]; unsupportedClaims: string[]; blockers: string[]; reason: string };
+type ContentRequest = {
+  goal: string;
+  audience: string;
+  facts: ContentFact[];
+  documentRoles: string[];
+};
+type ContentReview = {
+  ready: boolean;
+  coveredRoles: string[];
+  unsupportedClaims: string[];
+  blockers: string[];
+  reason: string;
+};
+type ContentReport = {
+  status: "committed" | "blocked";
+  repoPath: string;
+  eventId: string | null;
+  head: string;
+  pages: string[];
+  review: ContentReview | null;
+  reason: string;
+};
 type IntegrationRequest = { goal: string };
 type IntegrationReport = {
   status: "integrated" | "blocked";
   head: string;
   evidence: string[];
   detail: string;
+};
+type OperationsRole = "impact" | "recovery" | "release";
+type OperationsSignal = { id: string; text: string };
+type OperationsGate = {
+  id: string;
+  state: "approved" | "pending" | "rejected";
 };
 type OperationsRequest = | { kind: "incident-handoff"; goal: string; signals: OperationsSignal[] }
   | {
@@ -34,36 +59,47 @@ type OperationsRequest = | { kind: "incident-handoff"; goal: string; signals: Op
       before: OperationsGate[];
       after: OperationsGate[];
     };
-type OperationsReport = {
-  kind: OperationsWorkflowKind;
-  handoff: OperationsHandoff;
-  handles: OperationsOwnedHandle[];
-  cleanup: { retiredIds: string[]; destroyedContextIds: string[] };
-};
-type OperationsRole = "impact" | "recovery" | "release";
-type OperationsSignal = { id: string; text: string };
-type OperationsGate = { id: string; state: "approved" | "pending" | "rejected" };
-type OperationsWorkflowKind = "incident-handoff" | "release-continuation";
-type OperationsHandoff = {
-  decision: "ready" | "blocked";
-  evidenceIds: string[];
-  summary: string;
-};
 type OperationsOwnedHandle = {
   id: string;
   contextId: string;
   targetId: string;
   role: OperationsRole;
 };
-type MessagingRequest = { recipientPhrase: string; goal: string; facts: string[] };
-type MessagingReport = { status: "delivered" | "held" | "blocked"; recipientRef: string | null; messageId: string | null; content: string | null; clarification: string | null; evidence: string[] };
-type AssignedWork = | { kind: "repairPanel"; input: PanelRequest }
+type OperationsHandoff = {
+  decision: "ready" | "blocked";
+  evidenceIds: string[];
+  summary: string;
+};
+type OperationsWorkflowKind = | "incident-handoff"
+  | "release-continuation";
+type OperationsReport = {
+  kind: OperationsWorkflowKind;
+  handoff: OperationsHandoff;
+  handles: OperationsOwnedHandle[];
+  cleanup: { retiredIds: string[]; destroyedContextIds: string[] };
+};
+type MessagingRequest = {
+  recipientPhrase: string;
+  goal: string;
+  facts: string[];
+};
+type MessagingReport = {
+  status: "delivered" | "held" | "blocked";
+  recipientRef: string | null;
+  messageId: string | null;
+  content: string | null;
+  clarification: string | null;
+  evidence: string[];
+};
+type AssignedWork = | { kind: "domain"; domain: string; operation: string; input: unknown }
+  | { kind: "repairPanel"; input: PanelRequest }
   | { kind: "repairUnit"; input: UnitRequest }
   | { kind: "deliverProject"; input: ContentRequest }
   | { kind: "integrateWorkspace"; input: IntegrationRequest }
   | { kind: "operate"; input: OperationsRequest }
   | { kind: "routeMessage"; input: MessagingRequest };
-type WorkResult = | { kind: "repairPanel"; report: PanelReport }
+type WorkResult = | { kind: "domain"; domain: string; operation: string; report: unknown }
+  | { kind: "repairPanel"; report: PanelReport }
   | { kind: "repairUnit"; report: UnitReport }
   | { kind: "deliverProject"; report: ContentReport }
   | { kind: "integrateWorkspace"; report: IntegrationReport }
@@ -71,8 +107,17 @@ type WorkResult = | { kind: "repairPanel"; report: PanelReport }
   | { kind: "routeMessage"; report: MessagingReport };
 type WorkflowRequest = { goal: string; work: AssignedWork[] };
 type WorkflowReport = { results: WorkResult[]; remaining: string[] };
-type Brief = { audienceNeeds: string[]; constraints: string[]; ambiguities: string[] };
-type PagePlan = { path: string; role: string; factIds: string[]; purpose: string };
+type Brief = {
+  audienceNeeds: string[];
+  constraints: string[];
+  ambiguities: string[];
+};
+type PagePlan = {
+  path: string;
+  role: string;
+  factIds: string[];
+  purpose: string;
+};
 type Plan = {
   edits: Edit[];
   decisions: Decision[];
@@ -80,7 +125,13 @@ type Plan = {
   blocker: string | null;
 };
 type Draft = { content: string; facts: string[] };
-type Snapshot = { fixtureId: string; channelId: string; revision: string; rows: Addressee[]; resolution: Resolution };
+type Snapshot = {
+  fixtureId: string;
+  channelId: string;
+  revision: string;
+  rows: Addressee[];
+  resolution: Resolution;
+};
 type Coordinate = { kind: "file" | "repository"; id: string };
 type File = { path: string; text: string };
 type IntentAnalysis = {
@@ -92,8 +143,16 @@ type IntentAnalysis = {
   missing: string[];
 };
 type Edit = { path: string; before: string; after: string };
-type Decision = { kind: "deliver" | "hold"; ref: string | null; reason: string };
-type Verification = { passed: boolean; evidence: string[]; openQuestions: string[] };
+type Decision = {
+  kind: "deliver" | "hold";
+  ref: string | null;
+  reason: string;
+};
+type Verification = {
+  passed: boolean;
+  evidence: string[];
+  openQuestions: string[];
+};
 type Assignment = {
   role: "impact" | "recovery";
   signalIds: string[];
@@ -138,7 +197,11 @@ type Diagnosis = {
   paths: string[];
   hypothesis: string;
 };
-type Build = { revision: string; passed: boolean; diagnostics: string[] };
+type Build = {
+  revision: string;
+  passed: boolean;
+  diagnostics: string[];
+};
 type Diagnostic = {
   source: string;
   severity: "error" | "warning";
@@ -167,7 +230,12 @@ type TestReport = {
   total: number;
   details: { file: string; status: string; errors?: string[] }[];
 };
-type Receipt = { messageId: string; channelId: string; to: string; alert: "none" };
+type Receipt = {
+  messageId: string;
+  channelId: string;
+  to: string;
+  alert: "none";
+};
 type TestExecution = {
   operation: "test";
   target: string;
@@ -203,7 +271,15 @@ type Proposal = {
   preserves: string[];
 };
 type Addressee = { ref: string; kind: string; note: string };
-type Resolution = { kind: "ref"; ref: string; note: string } | { kind: "ambiguous"; reason: "none" | "several"; candidates: Addressee[] };
-type DeliveryEvidence = { channelId: string; messageId: string | null; committed: boolean; recipientRefs: string[]; content: string | null; evidence: string[] };
+type Resolution = | { kind: "ref"; ref: string; note: string }
+  | { kind: "ambiguous"; reason: "none" | "several"; candidates: Addressee[] };
+type DeliveryEvidence = {
+  channelId: string;
+  messageId: string | null;
+  committed: boolean;
+  recipientRefs: string[];
+  content: string | null;
+  evidence: string[];
+};
 declare const fn: NatlangFunction<[request: WorkflowRequest], WorkflowReport> & { readonly deliverProject: NatlangFunction<[request: ContentRequest], ContentReport> & { readonly analyzeRequest: NatlangFunction<[request: ContentRequest], Brief>; readonly completeNavigation: ((documents: Draft[], plan: Plan) => Draft[]) & {  }; readonly draftDocuments: NatlangFunction<[request: ContentRequest, brief: Brief, plan: Plan], Draft[]> & { readonly writePage: NatlangFunction<[request: ContentRequest, brief: Brief, page: PagePlan], Draft> }; readonly planDocuments: NatlangFunction<[request: ContentRequest, brief: Brief], Plan>; readonly reviewCandidate: NatlangFunction<[request: ContentRequest, brief: Brief, plan: Plan, documents: Draft[]], ContentReview>; readonly reviseDocuments: NatlangFunction<[request: ContentRequest, plan: Plan, documents: Draft[], review: ContentReview], Draft[]> }; readonly integrateWorkspace: NatlangFunction<[request: IntegrationRequest], IntegrationReport> & { readonly compareIntents: NatlangFunction<[request: IntegrationRequest, initial: Snapshot], IntentAnalysis> & { readonly explainCompatibility: NatlangFunction<[request: IntegrationRequest, initial: Snapshot], string[]> }; readonly planResolution: NatlangFunction<[request: IntegrationRequest, initial: Snapshot, analysis: IntentAnalysis], Plan>; readonly verifyIntegration: NatlangFunction<[request: IntegrationRequest, initial: Snapshot, analysis: IntentAnalysis, result: Snapshot], Verification> & { readonly checkSupport: NatlangFunction<[required: string[], observed: string[]], { supported: string[]; missing: string[] }> } }; readonly operate: NatlangFunction<[request: OperationsRequest], OperationsReport> & { readonly incident: NatlangFunction<[goal: string, signals: OperationsSignal[]], { handoff: OperationsHandoff; handles: OperationsOwnedHandle[] }> & { readonly assess: NatlangFunction<[goal: string, signals: OperationsSignal[], assignment: Assignment], Assessment>; readonly assign: NatlangFunction<[goal: string, signals: OperationsSignal[]], Assignment[]>; readonly synthesize: NatlangFunction<[goal: string, impact: Assessment, recovery: Assessment], OperationsHandoff> }; readonly release: NatlangFunction<[goal: string, before: OperationsGate[], after: OperationsGate[]], { handoff: OperationsHandoff; handles: OperationsOwnedHandle[] }> & { readonly assessGate: NatlangFunction<[goal: string, gates: OperationsGate[]], Assessment>; readonly handoff: NatlangFunction<[goal: string, checkpoints: Checkpoint[]], OperationsHandoff> } }; readonly repairPanel: NatlangFunction<[request: PanelRequest], PanelReport> & { readonly defineChecks: NatlangFunction<[request: PanelRequest, initial: Observation], Checks>; readonly diagnose: NatlangFunction<[request: PanelRequest, observation: Observation, reproduction: Reproduction, priorFindings: string[]], Diagnosis> & { readonly explainCause: NatlangFunction<[request: PanelRequest, observation: Observation, reproduction: Reproduction, source: SourceFile[], priorFindings: string[]], Diagnosis> }; readonly proposeRepair: NatlangFunction<[request: PanelRequest, diagnosis: Diagnosis, source: SourceFile[]], Edit[]>; readonly reproduce: NatlangFunction<[request: PanelRequest, initial: Observation], Reproduction>; readonly verifyRepair: NatlangFunction<[request: PanelRequest, reproduction: Reproduction, candidate: Observation, checks: Checks], Verification> & { readonly verifySaveAndDiscard: NatlangFunction<[expectedRevision: string, checks: Checks], Verification> } }; readonly repairUnit: NatlangFunction<[request: UnitRequest], UnitReport> & { readonly diagnose: NatlangFunction<[request: UnitRequest, evidence: Evidence, priorFindings: Diagnosis[]], Diagnosis> & { readonly explainCause: NatlangFunction<[request: UnitRequest, evidence: Evidence, source: SourceFile[], priorFindings: Diagnosis[]], Diagnosis> }; readonly proposeRepair: NatlangFunction<[request: UnitRequest, evidence: Evidence, diagnosis: Diagnosis, source: SourceFile[]], Proposal>; readonly verifyRepair: NatlangFunction<[request: UnitRequest, evidence: Evidence, diagnosis: Diagnosis, proposal: Proposal], Verification> & { readonly checkSupport: NatlangFunction<[required: string[], observed: string[]], { supported: string[]; missing: string[] }> } }; readonly routeMessage: NatlangFunction<[request: MessagingRequest], MessagingReport> & { readonly askClarification: NatlangFunction<[request: MessagingRequest, snapshot: Snapshot, decision: Decision], string>; readonly composeMessage: NatlangFunction<[request: MessagingRequest, snapshot: Snapshot, decision: Decision], Draft>; readonly deliverMessage: NatlangFunction<[request: MessagingRequest, snapshot: Snapshot, decision: Decision, draft: Draft], Receipt>; readonly inspectChannel: NatlangFunction<[request: MessagingRequest], Snapshot>; readonly inspectDelivery: NatlangFunction<[receipt: Receipt | null], DeliveryEvidence>; readonly resolveRecipients: NatlangFunction<[request: MessagingRequest, snapshot: Snapshot], Decision>; readonly verifyDelivery: NatlangFunction<[request: MessagingRequest, decision: Decision, draft: Draft | null, receipt: Receipt | null, observed: DeliveryEvidence], Verification> } };
 export default fn;

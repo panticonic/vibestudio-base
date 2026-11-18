@@ -37,6 +37,23 @@ export interface ServiceCatalogEntry {
 }
 
 export const SERVICE_CATALOG = [
+  {
+    name: "websiteReadback",
+    summary: "Observe the caller-assigned public bundle, panel presentation, and existing publication receipts.",
+    contract: { origin: "base", file: "packages/natlang-services/src/websiteReadbackContracts.ts", table: "websiteReadbackMethods" },
+    methods: [{ name: "observe", params: [], description: "Read the original evidence for this assigned artifact and publication intent." }],
+  },
+  {
+    name: "googleWorkspaceRead",
+    summary: "Read the assigned Google setup state, folders, permissions, and change cursor through the caller's scoped Drive binding.",
+    contract: { origin: "base", file: "packages/natlang-services/src/googleWorkspaceReadContracts.ts", table: "googleWorkspaceReadMethods" },
+    methods: [
+      { name: "readiness", params: [], description: "Read the current setup phase without exposing credentials." },
+      { name: "listFolder", params: ["folderId", "pageToken"], description: "Read a page from the assigned folder." },
+      { name: "readPermissions", params: ["fileId", "pageToken"], description: "Read a page of current permissions on the assigned file." },
+      { name: "readChanges", params: ["cursor"], description: "Read changes from a cursor issued for the assigned view." },
+    ],
+  },
   { name: "ownedOperations", summary: "Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable.",
     contract: { origin: "base", file: "packages/natlang-services/src/ownedOperationsContracts.ts", table: "ownedOperationsMethods" },
     methods: [{ name: "open", params: ["role"] }, { name: "read", params: ["handle"] },

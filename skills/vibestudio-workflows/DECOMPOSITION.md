@@ -16,3 +16,9 @@
 Use a callable stage when it makes a distinct judgment or returns a typed result. Use Natlang skill guidance for knowledge, conventions or examples the executing lambda needs in its current context. Keep exact TypeScript computations close to the stage that needs them. The top level sees skill roots. Each skill's specialist stages are visible within its own subtree.
 
 A shared program can run against different caller-owned worlds without acquiring additional authority. Its service declarations describe the complete program. The explicit loading mode binds only the capabilities supplied by the caller, and per-lambda scopes restrict those bindings further. Each scenario's independent oracle inspects actual effects.
+
+Installed packages in `workspaceModules` are mounted below `runWorkflow.domains`. A domain keeps its own Natlang
+package, types, and `uses` resolution while executing as descendants of the shared root. Automation, Google Workspace,
+Personal workflows, and System diagnosis use this boundary. If a workspace omits a template, its module is absent
+and the program can report the corresponding blocker. Template-owned case files and independent validators stay outside
+each mounted program.

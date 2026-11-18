@@ -11,6 +11,7 @@ export type PythonResult = {
     stdout: string;
     stderr: string;
     changedPaths: string[];
+    removedPaths?: string[];
 };
 /** Run a policy-checked cell. Calls share an interpreter but keep separate folders and Python globals. */
 export declare function runFolderPython(folder: Folder, source: string, host?: PythonHost, timeoutMs?: number, 

@@ -5,6 +5,7 @@
  * the result checks and the failure reports.
  */
 import { type EnvironmentMode, type EvalEnvironment, type EvalRequest, type EvalResult, type HostEvent } from './evaluator.js';
+import { type HeapProbe } from './eval-memory.js';
 /** Where compiled eval code runs: a JavaScript realm's global environment. */
 export interface Realm {
     /**
@@ -32,6 +33,14 @@ export type RealmEnvironmentOptions = {
     realm?: () => Realm;
     /** Synchronous run time allowed per eval where the realm can interrupt; unlimited unless set. */
     timeoutMs?: number;
+    /**
+     * The memory bound of each eval (native/eval-memory.ts): the heap growth in MB an eval may keep, read through the
+     * platform's `probe`. Absent or a limit of 0: unbounded (a platform that cannot read its heap).
+     */
+    memory?: {
+        limitMb: number;
+        probe: HeapProbe;
+    };
     scopeCapabilities?: {
         allowModules: boolean;
         allowNetwork: boolean;
@@ -64,6 +73,8 @@ export declare class RealmEnvironment implements EvalEnvironment {
     protected disposed: boolean;
     private retained?;
     constructor(options: RealmEnvironmentOptions);
+    /** The eval memory bound in MB, or undefined when evals are unbounded. */
+    get memoryLimitMb(): number | undefined;
     fork(): EvalEnvironment;
     /** A realm for one evaluation (`fresh`) or for the environment's life (`retained`). */
     protected makeRealm(): Realm;

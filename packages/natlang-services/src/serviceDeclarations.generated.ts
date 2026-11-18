@@ -6,6 +6,77 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  websiteReadback: `/** Observe the caller-assigned public bundle, panel presentation, and existing publication receipts. */
+
+/** Read the original evidence for this assigned artifact and publication intent. */
+export function observe(): Promise<{
+  artifact: {
+    referenceMatches: boolean;
+    manifestMatches: boolean;
+    hasHtml: boolean;
+    unapprovedFiles: string[];
+    publicFiles: number;
+    artifactDigest: string;
+  };
+  presentation: {
+    matchesPanelAttempt: boolean;
+    missedProbes: string[];
+    observedProbes: string[];
+  };
+  publication: {
+    phase: "prepared" | "destination-ready" | "uploaded" | "submitted";
+    matchesIntent: boolean;
+    matchesArtifact: boolean;
+    matchesOperation: boolean;
+    observedReadyUrl: boolean;
+    verifiedPublicDigest: boolean;
+  } | null;
+  matchesRequest: boolean;
+}>;`,
+  googleWorkspaceRead: `/** Read the assigned Google setup state, folders, permissions, and change cursor through the caller's scoped Drive binding. */
+
+/** Read the current setup phase without exposing credentials. */
+export function readiness(): Promise<{
+  state: "needs-setup" | "needs-consent" | "needs-verification" | "needs-drive-scope" | "verification-failed" | "ready";
+}>;
+
+/** Read a page from the assigned folder. */
+export function listFolder(folderId: string, pageToken: string | null): Promise<{
+  rows: {
+    id: string;
+    name: string;
+    mimeType: string;
+    modifiedAt: string | null;
+    shortcut: boolean;
+  }[];
+  next: string | null;
+  incomplete: boolean;
+}>;
+
+/** Read a page of current permissions on the assigned file. */
+export function readPermissions(fileId: string, pageToken: string | null): Promise<{
+  rows: {
+    id: string;
+    principalKind: string;
+    principal: string | null;
+    role: string;
+    discovery: boolean;
+    deleted: boolean;
+  }[];
+  next: string | null;
+}>;
+
+/** Read changes from a cursor issued for the assigned view. */
+export function readChanges(cursor: string): Promise<{
+  rows: {
+    fileId: string;
+    removed: boolean;
+    name: string | null;
+    time: string | null;
+  }[];
+  next: string | null;
+  checkpoint: string | null;
+}>;`,
   ownedOperations: `/** Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable. */
 
 /** Create one actual caller-owned context and durable checkpoint worker for a semantic role. Retain its returned exact handle. */

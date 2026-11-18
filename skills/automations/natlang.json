@@ -1,0 +1,14 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-automation-workflows",
+  "version": "0.1.0",
+  "include": [
+    "prepareAutomation.nl",
+    "prepareAutomation",
+    "chooseExecutor.nl",
+    "readSchedule.nl",
+    "schedule.ts",
+    "types.ts"
+  ],
+  "targets": { "main": { "entry": "prepareAutomation.nl" } }
+}

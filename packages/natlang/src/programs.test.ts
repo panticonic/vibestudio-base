@@ -334,3 +334,67 @@ it("limits an authored editing service to the exact root of a loaded program", a
   expect(visible["brief"]).toContain("panelRepairEdit");
   expect(visible["inspectStage"]).not.toContain("panelRepairEdit");
 });
+
+it("links installed workspace modules as typed callable subtrees in the same task", async () => {
+  const deployed = platform();
+  const seen: Record<string, string[]> = {};
+  const commands: Record<string, string> = {
+    brief: "return await domains.support.inspect(text);",
+    inspect: "await panelRepairEdit.apply(text, []); return await summarize(text);",
+    summarize: "return text + ' read';",
+  };
+  const runtime = createNatlangRuntime({
+    platform: deployed,
+    agent: async (session) => {
+      const name = session.lam.functionName!;
+      seen[name] = Object.keys(session.availableServices());
+      const result = await session.applyAsync("eval", { code: commands[name]!, finish: true });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const fs = memoryFs({
+    "skills/hub/brief.nl": BRIEF,
+    "skills/hub/natlang.json": JSON.stringify({
+      serviceBinding: "explicit",
+      workspaceModules: {
+        "brief/domains/support": "skills/support-program",
+        "brief/domains/absent": "skills/uninstalled",
+      },
+    }),
+    "skills/support-program/natlang.json": JSON.stringify({
+      serviceScopes: { panelRepairEdit: ["inspect.nl"] },
+    }),
+    "skills/support-program/inspect.nl": BRIEF.replace("returns: string", "returns: string\nuses: [helpers/summarize]"),
+    "skills/support-program/helpers/summarize.nl": BRIEF,
+    "skills/support-program/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+  });
+  const loader = new ProgramLoader({
+    platform: deployed, fs, bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const edits: string[] = [];
+  const run = await loader.load("skills/hub/brief.nl", { services: {
+    panelRepairEdit: {
+      apply: async (basis: string) => { edits.push(basis); return { revision: "verified" }; },
+      build: async () => ({}),
+      rebuild: async () => ({}),
+    },
+  } }) as (value: string) => Promise<string>;
+  await expect(run("actual")).resolves.toBe("actual read");
+  expect(edits).toEqual(["actual"]);
+  expect(seen).toEqual({ brief: [], inspect: ["panelRepairEdit"], summarize: [] });
+  expect(fs.reads).not.toContain("skills/uninstalled/natlang.json");
+});
+
+it("refuses a mounted package with an unscoped service or overlapping ownership", async () => {
+  const fs = memoryFs({
+    "skills/hub/brief.nl": BRIEF,
+    "skills/hub/natlang.json": '{"workspaceModules":{"brief/domains/support":"skills/support"}}',
+    "skills/support/inspect.nl": BRIEF,
+    "skills/support/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+  });
+  const loader = new ProgramLoader({
+    platform: platform(), fs, bindings: {}, runTask: (run) => run(),
+  });
+  await expect(loader.describe("skills/hub/brief.nl")).rejects.toThrow("Scope service panelRepairEdit");
+});

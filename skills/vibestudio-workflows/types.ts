@@ -110,6 +110,7 @@ export type MessagingReport = {
 };
 
 export type AssignedWork =
+  | { kind: "domain"; domain: string; operation: string; input: unknown }
   | { kind: "repairPanel"; input: PanelRequest }
   | { kind: "repairUnit"; input: UnitRequest }
   | { kind: "deliverProject"; input: ContentRequest }
@@ -118,6 +119,7 @@ export type AssignedWork =
   | { kind: "routeMessage"; input: MessagingRequest };
 
 export type WorkResult =
+  | { kind: "domain"; domain: string; operation: string; report: unknown }
   | { kind: "repairPanel"; report: PanelReport }
   | { kind: "repairUnit"; report: UnitReport }
   | { kind: "deliverProject"; report: ContentReport }

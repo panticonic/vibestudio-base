@@ -137,3 +137,82 @@ it("runs two skill trees from the same package using only the caller's scoped bi
     checkSupport: [],
   });
 });
+
+it("describes the typed workflows in the installed template domains", async () => {
+  const base = fileURLToPath(new URL("../../..", import.meta.url));
+  const templateRoot = join(base, "..");
+  const workspaceRoots = [
+    base,
+    ...["google-workspace", "personal", "system"].map((name) =>
+      join(templateRoot, name),
+    ),
+  ];
+  async function resolve(path: string) {
+    for (const root of workspaceRoots) {
+      const candidate = join(root, path);
+      try {
+        return { candidate, info: await stat(candidate) };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    throw new Error(`Missing installed workspace path ${path}`);
+  }
+
+  const loader = new ProgramLoader({
+    platform: workerdPlatform({ realm: confinedRealm(testNewFunction()) }),
+    fs: {
+      readFile: async (path) =>
+        readFile((await resolve(path)).candidate, "utf8"),
+      stat: async (path) => (await resolve(path)).info,
+      readdir: async (path) => {
+        if (path !== "skills")
+          return readdir((await resolve(path)).candidate, {
+            withFileTypes: true,
+          });
+        const roots = await Promise.all(
+          workspaceRoots.map(async (root) => {
+            try {
+              return await readdir(join(root, "skills"), {
+                withFileTypes: true,
+              });
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+                throw error;
+              return [];
+            }
+          }),
+        );
+        return [
+          ...new Map(roots.flat().map((entry) => [entry.name, entry])).values(),
+        ];
+      },
+    },
+    bindings: {},
+    runTask: (run) => run(),
+  });
+
+  const description = await loader.describe(
+    "skills/vibestudio-workflows/runWorkflow.nl",
+  );
+  const expected = new Map([
+    [base, ["prepareAutomation", "preflightPublication"]],
+    [join(templateRoot, "google-workspace"), ["guideGoogleWorkspace"]],
+    [join(templateRoot, "personal"), ["runPersonalWorkflow"]],
+    [join(templateRoot, "system"), ["investigateSystem"]],
+  ]);
+  for (const [directory, names] of expected) {
+    if (!(await stat(directory).catch(() => null))?.isDirectory()) continue;
+    for (const name of names) {
+      const definition = description.functions.find(
+        (item) => item.name === name,
+      );
+      expect(definition, name).toBeDefined();
+      expect(definition?.source).toMatch(/^runWorkflow\/domains\//u);
+      expect(definition?.fields.map((field) => field.problem)).toEqual([
+        undefined,
+      ]);
+      expect(definition?.result.problem).toBeUndefined();
+    }
+  }
+});

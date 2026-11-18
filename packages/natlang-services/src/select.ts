@@ -60,6 +60,8 @@ function hostService(name: ServiceName) {
 }
 
 const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  websiteReadback: binding("websiteReadback"),
+  googleWorkspaceRead: binding("googleWorkspaceRead"),
   localMessagingRead: binding("localMessagingRead"),
   localMessagingSend: binding("localMessagingSend"),
   serverLog: hostService("serverLog"),
@@ -109,7 +111,8 @@ const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangServic
  */
 export function selectServices(
   bindings: ServiceBindings,
-  names: readonly string[]
+  names: readonly string[],
+  explicit?: ServiceBindings,
 ): Record<string, NatlangService> {
   const known = new Set<string>(SERVICE_NAMES);
   const unknown = [...new Set(names)].filter((name) => !known.has(name));
@@ -122,7 +125,9 @@ export function selectServices(
   }
   const selected: Record<string, NatlangService> = {};
   for (const name of new Set(names) as Set<ServiceName>) {
-    selected[name] = builders[name](bindings);
+    selected[name] = explicit
+      ? expose(name, requireBinding(name, explicit, name), `the explicit \`${name}\` binding`)
+      : builders[name](bindings);
   }
   return selected;
 }

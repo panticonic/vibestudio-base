@@ -3,7 +3,7 @@
  * (`x_natlang_guidance`, `natlang.guidance-run/1`); for each consumer call, on its first model turn, the agent keeps the
  * facts the call may see, selects them with `selectGuidanceFacts` (the pluggable's crisp or natural-language side) and
  * runs `writeGuidance` in-process as a child call of the consumer, on the same runtime, model and recorder. Every turn of
- * the consumer then carries the `natlang.guidance-request/1` the engine renders (rl/privileged_context `guidance_plan`,
+ * the consumer then carries the `natlang.guidance-request/2` whose guidance message the engine renders and marks (rl/privileged_context `guidance_plan`,
  * whose `_request_parts` is the exact contract), and every turn of the policy calls carries `x_natlang_guidance_policy`.
  *
  * The package's crisp parts and definitions are loaded by the host (runtime/node-guidance-writer.ts, Node); this module is the
@@ -14,7 +14,39 @@ import type { PluggableMode } from '../runtime/pluggable.js';
 import type { LambdaNode } from './values.js';
 import type { NativeSession } from './runtime.js';
 export declare const GUIDANCE_RUN_SCHEMA = "natlang.guidance-run/1";
-export declare const GUIDANCE_REQUEST_SCHEMA = "natlang.guidance-request/1";
+export declare const GUIDANCE_REQUEST_SCHEMA = "natlang.guidance-request/2";
+/** The guidance turn's first line: a writer's state follows it; the facts as text follow `GUIDANCE_TEXT_HEADER`. */
+export declare const GUIDANCE_HEADER = "Guidance for this call (training only):";
+export declare const GUIDANCE_TEXT_HEADER = "Verified reference for this call (training only):";
+type GuidanceMessage = {
+    role: 'system';
+    content: string | ({
+        type: 'text';
+        text: string;
+    } | {
+        type: 'native_state';
+        id: string;
+        source_occurrence?: string;
+    })[];
+};
+/**
+ * The guidance turn as one ordinary system message, the only definition of its form (plans/neuralese/DECISIONS.md
+ * 2026-11-18): every engine renders it with its chat template after the leading system message and marks its span;
+ * the learner re-verifies the captured tokens (rl/privileged_context `verify_captured_block`). A writer's state follows
+ * the header; text guidance is the header and the facts, packed whole into `budgetTokens` (estimated at
+ * PAGE_CHARS_PER_TOKEN characters per token), the rest `omitted`.
+ */
+export declare function guidanceMessage(facts: readonly GuidanceFact[], state?: {
+    id: string;
+    source_occurrence?: string;
+}, budgetTokens?: number): {
+    message: GuidanceMessage;
+    included: GuidanceFact[];
+    omitted: {
+        id: string;
+        reason: 'token_budget';
+    }[];
+};
 export declare const GUIDANCE_FACT_KINDS: readonly ["expected_result", "expected_stop", "expected_files", "expected_effects", "reference_failure", "reference_solution", "child_value", "minimum_sequence", "decisive", "teacher_trajectory", "attempt_feedback", "fit_hindsight"];
 /** The token budget a selection is asked to fit when the run names none (the engine's declared rendering budget). */
 export declare const DEFAULT_GUIDANCE_BUDGET_TOKENS = 512;
@@ -42,9 +74,12 @@ export type GuidanceRun = {
     /** `off` (opt-out, the measurement baseline): no writer; a teacher gets the selected facts as text, a student has the
      * same text turn recorded for its OPSD twin (`text-twin`) and sees nothing. */
     writer?: 'native' | 'off';
+    /** Hindsight (teacher only): a verified successful run of the task as a `TrajectoryCall`
+     * (applications/guidance-writer/types.ts); the root call's guidance is the hint `writeHint` writes from it. */
+    trajectory?: Record<string, unknown>;
 };
 export type GuidancePolicyFunction = {
-    function: 'selectGuidanceFacts' | 'writeGuidance';
+    function: 'selectGuidanceFacts' | 'writeGuidance' | 'writeHint';
     sha256: string;
 };
 /** The guidance-writer package as loaded by the host: its two natural-language definitions and its crisp parts. */
@@ -57,6 +92,15 @@ export type GuidanceWriterPackage = {
         definition: CallableDefinition;
         sha256: string;
     };
+    /** writeHint.nl (hindsight hints from a verified run). */
+    hint: {
+        definition: CallableDefinition;
+        sha256: string;
+    };
+    /** trajectoryOverview.ts `trajectoryOverview`: the crisp cold-start view of a run the hint writer opens with. */
+    trajectoryOverview(call: unknown): unknown;
+    /** hintCheck.ts `checkHint`: why a hint is rejected (one sentence), or undefined. */
+    checkHint(hint: unknown, execution: unknown): string | undefined;
     /** visibility.ts `visibleFacts`. */
     visibleFacts(consumer: GuidanceConsumer, facts: readonly GuidanceFact[]): GuidanceFact[];
     /** crispSelection.ts `crispSelection`. */
@@ -89,14 +133,20 @@ export declare class TrainingGuidance {
     constructor(run: GuidanceRun, writerPackage: GuidanceWriterPackage);
     /** The policy function a call runs, by its exact definition (name and instructions), and remembers the call. */
     policyOf(lam: LambdaNode, callId: string | null): GuidancePolicyFunction | undefined;
+    /**
+     * The exact check of a writeHint call's result (hintCheck.ts) against the run's verified trajectory, or undefined for
+     * any other call. The agent applies it where a result is proposed; a failure is the writer's one-sentence tool error.
+     */
+    hintGuard(lam: LambdaNode): ((value: unknown) => string | undefined) | undefined;
     /** The agent records each writeGuidance model turn as it is taken (its graph node). */
     noteWriterTurn(callId: string, node: string, ancestors: readonly string[]): void;
     /** Whether a call runs inside the guidance policy (its own calls and theirs). */
     insidePolicy(session: NativeSession): boolean;
     /**
-     * The `natlang.guidance-request/1` of a consumer call, computed once on its first model turn from that turn's request
+     * The `natlang.guidance-request/2` of a consumer call, computed once on its first model turn from that turn's request
      * messages and reused by its later turns; undefined when the call gets no guidance.
      */
     requestFor(session: NativeSession, callId: string, messages: readonly unknown[]): Promise<Record<string, unknown> | undefined>;
     private compute;
 }
+export {};

@@ -125,10 +125,11 @@ export function declaredServiceScopes(
 export function servicesFor(
   program: string,
   names: readonly string[],
-  bindings: Readonly<Record<string, unknown>>
+  bindings: Readonly<Record<string, unknown>>,
+  explicit?: Readonly<Record<string, object>>,
 ) {
   try {
-    return selectServices(bindings, names);
+    return selectServices(bindings, names, explicit);
   } catch (error) {
     // The message carries the reason; a `cause` would only repeat it where the failure is shown.
     throw new NatlangProgramError(

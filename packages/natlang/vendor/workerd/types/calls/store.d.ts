@@ -12,13 +12,16 @@ export declare class FileMedium implements StoreMedium {
     };
     constructor(root: string, mode?: (() => string | undefined) | undefined);
     private blobPath;
-    putBlob(hash: string, text: string): void;
+    putBlob(hash: string, text: string): boolean;
     blob(hash: string): string | undefined;
     deleteBlob(hash: string): void;
     readConfig(): Partial<CallStoreSettings>;
     writeConfig(config: Partial<CallStoreSettings>): void;
     freeBytes(): number;
     databaseBytes(): number;
+    blobBlockBytes(): number;
+    /** The WAL and its index as they are, at least the WAL's truncation size (JOURNAL_SIZE_LIMIT) plus the index. */
+    logBytes(): number;
     modeOverride(): string | undefined;
     /**
      * A row's process is known gone when the row is from an earlier boot, or from this PID namespace and no process has

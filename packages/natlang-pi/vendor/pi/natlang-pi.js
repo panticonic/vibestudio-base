@@ -58,6 +58,7 @@ function batchScoreItem(item, extra) {
     ...extra,
     messages: item.messages,
     continuations: item.options,
+    ...item.cache_messages ? { cache_messages: item.cache_messages } : {},
     ...item.adapters?.length ? { adapters: item.adapters } : {},
     ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
     ...item.native_recording ? { native_recording: true } : {}

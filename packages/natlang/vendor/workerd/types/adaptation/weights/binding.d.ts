@@ -74,8 +74,3 @@ export declare class WeightBinding {
 }
 /** The binding of a definition's owning program among the runtime's releases. */
 export declare function weightBindingFor(bindings: readonly WeightBinding[] | undefined, programId: string | undefined): WeightBinding | undefined;
-/** The served name of a whole effective stack on one-adapter-per-request backends (vLLM): canonical in its entries. */
-export declare function stackServingName(entries: readonly {
-    id: string;
-    scale: number;
-}[]): string;

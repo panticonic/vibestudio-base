@@ -89,6 +89,8 @@ export declare class IterationLimitError extends IterationFailure {
     readonly code?: 'iteration-unbounded' | 'iteration-measure-exhausted';
     constructor(message: string, lastState: unknown, trajectory: IterationTrajectory<unknown>, code?: 'iteration-unbounded' | 'iteration-measure-exhausted');
 }
+/** The state hash of iteration traces (`state_hash`); also the step-state evidence of plain loops (callable.ts). */
+export declare function stableHash(value: unknown): string;
 type Step<T> = (state: T, ...args: unknown[]) => T | Promise<T>;
 type Done<T> = (state: T) => boolean | Promise<boolean>;
 /** Decide whether a completed step should be reviewed. Bootstrap sites are reviewed occasionally. */

@@ -9,6 +9,13 @@
     }
   },
   "serviceBinding": "explicit",
+  "workspaceModules": {
+    "runWorkflow/domains/automation": "skills/automations",
+    "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
+    "runWorkflow/domains/personal": "skills/personal-workflows",
+    "runWorkflow/domains/publication": "skills/publish-preflight",
+    "runWorkflow/domains/system": "skills/system-investigation"
+  },
   "serviceScopes": {
     "panelRepair": [
       "runWorkflow/repairPanel.nl",

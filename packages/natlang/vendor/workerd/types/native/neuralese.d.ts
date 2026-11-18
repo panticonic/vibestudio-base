@@ -75,6 +75,11 @@ export declare function isNeuraleseRef(value: unknown): value is NeuraleseRef;
 export declare function neuraleseSentinel(id: string, stopGradient?: boolean, sourceOccurrence?: string): string;
 /** Per-use derivative metadata survives conversation plumbing, never model tokens. */
 export declare function neuraleseRefSentinel(ref: NeuraleseRef): string;
+/**
+ * A Neuralese value as plain text, where no state can be shown (console output): one line that says what it is and what
+ * to do with it. The reference's JSON (`{"$neuralese":{…,"id":"nzs1_…"}}`) read as garbled data, and its id as a page to read.
+ */
+export declare function neuraleseDisplayText(ref: NeuraleseRef): string;
 /** The block a text consists of exactly, if it is one sentinel. */
 export declare function soleSentinel(text: string): string | undefined;
 export declare function soleSentinelUse(text: string): {
@@ -181,10 +186,11 @@ export type NeuraleseRuntimeOptions = {
         budgeted?: true;
     };
     /**
-     * The learned Neuralese operators of the native server (model/native-operator.ts `serverCompactor`): compacted cut-off
-     * values, argument listings and history carry, used when the agent's `compaction` setting selects them.
+     * The in-context capture of a sampled reply (learned operators, OPERATORS_RESTORE_20261117.md §3.1): a server with
+     * `native.capture` captures the exact sampled ids; the managed llama-server and the page force the same ids as a
+     * produce span with a grammar (model/native-operator.ts `grammarCapture`).
      */
-    compactor?: import('./operator-frames.js').Compactor;
+    capture?: import('./operator-frames.js').NativeCapture;
     /** The agent's `compaction` setting for hosts that configure the runtime through these options (agent.ts). */
     compaction?: import('../runtime/pluggable.js').PluggableSetting;
 };
