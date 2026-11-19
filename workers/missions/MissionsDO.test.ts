@@ -784,6 +784,34 @@ describe("MissionsDO", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps a cadence edit paused until explicitly resumed", async () => {
+    const { callAs } = await createMissions();
+    const launch = await callAs(alice, "launch", {
+      name: "Morning briefing",
+      charter: continuingAgentCharter(),
+      authorityPlan: policy(),
+    });
+    await callAs(alice, "pause", launch.missionId);
+    const trigger = { kind: "schedule", everyMs: 7_200_000 } as const;
+    const edit = await callAs(alice, "edit", launch.missionId, {
+      charter: { ...launch.charter, trigger },
+    });
+    expect(edit).toMatchObject({
+      missionId: launch.missionId,
+      revision: launch.revision + 1,
+      state: "paused",
+      charter: { trigger },
+    });
+    expect(edit.nextRunAt).toBeUndefined();
+    const resume = await callAs(alice, "resume", launch.missionId);
+    expect(resume).toMatchObject({
+      state: "active",
+      revisionDigest: edit.revisionDigest,
+      charter: { trigger },
+    });
+    expect(resume.nextRunAt).toBeGreaterThan(Date.now());
+  });
+
   it("deduplicates launch transport retries without duplicate definitions", async () => {
     const { callAs, sql } = await createMissions(IdempotentLaunchMissionsDO);
     const input = {

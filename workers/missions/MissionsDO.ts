@@ -953,25 +953,34 @@ export class MissionsDO extends DurableObjectBase {
       );
     const now = Date.now();
     const origin = scheduleOrigin(charter, now);
-    const next = initialNextRunAt(charter, now, origin);
     this.ctx.storage.transactionSync(() => {
+      const committing = this.requireMission(missionId);
+      if (committing.state === "retired")
+        throw denied("Retired automations cannot be edited");
+      if (committing.revision !== current.revision)
+        throw new Error(
+          "Prepared automation edit no longer follows the active revision",
+        );
+      // Editing the definition of a paused mission does not admit new runs.
+      const state = committing.state === "paused" ? "paused" : "active";
       this.sql.exec(
         "INSERT INTO mission_revisions (mission_id,revision,record_json,recorded_at) VALUES (?,?,?,?)",
         missionId,
         current.revision,
-        canonicalJson(current),
+        canonicalJson(committing),
         now,
       );
       this.sql.exec(
-        `UPDATE missions SET name=?,revision=?,charter_json=?,authority_plan_json=?,state='active',revision_digest=?,authority_json=?,schedule_origin_at=?,next_run_at=?,updated_at=?,activated_at=?,completed_at=NULL,completion_reason=NULL,completion_response=NULL WHERE mission_id=?`,
+        `UPDATE missions SET name=?,revision=?,charter_json=?,authority_plan_json=?,state=?,revision_digest=?,authority_json=?,schedule_origin_at=?,next_run_at=?,updated_at=?,activated_at=?,completed_at=NULL,completion_reason=NULL,completion_response=NULL WHERE mission_id=?`,
         input.name ?? current.name,
         targetRevision,
         canonicalJson(charter),
         canonicalJson(policy),
+        state,
         digest,
         canonicalJson({ requestIds: [], grantIds: [], denialIds: [] }),
         origin,
-        next,
+        state === "paused" ? null : initialNextRunAt(charter, now, origin),
         now,
         now,
         missionId,
