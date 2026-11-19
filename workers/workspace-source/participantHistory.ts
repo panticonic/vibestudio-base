@@ -38,7 +38,7 @@ import type {
 } from "@vibestudio/service-schemas/vcs";
 import { vcsBlameResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
-import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
+import { compactId, resolveIntent, type StateNodeRef } from "@workspace/vcs-engine";
 import {
   applyDoltWorkspaceState,
   committedWorkspaceEvent,
@@ -82,7 +82,7 @@ import type {
   WorkspaceEventRecord,
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
-import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, importedRepositories, projectContentBlame, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
+import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, describeSemanticEffects, importedRepositories, projectContentBlame, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -1274,7 +1274,18 @@ export class ParticipantHistory {
   #persistApplication(plan: HistoryApplicationPlan): void {
     const { sql } = this.#storage;
     const provenance = new SemanticProvenanceWriter(sql);
-    provenance.persistWorkUnit(plan.workUnit);
+    const work = plan.workUnit;
+    const trigger = work.triggerEvidence;
+    const changes = [...plan.changes].sort((left, right) =>
+      left.operation - right.operation || left.ordinal - right.ordinal ||
+      compareUtf16CodeUnits(left.changeId, right.changeId),
+    );
+    const intent = resolveIntent({
+      stated: work.intentSummary,
+      trigger: trigger && { text: trigger.text, sender: trigger.sender.id },
+      mechanical: describeSemanticEffects(work.kind, changes),
+    });
+    provenance.persistWorkUnit(work, intent);
     provenance.persistChanges(plan.changes);
     provenance.persistAppliedChanges(plan.appliedChanges);
     for (const edge of plan.contentEdges) provenance.persistContentEdge(edge);

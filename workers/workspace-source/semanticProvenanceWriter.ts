@@ -1,6 +1,6 @@
 import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
-import { compactId, type ContentMapping, type StateNodeRef } from "@workspace/vcs-engine";
+import { compactId, type ContentMapping, type ResolvedIntent, type StateNodeRef } from "@workspace/vcs-engine";
 import {
   contentMappingRowValues,
   encodeContentMappingRow,
@@ -15,6 +15,7 @@ import type {
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
 import { execBatchedInsert } from "./sqlBatch.js";
+import { PROV_RESOLVER_PROTOCOL } from "./provenanceViews.js";
 
 export const stateNodeKey = (ref: StateNodeRef): string =>
   ref.kind === "event" ? `event:${ref.eventId}` : `application:${ref.applicationId}`;
@@ -60,7 +61,7 @@ export function validateApplicationPlan(plan: Pick<
 export class SemanticProvenanceWriter {
   constructor(private readonly sql: SqlStorage) {}
 
-  persistWorkUnit(value: WorkUnitRecord): void {
+  persistWorkUnit(value: WorkUnitRecord, intent?: ResolvedIntent): void {
     for (const [field, candidate] of Object.entries({
       workUnitId: value.workUnitId,
       commandId: value.commandId,
@@ -81,8 +82,9 @@ export class SemanticProvenanceWriter {
       `INSERT INTO gad_work_units
        (work_unit_id, command_id, kind, intent_summary, author_context_id,
         trigger_excerpt, trigger_sender_json, external_snapshot_json, content_class,
-        external_lineage_json, normalization_protocol, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        external_lineage_json, normalization_protocol, created_at,
+        resolved_intent_text, resolved_intent_tier, resolver_protocol)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       value.workUnitId,
       value.commandId,
       value.kind,
@@ -94,7 +96,10 @@ export class SemanticProvenanceWriter {
       value.contentClass,
       canonicalJson(value.externalKeys),
       value.normalizationProtocol,
-      value.createdAt
+      value.createdAt,
+      intent?.text ?? null,
+      intent?.tier ?? null,
+      intent ? PROV_RESOLVER_PROTOCOL : null,
     );
   }
 

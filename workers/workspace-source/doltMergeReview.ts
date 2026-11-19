@@ -1,10 +1,11 @@
 import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import type { VcsCompareInput, VcsCompareResult, VcsMergeCoordinateRef, VcsMergeResult, VcsWorkingMutationResult } from "@vibestudio/service-schemas/vcs";
-import { classifyMergeAspect, resolveIntent } from "@workspace/vcs-engine";
+import { classifyMergeAspect, resolveIntent, type ResolvedIntent } from "@workspace/vcs-engine";
 import { workspaceContentOriginsAt, workspaceEditBasisAt, workspaceMergeScope, type WorkspaceMergeScopeEntry } from "./doltWorkspaceState.js";
 import { composeHistoryText, historyTextMergeInputs, readHistoryMergeObservations, type HistoryMergeObservation, type HistoryMergeSelection } from "./doltTextMerge.js";
 import type { MainMergePreview } from "./participantHistory.js";
+import { PROV_RESOLVER_PROTOCOL } from "./provenanceViews.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 import type { ChangeRecord } from "./semanticVcsStore.js";
 import { describeSemanticEffects, parseSemanticCursor, semanticCursor, trajectorySenderRef, type WorkspaceEditBasis } from "./semanticWorkspace.js";
@@ -393,15 +394,24 @@ export function settledHistoryMerge(
   };
 }
 
-export function readHistoryWorkUnitIntent(sql: SqlStorage, at: string, workUnitId: string | null | undefined) {
+export function readHistoryWorkUnitIntent(
+  sql: SqlStorage, at: string, workUnitId: string | null | undefined,
+): ResolvedIntent {
   if (!workUnitId) throw new SemanticVcsError("IntegrityFailure", "Workspace content origin has no work unit");
   const row = sql.exec(
-    `SELECT kind, intent_summary, trigger_excerpt, trigger_sender_json
+    `SELECT kind, intent_summary, trigger_excerpt, trigger_sender_json,
+            resolved_intent_text, resolved_intent_tier, resolver_protocol
       FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ?`,
     at,
     workUnitId,
   ).toArray()[0];
   if (!row || typeof row["kind"] !== "string")
     throw new SemanticVcsError("IntegrityFailure", "Workspace work unit has no intent evidence");
+  const tier = row["resolved_intent_tier"];
+  const text = row["resolved_intent_text"];
+  if (row["resolver_protocol"] === PROV_RESOLVER_PROTOCOL && typeof text === "string" && text &&
+      (tier === "stated" || tier === "trigger" || tier === "mechanical")) {
+    return { tier, text };
+  }
   return readHistoryWorkIntent(sql, at, workUnitId, row["kind"], row["intent_summary"], row["trigger_excerpt"], row["trigger_sender_json"]);
 }

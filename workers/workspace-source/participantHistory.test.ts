@@ -8,6 +8,7 @@ import {
   createDoltWorkspaceState,
   workspaceEditBasisAt,
 } from "./doltWorkspaceState.js";
+import { readHistoryWorkUnitIntent } from "./doltMergeReview.js";
 import {
   grantApprovedMain,
   grantParticipantHistory,
@@ -16,6 +17,8 @@ import {
   retireParticipantHistory,
 } from "./participantHistory.js";
 import { SemanticWorkspace } from "./semanticWorkspace.js";
+import { SemanticProvenanceWriter } from "./semanticProvenanceWriter.js";
+import type { WorkUnitRecord } from "./semanticVcsStore.js";
 
 async function workspace(now = Date.now) {
   const canonical = await FakeDoltStorage.create({ now });
@@ -40,6 +43,40 @@ async function workspace(now = Date.now) {
     storage.sql.exec("SELECT id, body FROM files ORDER BY id").toArray();
   return { canonical, genesis, origin, transport, createParticipant, rows };
 }
+
+it("reads captured intent from the native revision and derives intent for older rows", async () => {
+  const graph = await FakeDoltStorage.create();
+  const sql = graph.sql;
+  createDoltWorkspaceState(sql);
+  const work: WorkUnitRecord = {
+    workUnitId: "legacy-work", commandId: "command", kind: "edit",
+    authoredChangeIds: [], intentSummary: null, authorContextId: "edit",
+    triggerEvidence: null, externalSnapshot: null, contentClass: "internal",
+    externalKeys: [], normalizationProtocol: "test", createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  const writer = new SemanticProvenanceWriter(sql);
+  writer.persistWorkUnit(work);
+  writer.persistWorkUnit({ ...work, workUnitId: "indexed-work", intentSummary: "Fix the note" }, {
+    text: "Fix the note", tier: "stated",
+  });
+  const revision = graph.dolt.commit("Native intent");
+  const reads: string[] = [];
+  const historicalSql = {
+    exec(query: string, at: unknown, ...bindings: unknown[]) {
+      expect(at).toBe(revision);
+      reads.push(query);
+      return sql.exec(query.replace(/(dolt_at_\w+)\(\?\)/u, `$1('${revision}')`), ...bindings);
+    },
+  };
+  expect(readHistoryWorkUnitIntent(historicalSql, revision, "indexed-work")).toEqual({
+    text: "Fix the note", tier: "stated",
+  });
+  expect(reads).toHaveLength(1);
+  expect(readHistoryWorkUnitIntent(historicalSql, revision, "legacy-work")).toEqual({
+    text: "edit decision with no fact transition", tier: "mechanical",
+  });
+  expect(reads).toHaveLength(3);
+});
 
 it("keeps participant changes private until publication and merges shared changes in the participant", async () => {
   const { canonical, genesis, origin, transport, createParticipant, rows } =
