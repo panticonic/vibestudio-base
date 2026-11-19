@@ -33,10 +33,12 @@ import type {
   VcsReadFilesInput,
   VcsResolveRepositoryInput,
   VcsRevertInput,
+  VcsSearchInput,
   VcsSemanticNodeRef,
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
 import { vcsBlameResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
+import type { HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, resolveIntent, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -63,6 +65,7 @@ import {
 import { readInvertedCounteractionMappings } from "./contentBlame.js";
 import { workspaceRevertBasisAt } from "./doltWorkspaceRevert.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import { historySearchCausesAt, searchHistoryProse } from "./doltWorkspaceSearch.js";
 import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
@@ -519,6 +522,24 @@ export class ParticipantHistory {
         : [...new Set([this.#dolt.hashOf(this.#contextBranch(contextId)), await this.#fetchMain()])];
       return workspaceEventHistory(this.#storage.sql, tips, workspaceId, contextId, { ...input, root });
     });
+  }
+
+  search(input: VcsSearchInput, protectedEventId: string) {
+    return this.#run(async () => {
+      const { sql } = this.#storage;
+      const main = await this.#fetchMain();
+      const protectedRevision = workspaceCommitForRef(sql, main, { kind: "event", eventId: protectedEventId });
+      if (!protectedRevision)
+        throw new SemanticVcsError("InvalidReference", "Workspace search has no protected main revision");
+      const own = this.#dolt.hashOf(this.#contextBranch(input.contextId));
+      const others = this.#contextTips(input.visibilityContextIds ?? []).map(({ head }) => head);
+      const revisions = [...new Set([own, ...others, protectedRevision])];
+      return { ...searchHistoryProse(sql, revisions, input), revisions };
+    });
+  }
+
+  searchCausesAt(revision: string, after: HistorySearchCause | null) {
+    return this.#run(() => historySearchCausesAt(this.#storage.sql, revision, after));
   }
 
   blame(contextId: string, input: VcsBlameInput) {

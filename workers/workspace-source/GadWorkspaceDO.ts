@@ -7,9 +7,12 @@ import { prepareLogEvent, agenticLogCausality as agenticCausality, type Prepared
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
+  HistoryTrajectorySearchInputSchema,
   PrivateLineageForPublishedEnvelopeSchema,
   type GadJsonValue,
+  type HistoryTrajectorySearchInput,
 } from "@vibestudio/service-schemas/workspaceSource";
+import { searchTrajectoryProse } from "./doltWorkspaceSearch.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWorkOwner";
 /**
@@ -1882,6 +1885,18 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @schemaRpc()
   vcsSearch(request: SemanticDispatchRequest): Promise<unknown> {
     return this.vcsSemantic("search", request);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native workspace history for trajectory search." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  searchHistoryTrajectory(input: HistoryTrajectorySearchInput) {
+    const { causes, ...search } = HistoryTrajectorySearchInputSchema.parse(input);
+    return searchTrajectoryProse(this.sql, search, causes);
   }
 
   @schemaRpc()

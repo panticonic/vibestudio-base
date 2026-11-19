@@ -21,6 +21,7 @@ import {
   vcsReadFilesInputSchema,
   vcsRevertInputSchema,
   vcsResolveRepositoryInputSchema,
+  vcsSearchInputSchema,
   vcsSemanticNodeRefSchema,
   vcsStateNodeRefSchema,
   type VcsCompareInput,
@@ -40,6 +41,7 @@ import {
   type VcsReadFilesInput,
   type VcsRevertInput,
   type VcsResolveRepositoryInput,
+  type VcsSearchInput,
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
@@ -78,6 +80,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
+import { HistorySearchCauseRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -575,6 +578,17 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryTimeline(input: { contextId: string; history: VcsHistoryInput }) {
     return this.#history().history(input.contextId, this.#workspaceId(), vcsHistoryInputSchema.parse(input.history));
+  }
+
+  @rpc(hostRead)
+  searchHistory(input: { search: VcsSearchInput; protectedEventId: string }) {
+    return this.#history().search(vcsSearchInputSchema.parse(input.search), input.protectedEventId);
+  }
+
+  @rpc(hostRead)
+  readHistorySearchCauses(input: { revision: string; after: HistorySearchCause | null }) {
+    const { revision, after } = HistorySearchCauseRequestSchema.parse(input);
+    return this.#history().searchCausesAt(revision, after);
   }
 
   @rpc(hostRead)
