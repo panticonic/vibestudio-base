@@ -1,7 +1,7 @@
 ---
 description: Check that the screen sequence preserves the assigned terminal session identity.
 args:
-  request: ChecklistRequest
+  request: ChecklistExecution
   screens: ChecklistScreen[]
 returns: boolean
 ---

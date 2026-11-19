@@ -4,11 +4,18 @@ import type { NatlangFunction, Folder as FolderStore, FolderHandle } from "@natl
 type Folder = FolderStore | FolderHandle;
 type ItemKey = "1" | "2" | "3";
 type Continuation = "none" | "reattach" | "restart";
-type ChecklistRequest = {
+type ChecklistTarget = {
+  checked: ItemKey[];
+  unchecked: ItemKey[];
+};
+type ChecklistExecution = {
   goal: string;
   keys: ItemKey[];
   continuation: Continuation;
 };
+type ChecklistRequest = | ChecklistExecution
+  | { goal: string; continuation: Continuation; target: ChecklistTarget };
+type ChecklistChanges = { check: ItemKey[]; clear: ItemKey[] };
 type ChecklistScreen = {
   sessionId: string;
   ptyId: string;
@@ -21,5 +28,5 @@ type ChecklistReport = {
   screens: ChecklistScreen[];
   continuation: Continuation;
 };
-declare const fn: NatlangFunction<[request: ChecklistRequest], ChecklistReport> & { readonly editItems: NatlangFunction<[keys: ItemKey[]], ChecklistScreen[]> & { readonly sendToggle: NatlangFunction<[key: ItemKey], ChecklistScreen> }; readonly inspectOutcome: NatlangFunction<[request: ChecklistRequest, screens: ChecklistScreen[]], "verified" | "mismatch"> & { readonly checkIdentity: NatlangFunction<[request: ChecklistRequest, screens: ChecklistScreen[]], boolean>; readonly checkItems: NatlangFunction<[request: ChecklistRequest, screens: ChecklistScreen[]], boolean> }; readonly openSession: NatlangFunction<[], ChecklistScreen> & { readonly launchApp: NatlangFunction<[], ChecklistScreen> }; readonly resumeSession: NatlangFunction<[kind: "reattach" | "restart"], ChecklistScreen> & { readonly continueApp: NatlangFunction<[kind: "reattach" | "restart"], ChecklistScreen> } };
+declare const fn: NatlangFunction<[request: ChecklistRequest], ChecklistReport> & { readonly editItems: NatlangFunction<[keys: ItemKey[]], ChecklistScreen[]> & { readonly sendToggle: NatlangFunction<[key: ItemKey], ChecklistScreen> }; readonly inspectOutcome: NatlangFunction<[request: ChecklistExecution, screens: ChecklistScreen[]], "verified" | "mismatch"> & { readonly checkIdentity: NatlangFunction<[request: ChecklistExecution, screens: ChecklistScreen[]], boolean>; readonly checkItems: NatlangFunction<[request: ChecklistExecution, screens: ChecklistScreen[]], boolean> }; readonly openSession: NatlangFunction<[], ChecklistScreen> & { readonly launchApp: NatlangFunction<[], ChecklistScreen> }; readonly planEdits: NatlangFunction<[goal: string, target: ChecklistTarget, initial: ItemKey[]], ItemKey[]> & { readonly targetChecks: { readonly changes: (target: ChecklistTarget, initial: ItemKey[]) => ChecklistChanges; readonly matchesPlan: (target: ChecklistTarget, initial: ItemKey[], keys: ItemKey[]) => boolean; readonly matchesTarget: (target: ChecklistTarget, initial: ItemKey[], final: ItemKey[]) => boolean } }; readonly resumeSession: NatlangFunction<[kind: "reattach" | "restart"], ChecklistScreen> & { readonly continueApp: NatlangFunction<[kind: "reattach" | "restart"], ChecklistScreen> }; readonly targetChecks: { readonly changes: (target: ChecklistTarget, initial: ItemKey[]) => ChecklistChanges; readonly matchesPlan: (target: ChecklistTarget, initial: ItemKey[], keys: ItemKey[]) => boolean; readonly matchesTarget: (target: ChecklistTarget, initial: ItemKey[], final: ItemKey[]) => boolean } };
 export default fn;

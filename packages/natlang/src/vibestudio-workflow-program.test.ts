@@ -141,6 +141,127 @@ it("runs two skill trees from the same package using only the caller's scoped bi
   });
 });
 
+it("admits only the needed checklist toggles through the shared workflow", async () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const steps: Record<string, string> = {
+    runWorkflow: `
+      const item = request.work[0];
+      const report = await domains.terminalChecklist.verifyChecklist(item.input);
+      return {results: [{kind: "domain", domain: item.domain, operation: item.operation, report}], remaining: []};
+    `,
+    verifyChecklist: `
+      const initial = await openSession();
+      const target = request.target;
+      const keys = target ? await planEdits(request.goal, target, initial.checked) : request.keys;
+      if (target && !await targetChecks.matchesPlan(target, initial.checked, keys))
+        return {status: "mismatch", screens: [initial], continuation: request.continuation};
+      const screens = [initial, ...await editItems(keys)];
+      const final = await resumeSession(request.continuation);
+      screens.push(final);
+      const status = !target || await targetChecks.matchesTarget(target, initial.checked, final.checked)
+        ? await inspectOutcome({goal: request.goal, keys, continuation: request.continuation}, screens)
+        : "mismatch";
+      return {status, screens, continuation: request.continuation};
+    `,
+    planEdits: `
+      const needed = await targetChecks.changes(target, initial);
+      return goal === "Test an invalid plan" ? ["1", "1"] : [...needed.check, ...needed.clear];
+    `,
+    openSession: "return await launchApp();",
+    launchApp: "return await checklistOpen.launch();",
+    editItems:
+      "const screens = []; for (const key of keys) screens.push(await sendToggle(key)); return screens;",
+    sendToggle: "return await checklistKeys.toggle(key);",
+    resumeSession: "return await continueApp(kind);",
+    continueApp: "return await checklistResume.resume(kind);",
+    inspectOutcome: 'return "verified";',
+  };
+  const failures = new Set<string>();
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      const code = steps[session.lam.functionName ?? ""];
+      if (!code)
+        throw new Error(
+          `Unexpected checklist call ${session.lam.functionName}`,
+        );
+      const action = await session.applyAsync("eval", { code, finish: true });
+      if (action.kind === "rejected" || action.kind === "error") {
+        failures.add(`${session.lam.functionName}: ${action.text}`);
+        throw new Error(action.text);
+      }
+    },
+  });
+  const loader = new ProgramLoader({
+    platform,
+    fs: {
+      readFile: (path) => readFile(join(root, path), "utf8"),
+      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
+      stat: (path) => stat(join(root, path)),
+    },
+    bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  for (const goal of [
+    "Confirm rollback before clearing build",
+    "Test an invalid plan",
+    "Replay the assigned keys",
+  ]) {
+    const checked = new Set(["1", "2"]);
+    const keys: string[] = [];
+    const screen = (ptyId = "before", cols = 80, rows = 24) => ({
+      sessionId: "owned-checklist",
+      ptyId,
+      cols,
+      rows,
+      checked: [...checked].sort(),
+    });
+    const run = (await loader.load(
+      "skills/vibestudio-workflows/runWorkflow.nl",
+      {
+        services: {
+          checklistOpen: { launch: async () => screen() },
+          checklistKeys: {
+            toggle: async (key: string) => {
+              keys.push(key);
+              if (!checked.delete(key)) checked.add(key);
+              return screen();
+            },
+          },
+          checklistResume: { resume: async () => screen("after", 62, 18) },
+        },
+      },
+    )) as (request: unknown) => Promise<unknown>;
+    const valid = goal !== "Test an invalid plan";
+    const result = await run({
+      goal,
+      work: [
+        {
+          kind: "domain",
+          domain: "terminalChecklist",
+          operation: "verifyChecklist",
+          input: {
+            goal,
+            continuation: "restart",
+            ...(goal === "Replay the assigned keys"
+              ? { keys: ["3", "1"] }
+              : { target: { checked: ["3"], unchecked: ["1"] } }),
+          },
+        },
+      ],
+    }).catch((error: unknown) => {
+      throw new Error([...failures, String(error)].join("\n"), {
+        cause: error,
+      });
+    });
+    expect(result).toMatchObject({
+      results: [{ report: { status: valid ? "verified" : "mismatch" } }],
+    });
+    expect(keys).toEqual(valid ? ["3", "1"] : []);
+  }
+});
+
 it("describes the typed workflows in the installed template domains", async () => {
   const base = fileURLToPath(new URL("../../..", import.meta.url));
   const templateRoot = join(base, "..");

@@ -1,7 +1,7 @@
 ---
 description: Verify the session, PTY, and state transitions the screens prove.
 args:
-  request: ChecklistRequest
+  request: ChecklistExecution
   screens: ChecklistScreen[]
 returns: "verified" | "mismatch"
 ---
