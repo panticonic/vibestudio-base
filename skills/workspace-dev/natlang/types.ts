@@ -25,3 +25,46 @@ export type IconChoice = {
   /** "brand:git", "lucide:messages-square", or the emoji itself. */
   id: string;
 };
+
+export type UnitIdentityRequest = {
+  goal: string;
+  operationId: string;
+  unit: UnitDescription;
+  prepare: boolean;
+};
+
+export type UnitIdentityObservation = {
+  repoPath: string;
+  revision: string;
+  icon: string | null;
+  artworkDigest: string | null;
+};
+
+export type UnitIdentityCandidate = {
+  choice: IconChoice;
+  declaration: string;
+  artworkDigest: string | null;
+};
+
+export type UnitIdentityAssessment = {
+  candidate: UnitIdentityCandidate | null;
+  next: "prepare" | "design-only" | "already-matches" | "hold";
+};
+
+export type UnitIdentityChange = {
+  repoPath: string;
+  revision: string;
+  icon: string;
+  artworkDigest: string | null;
+  mainUnchanged: boolean;
+  manifestOtherwiseUnchanged: boolean;
+  changedFiles: string[];
+};
+
+export type UnitIdentityReport = {
+  observed: UnitIdentityObservation;
+  intent: IconIntent;
+  assessment: UnitIdentityAssessment;
+  change: UnitIdentityChange | null;
+  outcome: "prepared" | "design-only" | "already-matches" | "hold" | "readback-mismatch";
+};

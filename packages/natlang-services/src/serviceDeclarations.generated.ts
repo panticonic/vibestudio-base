@@ -6,6 +6,50 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  unitIdentity: `/** Read and prepare the caller-assigned workspace icon. */
+
+type UnitIdentityObservation = {
+  repoPath: string;
+  revision: string;
+  icon: string | null;
+  artworkDigest: string | null;
+};
+
+type IconIntent = {
+  family: "brand" | "lucide" | "emoji";
+  term: string;
+};
+
+type IconChoice = {
+  family: "brand" | "lucide" | "emoji";
+  /** "brand:git", "lucide:messages-square", or the emoji itself. */
+  id: string;
+};
+
+type UnitIdentityCandidate = {
+  choice: IconChoice;
+  declaration: string;
+  artworkDigest: string | null;
+};
+
+type UnitIdentityChange = {
+  repoPath: string;
+  revision: string;
+  icon: string;
+  artworkDigest: string | null;
+  mainUnchanged: boolean;
+  manifestOtherwiseUnchanged: boolean;
+  changedFiles: string[];
+};
+
+/** Read and prepare the caller-assigned workspace icon. */
+export function observe(operationId: string): Promise<UnitIdentityObservation>;
+
+/** Read and prepare the caller-assigned workspace icon. */
+export function resolve(operationId: string, intent: IconIntent): Promise<UnitIdentityCandidate | null>;
+
+/** Read and prepare the caller-assigned workspace icon. */
+export function stage(operationId: string, revision: string, authoringId: string): Promise<UnitIdentityChange>;`,
   gmailComposeHistory: `/** Read native channel history for one assigned Gmail compose card. */
 
 type ComposeHistoryState = {

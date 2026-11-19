@@ -19,5 +19,42 @@ type IconChoice = {
   /** "brand:git", "lucide:messages-square", or the emoji itself. */
   id: string;
 };
+type UnitIdentityRequest = {
+  goal: string;
+  operationId: string;
+  unit: UnitDescription;
+  prepare: boolean;
+};
+type UnitIdentityObservation = {
+  repoPath: string;
+  revision: string;
+  icon: string | null;
+  artworkDigest: string | null;
+};
+type UnitIdentityCandidate = {
+  choice: IconChoice;
+  declaration: string;
+  artworkDigest: string | null;
+};
+type UnitIdentityAssessment = {
+  candidate: UnitIdentityCandidate | null;
+  next: "prepare" | "design-only" | "already-matches" | "hold";
+};
+type UnitIdentityChange = {
+  repoPath: string;
+  revision: string;
+  icon: string;
+  artworkDigest: string | null;
+  mainUnchanged: boolean;
+  manifestOtherwiseUnchanged: boolean;
+  changedFiles: string[];
+};
+type UnitIdentityReport = {
+  observed: UnitIdentityObservation;
+  intent: IconIntent;
+  assessment: UnitIdentityAssessment;
+  change: UnitIdentityChange | null;
+  outcome: "prepared" | "design-only" | "already-matches" | "hold" | "readback-mismatch";
+};
 declare const fn: NatlangFunction<[unit: UnitDescription], IconIntent>;
 export default fn;

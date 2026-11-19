@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-workspace-unit-identity",
+  "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "targets": { "main": { "entry": "natlang.ts" } },
+  "include": ["iconIntent.nl", "prepareUnitIdentity.nl", "prepareUnitIdentity", "natlang.ts", "catalog.ts", "types.ts", "services.d.ts"],
+  "serviceScopes": {
+    "unitIdentity": ["prepareUnitIdentity.nl", "prepareUnitIdentity/assessIcon.nl"]
+  }
+}

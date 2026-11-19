@@ -1,0 +1,13 @@
+{
+  "name": "@workspace-skills/unit-identity-bindings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": {
+    "@vibestudio/content-addressing": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace/runtime": "workspace:*",
+    "@workspace-skills/workspace-dev": "workspace:*"
+  }
+}

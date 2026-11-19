@@ -63,6 +63,7 @@
     "runWorkflow/domains/testSuite": "skills/native-suite-review",
     "runWorkflow/domains/testReview": "skills/system-testing/triage",
     "runWorkflow/domains/tour": "skills/tour-rehearsal",
+    "runWorkflow/domains/unitIdentity": "skills/workspace-dev/natlang",
     "runWorkflow/domains/unitDesign": "skills/workspace-unit-design",
     "runWorkflow/domains/webResearch": "skills/web-research/research",
     "runWorkflow/domains/vcsDelivery": "skills/vibestudio-vcs/natlang",
