@@ -6742,6 +6742,13 @@ export class SemanticWorkspace {
       notes.push("This command records no causing tool invocation.");
       return { entries, omitted: [], notes };
     }
+    const trail = this.walkInvocation(cause, depth);
+    return { entries: [...entries, ...trail.entries], omitted: [], notes: [...notes, ...trail.notes] };
+  }
+
+  private walkInvocation(cause: Row, depth: number): WalkPage {
+    const entries: Row[] = [];
+    const notes: string[] = [];
     const invocation = cause["invocation"] as Row;
     entries.push({
       node: invocation,
@@ -6829,6 +6836,11 @@ export class SemanticWorkspace {
       }
     }
     return { entries, omitted: [], notes };
+  }
+
+  readHistoryWalkInvocation(invocation: { logId: string; head: string; invocationId: string }) {
+    const cause = this.readHistoryMemoryCause(invocation);
+    return cause ? this.walkInvocation(cause, 0) : { entries: [], omitted: [], notes: [] };
   }
 
   /**

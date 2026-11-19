@@ -807,6 +807,13 @@ export function workspaceFileHistory(
   sql: SqlStorage, at: string, workspaceId: string, contextId: string,
   input: FileHistoryInput,
 ): VcsHistoryResult {
+  return workspaceFileHistoryWithOrigin(sql, at, workspaceId, contextId, input).history;
+}
+
+export function workspaceFileHistoryWithOrigin(
+  sql: SqlStorage, at: string, workspaceId: string, contextId: string,
+  input: FileHistoryInput,
+): { history: VcsHistoryResult; firstAppliedChangeId: string | null } {
   const { root, limit, cursor } = input;
   const revision = workspaceCommitForRef(sql, at, root.state);
   if (!revision) throw new SemanticVcsError("InvalidReference", "Unknown workspace file revision");
@@ -824,6 +831,7 @@ export function workspaceFileHistory(
     throw new SemanticVcsError("InvalidReference", "Workspace file history cursor has an invalid position");
   }
   const entries: VcsHistoryResult["entries"] = [];
+  let firstAppliedChangeId: string | null = null;
   const seenCommits = new Set([revision]);
   const seenChanges = new Set<string>();
   const pending = [revision];
@@ -852,18 +860,18 @@ export function workspaceFileHistory(
            FROM selected_decision JOIN dolt_at_gad_decision_source_changes(?1) AS source USING (decision_id)
           WHERE source.coordinate_kind = 'file' AND source.coordinate_id = ?4
        ), applied_here AS (
-         SELECT applied.change_id, applied.ordinal
+         SELECT applied.change_id, applied.ordinal, applied.applied_change_id
            FROM introduced JOIN dolt_at_gad_applied_changes(?1) AS applied USING (application_id)
           WHERE EXISTS (SELECT 1 FROM dolt_at_gad_change_coordinates(?1) AS target
                          WHERE target.change_id = applied.change_id AND target.file_id = ?4)
        ), candidates AS (
-         SELECT applied_here.change_id, applied_here.ordinal, adopted.decision_id AS via_decision_id
+         SELECT applied_here.change_id, applied_here.ordinal, applied_here.applied_change_id, adopted.decision_id AS via_decision_id
            FROM applied_here LEFT JOIN adopted USING (change_id)
          UNION ALL
-         SELECT change_id, -1, decision_id FROM adopted
+         SELECT change_id, -1, NULL, decision_id FROM adopted
           WHERE NOT EXISTS (SELECT 1 FROM applied_here WHERE applied_here.change_id = adopted.change_id)
        )
-       SELECT change.change_id, change.kind, change.work_unit_id, work.created_at, candidate.via_decision_id
+       SELECT change.change_id, change.kind, change.work_unit_id, work.created_at, candidate.applied_change_id, candidate.via_decision_id
          FROM candidates AS candidate
          JOIN dolt_at_gad_changes(?1) AS change USING (change_id)
          JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
@@ -872,7 +880,7 @@ export function workspaceFileHistory(
       commit, ours, theirs ?? null, root.fileId, MAX_ANCESTRY_EDGES + 1,
     ).toArray();
     for (const row of rows) {
-      const { change_id, kind, work_unit_id, created_at, via_decision_id } = row;
+      const { change_id, kind, work_unit_id, created_at, applied_change_id, via_decision_id } = row;
       if (typeof change_id !== "string" || typeof kind !== "string" ||
           typeof work_unit_id !== "string" || typeof created_at !== "string") {
         throw new SemanticVcsError("IntegrityFailure", "Workspace file history has an incomplete applied change");
@@ -882,6 +890,7 @@ export function workspaceFileHistory(
       if (seenChanges.size > MAX_ANCESTRY_EDGES)
         throw new SemanticVcsError("ScopeTooLarge", "Workspace file history exceeds its change bound");
       if (seenChanges.size <= offset) continue;
+      if (!entries.length && typeof applied_change_id === "string") firstAppliedChangeId = applied_change_id;
       entries.push({
         node: { kind: "change", changeId: change_id },
         createdAt: created_at,
@@ -907,9 +916,12 @@ export function workspaceFileHistory(
     }
   }
   return {
-    root, entries: entries.slice(0, limit),
-    nextCursor: entries.length > limit
-      ? semanticCursor("native-file-history", basis, { offset: offset + limit })
-      : null,
+    firstAppliedChangeId,
+    history: {
+      root, entries: entries.slice(0, limit),
+      nextCursor: entries.length > limit
+        ? semanticCursor("native-file-history", basis, { offset: offset + limit })
+        : null,
+    },
   };
 }

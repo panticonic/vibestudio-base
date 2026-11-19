@@ -37,9 +37,10 @@ import type {
   VcsSearchInput,
   VcsSemanticNodeRef,
   VcsStatusResult,
+  VcsWalkInput,
 } from "@vibestudio/service-schemas/vcs";
 import { vcsBlameResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
-import type { HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
+import type { HistorySearchCause, HistoryWalkCohort, HistoryWalkInvocation } from "@vibestudio/service-schemas/workspaceSource";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, resolveIntent, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -66,6 +67,7 @@ import {
 import { readInvertedCounteractionMappings } from "./contentBlame.js";
 import { workspaceRevertBasisAt } from "./doltWorkspaceRevert.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import { workspaceCauseWalkAt, workspaceCohortSeedAt, workspaceCohortWalk, workspaceRejectionsWalk } from "./doltWorkspaceWalk.js";
 import { workspaceReadMemoryAt } from "./doltWorkspaceMemory.js";
 import { historySearchCausesAt, searchHistoryProse } from "./doltWorkspaceSearch.js";
 import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
@@ -526,18 +528,48 @@ export class ParticipantHistory {
     });
   }
 
+  async #admittedHistoryRevisions(input: { contextId: string; visibilityContextIds?: string[] | undefined }, protectedEventId: string) {
+    const main = await this.#fetchMain();
+    const protectedRevision = workspaceCommitForRef(this.#storage.sql, main, { kind: "event", eventId: protectedEventId });
+    if (!protectedRevision)
+      throw new SemanticVcsError("InvalidReference", "Workspace has no protected main revision");
+    const own = this.#dolt.hashOf(this.#contextBranch(input.contextId));
+    const others = this.#contextTips(input.visibilityContextIds ?? []).map(({ head }) => head);
+    return [...new Set([own, ...others, protectedRevision])];
+  }
+
   search(input: VcsSearchInput, protectedEventId: string) {
     return this.#run(async () => {
-      const { sql } = this.#storage;
-      const main = await this.#fetchMain();
-      const protectedRevision = workspaceCommitForRef(sql, main, { kind: "event", eventId: protectedEventId });
-      if (!protectedRevision)
-        throw new SemanticVcsError("InvalidReference", "Workspace search has no protected main revision");
-      const own = this.#dolt.hashOf(this.#contextBranch(input.contextId));
-      const others = this.#contextTips(input.visibilityContextIds ?? []).map(({ head }) => head);
-      const revisions = [...new Set([own, ...others, protectedRevision])];
-      return { ...searchHistoryProse(sql, revisions, input), revisions };
+      const revisions = await this.#admittedHistoryRevisions(input, protectedEventId);
+      return { ...searchHistoryProse(this.#storage.sql, revisions, input), revisions };
     });
+  }
+
+  walk(workspaceId: string, input: VcsWalkInput, protectedEventId: string) {
+    return this.#run(async () => {
+      const revisions = await this.#admittedHistoryRevisions(input, protectedEventId);
+      const { sql } = this.#storage;
+      const at = revisions.find((tip) => workspaceReferenceAt(sql, tip, input.subject)) ?? null;
+      if (input.walk === "cohort") {
+        const seed = workspaceCohortSeedAt(sql, at, workspaceId, input);
+        if (seed?.kind === "turn" || seed?.kind === "invocation")
+          return { kind: "cohort" as const, seed, revisions };
+        const page = workspaceCohortWalk(sql, revisions, input, seed, []);
+        return { kind: "page" as const, page, revisions, invocation: null };
+      }
+      if (!at)
+        throw new SemanticVcsError("InvalidReference", "Workspace walk subject is outside the admitted history");
+      if (input.walk === "rejections") {
+        const page = workspaceRejectionsWalk(sql, at, revisions, workspaceId, input);
+        return { kind: "page" as const, page, revisions, invocation: null };
+      }
+      const { invocation, ...page } = workspaceCauseWalkAt(sql, at, workspaceId, input);
+      return { kind: "page" as const, page, revisions, invocation };
+    });
+  }
+
+  walkCohort(input: VcsWalkInput, revisions: string[], seed: HistoryWalkCohort, invocations: HistoryWalkInvocation[]) {
+    return this.#run(() => workspaceCohortWalk(this.#storage.sql, revisions, input, seed, invocations));
   }
 
   searchCausesAt(revision: string, after: HistorySearchCause | null) {

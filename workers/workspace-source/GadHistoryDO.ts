@@ -25,6 +25,8 @@ import {
   vcsSearchInputSchema,
   vcsSemanticNodeRefSchema,
   vcsStateNodeRefSchema,
+  vcsWalkInputSchema,
+  type VcsWalkInput,
   type VcsCompareInput,
   type VcsBlameInput,
   type VcsCommitInput,
@@ -82,7 +84,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
-import { HistorySearchCauseRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
+import { HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -585,6 +587,17 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   searchHistory(input: { search: VcsSearchInput; protectedEventId: string }) {
     return this.#history().search(vcsSearchInputSchema.parse(input.search), input.protectedEventId);
+  }
+
+  @rpc(hostRead)
+  readHistoryWalk(input: { walk: VcsWalkInput; protectedEventId: string }) {
+    return this.#history().walk(this.#workspaceId(), vcsWalkInputSchema.parse(input.walk), input.protectedEventId);
+  }
+
+  @rpc(hostRead)
+  readHistoryWalkCohort(input: ReturnType<typeof HistoryWalkCohortRequestSchema.parse>) {
+    const { walk, revisions, seed, invocations } = HistoryWalkCohortRequestSchema.parse(input);
+    return this.#history().walkCohort(walk, revisions, seed, invocations);
   }
 
   @rpc(hostRead)

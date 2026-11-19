@@ -21,8 +21,8 @@ type VcsTrajectoryInvocationRef = ReturnType<typeof vcsTrajectoryInvocationRefSc
 type AuthoredSpan = Exclude<VcsBlameSpan, { stop: "snapshot-boundary" }>;
 type AuthoredEpisode = Exclude<VcsReadMemoryEpisode, { stop: "snapshot-boundary" }>;
 
-function firstSavedApplication(
-  sql: SqlStorage, revision: string, appliedChangeId: string,
+export function firstSavedApplication(
+  sql: SqlStorage, revision: string, applicationId: string,
 ): AuthoredEpisode["commit"] {
   const row = sql.exec(
     `WITH RECURSIVE containing(hash) AS (
@@ -31,8 +31,8 @@ function firstSavedApplication(
        SELECT parent.parent_hash FROM containing AS child
        JOIN dolt_commit_ancestors AS parent ON parent.commit_hash = child.hash
        WHERE parent.parent_hash IS NOT NULL AND EXISTS (
-         SELECT 1 FROM dolt_at_gad_applied_changes(parent.parent_hash) AS applied
-          WHERE applied.applied_change_id = ?2
+         SELECT 1 FROM dolt_at_applications(parent.parent_hash) AS applied
+          WHERE applied.application_id = ?2
        )
      )
      SELECT events.event_id, events.message, events.created_at
@@ -49,7 +49,7 @@ function firstSavedApplication(
             AND inherited.event_id = events.event_id
         )
       ORDER BY events.created_at, events.event_id LIMIT 1`,
-    revision, appliedChangeId,
+    revision, applicationId,
   ).toArray()[0];
   if (!row) return null;
   return {
@@ -190,9 +190,10 @@ export function workspaceReadMemoryAt(
           source: span.source, command: span.command, createdAt: span.createdAt,
         };
       }
+      const applied = inspectWorkspaceProvenance(sql, revision, workspaceId, span.appliedChange, 0).node;
       const change = inspectWorkspaceProvenance(sql, revision, workspaceId, span.change, 0).node;
       const work = inspectWorkspaceProvenance(sql, revision, workspaceId, span.workUnit, 0).node;
-      if (change.kind !== "change" || work.kind !== "work-unit") {
+      if (applied.kind !== "applied-change" || change.kind !== "change" || work.kind !== "work-unit") {
         throw new SemanticVcsError("IntegrityFailure", "Workspace memory has incomplete authored evidence");
       }
       invocations.push(invocationAt(sql, revision, span.command.commandId));
@@ -202,7 +203,7 @@ export function workspaceReadMemoryAt(
         counteractsChangeIds: change.value.counteractsChangeIds, intent: work.value.intent,
         authorContextId: work.value.authorContextId, createdAt: work.value.createdAt,
         externalSnapshot: work.value.externalSnapshot,
-        commit: firstSavedApplication(sql, revision, span.appliedChange.appliedChangeId),
+        commit: firstSavedApplication(sql, revision, applied.value.applicationId),
         arrival: arrivalAt(sql, revision, span),
         cause: null,
       });

@@ -8,6 +8,8 @@ import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
   HistoryTrajectorySearchInputSchema,
+  HistoryWalkCohortSchema,
+  type HistoryWalkCohort,
   PrivateLineageForPublishedEnvelopeSchema,
   type GadJsonValue,
   type HistoryTrajectorySearchInput,
@@ -1909,6 +1911,53 @@ export class GadWorkspaceDO extends DurableObjectBase {
   })
   readHistoryMemoryCause(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
     return this.semanticWorkspace().readHistoryMemoryCause(vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native history for walk invocation trails." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryWalkInvocation(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
+    return this.semanticWorkspace().readHistoryWalkInvocation(vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native history before expanding trajectory cohorts." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryWalkCohortInvocations(input: HistoryWalkCohort) {
+    const seed = HistoryWalkCohortSchema.parse(input);
+    const rows = seed.kind === "turn"
+      ? this.sql.exec(
+          `SELECT log_id, head, invocation_id FROM trajectory_invocations
+            WHERE log_id = ? AND head = ? AND turn_id = ?
+            ORDER BY invocation_id LIMIT 2001`,
+          seed.turn.logId, seed.turn.head, seed.turn.turnId,
+        ).toArray()
+      : this.sql.exec(
+          `SELECT sibling.log_id, sibling.head, sibling.invocation_id
+             FROM trajectory_invocations AS origin JOIN trajectory_invocations AS sibling
+               ON sibling.log_id = origin.log_id AND sibling.head = origin.head AND sibling.turn_id = origin.turn_id
+            WHERE origin.log_id = ?1 AND origin.head = ?2 AND origin.invocation_id = ?3
+           UNION
+           SELECT sibling.log_id, sibling.head, sibling.invocation_id
+             FROM trajectory_invocation_inputs AS origin JOIN trajectory_invocation_inputs AS sibling
+               ON sibling.input_log_id = origin.input_log_id AND sibling.input_head = origin.input_head
+              AND sibling.input_message_id = origin.input_message_id
+            WHERE origin.log_id = ?1 AND origin.head = ?2 AND origin.invocation_id = ?3
+           ORDER BY log_id, head, invocation_id LIMIT 2001`,
+          seed.invocation.logId, seed.invocation.head, seed.invocation.invocationId,
+        ).toArray();
+    if (rows.length > 2000) throw new Error("Workspace trajectory cohort contains too many invocations");
+    return rows.map(({ log_id, head, invocation_id }) => vcsTrajectoryInvocationRefSchema.parse({
+      kind: "trajectory-invocation", logId: log_id, head, invocationId: invocation_id,
+    }));
   }
 
   @schemaRpc()
