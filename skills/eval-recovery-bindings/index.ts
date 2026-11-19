@@ -39,8 +39,8 @@ export function bindEvalRecovery(assignment: Assignment) {
     : "unavailable";
   const stores: EvalRecoveryStore[] = [];
   for (const entry of native.data?.entries ?? []) {
-    if (entry.type !== "blob-text.observation") continue;
-    const parsed = NativeBlobTextObservationSchema.safeParse(entry.receipt);
+    if (entry["type"] !== "blob-text.observation") continue;
+    const parsed = NativeBlobTextObservationSchema.safeParse(entry["receipt"]);
     if (!parsed.success) {
       journal = "unavailable";
       continue;
