@@ -11,6 +11,7 @@ import {
 import { readHistoryWorkUnitIntent } from "./doltMergeReview.js";
 import {
   grantApprovedMain,
+  grantExactHistoryTransition,
   grantParticipantHistory,
   HistoryHeadChanged,
   ParticipantHistory,
@@ -461,6 +462,39 @@ it("rejects an approved main publication after its grant expires", async () => {
     history.publishApprovedMain("edit", publication, { id: canonical.id, token: grant.token }),
   ).rejects.toMatchObject({ code: "ERR_DOLT_REMOTE_FORBIDDEN" });
   expect(origin.hashOf("main")).toBe(genesis);
+});
+
+it("admits a reviewed incoming head without advancing or exposing main", async () => {
+  const { canonical, genesis, origin, createParticipant } = await workspace();
+  const { local, history, head } = await createParticipant("alice");
+  const proposed = await history.commit("edit", head, "Incoming edit", () => {
+    local.sql.exec("UPDATE files SET body = 'incoming' WHERE id = 'shared'");
+  });
+  const publication = { previousHead: genesis, proposedHead: proposed.head };
+  const branch = `incoming/${sha256HexSyncText("signed publication")}`;
+  const peer = "origin:exact-publication";
+  origin.branch.create(branch, { from: genesis });
+  const grant = grantExactHistoryTransition(origin, branch, publication, Date.now() + 5_000, peer);
+  const sender = doltRemotesOf(local.storage)!;
+  sender.remote.add("incoming", { id: canonical.id, token: grant.token });
+  const push = (to: string, requester: string) =>
+    sender.push("incoming", "ctx/edit", {
+      to,
+      transport: async (request) => origin.remote.serve(request, { peer: requester }),
+    });
+  await expect(push(branch, "origin:other-publication")).rejects.toMatchObject({
+    code: "ERR_DOLT_REMOTE_FORBIDDEN",
+  });
+  await expect(push("main", peer)).rejects.toMatchObject({ code: "ERR_DOLT_REMOTE_FORBIDDEN" });
+  await expect(push(branch, peer)).resolves.toMatchObject({ hash: proposed.head });
+  expect(origin.hashOf("main")).toBe(genesis);
+  expect(origin.hashOf(branch)).toBe(proposed.head);
+  const readGrant = grantParticipantHistory(origin, "alice");
+  sender.remote.add("ordinary", { id: canonical.id, token: readGrant.token });
+  await expect(sender.fetch("ordinary", {
+    branches: [branch],
+    transport: async (request) => origin.remote.serve(request),
+  })).rejects.toMatchObject({ code: "ERR_DOLT_REMOTE_NOT_FOUND" });
 });
 
 it("holds the approved revision while a fresh edit waits behind publication", async () => {

@@ -76,6 +76,7 @@ import {
 import {
   APPROVED_MAIN_GRANT_LIFETIME_MS,
   grantApprovedMain,
+  grantExactHistoryTransition,
   grantParticipantHistory,
   historyRetirementBranch,
   type HistoryForkRequest,
@@ -98,6 +99,23 @@ const className = "GadHistoryDO";
 const canonicalKey = "canonical";
 const canonicalId = `do:${source}:${className}:${canonicalKey}`;
 type StoredHistoryApproval = { approval: HistoryPublicationApproval; expiresAt: number };
+type IncomingHistoryPublication = MainPublication & { publicationId: string; sourceNodeId: string };
+const incomingPublicationPrefix = "incoming/";
+const digest = /^[0-9a-f]{64}$/u;
+const commitHash = /^[0-9a-f]{40}$/u;
+
+function incomingBranch(input: IncomingHistoryPublication): string {
+  if (
+    !digest.test(input.publicationId) ||
+    !digest.test(input.sourceNodeId) ||
+    !commitHash.test(input.previousHead) ||
+    !commitHash.test(input.proposedHead) ||
+    input.previousHead === input.proposedHead
+  ) {
+    throw new Error("Invalid incoming workspace history transition");
+  }
+  return incomingPublicationPrefix + input.publicationId;
+}
 type ReplayContextTip = { id: string; committed: string; working: string };
 type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[]; frozenPlanDigest?: string };
 const hostWrite = {
@@ -1075,6 +1093,86 @@ export class GadHistoryDO extends DurableObjectBase {
       kind: "grant" as const,
       id: grant.id,
       origin: { ref: `${className}:${canonicalKey}`, token: grant.token },
+    };
+  }
+
+  /** The host has verified the signed Chronolog transition and the connected peer. */
+  @rpc(hostWrite)
+  stageIncomingHistory(input: IncomingHistoryPublication) {
+    this.#assertCanonical();
+    const branch = incomingBranch(input);
+    const dolt = this.#remotes();
+    const main = this.readHistoryMain();
+    if (main.head === input.proposedHead) return { kind: "applied" as const, head: main.head };
+    if (main.head !== input.previousHead) throw new HistoryHeadChanged(input.previousHead, main.head);
+    const now = Date.now();
+    const peer = `${input.sourceNodeId}:${input.publicationId}`;
+    const grants = dolt.remote.grants();
+    for (const grant of grants) {
+      if (grant.label?.startsWith(incomingPublicationPrefix) &&
+          (grant.label === branch || (grant.expiresAt !== null && grant.expiresAt <= now))) {
+        dolt.remote.revoke(grant.id);
+      }
+    }
+    const staged = dolt.branch.list().find(({ name }) => name === branch);
+    if (staged?.hash === input.proposedHead) return { kind: "staged" as const, head: staged.hash };
+    if (staged === undefined) dolt.branch.create(branch, { from: input.previousHead });
+    const grant = grantExactHistoryTransition(
+      dolt, branch, input, now + APPROVED_MAIN_GRANT_LIFETIME_MS, peer, branch,
+    );
+    return {
+      kind: "grant" as const,
+      id: grant.id,
+      ref: `${className}:${canonicalKey}`,
+      branch,
+      token: grant.token,
+    };
+  }
+
+  @rpc(hostRead)
+  checkIncomingHistory(input: IncomingHistoryPublication): void {
+    this.#assertCanonical();
+    const branch = incomingBranch(input);
+    const main = this.readHistoryMain();
+    if (main.head !== input.previousHead) throw new HistoryHeadChanged(input.previousHead, main.head);
+    const peer = `${input.sourceNodeId}:${input.publicationId}`;
+    const allowed = this.#remotes().remote.grants().some((grant) =>
+      grant.label === branch && grant.peer === peer &&
+      grant.pushTransition?.previous === input.previousHead &&
+      grant.pushTransition.next === input.proposedHead &&
+      grant.expiresAt !== null && grant.expiresAt > Date.now(),
+    );
+    if (!allowed) throw new Error("Incoming workspace history has no live grant");
+  }
+
+  @rpc(hostWrite)
+  serveIncomingHistory(input: IncomingHistoryPublication & { bytes: Uint8Array }): Uint8Array {
+    this.checkIncomingHistory(input);
+    const bytes = rpcBytesOf(input.bytes);
+    if (!bytes) throw new Error("Invalid incoming workspace history bytes");
+    const peer = `${input.sourceNodeId}:${input.publicationId}`;
+    return this.#remotes().remote.serve(bytes, { peer });
+  }
+
+  @rpc(hostRead)
+  readIncomingHistory(input: IncomingHistoryPublication) {
+    this.#assertCanonical();
+    const branch = incomingBranch(input);
+    const main = this.readHistoryMain();
+    if (main.head !== input.previousHead) throw new HistoryHeadChanged(input.previousHead, main.head);
+    const staged = this.#remotes().branch.list().find(({ name }) => name === branch);
+    if (staged?.hash !== input.proposedHead) throw new Error("Incoming workspace history is incomplete");
+    const event = committedWorkspaceEvent(this.sql, staged.hash);
+    if (event?.head !== staged.hash) throw new Error("Incoming workspace history does not name a committed event");
+    return {
+      head: event.head,
+      state: { kind: "event" as const, eventId: event.eventId },
+      repositories: workspaceRepositoriesAt(this.sql, event.head),
+      previousEventId: main.eventId,
+      contentHashes: [...new Set([
+        ...workspacePlacementRoots(this.sql, [event.head]),
+        ...workspaceExternalDeltaRoots(this.sql, [event.head]),
+      ])].sort(compareUtf16CodeUnits),
     };
   }
 
