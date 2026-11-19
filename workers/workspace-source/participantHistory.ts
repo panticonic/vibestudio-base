@@ -33,7 +33,7 @@ import type {
   VcsSemanticNodeRef,
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
-import { vcsBlameResultSchema } from "@vibestudio/service-schemas/vcs";
+import { vcsBlameResultSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -190,6 +190,11 @@ function historyForkBranch(request: HistoryForkRequest): string {
   return `fork/${sha256HexSyncText(canonicalJson(request))}`;
 }
 
+function contentSourceKey(contextId: string, stateHash: string): string {
+  if (!/^state:[0-9a-f]{64}$/u.test(stateHash)) throw new Error("Invalid workspace content state hash");
+  return `history-content-source:${sha256HexSyncText(canonicalJson([contextId, stateHash]))}`;
+}
+
 function branchSegment(value: string): string {
   if (!value) throw new Error("Missing GAD branch identity");
   if (
@@ -315,7 +320,7 @@ export class ParticipantHistory {
   readonly #storage: WorkspaceStorage;
   readonly #dolt: DoltRemoteStorage;
   readonly #transport: DoltRemoteTransport;
-  readonly #discardJournal: HistoryReceiptStore | undefined;
+  readonly #receipts: HistoryReceiptStore | undefined;
   #discardJournalReady = false;
   #connectedOrigin: string | undefined;
   readonly #turns = new Map<string, Promise<unknown>>();
@@ -324,7 +329,7 @@ export class ParticipantHistory {
     participantId: string,
     storage: WorkspaceStorage,
     transport: DoltRemoteTransport,
-    discardJournal?: HistoryReceiptStore,
+    receipts?: HistoryReceiptStore,
   ) {
     this.#participant = branchSegment(participantId);
     this.#storage = storage;
@@ -332,7 +337,7 @@ export class ParticipantHistory {
     if (!dolt) throw new Error("GAD work cells require Dolt remotes");
     this.#dolt = dolt;
     this.#transport = transport;
-    this.#discardJournal = discardJournal;
+    this.#receipts = receipts;
   }
 
   connect(origin: DoltRemoteTarget): Promise<string> {
@@ -343,7 +348,7 @@ export class ParticipantHistory {
     return this.#run(async () => {
       const identity = this.#originIdentity(origin);
       const branch = this.#contextBranch(contextId);
-      const adoption = this.#discardJournal?.get(`history-fork-adoption:${branch}`);
+      const adoption = this.#receipts?.get(`history-fork-adoption:${branch}`);
       if (adoption && !(JSON.parse(adoption) as HistoryForkAdoption).completed) {
         throw new Error("Workspace context fork has not completed");
       }
@@ -376,6 +381,28 @@ export class ParticipantHistory {
       const commit = this.#resolveState(contextId, ref);
       if (!commit) throw new Error(`Workspace state is outside context ${contextId}`);
       return workspaceRepositoriesAt(this.#storage.sql, commit);
+    });
+  }
+
+  rememberContentSource(contextId: string, stateHash: string, state: StateNodeRef): Promise<void> {
+    return this.#run(() => {
+      const receipts = this.#receipts;
+      if (!receipts) throw new Error("Workspace build source requires local receipt storage");
+      if (!this.#resolveState(contextId, state))
+        throw new Error("Workspace build source is outside the caller's visible workspace history");
+      const key = contentSourceKey(contextId, stateHash);
+      const encoded = canonicalJson(state);
+      if (receipts.get(key) !== encoded) receipts.set(key, encoded);
+    });
+  }
+
+  contentSource(contextId: string, stateHash: string) {
+    return this.#run(() => {
+      const stored = this.#receipts?.get(contentSourceKey(contextId, stateHash));
+      if (!stored) return null;
+      const state = vcsStateNodeRefSchema.parse(JSON.parse(stored));
+      const commit = this.#resolveState(contextId, state);
+      return commit ? { state, repositories: workspaceRepositoriesAt(this.#storage.sql, commit) } : null;
     });
   }
 
@@ -449,7 +476,7 @@ export class ParticipantHistory {
     return contextIds.flatMap((contextId) => {
       const branch = `ctx/${branchSegment(contextId)}`;
       const head = branches.get(branch);
-      return head && !this.#discardJournal?.get(`history-retired:${branch}`) ? [{ contextId, head }] : [];
+      return head && !this.#receipts?.get(`history-retired:${branch}`) ? [{ contextId, head }] : [];
     });
   }
 
@@ -814,7 +841,7 @@ export class ParticipantHistory {
   /** Capture the first selected frontier and expose it to one storage peer. */
   offerContextFork(request: HistoryForkRequest, local: boolean) {
     return this.#run(() => {
-      const journal = this.#discardJournal;
+      const journal = this.#receipts;
       if (!journal) throw new Error("Workspace fork requires local receipt storage");
       const branch = historyForkBranch(request);
       const key = `history-fork-offer:${branch}`;
@@ -849,7 +876,7 @@ export class ParticipantHistory {
 
   finishContextFork(request: HistoryForkRequest, seed: HistoryForkSeed): Promise<void> {
     return this.#run(() => {
-      const journal = this.#discardJournal;
+      const journal = this.#receipts;
       const branch = historyForkBranch(request);
       const key = `history-fork-offer:${branch}`;
       const stored = journal?.get(key);
@@ -882,7 +909,7 @@ export class ParticipantHistory {
   }): Promise<HistoryForkSeed> {
     return this.#run(async () => {
       const { request, seed, source, origin, transport, local } = input;
-      const journal = this.#discardJournal;
+      const journal = this.#receipts;
       if (!journal) throw new Error("Workspace fork requires local receipt storage");
       if (seed.branch !== historyForkBranch(request))
         throw new Error("Workspace fork named a different target");
@@ -943,7 +970,7 @@ export class ParticipantHistory {
   }
 
   #discardReceipt(input: VcsDiscardInput, cause: HistoryCommand["cause"]): HistoryDiscardReceipt | null {
-    const stored = this.#discardJournal?.get(discardReceiptKey(input.commandId));
+    const stored = this.#receipts?.get(discardReceiptKey(input.commandId));
     if (stored == null) return null;
     const receipt = JSON.parse(stored) as HistoryDiscardReceipt;
     // Receipts created before public routing included the original physical head.
@@ -962,7 +989,7 @@ export class ParticipantHistory {
     cause: HistoryCommand["cause"],
   ): Promise<HistoryDiscardReceipt["result"]> {
     return this.#run(() => {
-      const journal = this.#discardJournal;
+      const journal = this.#receipts;
       if (!journal) throw new Error("Workspace discard requires local receipt storage");
       const { commandId, contextId } = input;
       const requestDigest = compactId("discard-request", { input, cause });
@@ -993,7 +1020,7 @@ export class ParticipantHistory {
   }
 
   #restoreDiscard(): void {
-    const journal = this.#discardJournal;
+    const journal = this.#receipts;
     if (!journal || this.#discardJournalReady) return;
     const stored = journal.get(PENDING_DISCARD_KEY);
     if (stored !== null) {
@@ -1684,7 +1711,7 @@ export class ParticipantHistory {
 
   retireContext(contextId: string, main: string, origin: DoltRemoteTarget): Promise<void> {
     return this.#run(async () => {
-      const journal = this.#discardJournal;
+      const journal = this.#receipts;
       if (!journal) throw new Error("Workspace context retirement requires local receipt storage");
       const context = `ctx/${branchSegment(contextId)}`;
       journal.set(`history-retired:${context}`, "true");
@@ -1757,7 +1784,7 @@ export class ParticipantHistory {
   }
 
   #hasCommand(at: string, contextId: string, command: HistoryCommand): boolean {
-    if (this.#discardJournal?.get(discardReceiptKey(command.commandId)) != null) {
+    if (this.#receipts?.get(discardReceiptKey(command.commandId)) != null) {
       throw new SemanticVcsError("CommandIdReuse", "This workspace command was recorded as a discard");
     }
     const prior = this.#storage.sql
@@ -1852,7 +1879,7 @@ export class ParticipantHistory {
 
   #contextBranch(contextId: string): string {
     const branch = `ctx/${branchSegment(contextId)}`;
-    if (this.#discardJournal?.get(`history-retired:${branch}`)) {
+    if (this.#receipts?.get(`history-retired:${branch}`)) {
       throw new Error("Workspace participant context has retired");
     }
     return branch;

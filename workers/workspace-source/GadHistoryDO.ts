@@ -432,6 +432,17 @@ export class GadHistoryDO extends DurableObjectBase {
     return this.#history().projection(input.contextId);
   }
 
+  @rpc(hostWrite)
+  rememberHistoryContentSource(input: { contextId: string; stateHash: string; state: StateNodeRef }) {
+    this.#assertWritable();
+    return this.#history().rememberContentSource(input.contextId, input.stateHash, vcsStateNodeRefSchema.parse(input.state));
+  }
+
+  @rpc(hostRead)
+  readHistoryContentSource(input: { contextId: string; stateHash: string }) {
+    return this.#history().contentSource(input.contextId, input.stateHash);
+  }
+
   @rpc(hostRead)
   readHistoryStatus(input: { contextId: string }) {
     return this.#history().status(input.contextId);
