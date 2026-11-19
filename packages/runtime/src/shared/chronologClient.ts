@@ -13,6 +13,11 @@ export interface ChronologClient {
     readonly invite: MainRpcMethods["chronolog.groups.invite"];
     readonly join: MainRpcMethods["chronolog.groups.join"];
   };
+  readonly history: {
+    readonly current: MainRpcMethods["chronolog.history.current"];
+    readonly share: MainRpcMethods["chronolog.history.share"];
+    readonly publish: MainRpcMethods["chronolog.history.publish"];
+  };
   readonly transact: MainRpcMethods["chronolog.transact"];
   readonly outcome: MainRpcMethods["chronolog.outcome"];
   readonly query: MainRpcMethods["chronolog.query"];
@@ -31,6 +36,11 @@ export function createChronologClient(rpc: RpcClient): ChronologClient {
       create: (input) => call("chronolog.groups.create", [input]),
       invite: (input) => call("chronolog.groups.invite", [input]),
       join: (input) => call("chronolog.groups.join", [input]),
+    },
+    history: {
+      current: (input) => call("chronolog.history.current", [input]),
+      share: (input) => call("chronolog.history.share", [input]),
+      publish: (input) => call("chronolog.history.publish", [input]),
     },
     transact: (input) => call("chronolog.transact", [input]),
     outcome: (input) => call("chronolog.outcome", [input]),

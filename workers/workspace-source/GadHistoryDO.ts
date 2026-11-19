@@ -161,6 +161,7 @@ function historyContextKey(contextId: string): string {
 /** The hosted, versioned history owner. The workspace's trajectory mirror lives separately. */
 export class GadHistoryDO extends DurableObjectBase {
   readonly #allocations = new Map<string, Promise<unknown>>();
+  readonly #outgoing = new Set<string>();
   #participant: ParticipantHistory | undefined;
 
   protected createTables(): void {
@@ -1096,6 +1097,62 @@ export class GadHistoryDO extends DurableObjectBase {
     };
   }
 
+  #assertPublishedHistory(input: { eventId: string; head: string }): void {
+    this.#assertCanonical();
+    const current = this.#remotes().hashOf("main");
+    if (workspaceCommitForRef(this.sql, current, { kind: "event", eventId: input.eventId }) !== input.head)
+      throw new Error("The selected history revision has no published event");
+  }
+
+  @rpc(hostRead)
+  hasOutgoingHistoryContent(input: { eventId: string; head: string; digest: string }): boolean {
+    this.#assertPublishedHistory(input);
+    if (!digest.test(input.digest)) throw new Error("Invalid outgoing workspace content digest");
+    return workspaceHasFileContent(this.sql, input.head, input.digest) ||
+      workspaceExternalDeltaRoots(this.sql, [input.head]).includes(input.digest);
+  }
+
+  @rpc(hostWrite)
+  async pushOutgoingHistory(input: {
+    transferId: string;
+    eventId: string;
+    head: string;
+    origin: DoltRemoteTarget;
+    branch: string;
+  }) {
+    this.#assertPublishedHistory(input);
+    if (!/^[a-f0-9-]{36}$/u.test(input.transferId) || !/^incoming\/[a-f0-9]{64}$/u.test(input.branch) ||
+        this.#outgoing.has(input.transferId)) {
+      throw new Error("Invalid outgoing workspace history transfer");
+    }
+    const dolt = this.#remotes();
+    for (const { name } of dolt.remote.list()) {
+      if (name.startsWith("chronolog-") && !this.#outgoing.has(name.slice("chronolog-".length)))
+        dolt.remote.remove(name);
+    }
+    for (const { name } of dolt.branch.list()) {
+      if (name.startsWith("outgoing/") && !this.#outgoing.has(name.slice("outgoing/".length)))
+        dolt.branch.delete(name, { force: true });
+    }
+    const remoteName = `chronolog-${input.transferId}`;
+    const branch = `outgoing/${input.transferId}`;
+    dolt.branch.create(branch, { from: input.head });
+    this.#outgoing.add(input.transferId);
+    try {
+      dolt.remote.add(remoteName, input.origin);
+      return await dolt.push(remoteName, branch, {
+        to: input.branch,
+        transport: (bytes) => this.rpc.call("main", mainRpcMethods["runtime.forwardHistoryPacket"], [
+          { transferId: input.transferId, bytes },
+        ]),
+      });
+    } finally {
+      this.#outgoing.delete(input.transferId);
+      if (dolt.remote.list().some(({ name }) => name === remoteName)) dolt.remote.remove(remoteName);
+      dolt.branch.delete(branch, { force: true });
+    }
+  }
+
   /** The host has verified the signed Chronolog transition and the connected peer. */
   @rpc(hostWrite)
   stageIncomingHistory(input: IncomingHistoryPublication) {
@@ -1154,8 +1211,7 @@ export class GadHistoryDO extends DurableObjectBase {
     return this.#remotes().remote.serve(bytes, { peer });
   }
 
-  @rpc(hostRead)
-  readIncomingHistory(input: IncomingHistoryPublication) {
+  #incomingHistoryHead(input: IncomingHistoryPublication) {
     this.#assertCanonical();
     const branch = incomingBranch(input);
     const main = this.readHistoryMain();
@@ -1164,6 +1220,20 @@ export class GadHistoryDO extends DurableObjectBase {
     if (staged?.hash !== input.proposedHead) throw new Error("Incoming workspace history is incomplete");
     const event = committedWorkspaceEvent(this.sql, staged.hash);
     if (event?.head !== staged.hash) throw new Error("Incoming workspace history does not name a committed event");
+    return { main, event };
+  }
+
+  @rpc(hostRead)
+  hasIncomingHistoryContent(input: IncomingHistoryPublication & { digest: string }): boolean {
+    if (!digest.test(input.digest)) throw new Error("Invalid incoming workspace content digest");
+    const { event } = this.#incomingHistoryHead(input);
+    return workspaceHasFileContent(this.sql, event.head, input.digest) ||
+      workspaceExternalDeltaRoots(this.sql, [event.head]).includes(input.digest);
+  }
+
+  @rpc(hostRead)
+  readIncomingHistory(input: IncomingHistoryPublication) {
+    const { main, event } = this.#incomingHistoryHead(input);
     return {
       head: event.head,
       state: { kind: "event" as const, eventId: event.eventId },
@@ -1174,6 +1244,67 @@ export class GadHistoryDO extends DurableObjectBase {
         ...workspaceExternalDeltaRoots(this.sql, [event.head]),
       ])].sort(compareUtf16CodeUnits),
     };
+  }
+
+  #incomingApproval(input: IncomingHistoryPublication & { group: string; publisher: string }) {
+    if (!digest.test(input.group) || !digest.test(input.publisher))
+      throw new Error("Incoming workspace history has no verified Chronolog publisher");
+    const { main, event } = this.#incomingHistoryHead(input);
+    return {
+      publicationId: `chronolog-publication:${input.publicationId}`,
+      participantId: `chronolog:${input.group}:${input.publisher}`,
+      previousEventId: main.eventId,
+      proposedEventId: event.eventId,
+      publication: { previousHead: main.head, proposedHead: event.head },
+    } satisfies HistoryPublicationApproval;
+  }
+
+  /** The same protected host gate that publishes local work has accepted this exact revision. */
+  @rpc(hostWrite)
+  authorizeIncomingHistory(input: IncomingHistoryPublication & { group: string; publisher: string }) {
+    const approval = this.#incomingApproval(input);
+    const previous = this.#storedApproval(approval.publicationId);
+    if (previous && canonicalJson(previous.approval) !== canonicalJson(approval))
+      throw new Error("Incoming workspace publication approval changed");
+    const expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS;
+    this.setStateValue(this.#approvalKey(approval.publicationId), canonicalJson({
+      approval, expiresAt,
+    } satisfies StoredHistoryApproval));
+  }
+
+  @rpc(hostWrite)
+  publishIncomingHistory(input: IncomingHistoryPublication & { group: string; publisher: string }) {
+    this.#assertCanonical();
+    const branch = incomingBranch(input);
+    const id = `chronolog-publication:${input.publicationId}`;
+    const recorded = this.#storedApproval(id);
+    if (!recorded) throw new Error("Incoming workspace history requires durable approval");
+    if (recorded.approval.publication.previousHead !== input.previousHead ||
+        recorded.approval.publication.proposedHead !== input.proposedHead ||
+        recorded.approval.participantId !== `chronolog:${input.group}:${input.publisher}`) {
+      throw new Error("Incoming workspace history approval names a different publication");
+    }
+    const dolt = this.#remotes();
+    if (!this.#publishedApproval(recorded.approval)) {
+      const approval = this.#incomingApproval(input);
+      if (canonicalJson(approval) !== canonicalJson(recorded.approval) || recorded.expiresAt <= Date.now())
+        throw new Error("Incoming workspace history approval is no longer active");
+      if (dolt.branch.current() !== "main" || dolt.status().length !== 0)
+        throw new Error("Canonical workspace history is not ready for a fast-forward");
+      const base = dolt.query("SELECT dolt_merge_base(?1, ?2)", [
+        { index: 1, value: input.previousHead },
+        { index: 2, value: input.proposedHead },
+      ]).rows[0]?.[0];
+      if (base !== input.previousHead) throw new Error("Incoming workspace history cannot fast-forward main");
+      const result = dolt.merge(branch);
+      if (result.hash !== input.proposedHead || result.conflicts.length !== 0)
+        throw new Error("Incoming workspace history did not advance to the approved head");
+    }
+    for (const grant of dolt.remote.grants()) {
+      if (grant.label === branch) dolt.remote.revoke(grant.id);
+    }
+    if (dolt.branch.list().some(({ name }) => name === branch)) dolt.branch.delete(branch, { force: true });
+    return { head: input.proposedHead };
   }
 
   @rpc(hostRead)
