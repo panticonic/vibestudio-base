@@ -29,6 +29,10 @@ function fakeRuntime() {
     rpc: {
       async call(_target: string, method: { name: string }, args: unknown[]) {
         calls.push({ name: method.name, args });
+        if (method.name === "runtime.createEntity") {
+          const { key, contextId } = args[0] as { key: string; contextId: string };
+          return { targetId: `do:workers/tendril:TendrilDO:${key}`, contextId };
+        }
         if (method.name === "describe")
           return {
             tendrilId: "t",
@@ -80,6 +84,16 @@ describe("@workspace/tendril/agent", () => {
       f.rt,
     );
     expect(f.calls[0]).toEqual({
+      name: "runtime.createEntity",
+      args: [{
+        kind: "do",
+        execution: { surface: "code", source: "workers/tendril" },
+        className: "TendrilDO",
+        key: "t",
+        contextId: "ctx",
+      }],
+    });
+    expect(f.calls[1]).toEqual({
       name: "create",
       args: [{ source: "panels/trip", channelId: "chan", contextId: "ctx", name: "Trip" }],
     });

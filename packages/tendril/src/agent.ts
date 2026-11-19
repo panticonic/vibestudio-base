@@ -11,6 +11,7 @@
  *
  * A presentation is an ordinary panel slot whose stateArgs name the tendril.
  */
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcCaller } from "@vibestudio/rpc";
 import { createRpcMethodCaller } from "@vibestudio/shared/rpcMethods";
 import type { StateOp, TendrilAbout, TendrilDescription } from "./protocol.js";
@@ -103,7 +104,17 @@ export async function createTendril(
 ): Promise<TendrilHandle> {
   const rt = await runtimeOf(runtime);
   const tendrilId = o.tendrilId ?? crypto.randomUUID();
-  await createRpcMethodCaller(rt.rpc, tendrilTargetId(tendrilId), tendrilRpcMethods)("create", [
+  const targetId = tendrilTargetId(tendrilId);
+  const owner = await rt.rpc.call("main", mainRpcMethods["runtime.createEntity"], [{
+    kind: "do",
+    execution: { surface: "code", source: "workers/tendril" },
+    className: "TendrilDO",
+    key: tendrilId,
+    contextId: o.contextId,
+  }]);
+  if (owner.targetId !== targetId || owner.contextId !== o.contextId)
+    throw new Error("Tendril owner belongs to another target or context");
+  await createRpcMethodCaller(rt.rpc, targetId, tendrilRpcMethods)("create", [
     {
       source: o.source,
       channelId: o.channelId,

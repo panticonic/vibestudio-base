@@ -99,6 +99,25 @@ describe("TendrilDO", () => {
     db.close();
   });
 
+  it("uses the attested device when the page shell cannot report it", async () => {
+    const { instance, db } = await makeTendril();
+    await instance.create(createInput);
+    Object.defineProperty(instance, "caller", { value: {
+      callerId: "panel:runtime-page",
+      callerKind: "panel",
+      callerPanelId: "panel:slot",
+      callerDeviceId: "local:headless-host",
+    } });
+    await instance.registerPresentation({ slotId: "panel:slot", deviceId: null, label: "Headless" });
+    expect((await instance.describe()).presentations).toEqual([
+      { slotId: "panel:slot", deviceId: "local:headless-host", label: "Headless" },
+    ]);
+    await expect(instance.registerPresentation({
+      slotId: "panel:another-slot", deviceId: null, label: "Other",
+    })).rejects.toThrow(/only register its own/);
+    db.close();
+  });
+
   it("tracks presentations and their functions", async () => {
     const { instance, db } = await makeTendril();
     await instance.create(createInput);

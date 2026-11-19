@@ -131,3 +131,9 @@ time out: they wait until something happens.
 ## When you are done
 
 `await t.archive()` closes the pages. The channel history and state remain.
+
+The shared Natlang program exposes `domains.tendril.runTendril` for a
+caller-owned tendril assignment. The binding in `live.ts` scopes
+the source, device, page fields, exposed functions, and candidate revisions.
+Its report pairs each completed operation with readbacks from the actual
+page and Tendril state. An offline presentation returns a pending receipt.

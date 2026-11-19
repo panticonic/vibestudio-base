@@ -169,11 +169,14 @@ export class TendrilDO extends DurableObjectBase {
   }): Promise<void> {
     this.requireIdentity();
     const parsed = TendrilPresentationSchema.parse(p);
+    const caller = this.caller;
+    if (caller?.callerPanelId && caller.callerPanelId !== parsed.slotId)
+      throw new Error("A Tendril page can only register its own presentation");
     this.sql.exec(
       `INSERT INTO presentations(slot_id, device_id, label) VALUES (?, ?, ?)
        ON CONFLICT(slot_id) DO UPDATE SET device_id = excluded.device_id, label = excluded.label`,
       parsed.slotId,
-      parsed.deviceId,
+      caller?.callerDeviceId ?? parsed.deviceId,
       parsed.label,
     );
   }

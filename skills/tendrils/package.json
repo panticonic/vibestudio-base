@@ -1,0 +1,13 @@
+{
+  "name": "@workspace-skills/tendrils",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./live": "./live.ts",
+    "./workflow/types": "./workflow/types.ts"
+  },
+  "dependencies": {
+    "@workspace/tendril": "workspace:*"
+  }
+}
