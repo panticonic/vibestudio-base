@@ -119,6 +119,17 @@ function incomingBranch(input: IncomingHistoryPublication): string {
 }
 type ReplayContextTip = { id: string; committed: string; working: string };
 type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[]; frozenPlanDigest?: string };
+type SharedHistorySeed = { sourceNodeId: string; head: string; eventId: string };
+type SharedHistorySeedReceipt = { seed: SharedHistorySeed; originalHead: string; installed: boolean };
+const seedRemote = "workspace-seed";
+const seedReceiptKey = "history-seed-receipt";
+const localSeedBranch = "seed/initial";
+
+function sharedSeedBranch(peer: string, head: string): string {
+  if (!digest.test(peer) || !commitHash.test(head)) throw new Error("Invalid workspace history seed");
+  return `seed/${sha256HexSyncText(canonicalJson([peer, head]))}`;
+}
+
 const hostWrite = {
   principals: ["host"],
   website: {
@@ -189,6 +200,8 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostWrite)
   stageHistoryReplayStep(input: PreparedReplayStep): { head: string } {
     this.#assertCanonical();
+    if (this.getStateValue(seedReceiptKey) !== null)
+      throw new Error("Workspace history is reserved for a shared seed");
     const head = this.#schemaHead();
     const sealed = this.getStateValue("history-installed") !== null;
     return { head: installPreparedReplayStep(this.ctx.storage, head, input, sealed).hash };
@@ -197,6 +210,8 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostWrite)
   finishHistoryReplay(input: Omit<ReplayReceipt, "contexts"> & { contexts?: ReplayContextTip[] }): { head: string } {
     this.#assertCanonical();
+    if (this.getStateValue(seedReceiptKey) !== null)
+      throw new Error("Workspace history is reserved for a shared seed");
     const contexts = [...(input.contexts ?? [])].sort((left, right) => compareUtf16CodeUnits(left.id, right.id));
     const { head: proposedHead, eventId, frozenPlanDigest } = input;
     if (frozenPlanDigest !== undefined &&
@@ -237,6 +252,158 @@ export class GadHistoryDO extends DurableObjectBase {
       this.setStateValue("history-replay-receipt", canonicalJson(receipt));
     });
     return { head };
+  }
+
+  /** The host has approved a destination to fetch this exact published revision. */
+  @rpc(hostWrite)
+  offerSharedHistorySeed(input: { destinationNodeId: string; head: string; eventId: string }) {
+    this.#assertPublishedHistory(input);
+    const branch = sharedSeedBranch(input.destinationNodeId, input.head);
+    const contentHashes = this.#sharedSeedContents(input.head);
+    const dolt = this.#remotes();
+    const now = Date.now();
+    for (const grant of dolt.remote.grants()) {
+      const label = grant.label;
+      if (!label?.startsWith("seed/")) continue;
+      if (label === branch || (
+        grant.expiresAt !== null && grant.expiresAt <= now)) {
+        dolt.remote.revoke(grant.id);
+        if (label !== branch && dolt.branch.list().some(({ name }) => name === label))
+          dolt.branch.delete(label, { force: true });
+      }
+    }
+    if (!dolt.branch.list().some(({ name }) => name === branch)) {
+      dolt.branch.create(branch, { from: input.head });
+    }
+    if (dolt.hashOf(branch) !== input.head) throw new Error("Workspace history seed branch changed");
+    const grant = dolt.remote.grant({
+      fetch: true, label: branch, branches: [branch], peer: input.destinationNodeId,
+      expiresAt: now + APPROVED_MAIN_GRANT_LIFETIME_MS,
+    });
+    return { branch, id: grant.id, token: grant.token, contentHashes };
+  }
+
+  /** Serve fetch/ref requests only on the application-authenticated destination's grant. */
+  @rpc(hostRead)
+  serveSharedHistorySeed(input: { destinationNodeId: string; bytes: Uint8Array }): Uint8Array {
+    this.#assertCanonical();
+    const bytes = rpcBytesOf(input.bytes);
+    if (!digest.test(input.destinationNodeId) || !bytes) {
+      throw new Error("Invalid workspace history seed request");
+    }
+    return this.#remotes().remote.serve(bytes, { peer: input.destinationNodeId });
+  }
+
+  @rpc(hostWrite)
+  releaseSharedHistorySeed(input: { id: string; destinationNodeId: string; head: string }): void {
+    this.#assertCanonical();
+    const branch = sharedSeedBranch(input.destinationNodeId, input.head);
+    const dolt = this.#remotes();
+    const grant = dolt.remote.grants().find(({ id, label }) => id === input.id && label === branch);
+    if (!grant) return;
+    dolt.remote.revoke(grant.id);
+    if (dolt.branch.list().some(({ name }) => name === branch)) dolt.branch.delete(branch, { force: true });
+  }
+
+  @rpc(hostRead)
+  readSharedHistorySeedReceipt(): SharedHistorySeedReceipt | null {
+    this.#assertCanonical();
+    const value = this.getStateValue(seedReceiptKey);
+    return value === null ? null : JSON.parse(value) as SharedHistorySeedReceipt;
+  }
+
+  /** Stage the exact published ancestry before validating files and preparing the host ref update. */
+  @rpc(hostWrite)
+  stageSharedHistorySeed(input: SharedHistorySeed & {
+    destinationNodeId: string; branch: string; token: string; transferId: string;
+  }) {
+    this.#assertCanonical();
+    if (!digest.test(input.sourceNodeId) || input.sourceNodeId === input.destinationNodeId || !input.eventId ||
+      !/^[a-f0-9-]{36}$/u.test(input.transferId) ||
+      input.branch !== sharedSeedBranch(input.destinationNodeId, input.head) || !input.token) {
+      throw new Error("Invalid workspace history seed");
+    }
+    const seed = { head: input.head, eventId: input.eventId, sourceNodeId: input.sourceNodeId };
+    return serializeByKey(this.#allocations, seedRemote, async () => {
+      const prior = this.readSharedHistorySeedReceipt();
+      if (prior && canonicalJson(prior.seed) !== canonicalJson(seed))
+        throw new Error("Workspace history already has a different seed");
+      const dolt = this.#remotes();
+      const originalHead = prior?.originalHead ?? this.#schemaHead();
+      if (!prior?.installed && (this.getStateValue("history-installed") !== null ||
+        dolt.hashOf("main") !== originalHead || dolt.branch.current() !== "main" || dolt.status().length !== 0)) {
+        throw new Error("Only a fresh workspace can adopt a shared history seed");
+      }
+      if (!prior?.installed && !dolt.branch.list().some(({ name }) => name === localSeedBranch)) {
+        if (dolt.remote.list().some(({ name }) => name === seedRemote)) dolt.remote.remove(seedRemote);
+        dolt.remote.add(seedRemote, { ref: `${className}:${canonicalKey}`, token: input.token });
+        try {
+          const { branches } = await dolt.fetch(seedRemote, {
+            branches: [input.branch],
+            transport: (bytes) => this.rpc.call("main", mainRpcMethods["runtime.forwardHistoryPacket"], [
+              { transferId: input.transferId, bytes },
+            ]),
+          });
+          if (Object.keys(branches).length !== 1 || branches[input.branch] !== seed.head)
+            throw new Error("Workspace history fetch returned a different seed");
+          this.#assertSeedEvent(seed);
+          if (this.getStateValue("history-installed") !== null || dolt.hashOf("main") !== originalHead)
+            throw new Error("Workspace history initialized during the seed transfer");
+          this.setStateValue(seedReceiptKey, canonicalJson({ seed, originalHead, installed: false }));
+          dolt.branch.create(localSeedBranch, { from: seed.head });
+        } finally {
+          dolt.remote.remove(seedRemote);
+        }
+      }
+      if (!prior?.installed && dolt.hashOf(localSeedBranch) !== seed.head)
+        throw new Error("Workspace history seed branch changed");
+      this.#assertSeedEvent(seed);
+      return {
+        state: { kind: "event" as const, eventId: seed.eventId },
+        repositories: workspaceRepositoriesAt(this.sql, seed.head),
+        contentHashes: this.#sharedSeedContents(seed.head),
+      };
+    });
+  }
+
+  /** Install a staged seed after the protected host has approved its candidate files. */
+  @rpc(hostWrite)
+  installSharedHistorySeed(seed: SharedHistorySeed) {
+    const receipt = this.readSharedHistorySeedReceipt();
+    if (!receipt || canonicalJson(receipt.seed) !== canonicalJson(seed))
+      throw new Error("Workspace history seed has no exact staged receipt");
+    const dolt = this.#remotes();
+    if (!receipt.installed) {
+      this.#assertSeedEvent(seed);
+      const current = dolt.hashOf("main");
+      if (this.getStateValue("history-installed") !== null ||
+        (current !== receipt.originalHead && current !== seed.head) ||
+        dolt.hashOf(localSeedBranch) !== seed.head || dolt.branch.current() !== "main" || dolt.status().length !== 0) {
+        throw new Error("Workspace history changed before its seed was installed");
+      }
+      if (current !== seed.head) dolt.reset({ hard: true, to: seed.head });
+      this.ctx.storage.transactionSync(() => {
+        this.setStateValue("history-installed", seed.head);
+        this.setStateValue(seedReceiptKey, canonicalJson({ ...receipt, installed: true }));
+      });
+    }
+    if (dolt.branch.list().some(({ name }) => name === localSeedBranch)) {
+      dolt.branch.delete(localSeedBranch, { force: true });
+    }
+    return seed;
+  }
+
+  #assertSeedEvent(seed: SharedHistorySeed): void {
+    const event = committedWorkspaceEvent(this.sql, seed.head);
+    if (event?.head !== seed.head || event.eventId !== seed.eventId)
+      throw new Error("Workspace history seed has a different committed event");
+  }
+
+  #sharedSeedContents(head: string): string[] {
+    return [...new Set([
+      ...workspacePlacementRoots(this.sql, [head]),
+      ...workspaceExternalDeltaRoots(this.sql, [head]),
+    ])].sort(compareUtf16CodeUnits);
   }
 
   @rpc(hostRead)
