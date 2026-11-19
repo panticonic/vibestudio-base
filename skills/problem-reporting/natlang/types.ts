@@ -81,3 +81,33 @@ export type ProblemReviewReport = {
   basis: string | null;
   evidence: ProblemEvidenceReview;
 };
+
+export type SaveProblemRequest = { goal: string; operationId: string };
+export type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+export type LocalProblemObservation = {
+  review: ProblemRequest;
+  draft: LocalDraft | null;
+};
+export type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+export type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+export type LocalDraftConfirmation = LocalDraftWrite & {
+  sections: LocalDraftSection[];
+};
+export type SaveProblemResult = {
+  defect: DefectClass;
+  status: "saved-local" | "held";
+  next: ProblemNext;
+  saved: LocalDraftConfirmation | null;
+};

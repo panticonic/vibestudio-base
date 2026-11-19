@@ -476,6 +476,128 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  problemDraftRead: `/** Observe and confirm the caller's assigned local manual problem report. */
+
+type Evidence = {
+  /** What the user (or the agent on the user's behalf) was trying to do, in a sentence or two. */
+  goal: string;
+  /** What actually happened: error text exactly as shown, or the wrong result described. */
+  observed: string;
+  /** What should have happened according to the documentation or the user. Empty when unknown. */
+  expected: string;
+  /** The product operation token when known, for example \`eval.returnImage\`; null when unknown. Letters, digits and \`_.:@/-\` only. */
+  operation: string | null;
+  /** What was tried since, and whether a retry worked. Empty when nothing was tried. */
+  attempts: string;
+  /** True only when the agent itself reproduced the failure; false when it is the user's account or a single sighting. */
+  reproduced: boolean;
+  /** One invocation to fetch a bounded diagnostic for, when the failure happened inside a known invocation. */
+  invocation?: { trajectoryId: string; branchId: string; invocationId: string };
+};
+
+type ProblemEvidenceState =
+  | "observed"
+  | "denied"
+  | "expired"
+  | "unavailable";
+
+type ProblemEvidenceReceipt = {
+  id: string;
+  kind: "invocation" | "build" | "panel" | "message";
+  state: ProblemEvidenceState;
+  selected: boolean;
+};
+
+type ReportRevision = {
+  id: string;
+  revision: number;
+  basisRevision: number;
+  userEdits: boolean;
+};
+
+type FrozenReport = {
+  revision: number;
+  digest: string;
+  sanitized: boolean;
+  approval: "none" | "pending" | "approved" | "denied" | "dismissed";
+};
+
+type ProblemRequest = {
+  goal: string;
+  consent: "decline" | "unspecified" | "save" | "share";
+  account: Evidence;
+  evidence: ProblemEvidenceReceipt[];
+  draft: ReportRevision | null;
+  frozen: FrozenReport | null;
+};
+
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+
+type LocalProblemObservation = {
+  review: ProblemRequest;
+  draft: LocalDraft | null;
+};
+
+type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+
+type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+
+type LocalDraftConfirmation = LocalDraftWrite & {
+  sections: LocalDraftSection[];
+};
+
+/** Observe and confirm the caller's assigned local manual problem report. */
+export function observe(operationId: string): Promise<LocalProblemObservation>;
+
+/** Observe and confirm the caller's assigned local manual problem report. */
+export function confirm(write: LocalDraftWrite): Promise<LocalDraftConfirmation>;`,
+  problemDraftOpen: `/** Create the caller's assigned local manual problem report. */
+
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+
+/** Create the caller's assigned local manual problem report. */
+export function create(operationId: string): Promise<LocalDraft>;`,
+  problemDraftAppend: `/** Append the authored sections to the exact assigned report revision. */
+
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+
+type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+
+type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+
+/** Append the authored sections to the exact assigned report revision. */
+export function append(
+      draft: LocalDraft,
+      sections: LocalDraftSection[],
+    ): Promise<LocalDraftWrite>;`,
   agenticChangeSource: `/** Read installed agentic stack sources at the caller's assigned semantic context. */
 
 type AgenticUnit =

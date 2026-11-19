@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Prepare user-reviewed problem reports with bounded evidence and substantial narrative.",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./workflow": "./workflow.ts"
   },
   "dependencies": {
     "@workspace/runtime": "workspace:*"

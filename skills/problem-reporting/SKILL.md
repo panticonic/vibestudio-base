@@ -7,6 +7,12 @@ This skill has no SQL or developer administration access. It prepares reports th
 
 Help the user describe what went wrong and prepare a local report through `problemReports`. In eval it is a global; elsewhere import it from `@workspace/runtime`. Read `help("problemReports")` or `docs_open` for the live method schemas, and [report preparation](references/preparation.md) for the narrative format before writing sections.
 
+For an explicit save-only task, the shared Natlang callable
+`problems/saveProblemDraft` can write and confirm the local narrative. Bind the
+account and optional existing draft with
+`@workspace-skills/problem-reporting/workflow`. Keep the current report ID and
+revision when continuing a draft.
+
 ## When to prepare a report
 
 - When a real platform problem interrupts your work, prepare a local draft from the observations you already have and strongly recommend that the user send it after reviewing it. Failures you recovered from still help developers.

@@ -2,11 +2,30 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-problem-review",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reviewProblem.nl" } },
+  "targets": {
+    "main": {
+      "entry": "reviewProblem.nl"
+    },
+    "save": {
+      "entry": "saveProblemDraft.nl"
+    }
+  },
   "include": [
     "reviewProblem.nl",
     "reviewProblem",
     "classifyDefect.nl",
-    "types.ts"
-  ]
+    "types.ts",
+    "saveProblemDraft.nl",
+    "saveProblemDraft",
+    "services.d.ts"
+  ],
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "problemDraftRead": [
+      "saveProblemDraft/readDraft.nl",
+      "saveProblemDraft/confirmDraft.nl"
+    ],
+    "problemDraftOpen": ["saveProblemDraft/openDraft.nl"],
+    "problemDraftAppend": ["saveProblemDraft/appendDraft.nl"]
+  }
 }
