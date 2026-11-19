@@ -9,6 +9,15 @@ The agentic stack is managed workspace source like any other unit. Change it
 with semantic authoring, verify it in its context, and publish through protected
 `main`.
 
+## Natlang change planner
+
+Use `agenticDevelopment/planAgenticChange` from the shared
+`skills/vibestudio-workflows/runWorkflow.nl` program to plan an assigned change
+before editing. The caller binds the owned context through
+`@workspace-skills/agentic-development/workflow`. The plan pins the current
+working head and identifies source ownership, retained-history checks,
+affected builds and a fresh canary. Refresh it if the working head changes.
+
 ## Ownership map
 
 Read the skill of every unit your change touches:

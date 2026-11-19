@@ -71,6 +71,7 @@ const authoredServices = [
   authoredService("missionPlanningState", "Read the assigned mission workspace.", "personal", "mission-planning", [{ name: "observe", params: [] }]),
   authoredService("missionPlanningChange", "Apply an assigned mission change against its observed revision.", "personal", "mission-planning", [{ name: "apply", params: ["snapshotId", "changes"] }]),
   authoredService("spectroliteRead", "Observe the assigned vault and actual editor.", "spectrolite", "spectrolite-review", [{ name: "observe", params: [] }]),
+  authoredService("agenticChangeSource", "Read installed agentic stack sources at the caller's assigned semantic context.", "base", "agentic-development/natlang", [{ name: "read", params: ["contextId"] }]),
   authoredService("integrationPlanRead", "Read the caller's assigned API integration plan.", "base", "api-integrations/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("integrationCredentialLookup", "Resolve the exact assigned destination and intended transport.", "base", "api-integrations/natlang", [{ name: "resolve", params: ["planReceipt", "destinationId"] }]),
   authoredService("terminalCheckRead", "Read the caller's assigned terminal check plan.", "base", "terminal/natlang", [{ name: "observe", params: ["operationId"] }]),

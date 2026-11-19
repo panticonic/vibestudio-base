@@ -476,6 +476,26 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  agenticChangeSource: `/** Read installed agentic stack sources at the caller's assigned semantic context. */
+
+type AgenticUnit =
+  | "panels/chat"
+  | "packages/agentic-chat"
+  | "workers/agent-worker"
+  | "packages/agentic-do"
+  | "packages/agentic-protocol"
+  | "workers/pubsub-channel"
+  | "packages/agentic-core"
+  | "packages/pubsub";
+
+type AgenticSourceObservation = {
+  contextId: string;
+  revision: string;
+  guides: { unit: AgenticUnit; excerpt: string | null }[];
+};
+
+/** Read installed agentic stack sources at the caller's assigned semantic context. */
+export function read(contextId: string): Promise<AgenticSourceObservation>;`,
   integrationPlanRead: `/** Read the caller's assigned API integration plan. */
 
 type IntegrationUse = "fetch" | "publish" | "git-http" | "git-ssh";

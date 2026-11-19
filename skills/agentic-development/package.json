@@ -1,0 +1,12 @@
+{
+  "name": "@workspace-skills/agentic-development",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./workflow": "./workflow.ts"
+  },
+  "dependencies": {
+    "@workspace/runtime": "workspace:*"
+  }
+}
