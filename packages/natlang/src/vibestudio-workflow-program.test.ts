@@ -1377,3 +1377,157 @@ it("calls nested semantic VCS delivery stages with one exact candidate read", as
   });
   expect(seen).toEqual(["runWorkflow", "reviewVcsDelivery"]);
 });
+
+it("composes the chat delivery audit behind separately scoped reads", async () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const scopedServices: Record<string, string[]> = {};
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      const name = session.lam.functionName!;
+      scopedServices[name] = Object.keys(session.availableServices());
+      const commands: Record<string, string> = {
+        runWorkflow: `
+          const item=request.work[0];
+          const report=await domains.conversation.reviewChatDelivery(item.input);
+          return {results:[{kind:"domain",domain:item.domain,operation:item.operation,report}],remaining:[]};
+        `,
+        reviewChatDelivery: `
+          const delivery=await reviewDeliveryHistory({goal:request.goal,operationId:request.operationId});
+          if(!delivery.verified) return {delivery,panel:null,verdict:"history-unverified"};
+          const panel=await inspectPanel(request.panelId);
+          if(!await checkPanel(request,delivery.observation.channelId,panel)) return {delivery,panel,verdict:"panel-mismatch"};
+          return {delivery,panel,verdict:await checkMessage(delivery.observation.retained[0],panel.messages)};
+        `,
+        reviewDeliveryHistory: `
+          const observation=await deliveryHistory.inspect(request.operationId);
+          const origin=await checkOrigin(observation);
+          const consumer=origin==="matched" ? await compareConsumer(observation.retained[0],observation.rendered) : "unreviewed";
+          return {observation,origin,consumer,verified:origin==="matched"&&consumer==="matched"};
+        `,
+        checkOrigin: `
+          if(observation.receipt.channelId!==observation.channelId) return "foreign-channel";
+          return await matchReceipt(observation.receipt,observation.retained[0]);
+        `,
+        matchReceipt:
+          'return receipt.messageId===row.messageId&&receipt.senderId===row.senderId&&row.envelopeId&&row.sequence>0 ? "matched" : "receipt-mismatch";',
+        compareConsumer:
+          'return await sameMessage(retained,rendered[0]) ? "matched" : "divergent";',
+        inspectPanel: "return await chatDeliveryPanel.inspect(panelId);",
+        checkPanel: `
+          return panel.panelId===request.panelId&&panel.contextId===request.contextId&&
+            panel.channelId===channelId&&panel.phase==="ready"&&panel.source==="panels/chat";
+        `,
+        checkMessage: "return await compareVisibleMessage(retained,messages);",
+      };
+      const response = await session.applyAsync("eval", {
+        code: commands[name]!,
+      });
+      if (response.kind === "rejected") throw new Error(response.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform,
+    fs: {
+      readFile: (path) => readFile(join(root, path), "utf8"),
+      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
+      stat: (path) => stat(join(root, path)),
+    },
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const goal = "Check whether the workshop note appears in the assigned chat";
+  const row = {
+    messageId: "message",
+    senderId: "sender",
+    text: "Doors open at 9",
+  };
+  const observation = {
+    channelId: "channel",
+    receipt: {
+      channelId: "channel",
+      messageId: row.messageId,
+      senderId: row.senderId,
+    },
+    retained: [{ ...row, envelopeId: "envelope", sequence: 2 }],
+    rendered: [row],
+  };
+  const actualMessage = { messageId: row.messageId, text: row.text };
+  const panel = {
+    contextId: "branch",
+    panelId: "panel",
+    channelId: "channel",
+    source: "panels/chat",
+    phase: "ready",
+    messages: [actualMessage],
+  };
+  const reads: string[] = [];
+  const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+    services: {
+      deliveryHistory: {
+        inspect: async (id: string) => {
+          reads.push(id);
+          return structuredClone(observation);
+        },
+      },
+      chatDeliveryPanel: {
+        inspect: async (id: string) => {
+          reads.push(id);
+          return structuredClone(panel);
+        },
+      },
+    },
+  })) as (input: unknown) => Promise<unknown>;
+  const request = {
+    goal,
+    work: [
+      {
+        kind: "domain",
+        domain: "conversation",
+        operation: "reviewChatDelivery",
+        input: {
+          goal,
+          operationId: "receipt",
+          panelId: "panel",
+          contextId: "branch",
+        },
+      },
+    ],
+  };
+  const result = (verdict: string) => ({
+    remaining: [],
+    results: [
+      {
+        kind: "domain",
+        domain: "conversation",
+        operation: "reviewChatDelivery",
+        report: { verdict },
+      },
+    ],
+  });
+
+  await expect(run(request)).resolves.toMatchObject(result("verified"));
+  expect(reads.splice(0)).toEqual(["receipt", "panel"]);
+  expect(scopedServices.reviewChatDelivery).toEqual([]);
+  expect(scopedServices.reviewDeliveryHistory).toEqual(["deliveryHistory"]);
+  expect(scopedServices.inspectPanel).toEqual(["chatDeliveryPanel"]);
+  expect(scopedServices.checkMessage).toEqual([]);
+
+  panel.messages = [{ ...actualMessage, messageId: "other-message" }];
+  await expect(run(request)).resolves.toMatchObject(result("message-missing"));
+  panel.messages = [actualMessage, actualMessage];
+  await expect(run(request)).resolves.toMatchObject(result("message-repeated"));
+  panel.messages = [{ ...actualMessage, text: "Doors open at 10" }];
+  await expect(run(request)).resolves.toMatchObject(
+    result("message-divergent"),
+  );
+  panel.channelId = "wrong-channel";
+  await expect(run(request)).resolves.toMatchObject(result("panel-mismatch"));
+
+  observation.receipt.channelId = "another-channel";
+  reads.length = 0;
+  await expect(run(request)).resolves.toMatchObject(
+    result("history-unverified"),
+  );
+  expect(reads).toEqual(["receipt"]);
+}, 60_000);

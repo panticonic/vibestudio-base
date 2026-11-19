@@ -66,5 +66,27 @@ type DeliveryHistoryReport = {
   consumer: DeliveryConsumer;
   verified: boolean;
 };
+type ChatDeliveryRequest = DeliveryHistoryRequest & {
+  contextId: string;
+  panelId: string;
+};
+type ChatDeliveryMessage = { messageId: string; text: string };
+type ChatDeliveryPanel = {
+  contextId: string | null;
+  panelId: string;
+  channelId: string | null;
+  source: string;
+  phase: string;
+  messages: ChatDeliveryMessage[];
+};
+type ChatDeliveryMessageVerdict = | "verified"
+  | "message-missing"
+  | "message-repeated"
+  | "message-divergent";
+type ChatDeliveryReport = {
+  delivery: DeliveryHistoryReport;
+  panel: ChatDeliveryPanel | null;
+  verdict: ChatDeliveryMessageVerdict | "history-unverified" | "panel-mismatch";
+};
 declare const fn: NatlangFunction<[request: ConversationRequest], ConversationReport> & { readonly reviewContract: NatlangFunction<[request: ContractInput], ConversationReport> & { readonly checkCanonical: NatlangFunction<[request: ContractInput], string[]>; readonly checkConsumers: NatlangFunction<[request: ContractInput], string[]> }; readonly reviewDelivery: NatlangFunction<[request: DeliveryInput], ConversationReport> & { readonly checkEnvelope: NatlangFunction<[request: DeliveryInput], string[]>; readonly checkSettlement: NatlangFunction<[request: DeliveryInput], string[]> }; readonly reviewSurface: NatlangFunction<[request: SurfaceInput], ConversationReport> & { readonly verifyContext: NatlangFunction<[request: SurfaceInput], string[]>; readonly verifyTurn: NatlangFunction<[request: SurfaceInput], string[]> } };
 export default fn;

@@ -49,7 +49,9 @@ Where other changes go:
 
 The [Natlang conversation reviewer](../../skills/conversation-evidence-review/reviewConversation.nl)
 can assess supplied panel evidence for the exact context, recorded opening
-turn, terminal event, observed effect, and cleanup.
+turn, terminal event, observed effect, and cleanup. The [browser delivery audit](../../skills/conversation-evidence-review/reviewChatDelivery.nl)
+checks a specific delivery receipt against durable replay before checking the
+assigned panel’s context, channel, and visible message.
 
 ## Verification
 

@@ -63,3 +63,27 @@ export type DeliveryHistoryReport = {
   consumer: DeliveryConsumer;
   verified: boolean;
 };
+
+export type ChatDeliveryRequest = DeliveryHistoryRequest & {
+  contextId: string;
+  panelId: string;
+};
+export type ChatDeliveryMessage = { messageId: string; text: string };
+export type ChatDeliveryPanel = {
+  contextId: string | null;
+  panelId: string;
+  channelId: string | null;
+  source: string;
+  phase: string;
+  messages: ChatDeliveryMessage[];
+};
+export type ChatDeliveryMessageVerdict =
+  | "verified"
+  | "message-missing"
+  | "message-repeated"
+  | "message-divergent";
+export type ChatDeliveryReport = {
+  delivery: DeliveryHistoryReport;
+  panel: ChatDeliveryPanel | null;
+  verdict: ChatDeliveryMessageVerdict | "history-unverified" | "panel-mismatch";
+};

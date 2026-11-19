@@ -17,6 +17,10 @@ export function observeApplication(operationId: string): Promise<AndroidRuntimeO
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  chatDeliveryPanel: `/** Read the exact assigned chat panel and its visible delivery evidence. */
+
+/** Read the exact assigned chat panel and its visible delivery evidence. */
+export function inspect(panelId: string): Promise<ChatDeliveryPanel>;`,
   publicationRevision: `/** Compare caller-assigned immutable website packages and targets. */
 
 type PublishEnvironment = "preview" | "production";

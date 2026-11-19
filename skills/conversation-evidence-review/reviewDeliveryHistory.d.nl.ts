@@ -66,5 +66,27 @@ type DeliveryHistoryReport = {
   consumer: DeliveryConsumer;
   verified: boolean;
 };
+type ChatDeliveryRequest = DeliveryHistoryRequest & {
+  contextId: string;
+  panelId: string;
+};
+type ChatDeliveryMessage = { messageId: string; text: string };
+type ChatDeliveryPanel = {
+  contextId: string | null;
+  panelId: string;
+  channelId: string | null;
+  source: string;
+  phase: string;
+  messages: ChatDeliveryMessage[];
+};
+type ChatDeliveryMessageVerdict = | "verified"
+  | "message-missing"
+  | "message-repeated"
+  | "message-divergent";
+type ChatDeliveryReport = {
+  delivery: DeliveryHistoryReport;
+  panel: ChatDeliveryPanel | null;
+  verdict: ChatDeliveryMessageVerdict | "history-unverified" | "panel-mismatch";
+};
 declare const fn: NatlangFunction<[request: DeliveryHistoryRequest], DeliveryHistoryReport> & { readonly checkOrigin: NatlangFunction<[observation: DeliveryHistoryObservation], DeliveryOrigin> & { readonly matchReceipt: NatlangFunction<[receipt: DeliveryReceipt, row: DurableDeliveryRow], DeliveryOrigin> }; readonly compareConsumer: NatlangFunction<[retained: DurableDeliveryRow, rendered: DeliveryMessage[]], DeliveryConsumer> & { readonly sameMessage: ((original: DeliveryMessage, rendered: DeliveryMessage) => boolean) & {  } } };
 export default fn;

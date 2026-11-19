@@ -9,6 +9,9 @@
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
+    "chatDeliveryPanel": [
+      "reviewChatDelivery/inspectPanel.nl"
+    ],
     "deliveryHistory": [
       "reviewDeliveryHistory.nl"
     ]
