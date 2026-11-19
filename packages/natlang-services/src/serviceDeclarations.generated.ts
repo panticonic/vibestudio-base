@@ -6,6 +6,60 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  gitBridgeReviewRead: `/** Read the assigned Git Bridge upstream and semantic repository state. */
+
+type GitBridgeRelationship = "in-sync" | "ahead" | "behind" | "diverged";
+
+type GitBridgeState =
+  | GitBridgeRelationship
+  | "integration-required"
+  | "auth-failed"
+  | "error"
+  | "exporting"
+  | "pushing"
+  | "local-only"
+  | "not-materialized"
+  | "fetch-failed"
+  | "empty";
+
+type GitBridgeCandidate = { contextId: string; eventId: string };
+
+type GitBridgeUpstream = {
+  state: GitBridgeState;
+  remote: string | null;
+  branch: string | null;
+  autoPush: boolean;
+  candidate: GitBridgeCandidate | null;
+  observation: null | {
+    at: number;
+    branchExists: boolean;
+    relationship: GitBridgeRelationship | null;
+    ahead: number | null;
+    behind: number | null;
+  };
+};
+
+type GitBridgeSemantic = {
+  contextId: string;
+  current: boolean;
+  mainEventId: string;
+  working:
+    | { kind: "event"; eventId: string }
+    | { kind: "application"; applicationId: string };
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+  workingRepositoryId: string | null;
+  mainRepositoryId: string | null;
+};
+
+type GitBridgeView = {
+  repository: string;
+  upstream: GitBridgeUpstream;
+  semantic: GitBridgeSemantic;
+};
+
+/** Read the assigned Git Bridge upstream and semantic repository state. */
+export function observe(operationId: string): Promise<GitBridgeView>;`,
   vcsDeliveryRead: `/** Read one assigned semantic VCS file across working, committed, and protected-main states. */
 
 type VcsDeliveryState =

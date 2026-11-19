@@ -22,6 +22,13 @@ working applications -> commit -> protected main -> Git export
 The server checkout under `state/git-checkouts/<repoPath>` is disposable. It is
 never managed source, build input, or semantic history.
 
+## Diagnose an assigned repository
+
+The shared Natlang workflow exposes `gitBridge/reviewGitBridge` for an
+assigned import, export, or diagnosis. It reads the current upstream and
+protected-main basis and returns the next step with the exact evidence.
+See [the decomposition](../../skills/git-bridge-review/DECOMPOSITION.md).
+
 ## Discover the public contract
 
 - Workspace code uses the typed `git` namespace from `@workspace/runtime`.

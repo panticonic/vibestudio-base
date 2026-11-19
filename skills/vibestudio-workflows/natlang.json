@@ -25,6 +25,7 @@
     "runWorkflow/domains/examples": "skills/examples-review",
     "runWorkflow/domains/extensionDevelopment": "skills/extensiondev/natlang",
     "runWorkflow/domains/gad": "skills/gad-context/natlang",
+    "runWorkflow/domains/gitBridge": "skills/git-bridge-review",
     "runWorkflow/domains/gmailReview": "skills/gmail-workflow-review",
     "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
     "runWorkflow/domains/localModel": "skills/local-model-task",
