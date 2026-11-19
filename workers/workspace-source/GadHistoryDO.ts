@@ -51,6 +51,7 @@ import {
   workspaceCommitForRef,
   workspaceHasFileContent,
   workspacePlacementRoots,
+  workspacePrivateReplayContent,
   workspaceRepositoriesAt,
   workspaceTemplateInstallationAt,
 } from "./doltWorkspaceState.js";
@@ -213,6 +214,17 @@ export class GadHistoryDO extends DurableObjectBase {
       throw new Error("Workspace replay receipt has a different installed head");
     }
     return receipt;
+  }
+
+  @rpc(hostRead)
+  readHistoryReplayPrivateContent(input: { planDigest: string; after: string | null }): string[] {
+    const receipt = this.readHistoryReplayReceipt();
+    if (!receipt?.frozenPlanDigest || input.planDigest !== receipt.frozenPlanDigest)
+      throw new Error("Workspace replay content requires the installed frozen plan");
+    if (input.after !== null && !/^[0-9a-f]{64}$/u.test(input.after))
+      throw new Error("Invalid workspace replay content cursor");
+    const tips = receipt.contexts.map(({ working }) => working);
+    return workspacePrivateReplayContent(this.sql, tips, receipt.head, input.after ?? "", 1_024);
   }
 
   @rpc(hostWrite)

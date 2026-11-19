@@ -821,6 +821,29 @@ export function workspacePlacementRoots(sql: SqlStorage, retained: readonly stri
   });
 }
 
+/** Enumerate replayed file bytes that were never part of the migrated public history. */
+export function workspacePrivateReplayContent(
+  sql: SqlStorage,
+  retained: readonly string[],
+  published: string,
+  after: string,
+  limit: number,
+): string[] {
+  return sql.exec(
+    `SELECT files.content_hash
+       FROM json_each(?) AS tips CROSS JOIN dolt_history_files(tips.value) AS files
+      WHERE files.content_hash > ?
+     EXCEPT
+     SELECT content_hash FROM dolt_history_files(?) WHERE content_hash > ?
+     ORDER BY content_hash LIMIT ?`,
+    JSON.stringify([...new Set(retained)]), after, published, after, limit,
+  ).toArray().map(({ content_hash }) => {
+    if (typeof content_hash !== "string" || !/^[0-9a-f]{64}$/u.test(content_hash))
+      throw new Error("Invalid replayed file content identity");
+    return content_hash;
+  });
+}
+
 /** Locate the most recent committed event on a context's first-parent chain. */
 export function committedWorkspaceEvent(
   sql: SqlStorage,
