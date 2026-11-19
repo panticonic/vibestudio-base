@@ -6,6 +6,46 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  serverLogCursor: `/** Observe the assigned saved cursor and a bounded live host-log window. */
+
+type ServerLogCursor = { serverBootId: string; seq: number };
+
+type LogRecord = {
+  /** Sequence number within this server boot; the cursor for citing and catching up. */
+  seq: number;
+  /** Epoch milliseconds when the line was captured. */
+  timestamp: number;
+  level: "verbose" | "info" | "warn" | "error";
+  /** Subsystem tag from the conventional \`[Tag]\` prefix. */
+  tag?: string;
+  /** The message; a multi-line message keeps its newlines. */
+  message: string;
+  pid: number;
+};
+
+type LogSnapshot = {
+  /** Identifies this server boot; any cursor from an earlier boot is invalid. */
+  serverBootId: string;
+  /** Highest seq captured so far by the server, not only in \`records\`. */
+  latestSeq: number;
+  /** The records read, ascending by seq. */
+  records: LogRecord[];
+  /** How many lines the server has captured this boot, for scale. */
+  totalCaptured: number;
+};
+
+type ServerLogCursorWindow = {
+  saved: ServerLogCursor;
+  liveBoot: string;
+  oldestSeq: number | null;
+  latestSeq: number;
+  throughSeq: number;
+  overflow: boolean;
+  snapshot: LogSnapshot | null;
+};
+
+/** Observe the assigned saved cursor and a bounded live host-log window. */
+export function observe(operationId: string): Promise<ServerLogCursorWindow>;`,
   evalRecoveryJournal: `/** Observe the assigned completed EvalDO attempt and native receipts. */
 
 type EvalRecoveryStore = { digest: string; contentDigest: string; size: number };

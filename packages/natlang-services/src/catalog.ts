@@ -56,6 +56,7 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("serverLogCursor", "Observe the assigned saved cursor and a bounded live host-log window.", "system", "server-logs", [{ name: "observe", params: ["operationId"] }]),
   authoredService("evalRecoveryJournal", "Observe the assigned completed EvalDO attempt and native receipts.", "base", "sandbox/recovery", [{ name: "observe", params: ["operationId"] }]),
   authoredService("evalRecoveryReadback", "Read back an exact assigned digest after its complete native store receipt.", "base", "sandbox/recovery", [{ name: "read", params: ["operationId", "digest"] }]),
   authoredService("pdfLayoutRead", "Read the original embedded fragment geometry of one assigned local PDF page.", "base", "pdf-intake", [{ name: "inspect", params: ["operationId"] }]),
