@@ -25,6 +25,7 @@ import type {
   VcsImportSnapshotInput,
   VcsImportSnapshotResult,
   VcsExternalDeltaResult,
+  VcsExternalDeltaLifecycleInput,
   VcsRegisterExternalDeltaInput,
   VcsListDirectoryInput,
   VcsListFilesInput,
@@ -1325,16 +1326,15 @@ export class ParticipantHistory {
         ownerContextId: contextId, repositoryId,
         oldSnapshot: input.oldSource.snapshot, newSnapshot: input.newSource.snapshot,
       });
-      if (staged && this.#hasCommand(staged, contextId, command)) {
-        const prior = receipts.get(receiptKey);
-        if (!prior) throw new SemanticVcsError("IntegrityFailure", "External delta receipt has no recorded response");
-        return vcsExternalDeltaResultSchema.parse(JSON.parse(prior));
-      }
+      const matchingStage = staged !== undefined && this.#hasCommand(staged, contextId, command);
+      const recordedResponse = matchingStage ? receipts.get(receiptKey) : null;
+      if (recordedResponse !== null) return vcsExternalDeltaResultSchema.parse(JSON.parse(recordedResponse));
       if (this.#hasCommand(current, contextId, command)) {
         const prior = this.#externalDelta(current, contextId, deltaId);
         if (!prior) throw new SemanticVcsError("IntegrityFailure", "Replayed external delta has no retained draft");
         return prior.result;
       }
+      if (matchingStage) throw new SemanticVcsError("IntegrityFailure", "External delta receipt has no recorded response");
       if (current !== expectedHead) throw new HistoryHeadChanged(expectedHead, current);
       if (workspaceCommitForRef(sql, current, expectedWorkingHead) !== current) {
         throw new SemanticVcsError("RevisionChanged", "External delta requires the exact working revision");
@@ -1398,6 +1398,56 @@ export class ParticipantHistory {
     return `external/${branchSegment(contextId)}`;
   }
 
+  supersedeExternalDelta(
+    expectedHead: string,
+    input: VcsExternalDeltaLifecycleInput,
+    cause: HistoryCommand["cause"],
+  ): Promise<VcsExternalDeltaResult> {
+    return this.#run(() => {
+      const { contextId, commandId, deltaId, expectedWorkingHead } = input;
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      const stage = this.#externalBranch(contextId);
+      const staged = this.#dolt.branch.list().find(({ name }) => name === stage)?.hash;
+      const command = { commandId, method: "supersedeExternalDelta", requestDigest: compactId("supersedeExternalDelta-request", input), cause };
+      if (staged && this.#hasCommand(staged, contextId, command)) {
+        const prior = this.#externalDelta(staged, contextId, deltaId);
+        if (prior?.result.status !== "superseded") {
+          throw new SemanticVcsError("IntegrityFailure", "External delta supersession has no recorded response");
+        }
+        return prior.result;
+      }
+      const replayed = this.#hasCommand(current, contextId, command);
+      const { sql } = this.#storage;
+      if (!replayed && current !== expectedHead) throw new HistoryHeadChanged(expectedHead, current);
+      if (!replayed && workspaceCommitForRef(sql, current, expectedWorkingHead) !== current) {
+        throw new SemanticVcsError("RevisionChanged", "External delta supersession requires the exact working revision");
+      }
+      if (replayed) {
+        const prior = this.#externalDelta(current, contextId, deltaId);
+        if (prior?.result.status !== "superseded") {
+          throw new SemanticVcsError("IntegrityFailure", "Replayed external delta supersession has no recorded response");
+        }
+        return prior.result;
+      }
+      const prior = this.#externalDelta(staged ?? current, contextId, deltaId);
+      if (prior?.result.status !== "active" && prior?.result.status !== "superseded") {
+        throw new SemanticVcsError("InvalidReference", "External delta cannot be superseded in this context");
+      }
+      if (!staged) this.#dolt.branch.create(stage, { from: current });
+      this.#commitBranch(stage, "Supersede external workspace delta", () => {
+        if (prior.result.status === "active") {
+          sql.exec(
+            `UPDATE gad_external_deltas SET status = 'superseded'
+              WHERE delta_id = ? AND owner_context_id = ? AND status = 'active'`,
+            deltaId, contextId,
+          );
+        }
+        this.#recordCommand(contextId, command, new Date().toISOString());
+      });
+      return { ...prior.result, status: "superseded" };
+    });
+  }
+
   #externalTipFor(contextId: string, ref: VcsSemanticNodeRef): string | null {
     if (ref.kind !== "external-delta" && ref.kind !== "work-unit" && ref.kind !== "change" && ref.kind !== "command") return null;
     const stage = this.#externalBranch(contextId);
@@ -1413,7 +1463,7 @@ export class ParticipantHistory {
                JOIN dolt_at_gad_changes(?) AS change USING (work_unit_id)
               WHERE delta.owner_context_id = ? AND change.change_id = ?`, tip, tip, contextId, ref.changeId] as const
           : [`SELECT 1 FROM dolt_at_commands(?) WHERE scope_kind = 'context' AND scope_id = ?
-               AND command_id = ? AND method = 'registerExternalDelta'`, tip, contextId, ref.commandId] as const;
+               AND command_id = ? AND method IN ('registerExternalDelta', 'supersedeExternalDelta')`, tip, contextId, ref.commandId] as const;
     return sql.exec(lookup[0], ...lookup.slice(1)).toArray().length === 1 ? tip : null;
   }
 

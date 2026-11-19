@@ -10,6 +10,7 @@ import {
   vcsCopyInputSchema,
   vcsDiscardInputSchema,
   vcsEditInputSchema,
+  vcsExternalDeltaLifecycleInputSchema,
   vcsImportSnapshotInputSchema,
   vcsHistoryInputSchema,
   vcsInspectInputSchema,
@@ -36,6 +37,7 @@ import {
   type VcsCopyInput,
   type VcsDiscardInput,
   type VcsEditInput,
+  type VcsExternalDeltaLifecycleInput,
   type VcsImportSnapshotInput,
   type VcsHistoryInput,
   type VcsInspectInput,
@@ -832,6 +834,18 @@ export class GadHistoryDO extends DurableObjectBase {
     return this.#history().registerExternalDelta(
       input.head, vcsRegisterExternalDeltaInputSchema.parse(input.delta), input.observation,
       input.cause, input.triggerEvidence,
+    );
+  }
+
+  @rpc(hostWrite)
+  supersedeHistoryExternalDelta(input: {
+    head: string;
+    delta: VcsExternalDeltaLifecycleInput;
+    cause: HistoryCommand["cause"];
+  }) {
+    this.#assertWritable();
+    return this.#history().supersedeExternalDelta(
+      input.head, vcsExternalDeltaLifecycleInputSchema.parse(input.delta), input.cause,
     );
   }
 
