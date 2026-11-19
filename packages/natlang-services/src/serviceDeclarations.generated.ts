@@ -476,6 +476,71 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  phoneSetupRead: `/** Read the assigned phone setup and paired workspace readiness. */
+
+type PhonePlatform = "android" | "ios";
+
+type DesktopCandidate = {
+  providerId: string;
+  label: string;
+  supportsSource: boolean;
+};
+
+type SetupStart = {
+  receipt: string;
+  platform: PhonePlatform;
+  providerId: string | null;
+  deviceId: string | null;
+  desktops: DesktopCandidate[];
+  pairedDeviceId: string | null;
+};
+
+type DiscoveredPhones = {
+  receipt: string;
+  devices: {
+    deviceId: string;
+    name: string;
+    kind: string;
+    state: string;
+    ready: boolean;
+  }[];
+  actions: string[];
+};
+
+type WorkspaceObservation = {
+  receipt: string;
+  state: "opening" | "ready" | "failed" | "unreachable";
+};
+
+/** Read the assigned phone setup and paired workspace readiness. */
+export function start(operationId: string): Promise<SetupStart>;
+
+/** Read the assigned phone setup and paired workspace readiness. */
+export function discover(prepareReceipt: string): Promise<DiscoveredPhones>;
+
+/** Read the assigned phone setup and paired workspace readiness. */
+export function readiness(pairingReceipt: string): Promise<WorkspaceObservation>;`,
+  phoneSetupPrepare: `/** Prepare the assigned desktop for phone setup. */
+
+type PreparedDesktop = {
+  receipt: string;
+  state: "prepared" | "preparation-unconfirmed";
+};
+
+/** Prepare the assigned desktop for phone setup. */
+export function prepare(startReceipt: string, providerId: string): Promise<PreparedDesktop>;`,
+  phoneSetupPair: `/** Provision the assigned ready phone. */
+
+type PhonePairing = {
+  receipt: string;
+  pairedDeviceId: string | null;
+};
+
+/** Provision the assigned ready phone. */
+export function provision(
+      discoveryReceipt: string,
+      deviceId: string,
+    ): Promise<PhonePairing>;`,
   remoteDeploymentRead: `/** Read the baseline of the assigned managed deployment. */
 
 type DeploymentBaseline = {

@@ -1,0 +1,16 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-phone-setup",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "setUpPhone.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "phoneSetupRead": [
+      "setUpPhone/readAssignment.nl",
+      "setUpPhone/discoverPhone/observePhones.nl",
+      "setUpPhone/checkWorkspace/observeWorkspace.nl"
+    ],
+    "phoneSetupPrepare": ["setUpPhone/discoverPhone/prepareDesktop.nl"],
+    "phoneSetupPair": ["setUpPhone/pairPhone.nl"]
+  }
+}
