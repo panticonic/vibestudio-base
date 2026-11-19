@@ -10,7 +10,8 @@ import { SemanticVcsError } from "./semanticVcsErrors.js";
 import type { ChangeRecord } from "./semanticVcsStore.js";
 import { describeSemanticEffects, parseSemanticCursor, semanticCursor, trajectorySenderRef, type WorkspaceEditBasis } from "./semanticWorkspace.js";
 
-type Coordinate = VcsCompareResult["coordinates"][number];
+export type HistoryMergeCoordinate = VcsCompareResult["coordinates"][number];
+type Coordinate = HistoryMergeCoordinate;
 type Side = "base" | "ours" | "theirs";
 type Placement = {
   path: string | null;
@@ -127,9 +128,9 @@ export type HistoryMergeReview =
   | { kind: "read-content"; contentHashes: string[] }
   | { kind: "reviewed"; result: VcsCompareResult };
 
-function reviewIntents(
+export function reviewIntents(
   sql: SqlStorage,
-  preview: HistoryMergeSelection,
+  preview: Pick<HistoryMergeSelection, "head" | "main">,
   coordinates: Coordinate[],
   decisions?: ReadonlyMap<string, { resolution: string }>,
 ) {
@@ -291,6 +292,16 @@ export function reviewHistoryMerge(
       summary: `${status} ${kind} ${paths.theirs ?? paths.ours ?? id}`,
     };
   });
+  return paginateHistoryComparison(input, base, coordinates, reviewIntents(sql, preview, coordinates), preview.main === preview.base);
+}
+
+export function paginateHistoryComparison(
+  input: VcsCompareInput,
+  base: VcsCompareResult["base"],
+  coordinates: Coordinate[],
+  intents: ReturnType<typeof reviewIntents>,
+  concluded: boolean,
+): HistoryMergeReview {
   const counts: VcsCompareResult["counts"] = { adopt: 0, convergent: 0, composed: 0, conflict: 0, resolved: 0 };
   for (const { status } of coordinates) counts[status]++;
   const remaining = counts.adopt + counts.composed + counts.conflict;
@@ -311,9 +322,9 @@ export function reviewHistoryMerge(
     result: {
       target, source, base,
       counts,
-      resolution: { remainingCoordinateCount: remaining, complete: remaining === 0, concluded: preview.main === preview.base },
+      resolution: { remainingCoordinateCount: remaining, complete: remaining === 0, concluded },
       coordinates: shown,
-      ...reviewIntents(sql, preview, coordinates),
+      ...intents,
       nextCursor,
     },
   };

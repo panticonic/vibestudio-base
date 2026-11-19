@@ -80,6 +80,7 @@ import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
 import { historyMergePlacements, readHistoryWorkUnitIntent, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
+import { reviewExternalMerge, type HistoryExternalMergeSource } from "./doltExternalMerge.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -1469,6 +1470,7 @@ export class ParticipantHistory {
 
   #externalDelta(at: string, contextId: string, deltaId: string): {
     inputDigest: string;
+    target: StateNodeRef;
     result: VcsExternalDeltaResult;
   } | null {
     const { sql } = this.#storage;
@@ -1486,6 +1488,9 @@ export class ParticipantHistory {
     ).toArray();
     return {
       inputDigest: String(delta["input_digest"]),
+      target: vcsStateNodeRefSchema.parse(delta["target_state_kind"] === "event"
+        ? { kind: "event", eventId: delta["target_state_id"] }
+        : { kind: "application", applicationId: delta["target_state_id"] }),
       result: {
         deltaId, workUnitId, repositoryId: String(delta["repository_id"]), repoPath: String(delta["repo_path"]),
         oldSnapshot: String(delta["old_snapshot"]), newSnapshot: String(delta["new_snapshot"]),
@@ -1493,6 +1498,17 @@ export class ParticipantHistory {
         changeCount: changes.length, changeIds: changes.slice(0, 200).map(({ change_id }) => String(change_id)),
       },
     };
+  }
+
+  #externalMergeSource(contextId: string, target: StateNodeRef, deltaId: string): HistoryExternalMergeSource {
+    const head = this.#dolt.hashOf(this.#contextBranch(contextId));
+    if (workspaceCommitForRef(this.#storage.sql, head, target) !== head) {
+      throw new SemanticVcsError("RevisionChanged", "External comparison requires the exact working revision");
+    }
+    const draft = this.#externalTipFor(contextId, { kind: "external-delta", deltaId }) ?? head;
+    const delta = this.#externalDelta(draft, contextId, deltaId);
+    if (!delta) throw new SemanticVcsError("InvalidReference", "External delta is unavailable in this context");
+    return { head, draft, delta: delta.result, base: delta.target };
   }
 
   #importReceipt(at: string, input: VcsImportSnapshotInput) {
@@ -1736,8 +1752,12 @@ export class ParticipantHistory {
     contextId: string, input: VcsCompareInput, readableContextIds: readonly string[],
     observation: HistoryMergeObservation | null,
   ) {
-    if (input.source.kind === "external-delta")
-      throw new SemanticVcsError("InvalidReference", "Comparison requires an exact workspace state");
+    if (input.source.kind === "external-delta") {
+      const { deltaId } = input.source;
+      return this.#run(() => reviewExternalMerge(
+        this.#storage.sql, input, this.#externalMergeSource(contextId, input.target, deltaId), observation,
+      ));
+    }
     const selection = await this.resolveMerge(contextId, input.target, input.source, readableContextIds);
     const { head, base } = selection;
     const sourceHead = "main" in selection ? selection.main : selection.source.head;
