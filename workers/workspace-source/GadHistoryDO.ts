@@ -361,7 +361,6 @@ export class GadHistoryDO extends DurableObjectBase {
       if (previousIdentity === null) this.setStateValue(identityKey, input.participantId);
       const targetId = `do:${source}:${className}:${target}`;
       if (stored["status"] === "reserved") {
-        const sourceRef = this.env["WORKER_SOURCE_REF"];
         const handle = await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
           {
             kind: "do",
@@ -373,7 +372,6 @@ export class GadHistoryDO extends DurableObjectBase {
             execution: {
               surface: "code",
               source,
-              ...(typeof sourceRef === "string" ? { ref: sourceRef } : {}),
             },
             forkStorage: { at: forkHead },
           },
