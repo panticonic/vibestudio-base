@@ -476,6 +476,39 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  architectureProviderRead: `/** Read the assigned installed service and its exact authored declaration. */
+
+type ArchitectureRoute = {
+  receipt: string;
+  contextId: string;
+  revision: string;
+  protocol: string;
+  name: string;
+  source: string;
+  receiver: {
+    kind: "durable-object" | "worker";
+    address: string;
+    className: string | null;
+    creatorScoped: boolean;
+  };
+};
+
+type ArchitectureDeclaration = {
+  routeReceipt: string;
+  source: string;
+  revision: string;
+  hash: string;
+  name: string;
+  protocols: string[];
+  className: string | null;
+  creatorScoped: boolean;
+};
+
+/** Read the assigned installed service and its exact authored declaration. */
+export function resolve(operationId: string): Promise<ArchitectureRoute>;
+
+/** Read the assigned installed service and its exact authored declaration. */
+export function declaration(routeReceipt: string): Promise<ArchitectureDeclaration | null>;`,
   clientAdmissionRead: `/** Read the assigned System client, published trust and selected host contract. */
 
 type ClientContract = {

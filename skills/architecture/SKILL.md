@@ -8,6 +8,12 @@ description: "Design or review cross-cutting Vibestudio architecture: trust boun
 Use this skill to decide which component should own a fact or an effect. Use
 the task skills for implementation details.
 
+Use `architecture/reviewArchitectureBoundary` through the shared Natlang
+workflow to compare an assigned state owner with the actual local provider.
+Bind the exact context and service using `@workspace-skills/architecture/workflow`.
+It reads the provider resolution and its authored declaration without invoking
+the service's domain methods.
+
 ## Read by question
 
 | Question                                                     | Reference                  |

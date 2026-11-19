@@ -1,0 +1,13 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-architecture-boundary",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewArchitectureBoundary.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "architectureProviderRead": [
+      "reviewArchitectureBoundary/inspectProvider/resolveProvider.nl",
+      "reviewArchitectureBoundary/inspectProvider/readDeclaration.nl"
+    ]
+  }
+}
