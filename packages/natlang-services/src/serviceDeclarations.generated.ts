@@ -6,6 +6,51 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  vcsDeliveryRead: `/** Read one assigned semantic VCS file across working, committed, and protected-main states. */
+
+type VcsDeliveryState =
+  | { kind: "event"; eventId: string }
+  | { kind: "application"; applicationId: string };
+
+type VcsDeliveryIntegration = {
+  source:
+    | { kind: "event"; eventId: string }
+    | { kind: "external-delta"; deltaId: string };
+  remaining: number;
+  conflicts: number;
+  concluded: boolean;
+  stale: boolean;
+};
+
+type VcsDeliveryVersion = {
+  fileId: string;
+  hash: string;
+  mode: number;
+  excerpt: string | null;
+  truncated: boolean;
+};
+
+type VcsDeliverySnapshot = {
+  contextId: string;
+  current: boolean;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+  working: VcsDeliveryState;
+  committed: VcsDeliveryState;
+  protectedMain: VcsDeliveryState;
+  integrations: VcsDeliveryIntegration[];
+  file: {
+    path: string;
+    working: VcsDeliveryVersion | null;
+    committed: VcsDeliveryVersion | null;
+    protectedMain: VcsDeliveryVersion | null;
+    hasLocalDifference: boolean;
+    hasDeliveryDifference: boolean;
+  };
+};
+
+/** Read one assigned semantic VCS file across working, committed, and protected-main states. */
+export function observe(operationId: string): Promise<VcsDeliverySnapshot>;`,
   panelHealth: `/** Read observations from the assigned panel. */
 
 type PanelHealthSignal = {

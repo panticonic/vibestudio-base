@@ -1,0 +1,10 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-vcs-delivery",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewVcsDelivery.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "vcsDeliveryRead": ["reviewVcsDelivery.nl"]
+  }
+}

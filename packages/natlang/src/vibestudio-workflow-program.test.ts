@@ -1211,3 +1211,169 @@ it("runs the mounted assigned web brief through the existing research tree", asy
   ]);
   expect(seen).toEqual([{ url, session: "public" }]);
 });
+
+it("calls nested semantic VCS delivery stages with one exact candidate read", async () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const snapshot = {
+    contextId: "ctx-review",
+    current: true,
+    clean: false,
+    relation: "at",
+    working: {
+      kind: "application",
+      applicationId: "application:edit-candidate",
+    },
+    committed: { kind: "event", eventId: "workspace-event:main" },
+    protectedMain: { kind: "event", eventId: "workspace-event:main" },
+    integrations: [],
+    file: {
+      path: "retries.ts",
+      working: {
+        fileId: "file:retries",
+        hash: "changed",
+        mode: 420,
+        excerpt: "export const retries = 1;",
+        truncated: false,
+      },
+      committed: {
+        fileId: "file:retries",
+        hash: "original",
+        mode: 420,
+        excerpt: "export const retries = 3;",
+        truncated: false,
+      },
+      protectedMain: {
+        fileId: "file:retries",
+        hash: "original",
+        mode: 420,
+        excerpt: "export const retries = 3;",
+        truncated: false,
+      },
+      hasLocalDifference: true,
+      hasDeliveryDifference: true,
+    },
+  };
+  const seen: string[] = [];
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      const name = session.lam.functionName!;
+      seen.push(name);
+      expect(Object.keys(session.availableServices())).toEqual(
+        name === "reviewVcsDelivery" ? ["vcsDeliveryRead"] : [],
+      );
+      const commands: Record<string, string> = {
+        runWorkflow: `
+          const report=await domains.vcsDelivery.reviewVcsDelivery(request.work[0].input);
+          return {results:[{kind:"domain",domain:"vcsDelivery",operation:"reviewVcsDelivery",report}],remaining:[]};
+        `,
+        reviewVcsDelivery: `
+          const snapshot=await vcsDeliveryRead.observe(request.operationId);
+          if(!snapshot.current) return {snapshot,chain:null,review:null,next:"refresh"};
+          const chain=await inspectChain(snapshot);
+          const review=await reviewChange(request.goal,snapshot.file);
+          return {snapshot,chain,review,next:await chooseDeliveryStep(snapshot,chain,review)};
+        `,
+        inspectChain: `
+          return {local:await describeLocalChain(snapshot.clean,snapshot.file.hasLocalDifference),
+            main:await reviewIntegration(snapshot.relation,snapshot.integrations)};
+        `,
+        describeLocalChain:
+          'return {state:clean?"clean":"uncommitted",summary:fileChanged?"Assigned file is edited.":"Assigned file is unchanged."};',
+        reviewIntegration:
+          'return {state:relation==="at"?"current":"integrate",summary:"Checked protected main."};',
+        reviewChange: `
+          const interpretation=await interpretFile(goal,file);
+          return {...interpretation,checks:await planChecks(file.path,interpretation)};
+        `,
+        interpretFile:
+          'return {effect:file.working.excerpt,risks:["Earlier retry exhaustion"]};',
+        planChecks: 'return ["Exercise a transient failure under "+path];',
+        chooseDeliveryStep:
+          'return chain.local.state==="uncommitted"?"verify-then-commit":"already-current";',
+      };
+      const code = commands[name];
+      if (!code) throw new Error("Unexpected stage " + name);
+      const result = await session.applyAsync("eval", { code, finish: true });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform,
+    fs: {
+      readFile: (path) => readFile(join(root, path), "utf8"),
+      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
+      stat: (path) => stat(join(root, path)),
+    },
+    bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const reads: string[] = [];
+  const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+    services: {
+      vcsDeliveryRead: {
+        observe: async (id: string) => {
+          reads.push(id);
+          return snapshot;
+        },
+      },
+    },
+  })) as (request: unknown) => Promise<unknown>;
+  const input = {
+    goal: "Review reducing retries",
+    operationId: "review-assignment",
+    repository: "packages/retry",
+    path: "retries.ts",
+  };
+  const request = {
+    goal: input.goal,
+    work: [
+      {
+        kind: "domain",
+        domain: "vcsDelivery",
+        operation: "reviewVcsDelivery",
+        input,
+      },
+    ],
+  };
+  await expect(run(request)).resolves.toMatchObject({
+    results: [
+      {
+        report: {
+          snapshot,
+          chain: {
+            local: { state: "uncommitted" },
+            main: { state: "current" },
+          },
+          review: {
+            effect: "export const retries = 1;",
+            checks: ["Exercise a transient failure under retries.ts"],
+          },
+          next: "verify-then-commit",
+        },
+      },
+    ],
+  });
+  expect(seen).toEqual([
+    "runWorkflow",
+    "reviewVcsDelivery",
+    "inspectChain",
+    "describeLocalChain",
+    "reviewIntegration",
+    "reviewChange",
+    "interpretFile",
+    "planChecks",
+    "chooseDeliveryStep",
+  ]);
+  expect(reads).toEqual([input.operationId]);
+
+  seen.length = 0;
+  snapshot.current = false;
+  await expect(run(request)).resolves.toMatchObject({
+    results: [
+      { report: { snapshot, chain: null, review: null, next: "refresh" } },
+    ],
+  });
+  expect(seen).toEqual(["runWorkflow", "reviewVcsDelivery"]);
+});

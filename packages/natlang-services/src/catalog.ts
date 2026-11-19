@@ -56,6 +56,7 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("vcsDeliveryRead", "Read one assigned semantic VCS file across working, committed, and protected-main states.", "base", "vibestudio-vcs/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("panelHealth", "Read observations from the assigned panel.", "base", "panel-health", [{ name: "observe", params: [] }, { name: "observeAfter", params: ["snapshotId"] }]),
   authoredService("provenanceHistory", "Read the assigned VCS history coordinate.", "base", "provenance-orientation", [{ name: "readNext", params: ["check"] }]),
   authoredService("tendrilPresentation", "Present the assigned Tendril on an admitted device.", "base", "tendrils/workflow", [{ name: "devices", params: [] }, { name: "present", params: ["deviceId"] }]),
