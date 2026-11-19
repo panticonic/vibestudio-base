@@ -5206,10 +5206,16 @@ export class SemanticWorkspace {
     return { draft, importedRepositoryIds, externalSnapshot };
   }
 
-  private persistExternalDelta(
+  /** Normalize sealed snapshot evidence independently of the working-state representation. */
+  static planExternalDeltaDraft(
     input: VcsRegisterExternalDeltaInput,
     receipt: Row,
-  ): Row {
+    basis: {
+      fileIdAtPath(path: string): string | null;
+      evidence(): Pick<WorkUnitRecord, "authorContextId" | "triggerEvidence">;
+      now(): string;
+    },
+  ): { record: ExternalDeltaRecord; workUnit: WorkUnitRecord; changes: ChangeRecord[]; newFileIds: Set<string> } {
     const rows = receipt["files"];
     if (!Array.isArray(rows)) {
       throw internalSemanticIntegrityFailure(
@@ -5263,10 +5269,10 @@ export class SemanticWorkspace {
       newSnapshot,
     });
     const externalKeys = [
-      `repo:${this.externalSourceIdentity(input.oldSource)}`,
-      `repo:${this.externalSourceIdentity(input.newSource)}`,
+      `repo:${SemanticWorkspace.externalSourceIdentity(input.oldSource)}`,
+      `repo:${SemanticWorkspace.externalSourceIdentity(input.newSource)}`,
     ].sort(compareUtf16CodeUnits);
-    const evidence = this.workUnitEvidence(input.contextId, input.commandId);
+    const evidence = basis.evidence();
     const workUnitIdValue = workUnitIdentity({
       commandId: input.commandId,
       kind: "external-unapplied",
@@ -5281,7 +5287,6 @@ export class SemanticWorkspace {
     const paths = [...new Set([...oldByPath.keys(), ...newByPath.keys()])].sort(
       compareUtf16CodeUnits,
     );
-    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
     const changes: ChangeRecord[] = [];
     const newFileIds = new Set<string>();
     for (const [operation, path] of paths.entries()) {
@@ -5295,19 +5300,15 @@ export class SemanticWorkspace {
       ) {
         continue;
       }
-      const point = this.deps.store.facts.fileAtPath(
-        root,
-        input.repositoryId,
-        path,
-      );
+      const placed = basis.fileIdAtPath(path);
       const fileId =
-        point?.state.fileId ??
+        placed ??
         compactId("external-file", {
           deltaId,
           repositoryId: input.repositoryId,
           path,
         });
-      if (!point) newFileIds.add(fileId);
+      if (placed === null) newFileIds.add(fileId);
       const endpoint = (file: typeof oldFile): Row | null => {
         if (!file) return null;
         const descriptor = observed.get(file.contentHash)!;
@@ -5369,7 +5370,7 @@ export class SemanticWorkspace {
         }),
       });
     }
-    const createdAt = this.deps.now();
+    const createdAt = basis.now();
     const workUnit: WorkUnitRecord = {
       workUnitId: workUnitIdValue,
       commandId: input.commandId,
@@ -5383,6 +5384,45 @@ export class SemanticWorkspace {
       normalizationProtocol: NORMALIZATION_PROTOCOL,
       createdAt,
     };
+    const record: ExternalDeltaRecord = {
+      deltaId,
+      workUnitId: workUnitIdValue,
+      ownerContextId: input.contextId,
+      repositoryId: input.repositoryId,
+      repoPath: input.repoPath,
+      targetState: asState(input.expectedWorkingHead),
+      oldSource: input.oldSource as unknown as Row,
+      newSource: input.newSource as unknown as Row,
+      oldSnapshot,
+      newSnapshot,
+      inputDigest: compactId("external-delta-input", {
+        repositoryId: input.repositoryId,
+        repoPath: input.repoPath,
+        oldSource: input.oldSource,
+        newSource: input.newSource,
+        oldFiles: input.oldFiles,
+        newFiles: input.newFiles,
+        supersedesDeltaId: input.supersedesDeltaId ?? null,
+      }),
+      status: "active",
+      supersededByDeltaId: null,
+      createdAt,
+    };
+    return { record, workUnit, changes, newFileIds };
+  }
+
+  private persistExternalDelta(
+    input: VcsRegisterExternalDeltaInput,
+    receipt: Row,
+  ): Row {
+    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+    const { record, workUnit, changes, newFileIds } = SemanticWorkspace.planExternalDeltaDraft(input, receipt, {
+      fileIdAtPath: (path) => this.deps.store.facts.fileAtPath(root, input.repositoryId, path)?.state.fileId ?? null,
+      evidence: () => this.workUnitEvidence(input.contextId, input.commandId),
+      now: () => this.deps.now(),
+    });
+    const { deltaId } = record;
+    const workUnitIdValue = workUnit.workUnitId;
     const fileTransitions: FileTransition[] = changes.flatMap((change) => {
       const endpoint = change.result;
       const fileId = String(
@@ -5503,30 +5543,6 @@ export class SemanticWorkspace {
         };
       }),
     };
-    const record: ExternalDeltaRecord = {
-      deltaId,
-      workUnitId: workUnitIdValue,
-      ownerContextId: input.contextId,
-      repositoryId: input.repositoryId,
-      repoPath: input.repoPath,
-      targetState: asState(input.expectedWorkingHead),
-      oldSource: input.oldSource as unknown as Row,
-      newSource: input.newSource as unknown as Row,
-      oldSnapshot,
-      newSnapshot,
-      inputDigest: compactId("external-delta-input", {
-        repositoryId: input.repositoryId,
-        repoPath: input.repoPath,
-        oldSource: input.oldSource,
-        newSource: input.newSource,
-        oldFiles: input.oldFiles,
-        newFiles: input.newFiles,
-        supersedesDeltaId: input.supersedesDeltaId ?? null,
-      }),
-      status: "active",
-      supersededByDeltaId: null,
-      createdAt,
-    };
     const existing = this.deps.store.externalDelta(deltaId);
     if (existing) {
       return this.publicExternalDelta(
@@ -5553,7 +5569,7 @@ export class SemanticWorkspace {
     return this.publicExternalDelta(registered);
   }
 
-  private externalSourceIdentity(
+  private static externalSourceIdentity(
     source: VcsRegisterExternalDeltaInput["oldSource"],
   ): string {
     return source.kind === "git"
