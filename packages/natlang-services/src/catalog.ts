@@ -71,6 +71,8 @@ const authoredServices = [
   authoredService("missionPlanningState", "Read the assigned mission workspace.", "personal", "mission-planning", [{ name: "observe", params: [] }]),
   authoredService("missionPlanningChange", "Apply an assigned mission change against its observed revision.", "personal", "mission-planning", [{ name: "apply", params: ["snapshotId", "changes"] }]),
   authoredService("spectroliteRead", "Observe the assigned vault and actual editor.", "spectrolite", "spectrolite-review", [{ name: "observe", params: [] }]),
+  authoredService("terminalCheckRead", "Read the caller's assigned terminal check plan.", "base", "terminal/natlang", [{ name: "observe", params: ["operationId"] }]),
+  authoredService("terminalCheckRun", "Execute the exact assigned terminal check.", "base", "terminal/natlang", [{ name: "execute", params: ["assignmentReceipt", "checkId"] }]),
   authoredService("gadHealth", "Observe one assigned GAD health snapshot.", "base", "gad-context/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("gadFollowUp", "Inspect the exact assigned channel finding.", "base", "gad-context/natlang", [{ name: "inspect", params: ["healthReceipt", "kind"] }]),
   authoredService("gadConversation", "Read the assigned bounded channel tail.", "base", "gad-context/natlang", [{ name: "read", params: ["operationId"] }]),

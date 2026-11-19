@@ -1,0 +1,8 @@
+{
+  "name": "@workspace-skills/terminal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./workflow": "./workflow.ts" },
+  "dependencies": { "@workspace/runtime": "workspace:*" }
+}

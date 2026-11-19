@@ -49,3 +49,18 @@ to make first.
 
 Keep output bounded and report exit status, relevant stdout/stderr, and whether
 it timed out or was truncated.
+
+
+## Assigned Natlang terminal checks
+
+Use `bindTerminalChecks` from `@workspace-skills/terminal/workflow` to supply
+the current workspace context with a goal and a bounded list of caller-approved
+command intents. Pass the binding's request to the shared program's
+`terminalChecks/runTerminalChecks` assignment and supply its explicit services.
+The workflow sees check IDs, purposes, dependencies, and the bounded results.
+The caller supplies the exact argv or explicitly intended script. Normal shell
+approval remains in effect.
+
+Each check can run once. A dependency unblocks only after the earlier process
+returns exit code zero with a complete result. The workflow can continue
+independent checks and reports held checks by ID.

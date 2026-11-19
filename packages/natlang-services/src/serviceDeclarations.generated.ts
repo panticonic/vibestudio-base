@@ -476,6 +476,37 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  terminalCheckRead: `/** Read the caller's assigned terminal check plan. */
+
+type TerminalCheck = {
+  id: string;
+  purpose: string;
+  mode: "argv" | "script";
+  prerequisites: string[];
+};
+
+type TerminalPlan = { receipt: string; checks: TerminalCheck[] };
+
+/** Read the caller's assigned terminal check plan. */
+export function observe(operationId: string): Promise<TerminalPlan>;`,
+  terminalCheckRun: `/** Execute the exact assigned terminal check. */
+
+type TerminalCheckResult = {
+  receipt: string;
+  id: string;
+  status: "complete" | "unavailable";
+  exitCode: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+  stdout: string;
+  stderr: string;
+};
+
+/** Execute the exact assigned terminal check. */
+export function execute(
+      assignmentReceipt: string,
+      checkId: string,
+    ): Promise<TerminalCheckResult>;`,
   gadHealth: `/** Observe one assigned GAD health snapshot. */
 
 type ChannelFinding = {

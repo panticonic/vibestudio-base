@@ -45,6 +45,7 @@
     "runWorkflow/domains/system": "skills/system-investigation",
     "runWorkflow/domains/templateCandidate": "skills/template-candidate",
     "runWorkflow/domains/tendril": "skills/tendrils/workflow",
+    "runWorkflow/domains/terminalChecks": "skills/terminal/natlang",
     "runWorkflow/domains/terminalChecklist": "skills/terminal-apps/checklist",
     "runWorkflow/domains/templates": "skills/templates",
     "runWorkflow/domains/testReview": "skills/system-testing/triage",
