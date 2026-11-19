@@ -22,6 +22,8 @@ import type {
   VcsEditInput,
   VcsHistoryInput,
   VcsInspectInput,
+  VcsImportSnapshotInput,
+  VcsImportSnapshotResult,
   VcsListDirectoryInput,
   VcsListFilesInput,
   VcsMergeInput,
@@ -33,7 +35,7 @@ import type {
   VcsSemanticNodeRef,
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
-import { vcsBlameResultSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
+import { vcsBlameResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -51,6 +53,7 @@ import {
   workspaceMergeScope,
   workspaceMergeSourcesAt,
   workspaceRepositoriesAt,
+  workspaceSnapshotImportBasisAt,
   workspaceTransferBasisAt,
   type WorkspacePlacementChange,
   type WorkspaceMergeScopeEntry,
@@ -75,7 +78,7 @@ import type {
   WorkspaceEventRecord,
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
-import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, projectContentBlame, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
+import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, importedRepositories, projectContentBlame, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -738,8 +741,12 @@ export class ParticipantHistory {
       originsAt.set(key, origins);
     }
     const origins = [...originsAt.values()].flatMap((entries) => [...entries.values()]);
-    const externalKeys = [...new Set(origins.flatMap((origin) => origin.externalKeys))]
-      .sort(compareUtf16CodeUnits);
+    const externalKeys = [...new Set([
+      ...origins.flatMap((origin) => origin.externalKeys),
+      ...(draft.externalSnapshot
+        ? [`repo:${draft.externalSnapshot.sourceUri}@${draft.externalSnapshot.snapshotRevision}`]
+        : []),
+    ])].sort(compareUtf16CodeUnits);
     if (externalKeys.length > 256) {
       throw new SemanticVcsError(
         "ScopeTooLarge",
@@ -750,7 +757,8 @@ export class ParticipantHistory {
       now: () => new Date().toISOString(),
       workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
       contentIntegrity: () => ({
-        class: origins.some((origin) => origin.contentClass === "external") ? "external" : "internal",
+        class: draft.externalSnapshot || origins.some((origin) => origin.contentClass === "external")
+          ? "external" : "internal",
         externalKeys,
         contentOrigins: new Map(),
       }),
@@ -1070,7 +1078,6 @@ export class ParticipantHistory {
     const { contextId, application, workUnit } = plan;
     const value = { kind: "application" as const, applicationId: application.applicationId };
     return this.#run(() => {
-      const { sql } = this.#storage;
       if (workUnit.kind === "merge") {
         throw new SemanticVcsError("IntegrityFailure", "Workspace integration requires a native merge");
       }
@@ -1085,22 +1092,124 @@ export class ParticipantHistory {
         return this.#applicationReceipt(current, command, value);
       }
       return this.#commit(contextId, expectedHead, `Workspace ${command.method}`, () => {
-        validateApplicationPlan(plan);
-        if (
-          stateNodeKey(plan.expectedWorkingHead) !== stateNodeKey(application.basis) ||
-          workspaceCommitForRef(sql, expectedHead, application.basis) !== expectedHead
-        ) {
-          throw new SemanticVcsError("RevisionChanged", "Prepared workspace revision has changed");
-        }
-        if (plan.placement === undefined) {
-          throw new SemanticVcsError("IntegrityFailure", "Prepared workspace placement is missing");
-        }
-        if (plan.placement !== null) applyDoltWorkspaceState(sql, plan.placement);
-        this.#recordCommand(contextId, command, workUnit.createdAt);
-        this.#persistApplication(plan);
+        this.#writePreparedApplication(expectedHead, command, plan);
         return value;
       });
     });
+  }
+
+  #writePreparedApplication(expectedHead: string, command: HistoryCommand, plan: HistoryApplicationPlan): void {
+    const { sql } = this.#storage;
+    validateApplicationPlan(plan);
+    if (
+      stateNodeKey(plan.expectedWorkingHead) !== stateNodeKey(plan.application.basis) ||
+      workspaceCommitForRef(sql, expectedHead, plan.application.basis) !== expectedHead
+    ) {
+      throw new SemanticVcsError("RevisionChanged", "Prepared workspace revision has changed");
+    }
+    if (plan.placement === undefined) {
+      throw new SemanticVcsError("IntegrityFailure", "Prepared workspace placement is missing");
+    }
+    if (plan.placement !== null) applyDoltWorkspaceState(sql, plan.placement);
+    this.#recordCommand(plan.contextId, command, plan.workUnit.createdAt);
+    this.#persistApplication(plan);
+  }
+
+  /** Stage the application and its save off the live branch, then fast-forward once. */
+  importSnapshot(
+    expectedHead: string,
+    input: VcsImportSnapshotInput,
+    observation: Record<string, unknown>,
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
+  ): Promise<{ head: string; result: VcsImportSnapshotResult }> {
+    return this.#run(async () => {
+      const { sql } = this.#storage;
+      const { contextId, commandId, expectedWorkingHead } = input;
+      const command = { commandId, method: "importSnapshot", requestDigest: compactId("importSnapshot-request", input), cause };
+      const branch = this.#contextBranch(contextId);
+      const stage = `import/${branchSegment(contextId)}/${sha256HexSyncText(canonicalJson(command))}`;
+      const current = this.#dolt.hashOf(branch);
+      let staged = this.#dolt.branch.list().find(({ name }) => name === stage)?.hash;
+      if (this.#hasCommand(current, contextId, command)) {
+        const receipt = this.#importReceipt(current, input);
+        if (staged) this.#removeImportBranch(stage);
+        return receipt;
+      }
+      if (current !== expectedHead) throw new HistoryHeadChanged(expectedHead, current);
+      const parent = committedWorkspaceEvent(sql, current);
+      if (expectedWorkingHead.kind !== "event" || parent?.head !== current || parent.eventId !== expectedWorkingHead.eventId) {
+        if (staged) this.#removeImportBranch(stage);
+        throw new SemanticVcsError("RevisionChanged", "Snapshot import requires the exact saved context");
+      }
+      if (!staged || !this.#hasCommand(staged, contextId, command)) {
+        if (staged && staged !== current)
+          throw new SemanticVcsError("IntegrityFailure", "Snapshot staging changed its expected basis");
+        const { draft } = SemanticWorkspace.planImportSnapshot(input, observation, workspaceSnapshotImportBasisAt(sql, current));
+        const prepared = await this.#prepareMutation(current, input, command, draft, triggerEvidence);
+        if (!staged) this.#dolt.branch.create(stage, { from: current });
+        staged = this.#commitBranch(stage, "Import workspace snapshot", () =>
+          this.#writePreparedApplication(current, command, prepared.application)
+        ).head;
+      }
+      if (committedWorkspaceEvent(sql, staged)?.head !== staged) {
+        const applicationIds = workspaceApplicationsAt(sql, staged, current);
+        if (applicationIds.length !== 1)
+          throw new SemanticVcsError("IntegrityFailure", "Snapshot staging has no exact application");
+        const message = input.message ?? `Import ${input.source.kind === "git" ? input.source.commit : input.source.snapshotRevision}`;
+        const fields = {
+          commandId, kind: "commit" as const, parentEventIds: [parent.eventId], externalDeltaIds: [],
+          applicationIds, resultWorkspaceFactRootId: staged, message, createdAt: new Date().toISOString(),
+        };
+        staged = this.#commitBranch(stage, message, () => recordDoltWorkspaceEvent(sql, {
+          ...fields, eventId: compactId("workspace-event", fields), snapshotSource: null,
+        })).head;
+      }
+      const receipt = this.#importReceipt(staged, input);
+      if (receipt.head !== staged)
+        throw new SemanticVcsError("IntegrityFailure", "Snapshot staging has a different saved revision");
+      this.#checkoutExpected(contextId, current);
+      const applied = this.#dolt.merge(staged, {
+        resolve() { throw new Error("Snapshot import did not descend from the verified working revision"); },
+      });
+      if (!applied.fastForward || applied.hash !== staged)
+        throw new SemanticVcsError("IntegrityFailure", "Snapshot import did not fast-forward its exact working revision");
+      this.#removeImportBranch(stage);
+      return receipt;
+    });
+  }
+
+  #importReceipt(at: string, input: VcsImportSnapshotInput) {
+    const { sql } = this.#storage;
+    const saved = this.#committedSave(at, input.contextId, input.commandId);
+    const { result } = this.#committedMutation(at, input.contextId, input.commandId);
+    if (canonicalJson(saved.result.committedApplicationIds) !== canonicalJson([result.applicationId]))
+      throw new SemanticVcsError("IntegrityFailure", "Saved snapshot names a different application");
+    const stored = sql.exec(
+      "SELECT external_snapshot_json FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ? AND kind = 'import'",
+      saved.head, result.workUnitId,
+    ).toArray()[0]?.["external_snapshot_json"];
+    if (typeof stored !== "string")
+      throw new SemanticVcsError("IntegrityFailure", "Saved snapshot has no import provenance");
+    const externalSnapshot = vcsExternalSnapshotSchema.parse(JSON.parse(stored));
+    const importedRepositoryIds = importedRepositories(input).map(({ repositoryId }) => repositoryId);
+    if (canonicalJson([...new Set(importedRepositoryIds)].sort(compareUtf16CodeUnits)) !==
+        canonicalJson(externalSnapshot.targetRepositoryIds)) {
+      throw new SemanticVcsError("IntegrityFailure", "Saved snapshot names different repository identities");
+    }
+    return {
+      head: saved.head,
+      result: {
+        contextId: input.contextId, eventId: saved.result.event.eventId,
+        workUnitId: result.workUnitId, applicationId: result.applicationId,
+        externalSnapshot, importedRepositoryIds,
+      },
+    };
+  }
+
+  #removeImportBranch(branch: string): void {
+    if (this.#dolt.branch.current() === branch) this.#dolt.checkout("main");
+    this.#dolt.branch.delete(branch, { force: true });
   }
 
   #applicationReceipt(
@@ -1744,7 +1853,12 @@ export class ParticipantHistory {
       if (!journal) throw new Error("Workspace context retirement requires local receipt storage");
       const context = `ctx/${branchSegment(contextId)}`;
       journal.set(`history-retired:${context}`, "true");
-      const branch = this.#dolt.branch.list().find(({ name }) => name === context);
+      const branches = this.#dolt.branch.list();
+      const importPrefix = `import/${branchSegment(contextId)}/`;
+      for (const { name } of branches) {
+        if (name.startsWith(importPrefix)) this.#removeImportBranch(name);
+      }
+      const branch = branches.find(({ name }) => name === context);
       if (!branch) return;
       const committed = committedWorkspaceEvent(this.#storage.sql, branch.hash);
       if (!committed) throw new Error(`Workspace history lacks a committed event for ${context}`);
@@ -1817,6 +1931,11 @@ export class ParticipantHistory {
 
   #commit<T>(contextId: string, expectedHead: string, message: DoltCommitMessage, write: () => T) {
     const branch = this.#checkoutExpected(contextId, expectedHead);
+    return this.#commitBranch(branch, message, write);
+  }
+
+  #commitBranch<T>(branch: string, message: DoltCommitMessage, write: () => T) {
+    if (this.#dolt.branch.current() !== branch) this.#dolt.checkout(branch);
     const value = this.#storage.transactionSync(write, { commit: message });
     return { value, head: this.#dolt.hashOf(branch) };
   }

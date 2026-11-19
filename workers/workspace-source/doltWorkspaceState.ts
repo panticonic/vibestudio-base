@@ -24,6 +24,7 @@ import {
   type FileTransition,
   type RepositoryTransition,
   type WorkspaceEditBasis,
+  type WorkspaceSnapshotImportBasis,
   type WorkspaceTransferBasis,
 } from "./semanticWorkspace.js";
 import { execBatchedInsert } from "./sqlBatch.js";
@@ -156,6 +157,61 @@ export function workspaceRepositoriesAt(
     .sort((left, right) => compareUtf16CodeUnits(left.repoPath, right.repoPath));
 }
 
+function placedWorkspaceFile(row: Record<string, unknown>, fileId: string, commit: string) {
+  const {
+    repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent,
+  } = row;
+  if (
+    typeof repository_id !== "string" ||
+    typeof path !== "string" ||
+    typeof content_hash !== "string" ||
+    typeof mode !== "number" ||
+    (content_kind !== "text" && content_kind !== "bytes") ||
+    typeof byte_length !== "number" ||
+    typeof coordinate_extent !== "number"
+  ) {
+    throw new Error(`Invalid file placement at ${commit}`);
+  }
+  const file = workspaceFileStateIdentity({
+    fileId,
+    presence: "placed",
+    repositoryId: repository_id,
+    path,
+    contentHash: content_hash,
+    mode,
+    contentKind: content_kind,
+    byteLength: byte_length,
+    coordinateExtent: coordinate_extent,
+  });
+  if (file.presence !== "placed") throw new Error(`Invalid placed file identity at ${commit}`);
+  return file;
+}
+
+/** Read a replacement repository and its exact file descriptors in versioned storage. */
+export function workspaceSnapshotImportBasisAt(sql: SqlStorage, commit: string): WorkspaceSnapshotImportBasis {
+  const edit = workspaceEditBasisAt(sql, commit);
+  const transfer = workspaceTransferBasisAt(sql, commit);
+  return {
+    repository(repositoryId) {
+      return edit.repository(repositoryId) ? transfer.presentRepository(repositoryId) : null;
+    },
+    files(repository) {
+      const files = new Map<string, ReturnType<typeof placedWorkspaceFile>>();
+      for (const row of sql.exec(
+        `SELECT file_id, repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent
+           FROM dolt_at_files(?) WHERE repository_id = ? AND presence = 'placed' ORDER BY path`,
+        commit, repository.repositoryId,
+      ).toArray()) {
+        const id = row["file_id"];
+        if (typeof id !== "string") throw new Error(`Invalid imported file identity at ${commit}`);
+        const file = placedWorkspaceFile(row, id, commit);
+        files.set(file.path, file);
+      }
+      return files;
+    },
+  };
+}
+
 /** Read the edit planner's placement coordinates without checking out a branch. */
 export function workspaceEditBasisAt(sql: SqlStorage, commit: string): WorkspaceEditBasis {
   const repository = (column: "repository_id" | "repo_path", value: string) => {
@@ -190,33 +246,7 @@ export function workspaceEditBasisAt(sql: SqlStorage, commit: string): Workspace
         fileId,
       ).toArray()[0];
       if (!row) return null;
-      const {
-        repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent,
-      } = row;
-      if (
-        typeof repository_id !== "string" ||
-        typeof path !== "string" ||
-        typeof content_hash !== "string" ||
-        typeof mode !== "number" ||
-        (content_kind !== "text" && content_kind !== "bytes") ||
-        typeof byte_length !== "number" ||
-        typeof coordinate_extent !== "number"
-      ) {
-        throw new Error(`Invalid file placement at ${commit}`);
-      }
-      const file = workspaceFileStateIdentity({
-        fileId,
-        presence: "placed",
-        repositoryId: repository_id,
-        path,
-        contentHash: content_hash,
-        mode,
-        contentKind: content_kind,
-        byteLength: byte_length,
-        coordinateExtent: coordinate_extent,
-      });
-      if (file.presence !== "placed") throw new Error(`Invalid placed file identity at ${commit}`);
-      return file;
+      return placedWorkspaceFile(row, fileId, commit);
     },
     repository: (id) => repository("repository_id", id),
     repositoryAtPath: (path) => repository("repo_path", path),

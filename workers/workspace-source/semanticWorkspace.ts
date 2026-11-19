@@ -126,6 +126,29 @@ export interface WorkspaceEditBasis {
   emptyRepository(repository: RepositoryPlacement): PresentRepositoryState | null;
   hasFileAtPath(repositoryId: string, path: string): boolean;
 }
+export interface WorkspaceSnapshotImportBasis {
+  repository(repositoryId: string): WorkspaceRepositoryMember | null;
+  files(repository: PresentRepositoryState): ReadonlyMap<string, PlacedFileState>;
+}
+function snapshotImportTarget(
+  repository: WorkspaceRepositoryMember | null,
+  repositoryId: string,
+  repoPath: string,
+): PresentRepositoryState {
+  if (!repository || repository.presence !== "present") {
+    throw new SemanticVcsError(
+      "InvalidReference",
+      `Snapshot replacement requires a present repository ${repositoryId}`,
+    );
+  }
+  if (repository.repoPath !== repoPath) {
+    throw new SemanticVcsError(
+      "InvalidReference",
+      `Snapshot import cannot move repository ${repositoryId}; use vcs.move first`,
+    );
+  }
+  return repository;
+}
 export interface WorkspaceTransferBasis {
   placedFile(repositoryId: string, fileId: string): { state: PlacedFileState; repository: RepositoryPlacement };
   repositoryPlacement(repositoryId: string): RepositoryPlacement;
@@ -779,7 +802,7 @@ const importedSnapshotDigest = (
       ),
   );
 
-const importedRepositories = (input: VcsImportSnapshotInput) =>
+export const importedRepositories = (input: VcsImportSnapshotInput) =>
   input.repositories.map((repository, ordinal) => ({
     input: repository,
     repositoryId:
@@ -1733,7 +1756,11 @@ export class SemanticWorkspace {
             commandInput,
           ).input as VcsImportSnapshotInput;
           const parseCompletedAt = Date.now();
-          const planned = this.planImportSnapshot(importInput, input.receipt);
+          const root = this.deps.store.stateRoot(asState(importInput.expectedWorkingHead));
+          const planned = SemanticWorkspace.planImportSnapshot(importInput, input.receipt, {
+            repository: (id) => this.deps.store.facts.member(root, id),
+            files: (repository) => this.importExistingFiles(root, repository),
+          });
           const planCompletedAt = Date.now();
           const working = this.persistWorkingMutation(
             importInput,
@@ -4785,14 +4812,18 @@ export class SemanticWorkspace {
     });
   }
 
-  private planImportSnapshot(
+  static planImportSnapshot(
     input: VcsImportSnapshotInput,
     receipt: Row,
+    basis: WorkspaceSnapshotImportBasis,
   ): {
     draft: MutationDraft;
     importedRepositoryIds: string[];
     externalSnapshot: VcsExternalSnapshot;
   } {
+    for (const repository of input.repositories) {
+      for (const file of repository.files) assertSemanticVcsPathAdmissible(file.path);
+    }
     const rows = receipt["files"];
     if (!Array.isArray(rows)) {
       throw internalSemanticIntegrityFailure(
@@ -4899,19 +4930,17 @@ export class SemanticWorkspace {
         );
       }
     }
-    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
     const changes: MutationDraft["changes"] = [];
     const fileResults: MutationDraft["fileResults"] = [];
     const repositoryResults: MutationDraft["repositoryResults"] = [];
     const repositories = importedRepositories(input);
-    const existingFiles = this.importExistingFiles(input, root);
     const importedRepositoryIds = repositories.map(
       ({ repositoryId }) => repositoryId,
     );
     const snapshotDigest = importedSnapshotDigest(input.repositories, observed);
     for (const { input: repositoryInput, repositoryId } of repositories) {
       const existing = repositoryInput.repositoryId
-        ? this.deps.store.facts.member(root, repositoryId)
+        ? snapshotImportTarget(basis.repository(repositoryId), repositoryId, repositoryInput.repoPath)
         : null;
       if (existing == null) {
         const changeIndex = changes.length;
@@ -4935,8 +4964,7 @@ export class SemanticWorkspace {
           changeRef: { kind: "authored", ordinal: changeIndex },
         });
       }
-      const expectedByPath =
-        existingFiles.get(repositoryId) ?? new Map<string, PlacedFileState>();
+      const expectedByPath = existing ? basis.files(existing) : new Map<string, PlacedFileState>();
       const importedPaths = new Set(
         repositoryInput.files.map((file) => file.path),
       );
@@ -5467,81 +5495,54 @@ export class SemanticWorkspace {
       input,
     )) {
       if (!repositoryInput.repositoryId) continue;
-      const existing = this.deps.store.facts.member(root, repositoryId);
-      if (!existing || existing.presence !== "present") {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot replacement requires a present repository ${repositoryId}`,
-        );
-      }
-      if (existing.repoPath !== repositoryInput.repoPath) {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot import cannot move repository ${repositoryId}; use vcs.move first`,
-        );
-      }
+      snapshotImportTarget(
+        this.deps.store.facts.member(root, repositoryId),
+        repositoryId,
+        repositoryInput.repoPath,
+      );
     }
   }
 
   /** Collect the exact replacement basis through the manifest's bounded paging API. */
   private importExistingFiles(
-    input: VcsImportSnapshotInput,
     root: string,
-  ): Map<string, Map<string, PlacedFileState>> {
-    const byRepository = new Map<string, Map<string, PlacedFileState>>();
-    for (const { input: repositoryInput, repositoryId } of importedRepositories(
-      input,
-    )) {
-      if (!repositoryInput.repositoryId) continue;
-      const existing = this.deps.store.facts.member(root, repositoryId);
-      if (!existing || existing.presence !== "present") {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot replacement requires a present repository ${repositoryId}`,
-        );
-      }
-      if (existing.repoPath !== repositoryInput.repoPath) {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot import cannot move repository ${repositoryId}; use vcs.move first`,
-        );
-      }
-      const files = new Map<string, PlacedFileState>();
-      const entries: Array<{ path: string; fileId: string }> = [];
-      let afterPath: string | undefined;
-      do {
-        const page = this.deps.store.facts.pageManifest(
-          existing.fileManifestId,
-          {
-            ...(afterPath ? { afterPath } : {}),
-            limit: 500,
-          },
-        );
-        entries.push(...page.values);
-        afterPath = page.next ?? undefined;
-      } while (afterPath !== undefined);
-      const states = this.deps.store.facts.fileStatesAt(
-        root,
-        entries.map((entry) => entry.fileId),
+    existing: PresentRepositoryState,
+  ): ReadonlyMap<string, PlacedFileState> {
+    const { repositoryId } = existing;
+    const files = new Map<string, PlacedFileState>();
+    const entries: Array<{ path: string; fileId: string }> = [];
+    let afterPath: string | undefined;
+    do {
+      const page = this.deps.store.facts.pageManifest(
+        existing.fileManifestId,
+        {
+          ...(afterPath ? { afterPath } : {}),
+          limit: 500,
+        },
       );
-      for (const entry of entries) {
-        const state = states.get(entry.fileId);
-        if (
-          !state ||
-          state.presence !== "placed" ||
-          state.repositoryId !== repositoryId ||
-          state.path !== entry.path
-        ) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Repository ${repositoryId} manifest references an absent file ${entry.fileId}`,
-          );
-        }
-        files.set(entry.path, state);
+      entries.push(...page.values);
+      afterPath = page.next ?? undefined;
+    } while (afterPath !== undefined);
+    const states = this.deps.store.facts.fileStatesAt(
+      root,
+      entries.map((entry) => entry.fileId),
+    );
+    for (const entry of entries) {
+      const state = states.get(entry.fileId);
+      if (
+        !state ||
+        state.presence !== "placed" ||
+        state.repositoryId !== repositoryId ||
+        state.path !== entry.path
+      ) {
+        throw new SemanticVcsError(
+          "IntegrityFailure",
+          `Repository ${repositoryId} manifest references an absent file ${entry.fileId}`,
+        );
       }
-      byRepository.set(repositoryId, files);
+      files.set(entry.path, state);
     }
-    return byRepository;
+    return files;
   }
 
   private push(

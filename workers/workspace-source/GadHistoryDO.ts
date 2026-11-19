@@ -10,6 +10,7 @@ import {
   vcsCopyInputSchema,
   vcsDiscardInputSchema,
   vcsEditInputSchema,
+  vcsImportSnapshotInputSchema,
   vcsHistoryInputSchema,
   vcsInspectInputSchema,
   vcsListDirectoryInputSchema,
@@ -27,6 +28,7 @@ import {
   type VcsCopyInput,
   type VcsDiscardInput,
   type VcsEditInput,
+  type VcsImportSnapshotInput,
   type VcsHistoryInput,
   type VcsInspectInput,
   type VcsListDirectoryInput,
@@ -648,6 +650,21 @@ export class GadHistoryDO extends DurableObjectBase {
       : { method: "copy" as const, value: vcsCopyInputSchema.parse(input.transfer.value) };
     return this.#history().planTransfer(
       input.head, transfer, input.cause, input.triggerEvidence, input.readableContextIds,
+    );
+  }
+
+  @rpc(hostWrite)
+  importHistorySnapshot(input: {
+    head: string;
+    snapshot: VcsImportSnapshotInput;
+    observation: Record<string, unknown>;
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+  }) {
+    this.#assertWritable();
+    return this.#history().importSnapshot(
+      input.head, vcsImportSnapshotInputSchema.parse(input.snapshot), input.observation,
+      input.cause, input.triggerEvidence,
     );
   }
 
