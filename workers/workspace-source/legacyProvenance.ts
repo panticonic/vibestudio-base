@@ -3,24 +3,27 @@ import type { SqlStorage } from "@vibestudio/durable";
 import type { LegacyHistoryStep } from "./legacyHistoryReplay.js";
 
 type Row = Readonly<Record<string, unknown>>;
+type LegacyAuthorship = {
+  readonly command: Row | null;
+  readonly workUnit: Row;
+  readonly changes: readonly Row[];
+  readonly coordinates: readonly Row[];
+  readonly counteractions: readonly Row[];
+};
+type LegacyExternalSource = {
+  readonly delta: Row;
+  readonly authorship?: LegacyAuthorship;
+};
 
 export type LegacyProvenance =
   | {
       readonly kind: "event";
       readonly command: Row | null;
       readonly templateInstallation: Row | null;
-      readonly externalSources: readonly {
-        readonly link: Row;
-        readonly delta: Row;
-      }[];
+      readonly externalSources: readonly (LegacyExternalSource & { readonly link: Row })[];
     }
-  | {
+  | (LegacyAuthorship & {
       readonly kind: "application";
-      readonly command: Row | null;
-      readonly workUnit: Row;
-      readonly changes: readonly Row[];
-      readonly coordinates: readonly Row[];
-      readonly counteractions: readonly Row[];
       readonly appliedChanges: readonly Row[];
       readonly predicates: readonly Row[];
       readonly contentEdges: readonly Row[];
@@ -29,7 +32,8 @@ export type LegacyProvenance =
       readonly decisionEntries: readonly Row[];
       readonly decisionSources: readonly Row[];
       readonly externalDelta: Row | null;
-    };
+      readonly decisionExternalSource?: LegacyExternalSource;
+    });
 
 /** Read the legacy rows owned by one history step from the frozen source. */
 export function readLegacyProvenance(
@@ -47,6 +51,46 @@ export function readLegacyProvenance(
         id,
       )
       .toArray()[0] ?? null;
+  const authorship = (workUnitId: unknown): LegacyAuthorship => {
+    const workUnit = sql.exec("SELECT * FROM gad_work_units WHERE work_unit_id = ?", workUnitId)
+      .toArray()[0];
+    if (!workUnit) throw new Error(`Missing legacy work unit ${String(workUnitId)}`);
+    return {
+      command: command(workUnit["command_id"]),
+      workUnit,
+      changes: sql
+        .exec(
+          `
+        SELECT * FROM gad_changes WHERE work_unit_id = ? ORDER BY operation, ordinal
+      `,
+          workUnitId,
+        )
+        .toArray(),
+      coordinates: sql
+        .exec(
+          `
+        SELECT p.* FROM gad_change_coordinates AS p JOIN gad_changes AS c USING (change_id)
+        WHERE c.work_unit_id = ? ORDER BY c.operation, c.ordinal, p.role
+      `,
+          workUnitId,
+        )
+        .toArray(),
+      counteractions: sql
+        .exec(
+          `
+        SELECT p.* FROM gad_change_counteractions AS p JOIN gad_changes AS c USING (change_id)
+        WHERE c.work_unit_id = ? ORDER BY c.operation, c.ordinal, p.ordinal
+      `,
+          workUnitId,
+        )
+        .toArray(),
+    };
+  };
+  const external = (deltaId: unknown): LegacyExternalSource => {
+    const delta = sql.exec("SELECT * FROM gad_external_deltas WHERE delta_id = ?", deltaId).toArray()[0];
+    if (!delta) throw new Error(`Missing external delta ${String(deltaId)}`);
+    return { delta, authorship: authorship(delta["work_unit_id"]) };
+  };
   if (step.kind === "event") {
     const { eventId, commandId } = step.record;
     return {
@@ -68,27 +112,11 @@ export function readLegacyProvenance(
           eventId,
         )
         .toArray()
-        .map((link) => {
-          const delta = sql
-            .exec(
-              "SELECT * FROM gad_external_deltas WHERE delta_id = ?",
-              link["delta_id"],
-            )
-            .toArray()[0];
-          if (!delta)
-            throw new Error(
-              `Missing external delta ${String(link["delta_id"])}`,
-            );
-          return { link, delta };
-        }),
+        .map((link) => ({ link, ...external(link["delta_id"]) })),
     };
   }
 
   const { workUnitId, applicationId } = step.record;
-  const workUnit = sql
-    .exec("SELECT * FROM gad_work_units WHERE work_unit_id = ?", workUnitId)
-    .toArray()[0];
-  if (!workUnit) throw new Error(`Missing legacy work unit ${workUnitId}`);
   const decision =
     sql
       .exec(
@@ -98,34 +126,10 @@ export function readLegacyProvenance(
       .toArray()[0] ?? null;
   return {
     kind: "application",
-    command: command(workUnit["command_id"]),
-    workUnit,
-    changes: sql
-      .exec(
-        `
-      SELECT * FROM gad_changes WHERE work_unit_id = ? ORDER BY operation, ordinal
-    `,
-        workUnitId,
-      )
-      .toArray(),
-    coordinates: sql
-      .exec(
-        `
-      SELECT p.* FROM gad_change_coordinates AS p JOIN gad_changes AS c USING (change_id)
-      WHERE c.work_unit_id = ? ORDER BY c.operation, c.ordinal, p.role
-    `,
-        workUnitId,
-      )
-      .toArray(),
-    counteractions: sql
-      .exec(
-        `
-      SELECT p.* FROM gad_change_counteractions AS p JOIN gad_changes AS c USING (change_id)
-      WHERE c.work_unit_id = ? ORDER BY c.operation, c.ordinal, p.ordinal
-    `,
-        workUnitId,
-      )
-      .toArray(),
+    ...authorship(workUnitId),
+    ...(decision?.["source_delta_id"] == null
+      ? {}
+      : { decisionExternalSource: external(decision["source_delta_id"]) }),
     appliedChanges: sql
       .exec(
         `
@@ -223,18 +227,25 @@ export function writeLegacyProvenance(
       );
     }
   };
-  if (facts.command) save("commands", "command_id", [facts.command]);
+  const saveAuthorship = (authorship: LegacyAuthorship) => {
+    if (authorship.command) save("commands", "command_id", [authorship.command]);
+    save("gad_work_units", "work_unit_id", [authorship.workUnit]);
+    save("gad_changes", "change_id", authorship.changes);
+    save("gad_change_coordinates", "change_id role", authorship.coordinates);
+    save("gad_change_counteractions", "change_id ordinal", authorship.counteractions);
+  };
+  const saveExternal = ({ delta, authorship }: LegacyExternalSource) => {
+    if (authorship) saveAuthorship(authorship);
+    save("gad_external_deltas", "delta_id", [delta]);
+  };
   if (facts.kind === "event") {
+    if (facts.command) save("commands", "command_id", [facts.command]);
     if (facts.templateInstallation) {
       save("workspace_template_installations", "event_id", [
         facts.templateInstallation,
       ]);
     }
-    save(
-      "gad_external_deltas",
-      "delta_id",
-      facts.externalSources.map(({ delta }) => delta),
-    );
+    for (const source of facts.externalSources) saveExternal(source);
     save(
       "gad_workspace_event_external_sources",
       "event_id ordinal",
@@ -242,10 +253,8 @@ export function writeLegacyProvenance(
     );
     return;
   }
-  save("gad_work_units", "work_unit_id", [facts.workUnit]);
-  save("gad_changes", "change_id", facts.changes);
-  save("gad_change_coordinates", "change_id role", facts.coordinates);
-  save("gad_change_counteractions", "change_id ordinal", facts.counteractions);
+  saveAuthorship(facts);
+  if (facts.decisionExternalSource) saveExternal(facts.decisionExternalSource);
   save("gad_applied_changes", "applied_change_id", facts.appliedChanges);
   save(
     "gad_applied_change_predicates",

@@ -3,6 +3,7 @@ import type { SqlStorage } from "@vibestudio/durable";
 import {
   vcsAppliedChangeSchema,
   vcsChangeSchema,
+  vcsExternalDeltaResultSchema,
   vcsFileStateSchema,
   vcsIntegrationDecisionSchema,
   vcsRepositoryStateSchema,
@@ -537,6 +538,34 @@ export function inspectWorkspaceProvenance(
     appendAppliedContentEdges(sql, at, root.appliedChangeId, edgeLimit + 1, edges);
   } else if (root.kind === "change") {
     node = { kind: "change", value: inspectChange(sql, at, root, edgeLimit + 1, edges) };
+  } else if (root.kind === "external-delta") {
+    const row = sql.exec(
+      `SELECT delta.*, work.work_unit_id AS authored
+         FROM dolt_at_gad_external_deltas(?1) AS delta
+         LEFT JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+        WHERE delta.delta_id = ?2`,
+      at, root.deltaId,
+    ).toArray()[0];
+    if (!row) throw new SemanticVcsError("InvalidReference", "Unknown workspace external delta");
+    const workUnitId = row["work_unit_id"];
+    if (typeof workUnitId !== "string" || row["authored"] !== workUnitId)
+      throw new SemanticVcsError("IntegrityFailure", "Workspace external delta is missing its authored work");
+    const changeCount = Number(sql.exec(
+      "SELECT COUNT(*) AS total FROM dolt_at_gad_changes(?) WHERE work_unit_id = ?", at, workUnitId,
+    ).one()["total"]);
+    const changeIds = sql.exec(
+      `SELECT change_id FROM dolt_at_gad_changes(?) WHERE work_unit_id = ?
+        ORDER BY operation, ordinal, change_id LIMIT 200`,
+      at, workUnitId,
+    ).toArray().map(({ change_id }) => change_id);
+    node = {
+      kind: "external-delta",
+      value: vcsExternalDeltaResultSchema.parse({
+        deltaId: root.deltaId, workUnitId, changeCount, changeIds,
+        repositoryId: row["repository_id"], repoPath: row["repo_path"],
+        oldSnapshot: row["old_snapshot"], newSnapshot: row["new_snapshot"], status: row["status"],
+      }),
+    };
   } else if (root.kind === "decision") {
     node = { kind: "decision", value: inspectDecision(sql, at, root, edgeLimit + 1, edges) };
   } else if (root.kind === "file" || root.kind === "repository") {

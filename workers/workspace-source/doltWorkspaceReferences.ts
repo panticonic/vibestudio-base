@@ -5,8 +5,8 @@ import { workspaceCommitForRef } from "./doltWorkspaceState.js";
 /** Test semantic identity in one admitted revision, including inherited merge parents. */
 export function workspaceReferenceAt(sql: SqlStorage, commit: string, ref: VcsSemanticNodeRef): boolean {
   const exists = (
-    table: "gad_work_units" | "gad_changes" | "gad_applied_changes" | "gad_integration_decisions" | "commands",
-    column: "work_unit_id" | "change_id" | "applied_change_id" | "decision_id" | "command_id",
+    table: "gad_work_units" | "gad_changes" | "gad_applied_changes" | "gad_integration_decisions" | "gad_external_deltas" | "commands",
+    column: "work_unit_id" | "change_id" | "applied_change_id" | "decision_id" | "delta_id" | "command_id",
     id: string,
   ) => sql.exec(
     `SELECT 1 FROM dolt_at_${table}(?) WHERE ${column} = ? LIMIT 1`,
@@ -27,6 +27,8 @@ export function workspaceReferenceAt(sql: SqlStorage, commit: string, ref: VcsSe
       return exists("gad_applied_changes", "applied_change_id", ref.appliedChangeId);
     case "decision":
       return exists("gad_integration_decisions", "decision_id", ref.decisionId);
+    case "external-delta":
+      return exists("gad_external_deltas", "delta_id", ref.deltaId);
     case "command":
       return exists("commands", "command_id", ref.commandId);
     case "trajectory":
