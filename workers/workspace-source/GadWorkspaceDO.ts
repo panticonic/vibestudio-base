@@ -12,6 +12,7 @@ import {
   type GadJsonValue,
   type HistoryTrajectorySearchInput,
 } from "@vibestudio/service-schemas/workspaceSource";
+import { vcsTrajectoryInvocationRefSchema } from "@vibestudio/service-schemas/vcs";
 import { searchTrajectoryProse } from "./doltWorkspaceSearch.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWorkOwner";
@@ -1897,6 +1898,17 @@ export class GadWorkspaceDO extends DurableObjectBase {
   searchHistoryTrajectory(input: HistoryTrajectorySearchInput) {
     const { causes, ...search } = HistoryTrajectorySearchInputSchema.parse(input);
     return searchTrajectoryProse(this.sql, search, causes);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host admits exact invocation coordinates from native workspace history." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryMemoryCause(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
+    return this.semanticWorkspace().readHistoryMemoryCause(vcsTrajectoryInvocationRefSchema.parse(input));
   }
 
   @schemaRpc()

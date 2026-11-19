@@ -262,6 +262,107 @@ const trajectoryRequestRef = (value: unknown) => {
   return parsed.data;
 };
 
+/** Hydrate a recorded invocation, including the exact channel of a native originating input. */
+function readRecordedMemoryCause(
+  sql: SemanticWorkspaceDeps["sql"],
+  { logId, head, invocationId }: { logId: string; head: string; invocationId: string },
+  inspectMessage: (node: { kind: "trajectory-message"; logId: string; head: string; messageId: string }) => Row | null,
+): Row | null {
+  const row = sql.exec(
+    `SELECT invocation.turn_id, invocation.kind AS tool_name,
+            invocation.terminal_outcome, invocation.request_ref_json,
+            turn.summary AS turn_summary, turn.trigger_message_id,
+            started.payload_ref_json AS started_payload_json
+       FROM (SELECT ? AS log_id, ? AS head, ? AS invocation_id) AS cause
+       LEFT JOIN trajectory_invocations invocation USING (log_id, head, invocation_id)
+       LEFT JOIN trajectory_turns turn
+         ON turn.log_id = invocation.log_id AND turn.head = invocation.head
+        AND turn.turn_id = invocation.turn_id
+       LEFT JOIN log_events started
+         ON started.log_id = invocation.log_id AND started.head = invocation.head
+        AND started.envelope_id = invocation.started_event_id`,
+    logId, head, invocationId,
+  ).toArray()[0] as Row;
+  if (!row) {
+    return null;
+  }
+  const turnId = row["turn_id"] == null ? null : String(row["turn_id"]);
+  const startedPayload =
+    row["started_payload_json"] == null
+      ? null
+      : (JSON.parse(String(row["started_payload_json"])) as Row);
+  const nativeSource =
+    startedPayload?.["nativeSource"] === undefined
+      ? null
+      : nativeInvocationSourceSchema.parse(startedPayload["nativeSource"]);
+  const originatingInput =
+    nativeSource === null
+      ? null
+      : nativeOriginatingInputSchema
+          .nullable()
+          .parse(startedPayload!["originatingInput"]);
+  const messageLogId = originatingInput?.channelRef.objectKey ?? logId;
+  const messageHead = originatingInput
+    ? channelTrajectoryFor(messageLogId).head
+    : head;
+  const messageId =
+    nativeSource !== null
+      ? (originatingInput?.messageId ?? null)
+      : row["trigger_message_id"] == null
+        ? null
+        : String(row["trigger_message_id"]);
+  let triggerText: string | null = null;
+  let sender: unknown = null;
+  if (messageId) {
+    const message = inspectMessage({
+      kind: "trajectory-message",
+      logId: messageLogId,
+      head: messageHead,
+      messageId,
+    });
+    if (message) {
+      const blocks = Array.isArray(message["textBlocks"])
+        ? (message["textBlocks"] as Row[])
+        : [];
+      triggerText = boundedMemoryText(
+        blocks.map((block) => String(block["content"] ?? "")).join("\n"),
+        1_200,
+      );
+      sender = message["senderRef"] ?? null;
+    }
+  }
+  return {
+    invocation: { kind: "trajectory-invocation", logId, head, invocationId },
+    nativeInvocation:
+      nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
+    originatingInput,
+    turn: turnId ? { kind: "trajectory-turn", logId, head, turnId } : null,
+    message: messageId
+      ? {
+          kind: "trajectory-message",
+          logId: messageLogId,
+          head: messageHead,
+          messageId,
+        }
+      : null,
+    toolName: row["tool_name"] == null ? null : String(row["tool_name"]),
+    terminalOutcome:
+      row["terminal_outcome"] == null
+        ? null
+        : String(row["terminal_outcome"]),
+    requestRef:
+      row["request_ref_json"] == null
+        ? null
+        : trajectoryRequestRef(JSON.parse(String(row["request_ref_json"]))),
+    turnSummary: boundedMemoryText(
+      row["turn_summary"] == null ? "" : String(row["turn_summary"]),
+      600,
+    ),
+    triggerText,
+    sender,
+  };
+}
+
 export interface SemanticDispatchRequest {
   input?: unknown;
   /** Exact trajectory edge, when this command came from an agent tool call. */
@@ -7864,110 +7965,17 @@ export class SemanticWorkspace {
     ) {
       return null;
     }
-    const row = this.deps.sql
-      .exec(
-        `SELECT command.cause_log_id, command.cause_head, command.cause_invocation_id,
-                invocation.turn_id, invocation.kind AS tool_name,
-                invocation.terminal_outcome, invocation.request_ref_json,
-                turn.summary AS turn_summary, turn.trigger_message_id,
-                started.payload_ref_json AS started_payload_json
-           FROM vcs_command_journal command
-           LEFT JOIN trajectory_invocations invocation
-             ON invocation.log_id = command.cause_log_id
-            AND invocation.head = command.cause_head
-            AND invocation.invocation_id = command.cause_invocation_id
-           LEFT JOIN trajectory_turns turn
-             ON turn.log_id = invocation.log_id
-            AND turn.head = invocation.head
-            AND turn.turn_id = invocation.turn_id
-           LEFT JOIN log_events started
-             ON started.log_id = invocation.log_id
-            AND started.head = invocation.head
-            AND started.envelope_id = invocation.started_event_id
-          WHERE command.command_id = ?
-          LIMIT 1`,
-        commandId,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      return null;
-    }
-    const logId = String(row["cause_log_id"]);
-    const head = String(row["cause_head"]);
-    const invocationId = String(row["cause_invocation_id"]);
-    const turnId = row["turn_id"] == null ? null : String(row["turn_id"]);
-    const startedPayload =
-      row["started_payload_json"] == null
-        ? null
-        : (JSON.parse(String(row["started_payload_json"])) as Row);
-    const nativeSource =
-      startedPayload?.["nativeSource"] === undefined
-        ? null
-        : nativeInvocationSourceSchema.parse(startedPayload["nativeSource"]);
-    const originatingInput =
-      nativeSource === null
-        ? null
-        : nativeOriginatingInputSchema
-            .nullable()
-            .parse(startedPayload!["originatingInput"]);
-    const messageLogId = originatingInput?.channelRef.objectKey ?? logId;
-    const messageHead = originatingInput
-      ? channelTrajectoryFor(messageLogId).head
-      : head;
-    const messageId =
-      nativeSource !== null
-        ? (originatingInput?.messageId ?? null)
-        : row["trigger_message_id"] == null
-          ? null
-          : String(row["trigger_message_id"]);
-    let triggerText: string | null = null;
-    let sender: unknown = null;
-    if (messageId) {
-      const message = this.inspectNode({
-        kind: "trajectory-message",
-        logId: messageLogId,
-        head: messageHead,
-        messageId,
-      })["value"] as Row;
-      const blocks = Array.isArray(message["textBlocks"])
-        ? (message["textBlocks"] as Row[])
-        : [];
-      triggerText = boundedMemoryText(
-        blocks.map((block) => String(block["content"] ?? "")).join("\n"),
-        1_200,
-      );
-      sender = message["senderRef"] ?? null;
-    }
-    return {
-      invocation: { kind: "trajectory-invocation", logId, head, invocationId },
-      nativeInvocation:
-        nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
-      originatingInput,
-      turn: turnId ? { kind: "trajectory-turn", logId, head, turnId } : null,
-      message: messageId
-        ? {
-            kind: "trajectory-message",
-            logId: messageLogId,
-            head: messageHead,
-            messageId,
-          }
-        : null,
-      toolName: row["tool_name"] == null ? null : String(row["tool_name"]),
-      terminalOutcome:
-        row["terminal_outcome"] == null
-          ? null
-          : String(row["terminal_outcome"]),
-      requestRef:
-        row["request_ref_json"] == null
-          ? null
-          : trajectoryRequestRef(JSON.parse(String(row["request_ref_json"]))),
-      turnSummary: boundedMemoryText(
-        row["turn_summary"] == null ? "" : String(row["turn_summary"]),
-        600,
-      ),
-      triggerText,
-      sender,
-    };
+    return readRecordedMemoryCause(this.deps.sql, {
+      logId: String(command["cause_log_id"]),
+      head: String(command["cause_head"]),
+      invocationId: String(command["cause_invocation_id"]),
+    }, (node) => this.inspectNode(node)["value"] as Row);
+  }
+
+  readHistoryMemoryCause(invocation: { logId: string; head: string; invocationId: string }) {
+    return readRecordedMemoryCause(this.deps.sql, invocation, (node) => this.messageExcerpt(
+      node.logId, node.head, node.messageId,
+    ));
   }
 
   private resolveRepository(

@@ -19,6 +19,7 @@ import {
   vcsMoveInputSchema,
   vcsNeighborsInputSchema,
   vcsReadFilesInputSchema,
+  vcsReadMemoryInputSchema,
   vcsRevertInputSchema,
   vcsResolveRepositoryInputSchema,
   vcsSearchInputSchema,
@@ -39,6 +40,7 @@ import {
   type VcsMoveInput,
   type VcsNeighborsInput,
   type VcsReadFilesInput,
+  type VcsReadMemoryInput,
   type VcsRevertInput,
   type VcsResolveRepositoryInput,
   type VcsSearchInput,
@@ -594,6 +596,11 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryBlame(input: { contextId: string; blame: VcsBlameInput }) {
     return this.#history().blame(input.contextId, vcsBlameInputSchema.parse(input.blame));
+  }
+
+  @rpc(hostRead)
+  readHistoryMemory(input: VcsReadMemoryInput) {
+    return this.#history().readMemory(this.#workspaceId(), vcsReadMemoryInputSchema.parse(input));
   }
 
   #workspaceId(): string {

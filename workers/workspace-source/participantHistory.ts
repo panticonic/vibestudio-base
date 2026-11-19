@@ -31,6 +31,7 @@ import type {
   VcsMoveInput,
   VcsNeighborsInput,
   VcsReadFilesInput,
+  VcsReadMemoryInput,
   VcsResolveRepositoryInput,
   VcsRevertInput,
   VcsSearchInput,
@@ -65,6 +66,7 @@ import {
 import { readInvertedCounteractionMappings } from "./contentBlame.js";
 import { workspaceRevertBasisAt } from "./doltWorkspaceRevert.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
+import { workspaceReadMemoryAt } from "./doltWorkspaceMemory.js";
 import { historySearchCausesAt, searchHistoryProse } from "./doltWorkspaceSearch.js";
 import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
@@ -554,6 +556,13 @@ export class ParticipantHistory {
         readOrigin: () => workspaceContentOriginsAt(sql, revision, [input.fileId]).get(input.fileId)?.ref,
         intentTier: (id) => readHistoryWorkUnitIntent(sql, revision, id).tier,
       }));
+    });
+  }
+
+  readMemory(workspaceId: string, input: VcsReadMemoryInput) {
+    return this.#run(() => {
+      const { head, state } = this.#contextState(input.contextId);
+      return workspaceReadMemoryAt(this.#storage.sql, head, workspaceId, state, input);
     });
   }
 
