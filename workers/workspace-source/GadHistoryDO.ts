@@ -934,7 +934,7 @@ export class GadHistoryDO extends DurableObjectBase {
         const peer = `${participantPeerPrefix}${target}`;
         const dolt = this.#remotes();
         const branch = historyRetirementBranch(participantId, input.contextId);
-        const label = `context-retirement:${branch}`;
+        const label = `context-retirement:${sha256HexSyncText(branch)}`;
         for (const prior of dolt.remote.grants()) {
           if (prior.label === label) dolt.remote.revoke(prior.id);
         }
