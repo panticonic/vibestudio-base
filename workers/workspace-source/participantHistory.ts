@@ -24,6 +24,8 @@ import type {
   VcsInspectInput,
   VcsImportSnapshotInput,
   VcsImportSnapshotResult,
+  VcsExternalDeltaResult,
+  VcsRegisterExternalDeltaInput,
   VcsListDirectoryInput,
   VcsListFilesInput,
   VcsMergeInput,
@@ -40,9 +42,10 @@ import type {
   VcsStatusResult,
   VcsWalkInput,
 } from "@vibestudio/service-schemas/vcs";
-import { vcsBlameResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
+import { vcsBlameResultSchema, vcsExternalDeltaResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import type { HistoryQueryBasis, HistoryQueryTrajectory, HistorySearchCause, HistoryWalkCohort, HistoryWalkInvocation } from "@vibestudio/service-schemas/workspaceSource";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
+import { assertSemanticVcsPathAdmissible } from "@vibestudio/shared/vcs/pathAdmission";
 import { compactId, resolveIntent, type StateNodeRef } from "@workspace/vcs-engine";
 import {
   applyDoltWorkspaceState,
@@ -474,10 +477,12 @@ export class ParticipantHistory {
   referencesReachable(contextIds: readonly string[], references: readonly VcsSemanticNodeRef[]) {
     return this.#run(async () => {
       const { sql } = this.#storage;
-      const tips = [...new Set(this.#contextTips(contextIds).map(({ head }) => head))];
+      const contexts = this.#contextTips(contextIds);
+      const tips = [...new Set(contexts.map(({ head }) => head))];
       if (tips.length === 0) return false;
       const unresolved = references.filter((ref) =>
-        !tips.some((tip) => workspaceReferenceAt(sql, tip, ref)),
+        !tips.some((tip) => workspaceReferenceAt(sql, tip, ref)) &&
+        !contexts.some(({ contextId }) => this.#externalTipFor(contextId, ref) !== null),
       );
       if (unresolved.length === 0) return true;
       const main = await this.#fetchMain();
@@ -489,7 +494,8 @@ export class ParticipantHistory {
     return this.#run(() => {
       const { sql } = this.#storage;
       return this.#contextTips(contextIds)
-        .find(({ head }) => workspaceReferenceAt(sql, head, ref))?.contextId ?? null;
+        .find(({ head, contextId }) => workspaceReferenceAt(sql, head, ref) ||
+          this.#externalTipFor(contextId, ref) !== null)?.contextId ?? null;
     });
   }
 
@@ -619,6 +625,8 @@ export class ParticipantHistory {
   async #provenanceTip(contextId: string, node: VcsSemanticNodeRef): Promise<string> {
     const { sql } = this.#storage;
     const local = this.#dolt.hashOf(this.#contextBranch(contextId));
+    const external = this.#externalTipFor(contextId, node);
+    if (external !== null) return external;
     if (workspaceReferenceAt(sql, local, node)) return local;
     const main = await this.#fetchMain();
     if (!workspaceReferenceAt(sql, main, node))
@@ -1293,6 +1301,148 @@ export class ParticipantHistory {
       this.#removeImportBranch(stage);
       return receipt;
     });
+  }
+
+  /** Register sealed external evidence without advancing the participant's working revision. */
+  registerExternalDelta(
+    expectedHead: string,
+    input: VcsRegisterExternalDeltaInput,
+    observation: Record<string, unknown>,
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
+  ): Promise<VcsExternalDeltaResult> {
+    return this.#run(() => {
+      const { sql } = this.#storage;
+      const { contextId, commandId, repositoryId, repoPath, expectedWorkingHead } = input;
+      const receipts = this.#receipts;
+      if (!receipts) throw new Error("External delta registration requires local receipt storage");
+      const receiptKey = `history-external-register:${sha256HexSyncText(canonicalJson([contextId, commandId]))}`;
+      const command = { commandId, method: "registerExternalDelta", requestDigest: compactId("registerExternalDelta-request", input), cause };
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      const stage = this.#externalBranch(contextId);
+      const staged = this.#dolt.branch.list().find(({ name }) => name === stage)?.hash;
+      const deltaId = compactId("external-delta:v1", {
+        ownerContextId: contextId, repositoryId,
+        oldSnapshot: input.oldSource.snapshot, newSnapshot: input.newSource.snapshot,
+      });
+      if (staged && this.#hasCommand(staged, contextId, command)) {
+        const prior = receipts.get(receiptKey);
+        if (!prior) throw new SemanticVcsError("IntegrityFailure", "External delta receipt has no recorded response");
+        return vcsExternalDeltaResultSchema.parse(JSON.parse(prior));
+      }
+      if (this.#hasCommand(current, contextId, command)) {
+        const prior = this.#externalDelta(current, contextId, deltaId);
+        if (!prior) throw new SemanticVcsError("IntegrityFailure", "Replayed external delta has no retained draft");
+        return prior.result;
+      }
+      if (current !== expectedHead) throw new HistoryHeadChanged(expectedHead, current);
+      if (workspaceCommitForRef(sql, current, expectedWorkingHead) !== current) {
+        throw new SemanticVcsError("RevisionChanged", "External delta requires the exact working revision");
+      }
+      const repository = workspaceEditBasisAt(sql, current).repositoryAtPath(repoPath);
+      if (repository?.repositoryId !== repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `External delta target ${repositoryId} is not ${repoPath}`);
+      }
+      const placed = new Map(sql.exec(
+        `SELECT file_id, path FROM dolt_at_files(?) WHERE repository_id = ? AND presence = 'placed'`,
+        current, repositoryId,
+      ).toArray().map(({ file_id, path }) => [String(path), String(file_id)]));
+      for (const file of [...input.oldFiles, ...input.newFiles]) assertSemanticVcsPathAdmissible(file.path);
+      const { record, workUnit, changes } = SemanticWorkspace.planExternalDeltaDraft(input, observation, {
+        fileIdAtPath: (path) => placed.get(path) ?? null,
+        evidence: () => ({ authorContextId: contextId, triggerEvidence }),
+        now: () => new Date().toISOString(),
+      });
+      const prior = this.#externalDelta(staged ?? current, contextId, deltaId);
+      if (prior && prior.inputDigest !== record.inputDigest) {
+        throw new SemanticVcsError("IntegrityFailure", `External delta ${deltaId} was re-registered with different evidence`);
+      }
+      if (!prior && input.supersedesDeltaId) {
+        const superseded = this.#externalDelta(staged ?? current, contextId, input.supersedesDeltaId);
+        if (!superseded || superseded.result.status !== "active") {
+          throw new SemanticVcsError("InvalidReference", "External delta to supersede is not active in this context");
+        }
+      }
+      if (!staged) this.#dolt.branch.create(stage, { from: current });
+      const result: VcsExternalDeltaResult = prior?.result ?? {
+        deltaId, workUnitId: workUnit.workUnitId, repositoryId, repoPath,
+        oldSnapshot: record.oldSnapshot, newSnapshot: record.newSnapshot, status: "active",
+        changeCount: changes.length, changeIds: changes.slice(0, 200).map(({ changeId }) => changeId),
+      };
+      this.#commitBranch(stage, "Register external workspace delta", () => {
+        if (!prior) {
+          const provenance = new SemanticProvenanceWriter(sql);
+          provenance.persistWorkUnit(workUnit, resolveIntent({
+            stated: workUnit.intentSummary,
+            trigger: triggerEvidence && { text: triggerEvidence.text, sender: triggerEvidence.sender.id },
+            mechanical: describeSemanticEffects(workUnit.kind, changes),
+          }));
+          provenance.persistChanges(changes);
+          provenance.persistExternalDelta(record);
+          if (input.supersedesDeltaId) {
+            sql.exec(
+              `UPDATE gad_external_deltas SET status = 'superseded', superseded_by_delta_id = ?
+                WHERE delta_id = ? AND owner_context_id = ? AND status = 'active'`,
+              deltaId, input.supersedesDeltaId, contextId,
+            );
+          }
+        }
+        this.#recordCommand(contextId, command, workUnit.createdAt);
+        receipts.set(receiptKey, canonicalJson(result));
+      });
+      return result;
+    });
+  }
+
+  #externalBranch(contextId: string): string {
+    return `external/${branchSegment(contextId)}`;
+  }
+
+  #externalTipFor(contextId: string, ref: VcsSemanticNodeRef): string | null {
+    if (ref.kind !== "external-delta" && ref.kind !== "work-unit" && ref.kind !== "change" && ref.kind !== "command") return null;
+    const stage = this.#externalBranch(contextId);
+    const tip = this.#dolt.branch.list().find(({ name }) => name === stage)?.hash;
+    if (!tip) return null;
+    const { sql } = this.#storage;
+    const lookup = ref.kind === "external-delta"
+      ? [`SELECT 1 FROM dolt_at_gad_external_deltas(?) WHERE owner_context_id = ? AND delta_id = ?`, tip, contextId, ref.deltaId] as const
+      : ref.kind === "work-unit"
+        ? [`SELECT 1 FROM dolt_at_gad_external_deltas(?) WHERE owner_context_id = ? AND work_unit_id = ?`, tip, contextId, ref.workUnitId] as const
+        : ref.kind === "change"
+          ? [`SELECT 1 FROM dolt_at_gad_external_deltas(?) AS delta
+               JOIN dolt_at_gad_changes(?) AS change USING (work_unit_id)
+              WHERE delta.owner_context_id = ? AND change.change_id = ?`, tip, tip, contextId, ref.changeId] as const
+          : [`SELECT 1 FROM dolt_at_commands(?) WHERE scope_kind = 'context' AND scope_id = ?
+               AND command_id = ? AND method = 'registerExternalDelta'`, tip, contextId, ref.commandId] as const;
+    return sql.exec(lookup[0], ...lookup.slice(1)).toArray().length === 1 ? tip : null;
+  }
+
+  #externalDelta(at: string, contextId: string, deltaId: string): {
+    inputDigest: string;
+    result: VcsExternalDeltaResult;
+  } | null {
+    const { sql } = this.#storage;
+    const delta = sql.exec(
+      `SELECT * FROM dolt_at_gad_external_deltas(?)
+        WHERE delta_id = ? AND owner_context_id = ?`,
+      at, deltaId, contextId,
+    ).toArray()[0];
+    if (!delta) return null;
+    const workUnitId = String(delta["work_unit_id"]);
+    const changes = sql.exec(
+      `SELECT change_id FROM dolt_at_gad_changes(?)
+        WHERE work_unit_id = ? ORDER BY operation, ordinal, change_id`,
+      at, workUnitId,
+    ).toArray();
+    return {
+      inputDigest: String(delta["input_digest"]),
+      result: {
+        deltaId, workUnitId, repositoryId: String(delta["repository_id"]), repoPath: String(delta["repo_path"]),
+        oldSnapshot: String(delta["old_snapshot"]), newSnapshot: String(delta["new_snapshot"]),
+        status: delta["status"] as VcsExternalDeltaResult["status"],
+        changeCount: changes.length, changeIds: changes.slice(0, 200).map(({ change_id }) => String(change_id)),
+      },
+    };
   }
 
   #importReceipt(at: string, input: VcsImportSnapshotInput) {
@@ -1983,7 +2133,7 @@ export class ParticipantHistory {
       const branches = this.#dolt.branch.list();
       const importPrefix = `import/${branchSegment(contextId)}/`;
       for (const { name } of branches) {
-        if (name.startsWith(importPrefix)) this.#removeImportBranch(name);
+        if (name.startsWith(importPrefix) || name === this.#externalBranch(contextId)) this.#removeImportBranch(name);
       }
       const branch = branches.find(({ name }) => name === context);
       if (!branch) return;

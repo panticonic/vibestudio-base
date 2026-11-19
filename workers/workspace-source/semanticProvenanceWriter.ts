@@ -11,6 +11,7 @@ import type {
   AppliedChangeRecord,
   ChangeRecord,
   ContentEdgeRecord,
+  ExternalDeltaRecord,
   IntegrationDecisionRecord,
   WorkUnitRecord,
 } from "./semanticVcsStore.js";
@@ -60,6 +61,32 @@ export function validateApplicationPlan(plan: Pick<
 /** Writes immutable provenance shared by the SQLite and Dolt commit paths. */
 export class SemanticProvenanceWriter {
   constructor(private readonly sql: SqlStorage) {}
+
+  persistExternalDelta(delta: ExternalDeltaRecord): void {
+    const target = delta.targetState;
+    this.sql.exec(
+      `INSERT INTO gad_external_deltas
+       (delta_id, work_unit_id, owner_context_id, repository_id, repo_path, target_state_kind, target_state_id,
+        old_source_json, new_source_json, old_snapshot, new_snapshot, input_digest, status,
+        superseded_by_delta_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      delta.deltaId,
+      delta.workUnitId,
+      delta.ownerContextId,
+      delta.repositoryId,
+      delta.repoPath,
+      target.kind,
+      target.kind === "event" ? target.eventId : target.applicationId,
+      canonicalJson(delta.oldSource),
+      canonicalJson(delta.newSource),
+      delta.oldSnapshot,
+      delta.newSnapshot,
+      delta.inputDigest,
+      delta.status,
+      delta.supersededByDeltaId,
+      delta.createdAt
+    );
+  }
 
   persistWorkUnit(value: WorkUnitRecord, intent?: ResolvedIntent): void {
     for (const [field, candidate] of Object.entries({

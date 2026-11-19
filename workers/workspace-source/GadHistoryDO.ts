@@ -20,6 +20,7 @@ import {
   vcsNeighborsInputSchema,
   vcsReadFilesInputSchema,
   vcsQueryInputSchema,
+  vcsRegisterExternalDeltaInputSchema,
   type VcsQueryInput,
   vcsReadMemoryInputSchema,
   vcsRevertInputSchema,
@@ -44,6 +45,7 @@ import {
   type VcsMoveInput,
   type VcsNeighborsInput,
   type VcsReadFilesInput,
+  type VcsRegisterExternalDeltaInput,
   type VcsReadMemoryInput,
   type VcsRevertInput,
   type VcsResolveRepositoryInput,
@@ -57,6 +59,7 @@ import {
   committedWorkspaceEvent,
   createDoltWorkspaceState,
   workspaceCommitForRef,
+  workspaceExternalDeltaRoots,
   workspaceHasFileContent,
   workspacePlacementRoots,
   workspacePrivateReplayContent,
@@ -680,7 +683,12 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryContentRoots(): string[] {
     this.ensureReady();
-    return workspacePlacementRoots(this.sql, this.#remotes().branch.list().map(({ hash }) => hash));
+    const branches = this.#remotes().branch.list();
+    return [...new Set([
+      ...workspacePlacementRoots(this.sql, branches.map(({ hash }) => hash)),
+      ...workspaceExternalDeltaRoots(this.sql, branches.filter(({ name }) => name.startsWith("external/"))
+        .map(({ hash }) => hash)),
+    ])].sort(compareUtf16CodeUnits);
   }
 
   @rpc(hostRead)
@@ -808,6 +816,21 @@ export class GadHistoryDO extends DurableObjectBase {
     this.#assertWritable();
     return this.#history().importSnapshot(
       input.head, vcsImportSnapshotInputSchema.parse(input.snapshot), input.observation,
+      input.cause, input.triggerEvidence,
+    );
+  }
+
+  @rpc(hostWrite)
+  registerHistoryExternalDelta(input: {
+    head: string;
+    delta: VcsRegisterExternalDeltaInput;
+    observation: Record<string, unknown>;
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+  }) {
+    this.#assertWritable();
+    return this.#history().registerExternalDelta(
+      input.head, vcsRegisterExternalDeltaInputSchema.parse(input.delta), input.observation,
       input.cause, input.triggerEvidence,
     );
   }

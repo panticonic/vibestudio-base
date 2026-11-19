@@ -821,6 +821,31 @@ export function workspacePlacementRoots(sql: SqlStorage, retained: readonly stri
   });
 }
 
+/** Retain both versions of privately staged external changes until the draft is retired. */
+export function workspaceExternalDeltaRoots(sql: SqlStorage, retained: readonly string[]): string[] {
+  if (retained.length === 0) return [];
+  return sql.exec(
+    `WITH endpoints AS (
+        SELECT change.base_json, change.result_json
+          FROM json_each(?) AS tips
+          CROSS JOIN dolt_at_gad_external_deltas(tips.value) AS delta
+          CROSS JOIN dolt_at_gad_changes(tips.value) AS change
+         WHERE delta.work_unit_id = change.work_unit_id
+      ), hashes AS (
+        SELECT json_extract(base_json, '$.contentHash') AS content_hash FROM endpoints
+        UNION
+        SELECT json_extract(result_json, '$.contentHash') AS content_hash FROM endpoints
+      )
+      SELECT content_hash FROM hashes WHERE content_hash IS NOT NULL ORDER BY content_hash`,
+    JSON.stringify([...new Set(retained)]),
+  ).toArray().map(({ content_hash }) => {
+    if (typeof content_hash !== "string" || !/^[0-9a-f]{64}$/u.test(content_hash)) {
+      throw new Error("Invalid external workspace content identity");
+    }
+    return content_hash;
+  });
+}
+
 /** Enumerate replayed file bytes that were never part of the migrated public history. */
 export function workspacePrivateReplayContent(
   sql: SqlStorage,
