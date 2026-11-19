@@ -10,9 +10,10 @@ guides at that head. It returns the context and revision with those observations
   the change and the consumers that need to change with it.
 - Ownership and stored-history review are separate child lambdas. The latter
   spells out the replay obligation only for changes to persisted contracts.
-- Verification planning uses separate build and canary child lambdas. They
-  distinguish focused package tests, rebuilding runnable units, fresh canary
-  observation and cleanup.
+- Verification planning uses separate build and canary child lambdas. The
+  canary branch chooses its surface, designs a bounded action and evidence,
+  and plans release of the resources implied by the probe. It covers the
+  default chat adapter's tool selection and native runtime observation admission.
 - Exact revision pinning, the source lookup allowlist and the installed VCS
   calls are TypeScript. The planner issues a plan and neither edits nor claims
   to have verified a change. Execution needs the matching authoring and

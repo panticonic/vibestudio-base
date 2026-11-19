@@ -66,7 +66,7 @@ export function bindAgenticChangePlan(assignment: AgenticChangeRequest) {
                 : workingHead.applicationId,
             guides: units.map((unit) => ({
               unit,
-              excerpt: text.get(unit)?.slice(0, 1600) ?? null,
+              excerpt: text.get(unit)?.slice(0, 3600) ?? null,
             })),
           };
         },

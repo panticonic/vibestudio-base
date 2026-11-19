@@ -24,6 +24,10 @@ Core runtime mechanics live in this package. Projection and rendering details
 can live in sibling packages such as `../agentic-core` or `../agentic-protocol`.
 The standard chat worker is `../../workers/agent-worker`.
 
+The [Natlang agentic change planner](../../skills/agentic-development/natlang/planAgenticChange.nl)
+uses the installed source guides to identify native runtime ownership, focused checks,
+and a canary at the assigned workspace revision.
+
 ## Model execution in tests
 
 The host may set `VIBESTUDIO_TEST_MODE=1` for an isolated test instance. Model

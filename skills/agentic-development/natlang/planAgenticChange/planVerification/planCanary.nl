@@ -5,4 +5,6 @@ args:
   builds: AgenticBuildPlan
 returns: AgenticCanaryPlan
 ---
-Use a fresh chat panel at the assigned semantic context when the change affects chat boot, capability exposure or product/protocol negotiation. Otherwise use a fresh purpose-scoped agent in its own channel in that context. Preserve the parent agent and the existing channels. Use a small realistic probe that would expose the changed behavior. Require concrete evidence appropriate to the probe from terminal transcript, invocation outcome, channel delivery, panel console or lifecycle. Plan to remove the exact temporary panel, channel registrations, worker or DO, page and diagnostics that the canary acquired.
+1. Call chooseSurface with the goal and builds.
+2. Call designProbe with the goal and the selected surface. Keep its probe and observations.
+3. Call planCleanup with the surface and the exact probe result. Return surface, probe, observations and cleanup.

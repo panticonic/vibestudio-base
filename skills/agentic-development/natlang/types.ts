@@ -32,10 +32,15 @@ export type AgenticBuildPlan = {
   rebuild: AgenticUnit[];
 };
 
-export type AgenticCanaryPlan = {
-  surface: "fresh-agent" | "fresh-chat-panel";
+export type AgenticCanarySurface = "fresh-agent" | "fresh-chat-panel";
+
+export type AgenticCanaryProbe = {
   probe: string;
   observations: string[];
+};
+
+export type AgenticCanaryPlan = AgenticCanaryProbe & {
+  surface: AgenticCanarySurface;
   cleanup: string[];
 };
 

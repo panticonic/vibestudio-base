@@ -12,3 +12,9 @@ A green build establishes that the recorded source state compiled. A claim about
 A browser action receipt records an interaction. Verify the behavior with the resulting control value or visible content. A panel may rebuild or change generations between interactions, so match the readback to the candidate when the claim depends on the rebuilt code.
 
 A merge receipt may leave unresolved coordinates. To support a claim that both intents survived, inspect the resulting values and applicable behavior after integration.
+
+The shared [unit repair workflow](../../../../runWorkflow/repairUnit.nl) and
+[workspace integration workflow](../../../../runWorkflow/integrateWorkspace.nl)
+call the evidence checker with concrete observations. Unit repair uses the
+declared verification report, and integration uses the merged content and its
+observed behavior.

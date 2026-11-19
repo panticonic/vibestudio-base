@@ -30,10 +30,13 @@ type AgenticBuildPlan = {
   focusedTests: AgenticUnit[];
   rebuild: AgenticUnit[];
 };
-type AgenticCanaryPlan = {
-  surface: "fresh-agent" | "fresh-chat-panel";
+type AgenticCanarySurface = "fresh-agent" | "fresh-chat-panel";
+type AgenticCanaryProbe = {
   probe: string;
   observations: string[];
+};
+type AgenticCanaryPlan = AgenticCanaryProbe & {
+  surface: AgenticCanarySurface;
   cleanup: string[];
 };
 type AgenticChangePlan = {
@@ -43,5 +46,5 @@ type AgenticChangePlan = {
   builds: AgenticBuildPlan | null;
   canary: AgenticCanaryPlan | null;
 };
-declare const fn: NatlangFunction<[request: AgenticChangeRequest], AgenticChangePlan> & { readonly planVerification: NatlangFunction<[goal: string, impact: AgenticImpact], { builds: AgenticBuildPlan; canary: AgenticCanaryPlan }> & { readonly planBuilds: NatlangFunction<[impact: AgenticImpact], AgenticBuildPlan>; readonly planCanary: NatlangFunction<[goal: string, builds: AgenticBuildPlan], AgenticCanaryPlan> }; readonly readSource: NatlangFunction<[contextId: string], AgenticSourceObservation>; readonly reviewImpact: NatlangFunction<[goal: string, sources: AgenticSourceObservation], AgenticImpact> & { readonly findOwners: NatlangFunction<[goal: string, sources: AgenticSourceObservation], { owner: AgenticUnit | null; consumers: AgenticUnit[]; blockers: string[] }>; readonly reviewHistory: NatlangFunction<[goal: string, units: { owner: AgenticUnit | null; consumers: AgenticUnit[]; blockers: string[] }], { persistedContract: boolean; retainedHistoryChecks: string[] }> } };
+declare const fn: NatlangFunction<[request: AgenticChangeRequest], AgenticChangePlan> & { readonly planVerification: NatlangFunction<[goal: string, impact: AgenticImpact], { builds: AgenticBuildPlan; canary: AgenticCanaryPlan }> & { readonly planBuilds: NatlangFunction<[impact: AgenticImpact], AgenticBuildPlan>; readonly planCanary: NatlangFunction<[goal: string, builds: AgenticBuildPlan], AgenticCanaryPlan> & { readonly chooseSurface: NatlangFunction<[goal: string, builds: AgenticBuildPlan], AgenticCanarySurface>; readonly designProbe: NatlangFunction<[goal: string, surface: AgenticCanarySurface], AgenticCanaryProbe>; readonly planCleanup: NatlangFunction<[surface: AgenticCanarySurface, probe: AgenticCanaryProbe], string[]> } }; readonly readSource: NatlangFunction<[contextId: string], AgenticSourceObservation>; readonly reviewImpact: NatlangFunction<[goal: string, sources: AgenticSourceObservation], AgenticImpact> & { readonly findOwners: NatlangFunction<[goal: string, sources: AgenticSourceObservation], { owner: AgenticUnit | null; consumers: AgenticUnit[]; blockers: string[] }>; readonly reviewHistory: NatlangFunction<[goal: string, units: { owner: AgenticUnit | null; consumers: AgenticUnit[]; blockers: string[] }], { persistedContract: boolean; retainedHistoryChecks: string[] }> } };
 export default fn;

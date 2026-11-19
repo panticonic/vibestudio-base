@@ -14,6 +14,10 @@ Read [agentic development](../../skills/agentic-development/SKILL.md) for
 changes that span the agentic stack, and [Agentic DO](../../packages/agentic-do/SKILL.md)
 before changing runtime mechanics.
 
+The [Natlang agentic change planner](../../skills/agentic-development/natlang/planAgenticChange.nl)
+uses the installed source guides to identify default worker ownership, focused checks,
+and a canary at the assigned workspace revision.
+
 ## Invariants
 
 - `AiChatWorker` is a per-channel Durable Object participant. Its handle,
