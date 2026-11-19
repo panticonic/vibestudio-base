@@ -6,6 +6,33 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  evalRecoveryJournal: `/** Observe the assigned completed EvalDO attempt and native receipts. */
+
+type EvalRecoveryStore = { digest: string; contentDigest: string; size: number };
+
+type EvalRecoveryAttempt = {
+  operationId: string;
+  runId: string;
+  cell: "returned" | "failed";
+  journal: "complete" | "truncated" | "unavailable";
+  expectedDigest: string;
+  expectedSize: number;
+  allowReadback: boolean;
+  stores: EvalRecoveryStore[];
+};
+
+/** Observe the assigned completed EvalDO attempt and native receipts. */
+export function observe(operationId: string): Promise<EvalRecoveryAttempt>;`,
+  evalRecoveryReadback: `/** Read back an exact assigned digest after its complete native store receipt. */
+
+type EvalRecoveryReadback = {
+  digest: string;
+  observedDigest: string | null;
+  size: number | null;
+};
+
+/** Read back an exact assigned digest after its complete native store receipt. */
+export function read(operationId: string, digest: string): Promise<EvalRecoveryReadback>;`,
   pdfLayoutRead: `/** Read the original embedded fragment geometry of one assigned local PDF page. */
 
 type PdfLayoutFragment = { text: string; bounds: number[] };
