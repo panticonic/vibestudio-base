@@ -435,7 +435,20 @@ type SuiteReviewPlan = {
 export function resolve(operationId: string): Promise<SuiteReviewPlan>;`,
   testSuiteVerificationRun: `/** Verify the exact caller-assigned test plan after live resolution. */
 
+type SuiteReviewRuntime = "native" | "workerd" | "browser";
+
+type SuiteVerificationIdentity = {
+  operation: "build" | "test";
+  target: string;
+  suite: string | null;
+  runtime: SuiteReviewRuntime | null;
+  contextId: string;
+  ref: string;
+  stateHash: string;
+};
+
 type SuiteReviewExecution = {
+  receipt: SuiteVerificationIdentity | null;
   status: string;
   current: boolean;
   reportDigest: string | null;

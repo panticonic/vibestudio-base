@@ -20,7 +20,18 @@ type SuiteReviewPlan = {
   stateHash: string;
   contextId: string;
 };
+type SuiteVerificationIdentity = {
+  operation: "build" | "test";
+  target: string;
+  suite: string | null;
+  runtime: SuiteReviewRuntime | null;
+  contextId: string;
+  ref: string;
+  stateHash: string;
+};
+type SuiteReceiptStatus = "matched" | "incomplete" | "stale";
 type SuiteReviewExecution = {
+  receipt: SuiteVerificationIdentity | null;
   status: string;
   current: boolean;
   reportDigest: string | null;
@@ -55,5 +66,5 @@ type SuiteReviewReport = {
   execution: SuiteReviewExecution | null;
   result: SuiteReviewResultDecision | null;
 };
-declare const fn: NatlangFunction<[request: SuiteReviewRequest], SuiteReviewReport> & { readonly reviewPlan: NatlangFunction<[plan: SuiteReviewPlan, mode: SuiteReviewMode], SuiteReviewPlanDecision> & { readonly chooseRunDisposition: NatlangFunction<[mode: SuiteReviewMode, route: SuiteReviewRuntimeDecision], "report-plan" | "run-assignment">; readonly interpretRuntime: NatlangFunction<[plan: SuiteReviewPlan], SuiteReviewRuntimeDecision> }; readonly reviewResult: NatlangFunction<[execution: SuiteReviewExecution], SuiteReviewResultDecision> & { readonly interpretOutcome: NatlangFunction<[execution: SuiteReviewExecution], SuiteReviewOutcome>; readonly planFollowUp: NatlangFunction<[outcome: SuiteReviewOutcome, execution: SuiteReviewExecution], string> } };
+declare const fn: NatlangFunction<[request: SuiteReviewRequest], SuiteReviewReport> & { readonly reviewPlan: NatlangFunction<[plan: SuiteReviewPlan, mode: SuiteReviewMode], SuiteReviewPlanDecision> & { readonly chooseRunDisposition: NatlangFunction<[mode: SuiteReviewMode, route: SuiteReviewRuntimeDecision], "report-plan" | "run-assignment">; readonly interpretRuntime: NatlangFunction<[plan: SuiteReviewPlan], SuiteReviewRuntimeDecision> }; readonly reviewResult: NatlangFunction<[plan: SuiteReviewPlan, execution: SuiteReviewExecution], SuiteReviewResultDecision> & { readonly checkReceipt: NatlangFunction<[plan: SuiteReviewPlan, execution: SuiteReviewExecution], SuiteReceiptStatus> & { readonly matchesSuiteReceipt: ((plan: SuiteReviewPlan, receipt: SuiteVerificationIdentity | null) => boolean) & {  } }; readonly interpretOutcome: NatlangFunction<[execution: SuiteReviewExecution], SuiteReviewOutcome>; readonly planFollowUp: NatlangFunction<[outcome: SuiteReviewOutcome, execution: SuiteReviewExecution], string> } };
 export default fn;
