@@ -19,9 +19,10 @@ import {
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
 import { NORMALIZATION_PROTOCOL, SEMANTIC_PROTOCOL, type StateNodeRef } from "@workspace/vcs-engine";
-import { readHistoryWorkIntent } from "./doltMergeReview.js";
+import { readHistoryWorkIntent, readHistoryWorkUnitIntent } from "./doltMergeReview.js";
 import {
   committedWorkspaceEvent,
+  placementMergeParents,
   workspaceApplicationsAt,
   workspaceCommitForRef,
   workspaceEditBasisAt,
@@ -674,6 +675,7 @@ export function workspaceProvenanceNeighbors(
 }
 
 type EventHistoryInput = Extract<VcsHistoryInput, { root: { kind: "event" } }>;
+type FileHistoryInput = Extract<VcsHistoryInput, { root: { kind: "file" } }>;
 type SavedEvent = { eventId: string; head: string };
 
 /** Traverse semantic events at exact native commits, including saved merge parents. */
@@ -764,6 +766,118 @@ export function workspaceEventHistory(
     root, entries,
     nextCursor: last && positioned.length > limit
       ? semanticCursor("native-event-history", basis, { depth: last.depth, eventId: last.event.eventId })
+      : null,
+  };
+}
+
+/** Follow the applications that affected a stable file at its selected revision. */
+export function workspaceFileHistory(
+  sql: SqlStorage, at: string, workspaceId: string, contextId: string,
+  input: FileHistoryInput,
+): VcsHistoryResult {
+  const { root, limit, cursor } = input;
+  const revision = workspaceCommitForRef(sql, at, root.state);
+  if (!revision) throw new SemanticVcsError("InvalidReference", "Unknown workspace file revision");
+  const tombstone = placementTombstone(sql, revision, root);
+  const placedAt = tombstone ? priorPlacement(sql, revision, root, tombstone) : revision;
+  const file = workspaceEditBasisAt(sql, placedAt).file(root.fileId);
+  if (!file || file.repositoryId !== root.repositoryId)
+    throw new SemanticVcsError("InvalidReference", "File is outside the requested workspace repository");
+
+  const basis = { workspaceId, contextId, revision, root };
+  const position = parseSemanticCursor(cursor, "native-file-history", basis);
+  const offset = position ? position["offset"] : 0;
+  if (typeof offset !== "number" || !Number.isSafeInteger(offset) ||
+      offset < 0 || offset > MAX_ANCESTRY_EDGES) {
+    throw new SemanticVcsError("InvalidReference", "Workspace file history cursor has an invalid position");
+  }
+  const entries: VcsHistoryResult["entries"] = [];
+  const seenCommits = new Set([revision]);
+  const seenChanges = new Set<string>();
+  const pending = [revision];
+  for (const commit of pending) {
+    if (entries.length > limit) break;
+    const [ours, theirs, extra] = parentsAt(sql, commit);
+    if (!ours) continue;
+    if (extra) throw new SemanticVcsError("IntegrityFailure", "Workspace file history has too many parents");
+    const rows = sql.exec(
+      `WITH introduced AS MATERIALIZED (
+         SELECT to_application_id AS application_id, to_work_unit_id AS work_unit_id
+           FROM dolt_diff_applications(?2, ?1) AS diff
+          WHERE diff_type = 'added'
+            AND (?3 IS NULL OR NOT EXISTS (
+              SELECT 1 FROM dolt_at_applications(?3) AS incoming
+               WHERE incoming.application_id = diff.to_application_id
+            ))
+       ), selected_decision AS (
+         SELECT decision.decision_id
+           FROM introduced
+           JOIN dolt_at_gad_integration_decisions(?1) AS decision USING (work_unit_id)
+           JOIN dolt_at_gad_merge_decision_entries(?1) AS entry USING (decision_id)
+          WHERE entry.coordinate_kind = 'file' AND entry.coordinate_id = ?4 AND entry.resolution = 'adopt'
+       ), adopted AS (
+         SELECT source.change_id, selected_decision.decision_id
+           FROM selected_decision JOIN dolt_at_gad_decision_source_changes(?1) AS source USING (decision_id)
+          WHERE source.coordinate_kind = 'file' AND source.coordinate_id = ?4
+       ), applied_here AS (
+         SELECT applied.change_id, applied.ordinal
+           FROM introduced JOIN dolt_at_gad_applied_changes(?1) AS applied USING (application_id)
+          WHERE EXISTS (SELECT 1 FROM dolt_at_gad_change_coordinates(?1) AS target
+                         WHERE target.change_id = applied.change_id AND target.file_id = ?4)
+       ), candidates AS (
+         SELECT applied_here.change_id, applied_here.ordinal, adopted.decision_id AS via_decision_id
+           FROM applied_here LEFT JOIN adopted USING (change_id)
+         UNION ALL
+         SELECT change_id, -1, decision_id FROM adopted
+          WHERE NOT EXISTS (SELECT 1 FROM applied_here WHERE applied_here.change_id = adopted.change_id)
+       )
+       SELECT change.change_id, change.kind, change.work_unit_id, work.created_at, candidate.via_decision_id
+         FROM candidates AS candidate
+         JOIN dolt_at_gad_changes(?1) AS change USING (change_id)
+         JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+        ORDER BY candidate.ordinal DESC, work.created_at DESC, change.change_id, candidate.via_decision_id
+        LIMIT ?5`,
+      commit, ours, theirs ?? null, root.fileId, MAX_ANCESTRY_EDGES + 1,
+    ).toArray();
+    for (const row of rows) {
+      const { change_id, kind, work_unit_id, created_at, via_decision_id } = row;
+      if (typeof change_id !== "string" || typeof kind !== "string" ||
+          typeof work_unit_id !== "string" || typeof created_at !== "string") {
+        throw new SemanticVcsError("IntegrityFailure", "Workspace file history has an incomplete applied change");
+      }
+      if (seenChanges.has(change_id)) continue;
+      seenChanges.add(change_id);
+      if (seenChanges.size > MAX_ANCESTRY_EDGES)
+        throw new SemanticVcsError("ScopeTooLarge", "Workspace file history exceeds its change bound");
+      if (seenChanges.size <= offset) continue;
+      entries.push({
+        node: { kind: "change", changeId: change_id },
+        createdAt: created_at,
+        summary: kind,
+        intent: readHistoryWorkUnitIntent(sql, commit, work_unit_id),
+        ...(typeof via_decision_id === "string" ? { viaDecisionId: via_decision_id } : {}),
+      });
+      if (entries.length > limit) break;
+    }
+    const parents = [ours];
+    // A clean adoption can change the file without introducing an applied change.
+    // Include the source only when its exact placement or content was retained.
+    if (theirs && rows.length === 0 &&
+        placementMergeParents(sql, { hash: commit, ours, theirs }, [root.fileId])[0]?.[1] === theirs) {
+      parents.push(theirs);
+    }
+    for (const parent of parents) {
+      if (seenCommits.has(parent)) continue;
+      seenCommits.add(parent);
+      if (seenCommits.size > MAX_ANCESTRY_EDGES)
+        throw new SemanticVcsError("ScopeTooLarge", "Workspace file history exceeds its ancestry bound");
+      pending.push(parent);
+    }
+  }
+  return {
+    root, entries: entries.slice(0, limit),
+    nextCursor: entries.length > limit
+      ? semanticCursor("native-file-history", basis, { offset: offset + limit })
       : null,
   };
 }

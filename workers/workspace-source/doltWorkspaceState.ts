@@ -654,7 +654,7 @@ function nearestPlacementMerge(sql: SqlStorage, commit: string) {
 }
 
 /** Prefer a matching placement, then the parent whose content survives a combined row. */
-function placementMergeParents(
+export function placementMergeParents(
   sql: SqlStorage,
   merge: { hash: string; ours: string; theirs: string },
   fileIds: readonly string[],

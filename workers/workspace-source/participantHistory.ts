@@ -56,7 +56,7 @@ import {
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
-import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
+import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
 import { historyMergePlacements, readHistoryWorkUnitIntent, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
@@ -422,8 +422,10 @@ export class ParticipantHistory {
   history(contextId: string, workspaceId: string, input: VcsHistoryInput) {
     return this.#run(async () => {
       const { root } = input;
-      if (root.kind !== "event")
-        throw new SemanticVcsError("InvalidReference", "Workspace file history is not yet supported");
+      if (root.kind === "file") {
+        const at = await this.#provenanceTip(contextId, root);
+        return workspaceFileHistory(this.#storage.sql, at, workspaceId, contextId, { ...input, root, direction: "past" });
+      }
       const tips = input.direction === "past"
         ? [await this.#provenanceTip(contextId, root)]
         : [...new Set([this.#dolt.hashOf(this.#contextBranch(contextId)), await this.#fetchMain()])];
