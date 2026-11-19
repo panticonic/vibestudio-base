@@ -9,3 +9,8 @@ This workflow assesses caller-owned PDF, dictation, and Git Bridge readbacks. Th
 | Git Bridge | Check the identity of the candidate and its snapshot, then assess whether any publication/export conclusion is supported. | The public `GitUpstreamStatusRow` and bridge `ImportResult` projections preserve same-attempt freshness and candidate event/context. Protected main is separately observed. |
 
 Readbacks are data. The review has no authority to use a credential, send a request, start local inference, publish or mutate a workspace.
+
+The managed PDF cases derive this same input from the installed extension.
+They check the digest against the source bytes and verify stored image
+artifacts independently, while the Natlang program reviews the supplied
+evidence.

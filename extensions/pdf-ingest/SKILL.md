@@ -12,7 +12,7 @@ extension bundles its own engines and reports their status.
 ## Fast Path
 
 For a typed evidence task, use
-`runWorkflow.domains.pdfIntake.extractPdfEvidence` from the shared Natlang
+[`runWorkflow.domains.pdfIntake.extractPdfEvidence`](../../skills/pdf-intake/extractPdfEvidence.nl) from the shared Natlang
 program. Bind the PDF bytes and authorized page selection with
 `createPdfIntakeBindings` from `@workspace-skills/pdf-intake-bindings`.
 The workflow preserves the source digest and cites original lines with page
@@ -50,7 +50,8 @@ any other RPC result) directly to `pdf.ingest(...)`, `pdf.probe(...)`, or
 
 ## Structure-sensitive documents
 
-For a reading-order task, `runWorkflow.domains.pdfIntake.reviewPdfLayout`
+For a reading-order task,
+[`runWorkflow.domains.pdfIntake.reviewPdfLayout`](../../skills/pdf-intake/reviewPdfLayout.nl)
 uses the original text-fragment boxes. The workflow distinguishes row-major
 tables from column-major narrative, and returns each fragment with its
 original position.
@@ -68,6 +69,11 @@ For poetry, tables, or other layout-sensitive documents, start with:
 Inspect `pages[].lines` and their geometry instead of relying only on the
 flattened text. Use page warnings, confidence, and statistics to find material
 that needs review.
+
+Use the [media evidence review](../../skills/media-and-import-review/reviewMediaAndImport.nl)
+when an extraction has already been supplied. The PDF branch checks source
+identity and requested-page coverage before checking layout, OCR, or images.
+Use the original extension readback for its evidence.
 
 ## Useful Calls
 
