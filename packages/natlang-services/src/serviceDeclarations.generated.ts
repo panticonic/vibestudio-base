@@ -6,6 +6,38 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  tourRehearsal: `/** Navigate and verify a caller-assigned tour panel. */
+
+type TourScene = {
+  id: string;
+  title: string;
+  position: number;
+  eyebrow: string;
+};
+
+type TourFrame = {
+  storedScene: string;
+  storedNotes: boolean;
+  eyebrow: string;
+  heading: string;
+  progress: string;
+  notesVisible: boolean;
+};
+
+type TourStart = {
+  deck: TourScene[];
+  allowed: string[];
+  frame: TourFrame;
+};
+
+/** Navigate and verify a caller-assigned tour panel. */
+export function observe(operationId: string): Promise<TourStart>;
+
+/** Navigate and verify a caller-assigned tour panel. */
+export function visit(operationId: string, scene: string, notes: boolean): Promise<TourFrame>;
+
+/** Navigate and verify a caller-assigned tour panel. */
+export function restore(operationId: string): Promise<TourFrame>;`,
   buildPerformance: `/** Profile the caller-assigned workspace unit through the native build service. */
 
 type BuildPhaseTimes = {
