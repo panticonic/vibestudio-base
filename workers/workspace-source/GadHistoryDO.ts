@@ -113,6 +113,7 @@ function workKey(participantId: string): string {
 }
 
 interface HistoryContextBinding {
+  contextId?: string;
   closed: boolean;
   targets: string[];
 }
@@ -241,6 +242,41 @@ export class GadHistoryDO extends DurableObjectBase {
     });
   }
 
+  /** Record a runtime lifetime before a verified participant needs a working copy. */
+  @rpc(hostWrite)
+  ensureHistoryRuntimeContext(input: { contextId: string }): void {
+    this.#assertCanonical();
+    const binding = this.#assertHistoryContextOpen(input.contextId);
+    if (binding.contextId === undefined) {
+      this.setStateValue(historyContextKey(input.contextId), canonicalJson({
+        ...binding, contextId: input.contextId,
+      }));
+    }
+  }
+
+  @rpc(hostRead)
+  listHistoryRuntimeContexts(input: { prefix?: string }): string[] {
+    this.#assertCanonical();
+    const prefix = input.prefix ?? "";
+    const recorded = this.sql.exec(
+      `SELECT key, value FROM state WHERE key GLOB 'history-context-binding:*'`,
+    ).toArray();
+    const contexts = new Map<string, boolean>();
+    for (const { key, value } of recorded) {
+      if (typeof value !== "string") throw new Error("Invalid workspace context registration");
+      const binding = JSON.parse(value) as HistoryContextBinding;
+      if (binding.contextId === undefined) continue;
+      if (historyContextKey(binding.contextId) !== key)
+        throw new Error("Workspace registration names a different context");
+      contexts.set(binding.contextId, binding.closed);
+    }
+    for (const { id } of this.readHistoryReplayReceipt()?.contexts ?? []) {
+      if (!contexts.has(id)) contexts.set(id, this.#historyContextBinding(id).closed);
+    }
+    return [...contexts].flatMap(([id, closed]) => !closed && id.startsWith(prefix) ? [id] : [])
+      .sort(compareUtf16CodeUnits);
+  }
+
   @rpc(hostWrite)
   reserveHistoryParticipant(input: { participantId: string; contextId: string; workingContextId?: string }): Promise<{
     targetId: string;
@@ -311,7 +347,7 @@ export class GadHistoryDO extends DurableObjectBase {
       if (!binding.targets.includes(target)) {
         binding.targets.push(target);
         binding.targets.sort();
-        this.setStateValue(historyContextKey(workingContextId), canonicalJson(binding));
+        this.setStateValue(historyContextKey(workingContextId), canonicalJson({ ...binding, contextId: workingContextId }));
       }
       const receiptKey = `history-origin:${target}`;
       const storedGrant = this.getStateValue(receiptKey);
@@ -972,7 +1008,7 @@ export class GadHistoryDO extends DurableObjectBase {
     const binding = this.#historyContextBinding(input.contextId);
     if (!binding.closed) {
       binding.closed = true;
-      this.setStateValue(historyContextKey(input.contextId), canonicalJson(binding));
+      this.setStateValue(historyContextKey(input.contextId), canonicalJson({ ...binding, contextId: input.contextId }));
     }
     const rows = this.sql.exec(
       "SELECT target_key, status FROM gad_history_allocations WHERE context_id = ? ORDER BY target_key",
@@ -1024,7 +1060,11 @@ export class GadHistoryDO extends DurableObjectBase {
 
   #historyContextBinding(contextId: string): HistoryContextBinding {
     const stored = this.getStateValue(historyContextKey(contextId));
-    return stored === null ? { closed: false, targets: [] } : JSON.parse(stored) as HistoryContextBinding;
+    if (stored === null) return { closed: false, targets: [] };
+    const binding = JSON.parse(stored) as HistoryContextBinding;
+    if (binding.contextId !== undefined && binding.contextId !== contextId)
+      throw new Error("Workspace registration names a different context");
+    return binding;
   }
 
   #assertHistoryContextOpen(contextId: string): HistoryContextBinding {
