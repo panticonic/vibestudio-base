@@ -695,29 +695,34 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  resolveHistoryMainMerge(input: { contextId: string; target: StateNodeRef; sourceEventId: string }) {
-    const source = vcsSemanticNodeRefSchema.parse({ kind: "event", eventId: input.sourceEventId });
-    if (source.kind !== "event") throw new Error("Workspace main integration requires an event");
-    return this.#history().resolveMainMerge(
-      input.contextId, vcsStateNodeRefSchema.parse(input.target), source.eventId,
+  resolveHistoryMerge(input: {
+    contextId: string; target: StateNodeRef; source: StateNodeRef; readableContextIds: string[];
+  }) {
+    return this.#history().resolveMerge(
+      input.contextId, vcsStateNodeRefSchema.parse(input.target), vcsStateNodeRefSchema.parse(input.source),
+      input.readableContextIds,
     );
   }
 
   @rpc(hostRead)
-  reviewHistoryMainMerge(input: {
+  reviewHistoryMerge(input: {
     contextId: string;
     compare: VcsCompareInput;
-    observation?: Parameters<ParticipantHistory["reviewMainMerge"]>[2];
+    readableContextIds: string[];
+    observation?: Parameters<ParticipantHistory["reviewMerge"]>[3];
   }) {
-    return this.#history().reviewMainMerge(
-      input.contextId, vcsCompareInputSchema.parse(input.compare), input.observation ?? null,
+    return this.#history().reviewMerge(
+      input.contextId, vcsCompareInputSchema.parse(input.compare), input.readableContextIds, input.observation ?? null,
     );
   }
 
   @rpc(hostRead)
-  readHistoryMergeLocations(input: { contextId: string; target: StateNodeRef; source: StateNodeRef }) {
-    return this.#history().mainMergeLocations(
+  readHistoryMergeLocations(input: {
+    contextId: string; target: StateNodeRef; source: StateNodeRef; readableContextIds: string[];
+  }) {
+    return this.#history().mergeLocations(
       input.contextId, vcsStateNodeRefSchema.parse(input.target), vcsStateNodeRefSchema.parse(input.source),
+      input.readableContextIds,
     );
   }
 

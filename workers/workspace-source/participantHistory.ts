@@ -144,6 +144,9 @@ export interface MergeSource extends CommittedContext {
   readonly participantId?: string;
 }
 
+type ScopedMergeSelection = Pick<HistoryMergeSelection, "head" | "base"> &
+  ({ main: string } | { source: MergeSource });
+
 interface HistoryDiscardReceipt {
   commandId: string;
   requestDigest: string;
@@ -1262,46 +1265,61 @@ export class ParticipantHistory {
     return this.#previewMerge(contextId, head, () => this.#fetchExpectedMain(expectedMain));
   }
 
-  /** Resolve the stable public inputs even when the context later advances on a retry. */
-  resolveMainMerge(contextId: string, target: StateNodeRef, sourceEventId: string): Promise<HistoryMergeSelection> {
+  /** Find the exact source in shared history or an admitted branch of this cell. */
+  resolveMerge(
+    contextId: string, target: StateNodeRef, source: StateNodeRef, readableContextIds: readonly string[],
+  ): Promise<ScopedMergeSelection> {
     return this.#run(async () => {
       const { sql } = this.#storage;
       const head = this.#resolveState(contextId, target);
+      if (!head) throw new SemanticVcsError("InvalidReference", "Workspace integration names an unavailable target");
       const published = await this.#fetchMain();
-      const source = { kind: "event" as const, eventId: sourceEventId };
       const main = workspaceCommitForRef(sql, published, source);
-      if (!head || !main) {
-        throw new SemanticVcsError("InvalidReference", "Workspace integration names an unavailable target or shared event");
+      if (main) {
+        const base = this.#mergeBase(head, main);
+        if (base) return { head, base, main };
+      } else {
+        const contexts = [...new Set([contextId, ...readableContextIds])];
+        for (const { contextId: sourceContextId, head: tip } of this.#contextTips(contexts)) {
+          const sourceHead = workspaceCommitForRef(sql, tip, source);
+          if (!sourceHead) continue;
+          const base = this.#mergeBase(head, sourceHead);
+          if (base) return { head, base, source: { contextId: sourceContextId, head: sourceHead } };
+        }
       }
-      const base = this.#mergeBase(head, main);
-      if (!base) {
-        throw new SemanticVcsError("InvalidReference", "Workspace source and context share no history");
-      }
-      return { head, main, base };
+      throw new SemanticVcsError("InvalidReference", "Workspace integration names an unavailable source or unrelated history");
     });
   }
 
-  async reviewMainMerge(contextId: string, input: VcsCompareInput, observation: HistoryMergeObservation | null) {
-    if (input.source.kind !== "event")
-      throw new SemanticVcsError("InvalidReference", "Shared workspace comparison requires a published event");
-    const { head, main, base } = await this.resolveMainMerge(contextId, input.target, input.source.eventId);
-    if (main === base) {
+  async reviewMerge(
+    contextId: string, input: VcsCompareInput, readableContextIds: readonly string[],
+    observation: HistoryMergeObservation | null,
+  ) {
+    if (input.source.kind === "external-delta")
+      throw new SemanticVcsError("InvalidReference", "Comparison requires an exact workspace state");
+    const selection = await this.resolveMerge(contextId, input.target, input.source, readableContextIds);
+    const { head, base } = selection;
+    const sourceHead = "main" in selection ? selection.main : selection.source.head;
+    if (sourceHead === base) {
       throw new SemanticVcsError("SourceIsAncestor", "The compare source is already in the target's history", {
         target: input.target, source: input.source,
       });
     }
-    const preview = await this.previewMainMerge(contextId, head, main);
+    const preview = await this.#previewMerge(contextId, head, () =>
+      "main" in selection ? this.#fetchCanonicalRevision(selection.main) : this.#resolveContextSource(selection.source),
+    );
     return this.#run(() => reviewHistoryMerge(this.#storage.sql, input, this.#stateAt(base).state, preview, observation));
   }
 
-  async mainMergeLocations(contextId: string, target: StateNodeRef, source: StateNodeRef) {
-    if (source.kind !== "event")
-      throw new SemanticVcsError("InvalidReference", "Workspace integration requires a published event");
-    const selection = await this.resolveMainMerge(contextId, target, source.eventId);
+  async mergeLocations(
+    contextId: string, target: StateNodeRef, source: StateNodeRef, readableContextIds: readonly string[],
+  ) {
+    const selection = await this.resolveMerge(contextId, target, source, readableContextIds);
+    const sourceHead = "main" in selection ? selection.main : selection.source.head;
     return this.#run(() => {
       const { sql } = this.#storage;
-      const scope = workspaceMergeScope(sql, selection.base, selection.main);
-      const review = historyMergePlacements(sql, selection, scope);
+      const scope = workspaceMergeScope(sql, selection.base, sourceHead);
+      const review = historyMergePlacements(sql, { head: selection.head, base: selection.base, main: sourceHead }, scope);
       const locations = new Map<string, { kind: "folder" | "file"; path: string }>();
       for (const { coordinate } of review) {
         const kind = coordinate.kind === "file" ? "file" : "folder";
@@ -1413,11 +1431,14 @@ export class ParticipantHistory {
       const { commandId, contextId } = input;
       const command: HistoryCommand = {
         commandId, method: "merge",
-        requestDigest: compactId("merge-request", { selection, input, ...(sourceContext ? { sourceContext } : {}) }),
+        requestDigest: compactId("merge-request", { selection, input }),
         cause,
       };
+      const priorContextDigest = sourceContext
+        ? compactId("merge-request", { selection, input, sourceContext })
+        : undefined;
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
-      if (this.#hasCommand(current, contextId, command)) {
+      if (this.#hasCommand(current, contextId, command, priorContextDigest)) {
         return this.#mergeReceipt(current, selection, contextId, commandId);
       }
 
@@ -1431,7 +1452,7 @@ export class ParticipantHistory {
       if (current !== head) throw new HistoryHeadChanged(head, current);
       const main = sourceContext
         ? await this.#resolveContextSource(sourceContext)
-        : await this.#fetchExpectedMain(selection.main);
+        : await this.#fetchCanonicalRevision(selection.main);
       const base = this.#mergeBase(head, main);
       const source = committedWorkspaceEvent(sql, main);
       if (!base || base !== selection.base || base === main ||
@@ -1786,7 +1807,7 @@ export class ParticipantHistory {
     return { value, head: this.#dolt.hashOf(branch) };
   }
 
-  #hasCommand(at: string, contextId: string, command: HistoryCommand): boolean {
+  #hasCommand(at: string, contextId: string, command: HistoryCommand, priorDigest?: string): boolean {
     if (this.#receipts?.get(discardReceiptKey(command.commandId)) != null) {
       throw new SemanticVcsError("CommandIdReuse", "This workspace command was recorded as a discard");
     }
@@ -1804,7 +1825,8 @@ export class ParticipantHistory {
       prior["scope_kind"] !== "context" ||
       prior["scope_id"] !== contextId ||
       prior["method"] !== command.method ||
-      prior["request_digest"] !== command.requestDigest ||
+      (prior["request_digest"] !== command.requestDigest &&
+        (priorDigest === undefined || prior["request_digest"] !== priorDigest)) ||
       prior["cause_log_id"] !== (cause?.logId ?? null) ||
       prior["cause_head"] !== (cause?.head ?? null) ||
       prior["cause_invocation_id"] !== (cause?.invocationId ?? null)
@@ -1872,6 +1894,13 @@ export class ParticipantHistory {
     const head = branches["main"];
     if (!head) throw new Error("Canonical GAD main is unavailable");
     return head;
+  }
+
+  async #fetchCanonicalRevision(revision: string): Promise<string> {
+    const main = await this.#fetchMain();
+    if (this.#mergeBase(main, revision) !== revision)
+      throw new SemanticVcsError("InvalidReference", "Workspace integration revision is outside shared history");
+    return revision;
   }
 
   async #fetchExpectedMain(expected: string): Promise<string> {
