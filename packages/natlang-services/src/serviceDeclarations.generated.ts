@@ -6,6 +6,41 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  explorerTextProbe: `/** Plan and run an assigned workspace text probe. */
+
+type TextProbeInput = {
+  bytes: number;
+  characters: number;
+  digest: string;
+  lineEnding: "lf" | "crlf" | "mixed" | "none";
+  claim: "reports-bytes" | "reports-characters" | "normalizes-line-endings" | null;
+  repeat: boolean;
+};
+
+type TextProbePlan = {
+  expectedBytes: number;
+  expectedDigest: string;
+  comparison: "round-trip" | "repeat-store";
+  check: "utf8-size" | "line-endings" | "exact-content";
+};
+
+type TextProbeReceipt = {
+  blob: {
+    digest: string;
+    writtenBytes: number;
+    exists: boolean;
+    statBytes: number | null;
+    readDigest: string | null;
+    repeatDigest: string | null;
+  };
+  file: { digest: string; bytes: number; removed: boolean };
+};
+
+/** Plan and run an assigned workspace text probe. */
+export function input(operationId: string): Promise<TextProbeInput>;
+
+/** Plan and run an assigned workspace text probe. */
+export function run(operationId: string, plan: TextProbePlan): Promise<TextProbeReceipt>;`,
   tourRehearsal: `/** Navigate and verify a caller-assigned tour panel. */
 
 type TourScene = {

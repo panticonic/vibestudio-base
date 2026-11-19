@@ -25,6 +25,7 @@
     "runWorkflow/domains/evalRecovery": "skills/sandbox/recovery",
     "runWorkflow/domains/examples": "skills/examples-review",
     "runWorkflow/domains/dictation": "skills/offline-dictation",
+    "runWorkflow/domains/explorer": "skills/explorer-probe",
     "runWorkflow/domains/extensionDevelopment": "skills/extensiondev/natlang",
     "runWorkflow/domains/gad": "skills/gad-context/natlang",
     "runWorkflow/domains/gitBridge": "skills/git-bridge-review",
