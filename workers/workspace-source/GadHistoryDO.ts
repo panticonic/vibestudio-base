@@ -439,8 +439,10 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  readHistoryContentSource(input: { contextId: string; stateHash: string }) {
-    return this.#history().contentSource(input.contextId, input.stateHash);
+  readHistoryContentSource(input: { contextId: string; stateHash: string; readableContextIds?: string[] }) {
+    return this.#history().contentSource(
+      [input.contextId, ...(input.readableContextIds ?? [])], input.stateHash,
+    );
   }
 
   @rpc(hostRead)

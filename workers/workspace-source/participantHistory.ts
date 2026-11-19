@@ -396,13 +396,16 @@ export class ParticipantHistory {
     });
   }
 
-  contentSource(contextId: string, stateHash: string) {
+  contentSource(contextIds: readonly string[], stateHash: string) {
     return this.#run(() => {
-      const stored = this.#receipts?.get(contentSourceKey(contextId, stateHash));
-      if (!stored) return null;
-      const state = vcsStateNodeRefSchema.parse(JSON.parse(stored));
-      const commit = this.#resolveState(contextId, state);
-      return commit ? { state, repositories: workspaceRepositoriesAt(this.#storage.sql, commit) } : null;
+      for (const { contextId, head } of this.#contextTips(contextIds)) {
+        const stored = this.#receipts?.get(contentSourceKey(contextId, stateHash));
+        if (!stored) continue;
+        const state = vcsStateNodeRefSchema.parse(JSON.parse(stored));
+        const commit = workspaceCommitForRef(this.#storage.sql, head, state);
+        if (commit) return { state, repositories: workspaceRepositoriesAt(this.#storage.sql, commit) };
+      }
+      return null;
     });
   }
 
