@@ -37,5 +37,19 @@ type ChannelAgentReport = {
   state: RosterStatus;
   participantId: string | null;
 };
+type RosterPlanStep = {
+  id: string;
+  request: ChannelAgentRequest;
+};
+type RosterPlanRequest = {
+  goal: string;
+  steps: RosterPlanStep[];
+};
+type RosterPlanFinding = {
+  id: string;
+  result: ChannelAgentReport | null;
+  blockedBy: string | null;
+};
+type RosterPlanReport = { findings: RosterPlanFinding[] };
 declare const fn: NatlangFunction<[request: ChannelAgentRequest], ChannelAgentReport> & { readonly change: NatlangFunction<[request: ChannelAgentRequest, decision: MembershipDecision], MembershipReceipt> & { readonly attach: NatlangFunction<[request: ChannelAgentRequest], MembershipReceipt>; readonly detach: NatlangFunction<[request: ChannelAgentRequest], MembershipReceipt> }; readonly choose: NatlangFunction<[request: ChannelAgentRequest, before: RosterObservation], MembershipDecision>; readonly inspect: NatlangFunction<[request: ChannelAgentRequest], RosterObservation>; readonly reconcile: NatlangFunction<[request: ChannelAgentRequest, decision: MembershipDecision, observed: RosterObservation, receipt: MembershipReceipt | null], ChannelAgentReport> };
 export default fn;

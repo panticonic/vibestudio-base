@@ -12,3 +12,11 @@
 | Recover panels after local model switches or move between forks | Chat host recovery still owns those UI-specific lifecycle operations. This program acts within the assigned channel. |
 
 The canonical roster is used by the ChatHostController and PubSub channel, and the canonical effect helpers remain used by existing chat and product surfaces. The adapter projects the same durable worker identity. It does not change any channel protocol, workspace review mechanism or model serving engine.
+
+## Roster plans
+
+`runRosterPlan` sequences the caller's exact requests across channels and
+reuses `manageChannelAgent` for each one. `checkPriorOutcome` holds writes in
+a channel after a conflicting or uncertain observation and allows a fresh
+inspection or an operation in another assigned channel. Underlying roster
+reads and changes remain in the channel membership services.

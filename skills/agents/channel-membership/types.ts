@@ -37,3 +37,18 @@ export type ChannelAgentReport = {
   state: RosterStatus;
   participantId: string | null;
 };
+
+export type RosterPlanStep = {
+  id: string;
+  request: ChannelAgentRequest;
+};
+export type RosterPlanRequest = {
+  goal: string;
+  steps: RosterPlanStep[];
+};
+export type RosterPlanFinding = {
+  id: string;
+  result: ChannelAgentReport | null;
+  blockedBy: string | null;
+};
+export type RosterPlanReport = { findings: RosterPlanFinding[] };

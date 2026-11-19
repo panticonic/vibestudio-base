@@ -2,12 +2,32 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-channel-agent-membership",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "manageChannelAgent.nl" } },
-  "include": ["types.ts", "services.d.ts", "manageChannelAgent.nl", "manageChannelAgent"],
+  "targets": {
+    "main": {
+      "entry": "manageChannelAgent.nl"
+    },
+    "roster": {
+      "entry": "runRosterPlan.nl"
+    }
+  },
+  "include": [
+    "types.ts",
+    "services.d.ts",
+    "manageChannelAgent.nl",
+    "manageChannelAgent",
+    "runRosterPlan.nl",
+    "runRosterPlan"
+  ],
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "channelAgentRead": ["manageChannelAgent/inspect.nl"],
-    "channelAgentAttach": ["manageChannelAgent/change/attach.nl"],
-    "channelAgentDetach": ["manageChannelAgent/change/detach.nl"]
+    "channelAgentRead": [
+      "manageChannelAgent/inspect.nl"
+    ],
+    "channelAgentAttach": [
+      "manageChannelAgent/change/attach.nl"
+    ],
+    "channelAgentDetach": [
+      "manageChannelAgent/change/detach.nl"
+    ]
   }
 }

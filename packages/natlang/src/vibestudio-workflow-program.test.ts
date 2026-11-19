@@ -295,6 +295,27 @@ it("describes the typed workflows in the installed template domains", async () =
   let runReference = false;
   const referenceSteps: Record<string, string> = {
     ...membershipReference,
+    runRosterPlan: `
+      const earlier = [], findings = [];
+      for (const step of request.steps) {
+        const blockedBy = await checkPriorOutcome(step, earlier, findings);
+        const result = blockedBy ? null : await manageChannelAgent(step.request);
+        findings.push({ id: step.id, result, blockedBy });
+        earlier.push(step);
+      }
+      return { findings };
+    `,
+    checkPriorOutcome: `
+      if (step.request.action === "inspect") return null;
+      const index = earlierSteps.findLastIndex((entry, index) =>
+        earlierFindings[index].result &&
+        entry.request.channelId === step.request.channelId &&
+        entry.request.contextId === step.request.contextId &&
+        entry.request.handle === step.request.handle);
+      const result = earlierFindings[index]?.result;
+      return result && (result.status === "uncertain" || result.state === "conflict" ||
+        result.state === "unavailable") ? earlierSteps[index].id : null;
+    `,
     runWorkflow: `
       const system = request.work[1];
       if (system.domain === "localModel") {
@@ -424,6 +445,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "reviewRuntimeEvidence",
         "reviewConversation",
         "manageChannelAgent",
+        "runRosterPlan",
         "reviewMediaAndImport",
         "extractPdfEvidence",
         "assembleHandoff",
@@ -469,6 +491,70 @@ it("describes the typed workflows in the installed template domains", async () =
       expect(definition?.result.problem).toBeUndefined();
     }
   }
+  const rosterCalls: string[] = [];
+  const roster = (await loader.load(
+    "skills/vibestudio-workflows/runWorkflow.nl",
+    {
+      services: {
+        channelAgentRead: {
+          read: async (request: { channelId: string }) => {
+            rosterCalls.push(request.channelId);
+            return {
+              state: request.channelId === "oncall" ? "conflict" : "absent",
+              participantId: null,
+            };
+          },
+        },
+      },
+    },
+  )) as {
+    domains: {
+      channelAgent: { runRosterPlan: (input: unknown) => Promise<unknown> };
+    };
+  };
+  const scope = {
+    handle: "scribe",
+    contextId: "assignment",
+    goal: "Check scribe membership",
+    options: null,
+  };
+  runReference = true;
+  await expect(
+    roster.domains.channelAgent.runRosterPlan({
+      goal: "Check both channels and hold writes following a conflict",
+      steps: [
+        {
+          id: "first",
+          request: { ...scope, channelId: "oncall", action: "inspect" },
+        },
+        {
+          id: "second",
+          request: { ...scope, channelId: "oncall", action: "detach" },
+        },
+        {
+          id: "third",
+          request: { ...scope, channelId: "review", action: "inspect" },
+        },
+      ],
+    }),
+  ).resolves.toEqual({
+    findings: [
+      {
+        id: "first",
+        result: { status: "held", state: "conflict", participantId: null },
+        blockedBy: null,
+      },
+      { id: "second", result: null, blockedBy: "first" },
+      {
+        id: "third",
+        result: { status: "observed", state: "absent", participantId: null },
+        blockedBy: null,
+      },
+    ],
+  });
+  expect(rosterCalls).toEqual(["oncall", "review"]);
+  stagedCalls.length = 0;
+  runReference = false;
   // The host writes this file from the authoritative cross-template catalog.
   // Run the real callable's input boundary and stop before model execution.
   const manifest = process.env["VIBESTUDIO_WORKFLOW_BANK_JSONL"];
