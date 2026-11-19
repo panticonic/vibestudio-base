@@ -1,0 +1,12 @@
+{
+  "name": "@workspace-skills/capabilities",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./workflow": "./workflow.ts" },
+  "dependencies": {
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

@@ -476,6 +476,23 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  assignedAuthorityRead: `/** Dry-run the next caller-assigned operation against current Vibestudio authority. */
+
+type ExactAuthority = { capability: string; resourceKey: string };
+
+type AuthorityHostLeaf = ExactAuthority & {
+  tier: "open" | "gated" | "critical";
+  status: "granted" | "consumable-once" | "acquirable" | "denied";
+};
+
+type AuthorityObservation = {
+  operationId: string;
+  decision: "allowed" | "acquirable" | "denied";
+  leaves: AuthorityHostLeaf[];
+};
+
+/** Dry-run the next caller-assigned operation against current Vibestudio authority. */
+export function preflight(operationId: string): Promise<AuthorityObservation>;`,
   problemDraftRead: `/** Observe and confirm the caller's assigned local manual problem report. */
 
 type Evidence = {

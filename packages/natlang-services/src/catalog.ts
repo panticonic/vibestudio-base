@@ -71,6 +71,7 @@ const authoredServices = [
   authoredService("missionPlanningState", "Read the assigned mission workspace.", "personal", "mission-planning", [{ name: "observe", params: [] }]),
   authoredService("missionPlanningChange", "Apply an assigned mission change against its observed revision.", "personal", "mission-planning", [{ name: "apply", params: ["snapshotId", "changes"] }]),
   authoredService("spectroliteRead", "Observe the assigned vault and actual editor.", "spectrolite", "spectrolite-review", [{ name: "observe", params: [] }]),
+  authoredService("assignedAuthorityRead", "Dry-run the next caller-assigned operation against current Vibestudio authority.", "base", "capabilities/natlang", [{ name: "preflight", params: ["operationId"] }]),
   authoredService("problemDraftRead", "Observe and confirm the caller's assigned local manual problem report.", "base", "problem-reporting/natlang", [{ name: "observe", params: ["operationId"] }, { name: "confirm", params: ["write"] }]),
   authoredService("problemDraftOpen", "Create the caller's assigned local manual problem report.", "base", "problem-reporting/natlang", [{ name: "create", params: ["operationId"] }]),
   authoredService("problemDraftAppend", "Append the authored sections to the exact assigned report revision.", "base", "problem-reporting/natlang", [{ name: "append", params: ["draft", "sections"] }]),
