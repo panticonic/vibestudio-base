@@ -273,8 +273,11 @@ export function planExternalMerge(
     draft.changes.push({ operation: changeRef.ordinal, ordinal: 0, kind: "merge", base: endpoint(ours), result: endpoint(result),
       payload: { mergesChangeIds: [change.changeId, ...record.attribution.ours.map(({ changeId }) => changeId)] } });
     if (result || ours) {
+      const placed = result && { fileId: id, presence: "placed" as const, repositoryId: result.repositoryId,
+        path: result.path, mode: result.mode, contentHash: result.contentHash, contentKind: result.contentKind,
+        byteLength: result.byteLength, coordinateExtent: result.coordinateExtent };
       draft.fileResults.push({ fileId: id, expected, changeRef, newFile: expected === null,
-        result: result ? { ...result, presence: "placed" } : { fileId: id, presence: "deleted", priorFileStateId: ours!.fileStateId } });
+        result: placed ?? { fileId: id, presence: "deleted", priorFileStateId: ours!.fileStateId } });
     }
     entry.resultChangeRef = changeRef;
     if (!result || !theirs) continue;

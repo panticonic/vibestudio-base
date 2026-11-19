@@ -685,11 +685,10 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryContentRoots(): string[] {
     this.ensureReady();
-    const branches = this.#remotes().branch.list();
+    const heads = this.#remotes().branch.list().map(({ hash }) => hash);
     return [...new Set([
-      ...workspacePlacementRoots(this.sql, branches.map(({ hash }) => hash)),
-      ...workspaceExternalDeltaRoots(this.sql, branches.filter(({ name }) => name.startsWith("external/"))
-        .map(({ hash }) => hash)),
+      ...workspacePlacementRoots(this.sql, heads),
+      ...workspaceExternalDeltaRoots(this.sql, heads),
     ])].sort(compareUtf16CodeUnits);
   }
 
