@@ -10,6 +10,7 @@
   },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runWorkflow/domains/apiIntegration": "skills/api-integrations/natlang",
     "runWorkflow/domains/automation": "skills/automations",
     "runWorkflow/domains/automationLifecycle": "skills/automation-lifecycle",
     "runWorkflow/domains/channelAgent": "skills/agents/channel-membership",

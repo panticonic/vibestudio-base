@@ -476,6 +476,38 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  integrationPlanRead: `/** Read the caller's assigned API integration plan. */
+
+type IntegrationUse = "fetch" | "publish" | "git-http" | "git-ssh";
+
+type IntegrationDestination = {
+  id: string;
+  purpose: string;
+  use: IntegrationUse;
+  required: boolean;
+};
+
+type IntegrationPlan = {
+  receipt: string;
+  destinations: IntegrationDestination[];
+};
+
+/** Read the caller's assigned API integration plan. */
+export function observe(operationId: string): Promise<IntegrationPlan>;`,
+  integrationCredentialLookup: `/** Resolve the exact assigned destination and intended transport. */
+
+type IntegrationObservation = {
+  id: string;
+  receipt: string;
+  state: "missing" | "unverified" | "active" | "expired" | "revoked";
+  canRefresh: boolean | null;
+};
+
+/** Resolve the exact assigned destination and intended transport. */
+export function resolve(
+      planReceipt: string,
+      destinationId: string,
+    ): Promise<IntegrationObservation>;`,
   terminalCheckRead: `/** Read the caller's assigned terminal check plan. */
 
 type TerminalCheck = {

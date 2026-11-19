@@ -108,6 +108,18 @@ main. Inspect the candidate and publish only when authorized.
 The Personal template provides an optional guided account setup in
 `skills/onboarding`; open that workspace to use it.
 
+## Assigned Natlang readiness review
+
+Use `bindIntegrationReview` from `@workspace-skills/api-integrations/workflow`
+to bind the destinations and their intended transports. Load the shared
+program with its explicit services and call `apiIntegration/reviewIntegration`
+with the supplied request. The workflow reads the host resolver in assignment
+order and combines required and optional coverage. It stops at an unverified
+lookup and keeps the original failure available to the trusted caller through
+`lookupFailure()`. Credential IDs, URLs, metadata, and raw errors stay outside
+model-facing receipts. Use the caller's existing pregranted-only policy when
+the review needs to be quiet.
+
 ## Incoming webhooks
 
 Use the [runtime webhook lifecycle guide](../sandbox/RUNTIME_API.md#webhook-subscriptions)
