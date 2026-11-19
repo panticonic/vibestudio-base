@@ -56,6 +56,8 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("testSuitePlanRead", "Resolve the assigned test-suite declaration.", "base", "native-suite-review", [{ name: "resolve", params: ["operationId"] }]),
+  authoredService("testSuiteVerificationRun", "Verify the exact caller-assigned test plan after live resolution.", "base", "native-suite-review", [{ name: "run", params: ["operationId", "stateHash"] }]),
   authoredService("gitBridgeReviewRead", "Read the assigned Git Bridge upstream and semantic repository state.", "base", "git-bridge-review", [{ name: "observe", params: ["operationId"] }]),
   authoredService("vcsDeliveryRead", "Read one assigned semantic VCS file across working, committed, and protected-main states.", "base", "vibestudio-vcs/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("panelHealth", "Read observations from the assigned panel.", "base", "panel-health", [{ name: "observe", params: [] }, { name: "observeAfter", params: ["snapshotId"] }]),

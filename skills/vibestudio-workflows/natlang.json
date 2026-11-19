@@ -55,6 +55,7 @@
     "runWorkflow/domains/terminalChecks": "skills/terminal/natlang",
     "runWorkflow/domains/terminalChecklist": "skills/terminal-apps/checklist",
     "runWorkflow/domains/templates": "skills/templates",
+    "runWorkflow/domains/testSuite": "skills/native-suite-review",
     "runWorkflow/domains/testReview": "skills/system-testing/triage",
     "runWorkflow/domains/unitDesign": "skills/workspace-unit-design",
     "runWorkflow/domains/webResearch": "skills/web-research/research",

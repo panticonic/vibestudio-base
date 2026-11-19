@@ -16,6 +16,10 @@ verify({
 });
 ```
 
+For caller-assigned verification or declaration review in Natlang, the shared
+workflow exposes `testSuite/reviewTestSuite`. It uses the live manifest plan and
+the same verification entry point. [Workflow design](../../skills/native-suite-review/DECOMPOSITION.md).
+
 The unit manifest must declare the named suite with `runtime: "native"`. Only
 that declaration routes a suite here and requests
 `native.code.execute-tests`.

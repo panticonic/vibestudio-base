@@ -6,6 +6,35 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  testSuitePlanRead: `/** Resolve the assigned test-suite declaration. */
+
+type SuiteReviewRuntime = "native" | "workerd" | "browser";
+
+type SuiteReviewPlan = {
+  target: string;
+  suite: string;
+  runtime: SuiteReviewRuntime;
+  stateHash: string;
+  contextId: string;
+};
+
+/** Resolve the assigned test-suite declaration. */
+export function resolve(operationId: string): Promise<SuiteReviewPlan>;`,
+  testSuiteVerificationRun: `/** Verify the exact caller-assigned test plan after live resolution. */
+
+type SuiteReviewExecution = {
+  status: string;
+  current: boolean;
+  reportDigest: string | null;
+  executionDigest: string | null;
+  artifactKey: string | null;
+  passed: number | null;
+  failed: number | null;
+  diagnostics: string[];
+};
+
+/** Verify the exact caller-assigned test plan after live resolution. */
+export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
   gitBridgeReviewRead: `/** Read the assigned Git Bridge upstream and semantic repository state. */
 
 type GitBridgeRelationship = "in-sync" | "ahead" | "behind" | "diverged";
