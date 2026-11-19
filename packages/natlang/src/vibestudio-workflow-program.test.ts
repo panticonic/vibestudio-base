@@ -319,7 +319,9 @@ it("describes the typed workflows in the installed template domains", async () =
     runWorkflow: `
       const remote = request.work[0];
       if (remote.domain === "remoteAccess") {
-        const report = await domains.remoteAccess.openRemoteWorkspace(remote.input);
+        const report = remote.operation === "deployRemoteServer"
+          ? await domains.remoteAccess.deployRemoteServer(remote.input)
+          : await domains.remoteAccess.openRemoteWorkspace(remote.input);
         return {results: [{kind: "domain", domain: remote.domain, operation: remote.operation, report}], remaining: []};
       }
       const system = request.work[1];
@@ -341,6 +343,37 @@ it("describes the typed workflows in the installed template domains", async () =
       results.push({kind: "domain", domain: next.domain, operation: next.operation,
         report: await domains.automation.prepareAutomation(next.input)});
       return {results, remaining: []};
+    `,
+    deployRemoteServer: `
+      const baseline = await observeBaseline(request.operationId);
+      const decision = await decideDeployment(baseline);
+      const evidenceIds = [baseline.receipt];
+      if (decision !== "apply") return {status:decision, identity:null, evidenceIds};
+      const attempt = await applyDeployment(baseline.receipt);
+      evidenceIds.push(attempt.receipt);
+      if (attempt.state !== "applied") {
+        return {status:attempt.state === "failed" ? "installer-failed" : "baseline-changed", identity:null, evidenceIds};
+      }
+      const report = await checkReadiness(attempt.receipt);
+      return {...report, evidenceIds:[...evidenceIds, ...report.evidenceIds]};
+    `,
+    observeBaseline: "return await remoteDeploymentRead.observe(operationId);",
+    decideDeployment: `
+      if (baseline.state === "unverified") return "baseline-unverified";
+      if (baseline.intent === "update") return baseline.hasPriorIdentity ? "apply" : "update-needs-existing-server";
+      return baseline.state === "ready" ? "already-running" : "apply";
+    `,
+    applyDeployment:
+      "return await remoteDeploymentApply.apply(baselineReceipt);",
+    checkReadiness: `
+      const result = await observeReadiness(actionReceipt);
+      return {status:await interpretReadiness(result), identity:result.identity, evidenceIds:[result.receipt]};
+    `,
+    observeReadiness:
+      "return await remoteDeploymentVerify.verify(actionReceipt);",
+    interpretReadiness: `
+      return {verified:"deployment-ready", unready:"readiness-unverified",
+        "unchanged-boot":"boot-unchanged", "identity-changed":"server-identity-changed"}[verified.state];
     `,
     openRemoteWorkspace: `
       const profile = await readAssignedProfile(request.operationId);
@@ -509,7 +542,12 @@ it("describes the typed workflows in the installed template domains", async () =
     ],
     [
       join(templateRoot, "system"),
-      ["investigateSystem", "prepareLocalModel", "openRemoteWorkspace"],
+      [
+        "investigateSystem",
+        "prepareLocalModel",
+        "openRemoteWorkspace",
+        "deployRemoteServer",
+      ],
     ],
     [
       join(templateRoot, "system-testing"),
@@ -659,6 +697,123 @@ it("describes the typed workflows in the installed template domains", async () =
               status: example.result,
               workspaceId:
                 example.result === "workspace-ready" ? "workspace" : null,
+              evidenceIds: example.calls,
+            },
+          },
+        ],
+        remaining: [],
+      });
+      expect(observed).toEqual(example.calls);
+    }
+    stagedCalls.length = 0;
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "deployRemoteServer")) {
+    runReference = true;
+    const identity = {
+      serverId: "hub",
+      bootId: "new-boot",
+      buildId: "build",
+      workspaceId: "child",
+    };
+    for (const example of [
+      {
+        intent: "deploy",
+        state: "inactive",
+        applied: "applied",
+        verdict: "verified",
+        status: "deployment-ready",
+        calls: ["baseline", "install", "verify"],
+      },
+      {
+        intent: "deploy",
+        state: "ready",
+        applied: "applied",
+        verdict: "verified",
+        status: "already-running",
+        calls: ["baseline"],
+      },
+      {
+        intent: "update",
+        state: "ready",
+        applied: "applied",
+        verdict: "identity-changed",
+        status: "server-identity-changed",
+        calls: ["baseline", "install", "verify"],
+      },
+      {
+        intent: "update",
+        state: "ready",
+        applied: "failed",
+        verdict: "verified",
+        status: "installer-failed",
+        calls: ["baseline", "install"],
+      },
+      {
+        intent: "update",
+        state: "unverified",
+        applied: "applied",
+        verdict: "verified",
+        status: "baseline-unverified",
+        calls: ["baseline"],
+      },
+    ]) {
+      const observed: string[] = [];
+      const deploy = (await loader.load(
+        "skills/vibestudio-workflows/runWorkflow.nl",
+        {
+          services: {
+            remoteDeploymentRead: {
+              observe: async (operationId: string) => {
+                expect(operationId).toBe("assignment");
+                observed.push("baseline");
+                return {
+                  receipt: "baseline",
+                  intent: example.intent,
+                  state: example.state,
+                  hasPriorIdentity: example.state === "ready",
+                };
+              },
+            },
+            remoteDeploymentApply: {
+              apply: async (receipt: string) => {
+                expect(receipt).toBe("baseline");
+                observed.push("install");
+                return { receipt: "install", state: example.applied };
+              },
+            },
+            remoteDeploymentVerify: {
+              verify: async (receipt: string) => {
+                expect(receipt).toBe("install");
+                observed.push("verify");
+                return {
+                  receipt: "verify",
+                  state: example.verdict,
+                  identity: example.verdict === "verified" ? identity : null,
+                };
+              },
+            },
+          },
+        },
+      )) as (request: unknown) => Promise<unknown>;
+      await expect(
+        deploy({
+          goal: "Prepare the assigned server",
+          work: [
+            {
+              kind: "domain",
+              domain: "remoteAccess",
+              operation: "deployRemoteServer",
+              input: { operationId: "assignment" },
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
+        results: [
+          {
+            report: {
+              status: example.status,
+              identity: example.status === "deployment-ready" ? identity : null,
               evidenceIds: example.calls,
             },
           },

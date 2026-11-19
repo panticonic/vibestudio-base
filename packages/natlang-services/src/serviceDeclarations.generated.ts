@@ -476,6 +476,43 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  remoteDeploymentRead: `/** Read the baseline of the assigned managed deployment. */
+
+type DeploymentBaseline = {
+  receipt: string;
+  intent: "deploy" | "update";
+  hasPriorIdentity: boolean;
+  state: "inactive" | "ready" | "unverified";
+};
+
+/** Read the baseline of the assigned managed deployment. */
+export function observe(operationId: string): Promise<DeploymentBaseline>;`,
+  remoteDeploymentApply: `/** Run the caller-authorized managed installer for the observed baseline. */
+
+type DeploymentAction = {
+  receipt: string;
+  state: "applied" | "failed" | "baseline-changed";
+};
+
+/** Run the caller-authorized managed installer for the observed baseline. */
+export function apply(baselineReceipt: string): Promise<DeploymentAction>;`,
+  remoteDeploymentVerify: `/** Verify the managed hub and child after the caller-authorized install. */
+
+type DeploymentIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type DeploymentVerification = {
+  receipt: string;
+  state: "verified" | "unready" | "unchanged-boot" | "identity-changed";
+  identity: DeploymentIdentity | null;
+};
+
+/** Verify the managed hub and child after the caller-authorized install. */
+export function verify(actionReceipt: string): Promise<DeploymentVerification>;`,
   remoteAccessRead: `/** Read the caller-assigned remote profile. */
 
 type RemoteProfileRead = {
