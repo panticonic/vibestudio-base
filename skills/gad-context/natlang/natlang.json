@@ -1,0 +1,12 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-gad-review",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewChannel.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "gadHealth": ["reviewChannel/reviewHealth/readHealth.nl"],
+    "gadFollowUp": ["reviewChannel/inspectFinding.nl"],
+    "gadConversation": ["reviewChannel/reviewConversation/readConversation.nl"]
+  }
+}

@@ -476,6 +476,51 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  gadHealth: `/** Observe one assigned GAD health snapshot. */
+
+type ChannelFinding = {
+  kind: string;
+  count: number;
+  evidence: string;
+  inspector: string | null;
+};
+
+type ChannelHealth = {
+  receipt: string;
+  channelId: string;
+  branchId: string;
+  generatedAt: string;
+  integrity: "ok" | "broken";
+  activity: "idle" | "in-flight";
+  findings: ChannelFinding[];
+};
+
+/** Observe one assigned GAD health snapshot. */
+export function observe(operationId: string): Promise<ChannelHealth>;`,
+  gadFollowUp: `/** Inspect the exact assigned channel finding. */
+
+type ChannelFollowUp = {
+  receipt: string;
+  kind: string;
+  inspector: string;
+  counters: { name: string; count: number }[];
+};
+
+/** Inspect the exact assigned channel finding. */
+export function inspect(healthReceipt: string, kind: string): Promise<ChannelFollowUp>;`,
+  gadConversation: `/** Read the assigned bounded channel tail. */
+
+type ChannelTail = {
+  receipt: string;
+  channelId: string;
+  status: "observed" | "branch-not-supported";
+  range: { fromSeq: number; toSeq: number; envelopes: number };
+  standing: "agent-replied" | "awaiting-agent" | "failed" | "empty";
+  latest: { seq: number; speaker: string; text: string } | null;
+};
+
+/** Read the assigned bounded channel tail. */
+export function read(operationId: string): Promise<ChannelTail>;`,
   phoneSetupRead: `/** Read the assigned phone setup and paired workspace readiness. */
 
 type PhonePlatform = "android" | "ios";

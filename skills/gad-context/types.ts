@@ -95,6 +95,7 @@ export type ChannelSummary = {
   /** The first user message and the last message of the conversation, by seq; absent when there are none. */
   opening?: number;
   latest?: number;
+  latestSpeaker?: string;
   standing: Standing;
   /** The text of the opening user message and of the last message, cut to 400 characters, for the reader's own recap. */
   openingText?: string;

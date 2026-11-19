@@ -70,7 +70,9 @@ return await inspectAgentHealth({ channelId: chat.channelId });
 To recap a conversation, read pages of envelopes with
 `gad.inspectChannelEnvelopes` (or `gad.collectChannelEnvelopePages`) and pass
 them to `summarizeChannel`. It returns exact counts, the opening and latest
-message by `seq` with their text, and how the conversation `standing` is:
+message by `seq` with their text, and how the conversation `standing` is.
+It uses the message role even if the transport sender is external.
+The possible standings are
 `agent-replied`, `awaiting-agent`, `failed`, or `empty`. Whether the agent's last
 message answers or asks the user for something, and what the conversation is
 about, stay with you: that is a judgment about meaning, so the summary does not
@@ -108,6 +110,19 @@ it; don't poll.
 For another visible chat panel, resolve its panel handle, read its state
 args, and use the stored channel ID. `chat.channelId` always means the channel
 you are currently responding in.
+
+## Assigned Natlang review
+
+Use `bindChannelReview` from `@workspace-skills/gad-context/workflow` to
+give the shared program an assigned channel and one of `health`, `triage`, or
+`recap`. Pass its request to `gad/reviewChannel` and load the shared program
+with the binding's services.
+
+A health snapshot distinguishes durable integrity from activity. Triage can
+follow one recorded finding through a bounded publication, turn, or roster
+inspector. A recap interprets the most recent bounded channel tail and retains
+the actual sequence evidence. A historical branch can be reviewed for health
+and triage. A recap requires a channel-wide view.
 
 ## Going deeper
 
