@@ -33,6 +33,7 @@
     "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
     "runWorkflow/domains/localModel": "skills/local-model-task",
     "runWorkflow/domains/missionPlanning": "skills/mission-planning",
+    "runWorkflow/domains/mobileDebug": "skills/mobile-runtime-audit",
     "runWorkflow/domains/mobileSystem": "skills/mobile-system-testing/scenario",
     "runWorkflow/domains/mediaImport": "skills/media-and-import-review",
     "runWorkflow/domains/natlangAuthoring": "skills/natlang-authoring",

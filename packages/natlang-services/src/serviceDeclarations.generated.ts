@@ -6,6 +6,13 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  androidRuntimeAudit: `/** Read an assigned Android device and its current internal application. */
+
+/** Read an assigned Android device and its current internal application. */
+export function observeTarget(operationId: string): Promise<AndroidTargetObservation>;
+
+/** Read an assigned Android device and its current internal application. */
+export function observeApplication(operationId: string): Promise<AndroidRuntimeObservation>;`,
   deliveryHistory: `/** Inspect durable and consumer views of one assigned conversation receipt. */
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
