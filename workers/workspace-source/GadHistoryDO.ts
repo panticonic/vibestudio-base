@@ -49,6 +49,7 @@ import {
   committedWorkspaceEvent,
   createDoltWorkspaceState,
   workspaceCommitForRef,
+  workspaceHasFileContent,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
   workspaceTemplateInstallationAt,
@@ -587,6 +588,21 @@ export class GadHistoryDO extends DurableObjectBase {
       }
       return target_key;
     });
+  }
+
+  @rpc(hostRead)
+  async hasHistoryFileContent(input: {
+    contentHash: string;
+    scope: { kind: "published"; expectedEventId: string } | { kind: "context"; contextId: string };
+  }): Promise<boolean> {
+    if (!/^[a-f0-9]{64}$/u.test(input.contentHash)) throw new Error("Invalid workspace content digest");
+    if (input.scope.kind === "context")
+      return this.#history().hasFileContent(input.scope.contextId, input.contentHash);
+    this.#assertCanonical();
+    const main = this.#remotes().hashOf("main");
+    const event = committedWorkspaceEvent(this.sql, main);
+    return event?.head === main && event.eventId === input.scope.expectedEventId &&
+      workspaceHasFileContent(this.sql, main, input.contentHash);
   }
 
   @rpc(hostRead)

@@ -51,6 +51,7 @@ import {
   workspaceContentOriginsAt,
   workspaceEditBasisAt,
   workspaceFileReadsAt,
+  workspaceHasFileContent,
   workspaceMergeScope,
   workspaceMergeSourcesAt,
   workspaceRepositoriesAt,
@@ -625,6 +626,16 @@ export class ParticipantHistory {
       }
     }
     return { head, saved, applications, state };
+  }
+
+  hasFileContent(contextId: string, contentHash: string): Promise<boolean> {
+    return this.#run(() => {
+      const name = `ctx/${branchSegment(contextId)}`;
+      if (this.#receipts?.get(`history-retired:${name}`)) return false;
+      const branch = this.#dolt.branch.list().find((candidate) => candidate.name === name);
+      return branch !== undefined &&
+        workspaceHasFileContent(this.#storage.sql, branch.hash, contentHash);
+    });
   }
 
   contentOrigins(contextId: string, ref: StateNodeRef, fileIds: readonly string[]) {

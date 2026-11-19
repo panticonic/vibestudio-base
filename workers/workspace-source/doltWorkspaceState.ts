@@ -798,6 +798,14 @@ export function workspaceSnapshotOriginsAt(sql: SqlStorage, commit: string) {
   });
 }
 
+/** Check bytes reachable through exactly one admitted, versioned placement history. */
+export function workspaceHasFileContent(sql: SqlStorage, revision: string, contentHash: string): boolean {
+  return sql.exec(
+    `SELECT 1 FROM dolt_history_files(?) WHERE content_hash = ? LIMIT 1`,
+    revision, contentHash,
+  ).toArray().length === 1;
+}
+
 /** Rebuild the placement roots directly from the retained commit graph. */
 export function workspacePlacementRoots(sql: SqlStorage, retained: readonly string[]): string[] {
   const rows = sql.exec(
