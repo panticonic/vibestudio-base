@@ -79,7 +79,7 @@ const canonicalKey = "canonical";
 const canonicalId = `do:${source}:${className}:${canonicalKey}`;
 type StoredHistoryApproval = { approval: HistoryPublicationApproval; expiresAt: number };
 type ReplayContextTip = { id: string; committed: string; working: string };
-type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[] };
+type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[]; frozenPlanDigest?: string };
 const hostWrite = {
   principals: ["host"],
   website: {
@@ -153,14 +153,24 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
-  finishHistoryReplay(input: { eventId: string; head: string; contexts?: ReplayContextTip[] }): { head: string } {
+  finishHistoryReplay(input: Omit<ReplayReceipt, "contexts"> & { contexts?: ReplayContextTip[] }): { head: string } {
     this.#assertCanonical();
     const contexts = [...(input.contexts ?? [])].sort((left, right) => compareUtf16CodeUnits(left.id, right.id));
-    const receipt = { head: input.head, eventId: input.eventId, contexts };
+    const { head: proposedHead, eventId, frozenPlanDigest } = input;
+    if (frozenPlanDigest !== undefined &&
+        (typeof frozenPlanDigest !== "string" || !/^[0-9a-f]{64}$/u.test(frozenPlanDigest)))
+      throw new Error("Workspace replay requires a valid frozen plan digest");
+    const revisions = { head: proposedHead, eventId, contexts };
+    const receipt = { ...revisions, ...(frozenPlanDigest === undefined ? {} : { frozenPlanDigest }) };
     const recorded = this.readHistoryReplayReceipt();
     if (recorded) {
-      if (canonicalJson(recorded) !== canonicalJson(receipt))
-        throw new Error("Workspace replay receipt names different revisions");
+      const { frozenPlanDigest: recordedDigest, ...recordedRevisions } = recorded;
+      if (canonicalJson(recordedRevisions) !== canonicalJson(revisions) ||
+          (recordedDigest && frozenPlanDigest && recordedDigest !== frozenPlanDigest)) {
+        throw new Error("Workspace replay receipt names a different source or revisions");
+      }
+      if (frozenPlanDigest && !recordedDigest)
+        this.setStateValue("history-replay-receipt", canonicalJson(receipt));
       return { head: recorded.head };
     }
     const staged = committedWorkspaceEvent(this.sql, input.head);

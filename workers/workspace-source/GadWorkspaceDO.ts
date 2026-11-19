@@ -1368,9 +1368,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
       ).toArray();
       if (unfinished.length > 0 || this.semanticWorkspace().pendingEffects().length > 0)
         throw new Error("Workspace history still has unfinished commands");
-      this.setStateValue("legacy-history-replay-freeze", marker);
     }
-    return plan;
+    const priorGeneration = prior === null ? null : this.getStateValue("legacy-history-replay-generation");
+    const generation = priorGeneration ?? crypto.randomUUID();
+    if (priorGeneration === null) {
+      this.transaction(() => {
+        this.setStateValue("legacy-history-replay-freeze", marker);
+        this.setStateValue("legacy-history-replay-generation", generation);
+      });
+    }
+    return { ...plan, generation };
   }
 
   @rpc({
@@ -1383,7 +1390,10 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const frozen = this.getStateValue("legacy-history-replay-freeze");
     if (frozen === null) return;
     if (frozen !== canonicalJson(input)) throw new Error("Workspace history has a different frozen replay");
-    this.deleteStateValue("legacy-history-replay-freeze");
+    this.transaction(() => {
+      this.deleteStateValue("legacy-history-replay-freeze");
+      this.deleteStateValue("legacy-history-replay-generation");
+    });
   }
 
   #requireLegacyHistoryAvailable(): void {
