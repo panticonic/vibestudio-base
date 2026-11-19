@@ -132,6 +132,7 @@ interface HistoryContextBinding {
   contextId?: string;
   closed: boolean;
   targets: string[];
+  runtimeFork?: { sourceContextId: string; author: string; head: string; state: StateNodeRef };
 }
 
 function historyContextKey(contextId: string): string {
@@ -410,6 +411,33 @@ export class GadHistoryDO extends DurableObjectBase {
         origin: { ref: `${className}:${canonicalKey}`, token: receipt.token },
       };
     });
+  }
+
+  @rpc(hostWrite)
+  recordHistoryRuntimeFork(input: { contextId: string; sourceContextId: string; author: string; head: string; state: StateNodeRef }) {
+    this.#assertCanonical();
+    const { contextId, sourceContextId, author, head } = input;
+    const retainedOwner = workKey(canonicalJson(["runtime-context-fork-seed", contextId]));
+    const binding = this.#assertHistoryContextOpen(contextId);
+    if (!sourceContextId || sourceContextId === contextId || !/^[a-f0-9]{40}$/u.test(head) ||
+        !this.#assertHistoryContextOpen(sourceContextId).targets.includes(author) ||
+        this.#allocationStatus(author) !== "active" ||
+        !binding.targets.includes(retainedOwner) || this.#allocationStatus(retainedOwner) !== "active") {
+      throw new Error("Runtime workspace fork has no exact retained participant");
+    }
+    const runtimeFork = { sourceContextId, author, head, state: vcsStateNodeRefSchema.parse(input.state) };
+    if (binding.runtimeFork && canonicalJson(binding.runtimeFork) !== canonicalJson(runtimeFork)) {
+      throw new Error("Runtime workspace fork changed its captured revision");
+    }
+    if (!binding.runtimeFork) {
+      this.setStateValue(historyContextKey(contextId), canonicalJson({ ...binding, contextId, runtimeFork }));
+    }
+  }
+
+  @rpc(hostRead)
+  readHistoryRuntimeFork(input: { contextId: string }) {
+    this.#assertCanonical();
+    return this.#assertHistoryContextOpen(input.contextId).runtimeFork ?? null;
   }
 
   @rpc(hostWrite)
