@@ -19,7 +19,9 @@ A delivery audit starts from a receipt's causal message ID, sender, and channel.
 A scoped service reads the native channel log and one consumer's projection.
 The binding selects retained rows by causal ID and retains coordinates and text.
 The root delegates origin and consumer checks to separate lambdas. Origin
-checks the channel before cardinality and the sender. Consumer comparison
+checks the channel before cardinality and the sender. A foreign channel,
+an absent causal message, or a sender mismatch stops before consumer comparison.
+Consumer comparison
 checks identity before the exact payload. Keep the original observation in
 the report so a handoff can cite it. A delivery audit has no send, edit,
 capability, or reconciliation service.

@@ -29,7 +29,7 @@ recording budget without discarding audio.
 The model detects English, German, French, Spanish, Italian, Dutch, and Polish.
 Silence can return an empty transcript.
 
-The shared Natlang program exposes `dictation/reviewDictation` for
+The shared Natlang program exposes [`dictation/reviewDictation`](../../skills/offline-dictation/reviewDictation.nl) for
 caller-assigned audio. It checks recording measurements and worker status,
 and can return an exact transcription and an optional edited draft. Its
 ready-only route uses the resident worker. [Workflow design](../../skills/offline-dictation/DECOMPOSITION.md).
