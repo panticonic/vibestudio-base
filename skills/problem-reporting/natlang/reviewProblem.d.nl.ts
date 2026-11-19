@@ -70,5 +70,34 @@ type ProblemReviewReport = {
   basis: string | null;
   evidence: ProblemEvidenceReview;
 };
+type SaveProblemRequest = { goal: string; operationId: string };
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+type LocalProblemObservation = {
+  review: ProblemRequest;
+  draft: LocalDraft | null;
+};
+type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+type LocalDraftConfirmation = LocalDraftWrite & {
+  sections: LocalDraftSection[];
+};
+type SaveProblemResult = {
+  defect: DefectClass;
+  status: "saved-local" | "held";
+  next: ProblemNext;
+  saved: LocalDraftConfirmation | null;
+};
 declare const fn: NatlangFunction<[request: ProblemRequest], ProblemReviewReport> & { readonly chooseDraftAction: NatlangFunction<[request: ProblemRequest, defect: DefectClass], ProblemNext>; readonly prepareSubmission: NatlangFunction<[request: ProblemRequest], ProblemNext> & { readonly verifyFrozen: NatlangFunction<[draft: ReportRevision | null, frozen: FrozenReport | null], "needs-freeze"|"ready"|"stopped"|"wait"> }; readonly qualifyEvidence: NatlangFunction<[request: ProblemRequest], ProblemEvidenceReview> & { readonly partitionReceipts: NatlangFunction<[receipts: ProblemEvidenceReceipt[]], {selected:string[]; incomplete:string[]}> }; readonly classifyDefect: NatlangFunction<[evidence: Evidence], DefectClass> };
 export default fn;
