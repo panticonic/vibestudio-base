@@ -151,7 +151,7 @@ interface HistoryDiscardReceipt {
   result: { head: string; discard: VcsDiscardResult };
 }
 
-interface HistoryDiscardJournal {
+interface HistoryReceiptStore {
   get(key: string): string | null;
   set(key: string, value: string): void;
   delete(key: string): void;
@@ -163,6 +163,32 @@ const discardReceiptKey = (id: string) => `history-discard:${sha256HexSyncText(i
 type WorkspaceStorage = DoltCapableStorage & { readonly sql: SqlStorage };
 export type HistoryCommand = Pick<JournalCommand, "commandId" | "method" | "requestDigest" | "cause">;
 export const APPROVED_MAIN_GRANT_LIFETIME_MS = 5 * 60_000;
+
+export interface HistoryForkRequest {
+  parentContextId: string;
+  childContextId: string;
+  childPeer: string;
+}
+
+export interface HistoryForkSeed {
+  branch: string;
+  head: string;
+  state: StateNodeRef;
+}
+
+interface HistoryForkReceipt extends HistoryForkSeed {
+  completed: boolean;
+}
+
+interface HistoryForkAdoption {
+  source: string;
+  seed: HistoryForkSeed;
+  completed: boolean;
+}
+
+function historyForkBranch(request: HistoryForkRequest): string {
+  return `fork/${sha256HexSyncText(canonicalJson(request))}`;
+}
 
 function branchSegment(value: string): string {
   if (!value) throw new Error("Missing GAD branch identity");
@@ -285,7 +311,7 @@ export class ParticipantHistory {
   readonly #storage: WorkspaceStorage;
   readonly #dolt: DoltRemoteStorage;
   readonly #transport: DoltRemoteTransport;
-  readonly #discardJournal: HistoryDiscardJournal | undefined;
+  readonly #discardJournal: HistoryReceiptStore | undefined;
   #discardJournalReady = false;
   #connectedOrigin: string | undefined;
   readonly #turns = new Map<string, Promise<unknown>>();
@@ -294,7 +320,7 @@ export class ParticipantHistory {
     participantId: string,
     storage: WorkspaceStorage,
     transport: DoltRemoteTransport,
-    discardJournal?: HistoryDiscardJournal,
+    discardJournal?: HistoryReceiptStore,
   ) {
     this.#participant = branchSegment(participantId);
     this.#storage = storage;
@@ -313,6 +339,10 @@ export class ParticipantHistory {
     return this.#run(async () => {
       const identity = this.#originIdentity(origin);
       const branch = this.#contextBranch(contextId);
+      const adoption = this.#discardJournal?.get(`history-fork-adoption:${branch}`);
+      if (adoption && !(JSON.parse(adoption) as HistoryForkAdoption).completed) {
+        throw new Error("Workspace context fork has not completed");
+      }
       const known = this.#dolt.branch.list().find(({ name }) => name === branch);
       if (known && this.#connectedOrigin === identity) return known.hash;
       const main = await this.#connectOrigin(origin, identity);
@@ -760,6 +790,121 @@ export class ParticipantHistory {
     return this.#run(() => {
       this.#assertHead(this.#contextBranch(parentId), expectedHead);
       return this.#openBranch(childId, expectedHead);
+    });
+  }
+
+  /** Capture the first selected frontier and expose it to one storage peer. */
+  offerContextFork(request: HistoryForkRequest, local: boolean) {
+    return this.#run(() => {
+      const journal = this.#discardJournal;
+      if (!journal) throw new Error("Workspace fork requires local receipt storage");
+      const branch = historyForkBranch(request);
+      const key = `history-fork-offer:${branch}`;
+      const stored = journal.get(key);
+      let receipt: HistoryForkReceipt;
+      if (stored === null) {
+        const { head, state } = this.#contextState(request.parentContextId);
+        receipt = { branch, head, state, completed: false };
+        journal.set(key, canonicalJson(receipt));
+      } else {
+        receipt = JSON.parse(stored) as HistoryForkReceipt;
+      }
+      const { completed, ...seed } = receipt;
+      if (completed) {
+        this.#removeForkOffer(branch);
+        return { seed, grant: null };
+      }
+      if (!this.#dolt.branch.list().some(({ name }) => name === branch)) {
+        this.#dolt.branch.create(branch, { from: seed.head });
+      }
+      this.#assertHead(branch, seed.head);
+      if (local) return { seed, grant: null };
+      const grant = this.#dolt.remote.grant({
+        fetch: true, label: branch, branches: [branch], peer: request.childPeer,
+      });
+      for (const prior of this.#dolt.remote.grants()) {
+        if (prior.label === branch && prior.id !== grant.id) this.#dolt.remote.revoke(prior.id);
+      }
+      return { seed, grant };
+    });
+  }
+
+  finishContextFork(request: HistoryForkRequest, seed: HistoryForkSeed): Promise<void> {
+    return this.#run(() => {
+      const journal = this.#discardJournal;
+      const branch = historyForkBranch(request);
+      const key = `history-fork-offer:${branch}`;
+      const stored = journal?.get(key);
+      if (!journal || stored == null)
+        throw new Error("Workspace fork has no recorded source");
+      const { completed, ...recorded } = JSON.parse(stored) as HistoryForkReceipt;
+      if (canonicalJson(recorded) !== canonicalJson(seed))
+        throw new Error("Workspace fork acknowledged a different source");
+      if (!completed) journal.set(key, canonicalJson({ ...recorded, completed: true }));
+      this.#removeForkOffer(branch);
+    });
+  }
+
+  #removeForkOffer(branch: string): void {
+    for (const grant of this.#dolt.remote.grants()) {
+      if (grant.label === branch) this.#dolt.remote.revoke(grant.id);
+    }
+    if (this.#dolt.branch.list().some(({ name }) => name === branch)) {
+      this.#dolt.branch.delete(branch, { force: true });
+    }
+  }
+
+  adoptContextFork(input: {
+    request: HistoryForkRequest;
+    seed: HistoryForkSeed;
+    source: string;
+    origin: DoltRemoteTarget | null;
+    transport: DoltRemoteTransport;
+    local: boolean;
+  }): Promise<HistoryForkSeed> {
+    return this.#run(async () => {
+      const { request, seed, source, origin, transport, local } = input;
+      const journal = this.#discardJournal;
+      if (!journal) throw new Error("Workspace fork requires local receipt storage");
+      if (seed.branch !== historyForkBranch(request))
+        throw new Error("Workspace fork named a different target");
+      const contextBranch = this.#contextBranch(request.childContextId);
+      const key = `history-fork-adoption:${contextBranch}`;
+      const expected = { source, seed };
+      const stored = journal.get(key);
+      const prior = stored === null ? null : JSON.parse(stored) as HistoryForkAdoption;
+      if (prior && canonicalJson({ source: prior.source, seed: prior.seed }) !== canonicalJson(expected))
+        throw new Error("Workspace fork target is already assigned");
+      const existing = this.#dolt.branch.list().find(({ name }) => name === contextBranch);
+      const remote = `fork-${seed.branch.slice(-59)}`;
+      if (prior?.completed) {
+        if (!existing) throw new Error("Workspace fork lost its working branch");
+        if (this.#dolt.remote.list().some(({ name }) => name === remote)) this.#dolt.remote.remove(remote);
+        return seed;
+      }
+      if (existing && (!prior || existing.hash !== seed.head))
+        throw new Error("Workspace fork target already has a working branch");
+      if (!prior) {
+        try {
+          if (!local) {
+            if (!origin) throw new Error("Workspace fork is missing its transfer grant");
+            this.#configureRemote(remote, origin);
+            const result = await this.#dolt.fetch(remote, { branches: [seed.branch], transport });
+            if (result.branches[seed.branch] !== seed.head)
+              throw new Error("Workspace fork fetched a different source");
+          }
+          if (workspaceCommitForRef(this.#storage.sql, seed.head, seed.state) !== seed.head)
+            throw new Error("Workspace fork has a different semantic revision");
+          journal.set(key, canonicalJson({ ...expected, completed: false }));
+        } catch (error) {
+          if (this.#dolt.remote.list().some(({ name }) => name === remote)) this.#dolt.remote.remove(remote);
+          throw error;
+        }
+      }
+      this.#openBranch(request.childContextId, seed.head);
+      journal.set(key, canonicalJson({ ...expected, completed: true }));
+      if (this.#dolt.remote.list().some(({ name }) => name === remote)) this.#dolt.remote.remove(remote);
+      return seed;
     });
   }
 

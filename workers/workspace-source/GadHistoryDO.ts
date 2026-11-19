@@ -58,6 +58,8 @@ import {
   APPROVED_MAIN_GRANT_LIFETIME_MS,
   grantApprovedMain,
   grantParticipantHistory,
+  type HistoryForkRequest,
+  type HistoryForkSeed,
   HistoryHeadChanged,
   ParticipantHistory,
   retireParticipantHistory,
@@ -90,8 +92,15 @@ const hostWrite = {
 const hostRead = { ...hostWrite, sensitivity: "read" } as const;
 
 const relay = createReceiverRpcMethods<
-  Pick<GadHistoryDO, "serveHistoryRemote" | "archiveHistoryParticipant">
->(["serveHistoryRemote", "archiveHistoryParticipant"]);
+  Pick<GadHistoryDO, "serveHistoryRemote" | "serveHistoryFork" | "archiveHistoryParticipant">
+>(["serveHistoryRemote", "serveHistoryFork", "archiveHistoryParticipant"]);
+
+const participantPeerPrefix = `do:${source}:${className}:`;
+
+function isParticipantPeer(peer: string): boolean {
+  return peer.startsWith(participantPeerPrefix) &&
+    /^work-[0-9a-f]{64}$/u.test(peer.slice(participantPeerPrefix.length));
+}
 
 function workKey(participantId: string): string {
   if (!participantId) throw new Error("Missing workspace participant identity");
@@ -310,6 +319,64 @@ export class GadHistoryDO extends DurableObjectBase {
   }): Promise<string> {
     this.#recordHistoryOrigin(input);
     return this.#history().bindContext(input.contextId, input.origin, input.replayedHead);
+  }
+
+  @rpc(hostWrite)
+  async offerHistoryContextFork(input: HistoryForkRequest) {
+    this.#assertWritable();
+    if (!isParticipantPeer(input.childPeer))
+      throw new Error("Workspace fork requires an allocated storage peer");
+    const { seed, grant } = await this.#history().offerContextFork(
+      input, input.childPeer === `${participantPeerPrefix}${this.objectKey}`,
+    );
+    return {
+      seed,
+      token: grant?.token ?? null,
+    };
+  }
+
+  @rpc(hostWrite)
+  acceptHistoryContextFork(input: {
+    participantId: string;
+    origin: DoltRemoteTarget;
+    request: HistoryForkRequest;
+    seed: HistoryForkSeed;
+    fromPeer: string;
+    token: string | null;
+  }): Promise<HistoryForkSeed> {
+    if (input.request.childPeer !== `${participantPeerPrefix}${this.objectKey}` ||
+      !isParticipantPeer(input.fromPeer)) {
+      throw new Error("Workspace fork has a different storage peer");
+    }
+    this.#recordHistoryOrigin(input);
+    const peer = input.fromPeer;
+    return this.#history().adoptContextFork({
+      request: input.request,
+      seed: input.seed,
+      source: peer,
+      origin: input.token === null ? null : {
+        ref: `${className}:${peer.slice(participantPeerPrefix.length)}`, token: input.token,
+      },
+      transport: (bytes) => this.rpc.call(peer, relay.serveHistoryFork, [bytes]),
+      local: peer === input.request.childPeer,
+    });
+  }
+
+  @rpc(hostWrite)
+  finishHistoryContextFork(input: { request: HistoryForkRequest; seed: HistoryForkSeed }): Promise<void> {
+    this.#assertWritable();
+    return this.#history().finishContextFork(input.request, input.seed);
+  }
+
+  @rpc({ ...hostRead, principals: ["code"], codeOnly: true })
+  serveHistoryFork(bytes: Uint8Array): Uint8Array {
+    this.#assertWritable();
+    this.#history();
+    const peer = this.rpcCallerId;
+    const request = rpcBytesOf(bytes);
+    if (!peer || !isParticipantPeer(peer) || !request)
+      throw new Error("Workspace fork remote requires a storage peer");
+    return this.#remotes().remote.serve(request, { peer });
   }
 
   #recordHistoryOrigin(input: { participantId: string; origin: DoltRemoteTarget }): void {
