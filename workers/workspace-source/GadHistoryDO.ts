@@ -1189,6 +1189,67 @@ export class GadHistoryDO extends DurableObjectBase {
     };
   }
 
+  #incomingApproval(input: IncomingHistoryPublication & { group: string; publisher: string }) {
+    if (!digest.test(input.group) || !digest.test(input.publisher))
+      throw new Error("Incoming workspace history has no verified Chronolog publisher");
+    const { main, event } = this.#incomingHistoryHead(input);
+    return {
+      publicationId: `chronolog-publication:${input.publicationId}`,
+      participantId: `chronolog:${input.group}:${input.publisher}`,
+      previousEventId: main.eventId,
+      proposedEventId: event.eventId,
+      publication: { previousHead: main.head, proposedHead: event.head },
+    } satisfies HistoryPublicationApproval;
+  }
+
+  /** The same protected host gate that publishes local work has accepted this exact revision. */
+  @rpc(hostWrite)
+  authorizeIncomingHistory(input: IncomingHistoryPublication & { group: string; publisher: string }) {
+    const approval = this.#incomingApproval(input);
+    const previous = this.#storedApproval(approval.publicationId);
+    if (previous && canonicalJson(previous.approval) !== canonicalJson(approval))
+      throw new Error("Incoming workspace publication approval changed");
+    const expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS;
+    this.setStateValue(this.#approvalKey(approval.publicationId), canonicalJson({
+      approval, expiresAt,
+    } satisfies StoredHistoryApproval));
+  }
+
+  @rpc(hostWrite)
+  publishIncomingHistory(input: IncomingHistoryPublication & { group: string; publisher: string }) {
+    this.#assertCanonical();
+    const branch = incomingBranch(input);
+    const id = `chronolog-publication:${input.publicationId}`;
+    const recorded = this.#storedApproval(id);
+    if (!recorded) throw new Error("Incoming workspace history requires durable approval");
+    if (recorded.approval.publication.previousHead !== input.previousHead ||
+        recorded.approval.publication.proposedHead !== input.proposedHead ||
+        recorded.approval.participantId !== `chronolog:${input.group}:${input.publisher}`) {
+      throw new Error("Incoming workspace history approval names a different publication");
+    }
+    const dolt = this.#remotes();
+    if (!this.#publishedApproval(recorded.approval)) {
+      const approval = this.#incomingApproval(input);
+      if (canonicalJson(approval) !== canonicalJson(recorded.approval) || recorded.expiresAt <= Date.now())
+        throw new Error("Incoming workspace history approval is no longer active");
+      if (dolt.branch.current() !== "main" || dolt.status().length !== 0)
+        throw new Error("Canonical workspace history is not ready for a fast-forward");
+      const base = dolt.query("SELECT dolt_merge_base(?1, ?2)", [
+        { index: 1, value: input.previousHead },
+        { index: 2, value: input.proposedHead },
+      ]).rows[0]?.[0];
+      if (base !== input.previousHead) throw new Error("Incoming workspace history cannot fast-forward main");
+      const result = dolt.merge(branch);
+      if (result.hash !== input.proposedHead || result.conflicts.length !== 0)
+        throw new Error("Incoming workspace history did not advance to the approved head");
+    }
+    for (const grant of dolt.remote.grants()) {
+      if (grant.label === branch) dolt.remote.revoke(grant.id);
+    }
+    if (dolt.branch.list().some(({ name }) => name === branch)) dolt.branch.delete(branch, { force: true });
+    return { head: input.proposedHead };
+  }
+
   @rpc(hostRead)
   readHistoryPublicationApproval(input: { publicationId: string }) {
     this.#assertCanonical();
