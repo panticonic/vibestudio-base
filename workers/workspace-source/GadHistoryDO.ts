@@ -214,6 +214,19 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  supportsHistoryReplay(): boolean {
+    this.#assertCanonical();
+    const dolt = this.#remotes();
+    if (!dolt.queryScoped) return false;
+    const result = dolt.queryScoped(
+      "SELECT count(*) FROM history_capability WHERE marker = 1",
+      { history_capability: "SELECT 1 AS marker" },
+      { maxRows: 1 }
+    );
+    return result.rows[0]?.[0] === 1n;
+  }
+
+  @rpc(hostRead)
   readHistoryReplayReceipt(): ReplayReceipt | null {
     this.#assertCanonical();
     const stored = this.getStateValue("history-replay-receipt");
