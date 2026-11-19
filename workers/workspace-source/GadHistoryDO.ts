@@ -1154,8 +1154,7 @@ export class GadHistoryDO extends DurableObjectBase {
     return this.#remotes().remote.serve(bytes, { peer });
   }
 
-  @rpc(hostRead)
-  readIncomingHistory(input: IncomingHistoryPublication) {
+  #incomingHistoryHead(input: IncomingHistoryPublication) {
     this.#assertCanonical();
     const branch = incomingBranch(input);
     const main = this.readHistoryMain();
@@ -1164,6 +1163,20 @@ export class GadHistoryDO extends DurableObjectBase {
     if (staged?.hash !== input.proposedHead) throw new Error("Incoming workspace history is incomplete");
     const event = committedWorkspaceEvent(this.sql, staged.hash);
     if (event?.head !== staged.hash) throw new Error("Incoming workspace history does not name a committed event");
+    return { main, event };
+  }
+
+  @rpc(hostRead)
+  hasIncomingHistoryContent(input: IncomingHistoryPublication & { digest: string }): boolean {
+    if (!digest.test(input.digest)) throw new Error("Invalid incoming workspace content digest");
+    const { event } = this.#incomingHistoryHead(input);
+    return workspaceHasFileContent(this.sql, event.head, input.digest) ||
+      workspaceExternalDeltaRoots(this.sql, [event.head]).includes(input.digest);
+  }
+
+  @rpc(hostRead)
+  readIncomingHistory(input: IncomingHistoryPublication) {
+    const { main, event } = this.#incomingHistoryHead(input);
     return {
       head: event.head,
       state: { kind: "event" as const, eventId: event.eventId },
