@@ -443,6 +443,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "compareDecisionRevisions",
         "organizeCollection",
         "curateBrowserLibrary",
+        "reconcileMissionPlan",
       ],
     ],
     [join(templateRoot, "system"), ["investigateSystem", "prepareLocalModel"]],
