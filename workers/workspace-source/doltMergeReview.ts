@@ -301,7 +301,7 @@ export function paginateHistoryComparison(
   coordinates: Coordinate[],
   intents: ReturnType<typeof reviewIntents>,
   concluded: boolean,
-): HistoryMergeReview {
+): Extract<HistoryMergeReview, { kind: "reviewed" }> {
   const counts: VcsCompareResult["counts"] = { adopt: 0, convergent: 0, composed: 0, conflict: 0, resolved: 0 };
   for (const { status } of coordinates) counts[status]++;
   const remaining = counts.adopt + counts.composed + counts.conflict;

@@ -70,7 +70,7 @@ export function eventLineageAt(sql: SqlStorage, revision: string) {
     throw new SemanticVcsError("IntegrityFailure", "Replayed workspace integration has no exact saved parent");
   }
   const sources = integrated ? [integrated.eventId]
-    : previous ? workspaceMergeSourcesAt(sql, first, previous.head, applicationIds) : [];
+    : previous ? workspaceMergeSourcesAt(sql, first, previous.head, applicationIds).eventIds : [];
   const parents = [...new Set([...(previous ? [previous.eventId] : []), ...sources])];
   return { parents, applicationIds };
 }

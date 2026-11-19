@@ -499,7 +499,7 @@ export function workspaceMergeSourcesAt(
   commit: string,
   after: string,
   applications: readonly string[],
-): string[] {
+) {
   const lineage = sql.exec(
     `${firstParents}
      SELECT hash, parent AS ours FROM lineage ORDER BY depth DESC`,
@@ -507,7 +507,7 @@ export function workspaceMergeSourcesAt(
     after,
   ).toArray();
   const decisions = sql.exec(
-    `SELECT app.application_id, decision.source_event_id, decision.source_delta_id,
+    `SELECT app.application_id, work.author_context_id, decision.source_event_id, decision.source_delta_id,
             decision.target_state_kind, decision.target_state_id
        FROM dolt_at_applications(?1) AS app
        JOIN json_each(?2) AS selected ON selected.value = app.application_id
@@ -518,7 +518,8 @@ export function workspaceMergeSourcesAt(
     JSON.stringify(applications),
   ).toArray();
   const byApplication = new Map(decisions.map((row) => [row["application_id"], row]));
-  const sources = new Set<string>();
+  const eventIds = new Set<string>();
+  const deltaIds = new Set<string>();
   const incomplete = () => new SemanticVcsError(
     "IntegrationIncomplete",
     "Workspace integration has no decision for its exact native parents",
@@ -555,10 +556,23 @@ export function workspaceMergeSourcesAt(
     if (source !== null && (source !== savedSource.eventId ||
         !basis || workspaceCommitForRef(sql, ours, basis) !== ours)) throw incomplete();
     byApplication.delete(introduced[0]);
-    sources.add(savedSource.eventId);
+    eventIds.add(savedSource.eventId);
   }
-  if (byApplication.size > 0) throw incomplete();
-  return [...sources];
+  const parentByCommit = new Map(lineage.map(({ hash, ours }) => [hash, ours]));
+  for (const [applicationId, decision] of byApplication) {
+    const { source_event_id, source_delta_id, target_state_id, target_state_kind, author_context_id } = decision;
+    if (typeof applicationId !== "string" || source_event_id !== null || typeof source_delta_id !== "string" ||
+        typeof target_state_id !== "string" || typeof author_context_id !== "string") throw incomplete();
+    const application = workspaceCommitForRef(sql, commit, { kind: "application", applicationId });
+    const parent = parentByCommit.get(application);
+    const basis = target_state_kind === "event" ? { kind: "event" as const, eventId: target_state_id }
+      : target_state_kind === "application" ? { kind: "application" as const, applicationId: target_state_id } : null;
+    if (!application || typeof parent !== "string" || !basis || workspaceCommitForRef(sql, parent, basis) !== parent ||
+        sql.exec(`SELECT 1 FROM dolt_at_gad_external_deltas(?) WHERE delta_id = ? AND owner_context_id = ?`,
+          application, source_delta_id, author_context_id).toArray().length !== 1) throw incomplete();
+    deltaIds.add(source_delta_id);
+  }
+  return { eventIds: [...eventIds], deltaIds: [...deltaIds] };
 }
 
 /** The changed placements and the incoming applications that account for them. */

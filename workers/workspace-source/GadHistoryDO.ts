@@ -838,14 +838,16 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
-  supersedeHistoryExternalDelta(input: {
+  setHistoryExternalDeltaStatus(input: {
     head: string;
     delta: VcsExternalDeltaLifecycleInput;
     cause: HistoryCommand["cause"];
+    status: "superseded" | "finalized";
   }) {
     this.#assertWritable();
-    return this.#history().supersedeExternalDelta(
-      input.head, vcsExternalDeltaLifecycleInputSchema.parse(input.delta), input.cause,
+    if (input.status !== "superseded" && input.status !== "finalized") throw new Error("Invalid external delta status");
+    return this.#history().setExternalDeltaStatus(
+      input.head, vcsExternalDeltaLifecycleInputSchema.parse(input.delta), input.cause, input.status,
     );
   }
 
@@ -930,6 +932,17 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   previewHistoryContextMerge(input: { contextId: string; head: string; source: MergeSource }) {
     return this.#history().previewContextMerge(input.contextId, input.head, input.source);
+  }
+
+  @rpc(hostWrite)
+  mergeHistoryExternalDelta(input: {
+    merge: VcsMergeInput;
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+    content?: Parameters<ParticipantHistory["mergeExternal"]>[3];
+  }) {
+    this.#assertWritable();
+    return this.#history().mergeExternal(vcsMergeInputSchema.parse(input.merge), input.cause, input.triggerEvidence, input.content);
   }
 
   @rpc(hostWrite)

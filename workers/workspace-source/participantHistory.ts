@@ -43,7 +43,7 @@ import type {
   VcsStatusResult,
   VcsWalkInput,
 } from "@vibestudio/service-schemas/vcs";
-import { vcsBlameResultSchema, vcsExternalDeltaResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
+import { vcsBlameResultSchema, vcsExternalDeltaResultSchema, vcsExternalSnapshotSchema, vcsMergeResultSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import type { HistoryQueryBasis, HistoryQueryTrajectory, HistorySearchCause, HistoryWalkCohort, HistoryWalkInvocation } from "@vibestudio/service-schemas/workspaceSource";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { assertSemanticVcsPathAdmissible } from "@vibestudio/shared/vcs/pathAdmission";
@@ -79,8 +79,8 @@ import { historySearchCausesAt, searchHistoryProse } from "./doltWorkspaceSearch
 import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { declineHistoryFileCollisions } from "./doltPlacementConflicts.js";
-import { historyMergePlacements, readHistoryWorkUnitIntent, reviewHistoryMerge, settledHistoryMerge } from "./doltMergeReview.js";
-import { reviewExternalMerge, type HistoryExternalMergeSource } from "./doltExternalMerge.js";
+import { historyMergePlacements, paginateHistoryComparison, readHistoryWorkUnitIntent, reviewHistoryMerge, reviewIntents, settledHistoryMerge } from "./doltMergeReview.js";
+import { inspectExternalMerge, planExternalMerge, reviewExternalMerge, type HistoryExternalMergeSource } from "./doltExternalMerge.js";
 import {
   composeHistoryText,
   historyTextMergeInputs,
@@ -148,7 +148,7 @@ export type HistoryMergeResult =
       kind: "committed";
       head: string;
       value: StateNodeRef;
-      result: Extract<VcsMergeResult, { status: "working" }>;
+      result: VcsMergeResult;
     };
 
 interface HistoryMergeContent {
@@ -670,7 +670,12 @@ export class ParticipantHistory {
       if (typeof workUnits !== "number" || typeof changes !== "number") {
         throw new SemanticVcsError("IntegrityFailure", "Workspace has invalid working counts");
       }
-      const sources = applications.length === 0 ? [] : workspaceMergeSourcesAt(sql, head, saved.head, applications);
+      const sources = applications.length === 0 ? { eventIds: [], deltaIds: [] }
+        : workspaceMergeSourcesAt(sql, head, saved.head, applications);
+      const integrating = [
+        ...sources.eventIds.map((eventId) => ({ kind: "event" as const, eventId })),
+        ...sources.deltaIds.map((deltaId) => ({ kind: "external-delta" as const, deltaId })),
+      ];
       return {
         contextId,
         committed: { kind: "event", eventId: saved.eventId },
@@ -679,15 +684,13 @@ export class ParticipantHistory {
         mainEventId: mainEvent.eventId,
         mainRelation,
         workingCounts: { applications: applications.length, workUnits, changes },
-        integrating: sources.map((eventId) => ({
-          source: { kind: "event", eventId },
-          remainingCoordinateCount: 0,
-          mergeableCoordinateCount: 0,
-          conflictCoordinateCount: 0,
-          concluded: true,
-          asOfWorkingHead: state,
-          stale: false,
-        })),
+        integrating: integrating.map((source) => {
+          const pending = source.kind === "external-delta" ? this.#pendingExternal(contextId, state, source.deltaId) : [];
+          const conflicts = pending.filter(({ structural, aspects }) => structural || aspects.some(({ status }) => status === "conflict")).length;
+          return { source, remainingCoordinateCount: pending.length, mergeableCoordinateCount: pending.length - conflicts,
+            conflictCoordinateCount: conflicts, concluded: true, asOfWorkingHead: state,
+            stale: pending.some(({ textCandidate }) => textCandidate !== null) };
+        }),
       };
     });
   }
@@ -842,6 +845,7 @@ export class ParticipantHistory {
     draft: MutationDraft,
     triggerEvidence: WorkUnitRecord["triggerEvidence"],
     sourceRevisions?: ReadonlyMap<string, { head: string }>,
+    evidenceKeys: readonly string[] = [],
   ): Promise<Extract<HistoryMutationPlan, { kind: "planned" }>> {
     const { contextId, expectedWorkingHead } = input;
     const basisKey = stateNodeKey(expectedWorkingHead);
@@ -869,6 +873,7 @@ export class ParticipantHistory {
     }
     const origins = [...originsAt.values()].flatMap((entries) => [...entries.values()]);
     const externalKeys = [...new Set([
+      ...evidenceKeys,
       ...origins.flatMap((origin) => origin.externalKeys),
       ...(draft.externalSnapshot
         ? [`repo:${draft.externalSnapshot.sourceUri}@${draft.externalSnapshot.snapshotRevision}`]
@@ -884,7 +889,7 @@ export class ParticipantHistory {
       now: () => new Date().toISOString(),
       workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
       contentIntegrity: () => ({
-        class: draft.externalSnapshot || origins.some((origin) => origin.contentClass === "external")
+        class: draft.externalSnapshot || evidenceKeys.length > 0 || origins.some((origin) => origin.contentClass === "external")
           ? "external" : "internal",
         externalKeys,
         contentOrigins: new Map(),
@@ -1399,21 +1404,23 @@ export class ParticipantHistory {
     return `external/${branchSegment(contextId)}`;
   }
 
-  supersedeExternalDelta(
+  setExternalDeltaStatus(
     expectedHead: string,
     input: VcsExternalDeltaLifecycleInput,
     cause: HistoryCommand["cause"],
+    status: "superseded" | "finalized",
   ): Promise<VcsExternalDeltaResult> {
     return this.#run(() => {
       const { contextId, commandId, deltaId, expectedWorkingHead } = input;
       const current = this.#dolt.hashOf(this.#contextBranch(contextId));
       const stage = this.#externalBranch(contextId);
       const staged = this.#dolt.branch.list().find(({ name }) => name === stage)?.hash;
-      const command = { commandId, method: "supersedeExternalDelta", requestDigest: compactId("supersedeExternalDelta-request", input), cause };
+      const method = status === "superseded" ? "supersedeExternalDelta" : "finalizeExternalDelta";
+      const command = { commandId, method, requestDigest: compactId(`${method}-request`, input), cause };
       if (staged && this.#hasCommand(staged, contextId, command)) {
         const prior = this.#externalDelta(staged, contextId, deltaId);
-        if (prior?.result.status !== "superseded") {
-          throw new SemanticVcsError("IntegrityFailure", "External delta supersession has no recorded response");
+        if (prior?.result.status !== status) {
+          throw new SemanticVcsError("IntegrityFailure", "External delta lifecycle command has no recorded response");
         }
         return prior.result;
       }
@@ -1421,31 +1428,40 @@ export class ParticipantHistory {
       const { sql } = this.#storage;
       if (!replayed && current !== expectedHead) throw new HistoryHeadChanged(expectedHead, current);
       if (!replayed && workspaceCommitForRef(sql, current, expectedWorkingHead) !== current) {
-        throw new SemanticVcsError("RevisionChanged", "External delta supersession requires the exact working revision");
+        throw new SemanticVcsError("RevisionChanged", "External delta lifecycle command requires the exact working revision");
       }
       if (replayed) {
         const prior = this.#externalDelta(current, contextId, deltaId);
-        if (prior?.result.status !== "superseded") {
-          throw new SemanticVcsError("IntegrityFailure", "Replayed external delta supersession has no recorded response");
+        if (prior?.result.status !== status) {
+          throw new SemanticVcsError("IntegrityFailure", "Replayed external delta command has no recorded response");
         }
         return prior.result;
       }
       const prior = this.#externalDelta(staged ?? current, contextId, deltaId);
-      if (prior?.result.status !== "active" && prior?.result.status !== "superseded") {
-        throw new SemanticVcsError("InvalidReference", "External delta cannot be superseded in this context");
+      if (!prior || (prior.result.status !== "active" && prior.result.status !== status)) {
+        throw new SemanticVcsError("InvalidReference", "External delta cannot change status in this context");
+      }
+      if (status === "finalized" && prior.result.status === "active") {
+        const pending = this.#pendingExternal(contextId, expectedWorkingHead, deltaId);
+        if (pending.length) {
+          throw new SemanticVcsError("IntegrationIncomplete", "External delta still has undecided changes", {
+            source: { kind: "external-delta", deltaId },
+            unaccountedCoordinates: pending.slice(0, 500).map(({ id }) => ({ kind: "file", id })),
+          });
+        }
       }
       if (!staged) this.#dolt.branch.create(stage, { from: current });
-      this.#commitBranch(stage, "Supersede external workspace delta", () => {
+      this.#commitBranch(stage, "Conclude external workspace delta", () => {
         if (prior.result.status === "active") {
           sql.exec(
-            `UPDATE gad_external_deltas SET status = 'superseded'
+            `UPDATE gad_external_deltas SET status = ?
               WHERE delta_id = ? AND owner_context_id = ? AND status = 'active'`,
-            deltaId, contextId,
+            status, deltaId, contextId,
           );
         }
         this.#recordCommand(contextId, command, new Date().toISOString());
       });
-      return { ...prior.result, status: "superseded" };
+      return { ...prior.result, status };
     });
   }
 
@@ -1464,7 +1480,7 @@ export class ParticipantHistory {
                JOIN dolt_at_gad_changes(?) AS change USING (work_unit_id)
               WHERE delta.owner_context_id = ? AND change.change_id = ?`, tip, tip, contextId, ref.changeId] as const
           : [`SELECT 1 FROM dolt_at_commands(?) WHERE scope_kind = 'context' AND scope_id = ?
-               AND command_id = ? AND method IN ('registerExternalDelta', 'supersedeExternalDelta')`, tip, contextId, ref.commandId] as const;
+               AND command_id = ? AND method IN ('registerExternalDelta', 'supersedeExternalDelta', 'finalizeExternalDelta')`, tip, contextId, ref.commandId] as const;
     return sql.exec(lookup[0], ...lookup.slice(1)).toArray().length === 1 ? tip : null;
   }
 
@@ -1500,15 +1516,23 @@ export class ParticipantHistory {
     };
   }
 
-  #externalMergeSource(contextId: string, target: StateNodeRef, deltaId: string): HistoryExternalMergeSource {
-    const head = this.#dolt.hashOf(this.#contextBranch(contextId));
-    if (workspaceCommitForRef(this.#storage.sql, head, target) !== head) {
+  #externalMergeSource(contextId: string, target: StateNodeRef, deltaId: string, requireCurrent = true): HistoryExternalMergeSource {
+    const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+    const head = workspaceCommitForRef(this.#storage.sql, current, target);
+    if (!head || (requireCurrent && head !== current)) {
       throw new SemanticVcsError("RevisionChanged", "External comparison requires the exact working revision");
     }
     const draft = this.#externalTipFor(contextId, { kind: "external-delta", deltaId }) ?? head;
     const delta = this.#externalDelta(draft, contextId, deltaId);
     if (!delta) throw new SemanticVcsError("InvalidReference", "External delta is unavailable in this context");
     return { head, draft, delta: delta.result, base: delta.target };
+  }
+
+  #pendingExternal(contextId: string, target: StateNodeRef, deltaId: string) {
+    const source = this.#externalMergeSource(contextId, target, deltaId);
+    const { entries, decisions } = inspectExternalMerge(this.#storage.sql, source);
+    return entries.filter(({ id, structural, aspects }) => !decisions.has(id) &&
+      (structural || aspects.some(({ status }) => status === "adopt" || status === "conflict")));
   }
 
   #importReceipt(at: string, input: VcsImportSnapshotInput) {
@@ -1611,7 +1635,7 @@ export class ParticipantHistory {
       if (applicationIds.length > MAX_WORKING_APPLICATIONS) {
         throw new SemanticVcsError("ScopeTooLarge", "Workspace has too many working applications to save");
       }
-      if (input.concludes) {
+      if (input.concludes?.kind === "event") {
         throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration needs a completed decision");
       }
       if (applicationIds.length === 0) {
@@ -1624,12 +1648,22 @@ export class ParticipantHistory {
         throw new SemanticVcsError("RevisionChanged", "Workspace save names a different working revision");
       }
       const sources = workspaceMergeSourcesAt(sql, current, parent.head, applicationIds);
-      const kind: WorkspaceEventRecord["kind"] = sources.length > 0 ? "integration-commit" : "commit";
+      if (input.concludes?.kind === "external-delta" && !sources.deltaIds.includes(input.concludes.deltaId)) {
+        throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration needs a recorded external decision");
+      }
+      for (const deltaId of sources.deltaIds) {
+        const pending = this.#pendingExternal(contextId, expected, deltaId);
+        if (pending.length) throw new SemanticVcsError("IntegrationIncomplete", "Workspace has an incomplete external delta", {
+          source: { kind: "external-delta", deltaId },
+          unaccountedCoordinates: pending.slice(0, 500).map(({ id }) => ({ kind: "file", id })),
+        });
+      }
+      const kind: WorkspaceEventRecord["kind"] = sources.eventIds.length + sources.deltaIds.length > 0 ? "integration-commit" : "commit";
       const fields = {
         commandId,
         kind,
-        parentEventIds: [parent.eventId, ...sources],
-        externalDeltaIds: [],
+        parentEventIds: [parent.eventId, ...sources.eventIds],
+        externalDeltaIds: sources.deltaIds,
         applicationIds,
         resultWorkspaceFactRootId: current,
         message: input.message ?? null,
@@ -1644,6 +1678,10 @@ export class ParticipantHistory {
       const { head } = this.#commit(contextId, expectedHead, input.message ?? "Save workspace revision", () => {
         this.#recordCommand(contextId, command, event.createdAt);
         recordDoltWorkspaceEvent(sql, event);
+        sources.deltaIds.forEach((deltaId, ordinal) => sql.exec(
+          "INSERT INTO gad_workspace_event_external_sources (event_id, ordinal, delta_id) VALUES (?, ?, ?)",
+          event.eventId, ordinal, deltaId,
+        ));
       });
       return { head, result };
     });
@@ -1673,19 +1711,19 @@ export class ParticipantHistory {
     }
     const applications = workspaceApplicationsAt(sql, working, previous.head);
     const sources = workspaceMergeSourcesAt(sql, working, previous.head, applications);
-    if (rows[0]?.["kind"] !== (sources.length > 0 ? "integration-commit" : "commit")) {
+    if (rows[0]?.["kind"] !== (sources.eventIds.length + sources.deltaIds.length > 0 ? "integration-commit" : "commit")) {
       throw new SemanticVcsError("IntegrityFailure", "Recorded save kind differs from its native ancestry");
     }
     return { head, result: this.#saveResult(contextId, eventId, applications, sources) };
   }
 
-  #saveResult(contextId: string, eventId: string, applicationIds: string[], sources: string[]): VcsCommitResult {
+  #saveResult(contextId: string, eventId: string, applicationIds: string[], sources: ReturnType<typeof workspaceMergeSourcesAt>): VcsCommitResult {
     return {
       contextId,
       event: { kind: "event", eventId },
       committedApplicationIds: applicationIds,
-      integrationSourceEventIds: sources,
-      integrationSourceDeltaIds: [],
+      integrationSourceEventIds: sources.eventIds,
+      integrationSourceDeltaIds: sources.deltaIds,
     };
   }
 
@@ -1755,7 +1793,7 @@ export class ParticipantHistory {
     if (input.source.kind === "external-delta") {
       const { deltaId } = input.source;
       return this.#run(() => reviewExternalMerge(
-        this.#storage.sql, input, this.#externalMergeSource(contextId, input.target, deltaId), observation,
+        this.#storage.sql, input, this.#externalMergeSource(contextId, input.target, deltaId, false), observation,
       ));
     }
     const selection = await this.resolveMerge(contextId, input.target, input.source, readableContextIds);
@@ -1770,6 +1808,98 @@ export class ParticipantHistory {
       "main" in selection ? this.#fetchCanonicalRevision(selection.main) : this.#resolveContextSource(selection.source),
     );
     return this.#run(() => reviewHistoryMerge(this.#storage.sql, input, this.#stateAt(base).state, preview, observation));
+  }
+
+  mergeExternal(
+    input: VcsMergeInput, cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null, content?: HistoryMergeContent,
+  ): Promise<HistoryMergeResult> {
+    return this.#run(async () => {
+      const { contextId, commandId, expectedWorkingHead, source } = input;
+      if (source.kind !== "external-delta") throw new SemanticVcsError("InvalidReference", "An external delta is required");
+      const { sql } = this.#storage;
+      const receipts = this.#receipts;
+      if (!receipts) throw new Error("External integration requires local receipt storage");
+      const receiptKey = `history-external-merge:${sha256HexSyncText(canonicalJson([contextId, commandId]))}`;
+      const command = { commandId, method: "merge", requestDigest: compactId("external-merge-request", input), cause };
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      if (this.#hasCommand(current, contextId, command)) {
+        const stored = receipts.get(receiptKey);
+        if (!stored) throw new SemanticVcsError("IntegrityFailure", "External integration has no recorded receipt");
+        const result = vcsMergeResultSchema.parse(JSON.parse(stored));
+        const head = workspaceCommitForRef(sql, current, result.workingHead);
+        if (!head) throw new SemanticVcsError("IntegrityFailure", "External integration receipt has no revision");
+        return { kind: "committed", head, value: result.workingHead, result };
+      }
+
+      const exact = this.#externalMergeSource(contextId, expectedWorkingHead, source.deltaId);
+      if (exact.delta.status !== "active") throw new SemanticVcsError("InvalidReference", "External delta is no longer active");
+      const planned = planExternalMerge(sql, exact, input, content?.observation ?? null);
+      if (planned.kind === "read-content") return planned;
+      const { draft, chosen, coordinates, compositions, origins } = planned;
+      const blobs = [...new Map(draft.blobs!.map((blob) => [blob.contentHash, blob])).values()];
+      const contentHashes = blobs.map(({ contentHash }) => contentHash).sort(compareUtf16CodeUnits);
+      if (blobs.length > 0 && !content?.contentHashes) return { kind: "prepare-content", blobs };
+      if (content?.contentHashes && canonicalJson(content.contentHashes) !== canonicalJson(contentHashes)) {
+        throw new SemanticVcsError("IntegrityFailure", "Prepared external merge bytes changed");
+      }
+      const report = (target: StateNodeRef, outcomes: typeof coordinates, intents: typeof planned.intents, concluded: boolean) => {
+        const { result } = paginateHistoryComparison({ target, source, limit: 500, statusFilter: "conflict" },
+          exact.base, outcomes, intents, concluded);
+        return { resolution: result.resolution, counts: result.counts, intents: result.intents,
+          intentsTruncated: result.intentsTruncated, conflicts: result.coordinates, nextConflictCursor: result.nextCursor };
+      };
+      if (chosen.size === 0 && planned.concluded) {
+        const result = vcsMergeResultSchema.parse({ status: "unchanged", contextId, workingHead: expectedWorkingHead,
+          ...report(expectedWorkingHead, coordinates, planned.intents, true) });
+        return { kind: "committed", head: current, value: expectedWorkingHead, result };
+      }
+      const keys = sql.exec("SELECT external_lineage_json FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ?",
+        exact.draft, exact.delta.workUnitId).toArray()[0]?.["external_lineage_json"];
+      const evidenceKeys: unknown = typeof keys === "string" ? JSON.parse(keys) : null;
+      if (!Array.isArray(evidenceKeys) || evidenceKeys.length === 0 || evidenceKeys.some((key) => typeof key !== "string")) {
+        throw new SemanticVcsError("IntegrityFailure", "External merge is missing its source lineage");
+      }
+      const prepared = await this.#prepareMutation(current, input, command, draft, triggerEvidence, undefined, evidenceKeys);
+      const applicationId = prepared.application.application.applicationId;
+      const workingHead = { kind: "application" as const, applicationId };
+      const decision = prepared.application.decisions[0]!;
+      const decisions = new Map(decision.entries.map((entry) => [canonicalJson(["file", entry.coordinate.id]), entry]));
+      const outcomes = coordinates.map((coordinate) => {
+        if (!chosen.has(coordinate.coordinate.id)) return coordinate;
+        return { ...coordinate, status: "resolved" as const, decisionId: decision.decisionId, resolutions: [] };
+      });
+      const intents = reviewIntents(sql, { head: current, main: exact.draft }, outcomes, decisions);
+      const composed = decision.entries.flatMap(({ coordinate, resolution }) => {
+        if (resolution !== "composed" || !compositions.has(coordinate.id)) return [];
+        return [{ coordinate, ours: readHistoryWorkUnitIntent(sql, current, origins.get(coordinate.id)?.authoredByWorkUnitId),
+          theirs: readHistoryWorkUnitIntent(sql, exact.draft, exact.delta.workUnitId) }];
+      });
+      const result = vcsMergeResultSchema.parse({ ...prepared.result, status: "working", workingHead,
+        decisionId: decision.decisionId, outcomes: outcomes.filter(({ coordinate }) => chosen.has(coordinate.id)).slice(0, 500),
+        composed, ...report(workingHead, outcomes, intents, true) });
+      const { head } = this.#commit(contextId, current, "Integrate external workspace changes", () => {
+        this.#retainExternalMergeEvidence(exact, contextId);
+        this.#writePreparedApplication(current, command, prepared.application);
+        receipts.set(receiptKey, canonicalJson(result));
+      });
+      return { kind: "committed", head, value: workingHead, result };
+    });
+  }
+
+  #retainExternalMergeEvidence(source: HistoryExternalMergeSource, contextId: string): void {
+    const { sql } = this.#storage;
+    const { workUnitId, deltaId } = source.delta;
+    if (this.#externalDelta(source.head, contextId, deltaId)) return;
+    sql.exec(`INSERT INTO gad_work_units SELECT * FROM dolt_at_gad_work_units(?) WHERE work_unit_id = ?`,
+      source.draft, workUnitId);
+    sql.exec(`INSERT INTO gad_changes SELECT * FROM dolt_at_gad_changes(?) WHERE work_unit_id = ?`,
+      source.draft, workUnitId);
+    sql.exec(`INSERT INTO gad_change_coordinates SELECT coords.* FROM dolt_at_gad_change_coordinates(?1) AS coords
+       JOIN dolt_at_gad_changes(?1) AS changes USING (change_id) WHERE changes.work_unit_id = ?2`,
+      source.draft, workUnitId);
+    sql.exec(`INSERT INTO gad_external_deltas SELECT * FROM dolt_at_gad_external_deltas(?) WHERE delta_id = ? AND owner_context_id = ?`,
+      source.draft, deltaId, contextId);
   }
 
   async mergeLocations(
