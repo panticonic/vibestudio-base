@@ -476,6 +476,51 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  extensionReleaseRead: `/** Read assigned extension source and live approved runtime state. */
+
+type ExtensionManifestView = {
+  hash: string;
+  activation: "startup" | "on-invoke" | "unknown";
+  methods: string[];
+};
+
+type ExtensionSource = {
+  operationId: string;
+  contextId: string;
+  name: string;
+  source: string;
+  workingRevision: string;
+  mainRevision: string;
+  working: ExtensionManifestView | null;
+  published: ExtensionManifestView | null;
+  workingTree: string | null;
+  publishedTree: string | null;
+};
+
+type ExtensionRuntime = {
+  operationId: string;
+  name: string;
+  source: string;
+  status:
+    | "running"
+    | "available"
+    | "stopped"
+    | "error"
+    | "pending-approval"
+    | "building";
+  activeEv: string | null;
+  identity: string | null;
+  methods: string[];
+  pendingApproval: "extension.install" | "extension.update" | null;
+  hasError: boolean;
+  dependencyUpdate: boolean;
+};
+
+/** Read assigned extension source and live approved runtime state. */
+export function source(operationId: string): Promise<ExtensionSource>;
+
+/** Read assigned extension source and live approved runtime state. */
+export function runtime(operationId: string): Promise<ExtensionRuntime>;`,
   assignedAuthorityRead: `/** Dry-run the next caller-assigned operation against current Vibestudio authority. */
 
 type ExactAuthority = { capability: string; resourceKey: string };

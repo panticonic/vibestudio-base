@@ -21,6 +21,7 @@
     "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
     "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",
     "runWorkflow/domains/examples": "skills/examples-review",
+    "runWorkflow/domains/extensionDevelopment": "skills/extensiondev/natlang",
     "runWorkflow/domains/gad": "skills/gad-context/natlang",
     "runWorkflow/domains/gmailReview": "skills/gmail-workflow-review",
     "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
