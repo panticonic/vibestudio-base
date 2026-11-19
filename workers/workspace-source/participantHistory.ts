@@ -202,6 +202,10 @@ function branchSegment(value: string): string {
   return `id-${sha256HexSyncText(value)}`;
 }
 
+export function historyRetirementBranch(participantId: string, contextId: string): string {
+  return `retired/${branchSegment(participantId)}/${branchSegment(contextId)}`;
+}
+
 /** Issued by the canonical owner after it authenticates the participant. */
 export function grantParticipantHistory(
   canonical: DoltRemoteStorage,
@@ -1664,6 +1668,22 @@ export class ParticipantHistory {
     });
   }
 
+  retireContext(contextId: string, main: string, origin: DoltRemoteTarget): Promise<void> {
+    return this.#run(async () => {
+      const journal = this.#discardJournal;
+      if (!journal) throw new Error("Workspace context retirement requires local receipt storage");
+      const context = `ctx/${branchSegment(contextId)}`;
+      journal.set(`history-retired:${context}`, "true");
+      const branch = this.#dolt.branch.list().find(({ name }) => name === context);
+      if (!branch) return;
+      const committed = committedWorkspaceEvent(this.#storage.sql, branch.hash);
+      if (!committed) throw new Error(`Workspace history lacks a committed event for ${context}`);
+      await this.#archiveCommittedBranches([{ context, committed: committed.head }], main, origin);
+      if (this.#dolt.branch.current() === context) this.#dolt.checkout("main");
+      this.#dolt.branch.delete(context, { force: true });
+    });
+  }
+
   async #archiveCommittedBranches(archives: readonly { context: string; committed: string }[], main: string, grantTarget: DoltRemoteTarget): Promise<void> {
       const remote = "retirement";
       this.#configureRemote(remote, grantTarget);
@@ -1817,7 +1837,11 @@ export class ParticipantHistory {
   }
 
   #contextBranch(contextId: string): string {
-    return `ctx/${branchSegment(contextId)}`;
+    const branch = `ctx/${branchSegment(contextId)}`;
+    if (this.#discardJournal?.get(`history-retired:${branch}`)) {
+      throw new Error("Workspace participant context has retired");
+    }
+    return branch;
   }
 
   #openBranch(contextId: string, at: string): string {

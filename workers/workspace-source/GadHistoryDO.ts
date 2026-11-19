@@ -58,6 +58,7 @@ import {
   APPROVED_MAIN_GRANT_LIFETIME_MS,
   grantApprovedMain,
   grantParticipantHistory,
+  historyRetirementBranch,
   type HistoryForkRequest,
   type HistoryForkSeed,
   HistoryHeadChanged,
@@ -92,8 +93,8 @@ const hostWrite = {
 const hostRead = { ...hostWrite, sensitivity: "read" } as const;
 
 const relay = createReceiverRpcMethods<
-  Pick<GadHistoryDO, "serveHistoryRemote" | "serveHistoryFork" | "archiveHistoryParticipant">
->(["serveHistoryRemote", "serveHistoryFork", "archiveHistoryParticipant"]);
+  Pick<GadHistoryDO, "serveHistoryRemote" | "serveHistoryFork" | "archiveHistoryParticipant" | "archiveHistoryContext">
+>(["serveHistoryRemote", "serveHistoryFork", "archiveHistoryParticipant", "archiveHistoryContext"]);
 
 const participantPeerPrefix = `do:${source}:${className}:`;
 
@@ -105,6 +106,16 @@ function isParticipantPeer(peer: string): boolean {
 function workKey(participantId: string): string {
   if (!participantId) throw new Error("Missing workspace participant identity");
   return `work-${sha256HexSyncText(participantId)}`;
+}
+
+interface HistoryContextBinding {
+  closed: boolean;
+  targets: string[];
+}
+
+function historyContextKey(contextId: string): string {
+  if (!contextId) throw new Error("Missing workspace context identity");
+  return `history-context-binding:${sha256HexSyncText(contextId)}`;
 }
 
 /** The hosted, versioned history owner. The workspace's trajectory mirror lives separately. */
@@ -217,14 +228,17 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
-  reserveHistoryParticipant(input: { participantId: string; contextId: string }): Promise<{
+  reserveHistoryParticipant(input: { participantId: string; contextId: string; workingContextId?: string }): Promise<{
     targetId: string;
     head: string;
     origin: DoltRemoteTarget;
   }> {
     this.#assertCanonical();
     const target = workKey(input.participantId);
+    const workingContextId = input.workingContextId ?? input.contextId;
     return serializeByKey(this.#allocations, target, async () => {
+      let binding = this.#assertHistoryContextOpen(workingContextId);
+      if (workingContextId !== input.contextId) this.#assertHistoryContextOpen(input.contextId);
       const dolt = this.#remotes();
       const main = dolt.hashOf("main");
       if (!committedWorkspaceEvent(this.sql, main))
@@ -277,6 +291,13 @@ export class GadHistoryDO extends DurableObjectBase {
           throw new Error("Runtime returned a different workspace participant allocation");
         }
         this.#setAllocationStatus(target, "active");
+        binding = this.#assertHistoryContextOpen(workingContextId);
+        if (workingContextId !== input.contextId) this.#assertHistoryContextOpen(input.contextId);
+      }
+      if (!binding.targets.includes(target)) {
+        binding.targets.push(target);
+        binding.targets.sort();
+        this.setStateValue(historyContextKey(workingContextId), canonicalJson(binding));
       }
       const receiptKey = `history-origin:${target}`;
       const storedGrant = this.getStateValue(receiptKey);
@@ -880,6 +901,11 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostWrite)
   async retireHistoryContext(input: { contextId: string }) {
     this.#assertCanonical();
+    const binding = this.#historyContextBinding(input.contextId);
+    if (!binding.closed) {
+      binding.closed = true;
+      this.setStateValue(historyContextKey(input.contextId), canonicalJson(binding));
+    }
     const rows = this.sql.exec(
       "SELECT target_key, status FROM gad_history_allocations WHERE context_id = ? ORDER BY target_key",
       input.contextId,
@@ -895,7 +921,61 @@ export class GadHistoryDO extends DurableObjectBase {
     for (const { participantId, retired } of members) {
       if (!retired && participantId) await this.retireHistoryParticipant({ participantId });
     }
-    return { contextId: input.contextId, targets: members.map(({ target }) => target) };
+    const targets = members.map(({ target }) => target);
+    const fullOwners = new Set(targets);
+    const branchOwners = binding.targets.filter((target) => !fullOwners.has(target));
+    for (const target of branchOwners) {
+      await serializeByKey(this.#allocations, target, async () => {
+        const status = this.#allocationStatus(target);
+        if (status === "archived" || status === "retired" || status === "retiring") return;
+        const participantId = this.getStateValue(`history-allocation-identity:${target}`);
+        if (status !== "active" || !participantId || workKey(participantId) !== target)
+          throw new Error("Workspace context retirement has no verified storage owner");
+        const peer = `${participantPeerPrefix}${target}`;
+        const dolt = this.#remotes();
+        const branch = historyRetirementBranch(participantId, input.contextId);
+        const label = `context-retirement:${branch}`;
+        for (const prior of dolt.remote.grants()) {
+          if (prior.label === label) dolt.remote.revoke(prior.id);
+        }
+        const grant = dolt.remote.grant({ label, peer, fetch: true, branches: ["main"], push: [branch] });
+        try {
+          await this.rpc.call(peer, relay.archiveHistoryContext, [{
+            contextId: input.contextId,
+            participantId,
+            main: dolt.hashOf("main"),
+            origin: { ref: `${className}:${canonicalKey}`, token: grant.token },
+          }]);
+        } finally {
+          dolt.remote.revoke(grant.id);
+        }
+      });
+    }
+    return { contextId: input.contextId, targets, branchOwners };
+  }
+
+  #historyContextBinding(contextId: string): HistoryContextBinding {
+    const stored = this.getStateValue(historyContextKey(contextId));
+    return stored === null ? { closed: false, targets: [] } : JSON.parse(stored) as HistoryContextBinding;
+  }
+
+  #assertHistoryContextOpen(contextId: string): HistoryContextBinding {
+    const binding = this.#historyContextBinding(contextId);
+    if (binding.closed) throw new Error("Workspace participant context has retired");
+    return binding;
+  }
+
+  @rpc({ ...hostWrite, principals: ["code"], codeOnly: true })
+  archiveHistoryContext(input: {
+    contextId: string;
+    participantId: string;
+    main: string;
+    origin: DoltRemoteTarget;
+  }): Promise<void> {
+    if (this.rpcCallerId !== canonicalId)
+      throw new Error("Workspace context retirement requires its canonical owner");
+    this.#recordHistoryOrigin(input);
+    return this.#history().retireContext(input.contextId, input.main, input.origin);
   }
 
   @rpc({ ...hostWrite, principals: ["code"], codeOnly: true })
