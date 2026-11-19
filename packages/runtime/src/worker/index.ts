@@ -207,6 +207,7 @@ export const credentials = runtimeMember("credentials");
 export const browserData = runtimeMember("browserData");
 export const git = runtimeMember("git");
 export const vcs = runtimeMember("vcs");
+export const chronolog = runtimeMember("chronolog");
 export const webhooks = runtimeMember("webhooks");
 export const extensions = runtimeMember("extensions");
 export const templates = runtimeMember("templates");

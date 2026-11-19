@@ -52,6 +52,7 @@ import {
   createCredentialClient,
   type CredentialClient,
 } from "./credentials.js";
+import { createChronologClient, type ChronologClient } from "./chronologClient.js";
 import { createVcsClient, type VcsClient } from "./vcsClient.js";
 import {
   createWebhookIngressClient,
@@ -158,6 +159,7 @@ export interface WorkspaceRuntime {
   readonly browserData: BrowserDataClient;
   readonly git: GitClient;
   readonly vcs: VcsClient;
+  readonly chronolog: ChronologClient;
   readonly webhooks: WebhookIngressClient;
   readonly extensions: ExtensionsClient;
   readonly templates: TemplateManagementClient;
@@ -421,6 +423,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
     browserData,
     git,
     vcs,
+    chronolog: helpfulNamespace("chronolog", createChronologClient(rpc)),
     webhooks,
     extensions,
     templates,
