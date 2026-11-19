@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./index.ts" },
-  "dependencies": { "@workspace-skills/pdf-intake": "workspace:*" }
+  "exports": { ".": "./index.ts", "./layout": "./layout.ts" },
+  "dependencies": { "@vibestudio/content-addressing": "workspace:*", "@workspace-skills/pdf-intake": "workspace:*" }
 }

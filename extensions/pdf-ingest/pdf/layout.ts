@@ -89,7 +89,8 @@ function lineText(line: LineAccumulator): string {
 
 export function groupTextItems(
   rawItems: PdfTextItem[],
-  page: { width: number; height: number }
+  page: { width: number; height: number },
+  includeTextFragments = false
 ): PdfLine[] {
   const positioned = rawItems
     .map((item) => itemToPositioned(item, page.height))
@@ -124,6 +125,15 @@ export function groupTextItems(
       ] as [number, number, number, number],
       confidence: 1,
       source: "embedded-text" as const,
+      ...(includeTextFragments ? {
+        fragments: line.items.filter((item) => item.text.trim())
+          .sort((a, b) => a.x - b.x)
+          .map((item) => ({
+            text: item.text,
+            bbox: [round(item.x), round(item.y), round(item.width), round(item.height)] as
+              [number, number, number, number],
+          })),
+      } : {}),
     }))
     .filter((line) => line.text.trim().length > 0);
 }

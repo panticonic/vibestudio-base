@@ -11,3 +11,13 @@
 | Render presentation images and publish documents | These belong to separate operations. This workflow returns verified text and geometry citations. |
 
 The existing PDF review workflow still interprets receipts from previous runs. This workflow obtains the receipts itself through the same extension, and accepts independently checked extraction evidence from one assigned document.
+
+## Reading-order review
+
+The reading-order workflow uses an opt-in PDF.js fragment observation. The
+installed extension groups text on the same baseline and supplies the original
+boxes for the constituent text fragments. The caller-sealed binding checks the
+document digest, page identity, and evidence size. The inspection lambda
+separates geometric description from the table, column or sequence decision.
+The reading-order lambda asks for fragment locations and reconstructs their
+exact text and boxes, checking that the result covers every fragment once.

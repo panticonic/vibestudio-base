@@ -6,6 +6,7 @@
   "targets": { "main": { "entry": "extractPdfEvidence.nl" } },
   "serviceScopes": {
     "pdfIntakeProbe": ["extractPdfEvidence/probeDocument.nl"],
-    "pdfIntakeRead": ["extractPdfEvidence/readBatch.nl"]
+    "pdfIntakeRead": ["extractPdfEvidence/readBatch.nl"],
+    "pdfLayoutRead": ["reviewPdfLayout.nl"]
   }
 }

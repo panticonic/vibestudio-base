@@ -57,3 +57,28 @@ export type PdfIntakeReport = {
   citations: Citation[];
   unanswered: string[];
 };
+
+export type PdfLayoutRequest = { operationId: string; goal: string };
+export type PdfLayoutFragment = { text: string; bounds: number[] };
+export type PdfLayoutPage = {
+  digest: string;
+  pageNumber: number;
+  width: number;
+  height: number;
+  rows: PdfLayoutFragment[][];
+};
+export type PdfLayoutDecision = {
+  kind: "table" | "columns" | "sequence" | "uncertain";
+  basis: string;
+};
+export type PdfFragmentLocation = { row: number; fragment: number };
+export type PdfLayoutReading = {
+  status: "ordered" | "uncertain";
+  entries: (PdfFragmentLocation & PdfLayoutFragment)[];
+};
+export type PdfLayoutReport = {
+  digest: string;
+  pageNumber: number;
+  layout: PdfLayoutDecision;
+  reading: PdfLayoutReading;
+};

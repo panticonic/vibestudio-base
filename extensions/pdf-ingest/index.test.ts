@@ -57,6 +57,25 @@ describe("@workspace-extensions/pdf-ingest", () => {
     expect(result.pages[0]?.stats.embeddedTextChars).toBeGreaterThan(20);
   });
 
+  it("can preserve separate text boxes for cells that share a baseline", async () => {
+    const api = await testApi();
+    const pdf = makePdf([
+      "BT /F1 12 Tf",
+      "1 0 0 1 24 150 Tm (Owner) Tj",
+      "1 0 0 1 150 150 Tm (Deadline) Tj",
+      "ET",
+    ]);
+    const ordinary = await api.ingest(pdf);
+    expect(ordinary.pages[0]?.lines[0]?.fragments).toBeUndefined();
+    const observed = await api.ingest(pdf, { includeTextFragments: true });
+    const row = observed.pages[0]?.lines[0];
+    expect(row?.fragments?.map(({ text, bbox }) => [text, bbox[0], bbox[1]])).toEqual([
+      ["Owner", 24, 38],
+      ["Deadline", 150, 38],
+    ]);
+    expect(row?.text).toBe(ordinary.pages[0]?.lines[0]?.text);
+  });
+
   it("renders page images and stores them as artifacts", async () => {
     const api = await testApi();
     const pdf = makePdf(["BT", "/F1 24 Tf", "36 120 Td (Render me) Tj", "ET"]);

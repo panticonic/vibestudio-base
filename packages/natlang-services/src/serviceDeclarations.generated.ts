@@ -6,6 +6,20 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  pdfLayoutRead: `/** Read the original embedded fragment geometry of one assigned local PDF page. */
+
+type PdfLayoutFragment = { text: string; bounds: number[] };
+
+type PdfLayoutPage = {
+  digest: string;
+  pageNumber: number;
+  width: number;
+  height: number;
+  rows: PdfLayoutFragment[][];
+};
+
+/** Read the original embedded fragment geometry of one assigned local PDF page. */
+export function inspect(operationId: string): Promise<PdfLayoutPage>;`,
   dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
 
 type DictationCapture = {

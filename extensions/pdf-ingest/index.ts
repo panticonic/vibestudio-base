@@ -124,6 +124,7 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
         pages: options.pages,
         maxPages: options.maxPages,
         preserveLayout,
+        includeTextFragments: options.includeTextFragments,
       });
       const selectedPages = extractText
         ? extracted.pages

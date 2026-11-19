@@ -56,6 +56,7 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("pdfLayoutRead", "Read the original embedded fragment geometry of one assigned local PDF page.", "base", "pdf-intake", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("dictationCaptureRead", "Read the assigned recording measurements and live speech worker status.", "base", "offline-dictation", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("dictationTranscription", "Transcribe the caller-assigned recording through an already-ready local worker.", "base", "offline-dictation", [{ name: "run", params: ["operationId"] }]),
   authoredService("testSuitePlanRead", "Resolve the assigned test-suite declaration.", "base", "native-suite-review", [{ name: "resolve", params: ["operationId"] }]),

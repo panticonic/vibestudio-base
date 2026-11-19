@@ -50,6 +50,11 @@ any other RPC result) directly to `pdf.ingest(...)`, `pdf.probe(...)`, or
 
 ## Structure-sensitive documents
 
+For a reading-order task, `runWorkflow.domains.pdfIntake.reviewPdfLayout`
+uses the original text-fragment boxes. The workflow distinguishes row-major
+tables from column-major narrative, and returns each fragment with its
+original position.
+
 For poetry, tables, or other layout-sensitive documents, start with:
 
 ```ts

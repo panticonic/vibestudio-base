@@ -11,4 +11,7 @@ declare module "natlang:services" {
       mode: import("./types.js").ExtractionMode,
     ): Promise<import("./types.js").BatchReceipt>;
   }
+  export const pdfLayoutRead: {
+    inspect(operationId: string): Promise<import("./types.js").PdfLayoutPage>;
+  };
 }
