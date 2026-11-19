@@ -1103,3 +1103,111 @@ it("describes the typed workflows in the installed template domains", async () =
     }
   }
 }, 120_000);
+
+it("runs the mounted assigned web brief through the existing research tree", async () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const quote = "Widget releases require editorial review.";
+  const url = "https://source.example/notes";
+  const commands: Record<string, string> = {
+    runWorkflow: `
+      const item = request.work[0];
+      const report = await domains.webResearch.writeAssignedBrief(item.input);
+      return {results: [{kind: item.kind, domain: item.domain, operation: item.operation, report}], remaining: []};
+    `,
+    writeAssignedBrief:
+      "return await researchBrief(request.goal, request.sources, request.retrievedAt);",
+    researchBrief: "return await brief(question, sources, retrievedAt);",
+    findEvidence: `return {claim: ${JSON.stringify(quote)}, quote: ${JSON.stringify(quote)}};`,
+    writeBrief: `return [{text: ${JSON.stringify(quote)}, cites: [claims[0].id]}];`,
+  };
+  const calls: string[] = [];
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      const name = session.lam.functionName ?? "";
+      calls.push(name);
+      const code = commands[name];
+      if (!code) throw new Error(`Unexpected research call ${name}`);
+      const action = await session.applyAsync("eval", { code, finish: true });
+      if (action.kind === "rejected" || action.kind === "error")
+        throw new Error(action.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform,
+    fs: {
+      readFile: (path) => readFile(join(root, path), "utf8"),
+      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
+      stat: (path) => stat(join(root, path)),
+    },
+    bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const seen: unknown[] = [];
+  const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+    services: {
+      web: {
+        search: async () => {
+          throw new Error("An assigned source skips search");
+        },
+        fetch: async (input: unknown) => {
+          seen.push(input);
+          return {
+            url,
+            title: "Notes",
+            digest: "example",
+            size: quote.length,
+            head: quote,
+            headBytes: quote.length,
+            truncated: false,
+          };
+        },
+        read: async () => {
+          throw new Error("The head contains the complete page");
+        },
+      },
+    },
+  })) as (input: unknown) => Promise<unknown>;
+  const question = "What does a widget release require?";
+  await expect(
+    run({
+      goal: question,
+      work: [
+        {
+          kind: "domain",
+          domain: "webResearch",
+          operation: "writeAssignedBrief",
+          input: {
+            goal: question,
+            sources: [url],
+            retrievedAt: Date.UTC(2026, 10, 19),
+          },
+        },
+      ],
+    }),
+  ).resolves.toMatchObject({
+    results: [
+      {
+        domain: "webResearch",
+        operation: "writeAssignedBrief",
+        report: {
+          question,
+          status: "answered",
+          statements: [
+            { text: quote, cites: [{ url, quote, retrieved: "2026-11-19" }] },
+          ],
+        },
+      },
+    ],
+    remaining: [],
+  });
+  expect(calls).toEqual([
+    "runWorkflow",
+    "writeAssignedBrief",
+    "researchBrief",
+    "findEvidence",
+    "writeBrief",
+  ]);
+  expect(seen).toEqual([{ url, session: "public" }]);
+});

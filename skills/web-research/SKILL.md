@@ -31,6 +31,11 @@ sources; do not cite them as sources in the answer.
 
 Use each tool's exposed schema for current limits and fields.
 
+For an assigned public source list, `webResearch/writeAssignedBrief` in the
+shared Natlang workflow uses the existing evidence and synthesis stages.
+Bind the exact URLs with `@workspace-skills/web-research-bindings`. This
+binding uses public sessions and supports cached continuation of those pages.
+
 ## From eval
 
 The same three operations are `web` in eval and other runtimes, for a loop that

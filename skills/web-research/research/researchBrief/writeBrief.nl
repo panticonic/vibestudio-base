@@ -2,8 +2,8 @@
 description: Answer a question in a few sentences using only the verified claims given.
 args:
   question: string
-  claims: Claim[]
-returns: Statement[]
+  claims: WebClaim[]
+returns: WebStatement[]
 ---
 Answer question with 1 to 4 statements, built only from claims:
 1. Each statement is one plain sentence that restates what one or more claims say.

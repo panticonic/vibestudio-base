@@ -38,3 +38,13 @@ quality 0.25 (mean over 4 cases): `search-fails` 1.0 (the crisp path: no source,
 `findEvidence` quiesced. 18 model calls, mean 48 minutes a case on the shared local model.
 
 The failure is the same in every case: with the full interpreter surface the model never reaches its answer. Each turn spends the whole token limit reasoning about how to read its arguments (the opening says their values are not shown and offers `eval` to read them) and ends without an action, so the call is `quiesced` after its last turn. `leafCalls: "direct"` (natlang `native/agent.ts` `leafOpening`: a short prompt that shows the arguments whole and offers only `return_result`) is the setting built for such data-only calls, but the Vibestudio runtime (`packages/natlang/src/evalNatlang.ts`) does not set it, so it was not measured and the functions are not called from SKILL.md. No instruction was sharpened: the misses are not about wording, and the test split was never run. Until the gate is met the agent performs this procedure itself.
+
+
+## Assigned public research in the shared workflow
+
+`writeAssignedBrief` calls the same research program with the requested sources
+and a fixed read timestamp. The live task binds the existing web service to
+those public URLs and allows a bounded continuation only at the exact
+host-returned page coordinate. Live fetch receipts and cached readbacks support
+the case oracle. The older executor measurements still describe the standalone
+recorded suite.

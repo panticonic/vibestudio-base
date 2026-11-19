@@ -56,6 +56,7 @@
     "runWorkflow/domains/templates": "skills/templates",
     "runWorkflow/domains/testReview": "skills/system-testing/triage",
     "runWorkflow/domains/unitDesign": "skills/workspace-unit-design",
+    "runWorkflow/domains/webResearch": "skills/web-research/research",
     "runWorkflow/domains/verifiedMemory": "skills/memory/verifiedRecall",
     "runWorkflow/domains/visualize": "skills/visualize"
   },
