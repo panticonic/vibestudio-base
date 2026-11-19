@@ -1,6 +1,6 @@
 import { canonicalJson } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
-import type { ContentMapping } from "@workspace/vcs-engine";
+import { contentMappingDigest, type ContentMapping } from "@workspace/vcs-engine";
 import type { ContentOriginRef } from "./semanticVcsStore.js";
 import { contentMappingFromRow } from "./semanticVcsContentMappingCodec.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
@@ -32,6 +32,13 @@ function bindingsAt(revision: string | undefined) {
   };
 }
 
+export const contentMapping = (
+  value: Omit<ContentMapping, "digest">,
+): ContentMapping => ({
+  ...value,
+  digest: contentMappingDigest(value),
+});
+
 export function readBlameMappings(sql: SqlStorage, contentEdgeId: string, revision?: string): ContentMapping[] {
   const { key, parameters } = bindingsAt(revision);
   return sql.exec(
@@ -41,6 +48,54 @@ export function readBlameMappings(sql: SqlStorage, contentEdgeId: string, revisi
       WHERE content_edge_id = ${key} ORDER BY ordinal`,
     ...parameters(contentEdgeId),
   ).toArray().map(contentMappingFromRow);
+}
+
+/** Restore the exact unchanged-coordinate lineage of a text change in reverse. */
+export function readInvertedCounteractionMappings(
+  sql: SqlStorage,
+  changeIds: readonly string[],
+  child: Pick<ContentMapping, "coordinateKind"> & { contentHash: string },
+  parent: Pick<ContentMapping, "coordinateKind"> & { contentHash: string },
+  revision?: string,
+): ContentMapping[] {
+  if (changeIds.length !== 1) {
+    throw new SemanticVcsError("IntegrityFailure", "A text counteraction must name exactly one original change");
+  }
+  const { key, parameters } = bindingsAt(revision);
+  const row = sql.exec(
+    `SELECT edge.content_edge_id
+       FROM ${tableAt("gad_content_edges", revision)} edge
+       JOIN ${tableAt("gad_applied_changes", revision)} applied
+         ON applied.applied_change_id = edge.child_applied_change_id
+      WHERE applied.change_id = ${key}
+        AND edge.relation = 'incorporates'
+        AND json_extract(applied.applied_result_json, '$.contentHash') = ?
+        AND json_extract(applied.applied_base_json, '$.contentHash') = ?
+      ORDER BY edge.content_edge_id LIMIT 1`,
+    ...parameters(changeIds[0]!), parent.contentHash, child.contentHash,
+  ).toArray()[0];
+  if (typeof row?.["content_edge_id"] !== "string") {
+    throw new SemanticVcsError("IntegrityFailure", `Counteracted text change ${changeIds[0]} has no exact content lineage`);
+  }
+  return readBlameMappings(sql, row["content_edge_id"], revision).map((mapping) => {
+    if (
+      mapping.coordinateKind !== child.coordinateKind ||
+      mapping.coordinateKind !== parent.coordinateKind ||
+      mapping.childContentHash !== parent.contentHash ||
+      mapping.parentContentHash !== child.contentHash
+    ) {
+      throw new SemanticVcsError("IntegrityFailure", `Counteracted text change ${changeIds[0]} has mismatched content lineage`);
+    }
+    return contentMapping({
+      coordinateKind: mapping.coordinateKind,
+      childContentHash: mapping.parentContentHash,
+      childStart: mapping.parentStart,
+      childEnd: mapping.parentEnd,
+      parentContentHash: mapping.childContentHash,
+      parentStart: mapping.childStart,
+      parentEnd: mapping.childEnd,
+    });
+  });
 }
 
 export function readAppliedBlameChange(sql: SqlStorage, appliedChangeId: string, revision?: string): {

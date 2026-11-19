@@ -19,6 +19,7 @@ import {
   vcsMoveInputSchema,
   vcsNeighborsInputSchema,
   vcsReadFilesInputSchema,
+  vcsRevertInputSchema,
   vcsResolveRepositoryInputSchema,
   vcsSemanticNodeRefSchema,
   vcsStateNodeRefSchema,
@@ -37,6 +38,7 @@ import {
   type VcsMoveInput,
   type VcsNeighborsInput,
   type VcsReadFilesInput,
+  type VcsRevertInput,
   type VcsResolveRepositoryInput,
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
@@ -650,6 +652,19 @@ export class GadHistoryDO extends DurableObjectBase {
       : { method: "copy" as const, value: vcsCopyInputSchema.parse(input.transfer.value) };
     return this.#history().planTransfer(
       input.head, transfer, input.cause, input.triggerEvidence, input.readableContextIds,
+    );
+  }
+
+  @rpc(hostWrite)
+  planHistoryRevert(input: {
+    head: string;
+    revert: VcsRevertInput;
+    cause: HistoryCommand["cause"];
+    triggerEvidence?: WorkUnitRecord["triggerEvidence"];
+  }): Promise<HistoryMutationPlan> {
+    this.#assertWritable();
+    return this.#history().planRevert(
+      input.head, vcsRevertInputSchema.parse(input.revert), input.cause, input.triggerEvidence,
     );
   }
 

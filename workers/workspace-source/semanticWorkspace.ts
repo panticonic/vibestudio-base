@@ -46,7 +46,6 @@ import {
   SEMANTIC_PROTOCOL,
   compactId,
   composeFileManifest,
-  contentMappingDigest,
   emptyFileManifest,
   fileManifestEntryAt,
   planWorkspaceFactChangeSet,
@@ -103,7 +102,7 @@ import {
   type WorkUnitRecord,
   type ExternalDeltaRecord,
 } from "./semanticVcsStore.js";
-import { readAppliedBlameChange, readBlameMappings, traceContentBlame } from "./contentBlame.js";
+import { contentMapping, readAppliedBlameChange, readInvertedCounteractionMappings, traceContentBlame } from "./contentBlame.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 import { executeProvenanceQuery } from "./provenanceQuery.js";
 import {
@@ -125,6 +124,18 @@ export interface WorkspaceEditBasis {
   repositoryAtPath(path: string): { repositoryId: string } | null;
   emptyRepository(repository: RepositoryPlacement): PresentRepositoryState | null;
   hasFileAtPath(repositoryId: string, path: string): boolean;
+}
+export interface WorkspaceRevertBasis {
+  change(changeId: string): ChangeRecord;
+  repository(repositoryId: string): WorkspaceRepositoryMember | null;
+  priorRepository(repository: Extract<WorkspaceRepositoryMember, { presence: "deleted" }>): WorkspaceRepositoryMember | null;
+  manifest(repository: PresentRepositoryState, manifestId: string): {
+    values: readonly { fileId: string }[];
+    next: unknown | null;
+  };
+  file(fileId: string): { state: WorkspaceFileState } | null;
+  blockingChanges(change: ChangeRecord): readonly string[];
+  latestFileChange(fileId: string): { changeId: string } | null;
 }
 export interface WorkspaceSnapshotImportBasis {
   repository(repositoryId: string): WorkspaceRepositoryMember | null;
@@ -567,13 +578,6 @@ const missingEndpoint = (
   repositoryId: state.repositoryId,
   repoPath,
   path: state.path,
-});
-
-const contentMapping = (
-  value: Omit<ContentMapping, "digest">,
-): ContentMapping => ({
-  ...value,
-  digest: contentMappingDigest(value),
 });
 
 const mappingForWholeFile = (input: {
@@ -3964,368 +3968,17 @@ export class SemanticWorkspace {
       const root = this.deps.store.stateRoot(
         asState(input.expectedWorkingHead),
       );
-      const changes: MutationDraft["changes"] = [];
-      const fileResults: MutationDraft["fileResults"] = [];
-      const repositoryResults: MutationDraft["repositoryResults"] = [];
-      const originals = [...new Set(input.changeIds)].map((changeId) =>
-        this.changeRequired(changeId),
-      );
-      const repositoryDeletes = new Map<
-        string,
-        { causes: Set<string>; requiresSelectedFileRemoval: boolean }
-      >();
-      const addRepositoryDelete = (
-        repositoryId: string,
-        changeId: string,
-        requiresSelectedFileRemoval: boolean,
-      ) => {
-        const planned = repositoryDeletes.get(repositoryId) ?? {
-          causes: new Set<string>(),
-          requiresSelectedFileRemoval: false,
-        };
-        planned.causes.add(changeId);
-        planned.requiresSelectedFileRemoval ||= requiresSelectedFileRemoval;
-        repositoryDeletes.set(repositoryId, planned);
-      };
-      for (const original of originals) {
-        if (original.kind === "repo-add" || original.kind === "repo-restore") {
-          const repositoryId = original.result?.["repositoryId"];
-          if (typeof repositoryId !== "string") {
-            throw new SemanticVcsError(
-              "IntegrityFailure",
-              `Repository change ${original.changeId} has no repository identity`,
-            );
-          }
-          addRepositoryDelete(
-            repositoryId,
-            original.changeId,
-            original.kind === "repo-add",
-          );
-        }
-      }
-
-      for (const original of originals) {
-        const changeId = original.changeId;
-        if (original.kind === "repo-add" || original.kind === "repo-restore") {
-          continue;
-        }
-        const currentResult = original.result;
-        const inverseResult = original.base;
-        if (
-          currentResult &&
-          !this.endpointHolds(asState(input.expectedWorkingHead), currentResult)
-        ) {
-          const blockers = this.revertBlockingChangeIds(
-            asState(input.expectedWorkingHead),
-            original,
-          );
-          if (blockers.length > 0) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Change ${changeId} is not a live counteraction frontier`,
-              { referenceKind: "change", reference: changeId },
-            );
-          }
-        }
-        const inverseKind = inverseChangeKind(original.kind, currentResult);
-        if (!inverseKind) {
-          throw new SemanticVcsError(
-            "InvalidReference",
-            `Change ${changeId} has no mechanical counteraction`,
-          );
-        }
-        if (currentResult?.["kind"] === "repository") {
-          const repositoryId = String(currentResult["repositoryId"] ?? "");
-          const current = this.deps.store.facts.member(root, repositoryId);
-          if (!repositoryId || !current) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository change ${changeId} is not present at the target state`,
-            );
-          }
-          const operation = changes.length;
-          if (inverseKind === "repo-restore") {
-            if (current.presence !== "deleted") {
-              throw new SemanticVcsError(
-                "RevisionChanged",
-                `Change ${changeId} no longer holds`,
-              );
-            }
-            const prior = this.deps.store.facts.memberByStateId(
-              current.priorRepositoryStateId,
-            );
-            if (!prior || prior.presence !== "present") {
-              throw new SemanticVcsError(
-                "IntegrityFailure",
-                `Repository tombstone ${current.repositoryStateId} has no prior state`,
-              );
-            }
-            const priorManifestId = inverseResult?.["fileManifestId"];
-            if (typeof priorManifestId !== "string") {
-              throw new SemanticVcsError(
-                "IntegrityFailure",
-                `Repository deletion ${changeId} has no prior manifest coordinate`,
-              );
-            }
-            const priorFiles = this.deps.store.facts.pageManifest(
-              priorManifestId,
-              {
-                limit: 100_000,
-              },
-            );
-            if (priorFiles.next !== null) {
-              throw new SemanticVcsError(
-                "ScopeTooLarge",
-                `Repository ${repositoryId} exceeds the exact revert dependency bound`,
-              );
-            }
-            const selectedRestores = new Set(
-              fileResults
-                .filter(
-                  (result) =>
-                    result.result.presence === "placed" &&
-                    result.result.repositoryId === repositoryId,
-                )
-                .map((result) => result.fileId),
-            );
-            const blockers = priorFiles.values
-              .filter((entry) => !selectedRestores.has(entry.fileId))
-              .flatMap((entry) => {
-                const blocking = this.latestAppliedChangeForFile(
-                  asState(input.expectedWorkingHead),
-                  entry.fileId,
-                );
-                return blocking ? [blocking.changeId] : [];
-              });
-            if (blockers.length > 0) {
-              throw new SemanticVcsError(
-                "InvalidReference",
-                `Repository change ${changeId} is not a live counteraction frontier`,
-                { referenceKind: "change", reference: changeId },
-              );
-            }
-            if (selectedRestores.size < priorFiles.values.length) {
-              throw new SemanticVcsError(
-                "IntegrityFailure",
-                `Repository ${repositoryId} has a contained file without a provenance dependency`,
-              );
-            }
-            const restoredPath = String(
-              inverseResult?.["repoPath"] ?? prior.repoPath,
-            );
-            repositoryResults.push({
-              repositoryId,
-              expected: current,
-              resultPath: restoredPath,
-              newRepository: false,
-              changeRef: { kind: "authored", ordinal: operation },
-            });
-          } else if (inverseKind === "repo-move") {
-            if (
-              current.presence !== "present" ||
-              current.repoPath !== currentResult["repoPath"] ||
-              typeof inverseResult?.["repoPath"] !== "string"
-            ) {
-              throw new SemanticVcsError(
-                "RevisionChanged",
-                `Change ${changeId} no longer holds`,
-              );
-            }
-            repositoryResults.push({
-              repositoryId,
-              expected: current,
-              resultPath: inverseResult["repoPath"],
-              newRepository: false,
-              changeRef: { kind: "authored", ordinal: operation },
-            });
-          } else {
-            throw new SemanticVcsError(
-              "IntegrityFailure",
-              `Repository counteraction ${inverseKind} was not normalized`,
-            );
-          }
-          changes.push({
-            operation,
-            ordinal: 0,
-            kind: inverseKind,
-            base: currentResult,
-            result: inverseResult,
-            payload: { counteractsChangeIds: [changeId] },
-          });
-          continue;
-        }
-
-        if (!currentResult || typeof currentResult["fileId"] !== "string") {
-          throw new SemanticVcsError(
-            "InvalidReference",
-            `Change ${changeId} has no counteractable state coordinate`,
-          );
-        }
-        const current = this.deps.store.facts.file(
-          root,
-          String(currentResult["fileId"]),
-        );
-        if (!current) {
-          throw new SemanticVcsError(
-            "InvalidReference",
-            `File change ${changeId} is not present at the target state`,
-          );
-        }
-        if (currentResult["kind"] === "file") {
-          if (
-            current.state.presence !== "placed" ||
-            current.state.contentHash !== currentResult["contentHash"] ||
-            current.state.path !== currentResult["path"]
-          ) {
-            throw new SemanticVcsError(
-              "RevisionChanged",
-              `Change ${changeId} no longer holds`,
-            );
-          }
-        } else if (
-          currentResult["kind"] === "missing" &&
-          current.state.presence !== "deleted"
-        ) {
-          throw new SemanticVcsError(
-            "RevisionChanged",
-            `Change ${changeId} no longer holds`,
-          );
-        }
-        const operation = changes.length;
-        changes.push({
-          operation,
-          ordinal: 0,
-          kind: inverseKind,
-          base: currentResult,
-          result: inverseResult,
-          payload: { counteractsChangeIds: [changeId] },
-        });
-        if (!inverseResult || inverseResult["kind"] === "missing") {
-          if (current.state.presence !== "placed") {
-            throw new SemanticVcsError(
-              "RevisionChanged",
-              `Change ${changeId} no longer holds`,
-            );
-          }
-          fileResults.push({
-            fileId: current.state.fileId,
-            expected: current.state,
-            result: {
-              fileId: current.state.fileId,
-              presence: "deleted",
-              priorFileStateId: current.state.fileStateId,
-            },
-            newFile: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        } else if (inverseResult["kind"] === "file") {
-          fileResults.push({
-            fileId: String(inverseResult["fileId"]),
-            expected: current?.state ?? null,
-            result: {
-              fileId: String(inverseResult["fileId"]),
-              presence: "placed",
-              repositoryId: String(inverseResult["repositoryId"]),
-              path: String(inverseResult["path"]),
-              contentHash: String(inverseResult["contentHash"]),
-              mode: Number(inverseResult["mode"]),
-              ...contentDescriptorFromEndpoint(inverseResult),
-            },
-            newFile: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        }
-      }
-
-      for (const [repositoryId, planned] of [...repositoryDeletes].sort(
-        ([left], [right]) => compareUtf16CodeUnits(left, right),
-      )) {
-        const repository = this.deps.store.facts.member(root, repositoryId);
-        if (!repository || repository.presence !== "present") {
-          throw new SemanticVcsError(
-            "RevisionChanged",
-            `Repository ${repositoryId} no longer has the imported result`,
-          );
-        }
-        if (planned.requiresSelectedFileRemoval) {
-          const page = this.deps.store.facts.pageManifest(
-            repository.fileManifestId,
-            {
-              limit: 100_000,
-            },
-          );
-          if (page.next !== null) {
-            throw new SemanticVcsError(
-              "ScopeTooLarge",
-              `Repository ${repositoryId} exceeds the exact revert dependency bound`,
-            );
-          }
-          const selectedRemovals = new Set(
-            fileResults
-              .filter(
-                (result) =>
-                  result.expected?.presence === "placed" &&
-                  result.expected.repositoryId === repositoryId &&
-                  result.result.presence === "deleted",
-              )
-              .map((result) => result.fileId),
-          );
-          const blockers = page.values
-            .filter((entry) => !selectedRemovals.has(entry.fileId))
-            .flatMap((entry) => {
-              const change = this.latestAppliedChangeForFile(
-                asState(input.expectedWorkingHead),
-                entry.fileId,
-              );
-              return change ? [change.changeId] : [];
-            });
-          if (blockers.length > 0) {
-            const causeId = [...planned.causes].sort(compareUtf16CodeUnits)[0]!;
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository change ${causeId} is not a live counteraction frontier`,
-              { referenceKind: "change", reference: causeId },
-            );
-          }
-          if (selectedRemovals.size !== page.values.length) {
-            throw new SemanticVcsError(
-              "IntegrityFailure",
-              `Repository ${repositoryId} has a contained file without a provenance dependency`,
-            );
-          }
-        }
-        const operation = changes.length;
-        changes.push({
-          operation,
-          ordinal: 0,
-          kind: "repo-delete",
-          base: {
-            kind: "repository",
-            repositoryId,
-            repoPath: repository.repoPath,
-            fileManifestId: repository.fileManifestId,
-          },
-          result: { kind: "repository", repositoryId, presence: "deleted" },
-          payload: {
-            counteractsChangeIds: [...planned.causes].sort(),
-          },
-        });
-        repositoryResults.push({
-          repositoryId,
-          expected: repository,
-          resultPath: null,
-          newRepository: false,
-          changeRef: { kind: "authored", ordinal: operation },
-        });
-      }
-      const draft: MutationDraft = {
-        kind: "revert",
-        intentSummary: input.intentSummary ?? null,
-        incorporatedChangeIds: [],
-        changes,
-        fileResults,
-        repositoryResults,
-      };
+      const state = asState(input.expectedWorkingHead);
+      const facts = this.deps.store.facts;
+      const draft = SemanticWorkspace.planRevert(input, {
+        change: (id) => this.changeRequired(id),
+        repository: (id) => facts.member(root, id),
+        priorRepository: (member) => facts.memberByStateId(member.priorRepositoryStateId),
+        manifest: (_repository, manifestId) => facts.pageManifest(manifestId, { limit: 100_000 }),
+        file: (id) => facts.file(root, id),
+        blockingChanges: (change) => this.revertBlockingChangeIds(state, change),
+        latestFileChange: (id) => this.latestAppliedChangeForFile(state, id),
+      });
       const result = this.persistWorkingMutation(input, draft, input.commandId);
       const effect = this.queueRealization(
         input.contextId,
@@ -4345,6 +3998,347 @@ export class SemanticWorkspace {
         ? { kind: "effects-pending", result, effects: [effect] }
         : { kind: "complete", result };
     });
+  }
+
+  static planRevert(input: VcsRevertInput, basis: WorkspaceRevertBasis): MutationDraft {
+    const changes: MutationDraft["changes"] = [];
+    const fileResults: MutationDraft["fileResults"] = [];
+    const repositoryResults: MutationDraft["repositoryResults"] = [];
+    const originals = [...new Set(input.changeIds)].map((changeId) =>
+      basis.change(changeId),
+    );
+    const repositoryDeletes = new Map<
+      string,
+      { causes: Set<string>; requiresSelectedFileRemoval: boolean }
+    >();
+    const addRepositoryDelete = (
+      repositoryId: string,
+      changeId: string,
+      requiresSelectedFileRemoval: boolean,
+    ) => {
+      const planned = repositoryDeletes.get(repositoryId) ?? {
+        causes: new Set<string>(),
+        requiresSelectedFileRemoval: false,
+      };
+      planned.causes.add(changeId);
+      planned.requiresSelectedFileRemoval ||= requiresSelectedFileRemoval;
+      repositoryDeletes.set(repositoryId, planned);
+    };
+    for (const original of originals) {
+      if (original.kind === "repo-add" || original.kind === "repo-restore") {
+        const repositoryId = original.result?.["repositoryId"];
+        if (typeof repositoryId !== "string") {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Repository change ${original.changeId} has no repository identity`,
+          );
+        }
+        addRepositoryDelete(
+          repositoryId,
+          original.changeId,
+          original.kind === "repo-add",
+        );
+      }
+    }
+
+    for (const original of originals) {
+      const changeId = original.changeId;
+      if (original.kind === "repo-add" || original.kind === "repo-restore") {
+        continue;
+      }
+      const currentResult = original.result;
+      const inverseResult = original.base;
+      if (
+        currentResult &&
+        !SemanticWorkspace.revertEndpointHolds(basis, currentResult)
+      ) {
+        const blockers = basis.blockingChanges(original);
+        if (blockers.length > 0) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Change ${changeId} is not a live counteraction frontier`,
+            { referenceKind: "change", reference: changeId },
+          );
+        }
+      }
+      const inverseKind = inverseChangeKind(original.kind, currentResult);
+      if (!inverseKind) {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Change ${changeId} has no mechanical counteraction`,
+        );
+      }
+      if (currentResult?.["kind"] === "repository") {
+        const repositoryId = String(currentResult["repositoryId"] ?? "");
+        const current = basis.repository(repositoryId);
+        if (!repositoryId || !current) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository change ${changeId} is not present at the target state`,
+          );
+        }
+        const operation = changes.length;
+        if (inverseKind === "repo-restore") {
+          if (current.presence !== "deleted") {
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              `Change ${changeId} no longer holds`,
+            );
+          }
+          const prior = basis.priorRepository(current);
+          if (!prior || prior.presence !== "present") {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Repository tombstone ${current.repositoryStateId} has no prior state`,
+            );
+          }
+          const priorManifestId = inverseResult?.["fileManifestId"];
+          if (typeof priorManifestId !== "string") {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Repository deletion ${changeId} has no prior manifest coordinate`,
+            );
+          }
+          const priorFiles = basis.manifest(prior, priorManifestId);
+          if (priorFiles.next !== null) {
+            throw new SemanticVcsError(
+              "ScopeTooLarge",
+              `Repository ${repositoryId} exceeds the exact revert dependency bound`,
+            );
+          }
+          const selectedRestores = new Set(
+            fileResults
+              .filter(
+                (result) =>
+                  result.result.presence === "placed" &&
+                  result.result.repositoryId === repositoryId,
+              )
+              .map((result) => result.fileId),
+          );
+          const blockers = priorFiles.values
+            .filter((entry) => !selectedRestores.has(entry.fileId))
+            .flatMap((entry) => {
+              const blocking = basis.latestFileChange(entry.fileId);
+              return blocking ? [blocking.changeId] : [];
+            });
+          if (blockers.length > 0) {
+            throw new SemanticVcsError(
+              "InvalidReference",
+              `Repository change ${changeId} is not a live counteraction frontier`,
+              { referenceKind: "change", reference: changeId },
+            );
+          }
+          if (selectedRestores.size < priorFiles.values.length) {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Repository ${repositoryId} has a contained file without a provenance dependency`,
+            );
+          }
+          const restoredPath = String(
+            inverseResult?.["repoPath"] ?? prior.repoPath,
+          );
+          repositoryResults.push({
+            repositoryId,
+            expected: current,
+            resultPath: restoredPath,
+            newRepository: false,
+            changeRef: { kind: "authored", ordinal: operation },
+          });
+        } else if (inverseKind === "repo-move") {
+          if (
+            current.presence !== "present" ||
+            current.repoPath !== currentResult["repoPath"] ||
+            typeof inverseResult?.["repoPath"] !== "string"
+          ) {
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              `Change ${changeId} no longer holds`,
+            );
+          }
+          repositoryResults.push({
+            repositoryId,
+            expected: current,
+            resultPath: inverseResult["repoPath"],
+            newRepository: false,
+            changeRef: { kind: "authored", ordinal: operation },
+          });
+        } else {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Repository counteraction ${inverseKind} was not normalized`,
+          );
+        }
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: inverseKind,
+          base: currentResult,
+          result: inverseResult,
+          payload: { counteractsChangeIds: [changeId] },
+        });
+        continue;
+      }
+
+      if (!currentResult || typeof currentResult["fileId"] !== "string") {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Change ${changeId} has no counteractable state coordinate`,
+        );
+      }
+      const current = basis.file(String(currentResult["fileId"]));
+      if (!current) {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `File change ${changeId} is not present at the target state`,
+        );
+      }
+      if (currentResult["kind"] === "file") {
+        if (
+          current.state.presence !== "placed" ||
+          current.state.contentHash !== currentResult["contentHash"] ||
+          current.state.path !== currentResult["path"]
+        ) {
+          throw new SemanticVcsError(
+            "RevisionChanged",
+            `Change ${changeId} no longer holds`,
+          );
+        }
+      } else if (
+        currentResult["kind"] === "missing" &&
+        current.state.presence !== "deleted"
+      ) {
+        throw new SemanticVcsError(
+          "RevisionChanged",
+          `Change ${changeId} no longer holds`,
+        );
+      }
+      const operation = changes.length;
+      changes.push({
+        operation,
+        ordinal: 0,
+        kind: inverseKind,
+        base: currentResult,
+        result: inverseResult,
+        payload: { counteractsChangeIds: [changeId] },
+      });
+      if (!inverseResult || inverseResult["kind"] === "missing") {
+        if (current.state.presence !== "placed") {
+          throw new SemanticVcsError(
+            "RevisionChanged",
+            `Change ${changeId} no longer holds`,
+          );
+        }
+        fileResults.push({
+          fileId: current.state.fileId,
+          expected: current.state,
+          result: {
+            fileId: current.state.fileId,
+            presence: "deleted",
+            priorFileStateId: current.state.fileStateId,
+          },
+          newFile: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      } else if (inverseResult["kind"] === "file") {
+        fileResults.push({
+          fileId: String(inverseResult["fileId"]),
+          expected: current?.state ?? null,
+          result: {
+            fileId: String(inverseResult["fileId"]),
+            presence: "placed",
+            repositoryId: String(inverseResult["repositoryId"]),
+            path: String(inverseResult["path"]),
+            contentHash: String(inverseResult["contentHash"]),
+            mode: Number(inverseResult["mode"]),
+            ...contentDescriptorFromEndpoint(inverseResult),
+          },
+          newFile: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      }
+    }
+
+    for (const [repositoryId, planned] of [...repositoryDeletes].sort(
+      ([left], [right]) => compareUtf16CodeUnits(left, right),
+    )) {
+      const repository = basis.repository(repositoryId);
+      if (!repository || repository.presence !== "present") {
+        throw new SemanticVcsError(
+          "RevisionChanged",
+          `Repository ${repositoryId} no longer has the imported result`,
+        );
+      }
+      if (planned.requiresSelectedFileRemoval) {
+        const page = basis.manifest(repository, repository.fileManifestId);
+        if (page.next !== null) {
+          throw new SemanticVcsError(
+            "ScopeTooLarge",
+            `Repository ${repositoryId} exceeds the exact revert dependency bound`,
+          );
+        }
+        const selectedRemovals = new Set(
+          fileResults
+            .filter(
+              (result) =>
+                result.expected?.presence === "placed" &&
+                result.expected.repositoryId === repositoryId &&
+                result.result.presence === "deleted",
+            )
+            .map((result) => result.fileId),
+        );
+        const blockers = page.values
+          .filter((entry) => !selectedRemovals.has(entry.fileId))
+          .flatMap((entry) => {
+            const change = basis.latestFileChange(entry.fileId);
+            return change ? [change.changeId] : [];
+          });
+        if (blockers.length > 0) {
+          const causeId = [...planned.causes].sort(compareUtf16CodeUnits)[0]!;
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository change ${causeId} is not a live counteraction frontier`,
+            { referenceKind: "change", reference: causeId },
+          );
+        }
+        if (selectedRemovals.size !== page.values.length) {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Repository ${repositoryId} has a contained file without a provenance dependency`,
+          );
+        }
+      }
+      const operation = changes.length;
+      changes.push({
+        operation,
+        ordinal: 0,
+        kind: "repo-delete",
+        base: {
+          kind: "repository",
+          repositoryId,
+          repoPath: repository.repoPath,
+          fileManifestId: repository.fileManifestId,
+        },
+        result: { kind: "repository", repositoryId, presence: "deleted" },
+        payload: {
+          counteractsChangeIds: [...planned.causes].sort(),
+        },
+      });
+      repositoryResults.push({
+        repositoryId,
+        expected: repository,
+        resultPath: null,
+        newRepository: false,
+        changeRef: { kind: "authored", ordinal: operation },
+      });
+    }
+    return {
+      kind: "revert",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds: [],
+      changes,
+      fileResults,
+      repositoryResults,
+    };
   }
 
   private commit(
@@ -8642,7 +8636,7 @@ export class SemanticWorkspace {
       contentIntegrity: (basis, mutation) => this.contentIntegrityForMutation(basis, mutation),
       contentOrigins: (state, fileIds) => this.contentOriginsForFiles(state, fileIds),
       invertedCounteractions: (changeIds, child, parent) =>
-        this.invertedCounteractionMappings(changeIds, child, parent),
+        readInvertedCounteractionMappings(this.deps.sql, changeIds, child, parent),
       preparePlacement: (files, repositories) => {
         const changeSet = files.length || repositories.length
           ? this.planWorkspaceFacts(basisRoot, files, repositories)
@@ -9677,8 +9671,12 @@ export class SemanticWorkspace {
 
   private changeRequired(changeId: string): ChangeRecord {
     const row = this.deps.sql
-      .exec(`SELECT * FROM gad_changes WHERE change_id = ?`, changeId)
-      .toArray()[0] as Row | undefined;
+      .exec("SELECT * FROM gad_changes WHERE change_id = ?", changeId)
+      .toArray()[0];
+    return SemanticWorkspace.changeRecord(changeId, row);
+  }
+
+  static changeRecord(changeId: string, row: Row | undefined): ChangeRecord {
     if (!row)
       throw new SemanticVcsError(
         "InvalidReference",
@@ -11869,7 +11867,7 @@ export class SemanticWorkspace {
     );
   }
 
-  private changeCoordinate(change: ChangeRecord): string | null {
+  static changeCoordinate(change: ChangeRecord): string | null {
     const endpoint = change.result ?? change.base;
     if (typeof endpoint?.["fileId"] === "string")
       return `file:${endpoint["fileId"]}`;
@@ -11896,13 +11894,13 @@ export class SemanticWorkspace {
     const originalIndex = changes.findIndex(
       (change) => change.changeId === original.changeId,
     );
-    const coordinate = this.changeCoordinate(original);
+    const coordinate = SemanticWorkspace.changeCoordinate(original);
     if (originalIndex < 0 || !coordinate) return [];
     return changes
       .slice(originalIndex + 1)
       .filter(
         (change) =>
-          this.changeCoordinate(change) === coordinate &&
+          SemanticWorkspace.changeCoordinate(change) === coordinate &&
           this.changeResultHolds(state, change),
       )
       .map((change) => change.changeId)
@@ -11911,14 +11909,22 @@ export class SemanticWorkspace {
 
   private endpointHolds(state: StateNodeRef, endpoint: Row): boolean {
     const root = this.deps.store.stateRoot(state);
+    const facts = this.deps.store.facts;
+    return SemanticWorkspace.revertEndpointHolds({
+      file: (id) => facts.file(root, id),
+      repository: (id) => facts.member(root, id),
+    }, endpoint);
+  }
+
+  static revertEndpointHolds(
+    basis: Pick<WorkspaceRevertBasis, "file" | "repository">,
+    endpoint: Row,
+  ): boolean {
     if (endpoint["kind"] === "file" && typeof endpoint["fileId"] === "string") {
-      const point = this.deps.store.facts.file(root, endpoint["fileId"]);
+      const point = basis.file(endpoint["fileId"]);
       if (!point || point.state.presence !== "placed") return false;
       const expected = endpoint;
-      const repository = this.deps.store.facts.member(
-        root,
-        point.state.repositoryId,
-      );
+      const repository = basis.repository(point.state.repositoryId);
       return (
         repository?.presence === "present" &&
         point.state.repositoryId === expected["repositoryId"] &&
@@ -11934,17 +11940,14 @@ export class SemanticWorkspace {
       endpoint["kind"] === "missing" &&
       typeof endpoint["fileId"] === "string"
     ) {
-      const point = this.deps.store.facts.file(root, endpoint["fileId"]);
+      const point = basis.file(endpoint["fileId"]);
       return !point || point.state.presence === "deleted";
     }
     if (
       endpoint["kind"] === "repository" &&
       typeof endpoint["repositoryId"] === "string"
     ) {
-      const member = this.deps.store.facts.member(
-        root,
-        endpoint["repositoryId"],
-      );
+      const member = basis.repository(endpoint["repositoryId"]);
       if (endpoint["presence"] === "deleted")
         return !member || member.presence === "deleted";
       return (
@@ -14115,78 +14118,6 @@ export class SemanticWorkspace {
       coordinateKind: endpoint["contentKind"] === "text" ? "utf16" : "byte",
       coordinateExtent: endpoint["coordinateExtent"],
     };
-  }
-
-  /** A text counteraction restores the original base bytes, so its exact
-   * unchanged-coordinate lineage is the original text edge in reverse. The
-   * original edge is durable semantic evidence; reconstructing edit text or
-   * diffing blobs here would create a second, weaker source of truth. */
-  private invertedCounteractionMappings(
-    counteractedChangeIds: readonly string[],
-    child: {
-      contentHash: string;
-      coordinateKind: "utf16" | "byte";
-      coordinateExtent: number;
-    },
-    parent: {
-      contentHash: string;
-      coordinateKind: "utf16" | "byte";
-      coordinateExtent: number;
-    },
-  ): ContentMapping[] {
-    if (counteractedChangeIds.length !== 1) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        "A text counteraction must name exactly one original change",
-      );
-    }
-    const row = this.deps.sql
-      .exec(
-        `SELECT edge.content_edge_id
-           FROM gad_content_edges edge
-           JOIN gad_applied_changes applied
-             ON applied.applied_change_id = edge.child_applied_change_id
-          WHERE applied.change_id = ?
-            AND edge.relation = 'incorporates'
-            AND json_extract(applied.applied_result_json, '$.contentHash') = ?
-            AND json_extract(applied.applied_base_json, '$.contentHash') = ?
-          ORDER BY edge.content_edge_id
-          LIMIT 1`,
-        counteractedChangeIds[0],
-        parent.contentHash,
-        child.contentHash,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Counteracted text change ${counteractedChangeIds[0]} has no exact content lineage`,
-      );
-    }
-    return readBlameMappings(this.deps.sql, String(row["content_edge_id"])).map(
-      (mapping) => {
-        if (
-          mapping.coordinateKind !== child.coordinateKind ||
-          mapping.coordinateKind !== parent.coordinateKind ||
-          mapping.childContentHash !== parent.contentHash ||
-          mapping.parentContentHash !== child.contentHash
-        ) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Counteracted text change ${counteractedChangeIds[0]} has mismatched content lineage`,
-          );
-        }
-        return contentMapping({
-          coordinateKind: mapping.coordinateKind,
-          childContentHash: mapping.parentContentHash,
-          childStart: mapping.parentStart,
-          childEnd: mapping.parentEnd,
-          parentContentHash: mapping.childContentHash,
-          parentStart: mapping.childStart,
-          parentEnd: mapping.childEnd,
-        });
-      },
-    );
   }
 
   /**

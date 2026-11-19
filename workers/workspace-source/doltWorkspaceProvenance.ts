@@ -254,8 +254,11 @@ function contentRelation(relation: unknown) {
 }
 
 type PlacementRef = Extract<VcsSemanticNodeRef, { kind: "file" | "repository" }>;
+type PlacementIdentity =
+  | { kind: "file"; fileId: string }
+  | { kind: "repository"; repositoryId: string };
 
-function placementTombstone(sql: SqlStorage, revision: string, root: PlacementRef): string | null {
+export function placementTombstone(sql: SqlStorage, revision: string, root: PlacementIdentity): string | null {
   const query = root.kind === "file"
     ? "SELECT tombstone_change_id FROM dolt_at_files(?) WHERE file_id = ?"
     : "SELECT tombstone_change_id FROM dolt_at_repositories(?) WHERE repository_id = ?";
@@ -265,8 +268,8 @@ function placementTombstone(sql: SqlStorage, revision: string, root: PlacementRe
 }
 
 /** Follow the selected deletion through any saved or integrated versions that inherited it. */
-function priorPlacement(
-  sql: SqlStorage, revision: string, root: PlacementRef, tombstoneChangeId: string,
+export function priorPlacement(
+  sql: SqlStorage, revision: string, root: PlacementIdentity, tombstoneChangeId: string,
 ): string {
   let edges = 0;
   for (let at = revision; edges < MAX_ANCESTRY_EDGES;) {

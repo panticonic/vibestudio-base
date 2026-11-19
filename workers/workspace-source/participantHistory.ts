@@ -32,6 +32,7 @@ import type {
   VcsNeighborsInput,
   VcsReadFilesInput,
   VcsResolveRepositoryInput,
+  VcsRevertInput,
   VcsSemanticNodeRef,
   VcsStatusResult,
 } from "@vibestudio/service-schemas/vcs";
@@ -58,6 +59,8 @@ import {
   type WorkspacePlacementChange,
   type WorkspaceMergeScopeEntry,
 } from "./doltWorkspaceState.js";
+import { readInvertedCounteractionMappings } from "./contentBlame.js";
+import { workspaceRevertBasisAt } from "./doltWorkspaceRevert.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
 import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
@@ -708,6 +711,29 @@ export class ParticipantHistory {
     });
   }
 
+  planRevert(
+    head: string,
+    revert: VcsRevertInput,
+    cause: HistoryCommand["cause"],
+    triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
+  ): Promise<HistoryMutationPlan> {
+    return this.#run<HistoryMutationPlan>(() => {
+      const { contextId, commandId, expectedWorkingHead } = revert;
+      const command = { commandId, method: "revert", requestDigest: compactId("revert-request", revert), cause };
+      const current = this.#dolt.hashOf(this.#contextBranch(contextId));
+      if (this.#hasCommand(current, contextId, command)) {
+        return this.#committedMutation(current, contextId, commandId);
+      }
+      if (current !== head) throw new HistoryHeadChanged(head, current);
+      const { sql } = this.#storage;
+      if (workspaceCommitForRef(sql, head, expectedWorkingHead) !== head) {
+        throw new SemanticVcsError("RevisionChanged", "Workspace revert names a different working revision");
+      }
+      const draft = SemanticWorkspace.planRevert(revert, workspaceRevertBasisAt(sql, head));
+      return this.#prepareMutation(head, revert, command, draft, triggerEvidence);
+    });
+  }
+
   async #prepareMutation(
     head: string,
     input: { contextId: string; expectedWorkingHead: StateNodeRef },
@@ -769,9 +795,8 @@ export class ParticipantHistory {
           return origin ? [[id, origin] as const] : [];
         }));
       },
-      invertedCounteractions: () => {
-        throw new SemanticVcsError("IntegrityFailure", "An edit or transfer cannot counteract a change");
-      },
+      invertedCounteractions: (ids, child, parent) =>
+        readInvertedCounteractionMappings(this.#storage.sql, ids, child, parent, head),
       preparePlacement: (files, repositories) => prepareDoltEditPlacement(head, files, repositories),
     });
     return {
