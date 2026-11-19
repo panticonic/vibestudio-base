@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-native-suite-review",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewTestSuite.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "testSuitePlanRead": ["reviewTestSuite.nl"],
+    "testSuiteVerificationRun": ["reviewTestSuite.nl"]
+  }
+}

@@ -31,6 +31,11 @@ sources; do not cite them as sources in the answer.
 
 Use each tool's exposed schema for current limits and fields.
 
+For an assigned public source list, `webResearch/writeAssignedBrief` in the
+shared Natlang workflow uses the existing evidence and synthesis stages.
+Bind the exact URLs with `@workspace-skills/web-research-bindings`. This
+binding uses public sessions and supports cached continuation of those pages.
+
 ## From eval
 
 The same three operations are `web` in eval and other runtimes, for a loop that
@@ -117,3 +122,13 @@ supported providers, selection order, status, and revocation APIs.
   browser.
 - Keep quotations short; cite the exact URL near the supported claim.
 - Treat blob digests as content references, not public citations.
+
+## Natlang evaluation candidate
+
+`research/natlang.ts` exports `brief(question, sources, retrievedAt?)`, which runs
+the `researchBrief.nl` program. `retrievedAt` is a snapshot timestamp in Unix
+milliseconds; omitted, the host wrapper captures the current time once. Recorded
+cases pass their saved timestamp so replay preserves citation dates. A direct
+`natlang.load("skills/web-research/research/researchBrief.nl")` call takes all
+three arguments. This candidate has not met its quality gate; continue using the
+workflow above for ordinary research.

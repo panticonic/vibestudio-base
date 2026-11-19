@@ -1,0 +1,15 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-assigned-web-brief",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "writeAssignedBrief.nl" } },
+  "include": [
+    "writeAssignedBrief.nl",
+    "researchBrief.nl",
+    "researchBrief",
+    "types.ts",
+    "services.d.ts"
+  ],
+  "serviceBinding": "explicit",
+  "serviceScopes": { "web": ["researchBrief.nl/**"] }
+}

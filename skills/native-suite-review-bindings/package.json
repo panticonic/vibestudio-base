@@ -1,0 +1,11 @@
+{
+  "name": "@workspace-skills/native-suite-review-bindings",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": {
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace/harness": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

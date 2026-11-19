@@ -6,6 +6,1781 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  serverLogCursor: `/** Observe the assigned saved cursor and a bounded live host-log window. */
+
+type ServerLogCursor = { serverBootId: string; seq: number };
+
+type LogRecord = {
+  /** Sequence number within this server boot; the cursor for citing and catching up. */
+  seq: number;
+  /** Epoch milliseconds when the line was captured. */
+  timestamp: number;
+  level: "verbose" | "info" | "warn" | "error";
+  /** Subsystem tag from the conventional \`[Tag]\` prefix. */
+  tag?: string;
+  /** The message; a multi-line message keeps its newlines. */
+  message: string;
+  pid: number;
+};
+
+type LogSnapshot = {
+  /** Identifies this server boot; any cursor from an earlier boot is invalid. */
+  serverBootId: string;
+  /** Highest seq captured so far by the server, not only in \`records\`. */
+  latestSeq: number;
+  /** The records read, ascending by seq. */
+  records: LogRecord[];
+  /** How many lines the server has captured this boot, for scale. */
+  totalCaptured: number;
+};
+
+type ServerLogCursorWindow = {
+  saved: ServerLogCursor;
+  liveBoot: string;
+  oldestSeq: number | null;
+  latestSeq: number;
+  throughSeq: number;
+  overflow: boolean;
+  snapshot: LogSnapshot | null;
+};
+
+/** Observe the assigned saved cursor and a bounded live host-log window. */
+export function observe(operationId: string): Promise<ServerLogCursorWindow>;`,
+  evalRecoveryJournal: `/** Observe the assigned completed EvalDO attempt and native receipts. */
+
+type EvalRecoveryStore = { digest: string; contentDigest: string; size: number };
+
+type EvalRecoveryAttempt = {
+  operationId: string;
+  runId: string;
+  cell: "returned" | "failed";
+  journal: "complete" | "truncated" | "unavailable";
+  expectedDigest: string;
+  expectedSize: number;
+  allowReadback: boolean;
+  stores: EvalRecoveryStore[];
+};
+
+/** Observe the assigned completed EvalDO attempt and native receipts. */
+export function observe(operationId: string): Promise<EvalRecoveryAttempt>;`,
+  evalRecoveryReadback: `/** Read back an exact assigned digest after its complete native store receipt. */
+
+type EvalRecoveryReadback = {
+  digest: string;
+  observedDigest: string | null;
+  size: number | null;
+};
+
+/** Read back an exact assigned digest after its complete native store receipt. */
+export function read(operationId: string, digest: string): Promise<EvalRecoveryReadback>;`,
+  pdfLayoutRead: `/** Read the original embedded fragment geometry of one assigned local PDF page. */
+
+type PdfLayoutFragment = { text: string; bounds: number[] };
+
+type PdfLayoutPage = {
+  digest: string;
+  pageNumber: number;
+  width: number;
+  height: number;
+  rows: PdfLayoutFragment[][];
+};
+
+/** Read the original embedded fragment geometry of one assigned local PDF page. */
+export function inspect(operationId: string): Promise<PdfLayoutPage>;`,
+  dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
+
+type DictationCapture = {
+  ready: boolean;
+  recording: "absent" | "too-short" | "too-large" | "invalid-sample" | "valid";
+  durationMs: number | null;
+  windowed: boolean;
+};
+
+/** Read the assigned recording measurements and live speech worker status. */
+export function inspect(operationId: string): Promise<DictationCapture>;`,
+  dictationTranscription: `/** Transcribe the caller-assigned recording through an already-ready local worker. */
+
+type DictationTranscript = {
+  text: string;
+  language: string;
+  model: "whistle";
+};
+
+/** Transcribe the caller-assigned recording through an already-ready local worker. */
+export function run(operationId: string): Promise<DictationTranscript>;`,
+  testSuitePlanRead: `/** Resolve the assigned test-suite declaration. */
+
+type SuiteReviewRuntime = "native" | "workerd" | "browser";
+
+type SuiteReviewPlan = {
+  target: string;
+  suite: string;
+  runtime: SuiteReviewRuntime;
+  stateHash: string;
+  contextId: string;
+};
+
+/** Resolve the assigned test-suite declaration. */
+export function resolve(operationId: string): Promise<SuiteReviewPlan>;`,
+  testSuiteVerificationRun: `/** Verify the exact caller-assigned test plan after live resolution. */
+
+type SuiteReviewExecution = {
+  status: string;
+  current: boolean;
+  reportDigest: string | null;
+  executionDigest: string | null;
+  artifactKey: string | null;
+  passed: number | null;
+  failed: number | null;
+  diagnostics: string[];
+};
+
+/** Verify the exact caller-assigned test plan after live resolution. */
+export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  gitBridgeReviewRead: `/** Read the assigned Git Bridge upstream and semantic repository state. */
+
+type GitBridgeRelationship = "in-sync" | "ahead" | "behind" | "diverged";
+
+type GitBridgeState =
+  | GitBridgeRelationship
+  | "integration-required"
+  | "auth-failed"
+  | "error"
+  | "exporting"
+  | "pushing"
+  | "local-only"
+  | "not-materialized"
+  | "fetch-failed"
+  | "empty";
+
+type GitBridgeCandidate = { contextId: string; eventId: string };
+
+type GitBridgeUpstream = {
+  state: GitBridgeState;
+  remote: string | null;
+  branch: string | null;
+  autoPush: boolean;
+  candidate: GitBridgeCandidate | null;
+  observation: null | {
+    at: number;
+    branchExists: boolean;
+    relationship: GitBridgeRelationship | null;
+    ahead: number | null;
+    behind: number | null;
+  };
+};
+
+type GitBridgeSemantic = {
+  contextId: string;
+  current: boolean;
+  mainEventId: string;
+  working:
+    | { kind: "event"; eventId: string }
+    | { kind: "application"; applicationId: string };
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+  workingRepositoryId: string | null;
+  mainRepositoryId: string | null;
+};
+
+type GitBridgeView = {
+  repository: string;
+  upstream: GitBridgeUpstream;
+  semantic: GitBridgeSemantic;
+};
+
+/** Read the assigned Git Bridge upstream and semantic repository state. */
+export function observe(operationId: string): Promise<GitBridgeView>;`,
+  vcsDeliveryRead: `/** Read one assigned semantic VCS file across working, committed, and protected-main states. */
+
+type VcsDeliveryState =
+  | { kind: "event"; eventId: string }
+  | { kind: "application"; applicationId: string };
+
+type VcsDeliveryIntegration = {
+  source:
+    | { kind: "event"; eventId: string }
+    | { kind: "external-delta"; deltaId: string };
+  remaining: number;
+  conflicts: number;
+  concluded: boolean;
+  stale: boolean;
+};
+
+type VcsDeliveryVersion = {
+  fileId: string;
+  hash: string;
+  mode: number;
+  excerpt: string | null;
+  truncated: boolean;
+};
+
+type VcsDeliverySnapshot = {
+  contextId: string;
+  current: boolean;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+  working: VcsDeliveryState;
+  committed: VcsDeliveryState;
+  protectedMain: VcsDeliveryState;
+  integrations: VcsDeliveryIntegration[];
+  file: {
+    path: string;
+    working: VcsDeliveryVersion | null;
+    committed: VcsDeliveryVersion | null;
+    protectedMain: VcsDeliveryVersion | null;
+    hasLocalDifference: boolean;
+    hasDeliveryDifference: boolean;
+  };
+};
+
+/** Read one assigned semantic VCS file across working, committed, and protected-main states. */
+export function observe(operationId: string): Promise<VcsDeliverySnapshot>;`,
+  panelHealth: `/** Read observations from the assigned panel. */
+
+type PanelHealthSignal = {
+  sequence: number;
+  level: "error" | "warning" | "info";
+  message: string;
+};
+
+type PanelHealthObservation = {
+  id: string;
+  panelId: string;
+  attemptId: string;
+  buildKey: string;
+  phase: "ready" | "pending" | "failed" | "unavailable";
+  markers: { id: string; values: string[] }[];
+  diagnostics: PanelHealthSignal[];
+  consoleThrough: number;
+  dropped: number;
+};
+
+/** Read observations from the assigned panel. */
+export function observe(): Promise<PanelHealthObservation>;
+
+/** Read observations from the assigned panel. */
+export function observeAfter(snapshotId: string): Promise<PanelHealthObservation>;`,
+  provenanceHistory: `/** Read the assigned VCS history coordinate. */
+
+type HistoryWalk = "cause" | "cohort" | "rejections";
+
+type HistoryCheck = { path: string; walk: HistoryWalk; scope: "work-unit" | "turn" };
+
+type ReasonTier = "stated" | "trigger" | "mechanical";
+
+type HistoryReceipt = {
+  check: HistoryCheck;
+  exists: boolean;
+  limited: boolean;
+  records: { ref: string; source: string; label: string; intent: string | null; tier: ReasonTier | null; group: string | null; detail: string | null; boundary: string | null }[];
+};
+
+/** Read the assigned VCS history coordinate. */
+export function readNext(check: HistoryCheck): Promise<HistoryReceipt>;`,
+  tendrilPresentation: `/** Present the assigned Tendril on an admitted device. */
+
+type TendrilDevice = {
+  id: string;
+  platform: "desktop" | "mobile" | "headless";
+  online: boolean;
+};
+
+type TendrilPresentation = {
+  deviceId: string;
+  slotId: string;
+  state: "presented" | "pending-device" | "pushed";
+};
+
+/** Present the assigned Tendril on an admitted device. */
+export function devices(): Promise<TendrilDevice[]>;
+
+/** Present the assigned Tendril on an admitted device. */
+export function present(deviceId: string): Promise<TendrilPresentation>;`,
+  tendrilPage: `/** Observe or operate the assigned Tendril page. */
+
+type TendrilValue = string | number | boolean | null;
+
+type TendrilField = { key: string; value: TendrilValue };
+
+type TendrilPage = {
+  id: string;
+  slotId: string;
+  build: string;
+  revision: number;
+  stored: TendrilField[];
+  displayed: TendrilField[];
+  exposed: string[];
+};
+
+/** Observe or operate the assigned Tendril page. */
+export function inspect(): Promise<TendrilPage>;
+
+/** Observe or operate the assigned Tendril page. */
+export function write(field: TendrilField): Promise<TendrilPage>;
+
+/** Observe or operate the assigned Tendril page. */
+export function invoke(name: string): Promise<TendrilPage>;`,
+  tendrilBuild: `/** Update or restore the assigned Tendril build. */
+
+type TendrilValue = string | number | boolean | null;
+
+type TendrilField = { key: string; value: TendrilValue };
+
+type TendrilPage = {
+  id: string;
+  slotId: string;
+  build: string;
+  revision: number;
+  stored: TendrilField[];
+  displayed: TendrilField[];
+  exposed: string[];
+};
+
+type TendrilBuildResult = {
+  outcome: "proven" | "pending-device" | "failed";
+  page: TendrilPage | null;
+};
+
+/** Update or restore the assigned Tendril build. */
+export function update(candidate: string): Promise<TendrilBuildResult>;
+
+/** Update or restore the assigned Tendril build. */
+export function back(): Promise<TendrilPage>;`,
+  gardenRead: `/** Observe the assigned garden and its live state. */
+
+type GardenHome = {
+  id: string;
+  values: { key: string; amount: number }[];
+};
+
+type GardenResident = {
+  id: string;
+  name: string;
+  home: string;
+  needs: { key: string; amount: number }[];
+  energy: number;
+  attachment: number;
+  settled: number;
+  lastVisit: number;
+};
+
+type GardenReadback = {
+  id: string;
+  day: number;
+  phase: number;
+  weather: string;
+  homes: GardenHome[];
+  residents: GardenResident[];
+  discoveries: { id: string; title: string }[];
+};
+
+type GardenObservations = {
+  before: GardenReadback;
+  current: GardenReadback;
+};
+
+/** Observe the assigned garden and its live state. */
+export function observe(): Promise<GardenObservations>;`,
+  googleSetupPanel: `/** Read the assigned Google setup journey. */
+
+type GoogleSetupCheck =
+  | { kind: "owners" }
+  | { kind: "launch-gate"; afterReload: boolean }
+  | { kind: "viewport"; width: number }
+  | { kind: "scope-choice"; scope: "gmail" | "workspace" }
+  | { kind: "browser-choice"; opening: "here" | "external" }
+  | { kind: "choice-reload" };
+
+type GoogleSetupControls = {
+  scope: "gmail" | "workspace";
+  opening: "here" | "external";
+  guidance: "gmail" | "workspace" | "unknown";
+  connectEnabled: boolean;
+  gmailEnabled: boolean;
+};
+
+type GoogleSetupReceipt = {
+  id: string;
+  check: GoogleSetupCheck;
+  stage: string;
+  accountOwner: boolean;
+  permissionsOwner: boolean;
+  gmailEnabled: boolean;
+  inheritedLaunch: boolean | null;
+  overflow: boolean;
+  viewportWidth: number | null;
+  controls?: { before: GoogleSetupControls; after: GoogleSetupControls };
+};
+
+/** Read the assigned Google setup journey. */
+export function observe(): Promise<GoogleSetupReceipt[]>;`,
+  newsRead: `/** Read assigned News readers and schedules and complete the assigned cadence change. */
+
+type NewsReaderPage = {
+  id: string;
+  requestedCursor: string | null;
+  nextCursor: string | null;
+  hasMore: boolean;
+  articleIds: string[];
+  briefingIds?: string[];
+};
+
+type NewsReaderEvidence = {
+  kind: "reader";
+  goal: string;
+  view: "inbox" | "saved" | "archive" | "backlog";
+  overview: {
+    id: string;
+    setup: "needs-user-preferences" | "configured";
+    articleCount: number;
+    untriagedCount: number;
+    enabledFeeds: number;
+    failedFeeds: number;
+  };
+  activity: "idle" | "loading" | "retryable-error";
+  pages: NewsReaderPage[];
+};
+
+type NewsScheduleEvidence = {
+  kind: "schedule";
+  goal: string;
+  owner: { id: string; mode: "curator" | "analyst"; paused: boolean };
+  poll: { id: string; intervalMs: number } | null;
+  briefing: {
+    id: string;
+    kind: "interval" | "daily";
+    intervalMs: number | null;
+    at: string | null;
+    timezone: string | null;
+  } | null;
+  intent:
+    | { kind: "poll"; intervalMs: number }
+    | { kind: "interval"; intervalMs: number }
+    | { kind: "daily"; at: string; timezone: string }
+    | { kind: "pause" }
+    | { kind: "resume" }
+    | { kind: "manual" };
+};
+
+type NewsCadenceChange =
+  | { kind: "poll"; intervalMs: number }
+  | { kind: "interval"; intervalMs: number }
+  | { kind: "daily"; at: string; timezone: string }
+  | { kind: "pause" }
+  | { kind: "resume" }
+  | null;
+
+/** Read assigned News readers and schedules and complete the assigned cadence change. */
+export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;
+
+/** Read assigned News readers and schedules and complete the assigned cadence change. */
+export function finishCadence(
+      change: NewsCadenceChange,
+    ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  browserLibraryState: `/** Read the assigned browser library. */
+
+type LibraryBookmark = { id: number; folder: string; title: string; url: string };
+
+type LibraryVisit = { url: string; title: string; lastVisitTime: number };
+
+type BrowserLibrarySnapshot = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: LibraryBookmark[];
+  visits: LibraryVisit[];
+};
+
+/** Read the assigned browser library. */
+export function observe(): Promise<BrowserLibrarySnapshot>;`,
+  browserLibraryChange: `/** Apply a caller-bound mutation on the observed browser library. */
+
+type LibraryMutation =
+  | { kind: "save"; folder: string; url: string; title: string }
+  | { kind: "rename"; id: number; title: string }
+  | { kind: "file"; id: number; folder: string }
+  | { kind: "retire"; id: number; keepId: number };
+
+type LibraryBookmark = { id: number; folder: string; title: string; url: string };
+
+type LibraryVisit = { url: string; title: string; lastVisitTime: number };
+
+type BrowserLibrarySnapshot = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: LibraryBookmark[];
+  visits: LibraryVisit[];
+};
+
+/** Apply a caller-bound mutation on the observed browser library. */
+export function apply(snapshotId: string, mutation: LibraryMutation): Promise<BrowserLibrarySnapshot>;`,
+  collectionState: `/** Read the assigned collection tree. */
+
+type CollectionNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type CollectionSnapshot = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: CollectionNode[];
+};
+
+/** Read the assigned collection tree. */
+export function observe(): Promise<CollectionSnapshot>;`,
+  collectionChange: `/** Apply a caller-bound mutation on the observed collection. */
+
+type CollectionMutation =
+  | { kind: "rename"; panelId: string; title: string }
+  | { kind: "note"; panelId: string; text: string | null }
+  | { kind: "group"; parentId: string; title: string }
+  | { kind: "move"; panelId: string; parentId: string; afterId: string | null };
+
+type CollectionNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type CollectionSnapshot = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: CollectionNode[];
+};
+
+/** Apply a caller-bound mutation on the observed collection. */
+export function apply(basisId: string, mutation: CollectionMutation): Promise<CollectionSnapshot>;`,
+  missionPlanningState: `/** Read the assigned mission workspace. */
+
+type MissionProject = { id: string; name: string; archived: boolean };
+
+type MissionStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type MissionCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: MissionStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type MissionSnapshot = {
+  id: string;
+  projects: MissionProject[];
+  cards: MissionCard[];
+  complete: boolean;
+};
+
+/** Read the assigned mission workspace. */
+export function observe(): Promise<MissionSnapshot>;`,
+  missionPlanningChange: `/** Apply an assigned mission change against its observed revision. */
+
+type MissionChanges =
+  | { cardId: string; revision: number; kind: "prerequisites"; dependencies: string[] }
+  | { cardId: string; revision: number; kind: "relocate"; projectId: string }
+  | { cardId: string; revision: number; kind: "ready" };
+
+type MissionProject = { id: string; name: string; archived: boolean };
+
+type MissionStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type MissionCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: MissionStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type MissionSnapshot = {
+  id: string;
+  projects: MissionProject[];
+  cards: MissionCard[];
+  complete: boolean;
+};
+
+/** Apply an assigned mission change against its observed revision. */
+export function apply(snapshotId: string, changes: MissionChanges): Promise<MissionSnapshot>;`,
+  spectroliteRead: `/** Observe the assigned vault and actual editor. */
+
+type ReviewCheck =
+  | "document"
+  | "preview"
+  | "navigation"
+  | "revision"
+  | "handoff"
+  | "publication";
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultReviewState = {
+  id: string;
+  repositoryId: string;
+  working: VaultReference;
+  committed: VaultReference;
+  mainEventId: string;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+};
+
+type DocumentReviewReceipt = {
+  id: string;
+  repositoryId: string;
+  path: string;
+  ref: VaultReference;
+  fileId: string;
+  contentHash: string;
+  format: "text" | "other";
+  contentClass: "internal" | "external";
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  externalKeys: string[];
+  title: string | null;
+  dependencies: { name: string; reference: string }[];
+  links: { target: string; resolvedPath: string | null }[];
+};
+
+type PreviewReviewReceipt = {
+  id: string;
+  documentPath: string;
+  contentHash: string;
+  phase: "pending" | "rendered" | "compile-error" | "render-error";
+  detail: string | null;
+};
+
+type NavigationHop = { from: string; target: string; to: string };
+
+type NavigationReceipt = {
+  id: string;
+  hops: NavigationHop[];
+};
+
+type ScribeReviewReceipt = {
+  id: string;
+  documentPath: string;
+  recipientId: string;
+  eventId: string | null;
+  phase: "unsent" | "sent" | "failed";
+  selection: string | null;
+};
+
+type PublishReviewReceipt = {
+  id: string;
+  targetEventId: string;
+  observedMainEventId: string | null;
+  outcome: "published" | "up-to-date" | "error" | null;
+  publishing: boolean;
+  conflicts: { kind: "file" | "repository"; id: string; summary: string }[];
+  lastError: string | null;
+};
+
+type SpectroliteReviewRequest = {
+  goal: string;
+  checks: ReviewCheck[];
+  path: string;
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt | null;
+  committedDocument?: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+  navigation?: NavigationReceipt | null;
+  scribeTarget: { recipientId: string; selection: string | null } | null;
+  handoff: ScribeReviewReceipt | null;
+  publication: PublishReviewReceipt | null;
+};
+
+/** Observe the assigned vault and actual editor. */
+export function observe(): Promise<SpectroliteReviewRequest>;`,
+  architectureProviderRead: `/** Read the assigned installed service and its exact authored declaration. */
+
+type ArchitectureRoute = {
+  receipt: string;
+  contextId: string;
+  revision: string;
+  protocol: string;
+  name: string;
+  source: string;
+  receiver: {
+    kind: "durable-object" | "worker";
+    address: string;
+    className: string | null;
+    creatorScoped: boolean;
+  };
+};
+
+type ArchitectureDeclaration = {
+  routeReceipt: string;
+  source: string;
+  revision: string;
+  hash: string;
+  name: string;
+  protocols: string[];
+  className: string | null;
+  creatorScoped: boolean;
+};
+
+/** Read the assigned installed service and its exact authored declaration. */
+export function resolve(operationId: string): Promise<ArchitectureRoute>;
+
+/** Read the assigned installed service and its exact authored declaration. */
+export function declaration(routeReceipt: string): Promise<ArchitectureDeclaration | null>;`,
+  clientAdmissionRead: `/** Read the assigned System client, published trust and selected host contract. */
+
+type ClientContract = {
+  hash: string;
+  id: string;
+  runtime: string;
+  abi: string;
+  required: string[];
+  optional: string[];
+};
+
+type ClientAdmissionObservation = {
+  operationId: string;
+  contextId: string;
+  source: string;
+  workingRevision: string;
+  mainRevision: string;
+  working: ClientContract;
+  published: ClientContract;
+  trusted: boolean;
+  host: {
+    kind: "desktop" | "terminal" | "android" | "ios";
+    runtimes: Record<string, string>;
+    capabilities: string[];
+    deviceLevel: string[];
+  };
+  catalog: {
+    status: "available" | "building" | "ready" | "approval-required" | "error";
+    source: string;
+    effectiveVersion: string | null;
+    activeBuildKey: string | null;
+  } | null;
+};
+
+/** Read the assigned System client, published trust and selected host contract. */
+export function observe(operationId: string): Promise<ClientAdmissionObservation>;`,
+  extensionReleaseRead: `/** Read assigned extension source and live approved runtime state. */
+
+type ExtensionManifestView = {
+  hash: string;
+  activation: "startup" | "on-invoke" | "unknown";
+  methods: string[];
+};
+
+type ExtensionSource = {
+  operationId: string;
+  contextId: string;
+  name: string;
+  source: string;
+  workingRevision: string;
+  mainRevision: string;
+  working: ExtensionManifestView | null;
+  published: ExtensionManifestView | null;
+  workingTree: string | null;
+  publishedTree: string | null;
+};
+
+type ExtensionRuntime = {
+  operationId: string;
+  name: string;
+  source: string;
+  status:
+    | "running"
+    | "available"
+    | "stopped"
+    | "error"
+    | "pending-approval"
+    | "building";
+  activeEv: string | null;
+  identity: string | null;
+  methods: string[];
+  pendingApproval: "extension.install" | "extension.update" | null;
+  hasError: boolean;
+  dependencyUpdate: boolean;
+};
+
+/** Read assigned extension source and live approved runtime state. */
+export function source(operationId: string): Promise<ExtensionSource>;
+
+/** Read assigned extension source and live approved runtime state. */
+export function runtime(operationId: string): Promise<ExtensionRuntime>;`,
+  assignedAuthorityRead: `/** Dry-run the next caller-assigned operation against current Vibestudio authority. */
+
+type ExactAuthority = { capability: string; resourceKey: string };
+
+type AuthorityHostLeaf = ExactAuthority & {
+  tier: "open" | "gated" | "critical";
+  status: "granted" | "consumable-once" | "acquirable" | "denied";
+};
+
+type AuthorityObservation = {
+  operationId: string;
+  decision: "allowed" | "acquirable" | "denied";
+  leaves: AuthorityHostLeaf[];
+};
+
+/** Dry-run the next caller-assigned operation against current Vibestudio authority. */
+export function preflight(operationId: string): Promise<AuthorityObservation>;`,
+  problemDraftRead: `/** Observe and confirm the caller's assigned local manual problem report. */
+
+type Evidence = {
+  /** What the user (or the agent on the user's behalf) was trying to do, in a sentence or two. */
+  goal: string;
+  /** What actually happened: error text exactly as shown, or the wrong result described. */
+  observed: string;
+  /** What should have happened according to the documentation or the user. Empty when unknown. */
+  expected: string;
+  /** The product operation token when known, for example \`eval.returnImage\`; null when unknown. Letters, digits and \`_.:@/-\` only. */
+  operation: string | null;
+  /** What was tried since, and whether a retry worked. Empty when nothing was tried. */
+  attempts: string;
+  /** True only when the agent itself reproduced the failure; false when it is the user's account or a single sighting. */
+  reproduced: boolean;
+  /** One invocation to fetch a bounded diagnostic for, when the failure happened inside a known invocation. */
+  invocation?: { trajectoryId: string; branchId: string; invocationId: string };
+};
+
+type ProblemEvidenceState =
+  | "observed"
+  | "denied"
+  | "expired"
+  | "unavailable";
+
+type ProblemEvidenceReceipt = {
+  id: string;
+  kind: "invocation" | "build" | "panel" | "message";
+  state: ProblemEvidenceState;
+  selected: boolean;
+};
+
+type ReportRevision = {
+  id: string;
+  revision: number;
+  basisRevision: number;
+  userEdits: boolean;
+};
+
+type FrozenReport = {
+  revision: number;
+  digest: string;
+  sanitized: boolean;
+  approval: "none" | "pending" | "approved" | "denied" | "dismissed";
+};
+
+type ProblemRequest = {
+  goal: string;
+  consent: "decline" | "unspecified" | "save" | "share";
+  account: Evidence;
+  evidence: ProblemEvidenceReceipt[];
+  draft: ReportRevision | null;
+  frozen: FrozenReport | null;
+};
+
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+
+type LocalProblemObservation = {
+  review: ProblemRequest;
+  draft: LocalDraft | null;
+};
+
+type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+
+type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+
+type LocalDraftConfirmation = LocalDraftWrite & {
+  sections: LocalDraftSection[];
+};
+
+/** Observe and confirm the caller's assigned local manual problem report. */
+export function observe(operationId: string): Promise<LocalProblemObservation>;
+
+/** Observe and confirm the caller's assigned local manual problem report. */
+export function confirm(write: LocalDraftWrite): Promise<LocalDraftConfirmation>;`,
+  problemDraftOpen: `/** Create the caller's assigned local manual problem report. */
+
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+
+/** Create the caller's assigned local manual problem report. */
+export function create(operationId: string): Promise<LocalDraft>;`,
+  problemDraftAppend: `/** Append the authored sections to the exact assigned report revision. */
+
+type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+
+type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+
+type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+
+/** Append the authored sections to the exact assigned report revision. */
+export function append(
+      draft: LocalDraft,
+      sections: LocalDraftSection[],
+    ): Promise<LocalDraftWrite>;`,
+  agenticChangeSource: `/** Read installed agentic stack sources at the caller's assigned semantic context. */
+
+type AgenticUnit =
+  | "panels/chat"
+  | "packages/agentic-chat"
+  | "workers/agent-worker"
+  | "packages/agentic-do"
+  | "packages/agentic-protocol"
+  | "workers/pubsub-channel"
+  | "packages/agentic-core"
+  | "packages/pubsub";
+
+type AgenticSourceObservation = {
+  contextId: string;
+  revision: string;
+  guides: { unit: AgenticUnit; excerpt: string | null }[];
+};
+
+/** Read installed agentic stack sources at the caller's assigned semantic context. */
+export function read(contextId: string): Promise<AgenticSourceObservation>;`,
+  integrationPlanRead: `/** Read the caller's assigned API integration plan. */
+
+type IntegrationUse = "fetch" | "publish" | "git-http" | "git-ssh";
+
+type IntegrationDestination = {
+  id: string;
+  purpose: string;
+  use: IntegrationUse;
+  required: boolean;
+};
+
+type IntegrationPlan = {
+  receipt: string;
+  destinations: IntegrationDestination[];
+};
+
+/** Read the caller's assigned API integration plan. */
+export function observe(operationId: string): Promise<IntegrationPlan>;`,
+  integrationCredentialLookup: `/** Resolve the exact assigned destination and intended transport. */
+
+type IntegrationObservation = {
+  id: string;
+  receipt: string;
+  state: "missing" | "unverified" | "active" | "expired" | "revoked";
+  canRefresh: boolean | null;
+};
+
+/** Resolve the exact assigned destination and intended transport. */
+export function resolve(
+      planReceipt: string,
+      destinationId: string,
+    ): Promise<IntegrationObservation>;`,
+  terminalCheckRead: `/** Read the caller's assigned terminal check plan. */
+
+type TerminalCheck = {
+  id: string;
+  purpose: string;
+  mode: "argv" | "script";
+  prerequisites: string[];
+};
+
+type TerminalPlan = { receipt: string; checks: TerminalCheck[] };
+
+/** Read the caller's assigned terminal check plan. */
+export function observe(operationId: string): Promise<TerminalPlan>;`,
+  terminalCheckRun: `/** Execute the exact assigned terminal check. */
+
+type TerminalCheckResult = {
+  receipt: string;
+  id: string;
+  status: "complete" | "unavailable";
+  exitCode: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+  stdout: string;
+  stderr: string;
+};
+
+/** Execute the exact assigned terminal check. */
+export function execute(
+      assignmentReceipt: string,
+      checkId: string,
+    ): Promise<TerminalCheckResult>;`,
+  gadHealth: `/** Observe one assigned GAD health snapshot. */
+
+type ChannelFinding = {
+  kind: string;
+  count: number;
+  evidence: string;
+  inspector: string | null;
+};
+
+type ChannelHealth = {
+  receipt: string;
+  channelId: string;
+  branchId: string;
+  generatedAt: string;
+  integrity: "ok" | "broken";
+  activity: "idle" | "in-flight";
+  findings: ChannelFinding[];
+};
+
+/** Observe one assigned GAD health snapshot. */
+export function observe(operationId: string): Promise<ChannelHealth>;`,
+  gadFollowUp: `/** Inspect the exact assigned channel finding. */
+
+type ChannelFollowUp = {
+  receipt: string;
+  kind: string;
+  inspector: string;
+  counters: { name: string; count: number }[];
+};
+
+/** Inspect the exact assigned channel finding. */
+export function inspect(healthReceipt: string, kind: string): Promise<ChannelFollowUp>;`,
+  gadConversation: `/** Read the assigned bounded channel tail. */
+
+type ChannelTail = {
+  receipt: string;
+  channelId: string;
+  status: "observed" | "branch-not-supported";
+  range: { fromSeq: number; toSeq: number; envelopes: number };
+  standing: "agent-replied" | "awaiting-agent" | "failed" | "empty";
+  latest: { seq: number; speaker: string; text: string } | null;
+};
+
+/** Read the assigned bounded channel tail. */
+export function read(operationId: string): Promise<ChannelTail>;`,
+  phoneSetupRead: `/** Read the assigned phone setup and paired workspace readiness. */
+
+type PhonePlatform = "android" | "ios";
+
+type DesktopCandidate = {
+  providerId: string;
+  label: string;
+  supportsSource: boolean;
+};
+
+type SetupStart = {
+  receipt: string;
+  platform: PhonePlatform;
+  providerId: string | null;
+  deviceId: string | null;
+  desktops: DesktopCandidate[];
+  pairedDeviceId: string | null;
+};
+
+type DiscoveredPhones = {
+  receipt: string;
+  devices: {
+    deviceId: string;
+    name: string;
+    kind: string;
+    state: string;
+    ready: boolean;
+  }[];
+  actions: string[];
+};
+
+type WorkspaceObservation = {
+  receipt: string;
+  state: "opening" | "ready" | "failed" | "unreachable";
+};
+
+/** Read the assigned phone setup and paired workspace readiness. */
+export function start(operationId: string): Promise<SetupStart>;
+
+/** Read the assigned phone setup and paired workspace readiness. */
+export function discover(prepareReceipt: string): Promise<DiscoveredPhones>;
+
+/** Read the assigned phone setup and paired workspace readiness. */
+export function readiness(pairingReceipt: string): Promise<WorkspaceObservation>;`,
+  phoneSetupPrepare: `/** Prepare the assigned desktop for phone setup. */
+
+type PreparedDesktop = {
+  receipt: string;
+  state: "prepared" | "preparation-unconfirmed";
+};
+
+/** Prepare the assigned desktop for phone setup. */
+export function prepare(startReceipt: string, providerId: string): Promise<PreparedDesktop>;`,
+  phoneSetupPair: `/** Provision the assigned ready phone. */
+
+type PhonePairing = {
+  receipt: string;
+  pairedDeviceId: string | null;
+};
+
+/** Provision the assigned ready phone. */
+export function provision(
+      discoveryReceipt: string,
+      deviceId: string,
+    ): Promise<PhonePairing>;`,
+  remoteDeploymentRead: `/** Read the baseline of the assigned managed deployment. */
+
+type DeploymentBaseline = {
+  receipt: string;
+  intent: "deploy" | "update";
+  hasPriorIdentity: boolean;
+  state: "inactive" | "ready" | "unverified";
+};
+
+/** Read the baseline of the assigned managed deployment. */
+export function observe(operationId: string): Promise<DeploymentBaseline>;`,
+  remoteDeploymentApply: `/** Run the caller-authorized managed installer for the observed baseline. */
+
+type DeploymentAction = {
+  receipt: string;
+  state: "applied" | "failed" | "baseline-changed";
+};
+
+/** Run the caller-authorized managed installer for the observed baseline. */
+export function apply(baselineReceipt: string): Promise<DeploymentAction>;`,
+  remoteDeploymentVerify: `/** Verify the managed hub and child after the caller-authorized install. */
+
+type DeploymentIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type DeploymentVerification = {
+  receipt: string;
+  state: "verified" | "unready" | "unchanged-boot" | "identity-changed";
+  identity: DeploymentIdentity | null;
+};
+
+/** Verify the managed hub and child after the caller-authorized install. */
+export function verify(actionReceipt: string): Promise<DeploymentVerification>;`,
+  remoteDeploymentHandoff: `/** Bind the assigned device profile to the verified deployment. */
+
+type RemoteDeploymentHandoff = {
+  state: "assigned" | "deployment-changed";
+  operationId: string | null;
+};
+
+/** Bind the assigned device profile to the verified deployment. */
+export function open(deploymentReceipt: string): Promise<RemoteDeploymentHandoff>;`,
+  remoteAccessRead: `/** Read the caller-assigned remote profile. */
+
+type RemoteProfileRead = {
+  receipt: string;
+  state: "unpaired" | "account" | "workspace" | "foreign" | "unusable";
+  inviteAssigned: boolean;
+};
+
+/** Read the caller-assigned remote profile. */
+export function observe(operationId: string): Promise<RemoteProfileRead>;`,
+  remoteAccessPair: `/** Redeem the caller-assigned invitation. */
+
+type RemotePairReceipt = {
+  receipt: string;
+  state: "paired" | "failed";
+};
+
+/** Redeem the caller-assigned invitation. */
+export function pair(profileReceipt: string): Promise<RemotePairReceipt>;`,
+  remoteAccessRoute: `/** Select the caller-assigned workspace through the verified hub. */
+
+type RemoteRouteReceipt = {
+  receipt: string;
+  state: "routed" | "failed";
+};
+
+/** Select the caller-assigned workspace through the verified hub. */
+export function select(priorReceipt: string): Promise<RemoteRouteReceipt>;`,
+  remoteAccessVerify: `/** Verify the child identity on the caller-assigned route. */
+
+type RemoteChildReceipt = {
+  receipt: string;
+  state: "verified" | "unreachable" | "identity-mismatch";
+  workspaceId: string | null;
+};
+
+/** Verify the child identity on the caller-assigned route. */
+export function verify(routeReceipt: string): Promise<RemoteChildReceipt>;`,
+  sessionReplay: `/** Read the assigned durable replay checkpoint. */
+
+type ReplayOperation = { key: string; text: string; messageId: string };
+
+type ReplayMessage = { id: string; text: string; senderId: string };
+
+type ReplayCheckpoint = {
+  receipt: string;
+  originalChannel: string;
+  replayChannel: string;
+  original: ReplayOperation;
+  retry: ReplayOperation | null;
+  originBefore: ReplayMessage[];
+  before: ReplayMessage[];
+  after: ReplayMessage[];
+};
+
+/** Read the assigned durable replay checkpoint. */
+export function inspect(receipt: string): Promise<ReplayCheckpoint>;`,
+  testkitCleanup: `/** Read the assigned live Testkit teardown receipt. */
+
+type TestkitOutcome = "passed" | "failed" | "errored" | "timeout";
+
+type TestkitResourceKind = "panel" | "page-client" | "worker" | "supervisor" | "scratch";
+
+type TestkitOwnedResource = { id: string; kind: TestkitResourceKind };
+
+type TestkitRelease = {
+  kind: "testkit";
+  receipt: string;
+  // Resources in the order their release was registered with defer.
+  resources: {
+    id: string;
+    kind: TestkitResourceKind;
+  }[];
+  released: {
+    id: string;
+    kind: TestkitResourceKind;
+    acknowledgement: "released" | "failed";
+  }[];
+};
+
+type LiveCleanupEvidence = {
+  receipt: string;
+  outcome: TestkitOutcome;
+  error: string | null;
+  logs: string[];
+  acquired: TestkitOwnedResource[];
+  release: TestkitRelease;
+  remaining: TestkitOwnedResource[];
+  protectedUnchanged: boolean;
+};
+
+/** Read the assigned live Testkit teardown receipt. */
+export function inspect(receipt: string): Promise<LiveCleanupEvidence>;`,
+  templateOffer: `/** Read cached upstream status for the caller-assigned template source. */
+
+/** Read the identified cached offer and its compatibility evidence. */
+export function read(): Promise<{
+  installedCommit: string;
+  incomingCommit: string | null;
+  checkedAt: number;
+  workspaceAppVersion: string;
+  currentAppVersion: string;
+  targetAppVersion: string | null;
+  minimumAppVersion: string | null;
+  hostUnavailable: boolean;
+  status: "current" | "available" | "different-epoch" | "requires-app-update" | "error";
+} | null>;`,
+  templateCandidatePrepare: `/** Prepare the caller-authorized exact template pin in an isolated review context. */
+
+/** Request the original exact pin under the caller-issued operation ID. */
+export function prepare(): Promise<{
+  outcome: "acknowledged";
+  review: {
+    operationId: string;
+    contextId: string;
+    mainEventId: string;
+    incomingCommit: string;
+    state: "review" | "published";
+    repositories: {
+      repoPath: string;
+      kind: "added" | "changed" | "removed";
+    }[];
+    conflicts: {
+      repoPath: string;
+      deltaId: string;
+      kind: "file" | "repository";
+      id: string;
+    }[];
+  };
+} | {
+  outcome: "offer-changed" | "unconfirmed";
+  review: "null" | null;
+}>;`,
+  templateCandidateReview: `/** Read the assigned preparation and protected main event after the attempt. */
+
+/** Read the isolated review and protected main independently. */
+export function read(): Promise<{
+  review: {
+    operationId: string;
+    contextId: string;
+    mainEventId: string;
+    incomingCommit: string;
+    state: "review" | "published";
+    repositories: {
+      repoPath: string;
+      kind: "added" | "changed" | "removed";
+    }[];
+    conflicts: {
+      repoPath: string;
+      deltaId: string;
+      kind: "file" | "repository";
+      id: string;
+    }[];
+  };
+  mainEventId: string | null;
+} | null>;`,
+  scratchHandoffRead: `/** Read the bounded UTF-8 snapshot of a caller-assigned workspace file. */
+
+/** Read the selected source by its assigned identifier and return original lines. */
+export function read(id: string): Promise<{
+  id: string;
+  lines: string[];
+} | null>;`,
+  scratchHandoffWrite: `/** Stage one verified handoff in a fresh workspace scratch directory. */
+
+/** Write the prepared handoff and return a receipt after exact byte readback. */
+export function stage(body: string): Promise<{
+  path: string;
+  bytes: number;
+} | null>;`,
+  automationLifecycleRead: `/** Observe the exact caller-assigned automation and its revision. */
+
+/** Read the authoritative current lifecycle state of the assigned mission. */
+export function observe(missionId: string): Promise<{
+  missionId: string;
+  revisionDigest: string;
+  state: "active" | "paused" | "completed" | "retired";
+} | null>;`,
+  automationLifecycleChange: `/** Perform one caller-authorized reversible automation transition. */
+
+/** Request the assigned pause or resume through the Missions client. */
+export function apply(missionId: string, revisionDigest: string, action: "pause" | "resume"): Promise<"acknowledged" | "already" | "blocked" | "uncertain">;`,
+  checklistOpen: `/** Open the assigned workspace terminal checklist. */
+
+/** Launch the caller-owned checklist once and read its initial screen. */
+export function launch(): Promise<{
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ("1" | "2" | "3")[];
+}>;`,
+  checklistKeys: `/** Toggle one assigned checklist item through the current terminal. */
+
+/** Send the next permitted item key and retain the observed screen. */
+export function toggle(key: "1" | "2" | "3"): Promise<{
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ("1" | "2" | "3")[];
+}>;`,
+  checklistResume: `/** Continue the caller-owned terminal checklist. */
+
+/** Reattach or restart as assigned and observe the resulting viewport and state. */
+export function resume(kind: "reattach" | "restart"): Promise<{
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ("1" | "2" | "3")[];
+}>;`,
+  onboardingRead: `/** Read the actual setup owners and the caller's assigned catalog selection. */
+
+/** Return the assigned owner observations and resolved product route once. */
+export function inspect(): Promise<{
+  receipt: string;
+  rows: {
+    id: string;
+    state: "connected" | "connected-unverified" | "configured" | "using-defaults" | "not-configured" | "in-progress" | "needs-attention" | "unavailable" | "unknown";
+    observed: boolean;
+  }[];
+  route: {
+    capabilityId: string;
+    action: string;
+    via: "owner-skill" | "about-page" | "model-settings" | "panel" | "shell-navigation" | "conversation";
+    destination: string | null;
+  } | null;
+}>;`,
+  decisionRecall: `/** Search for decision leads in the caller's assigned scope. */
+
+/** Return actual scoped workspace memory hits for the assigned query. */
+export function search(query: string): Promise<{
+  id: string;
+  eventId: string;
+  snippet: string;
+}[]>;`,
+  decisionSource: `/** Read the exact historical file behind one assigned memory lead. */
+
+/** Open the caller-assigned VCS file for the selected lead and preserve source identity. */
+export function read(leadId: string): Promise<{
+  eventId: string;
+  path: string;
+  contentHash: string;
+  text: string;
+} | null>;`,
+  authoringCompiler: `/** Inspect the assigned candidate or baseline through the workspace Natlang compiler. */
+
+/** Read one assigned program's compiler evidence and exact revision. */
+export function inspect(role: "candidate" | "baseline"): Promise<{
+  role: "candidate" | "baseline";
+  revision: string;
+  state: "compiled";
+  functions: {
+    source: string;
+    parameters: string[];
+    returns: string;
+  }[];
+  services: string[];
+  serviceScopes: {
+    [key: string]: string[];
+  };
+} | {
+  role: "candidate" | "baseline";
+  revision: string;
+  state: "rejected";
+  diagnostics: {
+    source: string;
+    line: number;
+    column: number;
+    code: string;
+    message: string;
+  }[];
+}>;`,
+  mobileInventory: `/** Read installed Android tooling and the caller's foreground device inventory. */
+
+/** Read installed Android tooling and the caller's foreground device inventory. */
+export function read(): Promise<{
+  workspace: string;
+  provider: string | null;
+  foreground: boolean;
+  tooling: boolean;
+  devices: {
+    id: string;
+    state: "ready" | "unauthorized" | "offline";
+  }[];
+}>;`,
+  mobilePairing: `/** Provision the single assigned Android target and retain the pairing receipt. */
+
+/** Provision the single assigned Android target and retain the pairing receipt. */
+export function pair(deviceId: string): Promise<{
+  provider: string;
+  workspace: string;
+  attachedDevice: string;
+  pairedDevice: string;
+  install: "installed" | "already-compatible";
+} | null>;`,
+  mobileWorkspace: `/** Read readiness for the device created by the current pairing. */
+
+/** Read readiness for the device created by the current pairing. */
+export function read(pairedDevice: string): Promise<{
+  pairedDevice: string;
+  status: "opening" | "ready" | "failed";
+  message: string;
+} | null>;`,
+  mobileDevelopment: `/** Launch the assigned development installation with the caller's reset policy. */
+
+/** Launch the assigned development installation with the caller's reset policy. */
+export function install(deviceId: string): Promise<{
+  deviceId: string;
+  packageName: string;
+  reset: boolean;
+} | null>;`,
+  mobileApp: `/** Verify rendering for the exact package and device from the current install. */
+
+/** Verify rendering for the exact package and device from the current install. */
+export function verify(deviceId: string, packageName: string): Promise<{
+  deviceId: string;
+  packageName: string;
+  installed: boolean;
+  bundleActive: boolean;
+  rendering: boolean;
+  screenshotBytes: number;
+  issues: string[];
+} | null>;`,
+  pdfIntakeProbe: `/** Probe the caller's assigned PDF bytes and report its digest, selected pages, and local engine readiness. */
+
+/** Read the assigned local document's probe receipt. */
+export function probe(document: string): Promise<{
+  digest: string;
+  pageCount: number;
+  selectedPages: number[];
+  encrypted: boolean;
+  embedded: boolean;
+  localOcr: boolean;
+}>;`,
+  pdfIntakeRead: `/** Extract layout-preserving evidence from one assigned PDF batch. */
+
+/** Read the next exact page batch using an authorized local extraction mode. */
+export function read(document: string, pages: number[], mode: "embedded" | "local-fallback" | "local-ocr"): Promise<{
+  digest: string;
+  pages: {
+    number: number;
+    lines: {
+      text: string;
+      bounds: number[];
+      source: "embedded-text" | "ocr";
+      confidence: number | null;
+    }[];
+  }[];
+}>;`,
+  channelAgentRead: `/** Read the assigned worker's durable membership in the selected channel. */
+
+/** Read the selected handle and its exact roster identity. */
+export function read(request: {
+  goal: string;
+  channelId: string;
+  contextId: string;
+  handle: string;
+  action: "attach" | "detach" | "inspect";
+  options: {
+    replay: boolean;
+    response: "inherit" | "mentioned-strict";
+    modelRef: string | null;
+  } | null;
+}): Promise<{
+  state: "member" | "absent" | "conflict" | "unavailable";
+  participantId: string | null;
+}>;`,
+  channelAgentAttach: `/** Attach the assigned worker once, using the caller's exact model, response and replay choices. */
+
+/** Apply the caller's attach options and return the effect receipt. */
+export function attach(request: {
+  goal: string;
+  channelId: string;
+  contextId: string;
+  handle: string;
+  action: "attach" | "detach" | "inspect";
+  options: {
+    replay: boolean;
+    response: "inherit" | "mentioned-strict";
+    modelRef: string | null;
+  } | null;
+}, options: {
+  replay: boolean;
+  response: "inherit" | "mentioned-strict";
+  modelRef: string | null;
+}): Promise<{
+  outcome: "acknowledged" | "already" | "blocked" | "rejected" | "uncertain";
+  participantId: string | null;
+}>;`,
+  channelAgentDetach: `/** Detach the exact assigned worker from the assigned channel once. */
+
+/** Remove the assigned existing membership and retain the effect receipt. */
+export function detach(request: {
+  goal: string;
+  channelId: string;
+  contextId: string;
+  handle: string;
+  action: "attach" | "detach" | "inspect";
+  options: {
+    replay: boolean;
+    response: "inherit" | "mentioned-strict";
+    modelRef: string | null;
+  } | null;
+}): Promise<{
+  outcome: "acknowledged" | "already" | "blocked" | "rejected" | "uncertain";
+  participantId: string | null;
+}>;`,
+  localModelTaskInventory: `/** Inspect current readiness for the exact model selected by the caller. */
+
+/** Read the live catalog row for the selected model. */
+export function inspect(ref: string): Promise<{
+  ref: string;
+  state: "ready" | "startable" | "not-installed" | "starting" | "downloading" | "error";
+  fit: "full-gpu" | "partial-offload" | "cpu-only" | "too-big";
+  toolsCapable: boolean;
+  contextWindow: number;
+  progress: number | null;
+  errorMessage: string | null;
+} | null>;`,
+  localModelTaskInstall: `/** Use the caller's scoped installation operation for an explicitly authorized model. */
+
+/** Install the selected model once if current state and the caller's authorization permit it. */
+export function installOnce(ref: string): Promise<{
+  kind: "installed";
+  ref: string;
+  jobId: string;
+} | {
+  kind: "validated-existing";
+  ref: string;
+} | {
+  kind: "state-changed";
+  ref: string;
+}>;`,
+  websiteReadback: `/** Observe the caller-assigned public bundle, panel presentation, and existing publication receipts. */
+
+/** Read the original evidence for this assigned artifact and publication intent. */
+export function observe(): Promise<{
+  artifact: {
+    referenceMatches: boolean;
+    manifestMatches: boolean;
+    hasHtml: boolean;
+    unapprovedFiles: string[];
+    publicFiles: number;
+    artifactDigest: string;
+  };
+  presentation: {
+    matchesPanelAttempt: boolean;
+    missedProbes: string[];
+    observedProbes: string[];
+  };
+  publication: {
+    phase: "prepared" | "destination-ready" | "uploaded" | "submitted";
+    matchesIntent: boolean;
+    matchesArtifact: boolean;
+    matchesOperation: boolean;
+    observedReadyUrl: boolean;
+    verifiedPublicDigest: boolean;
+  } | null;
+  matchesRequest: boolean;
+}>;`,
+  googleWorkspaceRead: `/** Read the assigned Google setup state, folders, permissions, and change cursor through the caller's scoped Drive binding. */
+
+/** Read the current setup phase without exposing credentials. */
+export function readiness(): Promise<{
+  state: "needs-setup" | "needs-consent" | "needs-verification" | "needs-drive-scope" | "verification-failed" | "ready";
+}>;
+
+/** Read a page from the assigned folder. */
+export function listFolder(folderId: string, pageToken: string | null): Promise<{
+  rows: {
+    id: string;
+    name: string;
+    mimeType: string;
+    modifiedAt: string | null;
+    shortcut: boolean;
+  }[];
+  next: string | null;
+  incomplete: boolean;
+}>;
+
+/** Read a page of current permissions on the assigned file. */
+export function readPermissions(fileId: string, pageToken: string | null): Promise<{
+  rows: {
+    id: string;
+    principalKind: string;
+    principal: string | null;
+    role: string;
+    discovery: boolean;
+    deleted: boolean;
+  }[];
+  next: string | null;
+}>;
+
+/** Read changes from a cursor issued for the assigned view. */
+export function readChanges(cursor: string): Promise<{
+  rows: {
+    fileId: string;
+    removed: boolean;
+    name: string | null;
+    time: string | null;
+  }[];
+  next: string | null;
+  checkpoint: string | null;
+}>;`,
+  ownedOperations: `/** Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable. */
+
+/** Create one actual caller-owned context and durable checkpoint worker for a semantic role. Retain its returned exact handle. */
+export function open(role: "impact" | "recovery" | "release"): Promise<{
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}>;
+
+/** Fresh RPC read of an issued owned worker's durable checkpoints. */
+export function read(handle: {
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}): Promise<{
+  revision: number;
+  checkpoints: {
+    revision: number;
+    assessment: {
+      role: "impact" | "recovery" | "release";
+      evidenceIds: string[];
+      decision: "ready" | "blocked";
+      reason: string;
+    };
+  }[];
+}>;
+
+/** Append an assessment for the worker's assigned role at its exact observed revision; conflict fails without an invented update. */
+export function append(handle: {
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}, expectedRevision: number, assessment: {
+  role: "impact" | "recovery" | "release";
+  evidenceIds: string[];
+  decision: "ready" | "blocked";
+  reason: string;
+}): Promise<{
+  revision: number;
+  checkpoints: {
+    revision: number;
+    assessment: {
+      role: "impact" | "recovery" | "release";
+      evidenceIds: string[];
+      decision: "ready" | "blocked";
+      reason: string;
+    };
+  }[];
+}>;
+
+/** Restart the exact issued worker through runtime supervision and freshly reread its retained durable state. */
+export function restart(handle: {
+  id: string;
+  contextId: string;
+  targetId: string;
+  role: "impact" | "recovery" | "release";
+}): Promise<{
+  revision: number;
+  checkpoints: {
+    revision: number;
+    assessment: {
+      role: "impact" | "recovery" | "release";
+      evidenceIds: string[];
+      decision: "ready" | "blocked";
+      reason: string;
+    };
+  }[];
+}>;
+
+/** Retire only issued resources, destroy their owned contexts and independently confirm their absence. The caller also invokes this in finally. */
+export function close(): Promise<{
+  retiredIds: string[];
+  destroyedContextIds: string[];
+}>;`,
   serverLog: `/** Read-only access to the workspace server's host log ring buffer for the current boot. Records are redacted of secrets at capture. Cite serverBootId and latestSeq so the evidence can be found again. */
 
 /** Return the last N server host log records (default 500) in ascending seq order — the starting snapshot for a live tail; then subscribe to the server-log:append event and dedupe by seq. */
@@ -206,10 +1981,10 @@ export function readText(path: string, options?: {
 export function readdir(path: string, options?: {
   /** Return Dirent-shaped entries with type flags instead of bare name strings. */
   withFileTypes?: boolean;
-  /** Recurse into subdirectories, reporting root-relative paths. */
+  /** Recurse into subdirectories, reporting paths relative to the listed directory. */
   recursive?: boolean;
 }): Promise<string[] | {
-  /** Entry name; basename for flat listings, root-relative path for recursive ones. */
+  /** Entry name; basename for flat listings, path relative to the listed directory for recursive ones. */
   name: string;
   /** True if the entry is a regular file. */
   _isFile: boolean;
@@ -392,5 +2167,571 @@ export function inspect(runnerTargetId: string, runId: string, testName?: string
   diagnostics?: unknown;
 } | {
   [key: string]: unknown;
+}>;`,
+  panelRepair: `/** Observe and interact with the assigned panel. Read its exact workspace revision and source files. */
+
+/** Read source revision and exact rendered panel generation with real console evidence. */
+export function observe(): Promise<{
+  revision: string;
+  generation: string;
+  phase: string;
+  controls: {
+    role: string;
+    name: string;
+  }[];
+  visibleText: string;
+  console: string[];
+  buildDiagnostics: string[];
+}>;
+
+/** Perform accessible role/name actions on the assigned generation and return observed browser evidence. */
+export function interact(generation: string, interaction: {
+  steps: ({
+    kind: "click";
+    role: string;
+    name: string;
+  } | {
+    kind: "fill";
+    role: string;
+    name: string;
+    text: string;
+  } | {
+    kind: "inspect";
+    role: string;
+    name: string;
+  })[];
+}): Promise<{
+  observations: {
+    step: {
+      kind: "click";
+      role: string;
+      name: string;
+    } | {
+      kind: "fill";
+      role: string;
+      name: string;
+      text: string;
+    } | {
+      kind: "inspect";
+      role: string;
+      name: string;
+    };
+    control: string | null;
+    after: {
+      revision: string;
+      generation: string;
+      phase: string;
+      controls: {
+        role: string;
+        name: string;
+      }[];
+      visibleText: string;
+      console: string[];
+      buildDiagnostics: string[];
+    };
+  }[];
+}>;
+
+/** List all files in the assigned panel repository at the supplied current revision. */
+export function listSource(revision: string): Promise<string[]>;
+
+/** Read existing text files in the assigned panel repository at the supplied revision. */
+export function readSource(revision: string, paths: string[]): Promise<{
+  path: string;
+  text: string;
+}[]>;`,
+  panelRepairEdit: `/** Apply and activate the assigned panel repair at the observed revision. */
+
+/** Atomically apply exact before/after file edits using the expected working head. No publication. */
+export function apply(revision: string, edits: {
+  path: string;
+  before: string;
+  after: string;
+}[]): Promise<{
+  revision: string;
+}>;
+
+/** Compile the assigned panel at this exact revision without publishing. */
+export function build(revision: string): Promise<{
+  revision: string;
+  passed: boolean;
+  diagnostics: string[];
+}>;
+
+/** Compile the assigned panel at this exact revision without publishing. */
+export function rebuild(revision: string): Promise<{
+  revision: string;
+  generation: string;
+  phase: string;
+  controls: {
+    role: string;
+    name: string;
+  }[];
+  visibleText: string;
+  console: string[];
+  buildDiagnostics: string[];
+}>;`,
+  workspaceIntegration: `/** Integrate one caller-assigned workspace source in its exact context, using real VCS evidence and explicit coordinate decisions. No publication. */
+
+/** Read actual current/source comparison, assigned files and intent evidence for the fixed source/context. */
+export function observe(): Promise<{
+  head: string;
+  source: string;
+  currentIntent: string[];
+  sourceIntent: string[];
+  coordinates: ({
+    kind: "file";
+    /** Stable file identity. */
+    id: string;
+  } | {
+    kind: "repository";
+    /** Stable repository identity. */
+    id: string;
+  })[];
+  remaining: ({
+    kind: "file";
+    /** Stable file identity. */
+    id: string;
+  } | {
+    kind: "repository";
+    /** Stable repository identity. */
+    id: string;
+  })[];
+  files: {
+    path: string;
+    text: string;
+  }[];
+  evidence: string[];
+}>;
+
+/** Apply exact assigned-file edits in one expected-head VCS command. It does not publish or perform a merge. */
+export function apply(head: string, edits: {
+  path: string;
+  before: string;
+  after: string;
+}[]): Promise<{
+  head: string;
+}>;
+
+/** Resolve explicit offered coordinates of the fixed source at the observed current head; preserve actual partial effects on error. */
+export function merge(head: string, decisions: {
+  coordinate: {
+    kind: "file";
+    /** Stable file identity. */
+    id: string;
+  } | {
+    kind: "repository";
+    /** Stable repository identity. */
+    id: string;
+  };
+  resolution: "composed" | "theirs" | "ours" | "current";
+  rationale: string;
+}[]): Promise<{
+  head: string;
+}>;`,
+  projectWorkspace: `/** Read the assigned content project's exact local state and source files. */
+
+/** Read actual assigned repository files and working/committed state in the fixed execution context. */
+export function observe(): Promise<{
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {
+    path: string;
+    text: string;
+  }[];
+}>;`,
+  projectWorkspaceEdit: `/** Prepare, author and locally commit the assigned content project without publication. */
+
+/** Prepare the assigned initially absent content project through the ordinary project helper at the exact observed head. */
+export function prepare(head: string): Promise<{
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {
+    path: string;
+    text: string;
+  }[];
+}>;
+
+/** Atomically write canonical assigned Markdown paths plus the immutable original source ledger at the exact observed head. */
+export function writeDocuments(head: string, documents: {
+  path: string;
+  text: string;
+}[]): Promise<{
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {
+    path: string;
+    text: string;
+  }[];
+}>;
+
+/** Locally commit this exact observed candidate. This operation never pushes or activates code. */
+export function commit(head: string, message: string): Promise<{
+  eventId: string;
+  head: string;
+}>;`,
+  unitRepair: `/** Read the assigned worker's source and real compiler diagnostics at one working revision. */
+
+/** Read a real compiler report at the assigned worker's current revision. */
+export function observe(): Promise<{
+  revision: string;
+  build: {
+    stateHash: string;
+    repoPath: string;
+    status: "ok" | "failed" | "skipped";
+    builds: {
+      target: "runtime" | "library:panel" | "library:worker";
+      exportPath?: string;
+      buildKey?: string;
+      diagnosticIndexes: number[];
+    }[];
+    diagnostics: {
+      severity: "error" | "warning";
+      source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+      file: string;
+      line: number;
+      column: number;
+      message: string;
+      compilerCode?: number;
+    }[];
+  };
+  tests: {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+    report: {
+      status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+      runtime: "workerd";
+      artifactKey: string;
+      executionDigest: string;
+      contextId: string;
+      target: string;
+      passed: number;
+      failed: number;
+      total: number;
+      details: {
+        file: string;
+        status: "pass" | "fail" | "skip";
+        duration?: number;
+        errors?: string[];
+      }[];
+    };
+    truncatedFiles: number;
+    truncatedErrors: number;
+  } | {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "compilation-failed";
+    report: {
+      code: "TestCompilationFailed";
+      diagnostics: {
+        severity: "error" | "warning";
+        source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        compilerCode?: number;
+      }[];
+    };
+    truncatedDiagnostics: number;
+    truncatedDiagnosticText: number;
+  } | null;
+}>;
+
+/** List files in the assigned worker repository at the supplied revision. */
+export function listSource(revision: string): Promise<string[]>;
+
+/** Read exact text from the assigned worker repository at the supplied revision. */
+export function readSource(revision: string, paths: string[]): Promise<{
+  path: string;
+  text: string;
+}[]>;`,
+  unitRepairEdit: `/** Apply source edits and check the assigned worker using its original declared workerd suite. */
+
+/** Apply the exact production source edits atomically at the expected revision. */
+export function apply(revision: string, edits: {
+  path: string;
+  before: string;
+  after: string;
+}[]): Promise<{
+  revision: string;
+}>;
+
+/** Compile the assigned worker at the supplied revision and read its diagnostics. */
+export function build(revision: string): Promise<{
+  revision: string;
+  build: {
+    stateHash: string;
+    repoPath: string;
+    status: "ok" | "failed" | "skipped";
+    builds: {
+      target: "runtime" | "library:panel" | "library:worker";
+      exportPath?: string;
+      buildKey?: string;
+      diagnosticIndexes: number[];
+    }[];
+    diagnostics: {
+      severity: "error" | "warning";
+      source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+      file: string;
+      line: number;
+      column: number;
+      message: string;
+      compilerCode?: number;
+    }[];
+  };
+  tests: {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+    report: {
+      status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+      runtime: "workerd";
+      artifactKey: string;
+      executionDigest: string;
+      contextId: string;
+      target: string;
+      passed: number;
+      failed: number;
+      total: number;
+      details: {
+        file: string;
+        status: "pass" | "fail" | "skip";
+        duration?: number;
+        errors?: string[];
+      }[];
+    };
+    truncatedFiles: number;
+    truncatedErrors: number;
+  } | {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "compilation-failed";
+    report: {
+      code: "TestCompilationFailed";
+      diagnostics: {
+        severity: "error" | "warning";
+        source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        compilerCode?: number;
+      }[];
+    };
+    truncatedDiagnostics: number;
+    truncatedDiagnosticText: number;
+  } | null;
+}>;
+
+/** Run the original manifest-selected workerd suite at the compiled revision and read the actual receipt. */
+export function test(revision: string): Promise<{
+  revision: string;
+  build: {
+    stateHash: string;
+    repoPath: string;
+    status: "ok" | "failed" | "skipped";
+    builds: {
+      target: "runtime" | "library:panel" | "library:worker";
+      exportPath?: string;
+      buildKey?: string;
+      diagnosticIndexes: number[];
+    }[];
+    diagnostics: {
+      severity: "error" | "warning";
+      source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+      file: string;
+      line: number;
+      column: number;
+      message: string;
+      compilerCode?: number;
+    }[];
+  };
+  tests: {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+    report: {
+      status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
+      runtime: "workerd";
+      artifactKey: string;
+      executionDigest: string;
+      contextId: string;
+      target: string;
+      passed: number;
+      failed: number;
+      total: number;
+      details: {
+        file: string;
+        status: "pass" | "fail" | "skip";
+        duration?: number;
+        errors?: string[];
+      }[];
+    };
+    truncatedFiles: number;
+    truncatedErrors: number;
+  } | {
+    operation: "test";
+    target: string;
+    receipt: {
+      protocol: "unit-verification-receipt.v1";
+      operation: "build" | "test";
+      target: string;
+      contextId: string;
+      ref: string;
+      stateHash: string;
+      reportDigest: string;
+      suite?: string;
+      runtime?: "browser" | "workerd" | "native";
+      artifactKey?: string | null;
+      executionDigest?: string | null;
+    };
+    status: "compilation-failed";
+    report: {
+      code: "TestCompilationFailed";
+      diagnostics: {
+        severity: "error" | "warning";
+        source: "esbuild" | "tsc" | "authority" | "schema" | "infrastructure";
+        file: string;
+        line: number;
+        column: number;
+        message: string;
+        compilerCode?: number;
+      }[];
+    };
+    truncatedDiagnostics: number;
+    truncatedDiagnosticText: number;
+  } | null;
+}>;`,
+  localMessagingRead: `/** Inspect the owned synthetic conversation and actual local delivery evidence. */
+
+/** Read the actual owned synthetic roster and exact canonical recipient resolution. */
+export function inspect(recipientPhrase: string): Promise<{
+  fixtureId: string;
+  channelId: string;
+  revision: string;
+  rows: {
+    ref: string;
+    kind: string;
+    note: string;
+  }[];
+  resolution: {
+    kind: "ref";
+    ref: string;
+    note: string;
+  } | {
+    kind: "ambiguous";
+    reason: "none" | "several";
+    candidates: {
+      ref: string;
+      kind: string;
+      note: string;
+    }[];
+  };
+}>;
+
+/** Read original committed local message evidence without sending. */
+export function inspectDelivery(receipt: {
+  messageId: string;
+  channelId: string;
+  to: string;
+  alert: "none";
+} | null): Promise<{
+  channelId: string;
+  messageId: string | null;
+  committed: boolean;
+  recipientRefs: string[];
+  content: string | null;
+  evidence: string[];
+}>;`,
+  localMessagingSend: `/** Deliver the exact requested note to one owned local synthetic agent through original notify. */
+
+/** Send the exact requested note through original notify to one owned local synthetic agent, with stable operation identity. */
+export function send(revision: string, recipientPhrase: string, ref: string, content: string): Promise<{
+  messageId: string;
+  channelId: string;
+  to: string;
+  alert: "none";
 }>;`,
 };

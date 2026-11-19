@@ -62,9 +62,16 @@ export function readTimeline(pages: EnvelopePage[]): Flat {
       item.payloadKind === AGENTIC_EVENT &&
       (event?.kind === "message.completed" || event?.kind === "message.failed")
     ) {
+      // The native transport can be external even when it submitted a user message.
+      const role = event.payload?.role;
       entries.push({
         seq: item.seq,
-        who: item.from.kind ?? "unknown",
+        who:
+          role === "assistant"
+            ? "agent"
+            : typeof role === "string"
+              ? role
+              : (item.from.kind ?? "unknown"),
         event: event.kind,
         text: textOf(event),
       });
@@ -82,8 +89,9 @@ export function readTimeline(pages: EnvelopePage[]): Flat {
 export function summarizeChannel(pages: EnvelopePage[]): ChannelSummary {
   const flat = readTimeline(pages);
   const seqs = flat.items.map((item) => item.seq);
-  const last = flat.timeline[flat.timeline.length - 1];
-  const firstUser = flat.timeline.find((entry) => entry.who === "user");
+  const conversation = flat.timeline.filter((entry) => entry.who === "user" || entry.who === "agent");
+  const last = conversation[conversation.length - 1];
+  const firstUser = conversation.find((entry) => entry.who === "user");
   const standing: Standing = !last
     ? "empty"
     : last.event === "message.failed"
@@ -96,7 +104,7 @@ export function summarizeChannel(pages: EnvelopePage[]): ChannelSummary {
     senders: flat.senders,
     kinds: flat.kinds,
     ...(firstUser ? { opening: firstUser.seq, openingText: firstUser.text } : {}),
-    ...(last ? { latest: last.seq, latestText: last.text } : {}),
+    ...(last ? { latest: last.seq, latestSpeaker: last.who, latestText: last.text } : {}),
     standing,
   };
 }

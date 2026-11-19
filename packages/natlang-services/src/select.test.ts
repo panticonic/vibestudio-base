@@ -25,7 +25,11 @@ function evalBindings() {
   const rpc = { call: vi.fn(async (..._args: unknown[]): Promise<unknown> => ({ runId: "run-1" })) };
   const extensions = { invoke: vi.fn(async (..._args: unknown[]): Promise<unknown> => []) };
   return {
+    ...Object.fromEntries(SERVICE_NAMES.map(name => [name, withExtras(name)])),
     services: rawServices,
+    panelRepair: withExtras("panelRepair"),
+    panelRepairEdit: withExtras("panelRepairEdit"),
+    workspaceIntegration: withExtras("workspaceIntegration"),
     web: withExtras("web"),
     memory: withExtras("memory"),
     rpc,
@@ -36,20 +40,32 @@ function evalBindings() {
 describe("selectServices", () => {
   it("refuses unknown service names instead of ignoring them", () => {
     expect(() => selectServices(evalBindings(), ["serverLog", "serverLogs", "shell"])).toThrow(
-      /unknown natlang services "serverLogs", "shell"; available: serverLog, docs/
+      `unknown natlang services "serverLogs", "shell"; available: ${SERVICE_NAMES.join(", ")}`
     );
     expect(() => selectServices(evalBindings(), ["toString"])).toThrow(/unknown natlang service "toString"/);
   });
 
   it("gives each service exactly the methods it declares, never the rest of the binding", () => {
-    const selected = selectServices(evalBindings(), [...SERVICE_NAMES]);
-    for (const entry of SERVICE_CATALOG) {
+    const ambient = SERVICE_CATALOG.filter(({ contract }) => contract.origin !== "authored");
+    const selected = selectServices(evalBindings(), ambient.map(({ name }) => name));
+    for (const entry of ambient) {
       expect(Object.keys(selected[entry.name]!).sort(), entry.name).toEqual(declared(entry.name).sort());
     }
     // The authority a program is NOT given is absent, not merely undocumented.
     expect(selected["docs"]).not.toHaveProperty("listServices");
     expect(selected["fs"]).not.toHaveProperty("writeFile");
     expect(Object.isFrozen(selected["fs"])).toBe(true);
+  });
+
+  it("exposes authored services only from explicit bindings and preserves the method allowlist", () => {
+    const bindings = evalBindings();
+    for (const { name, contract, methods } of SERVICE_CATALOG) {
+      if (contract.origin !== "authored") continue;
+      expect(() => selectServices(bindings, [name]), name).toThrow(/requires an explicit caller binding/u);
+      const methodsWithExtra = [...methods.map((method) => method.name), "dangerousExtra"];
+      const selected = selectServices({}, [name], { [name]: spyBinding(methodsWithExtra) });
+      expect(Object.keys(selected[name]!), name).toEqual(methods.map((method) => method.name));
+    }
   });
 
   it("forwards calls through the caller's own bindings and returns their results", async () => {

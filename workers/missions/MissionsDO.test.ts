@@ -784,6 +784,34 @@ describe("MissionsDO", () => {
     ).toHaveLength(1);
   });
 
+  it("keeps a cadence edit paused until explicitly resumed", async () => {
+    const { callAs } = await createMissions();
+    const launch = await callAs(alice, "launch", {
+      name: "Morning briefing",
+      charter: continuingAgentCharter(),
+      authorityPlan: policy(),
+    });
+    await callAs(alice, "pause", launch.missionId);
+    const trigger = { kind: "schedule", everyMs: 7_200_000 } as const;
+    const edit = await callAs(alice, "edit", launch.missionId, {
+      charter: { ...launch.charter, trigger },
+    });
+    expect(edit).toMatchObject({
+      missionId: launch.missionId,
+      revision: launch.revision + 1,
+      state: "paused",
+      charter: { trigger },
+    });
+    expect(edit.nextRunAt).toBeUndefined();
+    const resume = await callAs(alice, "resume", launch.missionId);
+    expect(resume).toMatchObject({
+      state: "active",
+      revisionDigest: edit.revisionDigest,
+      charter: { trigger },
+    });
+    expect(resume.nextRunAt).toBeGreaterThan(Date.now());
+  });
+
   it("deduplicates launch transport retries without duplicate definitions", async () => {
     const { callAs, sql } = await createMissions(IdempotentLaunchMissionsDO);
     const input = {
@@ -839,6 +867,73 @@ describe("MissionsDO", () => {
     );
     expect(await callAs(alice, "get", launched.missionId)).toMatchObject({
       state: "active",
+    });
+  });
+
+  it("rejects stale guarded lifecycle controls before mutating the active definition", async () => {
+    const harness = await createMissions();
+    const launched = await harness.callAs(alice, "launch", {
+      name: "Daily summary",
+      authorityPlan: policy(),
+      charter: agentCharter(),
+    });
+    harness.setPolicyDigest(HASH_B);
+    const edited = await harness.callAs(alice, "edit", launched.missionId, {
+      charter: agentCharter("Prepare the revised summary"),
+      authorityPlan: policy(HASH_B),
+    });
+    expect(edited.revisionDigest).not.toBe(launched.revisionDigest);
+    await expect(
+      harness.callAs(
+        bob,
+        "transitionAtRevision",
+        launched.missionId,
+        "pause",
+        edited.revisionDigest,
+      ),
+    ).rejects.toThrow(/Unknown automation/);
+    await expect(
+      harness.callAs(
+        alice,
+        "transitionAtRevision",
+        launched.missionId,
+        "pause",
+        launched.revisionDigest,
+      ),
+    ).rejects.toMatchObject({ code: "MISSION_REVISION_CHANGED" });
+    expect(await harness.callAs(alice, "get", launched.missionId)).toEqual(
+      edited,
+    );
+    const paused = await harness.callAs(
+      alice,
+      "transitionAtRevision",
+      launched.missionId,
+      "pause",
+      edited.revisionDigest,
+    );
+    await expect(
+      harness.callAs(
+        alice,
+        "transitionAtRevision",
+        launched.missionId,
+        "resume",
+        launched.revisionDigest,
+      ),
+    ).rejects.toMatchObject({ code: "MISSION_REVISION_CHANGED" });
+    expect(await harness.callAs(alice, "get", launched.missionId)).toEqual(
+      paused,
+    );
+    await expect(
+      harness.callAs(
+        alice,
+        "transitionAtRevision",
+        launched.missionId,
+        "resume",
+        edited.revisionDigest,
+      ),
+    ).resolves.toMatchObject({
+      state: "active",
+      revisionDigest: edited.revisionDigest,
     });
   });
 

@@ -10,6 +10,15 @@ export type ModelTurnRequest = {
     response_tools?: unknown[];
     seed: number | null;
     max_tokens: number | null;
+    /**
+     * The assistant reply so far, cut off at the previous request's `max_tokens` before it called a tool: the server
+     * continues this message (its reasoning, then its text) instead of starting a new one, and the turn it returns is the
+     * whole message. Only drivers marked `continuesReplies` receive it.
+     */
+    continue?: {
+        text: string;
+        reasoning?: string;
+    };
     /** "required": the reply must be a tool call (a turn that offers exactly the tool it must use). Default "auto". */
     tool_choice?: 'auto' | 'required';
     /** Weight adapters bound in the calling function's context (Neuralese servers only; others refuse the call). */
@@ -43,7 +52,7 @@ export type ModelTurnRequest = {
     privileged_context?: Record<string, unknown>;
     /** This turn belongs to the in-run guidance policy (native servers only; `x_natlang_guidance_policy`). */
     guidance_policy?: {
-        function: 'selectGuidanceFacts' | 'writeGuidance';
+        function: 'selectGuidanceFacts' | 'writeGuidance' | 'writeHint';
         sha256: string;
     };
     /** Host-side exact teacher target for native forced replay; sent only as transport metadata, never in messages. */
@@ -138,6 +147,9 @@ export type ModelTurn = {
     execution_plan?: string | null;
     /** The reply stopped at max_tokens. */
     truncated?: boolean;
+    /** The reply held tool-call markup that is no complete call: `text` is the reply as sampled, `calls` is empty and
+     * this is the one sentence that tells the model what was wrong. Nothing ran. */
+    malformed_call?: string;
     /** How the model scheduler batched this turn's request (batch id and size, requests in flight, queue wait). */
     scheduling?: {
         batch_id: string;
@@ -221,6 +233,10 @@ export type DecisionRequest = {
      * identity, JOLT+ privileged context), never model input. */
     invocation_id?: string;
     invocation_role?: 'root' | 'child';
+    /** Cache hint, never model input: the first `cache_messages` messages recur in other calls of the same function (its
+     * opening before the argument values), so a server may checkpoint its memory where they end and continue later
+     * prompts that share them from there (the llama.cpp fork's score endpoint does). */
+    cache_messages?: number;
     /** Set by the transport for a JOLT+ teacher attempt: the server renders this invocation's privileged block. */
     x_natlang_privileged_context?: Record<string, unknown>;
 };

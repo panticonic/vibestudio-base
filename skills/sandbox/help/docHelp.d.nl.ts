@@ -51,8 +51,8 @@ type Recovery = {
   /** Documentation that answers the error, quoted exactly. */
   docs: Found[];
 };
-type Candidate = { source: string; section: string; text: string; score: number };
+type Passage = { source: string; section: string; text: string };
 type Section = { heading: string; text: string };
 type Typed = { cause: Cause; remediation?: string };
-declare const fn: NatlangFunction<[question: string], Located> & { readonly cause: NatlangFunction<[call: string, message: string], Cause>; readonly fits: NatlangFunction<[question: string, section: string], Fit>; readonly keywords: ((question: string) => string[]) & {  }; readonly locateDoc: ((question: string, scope?: DocScope) => Promise<Located>) & {  }; readonly nextStep: ((cause: Cause) => string) & {  }; readonly recoverFromFailure: ((failure: FailedCall) => Promise<Recovery>) & {  }; readonly sections: ((document: string, limit?: number) => Section[]) & {  }; readonly typedCause: ((failure: FailedCall) => Typed | null) & {  } };
+declare const fn: NatlangFunction<[question: string], Located> & { readonly cause: NatlangFunction<[call: string, message: string], Cause>; readonly fits: NatlangFunction<[question: string, section: string], Fit>; readonly keywords: NatlangFunction<[question: string], string[]>; readonly locateDoc: ((question: string, scope?: DocScope) => Promise<Located>) & {  }; readonly nextStep: ((cause: Cause) => string) & {  }; readonly rank: ((terms: readonly string[], passages: readonly Passage[]) => Passage[]) & {  }; readonly recoverFromFailure: ((failure: FailedCall) => Promise<Recovery>) & {  }; readonly searchTerms: ((terms: readonly string[]) => string[]) & { readonly escapeTerm: (term: string) => string }; readonly sections: ((document: string, limit?: number) => Section[]) & {  }; readonly typedCause: ((failure: FailedCall) => Typed | null) & {  } };
 export default fn;

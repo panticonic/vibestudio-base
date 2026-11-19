@@ -13,6 +13,7 @@ export interface PdfIngestOptions {
   extractText?: boolean;
   ocrFallback?: boolean;
   preserveLayout?: boolean;
+  includeTextFragments?: boolean;
   pageImages?: boolean | PdfPageImageMode;
   pages?: string | number[] | { from?: number; to?: number };
   maxPages?: number;
@@ -32,11 +33,17 @@ export interface PdfProbeOptions {
   pages?: string | number[] | { from?: number; to?: number };
 }
 
+export interface PdfTextFragment {
+  text: string;
+  bbox: [number, number, number, number];
+}
+
 export interface PdfLine {
   text: string;
   bbox: [number, number, number, number];
   confidence: number | null;
   source: PdfExtractionSource;
+  fragments?: PdfTextFragment[];
 }
 
 export interface PdfPageResult {

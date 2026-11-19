@@ -1,5 +1,5 @@
 /** Exact checks on what the model produced: a quote must be in its page, a statement must cite claims that exist and say it. */
-import type { Evidence, Statement } from "../types.js";
+import type { WebEvidence, WebStatement } from "../types.js";
 
 const collapse = (text: string) => text.replace(/\s+/g, " ").trim();
 
@@ -15,11 +15,11 @@ export function windows(text: string): string[] {
   return out;
 }
 
-/** Evidence whose quote is a substantial stretch of the page text (whitespace aside), kept once. */
+/** WebEvidence whose quote is a substantial stretch of the page text (whitespace aside), kept once. */
 export function checkedEvidence(
-  evidence: readonly Evidence[],
+  evidence: readonly WebEvidence[],
   pageText: string,
-): Evidence[] {
+): WebEvidence[] {
   const page = collapse(pageText);
   const seen = new Set<string>();
   return evidence.filter((item) => {
@@ -46,9 +46,9 @@ const words = (text: string) =>
 
 /** Statements that cite only claims that exist and share a content word with at least one of them. */
 export function checkedStatements(
-  statements: readonly Statement[],
+  statements: readonly WebStatement[],
   claims: ReadonlyMap<number, string>,
-): Statement[] {
+): WebStatement[] {
   return statements.filter((statement) => {
     if (
       statement.text.trim() === "" ||

@@ -112,3 +112,8 @@ turn them into chrome:
 Test the program's logic and rendering as ordinary Node code (for example a
 VT emulator such as `@xterm/headless` for escape sequences) and run it with
 `verify` like any unit.
+
+The release checklist sample demonstrates durable app state in a workspace
+PTY. Its shared Natlang workflow, `domains.terminalChecklist.verifyChecklist`,
+exercises caller-assigned keys and verifies session and PTY identity before
+and after reattachment or restart.

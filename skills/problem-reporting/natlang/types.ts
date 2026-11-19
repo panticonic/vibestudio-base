@@ -27,3 +27,87 @@ export type Evidence = {
  * - transient: a one-off network, rate-limit or timeout failure that cleared on retry.
  */
 export type DefectClass = "platform" | "user-code" | "refusal" | "transient";
+
+export type ProblemEvidenceState =
+  | "observed"
+  | "denied"
+  | "expired"
+  | "unavailable";
+export type ProblemEvidenceReceipt = {
+  id: string;
+  kind: "invocation" | "build" | "panel" | "message";
+  state: ProblemEvidenceState;
+  selected: boolean;
+};
+export type EvidenceAttribution = "observed" | "unverified";
+export type ReportRevision = {
+  id: string;
+  revision: number;
+  basisRevision: number;
+  userEdits: boolean;
+};
+export type FrozenReport = {
+  revision: number;
+  digest: string;
+  sanitized: boolean;
+  approval: "none" | "pending" | "approved" | "denied" | "dismissed";
+};
+export type ProblemRequest = {
+  goal: string;
+  consent: "decline" | "unspecified" | "save" | "share";
+  account: Evidence;
+  evidence: ProblemEvidenceReceipt[];
+  draft: ReportRevision | null;
+  frozen: FrozenReport | null;
+};
+export type ProblemEvidenceReview = {
+  selected: string[];
+  incomplete: string[];
+  attribution: EvidenceAttribution;
+};
+export type ProblemNext =
+  | "continue-user-task"
+  | "prepare-local-draft"
+  | "continue-local-draft"
+  | "refresh-own-edit"
+  | "freeze-selected-report"
+  | "keep-local"
+  | "wait-for-approval"
+  | "ready-to-submit"
+  | "submission-stopped";
+export type ProblemReviewReport = {
+  defect: DefectClass;
+  next: ProblemNext;
+  basis: string | null;
+  evidence: ProblemEvidenceReview;
+};
+
+export type SaveProblemRequest = { goal: string; operationId: string };
+export type LocalDraft = {
+  id: string;
+  revision: number;
+  existingSections: string[];
+};
+export type LocalProblemObservation = {
+  review: ProblemRequest;
+  draft: LocalDraft | null;
+};
+export type LocalDraftSection = {
+  section: "symptom" | "verification" | "questions";
+  claims: "observed" | "unverified";
+  markdown: string;
+};
+export type LocalDraftWrite = {
+  id: string;
+  revision: number;
+  sectionIds: string[];
+};
+export type LocalDraftConfirmation = LocalDraftWrite & {
+  sections: LocalDraftSection[];
+};
+export type SaveProblemResult = {
+  defect: DefectClass;
+  status: "saved-local" | "held";
+  next: ProblemNext;
+  saved: LocalDraftConfirmation | null;
+};

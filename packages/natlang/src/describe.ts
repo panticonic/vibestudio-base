@@ -116,7 +116,8 @@ function describeFunction(definition: Definition, source: string): FunctionDescr
 export function describeProgram(
   value: unknown,
   root: string,
-  services: readonly string[]
+  services: readonly string[],
+  serviceScopes: Readonly<Record<string, readonly string[]>>
 ): ProgramDescription {
   const functions = new Map<string, FunctionDescription>();
   const seen = new Set<unknown>();
@@ -134,6 +135,7 @@ export function describeProgram(
   return {
     root,
     services: [...services],
+    serviceScopes: Object.fromEntries(Object.entries(serviceScopes).map(([name, paths]) => [name, [...paths]])),
     functions: [...functions.values()].sort((left, right) => (left.source < right.source ? -1 : 1)),
   };
 }

@@ -55,6 +55,12 @@ it. Create them with the declared handle mechanism and bind consumers to the
 matching capability and argument. Never accept or invent a raw selector
 instead.
 
+For an ordered set of operations, use `capabilities/reviewAuthority` through the
+shared Natlang workflow. Bind the exact operations and caller ceiling with
+`@workspace-skills/capabilities/workflow`. It reports the host preflights,
+holds any operation outside the ceiling, and preserves the exact protected
+resource keys for review.
+
 ## Author a dynamic workspace service
 
 Workspace services resolve from the caller's semantic context, not a startup

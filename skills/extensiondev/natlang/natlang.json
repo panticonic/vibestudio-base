@@ -1,0 +1,13 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-extension-release-review",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewExtensionRelease.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "extensionReleaseRead": [
+      "reviewExtensionRelease/reviewSource/readSource.nl",
+      "reviewExtensionRelease/reviewRuntime/readRuntime.nl"
+    ]
+  }
+}

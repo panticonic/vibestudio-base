@@ -5,8 +5,15 @@ import { type PythonHost } from './folder-python.js';
 import { type AskHost, type CallHost } from './natlang-command.js';
 export declare class FolderFs implements IFileSystem {
     readonly folder: Folder;
+    private readonly writeBudget?;
     private readonly emptyDirs;
-    constructor(folder: Folder);
+    /** Net bytes this shell's writes added to the folder, against `writeBudget` (the memory bound of one bash command). */
+    private grown;
+    /** `writeBudget`: bytes one bash command may add to the folder (it lives in this process's memory); absent: unbounded. */
+    constructor(folder: Folder, writeBudget?: {
+        bytes: number;
+        message: string;
+    } | undefined);
     resolvePath(base: string, path: string): string;
     private relative;
     private kind;
@@ -44,11 +51,13 @@ export declare class FolderFs implements IFileSystem {
 }
 /** Refuse open-ended shell loops and function recursion before any command runs. */
 export declare function checkBashPolicy(command: string): void;
+/** `changedPaths`: files the command created or rewrote; `removedPaths`: files it removed (a move's old path), when there are some. */
 export type FolderBashResult = {
     exitCode: number;
     stdout: string;
     stderr: string;
     changedPaths: string[];
+    removedPaths?: string[];
 };
 export type FolderBashOptions = {
     network?: boolean;

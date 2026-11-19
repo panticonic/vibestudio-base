@@ -1,6 +1,6 @@
 # researchBrief: decomposition
 
-`researchBrief(question, sources): CitedBrief` answers a question from web pages. Every statement carries the URL, the
+`researchBrief(question, sources, retrievedAt): CitedBrief` answers a question from web pages. Every statement carries the URL, the
 day the page was read, the page's own stated date when it has one, and the exact sentence that shows it. A statement
 without a valid citation does not exist in the result. The program reads the web (the `web` service: search, fetch,
 read; public sessions only, so nothing needs the browser-cookie approval); it sends nothing anywhere.
@@ -28,8 +28,23 @@ test split, and every citation exact (`cited`) in every case.
 
 ## Status: not ported
 
+Collection invokes the `.nl` root through `brief` in `natlang.ts`, rather than bypassing it through its crisp child.
+The host-facing wrapper chooses `retrievedAt` once (Unix milliseconds); cases supply an explicit saved timestamp.
+The helper derives every citation's read date from that value, so replay on another day preserves the same result.
+Earlier measurements below exercised the crisp child and are not measurements of the complete root path.
+
 SKILL.md does not call this function: the gate is not met. Measured on the executor (LFM3 1.7B Q8_0, `pnpm natlang:eval`, validation split, suite settings 6 turns of 512 tokens):
 quality 0.25 (mean over 4 cases): `search-fails` 1.0 (the crisp path: no source, status `insufficient`), `503-retry`, `etag-conditional` and `one-source-404` 0 with
 `findEvidence` quiesced. 18 model calls, mean 48 minutes a case on the shared local model.
 
 The failure is the same in every case: with the full interpreter surface the model never reaches its answer. Each turn spends the whole token limit reasoning about how to read its arguments (the opening says their values are not shown and offers `eval` to read them) and ends without an action, so the call is `quiesced` after its last turn. `leafCalls: "direct"` (natlang `native/agent.ts` `leafOpening`: a short prompt that shows the arguments whole and offers only `return_result`) is the setting built for such data-only calls, but the Vibestudio runtime (`packages/natlang/src/evalNatlang.ts`) does not set it, so it was not measured and the functions are not called from SKILL.md. No instruction was sharpened: the misses are not about wording, and the test split was never run. Until the gate is met the agent performs this procedure itself.
+
+
+## Assigned public research in the shared workflow
+
+`writeAssignedBrief` calls the same research program with the requested sources
+and a fixed read timestamp. The live task binds the existing web service to
+those public URLs and allows a bounded continuation only at the exact
+host-returned page coordinate. Live fetch receipts and cached readbacks support
+the case oracle. The older executor measurements still describe the standalone
+recorded suite.

@@ -11,16 +11,17 @@ import {
   statedDate,
   windows,
 } from "./verify.js";
-import type { Citation, CitedBrief, Claim, Evidence } from "../types.js";
+import type { WebCitation, CitedBrief, WebClaim, WebEvidence } from "../types.js";
 
 export default async function researchBrief(
   question: string,
   sources: string[],
+  retrievedAt: number,
 ): Promise<CitedBrief> {
-  const retrieved = new Date().toISOString().slice(0, 10);
+  const retrieved = new Date(retrievedAt).toISOString().slice(0, 10);
   const { pages, notRead } = await gather(question, sources);
   let rejected = 0;
-  const evidence: { claim: string; citation: Citation }[] = [];
+  const evidence: { claim: string; citation: WebCitation }[] = [];
   for (const page of pages) {
     const published = statedDate(page.text);
     const found = await Promise.all(
@@ -29,7 +30,7 @@ export default async function researchBrief(
       ),
     );
     const proposed = found.filter(
-      (item: Evidence | null): item is Evidence => item !== null,
+      (item: WebEvidence | null): item is WebEvidence => item !== null,
     );
     const checked = checkedEvidence(proposed, page.text);
     rejected += proposed.length - checked.length;
@@ -53,7 +54,7 @@ export default async function researchBrief(
       notRead,
       rejected,
     };
-  const claims: Claim[] = evidence.map((item, index) => ({
+  const claims: WebClaim[] = evidence.map((item, index) => ({
     id: index + 1,
     claim: item.claim,
   }));

@@ -9,8 +9,16 @@ type TemplateRemedy = | "connect-credential"
   | "fix-authoring-dependency"
   | "check-publication-outcome"
   | "unrecognized";
-type TemplateRole = "base" | "personal" | "system" | "development" | "catalog";
-type TemplateDependency = { url: string; track?: string; commit?: string };
+type TemplateRole = | "base"
+  | "personal"
+  | "system"
+  | "development"
+  | "catalog";
+type TemplateDependency = {
+  url: string;
+  track?: string;
+  commit?: string;
+};
 type TemplateInspection = {
   /** The exact immutable source that was inspected. */
   pin: { url: string; ref: string; commit: string };
@@ -32,5 +40,134 @@ type TemplateSummary = {
   /** How many repositories it holds under each top-level folder: { panels: 3, workers: 2 }. */
   parts: Record<string, number>;
 };
+type TemplateHostReceipt = {
+  epoch: number;
+  targetEpoch: number;
+  minimumAppVersion: string | null;
+  minimumMet: boolean;
+  matchingTargetAvailable: boolean;
+  supportedSourceSchema: boolean;
+};
+type Compatibility = | "same-epoch"
+  | "matching-host-required"
+  | "minimum-version-required"
+  | "schema-unsupported"
+  | "epoch-handoff";
+type TemplateWorkspaceInput = {
+  kind: "workspace";
+  goal: string;
+  source: "host-snapshot" | "git" | "chooser-link";
+  pin: string | null;
+  snapshotCaptured: boolean;
+  host: TemplateHostReceipt;
+};
+type TemplateUpdateInput = {
+  kind: "update";
+  goal: string;
+  intent: "monitor" | "prepare" | "publish";
+  installedWatch: "active" | "paused" | "retired" | "missing";
+  host: TemplateHostReceipt;
+  targetPin: string;
+  review: null | {
+    operationId: string;
+    targetPin: string;
+    conflicts: number;
+    semanticReview: boolean;
+    checks: "passed" | "failed" | "pending";
+    current: boolean;
+    approved: boolean;
+  };
+};
+type TemplatePublicationInput = {
+  kind: "publication";
+  goal: string;
+  inspectedFingerprint: string;
+  currentFingerprint: string;
+  missingParts: string[];
+  destination: string | null;
+  version: string | null;
+  receipt: null | {
+    operationId: string;
+    url: string;
+    commit: string;
+    snapshot: string;
+    matches: boolean;
+  };
+};
+type TemplateTransferInput = {
+  kind: "transfer";
+  goal: string;
+  audienceReviewed: boolean;
+  audienceCurrent: boolean;
+  headCurrent: boolean;
+  fileCount: number;
+  bytes: number;
+  selectable: boolean;
+  existingRepo: boolean;
+  receipt: null | {
+    operationId: string;
+    remaining: number;
+    committed: boolean;
+  };
+};
+type TemplateLifecycleRequest = | { kind: "inspect"; goal: string; inspection: TemplateInspection }
+  | { kind: "recover"; goal: string; error: string }
+  | TemplateWorkspaceInput
+  | TemplateUpdateInput
+  | TemplatePublicationInput
+  | TemplateTransferInput;
+type TemplateDecision = | {
+      kind: "workspace";
+      next:
+        | "review-link"
+        | "capture-snapshot"
+        | "inspect-pin"
+        | "resolve-compatibility"
+        | "ready-to-create";
+      compatibility: Compatibility;
+      basis: string | null;
+    }
+  | {
+      kind: "update";
+      next:
+        | "use-installed-watch"
+        | "resume-installed-watch"
+        | "watch-retired"
+        | "check-provisioning"
+        | "resolve-compatibility"
+        | "prepare-review"
+        | "resume-review"
+        | "resolve-conflicts"
+        | "validate-candidate"
+        | "await-approval"
+        | "ready-to-publish";
+      compatibility: Compatibility;
+      basis: string;
+    }
+  | {
+      kind: "publication";
+      next:
+        | "reinspect"
+        | "include-required-parts"
+        | "request-target"
+        | "ready-to-publish"
+        | "published"
+        | "reconcile-receipt";
+      basis: string;
+    }
+  | {
+      kind: "transfer";
+      next:
+        | "refine-selection"
+        | "review-audience"
+        | "refresh-head"
+        | "ready-to-copy"
+        | "continue-merge"
+        | "locally-copied";
+      basis: string | null;
+    };
+type TemplateLifecycleReport = | { kind: "inspect"; summary: TemplateSummary }
+  | { kind: "recover"; remedy: TemplateRemedy }
+  | TemplateDecision;
 declare const fn: NatlangFunction<[error: string], TemplateRemedy>;
 export default fn;

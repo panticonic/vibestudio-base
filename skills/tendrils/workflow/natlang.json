@@ -1,0 +1,15 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-tendril-workflow",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "runTendril.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "tendrilPresentation": ["runTendril/openPresentation.nl"],
+    "tendrilPage": [
+      "runTendril/runSteps.nl",
+      "runTendril/runSteps/reviewLiveStep.nl"
+    ],
+    "tendrilBuild": ["runTendril/runSteps/reviewBuildStep.nl"]
+  }
+}

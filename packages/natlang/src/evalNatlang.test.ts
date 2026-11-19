@@ -340,3 +340,40 @@ describe("serving a local model", () => {
     }
   });
 });
+
+
+describe("owned eval model exchange capture", () => {
+  it("captures only an explicitly opted-in run with actual invocation and gateway context", async () => {
+    const records: any[] = [];
+    const { cell } = setup({
+      turn: async () => toolCallMessage("return_result", { status: "success", value: "observed" }),
+      records: { record: (input) => (records.push(input), { recordId: input.record.call_id }) },
+    });
+    await cell('return await nl<string>`Return observed.`();');
+    expect(records[0].record.model_turns).toBeUndefined();
+    await cell('natlang.captureModelTurns(); return await nl<string>`Return observed.`();');
+    const record = records[1].record;
+    expect(record.model_turns).toHaveLength(1);
+    expect(record.model_turns[0]).toMatchObject({schema:"natlang.model-exchange/1",kind:"generation",
+      request:{invocation_id:record.call_id},reply:{raw_response:{vibestudio:{model:EXECUTOR_ENTRY.ref,context:expect.any(Object),response:expect.any(Object)}}}});
+    await cell('return await nl<string>`Return observed.`();');
+    expect(records[2].record.model_turns).toBeUndefined();
+  });
+});
+
+
+describe("owned teacher executor selection", () => {
+  it("runs root and nested default executor calls on the actual selected teacher and resets afterward", async () => {
+    const teacher = makeTestCatalogEntry({ ref:"test:teacher",id:"teacher",name:"teacher",provider:"test",baseUrl:"http://test.invalid/v1" });
+    const asked: string[] = [];
+    const { cell } = setup({ models:[teacher], turn:async input=>{
+      asked.push(input.model);
+      return asked.length===1 ? toolCallMessage("eval",{code:'return await nl<string>`Return child.`();',finish:true}) :
+        toolCallMessage("return_result",{status:"success",value:"child"});
+    }});
+    const {value} = await cell('natlang.captureModelTurns({executorModel:"test:teacher"}); return await nl<string>`Call the child.`();');
+    expect(value).toBe("child"); expect(asked).toEqual([teacher.ref,teacher.ref]);
+    await cell('return await nl<string>`Return child.`();');
+    expect(asked.at(-1)).toBe(EXECUTOR_ENTRY.ref);
+  });
+});

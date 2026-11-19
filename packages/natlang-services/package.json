@@ -7,11 +7,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./catalog": "./src/catalog.ts",
-    "./contracts": "./src/contracts.ts"
+    "./contracts": "./src/contracts.ts",
+    "./ownedOperationsContracts": "./src/ownedOperationsContracts.ts"
   },
   "dependencies": {
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/model-catalog": "workspace:*",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@workspace/runtime": "workspace:*",
+    "@vibestudio/shared": "workspace:*"
   }
 }

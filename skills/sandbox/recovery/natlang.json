@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-eval-recovery",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewEvalRecovery.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "evalRecoveryJournal": ["reviewEvalRecovery.nl"],
+    "evalRecoveryReadback": ["reviewEvalRecovery/verifyEffect.nl"]
+  }
+}

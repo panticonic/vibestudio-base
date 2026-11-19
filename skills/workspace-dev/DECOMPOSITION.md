@@ -1,6 +1,27 @@
 # Workspace development: what is natural language and what is crisp
 
-Ported sub-procedures: choosing a unit's identity icon, and diagnosing a panel that does not load. Scaffolding, forking, dependency policy, and the debug loop stay agent skills (open-ended coding).
+Ported sub-procedures: choosing a unit's identity icon, and diagnosing a panel that does not load. The proposed first whole-task port below uses the existing panel debug skill as its source.
+
+## Whole-task port: repair a panel and prove the behavior
+
+Source: [Panel Build, Debug, and Polish Loop](PANEL_DEBUG_LOOP.md) and the [workspace verification workflow](WORKFLOW.md#verify-the-requested-result). Start with an existing panel and a user request about its behavior. Run in a fresh managed Vibestudio workspace at a known source revision. Capture the teacher as it executes the Natlang root. Use the same Vibestudio services for subsequent runs so the browser and workspace respond to each run's own actions.
+
+| Skill step | Natlang or crisp boundary | Evidence passed forward |
+| --- | --- | --- |
+| Understand the request and identify the panel | `repairPanel.nl` owns the user request. A callable `defineChecks.nl` derives observable behavior and any existing behavior to preserve. | Target panel, requested behavior, proposed checks. System-test validators remain separate. |
+| Reproduce and inspect | `reproduce.nl` chooses an interaction from the rendered roles and names, then decides whether the observation establishes the issue. Host services open the context-pinned panel, inspect it, perform interactions and return receipts. | Panel identity, runtime generation, concrete reproduction and observations. |
+| Diagnose | `diagnose.nl` chooses which distinct questions to delegate. Compiler, source and interaction investigations run only when the evidence calls for them. Reuse the exact load-diagnosis table for typed load failures. | Diagnosis with source and runtime evidence, plus unresolved questions. |
+| Plan and apply a fix | `proposeRepair.nl` chooses the source change. The workspace service makes the exact edit at the reviewed working revision and returns the resulting revision. The build service reports diagnostics for that revision. | Proposed diff, applied revision and build result. |
+| Verify and recover | `verifyRepair.nl` checks the built candidate through the original interaction and preservation checks. `repairPanel.nl` routes a build diagnostic, invalid observation, or still-failing interaction back to the relevant stage using the new evidence. | Build and browser receipts tied to the candidate revision. |
+| Report the outcome | `repairPanel.nl` reports the verified result or a specific blocker. Host cleanup releases the panel/session and retires the test instance. | Final answer, changed files and verification receipts. |
+
+The root proceeds over named state: (1) set `request`, `panel` and `checks`; (2) record `reproduction`; (3) choose an investigation using that evidence; (4) tie `change` and `build` to the working revision; (5) update `verification` from live interactions; (6) finish on verified behavior or explain the blocker. A retry needs a new observation or a new candidate with a reason. Repeating the same failed operation on the same revision with the same evidence is a blocker. Retain the panel handle across rebuilds and acquire current-generation evidence before accepting a probe.
+
+The program declares a narrow `panelRepair` service contract. The current eval loader only binds services from its catalog and does not supply this contract. Its implementation must bind the existing context-pinned workspace, build and panel interfaces at the host boundary. Verify the assigned source root, working revision and panel generation before applying effects. Return serializable evidence to the program and keep live handles in the host. Preserve native image content where the backend can observe and capture it. A DOM-based test should exercise a behavioral requirement; visual quality needs actual screenshot evidence.
+
+The first qualification task is preserving a panel draft across tab switches. Use distinct starting worlds where the draft is lost on unmount and where a stale snapshot overwrites it on return. The verifier exercises the switch and return, checks the draft, and checks that Save and Discard still work. A deliberately wrong fix that keeps stale data after Discard must fail. Group variants of the same underlying world together for data splits. Capture root decisions, child calls, tool effects and their results in trajectory IR, and measure success on the user outcome plus coverage of the decisions that led to it. Call count is a diagnostic; the program should take the work the evidence requires.
+
+The authored root and callable folder live in [panel-repair](panel-repair/repairPanel.nl). Live service binding, case provisioning, independent outcome checks, and exact trajectory capture still need integration. The existing fixture suite remains available for component checks.
 
 | Part | Form | Why |
 | --- | --- | --- |

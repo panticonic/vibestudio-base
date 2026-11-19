@@ -40,5 +40,7 @@ export interface ProgramDescription {
   root: string;
   /** The services its declarations give its functions. */
   services: string[];
+  /** Configured selectors by service. An omitted entry leaves that declared service unrestricted. */
+  serviceScopes: Record<string, string[]>;
   functions: FunctionDescription[];
 }

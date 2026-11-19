@@ -19,3 +19,14 @@ Status: **not measured to a gate; both functions stay agent-executed. `summarize
 Why the baseline is incomplete: on the host this was built on (load average 17-30 from other agents' model servers) a decision call costs three cold prefills of a ~3.9k-token opening, about 11-16 minutes, because the scorer sends each candidate reply as its own request and the slots do not share the prefix; the whole split set would take about a day. Two defects in the evaluation path also have to be repaired before `pnpm natlang:eval` can produce these numbers: the evaluation worker (`ts-host/src/evaluation/worker-entry.ts`) hands the runtime a bare turn function, and the CLI/driver in `scripts/natlang-eval.mjs` and `cli/adaptation.ts` pass `executor.turn` only, so a `readout: decision` call reports `decision_readout: unavailable ("model driver cannot score replies")` and runs as a full tool loop. The figures here come from an in-process scratch harness that keeps the readout and uses the suite's own cases, fixture and scorer.
 
 Reference model (the agent's own): not measured; no agent-class model is available in the harness. The case labels were written by the agent-class model from the skill text.
+
+## Template lifecycle workflow
+
+The shared workspace program mounts `reviewTemplate.nl` with its typed receipt
+branches. The existing summary and error classification stages remain in use.
+Source custody, composed host compatibility, update intent, candidate validation,
+publication receipt matching and selected-file transfer each have separate
+judgment stages. Exact composition, scheduling, acquisition and changes to
+workspace state remain owned by the existing Vibestudio extension and host
+controls. Caller-supplied observations carry the actual identity and freshness
+needed by the workflow.

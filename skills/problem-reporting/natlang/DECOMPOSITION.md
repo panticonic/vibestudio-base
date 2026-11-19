@@ -5,7 +5,7 @@ single transient failure; prepare a report for a real platform defect. Judging w
 meaning, so it is the one natural-language step here. The exact drafting of a report (`draftProblemReport`) makes no model
 call, so it is plain code in the skill (`../draft-problem-report.ts`), not a natlang program.
 
-It was measured on the executor before this shape was settled. The step is not in the shipped path.
+The measurements below concern the standalone classifier candidate. The shared review and save workflows call the classifier and keep the resulting decision in their output.
 
 ## `classifyDefect(evidence): DefectClass` (`classifyDefect.nl`): stays agent-executed
 
@@ -49,3 +49,22 @@ not call. Its labels were written by the author; the 18 cases seed adaptation or
 
 Reference model (the agent's own): not measured; no agent-class model is available in the harness. The labels were
 written by the author from the skill text and the system test prompts.
+
+## Shared problem review
+
+`reviewProblem` composes the existing defect classification stage with
+selection and attribution, local draft and revision policy, and scoped
+submission readiness. It assesses actual caller-supplied report and attachment
+receipts. The existing host continues to enforce identity, durable append,
+sanitization, submission approval and transport. The program returns a typed
+decision for the caller's next operation.
+
+## Save an assigned local report
+
+`saveProblemDraft` goes from the caller's explicit save request to an owned
+local draft. It takes a fresh observation, calls the shared problem review,
+and separates the user's account from proposed verification. It reads or
+creates a single assigned draft, appends the authored sections at the observed
+revision, then re-reads the saved sections. The host retains control of revision
+conflicts, author identity, evidence and submission. This workflow has no
+submission or diagnostic collection service.

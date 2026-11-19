@@ -23,6 +23,14 @@ export type Usage = {
     outputTokens: number | null;
     cost: number | null;
 };
+/** A real executor exchange, captured before scoring; judge exchanges are never training targets. */
+export type EvaluationModelTurn = {
+    invocation_id: string | null;
+    parent_call_id: string | null;
+    turn: number;
+    request: ModelTurnRequest;
+    reply: ModelTurn;
+};
 export type EvaluationResult = {
     id: string;
     caseId: string;
@@ -47,6 +55,7 @@ export type EvaluationResult = {
     usage: Usage;
     latencyMs: number;
     traces: readonly InvocationTrace[];
+    modelTurns?: readonly EvaluationModelTurn[];
 };
 export type EvaluationBatch = {
     results: readonly EvaluationResult[];
@@ -77,6 +86,8 @@ export type FixtureContext = {
     program: ProgramDescriptor;
     seed: number;
     signal: AbortSignal;
+    /** Original authored program directory; fixture assets live here, not beside emitted JavaScript. */
+    readonly programRoot: string;
     observations: import('./fixtures.js').FixtureObservationStore;
     judge(request: ModelTurnRequest): Promise<ModelTurn>;
     loadFreshProgram(): Promise<Record<string, unknown>>;
@@ -124,6 +135,7 @@ export type PreparedSuite = {
     moduleURL: string;
     cases: readonly EvaluationCase[];
     program: ProgramDescriptor;
+    readonly programRoot: string;
     suiteHash: string;
     components: readonly string[];
     compiledEntry: string;
@@ -139,6 +151,10 @@ export type EvaluateOptions = {
     timeoutMs?: number;
     retries?: number;
     runId?: string;
+    /** Retain exact generated executor requests/replies for verified teacher collection. */
+    capture?: boolean;
+    /** Actual executor of this measurement, e.g. a teacher running the student's authored program. */
+    executorIdentity?: ExecutorIdentity;
     judge?: ModelDriver;
     gateway?: import('./usage.js').UsageGateway;
 };

@@ -34,6 +34,8 @@ export type OpenAICompatibleOptions = HttpChatOptions & {
      * a sentinel naming a state the server has not loaded is `weights-unavailable`.
      */
     nativeStates?: () => ReadonlySet<string>;
+    /** The server continues a cut-off reply (chat-completion.ts `continuesReplies`; llama.cpp's assistant prefill). */
+    continuesReplies?: boolean;
 };
 /** Messages whose text carries native state sentinels, as content-part arrays the llama.cpp fork consumes exactly. */
 export declare function nativeStateMessages(messages: readonly unknown[], loaded: ReadonlySet<string>): unknown[];
@@ -43,6 +45,7 @@ export declare function nativeStateMessages(messages: readonly unknown[], loaded
  * the server how many tokens the model's context holds (undefined when the server does not say).
  */
 export declare function openAICompatibleModelTurn(options: OpenAICompatibleOptions): ((request: ModelTurnRequest, signal?: AbortSignal, turnOptions?: import("../contracts.js").ModelTurnOptions) => Promise<import("../contracts.js").ModelTurn>) & {
+    continuesReplies?: true | undefined;
     model: string;
     decide: import("../contracts.js").DecisionScorer;
     contextWindow: () => Promise<number | undefined>;

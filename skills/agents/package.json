@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./channel-membership": "./channelMembershipBinding.ts"
   },
   "dependencies": {
     "@workspace/agentic-core": "workspace:*",
+    "@workspace/pubsub": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
     "@workspace/runtime": "workspace:*"
   }
 }

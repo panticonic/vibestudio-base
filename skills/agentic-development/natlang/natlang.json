@@ -1,0 +1,10 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-agentic-change-planning",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "planAgenticChange.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "agenticChangeSource": ["planAgenticChange/readSource.nl"]
+  }
+}

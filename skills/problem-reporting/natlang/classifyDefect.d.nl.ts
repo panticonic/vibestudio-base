@@ -19,5 +19,56 @@ type Evidence = {
   invocation?: { trajectoryId: string; branchId: string; invocationId: string };
 };
 type DefectClass = "platform" | "user-code" | "refusal" | "transient";
+type ProblemEvidenceState = | "observed"
+  | "denied"
+  | "expired"
+  | "unavailable";
+type ProblemEvidenceReceipt = {
+  id: string;
+  kind: "invocation" | "build" | "panel" | "message";
+  state: ProblemEvidenceState;
+  selected: boolean;
+};
+type EvidenceAttribution = "observed" | "unverified";
+type ReportRevision = {
+  id: string;
+  revision: number;
+  basisRevision: number;
+  userEdits: boolean;
+};
+type FrozenReport = {
+  revision: number;
+  digest: string;
+  sanitized: boolean;
+  approval: "none" | "pending" | "approved" | "denied" | "dismissed";
+};
+type ProblemRequest = {
+  goal: string;
+  consent: "decline" | "unspecified" | "save" | "share";
+  account: Evidence;
+  evidence: ProblemEvidenceReceipt[];
+  draft: ReportRevision | null;
+  frozen: FrozenReport | null;
+};
+type ProblemEvidenceReview = {
+  selected: string[];
+  incomplete: string[];
+  attribution: EvidenceAttribution;
+};
+type ProblemNext = | "continue-user-task"
+  | "prepare-local-draft"
+  | "continue-local-draft"
+  | "refresh-own-edit"
+  | "freeze-selected-report"
+  | "keep-local"
+  | "wait-for-approval"
+  | "ready-to-submit"
+  | "submission-stopped";
+type ProblemReviewReport = {
+  defect: DefectClass;
+  next: ProblemNext;
+  basis: string | null;
+  evidence: ProblemEvidenceReview;
+};
 declare const fn: NatlangFunction<[evidence: Evidence], DefectClass>;
 export default fn;

@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-api-integration-readiness",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewIntegration.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "integrationPlanRead": ["reviewIntegration/readIntegrationPlan.nl"],
+    "integrationCredentialLookup": ["reviewIntegration/reviewAudience/resolveBinding.nl"]
+  }
+}

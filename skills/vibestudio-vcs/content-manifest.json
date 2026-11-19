@@ -7,8 +7,12 @@
       "sha256": "bfaac1d869b74056ed867faf5f476ec37726f455f11d1543626640a5c24bc04a"
     },
     {
+      "path": "INTEGRATION_DECOMPOSITION.md",
+      "sha256": "472477f1740a2ca1002735467b6b26c3ef31323d0872d2d42f6231b6879d04b1"
+    },
+    {
       "path": "SKILL.md",
-      "sha256": "b63141d9fde609729654197cdce2ebaccf3a18a579e7455254e503b75b54b334"
+      "sha256": "4eb841b3a4b54496cfc740bd025ed532dea3af668300b030a3c98b2fd471537a"
     },
     {
       "path": "agents/openai.yaml",
@@ -16,7 +20,7 @@
     },
     {
       "path": "changes/DECOMPOSITION.md",
-      "sha256": "367539d5873d4ef7d45ff9ac01a9a1ef9316fa7fc75853fc2bf33790be41a4d4"
+      "sha256": "6b536d80773fb6f3649ff12e7b50e6d4f2200c58661e3cc80f16e48f52e9e56b"
     },
     {
       "path": "changes/cases.jsonl",
@@ -24,7 +28,7 @@
     },
     {
       "path": "changes/digest.test.ts",
-      "sha256": "f8a9a7ec79163d8e0e29778aac1de4a046a82115d3f303d77fc8514375766533"
+      "sha256": "b8aad80681bcc3d0c3d5803d8e62eb552f3ce92f0c6248a72278f84697002340"
     },
     {
       "path": "changes/natlang.ts",
@@ -36,11 +40,11 @@
     },
     {
       "path": "changes/suite.ts",
-      "sha256": "523dac409e00c6f6c73c596b8e93667a64c69c34ac2a234056df7c345047e23d"
+      "sha256": "8a60c1be4ea1d39510df79a2ce85873f5a98769be6218313d486435bc85b5a07"
     },
     {
       "path": "changes/summarizeChanges.d.nl.ts",
-      "sha256": "69caaa5989eddf765f7dddc04cd190e7059198b6c7ce0aaeebd017ae3a7c3baf"
+      "sha256": "f77a9dfd90f54ef54c5629b2e024972971777cb4630de8dd7fdf79aea1b2d452"
     },
     {
       "path": "changes/summarizeChanges.nl",
@@ -52,7 +56,7 @@
     },
     {
       "path": "changes/summarizeChanges/commitSubject.d.nl.ts",
-      "sha256": "37952d14500a6b6842b58c61c4f5ec621b7f4d4c606673b66f9c9c4e90be946d"
+      "sha256": "0fa331f54cd0b1410792c63df51347e69a28d4ebdf0a10459c68ec4bd4d3e912"
     },
     {
       "path": "changes/summarizeChanges/commitSubject.nl",
@@ -60,7 +64,7 @@
     },
     {
       "path": "changes/summarizeChanges/describeUnit.d.nl.ts",
-      "sha256": "b35036a4e48178b2d2c552e3c87078571115508ffdcca63a4e5c261398ebfbba"
+      "sha256": "dab3a29f295bc23c7a43082a7d4da30cdec0b259eef6f5d052adc22b160482e7"
     },
     {
       "path": "changes/summarizeChanges/describeUnit.nl",
@@ -68,11 +72,11 @@
     },
     {
       "path": "changes/summarizeChanges/digest.ts",
-      "sha256": "048d164bd23b3373d39b1b031461ef3ebadad5a89f6a94a6e2498a94f61e2487"
+      "sha256": "fa84420d11a75c917c1cf31086062364401439262fdbea1eb25031f2842c0526"
     },
     {
       "path": "changes/summarizeChanges/givesReason.d.nl.ts",
-      "sha256": "fed86ed71690c613d80abba385ee15157a34eae7f65d1fcff0a5dbc40fdb71e5"
+      "sha256": "a18cf1f6055b6afa2939495300af93e1535b486957c1b2e5434de3b004118cb8"
     },
     {
       "path": "changes/summarizeChanges/givesReason.nl",
@@ -84,11 +88,63 @@
     },
     {
       "path": "changes/types.ts",
-      "sha256": "d959326f6757d8e363b2dcb4a06ad4862001a484c6b269ac82fa2cd93411d08d"
+      "sha256": "f3d924f8812d1764e081ef8a45e8dac72dac22b2d2890c148dfe4720153c8386"
     },
     {
       "path": "evaluations/schema-fixtures.json",
       "sha256": "b35321ac882444ed84fc57a390416487fc33adb257248d2391f781941b6e56db"
+    },
+    {
+      "path": "natlang/DECOMPOSITION.md",
+      "sha256": "f8eb8344fba2c1025158838d133095475a68b6e1a8935c175b04c9df72e06d8f"
+    },
+    {
+      "path": "natlang/natlang.json",
+      "sha256": "5bc9b13e0fd09540a580b9614b259d5431ba76ac88eda5ba93706bc90cc98394"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery.d.nl.ts",
+      "sha256": "d49c8f2d10134b73da49b7d7d3c56d66f94d4061798a81af5ef8d65999ba0029"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery.nl",
+      "sha256": "a68603a2260bae5da5ebf6eade5aadebc16d9d7f754ea3111fb43799d47529d9"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/chooseDeliveryStep.nl",
+      "sha256": "b9e8069b6175fc5de8db0240c081b837ee4d35b5d953b6ab330c708c9901ec59"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/inspectChain.nl",
+      "sha256": "f8114d255092faa0c7fba246476d0a338fb9c9dca6a8259216243557fcaed6e5"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/inspectChain/describeLocalChain.nl",
+      "sha256": "53bbc626338ac8eb8841597178df371ef3a187a60ba3d5634a2242bb44dcc793"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/inspectChain/reviewIntegration.nl",
+      "sha256": "5e8b9fbee66fd5bb4ece210395e5e2c40e903c4b0778ab7c60d3bf79692e9b1e"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/reviewChange.nl",
+      "sha256": "0c3db807016abe69c863bbe22c11ff893aeff7b283d5bd13739d2e39e92bc787"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/reviewChange/interpretFile.nl",
+      "sha256": "249e46f44d48eb2110b17ffcd8c7f35658b466e56dfcf5069ae884898fdc798b"
+    },
+    {
+      "path": "natlang/reviewVcsDelivery/reviewChange/planChecks.nl",
+      "sha256": "f0b2404cb33f84d541fd08ccaba7819a62d1e5b6790d1e47bac4c1c137a29d35"
+    },
+    {
+      "path": "natlang/services.d.ts",
+      "sha256": "4cf1779d35abcdebe8cd9d6fbd5bfe8421da669c69eda5f7ced47bab6f63d059"
+    },
+    {
+      "path": "natlang/types.ts",
+      "sha256": "523042a896aef390a6c5ee3a6febd27230851832119ece14d8dad86052d4249f"
     },
     {
       "path": "package.json",
@@ -159,5 +215,5 @@
       "sha256": "81d18bf544324c35356d6e3ab9dc55271f5e9448d6aabf5ba01a8521430a2877"
     }
   ],
-  "packageDigest": "d5f6e0f4a2d1df23789817c7e40d882bfd9b778ad4d3625f682a51335601abc0"
+  "packageDigest": "0a4b5a305acf009025ee10a723f645b2a07e4162d9e51ebd12cad772ad963729"
 }

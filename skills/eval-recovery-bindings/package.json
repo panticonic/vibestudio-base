@@ -1,0 +1,11 @@
+{
+  "name": "@workspace-skills/eval-recovery-bindings",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": {
+    "@vibestudio/content-addressing": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

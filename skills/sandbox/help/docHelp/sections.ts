@@ -1,6 +1,6 @@
 /**
  * The sections of a Markdown document: each heading with the text under it, in pieces of whole paragraphs of at most
- * `limit` characters (a longer paragraph is cut at the limit). Every piece is an exact slice of the document. Headings
+ * `limit` characters (a longer paragraph is split into consecutive slices). Every piece is an exact slice of the document. Headings
  * inside code fences are text.
  */
 
@@ -18,7 +18,12 @@ function paragraphs(body: string): Array<[number, number]> {
   return out.filter(([from, to]) => body.slice(from, to).trim() !== "");
 }
 
-export default function sections(document: string, limit: number = 1200): Section[] {
+export default function sections(
+  document: string,
+  limit: number = 1200,
+): Section[] {
+  if (!Number.isInteger(limit) || limit <= 0)
+    throw new Error("Use a positive integer section length.");
   const headings: string[] = [];
   const out: Section[] = [];
   let fenced = false;
@@ -29,8 +34,11 @@ export default function sections(document: string, limit: number = 1200): Sectio
     const heading = headings.filter(Boolean).join(" > ");
     let piece: [number, number] | null = null;
     const emit = ([from, to]: [number, number]) => {
-      const text = body.slice(from, Math.min(to, from + limit)).trim();
-      if (text) out.push({ heading, text });
+      for (let index = 0; index < Math.ceil((to - from) / limit); index++) {
+        const start = from + index * limit;
+        const text = body.slice(start, Math.min(to, start + limit)).trim();
+        if (text) out.push({ heading, text });
+      }
     };
     for (const [from, to] of paragraphs(body)) {
       if (piece && to - piece[0] <= limit) {

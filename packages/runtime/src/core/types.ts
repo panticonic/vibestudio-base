@@ -19,6 +19,16 @@ import type {
   PanelSnapshotObservation,
 } from "@vibestudio/shared/panel/observation";
 
+import type {
+  PresentationTarget,
+  PresentResult,
+} from "@vibestudio/service-schemas/panelRuntime";
+
+/** One of the caller's devices that can present a panel (host contract). */
+export type PanelPresentationTarget = PresentationTarget;
+/** Outcome of `PanelHandle.requestPresentation` (host contract). */
+export type PanelPresentResult = PresentResult;
+
 export interface PanelFocusOptions {
   /** Visual placement request; omitted preserves ordinary focus behavior. */
   placement?: PanelPlacementHint;
@@ -31,6 +41,42 @@ export interface PanelFocusOptions {
 export interface PanelWaitOptions {
   /** Cancel readiness observation without cancelling the panel lifecycle. */
   signal?: AbortSignal;
+}
+
+export interface PanelRebuildOptions extends PanelWaitOptions {
+  /**
+   * "replace" (default) swaps the current history entry for the new build.
+   * "append" adds the new build as a new entry, so the previous build stays
+   * reachable through `navigateHistory(id, -1)`.
+   */
+  history?: "append" | "replace";
+}
+
+/** An exact sealed BuildV2 incarnation. */
+export interface PanelArtifactPin {
+  buildKey: string;
+  executionDigest: string;
+}
+
+/** Which device of the caller a panel presentation is requested on. */
+export interface PanelPresentationRequest {
+  /** A `deviceId` from `panelTree.listPresentationTargets()`. */
+  deviceId: string;
+  /** Bring the panel forward on that device (default true). */
+  focus?: boolean;
+  /**
+   * Also push to the device: "inbox" quietly, "interrupt" with high priority.
+   * Default "none"; a device without a live session is pushed regardless.
+   */
+  alert?: "none" | "inbox" | "interrupt";
+}
+
+/** Device facts of the host presenting this panel. */
+export interface PanelDeviceInfo {
+  /** Paired device id; null on hosts that are not a paired device (headless). */
+  id: string | null;
+  label: string;
+  platform: "desktop" | "mobile" | "headless";
 }
 
 // =============================================================================
@@ -83,6 +129,8 @@ export interface EndpointInfo {
   partition: string;
   /** Context ID (format: {mode}_{type}_{identifier}) */
   contextId: string;
+  /** The device presenting this panel. */
+  device: PanelDeviceInfo;
 }
 
 // =============================================================================
@@ -218,6 +266,11 @@ export interface PanelNavigateOptions {
   contextId?: string;
   env?: Record<string, string>;
   ref?: string;
+  /**
+   * Pin an exact sealed build instead of resolving `ref`; the history entry
+   * records the pin, so going back to it re-creates exactly that build.
+   */
+  artifact?: PanelArtifactPin;
   stateArgs?: Record<string, unknown>;
   /** Cancel readiness observation after the navigation has committed. */
   signal?: AbortSignal;
@@ -367,8 +420,21 @@ export interface PanelHandle<
   ): Promise<void>;
   takeOver(): Promise<void>;
   openDevTools(mode?: "detach" | "right" | "bottom"): Promise<void>;
-  /** Transactionally prepare and activate a new immutable attempt from source. */
-  rebuild(options?: PanelWaitOptions): Promise<PanelObservation>;
+  /**
+   * Transactionally prepare and activate a new immutable attempt from source.
+   * `history: "append"` keeps the previous build as the prior history entry.
+   */
+  rebuild(options?: PanelRebuildOptions): Promise<PanelObservation>;
+  /**
+   * Ask one of the caller's devices to present this panel (take its
+   * presentation lease) and, with `focus`, bring it forward. Resolves with
+   * `presented` when a live session took it, `pending-device` when the request
+   * is recorded for the device's next session, or `pushed` when the device was
+   * also notified by push.
+   */
+  requestPresentation(
+    request: PanelPresentationRequest,
+  ): Promise<PanelPresentResult>;
   focus(options?: PanelFocusOptions): Promise<PanelObservation>;
   snapshot(options?: PanelWaitOptions): Promise<PanelSnapshotObservation>;
   tree(): Promise<unknown>;

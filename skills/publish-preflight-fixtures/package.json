@@ -1,0 +1,14 @@
+{
+  "name": "@workspace-skills/publish-preflight-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./binding": "./binding.ts",
+    "./worlds": "./worlds.ts"
+  },
+  "dependencies": {
+    "@workspace/integrations": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

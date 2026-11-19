@@ -4,7 +4,7 @@ export { jsonStringRecordCanonical };
 export type OracleLevel = 'exact' | 'normalized' | 'span' | 'agreement' | 'judged' | 'constraints';
 export declare const ORACLE_LEVELS: readonly OracleLevel[];
 /** Baseline answer comparison version; explicit specialized comparators carry their own verdict version. */
-export declare const ANSWER_COMPARISON_VERSION = "normalized-decimal-exact/2";
+export declare const ANSWER_COMPARISON_VERSION = "normalized-decimal-exact/4";
 export type NumericListFieldSpec = {
     key: string;
     separator: '; ';
@@ -64,6 +64,20 @@ export declare function jsonStringRecordWithRadixFieldsCanonical(value: unknown,
 export declare function jsonStringRecordWithNumericListFieldsCanonical(value: unknown, numericListFields?: unknown): string | null;
 /** Canonical map for extractive QA: keys stay exact; answer values use SQuAD token normalization. */
 export declare function qaStringMapCanonical(value: unknown): string | null;
+/**
+ * Extractive QA: a short answer that holds the whole gold span of two or more tokens, contiguous and in order, with the
+ * same numbers, and is at most twice the gold's length ("Celine Dion's \"Because You Loved Me\"" for "Because You Loved
+ * Me"). One-token golds stay with F1: "Duke Lemur Center" must not pass for "Duke".
+ */
+export declare function containsQaSpan(actual: unknown, expected: unknown): boolean;
+/**
+ * Extractive QA: the core of a short answer that restates part of the question or names a possessor before the answer
+ * ("just had sex" for "What did A say they just had ...?", "the alien's spaceship" for "the spaceship"). Drops a leading
+ * possessor (`X's`, `X Y's`, a possessive determiner), then the longest leading run of words that occurs contiguously in
+ * the question and holds no gold word. A core that is empty, unchanged, or hedges (or/and/not/maybe ... absent from the
+ * gold: "sex or coffee") is not offered, so a multi-answer reply never passes this way.
+ */
+export declare function qaAnswerCores(actual: unknown, expected: unknown, question?: string): string[];
 /** Multiset token F1; repeated words count only when they occur on both sides. */
 export declare function spanF1(actual: unknown, expected: unknown, qa?: boolean): number;
 /**
@@ -74,7 +88,7 @@ export declare function spanF1(actual: unknown, expected: unknown, qa?: boolean)
 export declare function agreement(actual: unknown, expected: unknown): number;
 /** File contracts fail closed on malformed reports and unverified rewrites. */
 export declare const DATA_QUALITY_VERSION = 3;
-export declare const FILE_CONTENT_COMPARISON_VERSION = "json-content/2";
+export declare const FILE_CONTENT_COMPARISON_VERSION = "json-content/3";
 export type FilesOracle = {
     compare?: 'content' | 'exact' | 'moves' | 'rewrite' | 'csv' | 'counts' | 'json-string-record' | 'qa-string-map' | 'json-semantic-structured' | 'markdown-terminal-newline' | (string & {});
     threshold?: number;
@@ -89,6 +103,9 @@ export type FilesOracle = {
     rationale_context_paths?: string[];
     /** Explicit answer file for return-value consistency when the default answers.json names do not apply. */
     return_path?: string;
+    /** `content` compares: whether one terminal LF/CRLF of a non-JSON file counts (`exact`, the default) or not
+     * (`lenient`: the collector's choice when the task's instructions never mention a newline). */
+    terminal_newline?: 'exact' | 'lenient';
     /** Explicit answer-map keys whose string values are exact decimal quantities. */
     numeric_keys?: string[];
     /** Explicit answer-map keys whose values are ordered exact unsigned integer lists. */
@@ -180,4 +197,8 @@ export declare function checkOracle(actual: unknown, expected: unknown, oracle?:
     accepted: boolean;
     verdict: string;
     needs_review?: boolean;
-}>): Promise<OracleVerdict>;
+}>, 
+/** The task's question (its `question` input), for extractive QA answers that restate it (`qaAnswerCores`). */
+context?: {
+    question?: string;
+}): Promise<OracleVerdict>;

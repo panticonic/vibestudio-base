@@ -51,6 +51,7 @@ export type CallSummary = {
     approach_hash: string | null;
     program_root: string | null;
     audit_of: string | null;
+    parent_action_index?: number | null;
 };
 export type CallFilter = {
     definition?: string;
@@ -202,6 +203,11 @@ export declare class CallStore {
     agentCalls(definitionKey: string, limit?: number): CallSummary[];
     /** Calls started by a call, oldest first. */
     children(callId: string): CallSummary[];
+    /**
+     * Calls a typed ID may mean, newest first: the exact ID, else every ID starting with `prefix`, or whose short form
+     * (the ID without its task name and ordinal, `task-3-`) does.
+     */
+    matchCalls(prefix: string, limit?: number): Pick<CallSummary, 'call_id' | 'parent_call_id' | 'definition_name' | 'outcome' | 'started_at'>[];
     countCalls(definitionKey: string): number;
     /** Attach evidence to a call; it is pinned unless `pin` is false (routine annotations such as evaluation scores). */
     annotate(callId: string, kind: string, value: unknown, source?: string, pin?: boolean): void;

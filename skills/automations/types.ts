@@ -32,3 +32,37 @@ export type Trigger =
   | { kind: "manual" }
   | { kind: "schedule"; everyMs: number; untilAt?: number; maxRuns?: number }
   | { kind: "cron"; expression: string; timezone: string; untilAt?: number; maxRuns?: number };
+
+export type MissionState = "active" | "paused" | "retired";
+export type MissionRun = {
+  id: string;
+  phase: "queued" | "executing" | "finished";
+  outcome: "succeeded" | "failed" | "completed-with-errors" | "skipped" | null;
+  errors: { operation: string; description: string }[];
+};
+export type VisibleAutomation = { id: string; name: string; state: MissionState; latestRun: MissionRun | null };
+export type Operation = { service: string; method: string; use: "action" | "conditional" };
+export type AutomationRequest = {
+  goal: string;
+  timezone: string;
+  now: string;
+  visible: VisibleAutomation[];
+  availableOperations: Operation[];
+};
+export type AutomationIntent = "launch" | "control" | "inspect";
+export type ConversationChoice = "continue" | "fresh" | "clarify";
+export type ControlChoice = "pause" | "resume" | "run" | "retire";
+export type LaunchDraft = {
+  kind: "launch"; executor: ExecutorKind; trigger: Trigger;
+  conversation: "continue" | "fresh"; operations: Operation[];
+};
+export type ControlDraft = { kind: "control"; automationId: string; action: ControlChoice };
+export type RunBrief = {
+  kind: "inspect"; automationId: string; runId: string | null;
+  state: MissionState; outcome: MissionRun["outcome"]; failedOperations: string[];
+};
+export type AutomationHold = { kind: "hold"; reason: string };
+export type AutomationReport = LaunchDraft | ControlDraft | RunBrief | AutomationHold;
+export type RunSelection =
+  | { kind: "found"; automation: VisibleAutomation }
+  | { kind: "hold"; reason: string };

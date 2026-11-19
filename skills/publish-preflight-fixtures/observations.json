@@ -1,0 +1,402 @@
+{
+  "publish-preflight-transit-map": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:3b1fb959ed11c2c6d04c76fa3147c2ea6673dc376a03f24567eb027d013b2d77"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-expense-compare": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:e1a50931ef50fe23918449a6b7755faba4d565de504e7aeec1fecb4ae08f7ba1"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-only-reviewed-revision": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": false,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:cefd950d1025b32e3b989c353c13e32555af6ee5fe52c5735779afbd63bcbdb8"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-foreign-public-file": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [
+        "review-only.txt"
+      ],
+      "publicFiles": 5,
+      "artifactDigest": "sha256:508b59c0a8e628d5d66640e03274f1278c6f115f2e6e1e8fad02d695d74bf898"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-incomplete-manifest": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": false,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 3,
+      "artifactDigest": "sha256:aaae1a8d0328ac9548aae2019155e56a103d7354c0c7ec5e6ee07a093f453821"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-missing-shell": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": false,
+      "hasHtml": false,
+      "unapprovedFiles": [],
+      "publicFiles": 3,
+      "artifactDigest": "sha256:eea8f6fa3fdad5fae9eaf90114a018dfc8cbaf1dc5aaa6c48f99d61408536fec"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-capture-before-rebuild": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:ca52bb16de45398675106b04ede46dde079ef8cb00b8b344e8b94d3fbaeec06c"
+    },
+    "presentation": {
+      "matchesPanelAttempt": false,
+      "missedProbes": [
+        "public-heading"
+      ],
+      "observedProbes": []
+    },
+    "publication": null
+  },
+  "publish-preflight-missing-chart-label": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:95a4cc6e8650a9664ce377a2c70821868acd7d7e1f8c4681e1e42d1947b9190d"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [
+        "public-heading"
+      ],
+      "observedProbes": []
+    },
+    "publication": null
+  },
+  "publish-preflight-unreviewed-destination": {
+    "matchesRequest": false,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:e8c738722fb138e112eb96c4c33e7a5a0eae61f3d149a0cc7d62bff13d198e7a"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-operation-absent": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:12796ffec478544c113a9ca979eb5e69ec153a257c6996f9ea5079f1815c57c9"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": null
+  },
+  "publish-preflight-staged-to-different-team": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:abfde9daefe3494f961c17b8170e43104d642d8464e22966348784ea8faa5f5e"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "uploaded",
+      "matchesIntent": false,
+      "matchesArtifact": true,
+      "matchesOperation": true,
+      "observedReadyUrl": false,
+      "verifiedPublicDigest": false
+    }
+  },
+  "publish-preflight-resume-uploaded": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:9861ed44f607681cb51148edc78cfa5b90b9dfe059b8a13012688c7b54afe58f"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "uploaded",
+      "matchesIntent": true,
+      "matchesArtifact": true,
+      "matchesOperation": true,
+      "observedReadyUrl": false,
+      "verifiedPublicDigest": false
+    }
+  },
+  "publish-preflight-submitted-url-warming": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:a4091c8873466759b801aa42841ca3747aabc14d75809521fa5da77369d3e7a2"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "submitted",
+      "matchesIntent": true,
+      "matchesArtifact": true,
+      "matchesOperation": true,
+      "observedReadyUrl": false,
+      "verifiedPublicDigest": false
+    }
+  },
+  "publish-preflight-ready-pending-digest": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:c1dced7715ebe5ab5ea8b4534afa9b97c69f80775ba221189176c253b48f88fd"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "submitted",
+      "matchesIntent": true,
+      "matchesArtifact": true,
+      "matchesOperation": true,
+      "observedReadyUrl": true,
+      "verifiedPublicDigest": false
+    }
+  },
+  "publish-preflight-reconciled-production": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:91104834226d662f2c343281df4bb1248ddbaa300b3f3e49a18f6848a768e703"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "submitted",
+      "matchesIntent": true,
+      "matchesArtifact": true,
+      "matchesOperation": true,
+      "observedReadyUrl": true,
+      "verifiedPublicDigest": true
+    }
+  },
+  "publish-preflight-mismatched-operation": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:51121e30a41d2c62a3f548c5d57d404af5db45c7b83517f10d1c3af930465cfb"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "submitted",
+      "matchesIntent": true,
+      "matchesArtifact": true,
+      "matchesOperation": false,
+      "observedReadyUrl": true,
+      "verifiedPublicDigest": true
+    }
+  },
+  "publish-preflight-other-artifact-live": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:8d0b693a82be539ae98aa8e53fd9370d7a9dc4709f7db233299647f2dba858aa"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "submitted",
+      "matchesIntent": true,
+      "matchesArtifact": false,
+      "matchesOperation": true,
+      "observedReadyUrl": true,
+      "verifiedPublicDigest": false
+    }
+  },
+  "publish-preflight-unrelated-url-readback": {
+    "matchesRequest": true,
+    "artifact": {
+      "referenceMatches": true,
+      "manifestMatches": true,
+      "hasHtml": true,
+      "unapprovedFiles": [],
+      "publicFiles": 4,
+      "artifactDigest": "sha256:db8c854404da557d7051a9130ff10238f1b17da90ea6fedf51eb5c1b5ebe498c"
+    },
+    "presentation": {
+      "matchesPanelAttempt": true,
+      "missedProbes": [],
+      "observedProbes": [
+        "public-heading"
+      ]
+    },
+    "publication": {
+      "phase": "submitted",
+      "matchesIntent": true,
+      "matchesArtifact": true,
+      "matchesOperation": true,
+      "observedReadyUrl": false,
+      "verifiedPublicDigest": false
+    }
+  }
+}

@@ -91,7 +91,8 @@ export declare class NatlangSourceError extends Error {
     readonly path: string;
     readonly reason: string;
     readonly line?: number | undefined;
-    constructor(path: string, reason: string, line?: number | undefined);
+    readonly hint?: string | undefined;
+    constructor(path: string, reason: string, line?: number | undefined, hint?: string | undefined);
 }
 export declare const nodeKey: (record: NatlangRecord | ModuleRecord) => string;
 export declare function registerFileRecords(codebase: Record<string, ItemRecord> | ItemRecord): void;

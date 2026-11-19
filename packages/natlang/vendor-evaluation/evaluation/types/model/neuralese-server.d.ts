@@ -19,7 +19,7 @@
  */
 import { type ChatCompletionOptions, type HttpChatOptions } from './chat-completion.js';
 import type { DecisionScorer, ModelTurn, ModelTurnOptions, ModelTurnRequest } from '../contracts.js';
-import { type NeuraleseBlockMeta, type NativeStateArtifact, type NativeTensorArtifact, type NeuraleseStore } from '../native/neuralese-store.js';
+import { type NeuraleseBlockMeta, type NativeStateArtifact, type NativeTensorArtifact, type NeuraleseStore, type NativeArtifactSource } from '../native/neuralese-store.js';
 type Json = Record<string, unknown>;
 /** Header naming the owner of requests (a session or runtime ID): its pins and collections are its own (serve/store.py). */
 export declare const OWNER_HEADER = "x-natlang-owner";
@@ -44,6 +44,10 @@ export declare class HttpNeuraleseStore implements NeuraleseStore {
     private request;
     putNativeState(artifact: Omit<NativeStateArtifact, 'id'>): Promise<NativeStateArtifact>;
     getNativeState(id: string): Promise<NativeStateArtifact | undefined>;
+    /** The server's stored bytes, verified once here (header, finite values, content ID); kept as received. */
+    getNativeStateWire(id: string): Promise<Uint8Array | undefined>;
+    /** Upload stored bytes as they are. */
+    putNativeStateWire(wire: Uint8Array, verifiedId?: string): Promise<NativeStateArtifact>;
     hasNativeState(id: string): Promise<boolean>;
     putNativeTensorArtifact(artifact: Omit<NativeTensorArtifact, 'id'>): Promise<NativeTensorArtifact>;
     getNativeTensorArtifact(id: string): Promise<NativeTensorArtifact | undefined>;
@@ -78,9 +82,11 @@ export type NativeStateRequestBinding = {
  * Keep every occurrence and a stable request path for graph consumers.
  */
 export declare function requestNativeStateBindings(messages: readonly unknown[]): NativeStateRequestBinding[];
-export declare function restoreNativeStates(remote: HttpNeuraleseStore, archive: NeuraleseStore | undefined, ids: readonly string[], known?: Set<string>, all?: boolean): Promise<void>;
+/** An engine's native-state store as the restore side sees it: a server's HTTP store or the page's in-page engine. */
+export type NativeStateEngineStore = Pick<NeuraleseStore, 'hasNativeState' | 'putNativeState'> & Required<Pick<NeuraleseStore, 'putNativeStateWire'>> & Partial<NeuraleseStore>;
+export declare function restoreNativeStates(remote: NativeStateEngineStore, archive: NeuraleseStore | undefined, ids: readonly string[], known?: Set<string>, all?: boolean): Promise<void>;
 /** Archive the same exact reply closure for live turns and saved-turn replay. */
-export declare function archiveNeuraleseReplyArtifacts(reply: Json, remote: NeuraleseStore, store: NeuraleseStore | undefined, references?: readonly unknown[]): Promise<{
+export declare function archiveNeuraleseReplyArtifacts(reply: Json, remote: NativeArtifactSource, store: NeuraleseStore | undefined, references?: readonly unknown[]): Promise<{
     native: Set<string>;
 }>;
 /** A model-turn driver for a Neuralese server. It advertises `neuralese: true`. */

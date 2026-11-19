@@ -17,7 +17,8 @@
     "./testing/native-tool": "./src/testing/native-tool.ts",
     "./web": "./src/web/index.ts",
     "./web-extract": "./src/web-extract.ts",
-    "./image-generation": "./src/image-generation.ts"
+    "./image-generation": "./src/image-generation.ts",
+    "./unit-verification": "./src/unit-verification.ts"
   },
   "dependencies": {
     "@vibestudio/workspace-contracts": "workspace:*",

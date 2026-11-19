@@ -980,21 +980,6 @@ export declare function pluggable<A extends unknown[], R>(implementations: Plugg
   }
 });
 
-// src/native/hash.ts
-import { sha256 } from "@noble/hashes/sha2.js";
-function digest(text3) {
-  return sha256(typeof text3 === "string" ? new TextEncoder().encode(text3) : text3);
-}
-function hexDigest(text3) {
-  return Array.from(digest(text3), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-var init_hash = __esm({
-  "src/native/hash.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-  }
-});
-
 // src/native/canonical-data.ts
 function canonical(value) {
   if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
@@ -1011,10 +996,35 @@ var init_canonical_data = __esm({
   }
 });
 
-// src/adaptation/identity.ts
+// src/native/hash.ts
+import { sha256 } from "@noble/hashes/sha2.js";
+function digest(text3) {
+  return sha256(typeof text3 === "string" ? new TextEncoder().encode(text3) : text3);
+}
+function hexDigest(text3) {
+  return Array.from(digest(text3), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+var init_hash = __esm({
+  "src/native/hash.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+  }
+});
+
+// src/native/content-identity.ts
 function fingerprint(value, domain = "natlang.adaptation/v1") {
   return hexDigest(domain + "\0" + canonical(value));
 }
+var init_content_identity = __esm({
+  "src/native/content-identity.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    init_canonical_data();
+  }
+});
+
+// src/adaptation/identity.ts
 function componentKey(program, path2, site2 = "instructions") {
   return [program, path2.replace(/\\/g, "/"), site2].map((part) => encodeURIComponent(part).replace(/%2F/g, "/")).join("::");
 }
@@ -1032,8 +1042,8 @@ var init_identity = __esm({
   "src/adaptation/identity.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    init_hash();
     init_canonical_data();
+    init_content_identity();
     init_canonical_data();
   }
 });
@@ -1202,7 +1212,7 @@ var require_inspector = __commonJS({
 var require_typescript = __commonJS({
   "node_modules/typescript/lib/typescript.js"(exports, module) {
     init_define_NATLANG_TS_LIBS();
-    var ts27 = {};
+    var ts28 = {};
     ((module2) => {
       "use strict";
       var __defProp2 = Object.defineProperty;
@@ -211930,9 +211940,9 @@ Additional information: BADCLIENT: Bad error code, ${badCode} not found in range
         };
       }
     })({ get exports() {
-      return ts27;
+      return ts28;
     }, set exports(v10) {
-      ts27 = v10;
+      ts28 = v10;
       if (typeof module !== "undefined" && module.exports) {
         module.exports = v10;
       }
@@ -213576,7 +213586,7 @@ var init_prompt = __esm({
   "src/native/prompt.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    SEMANTIC_RESULT_PROMPT = `When finishing a semantic answer, reply with the declared string as plain text, or with a JSON value of the declared type. Your final reply is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. To use return_result, invoke the tool. When the declared result is a string and the task asks you to save JSON and return it, return exactly the JSON text saved in the file as that string. You may reply with the typed string directly or send it as the value in an actual return_result tool call; do not print a pseudo invocation, status envelope, explanation, or code fence as the result. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. A successful finish:true eval ends this call immediately; include every required predicate in that final expression and do not send another conflicting final action. Never present code as though it had run. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
+    SEMANTIC_RESULT_PROMPT = `Answer with the return_result tool: call it with status "success" and a value of the declared type (for a string result, the text itself). That value is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. A reply without a tool call is not an answer. When the declared result is a string and the task asks you to save JSON and return it, return exactly the JSON text saved in the file as that string. Send it as the value of an actual return_result tool call; do not print a pseudo invocation, status envelope, explanation, or code fence instead. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. A successful finish:true eval ends this call immediately; include every required predicate in that final expression and do not send another conflicting final action. Never present code as though it had run. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
 
 At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. A Neuralese marker body is literal payload written before eval runs: \${...} inside it is not JavaScript interpolation. Use a marker only for a literal body. Never concatenate marker strings around a computed value; return the computed string or structured value according to T.
 
@@ -213584,8 +213594,8 @@ At a direct parameter declared Neuralese<string>, an ordinary string argument is
     SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. This applies to inline nl children: when the child's inputs and captured context are enough to judge its assigned question, return that declared typed answer directly. Nest another nl call only for a genuinely distinct subproblem needed to complete this assignment, not a near-identical re-ask. When the evidence is already available, return the declared value directly.
 
 `;
-    TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without tools ends your turn and is taken as your answer.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows their types, not their contents. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) already supplies stepFn; never pass the callable again as the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval will also stage that value as your response. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position. When the result type is string, you can also just reply with the text.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
-    FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code and fix it with edit_code.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
+    TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without a tool call ends your turn without answering.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows each one's type and value. A value too long to show whole is cut off, or a record shown by its field names, marked <<\u2026>>, and the name still holds all of it. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) already supplies stepFn; never pass the callable again as the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval stages that value; send it with return_result and status \"success\" without a value. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
+    FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code. Use edit_code to fix it when that tool is offered.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
     FILE_TOOL_SURFACES = ["all", "editor", "files"];
     FILE_TOOL_LINES = {
       bash: "- bash(command) runs shell pipelines in this folder, including ls, cat, rg, sed, awk, jq and CSV tools.",
@@ -213600,7 +213610,7 @@ At a direct parameter declared Neuralese<string>, an ordinary string argument is
       diff_files: "- diff_files(path?) shows changes made in this trajectory."
     };
     MUTATING_FILE_TOOLS = /* @__PURE__ */ new Set(["write_file", "edit_file", "editor", "bash", "python"]);
-    DIRECTORY_REDUCER_DECLARATION = "This call is a directory reducer: folder is a private copy of its input folder, and the changes you have made to it when you reply done are kept.";
+    DIRECTORY_REDUCER_DECLARATION = "This call is a directory reducer: folder is a private copy of its input folder, and the changes you have made to it when you call return_result are kept.";
     DIRECTORY_REDUCER_PROMPT = directoryReducerPrompt();
     NL_DEPTH_LIMIT_NOTICE = "This call is at the fifth and final layer of ad hoc natural-language calls. Make the remaining judgments here using the data and tools available. Existing named functions can still be called. Creating another ad hoc natural-language child is unavailable at this depth.";
     TOOLS_PROMPT_AT_NL_DEPTH_LIMIT = TOOLS_PROMPT.split("\n\n").map((paragraph) => paragraph.startsWith("Eval code can also hand a judgement") ? NL_DEPTH_LIMIT_NOTICE : paragraph.startsWith("To repeat a step") ? "To repeat a step an open-ended number of times (since there is no while), use a code function: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). The step takes the current state and returns the next one; the stopping check receives that state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages." : paragraph).join("\n\n");
@@ -213617,7 +213627,7 @@ How a call usually goes (a schematic: <angle brackets> stand for whatever this c
 - Dividing work among helpers: pass each helper the actual item or extracted page slice it should examine, together with the shared criterion and necessary context. Adding different page numbers to the same full input does not give helpers different slices. Reuse results already recorded in transcript.
 - Asking a helper: a function the instructions name for part of the work is awaited like any function. eval({ code: "const part = await <helper>(<question>); part" }).
 - Returning stored data: if eval already holds the exact answer in a local value, complete with eval({ code: "<storedAnswer>", finish: true }) or an explicit return of that value. This preserves every field, including long descriptions; do not retype an object from an abbreviated preview. console.log inspects a value but does not return it: a finishing eval must also evaluate or explicitly return the actual typed answer.
-- Finishing: for a semantic answer, reply with the declared string or a JSON value of the declared type. For computation or effects, eval({ code: "<computation>; <value>", finish: true }) completes the fresh typed result. You can also use return_result({ status: "success", value: <value of the declared type> }). When something the instructions rely on is absent: return_result({ status: "blocked", reason: "<what is missing>" }); when they ask for the impossible, status "failed". Code in a reply does not execute.`;
+- Finishing: answer with return_result({ status: "success", value: <value of the declared type> }). For computation or effects, eval({ code: "<computation>; <value>", finish: true }) completes the fresh typed result. When something the instructions rely on is absent: return_result({ status: "blocked", reason: "<what is missing>" }); when they ask for the impossible, status "failed". Code in a reply does not execute.`;
     PROMPT_EXAMPLE_TEXTS = ["Refunds are allowed within 30 days of delivery.", "Decide whether item meets policy."];
     APPROACH_PROMPT_AT_NL_DEPTH_LIMIT = APPROACH_PROMPT.replace(
       /^- Judging items:.*$/m,
@@ -213688,6 +213698,38 @@ var init_evaluator = __esm({
 });
 
 // src/native/cutoff.ts
+function literalFits(value, limit) {
+  let left = limit;
+  const visit = (item, depth2) => {
+    if (item === null || typeof item === "boolean" || typeof item === "number") {
+      left -= String(item).length;
+      return left >= 0;
+    }
+    if (typeof item === "string") {
+      if (item.length > left) return false;
+      left -= JSON.stringify(item).length;
+      return left >= 0;
+    }
+    if (typeof item !== "object" || depth2 > 8) return false;
+    if (Array.isArray(item)) {
+      left -= 2;
+      for (const element of item) {
+        left -= 2;
+        if (left < 0 || !visit(element, depth2 + 1)) return false;
+      }
+      return left >= 0;
+    }
+    const proto = Object.getPrototypeOf(item);
+    if (Object.prototype.toString.call(item) !== "[object Object]" || proto !== null && Object.getPrototypeOf(proto) !== null) return false;
+    left -= 4;
+    for (const key of Object.keys(item)) {
+      left -= key.length + 4;
+      if (left < 0 || !visit(item[key], depth2 + 1)) return false;
+    }
+    return left >= 0;
+  };
+  return visit(value, 0);
+}
 function shownCharsFor(contextTokens) {
   if (contextTokens === null || contextTokens === void 0 || !Number.isFinite(contextTokens)) return SHOWN_CHARS;
   return Math.max(SHOWN_CHARS, Math.floor(contextTokens * OUTPUT_CONTEXT_SHARE * PAGE_CHARS_PER_TOKEN));
@@ -213695,7 +213737,7 @@ function shownCharsFor(contextTokens) {
 function noteText(what, where = {}) {
   return [
     what,
-    ...where.holder ? [`${where.holder} holds all of it`] : [],
+    ...where.holder ? [`only this display is shortened, ${where.holder} holds the complete value`] : [],
     ...where.next ? [`${where.next} shows the next part`] : []
   ].join("; ");
 }
@@ -213713,13 +213755,14 @@ function cutText(text3, where = {}, budget = SHOWN_CHARS) {
 ${note(`cut off: ${tail - head} of ${text3.length} characters not shown`, where)}
 ${text3.slice(tail)}`;
 }
-var SHOWN_CHARS, SCOPE_VALUE_CHARS, OUTPUT_CONTEXT_SHARE, PAGE_CHARS_PER_TOKEN, note;
+var SHOWN_CHARS, SCOPE_VALUE_CHARS, SMALL_VALUE_CHARS, OUTPUT_CONTEXT_SHARE, PAGE_CHARS_PER_TOKEN, note;
 var init_cutoff = __esm({
   "src/native/cutoff.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     SHOWN_CHARS = 2e3;
     SCOPE_VALUE_CHARS = 4096;
+    SMALL_VALUE_CHARS = 300;
     OUTPUT_CONTEXT_SHARE = 1 / 8;
     PAGE_CHARS_PER_TOKEN = 3.5;
     note = (what, where = {}) => `<<${noteText(what, where)}>>`;
@@ -214665,6 +214708,23 @@ var init_holes = __esm({
 });
 
 // src/compiler/inline.ts
+function fromTypeScript(diagnostic, file) {
+  const start = diagnostic.start ?? 0;
+  const position = diagnostic.file && diagnostic.start !== void 0 ? diagnostic.file.getLineAndCharacterOfPosition(start) : { line: 0, character: 0 };
+  const [message2 = "", ...rest] = import_typescript6.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n").split("\n").map((line) => line.trim());
+  const detail = rest.filter((line, index) => line && line !== message2 && rest.indexOf(line) === index).join("\n");
+  return {
+    file,
+    start,
+    end: start + (diagnostic.length ?? 0),
+    line: position.line + 1,
+    column: position.character + 1,
+    code: `TS${diagnostic.code}`,
+    severity: "error",
+    message: message2,
+    ...detail ? { detail } : {}
+  };
+}
 function softBodyOf(template) {
   if (!import_typescript6.default.isTemplateExpression(template) || template.templateSpans.length !== 1 || template.head.text !== "" || template.templateSpans[0].literal.text !== "") return;
   const expression = template.templateSpans[0].expression;
@@ -215606,16 +215666,34 @@ function makesCalls(node) {
   if (body) visit(body);
   return found;
 }
+function ownDeclarations(node) {
+  const names = [];
+  const bind = (name) => {
+    if (import_typescript7.default.isIdentifier(name)) names.push(name.text);
+    else for (const element of name.elements) if (!import_typescript7.default.isOmittedExpression(element)) bind(element.name);
+  };
+  const list = (declarations) => {
+    if (declarations && import_typescript7.default.isVariableDeclarationList(declarations)) for (const declaration of declarations.declarations) bind(declaration.name);
+  };
+  if (import_typescript7.default.isForStatement(node) || import_typescript7.default.isForOfStatement(node) || import_typescript7.default.isForInStatement(node)) list(node.initializer);
+  else if (import_typescript7.default.isBlock(node)) {
+    for (const statement of node.statements) if (import_typescript7.default.isVariableStatement(statement)) list(statement.declarationList);
+  } else if (import_typescript7.default.isFunctionLike(node)) for (const parameter of node.parameters) bind(parameter.name);
+  else if (import_typescript7.default.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
+  return names;
+}
 function assignedIdentifiers(node) {
   const names = /* @__PURE__ */ new Set();
-  const visit = (child) => {
+  const visit = (child, shadowed) => {
+    const own = ownDeclarations(child);
+    if (own.length) shadowed = /* @__PURE__ */ new Set([...shadowed, ...own]);
     let target;
     if (import_typescript7.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript7.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript7.default.SyntaxKind.LastAssignment) target = child.left;
     if ((import_typescript7.default.isPrefixUnaryExpression(child) || import_typescript7.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript7.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript7.default.SyntaxKind.MinusMinusToken)) target = child.operand;
-    if (target && import_typescript7.default.isIdentifier(target)) names.add(target.text);
-    import_typescript7.default.forEachChild(child, visit);
+    if (target && import_typescript7.default.isIdentifier(target) && !shadowed.has(target.text)) names.add(target.text);
+    import_typescript7.default.forEachChild(child, (next2) => visit(next2, shadowed));
   };
-  visit(node);
+  visit(node, /* @__PURE__ */ new Set());
   return names;
 }
 function grownReceivers(node) {
@@ -215708,7 +215786,6 @@ function canonicalFor(node) {
   if (boundRoot && assigned.has(boundRoot)) return "do not reassign the loop bound inside the loop body";
   if (boundRoot && grownReceivers(node.statement).has(boundRoot))
     return "do not grow the collection that bounds the loop inside its body";
-  if (import_typescript7.default.isCallExpression(bound)) return "compute the bound once before the loop, for example `const pages = store.pages(); for (let p = 1; p <= pages; p++) { ... }`";
   return;
 }
 function loopLabel(source2) {
@@ -216064,6 +216141,41 @@ function literalValue(node) {
   if (import_typescript8.default.isParenthesizedExpression(node)) return literalValue(node.expression);
   return void 0;
 }
+function jsonLiteral(node) {
+  const primitive = literalValue(node);
+  if (primitive !== void 0) return primitive;
+  if (node.kind === import_typescript8.default.SyntaxKind.NullKeyword) return null;
+  if (import_typescript8.default.isParenthesizedExpression(node) || import_typescript8.default.isAsExpression(node) || import_typescript8.default.isSatisfiesExpression(node)) return jsonLiteral(node.expression);
+  if (import_typescript8.default.isArrayLiteralExpression(node)) {
+    const items = [];
+    for (const element of node.elements) {
+      const value = import_typescript8.default.isSpreadElement(element) || import_typescript8.default.isOmittedExpression(element) ? NOT_LITERAL : jsonLiteral(element);
+      if (value === NOT_LITERAL) return NOT_LITERAL;
+      items.push(value);
+    }
+    return items;
+  }
+  if (import_typescript8.default.isObjectLiteralExpression(node)) {
+    const record3 = {};
+    for (const property of node.properties) {
+      if (!import_typescript8.default.isPropertyAssignment(property)) return NOT_LITERAL;
+      const key = import_typescript8.default.isIdentifier(property.name) || import_typescript8.default.isStringLiteral(property.name) || import_typescript8.default.isNumericLiteral(property.name) ? property.name.text : void 0;
+      const value = key === void 0 ? NOT_LITERAL : jsonLiteral(property.initializer);
+      if (value === NOT_LITERAL) return NOT_LITERAL;
+      record3[key] = value;
+    }
+    return record3;
+  }
+  return NOT_LITERAL;
+}
+function sameJson(a, b) {
+  if (a === NOT_LITERAL || b === NOT_LITERAL) return false;
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, i) => sameJson(item, b[i]));
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const keys3 = Object.keys(a);
+  return keys3.length === Object.keys(b).length && keys3.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
+}
 function foreignCodeHint(source2) {
   const lines = source2.split("\n");
   const at = (index, message2) => {
@@ -216223,7 +216335,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         }
         const bound = import_typescript8.default.isIdentifier(declaration.name) ? declaration.name.text : "";
         const role = options.inputBindings?.includes(bound) ? "input" : captureNames.includes(bound) ? "captured value" : void 0;
-        if (role && declaration.initializer && options.boundValues && Object.hasOwn(options.boundValues, bound) && literalValue(declaration.initializer) === options.boundValues[bound]) {
+        if (role && declaration.initializer && options.boundValues && Object.hasOwn(options.boundValues, bound) && sameJson(jsonLiteral(declaration.initializer), options.boundValues[bound])) {
           const location = span(statement);
           redundantAliases.push(location);
           repairs.push({
@@ -216967,7 +217079,7 @@ return __natlang_finish(undefined);
   result.program = emitted.outputText;
   return result;
 }
-var import_typescript8, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, TYPESCRIPT_ONLY;
+var import_typescript8, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, NOT_LITERAL, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, TYPESCRIPT_ONLY;
 var init_scope_compiler = __esm({
   "src/scope-compiler.ts"() {
     "use strict";
@@ -217032,7 +217144,9 @@ const __natlang_counted = (upward: boolean) => {
     at: (current: number) => { if (bound === undefined) return undefined; advance(current); return bound; },
     fix: (current: number, value: unknown) => {
       if (typeof value !== 'number' || value - value !== 0)
-        throw new RangeError('a counted for loop needs a finite number as its bound, but got ' + String(value) +
+        throw new RangeError(typeof (value as any)?.then === 'function' ?
+          'the bound of this counted for loop is a Promise; write await before the call in the bound' :
+          'a counted for loop needs a finite number as its bound, but got ' + String(value) +
           '; use iterateOn(step, initial) for an open-ended loop');
       bound = value; advance(current); return value;
     },
@@ -217098,6 +217212,7 @@ const __natlang_iterate = (step: any, ...rest: any[]) =>
       "ArrayBuffer",
       "Promise"
     ]);
+    NOT_LITERAL = /* @__PURE__ */ Symbol("not a literal");
     JS_KEYWORDS = /* @__PURE__ */ new Set([
       "const",
       "let",
@@ -217384,6 +217499,9 @@ function neuraleseSentinel(id2, stopGradient = false, sourceOccurrence) {
 }
 function neuraleseRefSentinel(ref) {
   return neuraleseSentinel(ref.$neuralese.id, ref.$neuralese.stop_gradient, ref.$neuralese.source_occurrence);
+}
+function neuraleseDisplayText(ref) {
+  return `[${ref.$neuralese.type} value: opaque here; pass it on as is, or read it with read(value)]`;
 }
 function soleSentinelUse(text3) {
   const match2 = /^(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?$/.exec(text3);
@@ -217980,6 +218098,39 @@ var init_decision = __esm({
   }
 });
 
+// src/compiler/suggest.ts
+function closestName(name, candidates) {
+  const limit = Math.max(1, Math.floor(name.length / 3));
+  let best, bestDistance = limit + 1;
+  for (const candidate of candidates) {
+    if (candidate === name) continue;
+    const distance = editDistance(name.toLowerCase(), candidate.toLowerCase());
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+function editDistance(left, right) {
+  const rows = Array.from({ length: left.length + 1 }, (_10, index) => [index, ...new Array(right.length).fill(0)]);
+  for (let column = 1; column <= right.length; column++) rows[0][column] = column;
+  for (let row = 1; row <= left.length; row++) for (let column = 1; column <= right.length; column++) {
+    const cost = left[row - 1] === right[column - 1] ? 0 : 1;
+    let value = Math.min(rows[row - 1][column] + 1, rows[row][column - 1] + 1, rows[row - 1][column - 1] + cost);
+    if (row > 1 && column > 1 && left[row - 1] === right[column - 2] && left[row - 2] === right[column - 1])
+      value = Math.min(value, rows[row - 2][column - 2] + 1);
+    rows[row][column] = value;
+  }
+  return rows[left.length][right.length];
+}
+var init_suggest = __esm({
+  "src/compiler/suggest.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+  }
+});
+
 // src/native/native-derivative-contract.ts
 function hexNumber(text3) {
   if (typeof text3 !== "string") throw new RangeError("native optimizer options require canonical hexadecimal values");
@@ -218333,6 +218484,7 @@ __export(neuralese_store_exports, {
   decodeNativeState: () => decodeNativeState,
   decodeNativeTensorArtifact: () => decodeNativeTensorArtifact,
   encodeNativeState: () => encodeNativeState,
+  encodeNativeStateWire: () => encodeNativeStateWire,
   encodeNativeTensorArtifact: () => encodeNativeTensorArtifact,
   importNativeArtifactBundle: () => importNativeArtifactBundle,
   nativeArtifactDependencyClosure: () => nativeArtifactDependencyClosure,
@@ -218341,6 +218493,7 @@ __export(neuralese_store_exports, {
   nativeStateArtifactDependencies: () => nativeStateArtifactDependencies,
   nativeStateBlockMeta: () => nativeStateBlockMeta,
   nativeStateContentId: () => nativeStateContentId,
+  nativeStateView: () => nativeStateView,
   nativeTensorArtifactBlockMeta: () => nativeTensorArtifactBlockMeta,
   nativeTensorArtifactContentId: () => nativeTensorArtifactContentId,
   nativeTensorArtifactDependencies: () => nativeTensorArtifactDependencies,
@@ -218349,6 +218502,7 @@ __export(neuralese_store_exports, {
   validateNativeInvocationActorReceipt: () => validateNativeInvocationActorReceipt,
   validateNativeInvocationBehaviorPolicy: () => validateNativeInvocationBehaviorPolicy
 });
+import { sha256 as sha2562 } from "@noble/hashes/sha2.js";
 function nativeModelIdentityEqual(left, right) {
   const keys3 = ["checkpoint_sha256", "tokenizer_fingerprint", "embedding_weight_sha256", "architecture"];
   return Object.keys(left).length === keys3.length && Object.keys(right).length === keys3.length && keys3.every((key) => left[key] === right[key]);
@@ -218459,10 +218613,17 @@ async function archiveNativeArtifactFrom(remote, archive, id2, active2 = /* @__P
   nested.add(id2);
   if (id2.startsWith("nzs1_")) {
     if (!archive.getNativeState || !archive.putNativeState) throw new Error("neuralese-native-archive-unavailable: configure a native state archive");
-    const found2 = await archive.getNativeState(id2), artifact2 = found2 ?? await remote.getNativeState?.(id2);
+    const found2 = await archive.getNativeState(id2);
+    const wire = found2 || !remote.getNativeStateWire || !archive.putNativeStateWire ? void 0 : await remote.getNativeStateWire(id2);
+    const artifact2 = found2 ?? (wire ? decodeNativeState(wire, id2) : await remote.getNativeState?.(id2));
     if (!artifact2) throw new Error(`neuralese-unknown-native-state: restore native state ${id2}`);
     for (const dependency of nativeStateArtifactDependencies(artifact2)) await archiveNativeArtifactFrom(remote, archive, dependency, nested);
     if (found2) return found2;
+    if (wire) {
+      const saved3 = await archive.putNativeStateWire(wire, id2);
+      if (saved3.id !== id2) throw new Error("neuralese-block-integrity: native state changed during archival");
+      return saved3;
+    }
     const { id: _11, ...input2 } = artifact2, saved2 = await archive.putNativeState(input2);
     if (saved2.id !== id2) throw new Error("neuralese-block-integrity: native state changed during archival");
     return saved2;
@@ -218834,18 +218995,23 @@ function decodeNativeTensorArtifact(bytes2) {
 function nativeStateContentId(metadata, tensors) {
   validateNativeState(metadata, tensors);
   const metaBytes = new TextEncoder().encode(nativeCanonicalJson(metadata));
-  const parts = [new TextEncoder().encode("natlang.native-state/1\0"), u64(metaBytes.length), metaBytes];
+  const hash2 = sha2562.create();
+  for (const part of [new TextEncoder().encode("natlang.native-state/1\0"), u64(metaBytes.length), metaBytes]) hash2.update(part);
   for (const name of Object.keys(tensors).sort()) {
     const tensor = tensors[name];
     const elements = tensor.shape.reduce((product, size) => product * size, 1);
     if (!tensor.shape.length || tensor.shape.some((size, index) => !Number.isSafeInteger(size) || (index === 0 ? size < 0 : size <= 0)) || tensor.data.length !== elements * NATIVE_DTYPE_BYTES[tensor.dtype]) throw new RangeError(`invalid native tensor ${name}`);
     const nameBytes = new TextEncoder().encode(name);
     const descriptor2 = new TextEncoder().encode(nativeCanonicalJson({ dtype: tensor.dtype, shape: tensor.shape }));
-    parts.push(u32(nameBytes.length), nameBytes, u32(descriptor2.length), descriptor2, u64(tensor.data.length), tensor.data);
+    for (const part of [u32(nameBytes.length), nameBytes, u32(descriptor2.length), descriptor2, u64(tensor.data.length), tensor.data])
+      hash2.update(part);
   }
-  return `nzs1_${base32(digest(joinBytes(parts)))}`;
+  return `nzs1_${base32(hash2.digest())}`;
 }
 function encodeNativeState(artifact) {
+  return encodeNativeStateWire(artifact).wire;
+}
+function encodeNativeStateWire(artifact) {
   const id2 = nativeStateContentId(artifact.metadata, artifact.tensors);
   const entries = {};
   const payloads = [];
@@ -218862,9 +219028,21 @@ function encodeNativeState(artifact) {
   aligned.set(header);
   header = aligned;
   const body = joinBytes([u64(header.length), header, ...payloads]);
-  return body;
+  return { id: id2, wire: body };
 }
-function decodeNativeState(bytes2) {
+function checkNativeStateFinite(tensors) {
+  for (const [name, tensor] of Object.entries(tensors)) {
+    const { data } = tensor;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let bad = false;
+    if (tensor.dtype === "F32") for (let at = 0; at < data.length && !bad; at += 4) bad = (view.getUint32(at, true) & 2139095040) === 2139095040;
+    else if (tensor.dtype === "BF16") for (let at = 0; at < data.length && !bad; at += 2) bad = (view.getUint16(at, true) & 32640) === 32640;
+    else if (tensor.dtype === "F16") for (let at = 0; at < data.length && !bad; at += 2) bad = (view.getUint16(at, true) & 31744) === 31744;
+    else if (tensor.dtype === "F64") for (let at = 0; at < data.length && !bad; at += 8) bad = (view.getUint32(at + 4, true) & 2146435072) === 2146435072;
+    if (bad) throw new RangeError(`native state ${name} contains non-finite values`);
+  }
+}
+function decodeNativeState(bytes2, verifiedId) {
   if (bytes2.length < 8) throw new RangeError("not a native state safetensors file");
   const view = new DataView(bytes2.buffer, bytes2.byteOffset, bytes2.byteLength);
   const headerSize = Number(view.getBigUint64(0, true));
@@ -218890,14 +219068,25 @@ function decodeNativeState(bytes2) {
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end - start !== count * NATIVE_DTYPE_BYTES[entry.dtype] || end > payload.length)
       throw new RangeError(`invalid native tensor byte range ${name}`);
     spans.push([start, end]);
-    tensors[name] = { dtype: entry.dtype, shape: [...entry.shape], data: payload.slice(start, end) };
+    tensors[name] = { dtype: entry.dtype, shape: [...entry.shape], data: payload.subarray(start, end) };
   }
   spans.sort((a, b) => a[0] - b[0]);
   if (!spans.length || spans[0][0] !== 0 || spans.at(-1)[1] !== payload.length || spans.some((span, index) => index > 0 && spans[index - 1][1] !== span[0]))
     throw new RangeError("native state tensor payload has gaps or overlaps");
+  if (verifiedId !== void 0) {
+    if (id2 !== verifiedId) throw new RangeError(`native state content ID mismatch: ${String(id2)}`);
+    validateNativeState(metadata, tensors);
+    return { id: verifiedId, metadata, tensors };
+  }
+  checkNativeStateFinite(tensors);
   const actual = nativeStateContentId(metadata, tensors);
   if (actual !== id2) throw new RangeError(`native state content ID mismatch: ${actual}`);
   return { id: actual, metadata, tensors };
+}
+function nativeStateView(artifact) {
+  return { id: artifact.id, metadata: structuredClone(artifact.metadata), tensors: Object.fromEntries(
+    Object.entries(artifact.tensors).map(([name, tensor]) => [name, { ...tensor, shape: [...tensor.shape] }])
+  ) };
 }
 var BASE32, NATIVE_DTYPE_BYTES, NATIVE_FLOAT_DTYPE_BYTES, SHA256, MemoryNeuraleseStore;
 var init_neuralese_store = __esm({
@@ -218913,7 +219102,9 @@ var init_neuralese_store = __esm({
     NATIVE_FLOAT_DTYPE_BYTES = { F16: 2, BF16: 2, F32: 4, F64: 8 };
     SHA256 = /^[0-9a-f]{64}$/;
     MemoryNeuraleseStore = class {
+      /** Native states as their wires (kept as received) and the decoded views of them. */
       nativeStates = /* @__PURE__ */ new Map();
+      nativeWires = /* @__PURE__ */ new Map();
       nativeTensorArtifacts = /* @__PURE__ */ new Map();
       /** Metadata of blocks held elsewhere (`note`). */
       noted = /* @__PURE__ */ new Map();
@@ -218926,20 +219117,27 @@ var init_neuralese_store = __esm({
         return this.nativeStates.has(id2) || this.nativeTensorArtifacts.has(id2);
       }
       async putNativeState(artifact) {
-        if (artifact.metadata.derivation) await verifyNativeStateDerivation(this, artifact);
-        const id2 = nativeStateContentId(artifact.metadata, artifact.tensors);
-        const stored = { id: id2, metadata: structuredClone(artifact.metadata), tensors: Object.fromEntries(
-          Object.entries(artifact.tensors).map(([name, tensor]) => [name, { ...tensor, shape: [...tensor.shape], data: tensor.data.slice() }])
-        ) };
-        const found = this.nativeStates.get(id2);
-        if (found) return structuredClone(found);
-        this.nativeStates.set(id2, stored);
-        this.noted.delete(id2);
-        return structuredClone(stored);
+        const { id: id2, wire } = encodeNativeStateWire(artifact);
+        return this.putNativeStateWire(wire, id2);
+      }
+      async putNativeStateWire(wire, verifiedId) {
+        const found = verifiedId !== void 0 ? this.nativeStates.get(verifiedId) : void 0;
+        if (found) return nativeStateView(found);
+        const stored = decodeNativeState(wire, verifiedId);
+        if (stored.metadata.derivation) await verifyNativeStateDerivation(this, stored);
+        if (!this.nativeStates.has(stored.id)) {
+          this.nativeStates.set(stored.id, stored);
+          this.nativeWires.set(stored.id, wire);
+          this.noted.delete(stored.id);
+        }
+        return nativeStateView(this.nativeStates.get(stored.id));
       }
       async getNativeState(id2) {
         const found = this.nativeStates.get(id2);
-        return found && structuredClone(found);
+        return found && nativeStateView(found);
+      }
+      async getNativeStateWire(id2) {
+        return this.nativeWires.get(id2);
       }
       async hasNativeState(id2) {
         return this.nativeStates.has(id2);
@@ -218984,6 +219182,7 @@ var init_neuralese_store = __esm({
         for (const id2 of [...this.nativeStates.keys(), ...this.nativeTensorArtifacts.keys()])
           if (!referenced.has(id2) && !this.pins.has(id2)) {
             this.nativeStates.delete(id2);
+            this.nativeWires.delete(id2);
             this.nativeTensorArtifacts.delete(id2);
             removed.push(id2);
           }
@@ -219573,16 +219772,24 @@ function typeLiteralMap(key, text3) {
   return map;
 }
 function readNatlangFrontmatter(source2) {
-  const lines = source2.split(/\r?\n/), yaml = [], typed = {};
+  const lines = source2.split(/\r?\n/), yaml = [], yamlLines = [], typed = {};
   for (let index = 0; index < lines.length; index++) {
     const match2 = TYPE_KEYS.exec(lines[index]);
     if (!match2) {
       yaml.push(lines[index]);
+      yamlLines.push(index + 1);
       continue;
     }
-    const key = match2[1], inline2 = match2[2].trim(), block = [];
+    const key = match2[1], inline2 = match2[2].trim(), block = [], keyLine = index + 1;
     while (index + 1 < lines.length && /^(\s|$)/.test(lines[index + 1])) block.push(lines[++index]);
     const body = block.filter((line) => line.trim() && !line.trim().startsWith("#"));
+    try {
+      readTyped(key, inline2, body);
+    } catch (error) {
+      throw lineOf(error) ? error : atLine(error.message, keyLine);
+    }
+  }
+  function readTyped(key, inline2, body) {
     if (key in typed) throw new Error(`frontmatter repeats ${key}`);
     if (key === "returns") {
       const text3 = unquoteType([inline2, ...body.map((line) => line.trim())].join(" "));
@@ -219612,8 +219819,14 @@ function readNatlangFrontmatter(source2) {
       typed[key] = map;
     }
   }
-  const meta = YAML.parse(yaml.join("\n")) ?? {};
-  if (!meta || typeof meta !== "object" || Array.isArray(meta)) throw new Error("frontmatter must be a mapping");
+  let meta;
+  try {
+    meta = YAML.parse(yaml.join("\n")) ?? {};
+  } catch (error) {
+    const line = lineOf(error);
+    throw line ? atLine(error.message.split("\n")[0].replace(/ at line \d+, column \d+:?$/, ""), yamlLines[line - 1] ?? line) : error;
+  }
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) throw atLine("frontmatter must be a mapping", 1);
   return { ...meta, ...typed };
 }
 function checkName(path2, name) {
@@ -219626,7 +219839,9 @@ function checkSignature(path2, args, returns, types3, text3 = "") {
     try {
       env.checkNames(parseType(type));
     } catch (error) {
-      throw new NatlangSourceError(path2, error.message, line());
+      const unknown = /^unknown type name (\S+)/.exec(error.message)?.[1];
+      const near = unknown && closestName(unknown, [...Object.keys(types3), ...PLAIN_TYPES]);
+      throw new NatlangSourceError(path2, error.message, line(), near ? `did you mean ${near}?` : void 0);
     }
   };
   for (const [name, type] of Object.entries(args)) check(type, () => frontmatterLine(text3, "args", name.replace(/\?$/, "")));
@@ -219639,18 +219854,22 @@ function parseNatlang(path2, text3, inherited, files2) {
   try {
     meta = readNatlangFrontmatter(match2[1]);
   } catch (error) {
-    throw new NatlangSourceError(path2, error.message);
+    const line = lineOf(error);
+    throw new NatlangSourceError(path2, error.message, line === void 0 ? void 0 : line + 1);
   }
-  for (const key of Object.keys(meta)) if (!NL_KEYS.has(key))
+  for (const key of Object.keys(meta)) if (!NL_KEYS.has(key)) {
+    const near = closestName(key, NL_KEYS);
     throw new NatlangSourceError(
       path2,
       `unknown frontmatter field ${JSON.stringify(key)}; allowed: ${[...NL_KEYS].join(", ")}`,
-      frontmatterLine(text3, key)
+      frontmatterLine(text3, key),
+      near ? `did you mean ${near}?` : void 0
     );
-  if (typeof meta.returns !== "string") throw new NatlangSourceError(path2, "frontmatter needs a returns type");
+  }
+  if (typeof meta.returns !== "string") throw new NatlangSourceError(path2, "frontmatter needs a returns type", 2);
   const subtype = String(meta.kind ?? "function");
   if (subtype !== "function" && subtype !== "directory-reducer")
-    throw new NatlangSourceError(path2, "kind must be function or directory-reducer");
+    throw new NatlangSourceError(path2, "kind must be function or directory-reducer", frontmatterLine(text3, "kind"));
   const name = files2.basename(path2, ".nl");
   checkName(path2, name);
   const types3 = { ...inherited, ...meta.types ?? {} };
@@ -219659,29 +219878,41 @@ function parseNatlang(path2, text3, inherited, files2) {
   try {
     generic = genericResult(meta.generic, meta.returns);
   } catch (error) {
-    throw new NatlangSourceError(path2, error.message);
+    throw new NatlangSourceError(path2, error.message, frontmatterLine(text3, "generic"));
   }
   if (generic && (Object.hasOwn(types3, generic.name) || Object.values(args).some((type) => new RegExp(`(?<![\\w$])${generic.name}(?![\\w$])`).test(type))))
-    throw new NatlangSourceError(path2, `${generic.name} is the generic result; name the parameter something no argument or type alias uses`);
+    throw new NatlangSourceError(
+      path2,
+      `${generic.name} is the generic result; name the parameter something no argument or type alias uses`,
+      frontmatterLine(text3, "generic")
+    );
   if (generic && meta.readout === "decision")
-    throw new NatlangSourceError(path2, `readout: decision scores a finite crisp result; declare returns: ${generic.crisp} for it`);
+    throw new NatlangSourceError(path2, `readout: decision scores a finite crisp result; declare returns: ${generic.crisp} for it`, frontmatterLine(text3, "readout"));
   const returns = generic?.crisp ?? meta.returns;
   checkSignature(path2, args, returns, types3, text3);
   if (generic) checkSignature(path2, {}, generic.neuralese, types3);
   if (meta.readout !== void 0) {
-    if (meta.readout !== "decision" && meta.readout !== "template") throw new NatlangSourceError(path2, "readout must be decision or template");
+    if (meta.readout !== "decision" && meta.readout !== "template") throw new NatlangSourceError(path2, "readout must be decision or template", frontmatterLine(text3, "readout"));
   }
   if (meta.model !== void 0 && (typeof meta.model !== "string" || !/^[A-Za-z_][\w.:/-]*$/.test(meta.model)))
-    throw new NatlangSourceError(path2, "model must name one of the runtime's models, such as small");
+    throw new NatlangSourceError(path2, "model must name one of the runtime's models, such as small", frontmatterLine(text3, "model"));
   const budget = callBudget(path2, meta.budget, frontmatterLine(text3, "budget"));
   if (meta.uses !== void 0 && (!Array.isArray(meta.uses) || meta.uses.some((item) => typeof item !== "string" || !/^[A-Za-z_$][\w$]*(\/[A-Za-z_$][\w$]*)*$/.test(item))))
-    throw new NatlangSourceError(path2, "uses must list package items by path from the package root, such as [harness/cut]");
+    throw new NatlangSourceError(path2, "uses must list package items by path from the package root, such as [harness/cut]", frontmatterLine(text3, "uses"));
   if (meta.withhold !== void 0 && (!Array.isArray(meta.withhold) || meta.withhold.some((item) => typeof item !== "string" || !WITHHOLDABLE_TOOLS.includes(item))))
-    throw new NatlangSourceError(path2, `withhold lists tools this function's calls are not offered, from: ${WITHHOLDABLE_TOOLS.join(", ")}`);
+    throw new NatlangSourceError(
+      path2,
+      `withhold lists tools this function's calls are not offered, from: ${WITHHOLDABLE_TOOLS.join(", ")}`,
+      frontmatterLine(text3, "withhold")
+    );
   if (meta.readout === "decision") {
     const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name2, text4]) => [name2, parseType(text4)])));
     if ((finiteValues(parseType(returns), env)?.length ?? 0) < 2)
-      throw new NatlangSourceError(path2, 'readout: decision needs a finite returns type with at least two values, such as "yes" | "no"');
+      throw new NatlangSourceError(
+        path2,
+        'readout: decision needs a finite returns type with at least two values, such as "yes" | "no"',
+        frontmatterLine(text3, "returns")
+      );
   }
   const source2 = files2.relative?.(path2) ?? path2;
   return {
@@ -220006,7 +220237,9 @@ function loadNamedFunction(path2, files2) {
   const dir = files2.dirname(path2);
   const names = [files2.basename(path2, ".nl")];
   let ancestor = dir;
+  const lexicalRoot = packageRoot(dir, files2);
   while (true) {
+    if (ancestor === lexicalRoot) break;
     const parent = files2.dirname(ancestor);
     if (parent === ancestor) break;
     const owner = files2.join(parent, files2.basename(ancestor) + ".nl");
@@ -220054,7 +220287,7 @@ function findApplicationContext(start, files2) {
     dir = parent;
   }
 }
-var import_typescript11, NatlangSourceError, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
+var import_typescript11, NatlangSourceError, atLine, lineOf, PLAIN_TYPES, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
 var init_loader = __esm({
   "src/runtime/loader.ts"() {
     "use strict";
@@ -220065,21 +220298,27 @@ var init_loader = __esm({
     init_types();
     init_decision();
     init_intrinsics();
+    init_suggest();
     init_policy();
     init_nz_file();
     init_representation();
     NatlangSourceError = class extends Error {
-      constructor(path2, reason, line) {
-        super(`${path2}${line === void 0 ? "" : `:${line}`}: ${reason}`);
+      constructor(path2, reason, line, hint) {
+        super(`${path2}${line === void 0 ? "" : `:${line}`}: ${reason}${hint ? ` (${hint})` : ""}`);
         this.path = path2;
         this.reason = reason;
         this.line = line;
+        this.hint = hint;
         this.name = "NatlangSourceError";
       }
       path;
       reason;
       line;
+      hint;
     };
+    atLine = (message2, line) => Object.assign(new Error(message2), { line });
+    lineOf = (error) => typeof error.line === "number" ? error.line : error.linePos?.[0]?.line;
+    PLAIN_TYPES = ["string", "number", "boolean", "null", "undefined", "unknown", "Date", "Map", "Set", "URL", "Error", "RegExp"];
     FILE_NODES = /* @__PURE__ */ new Set();
     nodeKey = (record3) => `${record3.kind}:${record3.id}@${record3.revision}`;
     IDENTIFIER4 = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -220970,12 +221209,12 @@ function natlangTransformer(options) {
     if (!module) return lowered;
     let changed = false;
     const statements = lowered.statements.map((statement) => {
-      if (!import_typescript12.default.isImportDeclaration(statement) || !import_typescript12.default.isStringLiteral(statement.moduleSpecifier)) return statement;
+      if (!import_typescript12.default.isImportDeclaration(statement) && !import_typescript12.default.isExportDeclaration(statement) || !statement.moduleSpecifier || !import_typescript12.default.isStringLiteral(statement.moduleSpecifier)) return statement;
       const specifier = statement.moduleSpecifier.text;
       const target = module.natlangImports.has(specifier) ? `${specifier}.js` : module.rewrite?.get(specifier);
       if (!target) return statement;
       changed = true;
-      return f.updateImportDeclaration(statement, statement.modifiers, statement.importClause, f.createStringLiteral(target), statement.attributes);
+      return import_typescript12.default.isImportDeclaration(statement) ? f.updateImportDeclaration(statement, statement.modifiers, statement.importClause, f.createStringLiteral(target), statement.attributes) : f.updateExportDeclaration(statement, statement.modifiers, statement.isTypeOnly, statement.exportClause, f.createStringLiteral(target), statement.attributes);
     });
     return changed ? f.updateSourceFile(lowered, statements) : lowered;
   };
@@ -221158,7 +221397,44 @@ function checkEvalFields(source2, scope) {
     return !!symbol?.declarations?.length && symbol.declarations.every(declared);
   };
   const found = [];
+  const at = (node, code, message2) => {
+    const start = node.getStart(snippet), location = snippet.getLineAndCharacterOfPosition(start);
+    found.push({
+      code,
+      severity: "error",
+      file: "eval",
+      start: start - prefix.length,
+      end: node.getEnd() - prefix.length,
+      line: Math.max(1, location.line),
+      column: location.character + 1,
+      message: message2
+    });
+  };
+  const isDecision = (node) => {
+    const type = checker.getNonNullableType(checker.getTypeAtLocation(node));
+    return ["value", "probabilities", "confidence", "scored"].every((name) => !!checker.getPropertyOfType(type, name));
+  };
+  const decisionCompare = (node) => at(
+    node,
+    "decision-compare",
+    `${node.getText(snippet)} is the decision record that decide(...) returns, not its answer: compare ${node.getText(snippet)}.value.`
+  );
+  const comparisons = /* @__PURE__ */ new Set();
   for (const diagnostic of program.getSemanticDiagnostics(snippet)) {
+    if ((diagnostic.code === 2367 || diagnostic.code === 2678) && diagnostic.start !== void 0) {
+      let node = innermostNode(snippet, diagnostic.start);
+      while (node && !import_typescript13.default.isBinaryExpression(node) && !import_typescript13.default.isCaseClause(node)) node = node.parent;
+      if (!node) continue;
+      const key = import_typescript13.default.isCaseClause(node) ? node.parent.parent : node;
+      if (comparisons.has(key)) continue;
+      const sides = import_typescript13.default.isBinaryExpression(node) ? [node.left, node.right] : [node.parent.parent.expression];
+      const decision = sides.find(isDecision);
+      if (decision) {
+        comparisons.add(key);
+        decisionCompare(decision);
+      }
+      continue;
+    }
     if (diagnostic.code !== 2339 && diagnostic.code !== 2551 || diagnostic.start === void 0) continue;
     const name = findNode(snippet, diagnostic.start);
     const access = name?.parent;
@@ -221186,6 +221462,16 @@ function checkEvalFields(source2, scope) {
       message: `${access.expression.getText(snippet)} has no field ${name.text}: ${fields}. Read the field that holds what you need.`
     });
   }
+  return found;
+}
+function innermostNode(file, position) {
+  let found;
+  const visit = (node) => {
+    if (position < node.getStart(file) || position >= node.getEnd()) return;
+    found = node;
+    import_typescript13.default.forEachChild(node, visit);
+  };
+  visit(file);
   return found;
 }
 function findNode(file, position) {
@@ -223683,6 +223969,17 @@ function callWrittenAsText(text3, tools) {
   });
   return matches2.length === 1 ? [matches2[0].function.name, value] : void 0;
 }
+function leakedCallFeedback(text3, tools) {
+  const at = text3.indexOf("<tool_call>");
+  let problem = "could not be read";
+  if (at >= 0) try {
+    parseNativeXmlCalls(text3.slice(at), tools);
+  } catch (error) {
+    const message2 = error instanceof Error ? error.message : "";
+    problem = /function frame/.test(message2) ? "did not name its function on the line after the opening tag" : /not offered/.test(message2) ? "named a tool this call does not offer" : /duplicate parameter/.test(message2) ? "left a parameter open or gave one twice" : /unknown parameter/.test(message2) ? "gave a parameter its tool does not have" : /incomplete tool frame/.test(message2) ? "was not closed after its last parameter" : /mixed prose/.test(message2) ? "was followed by text that is not a call" : /declared|schema/.test(message2) ? "gave an argument that is not of its declared type" : problem;
+  }
+  return `The tool call in your last reply ${problem}, so nothing ran; send the call again, complete.`;
+}
 function isStream(value) {
   return typeof value[Symbol.asyncIterator] === "function";
 }
@@ -223753,6 +224050,7 @@ async function assembleChatCompletion(chunks, onDelta) {
       const fn = part.function ?? {};
       if (typeof fn.name === "string") call.function.name += fn.name;
       if (typeof fn.arguments === "string") call.function.arguments += fn.arguments;
+      for (const [key, value] of Object.entries(part)) if (!TOOL_CALL_FIELDS.has(key)) call[key] = value;
       const fragment = {
         ...typeof part.id === "string" ? { id: part.id } : {},
         ...typeof fn.name === "string" && fn.name ? { name: fn.name } : {},
@@ -223816,7 +224114,12 @@ function chatCompletionModelTurn(transport, options = {}) {
     if (responseTools && tools.length) throw new Error("out-of-band response tools require an empty prompt tool list");
     for (const tool2 of responseTools ?? []) tool2.function.name = forward[tool2.function.name] ?? tool2.function.name;
     const messages = structuredClone(request.messages);
-    for (const message2 of messages) delete message2.natlang_host_generated;
+    const hostCallFields = options.request?.x_natlang_host_call_fields;
+    for (const message2 of messages) {
+      if (hostCallFields && message2.natlang_host_generated)
+        for (const call of message2.tool_calls ?? []) Object.assign(call, structuredClone(hostCallFields));
+      delete message2.natlang_host_generated;
+    }
     for (const message2 of messages) {
       if (message2.role !== "assistant") continue;
       const legacy = message2.reasoning_content, current = message2.reasoning;
@@ -223827,7 +224130,15 @@ function chatCompletionModelTurn(transport, options = {}) {
     }
     for (const message2 of messages) for (const call of message2.tool_calls ?? [])
       if (call.function?.name && forward[call.function.name]) call.function.name = forward[call.function.name];
-    let attemptMessages = messages, retries = 0;
+    const continued = request.continue;
+    if (continued && !options.continuesReplies)
+      throw new Error("continuation-unsupported: this model backend cannot continue a cut-off reply");
+    let attemptMessages = continued ? [...messages, {
+      role: "assistant",
+      content: continued.text,
+      ...continued.reasoning ? { reasoning: continued.reasoning, reasoning_content: continued.reasoning } : {}
+    }] : messages;
+    let retries = 0;
     let promptTokens = 0, completionTokens = 0, cachedTokens = 0, prefillMs = 0, generationMs = 0;
     let hasPrompt = false, hasCompletion = false, hasCached = false, hasTimings = false;
     const started = Date.now();
@@ -223854,7 +224165,12 @@ function chatCompletionModelTurn(transport, options = {}) {
     };
     while (true) {
       if (signal?.aborted) throw new Error("model turn aborted");
-      const wireRequest = { ...options.request, messages: attemptMessages, ...tools.length ? { tools, tool_choice: request.tool_choice ?? "auto" } : {} };
+      const wireRequest = {
+        ...options.request,
+        messages: attemptMessages,
+        ...tools.length ? { tools, tool_choice: request.tool_choice ?? "auto" } : {},
+        ...continued && !retries ? { stream: false } : {}
+      };
       if (!tools.length) {
         delete wireRequest.tools;
         delete wireRequest.tool_choice;
@@ -223881,7 +224197,10 @@ function chatCompletionModelTurn(transport, options = {}) {
         const template = request.template;
         wireRequest.neuralese_template = { ...template, call: forward[template.call] ?? template.call };
       }
-      if (request.seed !== null) wireRequest.seed = request.seed;
+      const omitSeed = wireRequest.x_natlang_omit_seed === true;
+      delete wireRequest.x_natlang_omit_seed;
+      delete wireRequest.x_natlang_host_call_fields;
+      if (request.seed !== null && !omitSeed) wireRequest.seed = request.seed;
       const configuredMax = options.request?.max_tokens;
       if (configuredMax !== void 0 && (typeof configuredMax !== "number" || !Number.isSafeInteger(configuredMax) || configuredMax < 1))
         throw new Error("configured max_tokens must be a positive integer");
@@ -223926,6 +224245,16 @@ function chatCompletionModelTurn(transport, options = {}) {
         hasTimings = true;
       }
       const truncated = choice?.finish_reason === "length";
+      if (continued && !retries) {
+        const text3 = contentText(message2?.content), reasoning = message2?.reasoning_content ?? message2?.reasoning;
+        const thought2 = typeof reasoning === "string" ? reasoning : "";
+        if (!text3.startsWith(continued.text) || !thought2.startsWith(continued.reasoning ?? ""))
+          throw new Error("continuation-mismatch: the server did not answer with the whole continued reply");
+        if (onDelta) {
+          if (thought2.length > (continued.reasoning ?? "").length) onDelta({ type: "reasoning", text: thought2.slice((continued.reasoning ?? "").length) });
+          if (text3.length > continued.text.length) onDelta({ type: "text", text: text3.slice(continued.text.length) });
+        }
+      }
       const protocolFailure = nativeProtocolFailure(body);
       if (protocolFailure) return finish({
         calls: [],
@@ -223949,9 +224278,9 @@ function chatCompletionModelTurn(transport, options = {}) {
               calls.push(...parseNativeXmlCalls(replyText2, responseTools).map(([name, args]) => [reverse[name] ?? name, args]));
               parsedNative = true;
             } catch {
-              throw new LeakedCall("the tool call came back as invalid native XML");
+              throw new LeakedCall(leakedCallFeedback(replyText2, responseTools));
             }
-          } else throw new LeakedCall("the tool call came back as text");
+          } else throw new LeakedCall(leakedCallFeedback(replyText2, tools));
         }
         const written = calls.length ? void 0 : callWrittenAsText(replyText2, tools);
         if (written) calls.push([reverse[written[0]] ?? written[0], written[1]]);
@@ -223967,14 +224296,29 @@ function chatCompletionModelTurn(transport, options = {}) {
           raw_response: body
         });
       } catch (error) {
-        if (truncated) return finish({
-          calls: [],
-          text: contentText(message2?.content),
-          truncated: true,
-          ...counts(),
-          raw_response: body
-        });
-        if (retries >= 1 && error instanceof LeakedCall) return finish({ calls: [], text: "", ...counts(), raw_response: body });
+        if (truncated) {
+          const reasoning = message2?.reasoning_content ?? message2?.reasoning;
+          return finish({
+            calls: [],
+            text: contentText(message2?.content),
+            truncated: true,
+            raw_calls: rawCalls,
+            ...typeof reasoning === "string" && reasoning.trim() ? { reasoning } : {},
+            ...counts(),
+            raw_response: body
+          });
+        }
+        if (error instanceof LeakedCall) {
+          const reasoning = message2?.reasoning_content ?? message2?.reasoning;
+          return finish({
+            calls: [],
+            text: contentText(message2?.content),
+            malformed_call: error.message,
+            ...typeof reasoning === "string" && reasoning.trim() ? { reasoning } : {},
+            ...counts(),
+            raw_response: body
+          });
+        }
         if (retries >= 1 || signal?.aborted)
           throw new Error(`model returned malformed tool arguments after ${retries + 1} attempt${retries ? "s" : ""}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         retries++;
@@ -223999,7 +224343,7 @@ async function fetchModel(url, init = {}) {
 function openAIEndpointRoot(endpoint) {
   return endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
 }
-var LeakedCall, MALFORMED_RETRY, longDispatcher, localEndpoints;
+var LeakedCall, MALFORMED_RETRY, TOOL_CALL_FIELDS, longDispatcher, localEndpoints;
 var init_chat_completion = __esm({
   "src/model/chat-completion.ts"() {
     "use strict";
@@ -224014,6 +224358,7 @@ var init_chat_completion = __esm({
     LeakedCall = class extends Error {
     };
     MALFORMED_RETRY = "The last tool call was malformed. Call one offered tool with valid JSON object arguments. Do not change the task or invent a new tool.";
+    TOOL_CALL_FIELDS = /* @__PURE__ */ new Set(["index", "id", "type", "function"]);
     localEndpoints = /* @__PURE__ */ new Map();
   }
 });
@@ -224153,8 +224498,11 @@ async function restoreNativeStates(remote, archive, ids, known, all = false) {
   const missing = [];
   for (const id2 of ids) {
     const local = await archive?.getNativeState?.(id2);
-    if (local) {
-      const absent = await restoreNativeArtifacts(remote, archive, nativeStateArtifactDependencies(local));
+    const dependencies = local ? nativeStateArtifactDependencies(local) : [];
+    if (dependencies.length) {
+      if (!remote.putNativeTensorArtifact || !remote.meta)
+        throw new Error(`neuralese-native-archive-unavailable: native state ${id2} depends on adapter artifacts this engine cannot hold`);
+      const absent = await restoreNativeArtifacts(remote, archive, dependencies);
       if (absent.length) throw new Error(`neuralese-unknown-native-artifact: restore source adapter coefficients and bases ${absent.join(", ")}`);
     }
     if (known?.has(id2)) continue;
@@ -224167,8 +224515,9 @@ async function restoreNativeStates(remote, archive, ids, known, all = false) {
       missing.push(id2);
       continue;
     }
+    const wire = await archive?.getNativeStateWire?.(id2);
     const { id: _10, ...input } = artifact;
-    const restored = await remote.putNativeState(input);
+    const restored = wire ? await remote.putNativeStateWire(wire, id2) : await remote.putNativeState(input);
     if (restored.id !== id2) throw new Error(`native-state identity mismatch while restoring ${id2}`);
     known?.add(id2);
   }
@@ -224208,11 +224557,28 @@ var init_neuralese_server = __esm({
         return { ...structuredClone(artifact), id: id2 };
       }
       async getNativeState(id2) {
+        const wire = await this.getNativeStateWire(id2);
+        return wire && decodeNativeState(wire, id2);
+      }
+      /** The server's stored bytes, verified once here (header, finite values, content ID); kept as received. */
+      async getNativeStateWire(id2) {
         const response = await this.request(`/native-states/${id2}`);
         if (response.status === 404) return void 0;
         if (!response.ok) throw new Error(`native-state fetch failed (${response.status})`);
-        const artifact = decodeNativeState(new Uint8Array(await response.arrayBuffer()));
+        const wire = new Uint8Array(await response.arrayBuffer());
+        const artifact = decodeNativeState(wire);
         if (artifact.id !== id2) throw new Error(`native-state identity mismatch: requested ${id2}, received ${artifact.id}`);
+        return wire;
+      }
+      /** Upload stored bytes as they are. */
+      async putNativeStateWire(wire, verifiedId) {
+        const artifact = decodeNativeState(wire, verifiedId);
+        const response = await this.request(`/native-states/${artifact.id}`, {
+          method: "PUT",
+          body: wire,
+          headers: { "content-type": "application/octet-stream" }
+        });
+        if (!response.ok) throw new Error(`native-state upload failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
         return artifact;
       }
       async hasNativeState(id2) {
@@ -224295,43 +224661,122 @@ var init_neuralese_server = __esm({
 // src/model/native-operator.ts
 var native_operator_exports = {};
 __export(native_operator_exports, {
-  OPERATOR_CAPABILITY: () => OPERATOR_CAPABILITY,
-  serverCompactor: () => serverCompactor
+  grammarCapture: () => grammarCapture
 });
-function serverCompactor(options) {
+function grammarCapture(options) {
   const base = options.endpoint.replace(/\/$/, "");
-  return async (site2) => {
-    if (!serves(options.info, OPERATOR_CAPABILITY))
-      throw Object.assign(
-        new Error("neuralese-operator-unavailable: the server does not serve learned operators"),
-        { code: "neuralese-operator-unavailable" }
-      );
-    if (!options.store.putNativeState || !options.store.getNativeState)
-      throw new Error("neuralese-native-archive-unavailable: learned operators need a native-capable archive");
-    const body = site2.operator === "compact-history" ? { operator: site2.operator, messages: site2.messages, context: site2.context ?? [], tools: site2.tools, note: site2.note ?? "" } : { operator: site2.operator, instructions: site2.instructions, value: site2.value, note: site2.note ?? "" };
-    const response = await fetchModel(`${base}/v1/neuralese/operator`, {
+  const headers = { "content-type": "application/json", ...options.headers };
+  const markers = options.info.native_state?.role_marker_ids;
+  const tokenize3 = async (content, special) => {
+    const response = await fetchModel(`${base}/tokenize`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...options.headers },
-      body: JSON.stringify(body)
+      headers,
+      body: JSON.stringify({ content, add_special: false, parse_special: special })
     });
-    if (!response.ok) throw new Error(`native operator failed (${response.status}): ${(await response.text()).slice(0, 1e3)}`);
+    if (!response.ok) throw new Error(`neuralese-native-capture: tokenize failed (${response.status})`);
+    return (await response.json()).tokens.map((t) => typeof t === "number" ? t : t.id);
+  };
+  const detokenize = async (tokens2) => {
+    const response = await fetchModel(`${base}/detokenize`, { method: "POST", headers, body: JSON.stringify({ tokens: tokens2 }) });
+    if (!response.ok) throw new Error(`neuralese-native-capture: detokenize failed (${response.status})`);
+    return (await response.json()).content;
+  };
+  const selectedSpan = async (ids, text3) => {
+    const ends = [];
+    for (let i = 0; i < ids.length; i++) ends.push((await detokenize(ids.slice(0, i + 1))).length);
+    const whole = await detokenize(ids);
+    for (const spelling of [.../* @__PURE__ */ new Set([text3, JSON.stringify(text3).slice(1, -1)])]) {
+      const first = whole.indexOf(spelling);
+      if (first < 0 || whole.indexOf(spelling, first + 1) >= 0) continue;
+      return [ends.findIndex((end) => end > first), ends.findIndex((end) => end >= first + spelling.length) + 1];
+    }
+    throw new Error("neuralese-native-capture: the selected text does not occur exactly once in the reply");
+  };
+  const applyTemplate = async (call) => {
+    const response = await fetchModel(`${base}/apply-template`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ messages: call.messages, ...call.tools.length ? { tools: call.tools } : {} })
+    });
+    if (!response.ok) throw new Error(`neuralese-native-capture: apply-template failed (${response.status})`);
+    return (await response.json()).prompt;
+  };
+  let specials;
+  const single = (ids, name) => {
+    if (ids.length !== 1) throw new Error(`neuralese-native-capture: ${name} is not one token on this server`);
+    return ids[0];
+  };
+  return async (call, extra = {}) => {
+    if (!Array.isArray(markers) || markers.length !== 4)
+      throw new Error("neuralese-native-capture-unavailable: the server declares no native role markers");
+    if (!options.store.putNativeState || !options.store.getNativeState)
+      throw new Error("neuralese-native-archive-unavailable: captures need a native-capable archive");
+    specials ??= (async () => ({
+      thinkOpen: single(await tokenize3("<think>", true), "<think>"),
+      thinkClose: single(await tokenize3("</think>", true), "</think>"),
+      ends: /* @__PURE__ */ new Set([single(await tokenize3("<|im_end|>", true), "<|im_end|>")])
+    }))();
+    const { thinkOpen, thinkClose, ends } = await specials;
+    const reply = call.reply?.length ? call.reply : [...await tokenize3(call.reasoning ?? "", false), thinkClose, ...await tokenize3(call.text ?? "", false)];
+    const end = reply.findIndex((token) => ends.has(token));
+    let stop = end < 0 ? reply.length : end;
+    let start = reply.slice(0, stop).lastIndexOf(thinkClose) + 1;
+    if (call.select !== void 0) [start, stop] = await selectedSpan(reply.slice(0, stop), call.select);
+    else if (!start && call.reply?.length && call.prompt?.at(-1) === thinkOpen)
+      throw new Error("neuralese-native-capture: the reply ended inside its reasoning: no content to capture");
+    const span = reply.slice(start, stop);
+    if (!span.length || span.some((token) => markers.includes(token)))
+      throw new Error("neuralese-native-capture: the reply has no content to capture, or carries role markers");
+    const [open, close] = markers;
+    const forced = [...reply.slice(0, start), open, ...span, close];
+    const response = await fetchModel(`${base}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify({
+      messages: call.messages,
+      ...call.tools.length ? { tools: call.tools } : {},
+      temperature: 0,
+      max_tokens: forced.length + 1,
+      grammar: `root ::= ${forced.map((token) => `<[${token}]>`).join(" ")}`
+    }) });
+    if (!response.ok) throw new Error(`neuralese-native-capture: forced span failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
     const result = await response.json();
-    if (typeof result.id !== "string" || result.operator?.name !== site2.operator)
-      throw new Error("neuralese-operator-integrity: the server did not return this operator's native state");
-    await archiveNativeState({ endpoint: options.endpoint, headers: options.headers, store: options.store }, result.id);
-    return neuraleseRef("Neuralese<string>", result.id);
+    const id2 = result.native_state?.blocks?.[0]?.id;
+    if (typeof id2 !== "string" || result.native_state.blocks.length !== 1)
+      throw new Error("neuralese-native-capture: the forced reply did not produce exactly one state");
+    const prompt = call.prompt?.length ? call.prompt : await tokenize3(await applyTemplate(call), true);
+    const artifact = await archiveNativeState({ endpoint: options.endpoint, headers: options.headers, store: options.store }, id2);
+    const ids = artifact.tensors.token_ids, view = new DataView(ids.data.buffer, ids.data.byteOffset, ids.data.byteLength);
+    if (ids.shape[0] !== span.length || span.some((token, index) => BigInt(token) !== view.getBigInt64(index * 8, true)))
+      throw new Error("neuralese-native-capture: the produced state does not hold the forced span");
+    const prefix = [...prompt, ...reply.slice(0, start)];
+    const text3 = typeof artifact.metadata.text === "string" ? artifact.metadata.text : "";
+    const meta = nativeStateBlockMeta(artifact);
+    return { ...meta, ...extra.type ? { type: extra.type } : {}, producer: {
+      source_text_sha256: hexDigest(text3),
+      native_source_capture: {
+        policy: {
+          checkpoint_sha256: artifact.metadata.checkpoint_sha256,
+          tokenizer_fingerprint: artifact.metadata.tokenizer_fingerprint,
+          embedding_weight_sha256: artifact.metadata.embedding_weight_sha256,
+          architecture: artifact.metadata.architecture
+        },
+        segments: [
+          { kind: "tokens", token_ids: [...prefix, open], producing: [...prefix.map(() => false), false] },
+          { kind: "tokens", token_ids: span, producing: span.map(() => true) },
+          { kind: "tokens", token_ids: [close], producing: [false] }
+        ],
+        payload_start: prefix.length + 1,
+        payload_stop: prefix.length + 1 + span.length
+      }
+    } };
   };
 }
-var OPERATOR_CAPABILITY;
 var init_native_operator = __esm({
   "src/model/native-operator.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    init_neuralese2();
+    init_neuralese_store();
+    init_hash();
     init_chat_completion();
-    init_neuralese_info();
     init_native_state_client();
-    OPERATOR_CAPABILITY = "operator/1";
   }
 });
 
@@ -224351,15 +224796,15 @@ async function nativeStateRuntimeOptions(options, settings = {}) {
   const nativeStateConsumer = nativeStateConsumerFromInfo(info);
   if (!nativeStateConsumer)
     return failure("neuralese-native-state-unavailable", "the server must declare native identity and consumption modes");
-  const { serverCompactor: serverCompactor2, OPERATOR_CAPABILITY: OPERATOR_CAPABILITY2 } = await Promise.resolve().then(() => (init_native_operator(), native_operator_exports));
-  const compactor = serves(info, OPERATOR_CAPABILITY2) ? serverCompactor2({ ...options, info }) : void 0;
+  const { grammarCapture: grammarCapture2 } = await Promise.resolve().then(() => (init_native_operator(), native_operator_exports));
+  const capture = serves(info, "native.capture") ? serverCapture({ ...options, info }) : native.production ? grammarCapture2({ ...options, info }) : void 0;
   return {
     store: options.store,
     dialect,
     nativeStateConsumer,
     nativeStateConsumerForCall: async () => nativeStateConsumerFromInfo(await neuraleseServerInfo(options.endpoint, { headers: options.headers })),
     ...port ? { port } : {},
-    ...compactor ? { compactor } : {}
+    ...capture ? { capture } : {}
   };
 }
 async function archiveNativeState(options, id2) {
@@ -224399,7 +224844,7 @@ function validateSource(result, artifact, text3, info) {
 }
 async function nativeTextOperation(options, operation, body) {
   const info = options.info ?? await neuraleseServerInfo(options.endpoint, { headers: options.headers });
-  const capability = operation === "write-text" ? "native.text-write" : "native.init-body";
+  const capability = operation === "write-text" ? "native.text-write" : operation === "capture" ? "native.capture" : "native.init-body";
   if (!info.native_state?.enabled || !serves(info, capability))
     return failure(`neuralese-${capability.replaceAll(".", "-")}-unavailable`, "use a native server implementing this exact producer operation");
   if (!options.store.putNativeState || !options.store.getNativeState)
@@ -224420,8 +224865,10 @@ async function nativeTextOperation(options, operation, body) {
   const result = await response.json();
   if (!/^nzs1_[a-z2-7]{52}$/.test(result.id)) return failure("neuralese-block-integrity", "native writer returned no native content address");
   const artifact = await archiveNativeState(options, result.id);
-  validateSource(result, artifact, body.text, info);
-  if (operation === "write-text" && nativeCanonicalJson(result.source_capture.adapter_binding ?? null) !== nativeCanonicalJson(artifact.metadata.adapter_binding ?? null))
+  const text3 = operation === "capture" ? result.source_text : body.text;
+  if (typeof text3 !== "string") return failure("neuralese-native-source-integrity", "native writer must return its exact source text");
+  validateSource(result, artifact, text3, info);
+  if (operation !== "init-body" && nativeCanonicalJson(result.source_capture.adapter_binding ?? null) !== nativeCanonicalJson(artifact.metadata.adapter_binding ?? null))
     return failure("neuralese-native-source-integrity", "text writer actor binding differs from its archived state");
   let logicalPosition = 0;
   const explicitSegments = [];
@@ -224487,6 +224934,18 @@ async function nativeTextOperation(options, operation, body) {
       source_text_sha256: result.source_text_sha256
     }
   } };
+}
+function serverCapture(options) {
+  return async (call, extra = {}) => {
+    if (!call.prompt?.length || !call.reply?.length)
+      return failure("neuralese-native-capture", "native.capture needs the call's exact prompt and sampled reply ids");
+    return (await nativeTextOperation(options, "capture", {
+      prompt_token_ids: call.prompt,
+      reply_token_ids: call.reply,
+      ...call.select !== void 0 ? { select: call.select } : {},
+      ...extra
+    })).meta;
+  };
 }
 async function nativeStateWritePort(options) {
   const info = options.info ?? await neuraleseServerInfo(options.endpoint, { headers: options.headers });
@@ -225679,16 +226138,15 @@ var init_pseudo_call = __esm({
 });
 
 // src/native/staged-result.ts
-var RESULT_PREFIX, STAGED_RESULT_NOTICE, RECORDED_RESULT_NOTICE, escapeRegex, noticePatterns;
+var RESULT_PREFIX, STAGED_RESULT_NOTICE, escapeRegex, noticePattern;
 var init_staged_result = __esm({
   "src/native/staged-result.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    RESULT_PREFIX = ' as the result. If this is the result of the task you were given and you are satisfied with it, reply done to return exactly this value without a tool call, or call return_result with status "success" and omit value to finish using this exact stored result. ';
+    RESULT_PREFIX = ' as the result. If this is the result of the task you were given and you are satisfied with it, call return_result with status "success" and omit value to finish using this exact stored result. ';
     STAGED_RESULT_NOTICE = RESULT_PREFIX + "A JavaScript `return` in eval only stages this value; it does not end this invocation. To complete a child step or iteration transition, finish it now so its caller receives this state and continues. You can keep working and return a different value later only when more work belongs in this same invocation.";
-    RECORDED_RESULT_NOTICE = RESULT_PREFIX + "You can keep working and return a different value later.";
     escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    noticePatterns = [STAGED_RESULT_NOTICE, RECORDED_RESULT_NOTICE].map((notice) => new RegExp("(?:^|\\n)Staged ([\\s\\S]+)" + escapeRegex(notice) + "$"));
+    noticePattern = new RegExp("(?:^|\\n)Staged ([\\s\\S]+)" + escapeRegex(STAGED_RESULT_NOTICE) + "$");
   }
 });
 
@@ -225705,8 +226163,8 @@ var init_model_facing = __esm({
   "src/runtime/model-facing.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    MODEL_FACING_VARIANTS = ["effect-receipt", "read-file-binding", "reply-text-with-calls"];
-    ADOPTED2 = ["effect-receipt", "read-file-binding"];
+    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction"];
+    ADOPTED2 = ["effect-receipt"];
     active = enabled();
     modelFacing = (name) => active.has(name);
   }
@@ -225719,6 +226177,15 @@ function typeAliasesFromEnv(env) {
   const aliases = {};
   for (const current of chain) for (const [name, type] of Object.entries(current.names)) aliases[name] = formatType(type);
   return aliases;
+}
+function isPlainJson(value, depth2 = 0) {
+  if (depth2 > 32) return false;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every((item) => isPlainJson(item, depth2 + 1));
+  if (typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return (proto === Object.prototype || proto === null) && Object.values(value).every((item) => isPlainJson(item, depth2 + 1));
 }
 function computedNeuraleseMarkerConcatenation(code, codebase, isNeuraleseType, neuraleseResult) {
   const source2 = import_typescript18.default.createSourceFile("natlang-eval.ts", code, import_typescript18.default.ScriptTarget.Latest, true, import_typescript18.default.ScriptKind.TS);
@@ -226324,7 +226791,6 @@ var init_runtime2 = __esm({
     init_pseudo_call();
     init_staged_result();
     init_model_facing();
-    init_tool_markup();
     import_typescript18 = __toESM(require_typescript(), 1);
     init_hash();
     SELF_CALL_ADVICE = "Do what its instructions ask here. For a judgment, decide it yourself from the inputs and return the answer with return_result; use eval only for exact work the instructions need.";
@@ -227084,59 +227550,23 @@ ${this.show(logs.join("\n"))}` : "") + (effects.length ? `
 Already performed before the failure (not undone): ${[...new Set(effects)].join(", ")}.` : "") + (receipts.length ? `
 Completed service calls succeeded:
 ${receipts.join("\n")}
-Repair subsequent work without repeating an already completed write.` : "") + "\nNothing else from this eval was kept. This refers to new eval bindings and the staged result; state changes made through live values, callable modules, files or external services are not undone. Inspect the current state before retrying a write.";
+Repair subsequent work without repeating an already completed write.` : "") + // Emitted 1,179 times in 512 held-v2 episodes (2026-11-13): one sentence, the prefix kept for the collectors.
+        "\nNothing else from this eval was kept; writes to files, services or live values stay done, so check them before writing again.";
       }
-      /**
-       * A final reply's text as the result when the declared return type accepts it. Neuralese<string> text goes through
-       * the typed block writer; a bare "done" asks for the already staged value.
-       */
-      /** Whether a plain, complete reply would be this call's result (a text-typed call with nothing staged). */
-      takesTextResult() {
+      /** The runtime or the bound evaluation policy denies code edits. */
+      codeEditsDenied() {
+        return this.runtime.frame?.task.runtime.options.codeEdits === "deny" || this.runtime.frame?.task.programView?.binding?.artifact.policy.codeEdits === "deny";
+      }
+      /** The call can change code: its program has functions of its own and code edits are not denied (edit_code, diff_code). */
+      codeEditable() {
+        return Object.keys(this.lam.codebase).length > 0 && !this.codeEditsDenied();
+      }
+      /** Whether this call's result is text (a string or Neuralese<string>, with nothing staged). */
+      expectsTextResult() {
         if (this.lam.type.kind !== "lambda" || this.lam.return !== MISSING) return false;
         const resolved = this.env.resolve(this.lam.type.returns);
         const element = resolved.kind === "neuralese" ? this.env.resolve(resolved.element) : resolved;
         return element.kind === "prim" && element.name === "string";
-      }
-      async acceptTextResult(text3) {
-        const answer = text3.trim();
-        if (this.lam.type.kind !== "lambda" || this.lam.return !== MISSING || !answer || /^done[.!]?$/i.test(answer)) return false;
-        if (TOOL_MARKUP.test(answer)) return false;
-        let value;
-        const returnType = this.lam.type.returns;
-        const resolvedReturn = this.env.resolve(returnType);
-        const element = resolvedReturn.kind === "neuralese" ? this.env.resolve(resolvedReturn.element) : void 0;
-        if (resolvedReturn.kind === "neuralese" && element?.kind === "prim" && element.name === "string") {
-          try {
-            value = await this.coerceReturn(answer, "assistant-text-return");
-            this.lam.return = value;
-            return true;
-          } catch {
-            return false;
-          }
-        }
-        try {
-          value = coerce(answer, this.lam.type.returns, this.env, "return");
-        } catch {
-          value = MISSING;
-        }
-        if (typeof value === "string") {
-          this.lam.return = value;
-          return true;
-        }
-        const body = answer.replace(/^```(?:json)?\s*\n([\s\S]*?)\n?```$/, "$1").trim();
-        let parsed;
-        try {
-          parsed = JSON.parse(body);
-        } catch {
-          return false;
-        }
-        try {
-          value = coerce(parsed, this.lam.type.returns, this.env, "return");
-        } catch {
-          return false;
-        }
-        this.lam.return = value;
-        return true;
       }
       /** Complete the invocation if an eval has returned a value of the declared type. */
       finish() {
@@ -227330,12 +227760,13 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
       /** Apply one tool call. */
       async applyAsync(name, args, toolCallId) {
         this.runtime.checkInterruption();
-        if (this.completed) return this.record(name, args, { kind: "error", text: "the task has already finished" });
+        const record3 = (result) => this.record(name, args, result, toolCallId);
+        if (this.completed) return record3({ kind: "error", text: "the task has already finished" });
         if (!NATIVE_TOOLS.includes(name))
-          return this.record(name, args, rejected(new Reject([this.notATool(name, args)])));
+          return record3(rejected(new Reject([this.notATool(name, args)])));
         if (this.lam.withheldTools?.includes(name))
-          return this.record(name, args, rejected(new Reject([{ path: name, code: "withheld-tool", text: `${name} is withheld from calls of ${this.lam.functionName || "this function"} by its definition; do this step with the tools this call offers` }])));
-        if (this.actionLimitReached()) return this.record(name, args, { kind: "budget", text: "action or tool-call budget exhausted" });
+          return record3(rejected(new Reject([{ path: name, code: "withheld-tool", text: `${name} is withheld from calls of ${this.lam.functionName || "this function"} by its definition; do this step with the tools this call offers` }])));
+        if (this.actionLimitReached()) return record3({ kind: "budget", text: "action or tool-call budget exhausted" });
         this.toolCalls++;
         this.actions++;
         this.lam.steps++;
@@ -227346,13 +227777,13 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
               throw new Reject([{ path: "timeout_ms", code: "bad-action", expected: "a positive whole number of milliseconds" }]);
             if (args.finish !== void 0 && typeof args.finish !== "boolean")
               throw new Reject([{ path: "finish", code: "bad-action", expected: "a boolean: true completes this eval's fresh typed result" }]);
-            return this.record(name, args, await this.evaluate(String(args.code ?? ""), timeout, args.finish === true, toolCallId), toolCallId);
+            return record3(await this.evaluate(String(args.code ?? ""), timeout, args.finish === true, toolCallId));
           }
           if (name === "return_result" && (args.status ?? "success") === "success" && Object.hasOwn(args, "value") && this.lam.type.kind === "lambda") {
             const value = await this.coerceReturn(args.value, "return_result", true);
-            return this.record(name, args, this.scopeTool(name, { ...args, value }), toolCallId);
+            return record3(this.scopeTool(name, { ...args, value }));
           }
-          if (CODE_TOOLS.includes(name)) return this.record(name, args, this.functionTool(name, args));
+          if (CODE_TOOLS.includes(name)) return record3(this.functionTool(name, args));
           if (name === "bash") {
             const folder2 = this.lam.projectTransaction?.folder;
             if (!folder2) throw new Reject([{ path: name, code: "bad-action", expected: "a folder call" }]);
@@ -227402,7 +227833,7 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
                 }
               }
             );
-            return this.record(name, args, {
+            return record3({
               kind: value.exitCode === 0 ? "ok" : "error",
               text: this.show(JSON.stringify(value)),
               value
@@ -227416,7 +227847,7 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
               throw new Reject([{ path: "timeout_ms", code: "bad-action", expected: "a positive timeout in milliseconds" }]);
             const runFolderPython2 = this.folderTool("runFolderPython", name);
             const value = await runFolderPython2(folder2, String(args.code ?? ""), await this.pythonHost(), timeout);
-            return this.record(name, args, { kind: "ok", text: this.show(JSON.stringify(value)), value });
+            return record3({ kind: "ok", text: this.show(JSON.stringify(value)), value });
           }
           if (name === "delegate") {
             const folder2 = this.lam.projectTransaction?.folder;
@@ -227435,15 +227866,15 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
               codebase: this.lam.codebase,
               subtype: "directory-reducer"
             }, [handle], { folder: { transaction, mode: "apply" }, manifest: { delegate: true, path: path2 } });
-            return this.record(name, args, { kind: "ok", text: this.show(JSON.stringify(value) ?? "null"), value });
+            return record3({ kind: "ok", text: this.show(JSON.stringify(value) ?? "null"), value });
           }
-          if (name === "editor") return this.record(name, args, await this.editorTool(args));
+          if (name === "editor") return record3(await this.editorTool(args));
           if (["list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"].includes(name))
-            return this.record(name, args, await this.fileTool(name, args));
-          return this.record(name, args, this.scopeTool(name, args));
+            return record3(await this.fileTool(name, args));
+          return record3(this.scopeTool(name, args));
         } catch (error) {
-          if (error instanceof Reject) return this.record(name, args, rejected(error));
-          return this.record(name, args, { kind: "error", text: error instanceof Error ? error.message : String(error) });
+          if (error instanceof Reject) return record3(rejected(error));
+          return record3({ kind: "error", text: error instanceof Error ? error.message : String(error) });
         }
       }
       async folderCommandCallable(name, folder2) {
@@ -227709,6 +228140,14 @@ Repair subsequent work without repeating an already completed write.` : "") + "\
           expected: "a function in this call's callable folder; this function has none, so there is no code of its own to edit"
         }]);
         if (!found) {
+          if (name === "read_code" && this.lam.functionName && requested === this.lam.functionName) {
+            const body = (this.lam.originalBody ?? this.lam.body).replace(/^\n+|\n+$/g, "");
+            const text4 = `${requested} is the call you are executing. Its instructions, as in the opening message:
+${body}
+
+${SELF_CALL_ADVICE}`;
+            return { kind: "ok", text: text4, value: body };
+          }
           const toolDocumentation = name === "read_code" ? this.toolDocumentation(requested) : void 0;
           if (toolDocumentation !== void 0) return { kind: "ok", text: toolDocumentation, value: toolDocumentation };
           const availableServices = this.availableServices();
@@ -227738,8 +228177,8 @@ ${declaration}`;
           const readable = own.length ? `a function of this program: ${own.join(", ")}` : "a function of this program, and this program has none of its own";
           const inScope = (this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : []).concat(Object.keys(this.lam.captures ?? {}), Object.keys(this.lam.let));
           const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : (
-            // A text-typed call with no functions of its own (a writer) has nothing to read: its reply is its result.
-            !own.length && this.takesTextResult() ? "This call returns text: reply with the result itself, without a tool call" : void 0
+            // A text-typed call with no functions of its own (a writer) has nothing to read: it answers with its text.
+            !own.length && this.expectsTextResult() ? "This call returns text: send the text itself as the value of return_result" : void 0
           );
           throw new Reject([{ path: requested, code: "no-such-function", expected: what ? `${readable}. ${what}` : readable }]);
         }
@@ -227756,7 +228195,7 @@ ${declaration}`;
           }
           return { kind: "ok", text: explanation + record3.text, value: record3.text };
         }
-        if (this.runtime.frame?.task.runtime.options.codeEdits === "deny" || view?.binding?.artifact.policy.codeEdits === "deny")
+        if (this.codeEditsDenied())
           throw new Reject([{ path: requested, code: "bad-action", expected: "code edits are denied by this evaluation policy" }]);
         if (args.expected_revision !== void 0 && args.expected_revision !== expectedRevision)
           throw new Reject([{ path: requested, code: "bad-action", expected: "current source revision; reread after a concurrent edit" }]);
@@ -227827,9 +228266,7 @@ ${declaration}`;
         } else if (name === "edit_file") value = await folder2.editText(path2, String(args.find ?? ""), String(args.replace_with ?? ""), args.fuzzy === true);
         else value = folder2.diffSync(path2);
         const text3 = name === "diff_files" ? fileDiffPreview(value) : name === "list_files" ? fileListingText(value) : typeof value === "string" ? value : JSON.stringify(value, null, 1);
-        const binding = name === "read_file" && modelFacing("read-file-binding") ? `
-(in eval: const text = await folder.file(${JSON.stringify(path2)}).readText())` : "";
-        return { kind: "ok", text: this.show(text3) + binding, value };
+        return { kind: "ok", text: this.show(text3), value };
       }
       inferScopeType(value) {
         return inferValueType(value);
@@ -228011,7 +228448,7 @@ ${declaration}`;
         const currentTypes = evalTypeDeclarations(code);
         const persistentTypeNames = [.../* @__PURE__ */ new Set([...Object.keys(visibleTypes), ...Object.keys(currentTypes)])];
         const hooks = this.runtime.hooks;
-        const boundValues = Object.fromEntries([...Object.entries(captureRead), ...inputNames.map((name) => [name, this.lam.args[name]])].filter((entry) => ["string", "number", "boolean"].includes(typeof entry[1])));
+        const boundValues = Object.fromEntries([...Object.entries(captureRead), ...inputNames.map((name) => [name, this.lam.args[name]])].filter((entry) => isPlainJson(entry[1])));
         const ownText = this.lam.body + "\n" + JSON.stringify(this.lam.args ?? {}) + "\n" + JSON.stringify(this.lam.let ?? {});
         const copied = PROMPT_EXAMPLE_TEXTS.find((text3) => code.includes(text3) && !ownText.includes(text3));
         if (copied) {
@@ -228339,7 +228776,8 @@ This is not the result: ${refinementFailure.code}: ${refinementFailure.message}`
           this.evalDetail = { value: output.result ?? null, console: (evaluated.logs ?? []).join("\n") };
           const rendered = isLive(output.result) || isHandle(output.result) ? livePreview(output.result, this.runtime.displayLiveId) : raw.valueless === true && !isHandle(output.result) ? "undefined" : this.showValue(output.result ?? null);
           const status = functionResult !== void 0 ? stagedMessage(functionResult, this.runtime.displayLiveId, this.runtime.untrusted) : notResult;
-          const stored = changed.map(([name, , value]) => `local ${name} = ${oneLine(value, name, this.runtime.displayLiveId, this.runtime.untrusted)}`);
+          const stored = changed.map(([name, , value]) => `local ${name} = ${oneLine(value, name, this.runtime.displayLiveId, this.runtime.untrusted)}` + // A Neuralese value is shown as its state; the words beside it say what it is and how to use it.
+          (isNeuraleseRef(value) ? ` (${value.$neuralese.type}: pass it on as is, or read it with read(${name}))` : ""));
           const performed = /* @__PURE__ */ new Map();
           if (modelFacing("effect-receipt")) {
             for (const event of this.runtime.trace.events.slice(traceMark))
@@ -228510,26 +228948,6 @@ ${requested.tool}: ${refused.text}` };
   }
 });
 
-// src/native/operator-frames.ts
-function framedState(operator, ref) {
-  const frame = OPERATOR_FRAMES[operator];
-  return frame.open + neuraleseRefSentinel(ref) + frame.close;
-}
-var OPERATOR_FRAMES;
-var init_operator_frames = __esm({
-  "src/native/operator-frames.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    init_neuralese2();
-    OPERATOR_FRAMES = {
-      "compact-value": { open: "Compacted value: ", close: "\n\n" },
-      "compact-params": { open: "Compacted argument: ", close: "\n\n" },
-      "compact-history": { open: "Earlier steps of this session, compacted: ", close: "\n\nContinue from the most recent steps." },
-      "extract": { open: "Extracts from the documents, one per document:\n", close: "\n\n" }
-    };
-  }
-});
-
 // src/builtin/sources.generated.ts
 var BUILTIN_SOURCES;
 var init_sources_generated = __esm({
@@ -228613,6 +229031,61 @@ var init_builtin = __esm({
     init_sources_generated();
     builtinNames = () => Object.keys(BUILTIN_SOURCES);
     VIEW_PROMPT = builtinBody("view");
+  }
+});
+
+// src/native/operator-frames.ts
+function framedState(operator, ref) {
+  const frame = OPERATOR_FRAMES[operator];
+  return frame.open + neuraleseRefSentinel(ref) + frame.close;
+}
+function compactionPageChars(contextTokens, compactionChars) {
+  const page = shownCharsFor(contextTokens);
+  return compactionChars === void 0 ? page : Math.min(page, compactionChars);
+}
+function viewSiteMessages(value, instructions) {
+  return [
+    { role: "system", content: VIEW_PROMPT },
+    { role: "user", content: `${instructions ? `instructions:
+${instructions}
+
+` : ""}value:
+${value}` }
+  ];
+}
+function valueInstructions(tool2, purpose) {
+  return `Read this ${tool2} result for: ${purpose}`;
+}
+function argumentInstructions(name, type, purpose) {
+  return `The call that receives this argument as ${name} (${type}) answers: ${purpose}`;
+}
+function operatorPurpose(body) {
+  const text3 = body.replace(/\n+$/, "");
+  return text3.length > 2e3 ? text3.slice(0, 2e3) : text3;
+}
+var OPERATOR_FRAMES, OPERATOR_SPAN_CAPS, OPERATOR_REASONING_TOKENS, OPERATOR_COMPACT_CHARS, OPERATOR_MIN_CHARS;
+var init_operator_frames = __esm({
+  "src/native/operator-frames.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_builtin();
+    init_cutoff();
+    init_neuralese2();
+    OPERATOR_FRAMES = {
+      "compact-value": { open: "Compacted value: ", close: "\n\n" },
+      "compact-params": { open: "Compacted argument: ", close: "\n\n" },
+      "compact-history": { open: "Earlier steps of this session, compacted: ", close: "\n\nContinue from the most recent steps." },
+      "extract": { open: "Extracts from the documents, one per document:\n", close: "\n\n" }
+    };
+    OPERATOR_SPAN_CAPS = {
+      "compact-value": 512,
+      "compact-params": 384,
+      "compact-history": 1024,
+      "extract": 256
+    };
+    OPERATOR_REASONING_TOKENS = 2048;
+    OPERATOR_COMPACT_CHARS = 8e3;
+    OPERATOR_MIN_CHARS = 800;
   }
 });
 
@@ -228776,8 +229249,11 @@ ${JSON.stringify(new TextDecoder("utf-8", { fatal: true }).decode(root2.readByte
         return "  // Binary file: use file.readBytes() before answering.";
       }
     })() : "";
-    return `${field.name}: ${formatType(field.type)}${field.optional ? " | undefined" : ""} = ${shown}${opening}`;
+    return listingLine(field.name, formatType(field.type) + (field.optional ? " | undefined" : ""), shown) + opening;
   }).join("\n");
+}
+function listingLine(name, type, shown) {
+  return `${name}: ${type} = ${shown}`;
 }
 function contextOverflow(message2) {
   const llama = /exceed_context_size_error[\s\S]*?"n_prompt_tokens":(\d+)/.exec(message2);
@@ -228909,6 +229385,7 @@ function livePreview(value, identity = liveId) {
 function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { nodes: 0, depth: 0 }) {
   if (++state.nodes > 8192 || state.depth >= 64)
     return note("inspection limit reached", { holder });
+  if (budget < SMALL_VALUE_CHARS && literalFits(value, SMALL_VALUE_CHARS)) budget = SMALL_VALUE_CHARS;
   state.depth++;
   try {
     const sequence2 = (items, count, open, close, noun, render) => {
@@ -229030,7 +229507,7 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     state.depth--;
   }
 }
-var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, NativeToolAgent;
+var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, STAGED_ANSWER, NativeToolAgent;
 var init_agent = __esm({
   "src/native/agent.ts"() {
     "use strict";
@@ -229051,7 +229528,9 @@ var init_agent = __esm({
     init_cutoff();
     init_prompt();
     init_pluggable();
+    init_model_facing();
     init_operator_frames();
+    init_neuralese2();
     init_untrusted();
     init_pseudo_call();
     init_neuralese2();
@@ -229062,13 +229541,12 @@ var init_agent = __esm({
     init_model_recording();
     init_hash();
     init_system_prompts();
-    init_model_facing();
     scopeValueChars = (session) => Math.max(SCOPE_VALUE_CHARS, session.pages.budget);
     nativeProgramGuidanceWrites = /* @__PURE__ */ new WeakMap();
     nativeProgramGuidancePins = /* @__PURE__ */ new WeakMap();
     UNRUN_CALL = "Not run: an earlier call in this reply failed; call it again if you still need it.";
     READ_ONLY_TOOLS = /* @__PURE__ */ new Set(["read_file", "list_files", "search_files", "diff_files", "read_code", "diff_code", "read_page"]);
-    replyText = (response) => modelFacing("reply-text-with-calls") ? response.text ?? "" : "";
+    replyText = (response) => response.text ?? "";
     READ_CODE_DESCRIPTION = `Inspect a named item this call can use but does not show: source of a function in the program's codebase; documentation for eval built-ins (nl, iterateOn, transcript, decide); a declaration for an external service or importable package ("pkg" lists its exports, "pkg.name" shows one); the type-only member shape of a host service object visible to this call; or the exact schema and instructions of a native tool currently offered to this call. Tool schemas and service shapes are metadata, not program function source or service implementation. Standard JavaScript built-ins and methods are used directly through their TypeScript library types; read_code does not show their library implementation.`;
     EDIT_CODE_DESCRIPTION = "Edit a function in the program's codebase: replace one exact or uniquely fuzzy span of its source. The function is validated before the edit becomes live.";
     thought = (reasoning) => reasoning ? { reasoning_content: reasoning } : {};
@@ -229118,6 +229596,7 @@ ${notes}` : opening;
       }
     };
     isPlainRecord2 = (value) => Object.prototype.toString.call(value) === "[object Object]" && (Object.getPrototypeOf(value) === null || Object.getPrototypeOf(Object.getPrototypeOf(value)) === null);
+    STAGED_ANSWER = 'A complete typed result is staged. Call return_result with {status: "success"} and omit value to return that exact result.';
     NativeToolAgent = class {
       constructor(driver, options = {}) {
         this.driver = driver;
@@ -229141,15 +229620,15 @@ ${notes}` : opening;
        * text cut. A failed operator keeps the cut and is traced; it never fails the call.
        */
       async compactRef(session, site2) {
-        const compactor = this.options.neuralese?.compactor;
-        if (!compactor || !supportsNeuralese(this.driver)) return void 0;
-        const setting = this.options.compaction ?? this.options.neuralese?.compaction ?? globalThis.process?.env?.NATLANG_NEURALESE_COMPACTION;
-        const chars = site2.operator === "compact-history" ? JSON.stringify(site2.messages).length : site2.value.length;
+        if (!this.options.neuralese?.capture || !supportsNeuralese(this.driver)) return void 0;
+        const setting = this.compactionSetting();
+        const chars = site2.value.length;
+        if (chars < OPERATOR_MIN_CHARS) return void 0;
         const run = pluggable({
           crisp: () => void 0,
           nl: async (request) => {
             try {
-              return await compactor(request);
+              return await this.operatorWrite(session, request);
             } catch (error) {
               session.runtime.trace.emit("operator", {
                 call_id: session.runtime.currentCallId ?? null,
@@ -229172,15 +229651,140 @@ ${notes}` : opening;
         });
         return ref;
       }
+      /** The characters a message shows of one output: the budget's page, capped at the compaction threshold when learned
+       * compaction can run (operator-frames.ts `compactionPageChars`). */
+      pageChars(budget) {
+        const learned = this.options.neuralese?.capture && supportsNeuralese(this.driver) && pluggableMode(this.compactionSetting(), "crisp") !== "crisp";
+        const env = globalThis.process?.env?.NATLANG_NEURALESE_COMPACTION_CHARS;
+        return compactionPageChars(budget, learned ? this.options.compactionChars ?? (env ? Number(env) : OPERATOR_COMPACT_CHARS) : void 0);
+      }
+      /** The `compaction` setting: the agent option, the runtime option, NATLANG_NEURALESE_COMPACTION, else `nl` under the
+       * model-facing variant `learned-compaction` (crisp by default). */
+      compactionSetting() {
+        return this.options.compaction ?? this.options.neuralese?.compaction ?? globalThis.process?.env?.NATLANG_NEURALESE_COMPACTION ?? (modelFacing("learned-compaction") ? "nl" : void 0);
+      }
+      /**
+       * compact-history in v3: the state of the model's own `compact_history` note, captured in place in the reply that
+       * wrote it, so its rows attend to the whole conversation the note replaces (OPERATORS_RESTORE_20261117.md §3.1). No
+       * extra model call. Undefined keeps the text note alone (crisp, no capture, or a failed capture, which is traced).
+       */
+      async noteRef(session, request, response, note2) {
+        const capture = this.options.neuralese?.capture;
+        if (!capture || !request || !supportsNeuralese(this.driver)) return void 0;
+        const run = pluggable({
+          crisp: () => void 0,
+          nl: async (text3) => {
+            try {
+              return await this.capturedRef(session, "compact-history", request.invocation_id ?? "", capture, request, response, text3);
+            } catch (error) {
+              session.runtime.trace.emit("operator", {
+                call_id: session.runtime.currentCallId ?? null,
+                operator: "compact-history",
+                representation: "text",
+                chars: text3.length,
+                error: String(error?.message ?? error).slice(0, 300)
+              });
+              return void 0;
+            }
+          }
+        }, this.compactionSetting(), { default: "crisp", name: "compaction", serve: "nl", same: () => true });
+        const ref = await run(note2);
+        if (ref) session.runtime.trace.emit("operator", {
+          call_id: session.runtime.currentCallId ?? null,
+          operator: "compact-history",
+          representation: "neuralese",
+          block: ref.$neuralese.id,
+          chars: note2.length
+        });
+        return ref;
+      }
+      /** The in-context capture of one model call's reply (its content, or the `select`ed text in it), recorded as a
+       * `block_write` node carrying the capture's `source_capture`. */
+      async capturedRef(session, operator, invocationId, capture, request, response, select) {
+        const callId = session.runtime.currentCallId ?? session.runtime.options.runId;
+        const sampled = response.raw_response?.x_natlang_rl_capture;
+        const exact = !!sampled?.prompt?.length && !!sampled.generated_inputs?.length && sampled.prompt.every((segment) => segment.kind === "tokens" && Array.isArray(segment.token_ids));
+        const meta = await capture({
+          messages: request.messages,
+          tools: request.tools,
+          ...exact ? {
+            prompt: sampled.prompt.flatMap((segment) => segment.token_ids),
+            reply: sampled.generated_inputs.map((input) => input.token_id)
+          } : {},
+          text: response.text ?? "",
+          ...response.reasoning ? { reasoning: response.reasoning } : {},
+          ...select !== void 0 ? { select } : {}
+        }, { type: "Neuralese<string>" });
+        const node = graphNode(session.runtime.trace, "block_write", {
+          call_id: callId,
+          block: meta.id,
+          length: meta.length,
+          turn: "",
+          stops: [],
+          truncated: false,
+          producer: "operator-capture",
+          source_kind: "operator-capture",
+          source: operator,
+          marker_context: "operator",
+          operator_invocation_id: invocationId,
+          result_type: "Neuralese<string>",
+          ...meta.native_state ? {
+            format: "native-state",
+            native_identity: {
+              architecture: meta.native_state.architecture,
+              checkpoint_sha256: meta.native_state.checkpoint_sha256,
+              tokenizer_fingerprint: meta.native_state.tokenizer_fingerprint,
+              embedding_weight_sha256: meta.native_state.embedding_weight_sha256
+            },
+            source_capture: meta.producer?.native_source_capture
+          } : {}
+        }, []);
+        return neuraleseRef("Neuralese<string>", meta.id, false, node);
+      }
+      /** Operator calls per invocation, numbering their own invocation IDs. */
+      operatorCalls = /* @__PURE__ */ new Map();
+      /**
+       * One learned operator write (OPERATORS_RESTORE_20261117.md §3.1): an ordinary model call at view's site (sampled
+       * and captured like every call, under its own invocation ID), then the in-context capture of its reply's content.
+       * The write is a `block_write` node with its `source_capture`, so the learners compute the state in-graph from the
+       * site and the reply (the pass-through) and train the operator call as a call of the episode.
+       */
+      async operatorWrite(session, site2) {
+        const capture = this.options.neuralese.capture;
+        const callId = session.runtime.currentCallId ?? session.runtime.options.runId;
+        const index = (this.operatorCalls.get(callId) ?? 0) + 1;
+        this.operatorCalls.set(callId, index);
+        const request = {
+          invocation_id: `${callId}#operator-${index}`,
+          messages: viewSiteMessages(site2.value, site2.instructions),
+          tools: [],
+          seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, `operator-${index}`, 0),
+          // Reasoning and reply share the actual request allowance; the shared graph reservation below may lower it.
+          max_tokens: OPERATOR_REASONING_TOKENS + OPERATOR_SPAN_CAPS[site2.operator]
+        };
+        const reservation = await this.options.modelBudget?.reserve(request.max_tokens ?? null, session.runtime.signal);
+        if (this.options.modelBudget && !reservation) throw new Error("operator model request or token budget exhausted");
+        if (reservation) request.max_tokens = reservation.limit;
+        let response;
+        try {
+          response = await runInFrame(session.runtime.frame, () => this.driver(request, session.runtime.signal));
+        } catch (error) {
+          reservation?.finish();
+          throw error;
+        }
+        reservation?.finish(response.completion_tokens);
+        if (reservation?.limit != null && response.completion_tokens !== void 0 && response.completion_tokens > reservation.limit)
+          throw new Error("operator model response exceeded its graph token reservation");
+        return this.capturedRef(session, site2.operator, request.invocation_id, capture, request, response);
+      }
       /** The call's instructions as an operator's purpose text (bounded). */
       purpose(session) {
-        const body = typeof session.lam.body === "string" ? session.lam.body.replace(/\n+$/, "") : "";
-        return body.length > 2e3 ? body.slice(0, 2e3) : body;
+        return operatorPurpose(typeof session.lam.body === "string" ? session.lam.body : "");
       }
       async views(session) {
         const view = this.options.neuralese?.view;
         const lam = session.lam;
-        if (this.options.neuralese?.compactor && supportsNeuralese(this.driver) && lam.type.kind === "lambda") {
+        if (this.options.neuralese?.capture && supportsNeuralese(this.driver) && lam.type.kind === "lambda") {
           const root3 = lam.projectTransaction?.folder;
           const out2 = {};
           for (const field of lam.type.params.fields) {
@@ -229203,7 +229807,7 @@ ${notes}` : opening;
             const ref = await this.compactRef(session, {
               operator: "compact-params",
               value: text3,
-              instructions: `The call that receives this argument as ${field.name} (${formatType(field.type)}) answers: ${this.purpose(session)}`
+              instructions: argumentInstructions(field.name, formatType(field.type), this.purpose(session))
             });
             if (ref) out2[field.name] = ref.$neuralese.id;
           }
@@ -229622,10 +230226,10 @@ ${notes}` : opening;
        * [message, part] in the request; a server that reports payload positions gives token positions), and the
        * `model_turn` with its sampling settings and the tool calls it chose.
        */
-      async modelTurnNode(session, messages, response, turn, readout, actor = this.options.actor, extraInputs = [], temperature = this.options.temperature) {
+      async modelTurnNode(session, messages, response, turn, readout, actor = this.options.actor, extraInputs = [], temperature = this.options.temperature, request) {
         const trace = session.runtime.trace;
         const callId = session.runtime.options.runId;
-        const turnId = `${callId}#turn${turn}`;
+        const turnId = `${callId}#turn${request?.ordinal ?? turn}`;
         const resolveReadSource = (block, declared) => {
           const recorded2 = activeRecorder()?.nativeStateWriters?.(block) ?? [];
           const writers = [.../* @__PURE__ */ new Set([...trace.events.filter((event) => event.kind === "block_write" && event.block === block && typeof event.node === "string").map((event) => String(event.node)), ...producerOccurrences(block, producerScopeForTrace(trace)), ...recorded2])];
@@ -229800,6 +230404,7 @@ ${notes}` : opening;
           {
             call_id: callId,
             turn,
+            ...request?.continuation ? { continuation: request.continuation } : {},
             ...readout ? { readout } : {},
             ...actor ? { actor } : {},
             ...this.options.actor ? { initial_actor: this.options.actor } : {},
@@ -229808,7 +230413,7 @@ ${notes}` : opening;
               session.runtime.seedPolicy.root,
               runSeedKey(session.runtime.options),
               session.lam.attempts,
-              "model-turn",
+              request?.continuation ? `model-turn-continuation-${request.continuation}` : "model-turn",
               turn - 1
             ),
             completion_tokens: response.completion_tokens ?? null,
@@ -229879,13 +230484,15 @@ ${notes}` : opening;
           2,
           0,
           tool("read_code", READ_CODE_DESCRIPTION, { name: { type: "string" } }, ["name"]),
-          tool(
-            "edit_code",
-            EDIT_CODE_DESCRIPTION,
-            { name: { type: "string" }, find: { type: "string" }, replace_with: { type: "string" }, fuzzy: { type: "boolean" } },
-            ["name", "find", "replace_with"]
-          ),
-          tool("diff_code", DIFF_CODE_DESCRIPTION, {}, [])
+          ...session.codeEditable() ? [
+            tool(
+              "edit_code",
+              EDIT_CODE_DESCRIPTION,
+              { name: { type: "string" }, find: { type: "string" }, replace_with: { type: "string" }, fuzzy: { type: "boolean" } },
+              ["name", "find", "replace_with"]
+            ),
+            tool("diff_code", DIFF_CODE_DESCRIPTION, {}, [])
+          ] : []
         );
         if (session.lam.projectTransaction) {
           const writableFolder = session.lam.projectTransaction.folder.access !== "read";
@@ -229904,7 +230511,7 @@ ${notes}` : opening;
             ),
             tool(
               "read_file",
-              "Read a file in the current folder, optionally by one-based inclusive line range.",
+              "Read a file in the current folder, optionally by one-based inclusive line range. The result is the file's text; eval reads the same text with await folder.file(path).readText().",
               { path: { type: "string" }, start_line: { type: "integer" }, end_line: { type: "integer" } },
               ["path"]
             ),
@@ -229928,13 +230535,13 @@ ${notes}` : opening;
             ),
             tool(
               "bash",
-              "Run bash over the current folder. Returns exit code, stdout, stderr and changed paths. Use finite for loops; while, until, C-style for and recursive functions are refused.",
+              "Run bash over the current folder. Returns exit code, stdout, stderr, changedPaths (files created or rewritten) and, when files were removed or moved away, removedPaths. Use finite for loops; while, until, C-style for and recursive functions are refused.",
               { command: { type: "string" } },
               ["command"]
             ),
             tool(
               "python",
-              "Run a Python cell over the current folder with pathlib, pandas and sqlite3. Returns its last expression, stdout, stderr and changed paths. Use finite for loops; while and recursion are refused.",
+              "Run a Python cell over the current folder with pathlib, pandas and sqlite3. Returns its last expression, stdout, stderr, changedPaths (files created or rewritten) and, when files were removed or moved away, removedPaths. Use finite for loops; while and recursion are refused.",
               { code: { type: "string" }, finish: { type: "boolean", description: "Finish this function using the fresh typed final expression or explicit return computed in this eval. Omit finish or set false for inspection or staging; true needs a fresh typed final result and cannot reuse an older staged value." }, timeout_ms: { type: "integer", minimum: 1 } },
               ["code"]
             ),
@@ -230179,7 +230786,7 @@ ${notes}` : opening;
       missing(session) {
         const lam = session.lam;
         if (lam.type.kind !== "lambda") return "";
-        if (lam.return === MISSING) return `There is no result yet. Call return_result with status "success" and a ${formatType(lam.type.returns)}, or return it from an eval (return value;) and then reply done.`;
+        if (lam.return === MISSING) return `There is no result yet. Answer with return_result: status "success" and a ${formatType(lam.type.returns)}.`;
         const holes = problems(lam.return, lam.type.returns, session.env, "return").holes;
         return holes.length ? `The staged result is incomplete: ${holes.map((hole) => `${hole.path} (${hole.expected ?? ""})`).join(", ")}.` : "";
       }
@@ -230240,8 +230847,9 @@ ${notes}` : opening;
         if (!wanted || lam.type.kind !== "lambda" || lam.subtype !== "function" || lam.projectTransaction) return false;
         const values = finiteValues(lam.type.returns, session.env);
         const callId = session.runtime.currentCallId ?? null;
-        const decide = decisionScorer(this.driver);
-        if (!values || values.length < 2 || !decide) {
+        const bounded = this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0;
+        const decide = bounded ? void 0 : decisionScorer(this.driver);
+        if (!values || values.length < 2 || !decide && this.options.decisionGeneration === "tool-loop") {
           if (lam.readout === "decision") session.runtime.trace.emit("decision_readout", {
             call_id: callId,
             phase: "unavailable",
@@ -230259,14 +230867,19 @@ ${notes}` : opening;
         if (encoded.blocks && !supportsNeuralese(this.driver))
           throw new NeuraleseUnsupportedError("this model backend cannot carry Neuralese blocks");
         const started = performance.now();
+        const generate = () => this.generatedDecision(session, encoded.messages, values, capturedGuidance, guidancePolicy);
+        if (!decide) return generate();
         let scores;
         try {
           const adapters = adapterCells(lam);
           if (adapters.length && !supportsNeuralese(this.driver))
             throw new NeuraleseUnsupportedError("this model backend cannot apply weight adapters");
+          const firstValues = encoded.messages.findIndex((message2) => message2.role === "tool");
+          const cacheMessages = firstValues >= 0 ? firstValues : encoded.messages.length - 1;
           scores = await runInFrame(session.runtime.frame, () => decide({
             messages: encoded.messages,
             options: replies,
+            cache_messages: cacheMessages,
             ...callId ? { invocation_id: callId, invocation_role: session.runtime.options.parentCallId ? "child" : "root" } : {},
             ...capturedGuidance ? { x_natlang_privileged_context: capturedGuidance } : {},
             ...adapters.length ? { adapters } : {}
@@ -230275,7 +230888,7 @@ ${notes}` : opening;
           const message2 = error instanceof Error ? error.message : String(error);
           if (!message2.startsWith("decision-unsupported")) throw error;
           session.runtime.trace.emit("decision_readout", { call_id: callId, phase: "unavailable", reason: message2 });
-          return false;
+          return this.options.decisionGeneration === "tool-loop" ? false : generate();
         }
         if (scores.log_probs.length !== replies.length || scores.log_probs.some((value) => !Number.isFinite(value)))
           throw new Error("decision readout returned no finite score for every option");
@@ -230299,12 +230912,131 @@ ${notes}` : opening;
           probabilities,
           tokens: scores.tokens ?? null,
           chosen,
+          ...scores.prompt_tokens !== void 0 ? { prompt_tokens: scores.prompt_tokens } : {},
           duration_ms: Math.round(performance.now() - started),
           ...scores.batch ? { batch_id: scores.batch.batch_id, batch_size: scores.batch.batch_size } : {}
         });
         lam.return = values[chosen];
         lam.note = JSON.stringify({ readout: "decision", probabilities: Object.fromEntries(replies.map((reply, index) => [reply, probabilities[index]])) });
         if (!session.finish()) return "decision readout chose a value the declared type rejects";
+      }
+      /** One recording boundary for actual generation replies, shared by tool turns and JSON decision readouts. */
+      recordGeneratedTurn(messages, tools, response, turn, turnNode, driver = this.driver, actor = this.options.actor ?? { id: this.driver.name || "model", revision: null }) {
+        const recorder = activeRecorder();
+        const recordedTurn = response.raw_response?.x_natlang_recorded_turn;
+        const recordedNative = response.raw_response?.x_natlang_native_recorded_turn;
+        if (turnNode && typeof recordedTurn === "string" && recordedTurn !== recordedNative) recorder?.linkTurn?.(recordedTurn, turnNode);
+        if (recorder && !supportsNeuralese(driver)) recorder.record({
+          messages: structuredClone(messages),
+          tools: structuredClone(tools),
+          actor: { ...actor },
+          ...this.options.actor ? { initial_actor: { ...this.options.actor } } : {},
+          ...turnNode ? { graph_turn: turnNode } : {},
+          reply: {
+            role: "assistant",
+            content: response.text ?? null,
+            ...response.raw_calls ? { tool_calls: structuredClone(response.raw_calls) } : response.calls?.length ? {
+              tool_calls: response.calls.map(([name, args], index) => ({
+                id: `call_${turn}_${index}`,
+                type: "function",
+                function: { name, arguments: JSON.stringify(args) }
+              }))
+            } : {}
+          },
+          blocks: []
+        });
+      }
+      /** Generate on the very same short JSON decision surface used by the scored student. No probabilities are inferred. */
+      async generatedDecision(session, messages, values, privilegedContext, guidancePolicy) {
+        const callId = session.runtime.currentCallId ?? null;
+        const fail3 = (detail) => {
+          const message2 = `decision-generation-invalid: ${detail} Reply with one of the offered JSON values and nothing else.`;
+          session.runtime.trace.emit("decision_readout", { call_id: callId, phase: "rejected", reason: message2 });
+          return message2;
+        };
+        const budgetStop = () => {
+          session.runtime.trace.emit("model_incomplete", { call_id: callId, turn: 0, reason: "budget_exhausted", evidence: "decision generation model budget exhausted" });
+          return "budget: decision generation model budget exhausted";
+        };
+        if (this.options.maxTurns === 0 || this.options.maxTokens === 0) return budgetStop();
+        const adapters = adapterCells(session.lam);
+        if (adapters.length && !supportsNeuralese(this.driver)) throw new NeuraleseUnsupportedError("this model backend cannot apply weight adapters");
+        const perTurn = this.options.turnTokens ?? (this.options.contextTokens == null ? null : Math.floor(this.options.contextTokens / 4));
+        const limit = this.options.maxTokens === void 0 ? perTurn : perTurn === null ? this.options.maxTokens : Math.min(perTurn, this.options.maxTokens);
+        const request = {
+          messages,
+          tools: [],
+          max_tokens: limit,
+          ...callId ? { invocation_id: callId } : {},
+          ...adapters.length ? { adapters } : {},
+          ...session.executionOccurrence() ? { native_execution_occurrence: session.executionOccurrence() } : {},
+          ...privilegedContext ? { privileged_context: privilegedContext } : {},
+          ...guidancePolicy ? { guidance_policy: guidancePolicy } : {},
+          ...this.options.temperature === void 0 ? {} : { temperature: this.options.temperature },
+          seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, "model-turn", 0)
+        };
+        const reservation = await this.options.modelBudget?.reserve(request.max_tokens ?? null, session.runtime.signal);
+        if (this.options.modelBudget && !reservation) return budgetStop();
+        if (reservation) request.max_tokens = reservation.limit;
+        const started = performance.now();
+        let response;
+        session.runtime.trace.emit("model_request", { call_id: callId, phase: "start", turn: 1, actor: this.options.actor });
+        try {
+          response = await runInFrame(session.runtime.frame, () => this.driver(
+            request,
+            session.runtime.signal,
+            this.options.onDelta ? { onDelta: (delta) => this.options.onDelta(1, delta) } : void 0
+          ));
+          reservation?.finish(response.completion_tokens);
+        } catch (error) {
+          reservation?.finish();
+          session.runtime.trace.emit("model_request", {
+            call_id: callId,
+            phase: "error",
+            turn: 1,
+            duration_ms: Math.round(performance.now() - started),
+            error: String(error)
+          });
+          throw error;
+        }
+        session.runtime.trace.emit("model_request", {
+          call_id: callId,
+          phase: "end",
+          turn: 1,
+          actor: this.options.actor,
+          duration_ms: Math.round(performance.now() - started),
+          prompt_tokens: response.prompt_tokens ?? null,
+          completion_tokens: response.completion_tokens ?? null,
+          ...response.cached_tokens === void 0 ? {} : { cached_tokens: response.cached_tokens }
+        });
+        const turnNode = await this.modelTurnNode(session, messages, response, 1, void 0, this.options.actor ?? { id: this.driver.name || "model", revision: null });
+        this.recordGeneratedTurn(messages, [], response, 1, turnNode);
+        await this.nativeWriteOrigins(response, session, 1, turnNode);
+        const recorded2 = response.raw_response?.x_natlang_native_recorded_turn;
+        if (turnNode && typeof recorded2 === "string") activeRecorder()?.linkNativeTurn?.(recorded2, turnNode);
+        session.runtime.checkInterruption();
+        if (reservation?.limit != null && response.completion_tokens !== void 0 && response.completion_tokens > reservation.limit) return budgetStop();
+        if (response.truncated || response.protocol_failure || response.calls?.length || response.raw_calls?.length || typeof response.text !== "string")
+          return fail3("the generated choice must be complete JSON text");
+        let value;
+        try {
+          value = JSON.parse(response.text);
+        } catch {
+          return fail3("the generated choice is not valid JSON");
+        }
+        const chosen = values.findIndex((option) => fingerprint(option) === fingerprint(value));
+        if (chosen < 0) return fail3("the generated choice is outside the offered values");
+        session.runtime.trace.emit("decision_readout", {
+          call_id: callId,
+          phase: "generated",
+          options: values.map((value2) => JSON.stringify(value2)),
+          chosen,
+          duration_ms: Math.round(performance.now() - started),
+          scored: false
+        });
+        session.lam.return = values[chosen];
+        session.lam.note = JSON.stringify({ readout: "decision", source: "generated", scored: false });
+        if (!session.finish()) return fail3("the generated choice does not satisfy the declared return type");
       }
       /** Encode stored policy against this runtime's exact native reader before any model call. */
       async runtimeProgramGuidance(guidance) {
@@ -230382,7 +231114,7 @@ ${notes}` : opening;
           throw new NeuraleseUnsupportedError("authored text guidance cannot replace available native program guidance");
         if (this.options.neuralese?.store) await adoptImportedNativeArtifacts(this.options.neuralese.store);
         let budget = this.options.contextTokens === void 0 ? await defaultContextBudget(this.driver) : this.options.contextTokens;
-        session.pages.budget = shownCharsFor(budget);
+        session.pages.budget = this.pageChars(budget);
         const guidance = [
           renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName)),
           this.options.callAddendum ?? ""
@@ -230433,7 +231165,14 @@ ${notes}` : opening;
           ];
         };
         const refinement = this.options.refinement;
-        if (refinement) session.refinementCheck = async (value, type, path2) => {
+        const hintGuard = this.options.trainingGuidance?.hintGuard(session.lam);
+        const hintFailure = (value) => {
+          const message2 = hintGuard?.(value);
+          return message2 ? { code: "hint-rejected", message: message2 } : void 0;
+        };
+        if (refinement || hintGuard) session.refinementCheck = async (value, type, path2) => {
+          if (path2 === "return" && hintFailure(value)) return hintFailure(value);
+          if (!refinement) return void 0;
           const failures = await refinement.checker.checkValue(
             value,
             type,
@@ -230460,7 +231199,7 @@ ${notes}` : opening;
         const guidancePolicy = trainingGuidance?.policyOf(session.lam, session.runtime.currentCallId ?? null);
         const guidanceConsumer = !!trainingGuidance && !guidancePolicy && !trainingGuidance.insidePolicy(session);
         let guidanceRequest, guidanceReady = false;
-        const decided = this.options.fallbacks?.length || this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0 ? false : await this.decisionReadout(session, messages);
+        const decided = this.options.fallbacks?.length ? false : await this.decisionReadout(session, messages);
         if (decided !== false) return decided;
         const openingLength = messages.length;
         let tokensPerChar = 1 / 3.5;
@@ -230483,6 +231222,8 @@ ${notes}` : opening;
         let streamed = false;
         const maxTurns = this.options.maxTurns, maxTokens = this.options.maxTokens;
         const deadline = this.options.maxSeconds === void 0 ? null : Date.now() + this.options.maxSeconds * 1e3;
+        let requests = 0;
+        let lastModelTurn;
         let tokens2 = 0, turns = 0, failureRepairs = 0, refinementRepairs = 0, lastRefinementFailure = "";
         let fallbackIndex = 0;
         let currentDriver = this.driver;
@@ -230510,7 +231251,7 @@ ${notes}` : opening;
           statedWindow = null;
           tokensPerChar = 1 / 3.5;
           compactedAt = 0;
-          session.pages.budget = shownCharsFor(budget);
+          session.pages.budget = this.pageChars(budget);
           fallbackIndex++;
           session.runtime.trace.emit("model_escalation", {
             call_id: session.runtime.currentCallId ?? null,
@@ -230534,7 +231275,7 @@ ${notes}` : opening;
             },
             [
               { node: invocationNodeId(session.runtime.options.runId), port: "invocation" },
-              ...turns ? [{ node: `${session.runtime.options.runId}#turn${turns}`, port: "handoff-request" }] : []
+              ...lastModelTurn ? [{ node: lastModelTurn, port: "handoff-request" }] : []
             ]
           );
           return void 0;
@@ -230579,24 +231320,28 @@ ${notes}` : opening;
           return detail;
         };
         let repliesWithoutAction = 0;
+        let continuing;
         const timedOut = () => deadline !== null && Date.now() >= deadline;
         const exhausted = () => maxTurns !== void 0 && turns >= maxTurns || maxTokens !== void 0 && tokens2 >= maxTokens || timedOut();
         const allowance = () => {
           const remaining = maxTokens === void 0 ? null : maxTokens - tokens2;
-          if (currentTurnTokens === void 0) return remaining;
-          return remaining === null ? currentTurnTokens : Math.min(currentTurnTokens, remaining);
+          const perTurn = currentTurnTokens ?? (budget === null ? null : Math.floor(budget / 4));
+          return remaining === null ? perTurn : perTurn === null ? remaining : Math.min(perTurn, remaining);
         };
         while (true) {
           if (exhausted()) return budgetStop("episode turn, token, or wall-clock budget exhausted");
+          const continued = continuing;
+          continuing = void 0;
+          const turn = continued ? turns : turns + 1;
           messages[0].content = systemPrompt();
-          const limit = allowance() ?? (budget === null ? null : Math.floor(budget / 4));
-          const lastTurn = maxTurns !== void 0 && maxTurns - turns === 1;
+          const limit = allowance();
+          const lastTurn = maxTurns !== void 0 && maxTurns - (turn - 1) === 1;
           const allTools = this.tools(session).filter((item) => fallbackIndex < (this.options.fallbacks?.length ?? 0) || item.function?.name !== "escalate");
           session.rememberOfferedTools(allTools);
           const only = (name) => allTools.filter((tool2) => String(tool2.function?.name) === name);
           const estimate = (tools) => requestChars(tools) * tokensPerChar;
           const reply = budget === null ? 0 : Math.min(limit ?? Math.floor(budget / 4), Math.floor(budget / 4));
-          const compactable = messages.length - protectedLength > 2;
+          const compactable = !continued && messages.length - protectedLength > 2;
           const nearLimit = budget !== null && compactable && compactedTurn !== turns && estimate(allTools) > Math.min(budget - reply, Math.max(budget * 0.75, compactedAt + budget * 0.25));
           const availableTools = lastTurn ? only("return_result") : nearLimit ? only("compact_history") : allTools;
           const offered = allTools;
@@ -230608,26 +231353,32 @@ ${notes}` : opening;
               messages[messages.length - 1] = { ...latest, content: latest.content + COMPACTION_NOTICE };
           };
           explainCompaction();
-          if (budget !== null && estimate(offered) > budget - reply) {
-            const removed = pinNote(null) + collapseHistory(messages, protectedLength);
+          if (!continued && budget !== null && estimate(offered) > budget - reply) {
+            const removed = collapseHistory(messages, protectedLength);
+            if (removed) pinNote(null);
+            let unreasoned = 0;
             if (estimate(offered) > budget - reply) {
               for (let index = protectedLength; index < messages.length; index++) {
                 const message2 = messages[index];
                 if (message2.role === "assistant" && "reasoning_content" in message2) {
                   const { reasoning_content, ...withoutReasoning } = message2;
                   messages[index] = withoutReasoning;
+                  unreasoned++;
                 }
               }
             }
-            compactedAt = estimate(allTools);
-            explainCompaction();
-            session.runtime.trace.emit("compaction", {
-              call_id: session.runtime.currentCallId ?? null,
-              turn: turns + 1,
-              elided: removed,
-              note: null,
-              estimated_tokens: Math.round(estimate(offered))
-            });
+            if (removed || unreasoned) {
+              compactedAt = estimate(allTools);
+              explainCompaction();
+              session.runtime.trace.emit("compaction", {
+                call_id: session.runtime.currentCallId ?? null,
+                turn,
+                elided: removed,
+                ...unreasoned ? { reasoning_removed: unreasoned } : {},
+                note: null,
+                estimated_tokens: Math.round(estimate(offered))
+              });
+            }
           }
           const sentChars = requestChars(offered);
           const callId = session.runtime.currentCallId ?? null;
@@ -230643,13 +231394,15 @@ ${notes}` : opening;
           session.runtime.trace.emit("model_request", {
             call_id: callId,
             phase: "start",
-            turn: turns + 1,
+            turn,
+            ...continued ? { continuation: continued.requests } : {},
             actor: currentActor,
             tool_schema_bytes: new TextEncoder().encode(JSON.stringify(currentRendering === "program-header" ? [] : offered)).length,
             messages: messages.length
           });
           let response;
-          let templatedWriteAttempt = false;
+          let sentRequest;
+          let templatedWriteAttempt = false, templated = false;
           let graphMessages = messages;
           let reencodedInputs = [];
           let reservation;
@@ -230679,7 +231432,7 @@ ${notes}` : opening;
             templatedWriteAttempt = template?.value === "write";
             retryProtocolWriteTemplate = false;
             if (template) session.runtime.trace.emit("template_readout", { call_id: callId, value: template.value });
-            const observer = this.options.onDelta, turn = turns + 1;
+            const observer = this.options.onDelta;
             const turnOptions = observer || currentDriver.requiresResultContract ? {
               ...observer ? { onDelta: (delta) => {
                 streamed = true;
@@ -230710,9 +231463,18 @@ ${notes}` : opening;
               // A turn that offers one tool it must use (the compaction turn, the last turn) requires a tool call.
               ...availableTools !== allTools && currentRendering !== "program-header" ? { tool_choice: "required" } : {},
               ...currentTemperature === void 0 ? {} : { temperature: currentTemperature },
-              seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, "model-turn", turns),
-              max_tokens: statedWindow === null ? limit : Math.max(1, Math.min(limit ?? statedWindow, statedWindow - Math.ceil(estimate(offered)) - REPLY_MARGIN))
+              seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(
+                session.runtime.seedPolicy.root,
+                runSeedKey(session.runtime.options),
+                session.lam.attempts,
+                continued ? `model-turn-continuation-${continued.requests}` : "model-turn",
+                turn - 1
+              ),
+              ...continued ? { continue: { text: continued.text, ...continued.reasoning ? { reasoning: continued.reasoning } : {} } } : {},
+              max_tokens: statedWindow === null ? limit : Math.max(1, Math.min(limit ?? statedWindow, statedWindow - Math.ceil(estimate(offered)) - (continued?.tokens ?? 0) - REPLY_MARGIN))
             };
+            templated = !!turnRequest.template;
+            sentRequest = turnRequest;
             reservation = await this.options.modelBudget?.reserve(turnRequest.max_tokens ?? null, session.runtime.signal);
             if (this.options.modelBudget && !reservation) return budgetStop("graph model request or token budget exhausted");
             if (reservation) turnRequest.max_tokens = reservation.limit;
@@ -230726,12 +231488,12 @@ ${notes}` : opening;
             reservation?.finish();
             if (streamed) {
               streamed = false;
-              this.options.onDelta(turns + 1, { type: "reset" });
+              this.options.onDelta(turn, { type: "reset" });
             }
             session.runtime.trace.emit("model_request", {
               call_id: callId,
               phase: "error",
-              turn: turns + 1,
+              turn,
               actor: currentActor,
               duration_ms: Math.round(performance.now() - started),
               error: `${error instanceof Error ? error.name : "Error"}: ${error instanceof Error ? error.message : String(error)}`
@@ -230762,7 +231524,7 @@ ${notes}` : opening;
           session.runtime.trace.emit("model_request", {
             call_id: callId,
             phase: "end",
-            turn: turns + 1,
+            turn,
             actor: currentActor,
             duration_ms: Math.round(performance.now() - started),
             prompt_tokens: response.prompt_tokens ?? null,
@@ -230781,42 +231543,22 @@ ${notes}` : opening;
             session,
             graphMessages,
             response,
-            turns + 1,
+            turn,
             void 0,
             currentActor,
             [...reencodedInputs, ...handoffNode ? [{ node: handoffNode, port: "handoff" }] : []],
-            currentTemperature
+            currentTemperature,
+            { ordinal: ++requests, ...continued ? { continuation: continued.requests } : {} }
           );
-          if (turnNode && guidancePolicy?.function === "writeGuidance" && callId) trainingGuidance.noteWriterTurn(
+          lastModelTurn = turnNode;
+          if (turnNode && (guidancePolicy?.function === "writeGuidance" || guidancePolicy?.function === "writeHint") && callId) trainingGuidance.noteWriterTurn(
             callId,
             turnNode,
             [...session.runtime.frame?.chain ?? [], ...session.runtime.options.parentCallId ? [session.runtime.options.parentCallId] : []]
           );
-          const recorder = activeRecorder();
-          const recordedTurn = response.raw_response?.x_natlang_recorded_turn;
-          const recordedNative = response.raw_response?.x_natlang_native_recorded_turn;
-          if (turnNode && typeof recordedTurn === "string" && recordedTurn !== recordedNative) recorder?.linkTurn?.(recordedTurn, turnNode);
-          if (recorder && !supportsNeuralese(currentDriver)) recorder.record({
-            messages: structuredClone(graphMessages),
-            tools: structuredClone(offered),
-            actor: { ...currentActor },
-            ...this.options.actor ? { initial_actor: { ...this.options.actor } } : {},
-            ...turnNode ? { graph_turn: turnNode } : {},
-            reply: {
-              role: "assistant",
-              content: response.text ?? null,
-              ...response.raw_calls ? { tool_calls: structuredClone(response.raw_calls) } : response.calls?.length ? {
-                tool_calls: response.calls.map(([name, args], index) => ({
-                  id: `call_${turns + 1}_${index}`,
-                  type: "function",
-                  function: { name, arguments: JSON.stringify(args) }
-                }))
-              } : {}
-            },
-            blocks: []
-          });
-          if (response.prompt_tokens !== void 0 && sentChars > 0) tokensPerChar = response.prompt_tokens / sentChars;
-          turns++;
+          this.recordGeneratedTurn(graphMessages, offered, response, turn, turnNode, currentDriver, currentActor);
+          if (response.prompt_tokens !== void 0 && sentChars > 0 && !continued) tokensPerChar = response.prompt_tokens / sentChars;
+          if (!continued) turns++;
           session.runtime.checkInterruption();
           if (exceededGraphReservation) {
             await this.nativeWriteOrigins(
@@ -230883,14 +231625,37 @@ ${notes}` : opening;
             turn: turns,
             calls,
             text: response.text ?? "",
-            ...response.reasoning ? { reasoning: response.reasoning } : {}
+            ...response.reasoning ? { reasoning: response.reasoning } : {},
+            ...continued ? { continuation: continued.requests } : {}
           });
-          tokens2 += response.completion_tokens === void 0 ? limit ?? 0 : Math.max(1, response.completion_tokens);
+          const generated = response.completion_tokens === void 0 ? limit ?? 0 : Math.max(1, response.completion_tokens);
+          tokens2 += generated;
           if (timedOut() || maxTokens !== void 0 && tokens2 > maxTokens)
             return budgetStop("episode token or wall-clock budget exhausted");
+          const messageTokens = (continued?.tokens ?? 0) + generated;
+          if (response.truncated && !response.calls?.length && !response.raw_calls?.length && currentDriver.continuesReplies && availableTools === allTools && !lastTurn && !templated && budget !== null && !exhausted()) {
+            const nextReply = Math.min(allowance() ?? budget, Math.floor(budget / 4));
+            const nextPrompt = response.prompt_tokens !== void 0 ? response.prompt_tokens + generated : estimate(offered) + messageTokens;
+            if (nextPrompt + nextReply <= budget) {
+              continuing = {
+                text: response.text ?? "",
+                ...response.reasoning ? { reasoning: response.reasoning } : {},
+                tokens: messageTokens,
+                requests: (continued?.requests ?? 0) + 1
+              };
+              session.runtime.trace.emit("continuation", {
+                call_id: callId,
+                turn,
+                request: continuing.requests,
+                message_tokens: messageTokens
+              });
+              continue;
+            }
+          }
           if (!response.calls?.length && availableTools !== allTools && !lastTurn && !response.truncated) {
             consecutiveEmptyEosWithoutResult = 0;
-            const elided = pinNote(null) + collapseHistory(messages, protectedLength);
+            const elided = collapseHistory(messages, protectedLength);
+            if (elided) pinNote(null);
             compactedAt = estimate(allTools);
             session.runtime.trace.emit("compaction", {
               call_id: session.runtime.currentCallId ?? null,
@@ -230901,8 +231666,24 @@ ${notes}` : opening;
             });
             continue;
           }
+          if (response.malformed_call) {
+            messages.push(
+              { role: "assistant", content: response.text ?? "", ...thought(response.reasoning) },
+              { role: "user", content: response.malformed_call }
+            );
+            if (++repliesWithoutAction >= 4) {
+              session.runtime.trace.emit("model_incomplete", {
+                call_id: callId,
+                turn: turns,
+                reason: "no_action",
+                evidence: "four_consecutive_replies_without_a_tool_call",
+                replies: repliesWithoutAction
+              });
+              return `model_incomplete: no_action (${repliesWithoutAction} replies in a row called no tool and returned no result; the last one held a tool call that could not be read)`;
+            }
+            continue;
+          }
           if (!response.calls?.length) {
-            if (!response.truncated) await session.acceptTextResult(response.text ?? "");
             const missing = this.missing(session);
             if (!response.truncated && exactEmptyEos && missing) {
               consecutiveEmptyEosWithoutResult++;
@@ -230918,30 +231699,8 @@ ${notes}` : opening;
               }
             } else if (!missing) consecutiveEmptyEosWithoutResult = 0;
             if (!response.truncated && missing && lastRefinementFailure && this.options.refinement && ++refinementRepairs > this.options.refinement.checker.repairBudget(this.options.maxFailureRepairs)) return lastRefinementFailure;
-            if (!response.truncated && !missing && this.options.refinement) {
-              const failures = await this.refinementGate(session);
-              if (failures) {
-                session.lam.return = MISSING;
-                lastRefinementFailure = `${failures[0].code}: ${failures[0].message}`;
-                if (++refinementRepairs > this.options.refinement.checker.repairBudget(this.options.maxFailureRepairs))
-                  return `${failures[0].code}: ${failures[0].message}`;
-                messages.push(
-                  { role: "assistant", content: response.text ?? "", ...thought(response.reasoning) },
-                  { role: "user", content: failureFeedback(failures).replace(/^rejected\n/, "") }
-                );
-                continue;
-              }
-            }
-            if (!response.truncated && !missing && session.finish()) {
-              session.lam.note = response.text ?? "";
-              return;
-            }
             const unrun = /```(?:ts|typescript|js|javascript)?\s*\n/.test(response.text ?? "") ? "The code in your reply was not run: code runs only when you call eval with it. " : "";
-            const feedback = response.truncated ? `Your reply was cut off ${limit === null ? "at the length limit" : `at the ${limit}-token limit`} before any tool call. ` + (session.lam.return !== MISSING && !missing ? 'A complete typed result is already staged. Call return_result with {status: "success"} and omit value to return that exact result, or reply "done" to return it without a tool call.' : (
-              // A text-typed call returns its plain reply: a model that thinks aloud in the reply must be told that the
-              // reply itself is the result, so it answers short instead of writing on (writer runaways, 2026-11-04).
-              session.takesTextResult() ? "This call returns text: your next reply, complete and without a tool call, is returned as the result, so reply with only the result, shorter than the limit." : "Take the next step with one tool call."
-            )) : unrun + (missing || "The staged result is incomplete.");
+            const feedback = response.truncated ? (continued ? `Your reply was cut off after ${messageTokens} tokens before any tool call, and this conversation has no room left to continue it. ` : `Your reply was cut off ${limit === null ? "at the length limit" : `at the ${limit}-token limit`} before any tool call. `) + (missing ? "Take the next step with one tool call." : STAGED_ANSWER) : unrun + (missing || STAGED_ANSWER);
             if (response.truncated && ++failureRepairs > (this.options.maxFailureRepairs ?? Infinity)) {
               session.runtime.trace.emit("model_incomplete", {
                 call_id: callId,
@@ -230992,8 +231751,9 @@ ${notes}` : opening;
             }, String(raw[0].id));
             const failure2 = action.kind === "ok" ? void 0 : action.text;
             messages.push(
-              { role: "assistant", content: replyText(response), tool_calls: raw.slice(0, 1), ...thought(response.reasoning) },
-              { role: "tool", tool_call_id: String(raw[0].id), content: action.text }
+              { role: "assistant", content: replyText(response), tool_calls: raw, ...thought(response.reasoning) },
+              { role: "tool", tool_call_id: String(raw[0].id), content: action.text },
+              ...raw.slice(1).map((call) => ({ role: "tool", tool_call_id: String(call.id), content: UNRUN_CALL }))
             );
             if (action.kind === "budget") return budgetStop(action.text);
             if (failure2?.startsWith("escalation unavailable:") || failure2?.startsWith("graph model ")) return failure2;
@@ -231050,12 +231810,21 @@ ${failure2}`);
               continue;
             }
             let appliedArgs = args;
+            if (name === "return_result" && hintGuard && (appliedArgs.status ?? "success") === "success") {
+              const failure2 = hintFailure(appliedArgs.value);
+              if (failure2) {
+                results.push({ kind: "rejected", text: `${failure2.code}: ${failure2.message}`, codes: [failure2.code] });
+                stoppedAt ??= index;
+                continue;
+              }
+            }
             if (name === "return_result" && this.options.refinement && (appliedArgs.status ?? "success") === "success") {
               const failures = await this.refinementGate(session, appliedArgs);
               if (failures) {
                 refinementFailures = failures;
                 results.push({ kind: "rejected", text: failureFeedback(failures), codes: failures.map((failure2) => failure2.code) });
-                break;
+                stoppedAt ??= index;
+                continue;
               }
             }
             const result = await session.applyAsync(
@@ -231082,7 +231851,7 @@ ${failure2}`);
               const ref = await this.compactRef(session, {
                 operator: "compact-value",
                 value: full,
-                instructions: `Read this ${name} result for: ${this.purpose(session)}`
+                instructions: valueInstructions(name, this.purpose(session))
               });
               if (ref) content += "\n\n" + framedState("compact-value", ref).trimEnd();
             }
@@ -231090,11 +231859,7 @@ ${failure2}`);
             if (name === "compact_history" && result.kind === "ok") note2 = String(args.note).trim();
           }
           if (note2 !== void 0) {
-            const history = await this.compactRef(session, {
-              operator: "compact-history",
-              tools: this.tools(session),
-              messages: messages.map((message2) => typeof message2.content === "string" ? { ...message2, content: runtimeTextToParts(message2.content).map((part) => part.type === "text" ? part.text : "[Neuralese]").join("") } : message2)
-            });
+            const history = await this.noteRef(session, sentRequest, response, note2);
             if (history) note2 += "\n\n" + framedState("compact-history", history);
             const elided = pinNote(note2) + collapseHistory(messages, protectedLength);
             compactedAt = requestChars(this.tools(session)) * tokensPerChar;
@@ -231449,6 +232214,12 @@ var init_graph_custody = __esm({
 });
 
 // src/calls/snapshot.ts
+function plainPrototype(prototype) {
+  if (prototype === null || prototype === Object.prototype) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  return typeof constructor === "function" && Object.getOwnPropertyDescriptor(constructor, "prototype")?.value === prototype && Function.prototype.toString.call(constructor) === objectConstructorSource;
+}
 function portable(value, seen, depth2) {
   if (depth2 > 64) return false;
   if (value === null || typeof value === "string" || typeof value === "boolean") return true;
@@ -231457,8 +232228,7 @@ function portable(value, seen, depth2) {
   seen.add(value);
   try {
     if (Array.isArray(value)) return value.every((item) => portable(item, seen, depth2 + 1));
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return false;
+    if (!plainPrototype(Object.getPrototypeOf(value))) return false;
     return Object.entries(value).every(([, item]) => item !== void 0 && portable(item, seen, depth2 + 1));
   } finally {
     seen.delete(value);
@@ -231529,7 +232299,7 @@ function inputFeatures(inputs) {
   for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
   return out;
 }
-var typeLabel, preview2, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
+var typeLabel, objectConstructorSource, preview2, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
 var init_snapshot = __esm({
   "src/calls/snapshot.ts"() {
     "use strict";
@@ -231542,6 +232312,7 @@ var init_snapshot = __esm({
       const name = value.constructor?.name;
       return name && name !== "Object" ? name : "object";
     };
+    objectConstructorSource = Function.prototype.toString.call(Object);
     preview2 = (text3) => text3.length > 200 ? `${text3.slice(0, 200)}\u2026` : text3;
     MAX_FEATURES = 600;
     MAX_TOKENS_PER_STRING = 120;
@@ -231913,7 +232684,7 @@ var init_recorder = __esm({
             return { code: typeof code === "string" ? code : JSON.stringify(code ?? null), ok: !["error", "rejected"].includes(String(event.outcome)) };
           });
           const evals = actions.map((action) => action.code);
-          const requests = events.filter((event) => event.kind === "model_request" && event.phase === "end");
+          const requests = events.filter((event) => event.kind === "model_request" && event.phase === "end" || event.kind === "decision_readout" && event.phase === "scored");
           const definition = this.base.definition;
           const output = result.hasOutput ? this.ref(
             result.output,
@@ -233631,6 +234402,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     contextTokens: definition.budget?.contextTokens ?? model.contextTokens,
     maxFailureRepairs: model.maxFailureRepairs,
     decisionReadout: model.decisionReadout,
+    decisionGeneration: model.decisionGeneration,
     guidance: model.guidance,
     promptRendering: model.promptRendering,
     // Live events (plans/STREAMING.md §1.6): the call's model deltas, tagged with the call; nothing without a subscriber.
@@ -234263,7 +235035,17 @@ function moduleValue(record3, level, bound, home) {
       return target(...args);
     };
     const value = instance();
-    return value instanceof Promise ? value.then(invokeExport) : invokeExport(value);
+    const result = value instanceof Promise ? value.then(invokeExport) : invokeExport(value);
+    const frame = bound ?? currentFrame();
+    if (!frame?.task.runtime.options.traceStepStates) return result;
+    const noteState = (state) => {
+      try {
+        traceFor(frame.parentCallId)?.emit("step_state", { helper: `${record3.source}#${exportName}`, state_hash: stableHash(state) });
+      } catch {
+      }
+      return state;
+    };
+    return result instanceof Promise ? result.then(noteState) : noteState(result);
   });
   const defaultExport = record3.exports.default;
   const node = defaultExport?.kind === "function" ? Object.defineProperty((...args) => invoke("default", args), "name", { value: record3.name }) : /* @__PURE__ */ Object.create(null);
@@ -234429,7 +235211,8 @@ __export(iterate_exports, {
   defaultProgressJudge: () => defaultProgressJudge,
   iterateOn: () => iterateOn,
   predicatePrompt: () => predicatePrompt,
-  reviewDue: () => reviewDue
+  reviewDue: () => reviewDue,
+  stableHash: () => stableHash
 });
 function stableHash(value) {
   const seen = /* @__PURE__ */ new WeakSet();
@@ -235079,7 +235862,7 @@ var init_data_layout = __esm({
 });
 
 // src/native/scoped-fs.ts
-import { sha256 as sha2562 } from "@noble/hashes/sha2.js";
+import { sha256 as sha2563 } from "@noble/hashes/sha2.js";
 function cleanPath(path2, allowRoot = true) {
   if (typeof path2 !== "string") throw new TypeError("path must be a string");
   if (allowRoot && (path2 === "" || path2 === ".")) return "";
@@ -235101,7 +235884,7 @@ function equalBytes(left, right) {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 function hexDigest2(value) {
-  return Array.from(sha2562(value), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(sha2563(value), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 function under(path2, parent) {
   return !parent || path2 === parent || path2.startsWith(`${parent}/`);
@@ -236774,6 +237557,8 @@ function nzModule(base64) {
   return nzExports(loaded);
 }
 function numericProgress(initial, bound, upward) {
+  if (typeof bound?.then === "function")
+    throw new RangeError("the bound of this counted for loop is a Promise; write await before the call in the bound");
   if (!Number.isFinite(initial) || !Number.isFinite(bound)) throw new RangeError("numeric loop requires a finite counter and bound");
   let previous;
   return (current) => {
@@ -253864,39 +254649,120 @@ init_evaluator();
 
 // src/native/eval-compile.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript20 = __toESM(require_typescript(), 1);
+var import_typescript21 = __toESM(require_typescript(), 1);
 
 // src/native/prelude.generated.ts
 init_define_NATLANG_TS_LIBS();
 var PRELUDE = '// natlang crisp standard library v0.1 (SPEC 9.4). Pure helpers only.\nconst count = (xs, f) => (f ? xs.filter(f).length : xs.length);\nconst sum = (xs, f) => xs.reduce((a, x) => a + (f ? f(x) : x), 0);\nconst min = (xs, f) => xs.reduce((a, x) => { const v = f ? f(x) : x; return a === undefined || v < a ? v : a; }, undefined);\nconst max = (xs, f) => xs.reduce((a, x) => { const v = f ? f(x) : x; return a === undefined || v > a ? v : a; }, undefined);\nconst mean = (xs, f) => (xs.length ? sum(xs, f) / xs.length : undefined);\nconst _key = (f) => (typeof f === "function" ? f : (x) => x[f]);\nconst sortBy = (xs, f, desc) => { const k = f ? _key(f) : (x) => x; const out = [...xs].sort((a, b) => (k(a) < k(b) ? -1 : k(a) > k(b) ? 1 : 0)); return desc ? out.reverse() : out; };\nconst groupBy = (xs, f) => { const k = _key(f), out = Object.create(null); for (const x of xs) (out[k(x)] ||= []).push(x); return out; };\nconst countBy = (xs, f) => { const k = f ? _key(f) : (x) => x, out = Object.create(null); for (const x of xs) out[k(x)] = (out[k(x)] || 0) + 1; return out; };\nconst uniq = (xs) => [...new Set(xs)];\nconst uniqBy = (xs, f) => { const k = _key(f), seen = new Set(), out = []; for (const x of xs) { const v = k(x); if (!seen.has(v)) { seen.add(v); out.push(x); } } return out; };\nconst zip = (...ls) => ls[0].map((_, i) => ls.map((l) => l[i]));\nconst _whole = (name, n, least) => { if (!Number.isSafeInteger(n) || n < least) throw new RangeError(`${name} must be a whole number of at least ${least}, but got ${String(n)}`); return n; };\nconst range = (a, b) => { if (!Number.isFinite(a) || !Number.isFinite(b)) throw new RangeError(`range needs finite bounds, but got ${String(a)} and ${String(b)}`); const out = []; for (let i = a; i <= b; i++) out.push(i); return out; };\nconst chunk = (xs, n) => { _whole(\'chunk size\', n, 1); const out = []; for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n)); return out; };\nconst windows = (xs, n, step = 1) => { _whole(\'window size\', n, 1); _whole(\'window step\', step, 1); const out = []; for (let i = 0; i + n <= xs.length; i += step) out.push(xs.slice(i, i + n)); return out; };\nconst flatten = (xs) => xs.flat();\nconst take = (xs, n) => xs.slice(0, n);\nconst drop = (xs, n) => xs.slice(n);\nconst partition = (xs, f) => [xs.filter(f), xs.filter((x) => !f(x))];\nconst topK = (xs, k, f) => sortBy(xs, f, true).slice(0, k);\nconst indexBy = (xs, f) => { const k = _key(f), out = Object.create(null); for (const x of xs) out[k(x)] = x; return out; };\nconst splitLines = (s) => s.split(/\\r?\\n/).filter((l) => l.trim() !== "");\nconst splitOn = (s, sep) => s.split(sep);\nconst joinWith = (xs, sep) => xs.join(sep);\nconst trim = (s) => s.trim();\nconst lower = (s) => s.toLowerCase();\nconst upper = (s) => s.toUpperCase();\nconst contains = (s, sub) => s.includes(sub);\nconst startsWith = (s, p) => s.startsWith(p);\nconst matchAll = (s, re) => [...s.matchAll(new RegExp(re, "g"))].map((m) => m[0]);\nconst replaceAll = (s, a, b) => s.split(a).join(b);\nconst wordCount = (s) => (s.trim() === "" ? 0 : s.trim().split(/\\s+/).length);\nconst parseNum = (s) => { const v = Number(String(s).replace(/[, ]/g, "")); return Number.isFinite(v) ? v : null; };\nconst parseDate = (s) => { const d = new Date(s); return isNaN(d) ? null : d.toISOString().slice(0, 10); };\nconst formatDate = (s) => new Date(s).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);\nconst hash = (x) => { const s = typeof x === "string" ? x : JSON.stringify(x); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return h.toString(16); };\nconst enumOf = (xs) => xs.map((x) => (typeof x === "number" ? String(x) : JSON.stringify(String(x)))).join(" | ");\n';
 
+// src/native/eval-memory.ts
+init_define_NATLANG_TS_LIBS();
+var import_typescript20 = __toESM(require_typescript(), 1);
+var MEMORY_CHECK = "__natlang_memory";
+var DEFAULT_EVAL_MEMORY_MB = 256;
+var CHECK_EVERY = 128;
+var MB = 1024 * 1024;
+function evalMemoryLimitMb(env = globalThis.process?.env ?? {}) {
+  const text3 = env.NATLANG_EVAL_MEMORY_MB?.trim();
+  if (!text3) return DEFAULT_EVAL_MEMORY_MB;
+  const value = Number(text3);
+  if (!Number.isFinite(value) || value < 0) throw new RangeError(`NATLANG_EVAL_MEMORY_MB must be a number of MB >= 0 (0: unbounded), got ${text3}`);
+  return value;
+}
+function memoryLimitMessage(subject, unit2, limitMb) {
+  return `${subject} stopped: its data grew past the ${limitMb} MB memory limit of one ${unit2}; use a bounded or more memory-efficient approach (prune the search, keep compact state, or process the data in parts)`;
+}
+var evalMemoryMessage = (limitMb) => memoryLimitMessage("eval", "eval", limitMb);
+var moduleMemoryMessage = (limitMb) => memoryLimitMessage("callable-folder code", "synchronous run of callable-folder code", limitMb);
+function memoryGuard(limitMb, probe, message2 = evalMemoryMessage(limitMb)) {
+  const limit = limitMb * MB, base = probe.used();
+  let ticks = 0, next2 = base + limit, tripped = false;
+  const fail3 = () => {
+    tripped = true;
+    throw new RangeError(message2);
+  };
+  return () => {
+    if (tripped) fail3();
+    if (++ticks < CHECK_EVERY) return;
+    ticks = 0;
+    if (probe.used() <= next2) return;
+    if (!probe.collect) fail3();
+    probe.collect();
+    const after = probe.used();
+    if (after - base > limit) fail3();
+    next2 = Math.max(base + limit, after + limit / 2);
+  };
+}
+function segmentGuard(limitMb, probe, message2 = moduleMemoryMessage(limitMb)) {
+  let current;
+  return () => {
+    if (!current) {
+      current = memoryGuard(limitMb, probe, message2);
+      queueMicrotask(() => {
+        current = void 0;
+      });
+    }
+    current();
+  };
+}
+function instrumentMemoryChecks(source2, check = MEMORY_CHECK, kind = "ts") {
+  const file = import_typescript20.default.createSourceFile(
+    kind === "ts" ? "natlang-eval.ts" : "natlang-module.js",
+    source2,
+    import_typescript20.default.ScriptTarget.Latest,
+    true,
+    kind === "ts" ? import_typescript20.default.ScriptKind.TS : import_typescript20.default.ScriptKind.JS
+  );
+  if (file.parseDiagnostics?.length) return source2;
+  const call = `${check}();`;
+  const edits = [];
+  const atBlockStart = (block) => edits.push([block.getStart(file) + 1, 1, call]);
+  const statementBody = (body) => {
+    if (import_typescript20.default.isBlock(body)) return atBlockStart(body);
+    edits.push([body.getStart(file), 1, `{${call}`], [body.getEnd(), 0, "}"]);
+  };
+  const visit = (node) => {
+    if (import_typescript20.default.isIterationStatement(node, false)) statementBody(node.statement);
+    else if ((import_typescript20.default.isFunctionDeclaration(node) || import_typescript20.default.isFunctionExpression(node) || import_typescript20.default.isMethodDeclaration(node) || import_typescript20.default.isGetAccessorDeclaration(node) || import_typescript20.default.isSetAccessorDeclaration(node)) && node.body) atBlockStart(node.body);
+    else if (import_typescript20.default.isArrowFunction(node)) {
+      if (import_typescript20.default.isBlock(node.body)) atBlockStart(node.body);
+      else edits.push([node.body.getStart(file), 1, `(${check}(), `], [node.body.getEnd(), 0, ")"]);
+    }
+    import_typescript20.default.forEachChild(node, visit);
+  };
+  visit(file);
+  edits.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+  for (const [position, , text3] of edits) source2 = source2.slice(0, position) + text3 + source2.slice(position);
+  return source2;
+}
+
 // src/native/eval-compile.ts
 var BODY_FUNCTION = "__natlang_body";
 function lowerStaticImports(source2, validateImport) {
-  const file = import_typescript20.default.createSourceFile("imports.ts", source2, import_typescript20.default.ScriptTarget.Latest, true);
+  const file = import_typescript21.default.createSourceFile("imports.ts", source2, import_typescript21.default.ScriptTarget.Latest, true);
   const edits = [];
   const visit = (node) => {
-    if (import_typescript20.default.isImportDeclaration(node)) {
-      if (!import_typescript20.default.isStringLiteral(node.moduleSpecifier)) throw new Error("Package import must use a string literal");
+    if (import_typescript21.default.isImportDeclaration(node)) {
+      if (!import_typescript21.default.isStringLiteral(node.moduleSpecifier)) throw new Error("Package import must use a string literal");
       validateImport(node.moduleSpecifier.text);
       const clause = node.importClause;
       const call = `await __natlang_import(${node.moduleSpecifier.getText(file)})`;
       const fields = [];
       let text3 = "";
-      const typeOnlyBindings = clause?.namedBindings && import_typescript20.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
+      const typeOnlyBindings = clause?.namedBindings && import_typescript21.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
       if (!clause?.isTypeOnly && !(typeOnlyBindings && !clause?.name)) {
         if (clause?.name) fields.push(`default: ${clause.name.text}`);
         const bindings2 = clause?.namedBindings;
-        if (bindings2 && import_typescript20.default.isNamedImports(bindings2)) {
+        if (bindings2 && import_typescript21.default.isNamedImports(bindings2)) {
           for (const binding of bindings2.elements)
             if (!binding.isTypeOnly) fields.push(`${binding.propertyName?.text ?? binding.name.text}: ${binding.name.text}`);
         }
         if (fields.length) text3 += `const { ${fields.join(", ")} } = ${call};`;
-        if (bindings2 && import_typescript20.default.isNamespaceImport(bindings2)) text3 += `const ${bindings2.name.text} = ${call};`;
+        if (bindings2 && import_typescript21.default.isNamespaceImport(bindings2)) text3 += `const ${bindings2.name.text} = ${call};`;
         if (!text3) text3 = `${call};`;
       }
       edits.push({ start: node.getStart(file), end: node.end, text: text3 });
-    } else import_typescript20.default.forEachChild(node, visit);
+    } else import_typescript21.default.forEachChild(node, visit);
   };
   visit(file);
   for (const edit of edits.sort((a, b) => b.start - a.start)) source2 = source2.slice(0, edit.start) + edit.text + source2.slice(edit.end);
@@ -253904,39 +254770,40 @@ function lowerStaticImports(source2, validateImport) {
 }
 var restoreAfterAwait = (context) => (file) => {
   const f = context.factory;
-  const visit = (node) => import_typescript20.default.isAwaitExpression(node) ? f.createCallExpression(f.createParenthesizedExpression(f.createAwaitExpression(f.createCallExpression(
+  const visit = (node) => import_typescript21.default.isAwaitExpression(node) ? f.createCallExpression(f.createParenthesizedExpression(f.createAwaitExpression(f.createCallExpression(
     f.createIdentifier("__natlang_bindAwait"),
     void 0,
-    [import_typescript20.default.visitNode(node.expression, visit)]
-  ))), void 0, []) : import_typescript20.default.visitEachChild(node, visit, context);
-  return import_typescript20.default.visitNode(file, visit);
+    [import_typescript21.default.visitNode(node.expression, visit)]
+  ))), void 0, []) : import_typescript21.default.visitEachChild(node, visit, context);
+  return import_typescript21.default.visitNode(file, visit);
 };
 var lowerImportCalls = (context) => (root2) => {
   const visit = (node) => {
-    if (import_typescript20.default.isCallExpression(node) && node.expression.kind === import_typescript20.default.SyntaxKind.ImportKeyword)
-      return import_typescript20.default.factory.updateCallExpression(
+    if (import_typescript21.default.isCallExpression(node) && node.expression.kind === import_typescript21.default.SyntaxKind.ImportKeyword)
+      return import_typescript21.default.factory.updateCallExpression(
         node,
-        import_typescript20.default.factory.createIdentifier("__natlang_import"),
+        import_typescript21.default.factory.createIdentifier("__natlang_import"),
         void 0,
-        node.arguments.map((arg) => import_typescript20.default.visitNode(arg, visit))
+        node.arguments.map((arg) => import_typescript21.default.visitNode(arg, visit))
       );
-    return import_typescript20.default.visitEachChild(node, visit, context);
+    return import_typescript21.default.visitEachChild(node, visit, context);
   };
-  return import_typescript20.default.visitNode(root2, visit);
+  return import_typescript21.default.visitNode(root2, visit);
 };
 function compileEval(code, options) {
   let source2 = options.body ? `${options.asyncBody ? "async " : ""}function ${BODY_FUNCTION}() {
 ${code}
 }` : code;
   if (options.imports) source2 = lowerStaticImports(source2, options.imports);
-  const result = import_typescript20.default.transpileModule(source2, {
+  if (options.memoryChecks) source2 = instrumentMemoryChecks(source2);
+  const result = import_typescript21.default.transpileModule(source2, {
     fileName: "natlang-eval.ts",
     reportDiagnostics: true,
-    compilerOptions: { target: import_typescript20.default.ScriptTarget.ES2022, module: import_typescript20.default.ModuleKind.None, isolatedModules: true, removeComments: false },
+    compilerOptions: { target: import_typescript21.default.ScriptTarget.ES2022, module: import_typescript21.default.ModuleKind.None, isolatedModules: true, removeComments: false },
     transformers: { before: [...options.imports ? [lowerImportCalls] : [], ...options.restoreAfterAwait ? [restoreAfterAwait] : []] }
   });
-  const errors = (result.diagnostics ?? []).filter((d) => d.category === import_typescript20.default.DiagnosticCategory.Error);
-  if (errors.length) throw new SyntaxError("TypeScript: " + errors.map((d) => import_typescript20.default.flattenDiagnosticMessageText(d.messageText, "\n")).join("; "));
+  const errors = (result.diagnostics ?? []).filter((d) => d.category === import_typescript21.default.DiagnosticCategory.Error);
+  if (errors.length) throw new SyntaxError("TypeScript: " + errors.map((d) => import_typescript21.default.flattenDiagnosticMessageText(d.messageText, "\n")).join("; "));
   return result.outputText;
 }
 function evalRealmBody(compiled2, body) {
@@ -253948,6 +254815,7 @@ ${compiled2}`)});`;
 }
 
 // src/native/realm.ts
+init_neuralese2();
 function constructorRealm(newFunction, name = "natlang") {
   return { call: (body, parameters, args) => newFunction(`"use strict";
 ${body}`, name, ...parameters)(...args) };
@@ -253996,6 +254864,8 @@ var RealmEnvironment = class {
     this.timeoutMs = options.timeoutMs;
     this.scopeCapabilities = options.scopeCapabilities ?? { allowModules: false, allowNetwork: false };
     if (this.timeoutMs !== void 0 && (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1)) throw new RangeError("timeoutMs must be positive");
+    const limit = options.memory?.limitMb;
+    if (limit !== void 0 && !(Number.isFinite(limit) && limit >= 0)) throw new RangeError("memory limitMb must be a non-negative number");
   }
   options;
   authority;
@@ -254004,6 +254874,10 @@ var RealmEnvironment = class {
   scopeCapabilities;
   disposed = false;
   retained;
+  /** The eval memory bound in MB, or undefined when evals are unbounded. */
+  get memoryLimitMb() {
+    return this.options.memory?.limitMb || void 0;
+  }
   fork() {
     if (!this.options.fork) throw new Error(`${this.authority} cannot fork`);
     return this.options.fork();
@@ -254057,25 +254931,36 @@ var RealmEnvironment = class {
     if (typeof request.code !== "string" || typeof request.scope !== "object" || request.scope === null)
       throw new TypeError("invalid eval request");
     const imports = asyncBody ? this.importer() : void 0;
+    const memory = this.memoryLimitMb ? this.options.memory : void 0;
     const compiled2 = compileEval(request.code, {
       body: request.body,
       asyncBody,
       imports: imports?.validate.bind(imports),
-      restoreAfterAwait: !!this.options.bindAwait
+      restoreAfterAwait: !!this.options.bindAwait,
+      memoryChecks: !!memory
     });
     const realm = this.realm();
     const write = consoleWriter(logs, (value) => {
       try {
-        return JSON.stringify(portable2(value));
+        const data = portable2(value);
+        return isNeuraleseRef(data) ? neuraleseDisplayText(data) : JSON.stringify(data, (_key, item) => isNeuraleseRef(item) ? neuraleseDisplayText(item) : item);
       } catch {
         return String(value);
       }
     });
     const logger = Object.freeze({ log: write, info: write, warn: write, error: write });
-    const bound = { self: snapshot2(request.scope), __live: request.live ?? {}, __natlang_import: (specifier) => {
-      if (!imports) throw new Error(`cannot import ${specifier}: eval has no package imports here`);
-      return imports.load(specifier);
-    }, console: logger, ...this.options.bindAwait ? { __natlang_bindAwait: this.options.bindAwait } : {}, ...this.extraBindings() };
+    const bound = {
+      self: snapshot2(request.scope),
+      __live: request.live ?? {},
+      __natlang_import: (specifier) => {
+        if (!imports) throw new Error(`cannot import ${specifier}: eval has no package imports here`);
+        return imports.load(specifier);
+      },
+      console: logger,
+      ...this.options.bindAwait ? { __natlang_bindAwait: this.options.bindAwait } : {},
+      ...memory ? { [MEMORY_CHECK]: memoryGuard(memory.limitMb, memory.probe) } : {},
+      ...this.extraBindings()
+    };
     return realm.call(
       evalRealmBody(compiled2, request.body),
       Object.keys(bound),
@@ -254108,6 +254993,11 @@ var RealmEnvironment = class {
   /** Evaluate a callable-folder module body; bindings are passed by reference. */
   evaluateModule(code, bindings2) {
     if (this.disposed) throw new Error("TypeScript environment is disposed");
+    const memory = this.memoryLimitMb ? this.options.memory : void 0;
+    if (memory) {
+      code = instrumentMemoryChecks(code, MEMORY_CHECK, "js");
+      bindings2 = { ...bindings2, [MEMORY_CHECK]: segmentGuard(memory.limitMb, memory.probe) };
+    }
     return this.moduleRealm().call(code, Object.keys(bindings2), Object.values(bindings2));
   }
   close() {
@@ -254519,77 +255409,77 @@ init_define_NATLANG_TS_LIBS();
 
 // src/compiler/sequential-loops.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript21 = __toESM(require_typescript(), 1);
+var import_typescript22 = __toESM(require_typescript(), 1);
 var SEQUENTIAL_LOOP_CODE = "nl-sequential-loop";
 function checkSequentialNlLoops(file, displayPath = (source2) => source2.fileName) {
   const nlFunctions = /* @__PURE__ */ new Set();
   for (const statement of file.statements) {
-    if (!import_typescript21.default.isImportDeclaration(statement) || !import_typescript21.default.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (!import_typescript22.default.isImportDeclaration(statement) || !import_typescript22.default.isStringLiteral(statement.moduleSpecifier)) continue;
     const clause = statement.importClause;
     if (!clause || clause.isTypeOnly) continue;
     if (statement.moduleSpecifier.text.endsWith(".nl") && clause.name) nlFunctions.add(clause.name.text);
-    if (statement.moduleSpecifier.text.endsWith(".nl") && clause.namedBindings && import_typescript21.default.isNamedImports(clause.namedBindings))
+    if (statement.moduleSpecifier.text.endsWith(".nl") && clause.namedBindings && import_typescript22.default.isNamedImports(clause.namedBindings))
       for (const item of clause.namedBindings.elements) nlFunctions.add(item.name.text);
   }
   const unwrap2 = (node) => {
-    while (import_typescript21.default.isParenthesizedExpression(node) || import_typescript21.default.isNonNullExpression(node) || import_typescript21.default.isAsExpression(node)) node = node.expression;
+    while (import_typescript22.default.isParenthesizedExpression(node) || import_typescript22.default.isNonNullExpression(node) || import_typescript22.default.isAsExpression(node)) node = node.expression;
     return node;
   };
   const isNlCall = (node) => {
     node = unwrap2(node);
-    if (!import_typescript21.default.isCallExpression(node)) return false;
+    if (!import_typescript22.default.isCallExpression(node)) return false;
     const callee = unwrap2(node.expression);
-    if (import_typescript21.default.isIdentifier(callee)) return nlFunctions.has(callee.text);
-    return import_typescript21.default.isTaggedTemplateExpression(callee) && import_typescript21.default.isIdentifier(callee.tag) && callee.tag.text === "nl";
+    if (import_typescript22.default.isIdentifier(callee)) return nlFunctions.has(callee.text);
+    return import_typescript22.default.isTaggedTemplateExpression(callee) && import_typescript22.default.isIdentifier(callee.tag) && callee.tag.text === "nl";
   };
   const simpleArgument = (node, loopNames, written) => {
     let ok2 = true;
     const visit2 = (child) => {
       if (!ok2) return;
-      if (import_typescript21.default.isCallExpression(child) || import_typescript21.default.isNewExpression(child) || import_typescript21.default.isAwaitExpression(child) || import_typescript21.default.isFunctionLike(child) || import_typescript21.default.isYieldExpression(child) || import_typescript21.default.isTaggedTemplateExpression(child) || import_typescript21.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript21.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript21.default.SyntaxKind.LastAssignment || (import_typescript21.default.isPrefixUnaryExpression(child) || import_typescript21.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript21.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript21.default.SyntaxKind.MinusMinusToken)) {
+      if (import_typescript22.default.isCallExpression(child) || import_typescript22.default.isNewExpression(child) || import_typescript22.default.isAwaitExpression(child) || import_typescript22.default.isFunctionLike(child) || import_typescript22.default.isYieldExpression(child) || import_typescript22.default.isTaggedTemplateExpression(child) || import_typescript22.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript22.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript22.default.SyntaxKind.LastAssignment || (import_typescript22.default.isPrefixUnaryExpression(child) || import_typescript22.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript22.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript22.default.SyntaxKind.MinusMinusToken)) {
         ok2 = false;
         return;
       }
-      if (import_typescript21.default.isIdentifier(child) && written.has(child.text) && !(import_typescript21.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
+      if (import_typescript22.default.isIdentifier(child) && written.has(child.text) && !(import_typescript22.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
         ok2 = false;
         return;
       }
-      import_typescript21.default.forEachChild(child, visit2);
+      import_typescript22.default.forEachChild(child, visit2);
     };
     visit2(node);
     return ok2;
   };
   const rootName = (node) => {
     node = unwrap2(node);
-    while (import_typescript21.default.isPropertyAccessExpression(node) || import_typescript21.default.isElementAccessExpression(node)) node = unwrap2(node.expression);
-    return import_typescript21.default.isIdentifier(node) ? node.text : void 0;
+    while (import_typescript22.default.isPropertyAccessExpression(node) || import_typescript22.default.isElementAccessExpression(node)) node = unwrap2(node.expression);
+    return import_typescript22.default.isIdentifier(node) ? node.text : void 0;
   };
   const diagnostics = [];
   const visit = (node) => {
-    if (import_typescript21.default.isForOfStatement(node) && !node.awaitModifier && import_typescript21.default.isVariableDeclarationList(node.initializer)) {
+    if (import_typescript22.default.isForOfStatement(node) && !node.awaitModifier && import_typescript22.default.isVariableDeclarationList(node.initializer)) {
       const loopNames = /* @__PURE__ */ new Set();
       const collect = (name) => {
-        if (import_typescript21.default.isIdentifier(name)) loopNames.add(name.text);
-        else for (const element of name.elements) if (import_typescript21.default.isBindingElement(element)) collect(element.name);
+        if (import_typescript22.default.isIdentifier(name)) loopNames.add(name.text);
+        else for (const element of name.elements) if (import_typescript22.default.isBindingElement(element)) collect(element.name);
       };
       node.initializer.declarations.forEach((declaration) => collect(declaration.name));
-      const statements = import_typescript21.default.isBlock(node.statement) ? [...node.statement.statements] : [node.statement];
+      const statements = import_typescript22.default.isBlock(node.statement) ? [...node.statement.statements] : [node.statement];
       if (statements.length === 1) {
         const only = statements[0];
         let awaited, written, ok2 = false;
-        if (import_typescript21.default.isVariableStatement(only) && only.declarationList.flags & import_typescript21.default.NodeFlags.Const && only.declarationList.declarations.length === 1) {
+        if (import_typescript22.default.isVariableStatement(only) && only.declarationList.flags & import_typescript22.default.NodeFlags.Const && only.declarationList.declarations.length === 1) {
           const init = only.declarationList.declarations[0].initializer;
-          if (init && import_typescript21.default.isAwaitExpression(unwrap2(init))) {
+          if (init && import_typescript22.default.isAwaitExpression(unwrap2(init))) {
             awaited = unwrap2(init).expression;
             ok2 = true;
           }
-        } else if (import_typescript21.default.isExpressionStatement(only)) {
+        } else if (import_typescript22.default.isExpressionStatement(only)) {
           const expression = unwrap2(only.expression);
-          if (import_typescript21.default.isCallExpression(expression) && import_typescript21.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "push" && expression.arguments.length === 1 && import_typescript21.default.isAwaitExpression(unwrap2(expression.arguments[0]))) {
+          if (import_typescript22.default.isCallExpression(expression) && import_typescript22.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "push" && expression.arguments.length === 1 && import_typescript22.default.isAwaitExpression(unwrap2(expression.arguments[0]))) {
             awaited = unwrap2(expression.arguments[0]).expression;
             written = rootName(expression.expression.expression);
             ok2 = true;
-          } else if (import_typescript21.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript21.default.SyntaxKind.EqualsToken && import_typescript21.default.isElementAccessExpression(unwrap2(expression.left)) && import_typescript21.default.isAwaitExpression(unwrap2(expression.right))) {
+          } else if (import_typescript22.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript22.default.SyntaxKind.EqualsToken && import_typescript22.default.isElementAccessExpression(unwrap2(expression.left)) && import_typescript22.default.isAwaitExpression(unwrap2(expression.right))) {
             awaited = unwrap2(expression.right).expression;
             written = rootName(expression.left);
             ok2 = true;
@@ -254599,7 +255489,7 @@ function checkSequentialNlLoops(file, displayPath = (source2) => source2.fileNam
           const call = unwrap2(awaited);
           const writes = new Set(written ? [written] : []);
           const callee = unwrap2(call.expression);
-          const pieces = [...call.arguments, ...import_typescript21.default.isTaggedTemplateExpression(callee) ? [callee.template] : []];
+          const pieces = [...call.arguments, ...import_typescript22.default.isTaggedTemplateExpression(callee) ? [callee.template] : []];
           if (pieces.every((piece) => simpleArgument(piece, loopNames, writes))) {
             const start = node.getStart(file), position = file.getLineAndCharacterOfPosition(start);
             diagnostics.push({
@@ -254616,7 +255506,7 @@ function checkSequentialNlLoops(file, displayPath = (source2) => source2.fileNam
         }
       }
     }
-    import_typescript21.default.forEachChild(node, visit);
+    import_typescript22.default.forEachChild(node, visit);
   };
   visit(file);
   return diagnostics;
@@ -254672,11 +255562,11 @@ function refinedSlotsOf(source2, name, args, returns, types3) {
 }
 
 // src/compiler/project.ts
-var import_typescript24 = __toESM(require_typescript(), 1);
+var import_typescript25 = __toESM(require_typescript(), 1);
 
 // src/compiler/rewrites.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript22 = __toESM(require_typescript(), 1);
+var import_typescript23 = __toESM(require_typescript(), 1);
 init_graph();
 var NO_REWRITE_MARKER = "natlang-no-rewrite";
 var RewriteGate = class _RewriteGate {
@@ -254707,72 +255597,72 @@ var RewriteGate = class _RewriteGate {
 };
 var COMBINATORS2 = /* @__PURE__ */ new Set(["map", "read", "combine", "empty", "split", "zip", "compose"]);
 function combinatorOf(node) {
-  if (!import_typescript22.default.isCallExpression(node)) return;
+  if (!import_typescript23.default.isCallExpression(node)) return;
   const callee = node.expression;
-  const name = import_typescript22.default.isIdentifier(callee) ? callee.text : import_typescript22.default.isPropertyAccessExpression(callee) ? callee.name.text : void 0;
+  const name = import_typescript23.default.isIdentifier(callee) ? callee.text : import_typescript23.default.isPropertyAccessExpression(callee) ? callee.name.text : void 0;
   return name && COMBINATORS2.has(name) ? name : void 0;
 }
 function operand(node) {
   let inner = node;
-  while (import_typescript22.default.isParenthesizedExpression(inner)) inner = inner.expression;
-  if (import_typescript22.default.isAwaitExpression(inner)) {
+  while (import_typescript23.default.isParenthesizedExpression(inner)) inner = inner.expression;
+  if (import_typescript23.default.isAwaitExpression(inner)) {
     let call = inner.expression;
-    while (import_typescript22.default.isParenthesizedExpression(call)) call = call.expression;
+    while (import_typescript23.default.isParenthesizedExpression(call)) call = call.expression;
     return { call, awaited: true };
   }
   return { call: inner, awaited: false };
 }
 function pure(node) {
-  if (import_typescript22.default.isParenthesizedExpression(node)) return pure(node.expression);
-  if (import_typescript22.default.isIdentifier(node) || import_typescript22.default.isLiteralExpression(node) || import_typescript22.default.isNoSubstitutionTemplateLiteral(node) || node.kind === import_typescript22.default.SyntaxKind.TrueKeyword || node.kind === import_typescript22.default.SyntaxKind.FalseKeyword || node.kind === import_typescript22.default.SyntaxKind.NullKeyword || import_typescript22.default.isArrowFunction(node) || import_typescript22.default.isFunctionExpression(node)) return true;
-  if (import_typescript22.default.isPropertyAccessExpression(node)) return pure(node.expression);
-  if (import_typescript22.default.isArrayLiteralExpression(node)) return node.elements.every((element) => import_typescript22.default.isExpression(element) && pure(element));
-  if (import_typescript22.default.isCallExpression(node) && combinatorOf(node) === "compose") return node.arguments.every(pure);
+  if (import_typescript23.default.isParenthesizedExpression(node)) return pure(node.expression);
+  if (import_typescript23.default.isIdentifier(node) || import_typescript23.default.isLiteralExpression(node) || import_typescript23.default.isNoSubstitutionTemplateLiteral(node) || node.kind === import_typescript23.default.SyntaxKind.TrueKeyword || node.kind === import_typescript23.default.SyntaxKind.FalseKeyword || node.kind === import_typescript23.default.SyntaxKind.NullKeyword || import_typescript23.default.isArrowFunction(node) || import_typescript23.default.isFunctionExpression(node)) return true;
+  if (import_typescript23.default.isPropertyAccessExpression(node)) return pure(node.expression);
+  if (import_typescript23.default.isArrayLiteralExpression(node)) return node.elements.every((element) => import_typescript23.default.isExpression(element) && pure(element));
+  if (import_typescript23.default.isCallExpression(node) && combinatorOf(node) === "compose") return node.arguments.every(pure);
   return false;
 }
 function isIdentity(node) {
-  while (import_typescript22.default.isParenthesizedExpression(node)) node = node.expression;
-  const fn = import_typescript22.default.isArrowFunction(node) || import_typescript22.default.isFunctionExpression(node) ? node : void 0;
-  if (!fn || fn.parameters.length !== 1 || !import_typescript22.default.isIdentifier(fn.parameters[0].name)) return false;
+  while (import_typescript23.default.isParenthesizedExpression(node)) node = node.expression;
+  const fn = import_typescript23.default.isArrowFunction(node) || import_typescript23.default.isFunctionExpression(node) ? node : void 0;
+  if (!fn || fn.parameters.length !== 1 || !import_typescript23.default.isIdentifier(fn.parameters[0].name)) return false;
   const name = fn.parameters[0].name.text;
-  const body = import_typescript22.default.isBlock(fn.body) ? fn.body.statements.length === 1 && import_typescript22.default.isReturnStatement(fn.body.statements[0]) ? fn.body.statements[0].expression : void 0 : fn.body;
+  const body = import_typescript23.default.isBlock(fn.body) ? fn.body.statements.length === 1 && import_typescript23.default.isReturnStatement(fn.body.statements[0]) ? fn.body.statements[0].expression : void 0 : fn.body;
   let value = body;
-  while (value && import_typescript22.default.isParenthesizedExpression(value)) value = value.expression;
-  return !!value && import_typescript22.default.isIdentifier(value) && value.text === name;
+  while (value && import_typescript23.default.isParenthesizedExpression(value)) value = value.expression;
+  return !!value && import_typescript23.default.isIdentifier(value) && value.text === name;
 }
 function hasEffect(node) {
   let found = false;
   const visit = (item) => {
-    if (found || import_typescript22.default.isArrowFunction(item) || import_typescript22.default.isFunctionExpression(item) || import_typescript22.default.isFunctionDeclaration(item)) return;
-    if (import_typescript22.default.isCallExpression(item) && combinatorOf(item) !== "compose" || import_typescript22.default.isAwaitExpression(item) || import_typescript22.default.isNewExpression(item) || import_typescript22.default.isDeleteExpression(item) || import_typescript22.default.isBinaryExpression(item) && item.operatorToken.kind >= import_typescript22.default.SyntaxKind.FirstAssignment && item.operatorToken.kind <= import_typescript22.default.SyntaxKind.LastAssignment || (import_typescript22.default.isPrefixUnaryExpression(item) || import_typescript22.default.isPostfixUnaryExpression(item)) && (item.operator === import_typescript22.default.SyntaxKind.PlusPlusToken || item.operator === import_typescript22.default.SyntaxKind.MinusMinusToken)) {
+    if (found || import_typescript23.default.isArrowFunction(item) || import_typescript23.default.isFunctionExpression(item) || import_typescript23.default.isFunctionDeclaration(item)) return;
+    if (import_typescript23.default.isCallExpression(item) && combinatorOf(item) !== "compose" || import_typescript23.default.isAwaitExpression(item) || import_typescript23.default.isNewExpression(item) || import_typescript23.default.isDeleteExpression(item) || import_typescript23.default.isBinaryExpression(item) && item.operatorToken.kind >= import_typescript23.default.SyntaxKind.FirstAssignment && item.operatorToken.kind <= import_typescript23.default.SyntaxKind.LastAssignment || (import_typescript23.default.isPrefixUnaryExpression(item) || import_typescript23.default.isPostfixUnaryExpression(item)) && (item.operator === import_typescript23.default.SyntaxKind.PlusPlusToken || item.operator === import_typescript23.default.SyntaxKind.MinusMinusToken)) {
       found = true;
       return;
     }
-    import_typescript22.default.forEachChild(item, visit);
+    import_typescript23.default.forEachChild(item, visit);
   };
   visit(node);
   return found;
 }
 function rewriteCombinators(source2, options) {
   const fileName = options.fileName ?? "program.ts";
-  const file = import_typescript22.default.createSourceFile(fileName, source2, import_typescript22.default.ScriptTarget.ES2022, true, import_typescript22.default.ScriptKind.TS);
+  const file = import_typescript23.default.createSourceFile(fileName, source2, import_typescript23.default.ScriptTarget.ES2022, true, import_typescript23.default.ScriptKind.TS);
   const applied = [];
   const skipped = [];
   const siteOf = (node) => {
-    const original = import_typescript22.default.getOriginalNode(node);
+    const original = import_typescript23.default.getOriginalNode(node);
     const start = original.pos >= 0 && original.getSourceFile() ? original.getStart(file) : 0;
     const { line, character } = file.getLineAndCharacterOfPosition(start);
     return `${fileName}:${line + 1}:${character + 1}`;
   };
   const spanOf2 = (node) => {
-    const original = import_typescript22.default.getOriginalNode(node);
+    const original = import_typescript23.default.getOriginalNode(node);
     return original.pos >= 0 ? `${fileName}#${original.getStart(file)}-${original.getEnd()}` : `${fileName}#synthesized`;
   };
   const marked = (node) => {
-    for (let current = import_typescript22.default.getOriginalNode(node); current && current.pos >= 0; current = current.parent) {
-      const ranges = import_typescript22.default.getLeadingCommentRanges(source2, current.getFullStart()) ?? [];
+    for (let current = import_typescript23.default.getOriginalNode(node); current && current.pos >= 0; current = current.parent) {
+      const ranges = import_typescript23.default.getLeadingCommentRanges(source2, current.getFullStart()) ?? [];
       if (ranges.some((range2) => source2.slice(range2.pos, range2.end).includes(NO_REWRITE_MARKER))) return true;
-      if (import_typescript22.default.isStatement(current) && !import_typescript22.default.isBlock(current)) break;
+      if (import_typescript23.default.isStatement(current) && !import_typescript23.default.isBlock(current)) break;
     }
     return false;
   };
@@ -254799,16 +255689,16 @@ function rewriteCombinators(source2, options) {
     const introduced = /* @__PURE__ */ new Map();
     const callNamed = (like, name, args) => {
       const callee = like.expression;
-      if (import_typescript22.default.isIdentifier(callee) && callee.text !== name) introduced.set(name, callee.text);
-      const target = import_typescript22.default.isPropertyAccessExpression(callee) ? f.updatePropertyAccessExpression(callee, callee.expression, f.createIdentifier(name)) : f.createIdentifier(name);
+      if (import_typescript23.default.isIdentifier(callee) && callee.text !== name) introduced.set(name, callee.text);
+      const target = import_typescript23.default.isPropertyAccessExpression(callee) ? f.updatePropertyAccessExpression(callee, callee.expression, f.createIdentifier(name)) : f.createIdentifier(name);
       return f.createCallExpression(target, void 0, args);
     };
     const withImports = (out) => {
       if (!introduced.size) return out;
       const statements = out.statements.map((statement) => {
-        if (!import_typescript22.default.isImportDeclaration(statement) || !import_typescript22.default.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "natlang:neuralese") return statement;
+        if (!import_typescript23.default.isImportDeclaration(statement) || !import_typescript23.default.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "natlang:neuralese") return statement;
         const bindings2 = statement.importClause?.namedBindings;
-        if (!bindings2 || !import_typescript22.default.isNamedImports(bindings2)) return statement;
+        if (!bindings2 || !import_typescript23.default.isNamedImports(bindings2)) return statement;
         const local = new Set(bindings2.elements.map((element) => element.name.text));
         const missing = [...introduced].filter(([name, via]) => local.has(via) && !local.has(name)).map(([name]) => name);
         if (!missing.length) return statement;
@@ -254835,9 +255725,9 @@ function rewriteCombinators(source2, options) {
       const list = [...statements];
       for (let index = 0; index < list.length; index++) {
         const statement = list[index];
-        if (!import_typescript22.default.isVariableStatement(statement) || !(statement.declarationList.flags & import_typescript22.default.NodeFlags.Const)) continue;
+        if (!import_typescript23.default.isVariableStatement(statement) || !(statement.declarationList.flags & import_typescript23.default.NodeFlags.Const)) continue;
         const declarations = statement.declarationList.declarations;
-        if (declarations.length !== 1 || !import_typescript22.default.isIdentifier(declarations[0].name) || !declarations[0].initializer) continue;
+        if (declarations.length !== 1 || !import_typescript23.default.isIdentifier(declarations[0].name) || !declarations[0].initializer) continue;
         const name = declarations[0].name.text, initializer = declarations[0].initializer;
         const inner = operand(initializer);
         if (combinatorOf(inner.call) !== "map") continue;
@@ -254845,18 +255735,18 @@ function rewriteCombinators(source2, options) {
         list.forEach((later, position) => {
           if (position <= index) return;
           const visit2 = (item) => {
-            if (import_typescript22.default.isIdentifier(item) && item.text === name && !(import_typescript22.default.isPropertyAccessExpression(item.parent) && item.parent.name === item))
+            if (import_typescript23.default.isIdentifier(item) && item.text === name && !(import_typescript23.default.isPropertyAccessExpression(item.parent) && item.parent.name === item))
               uses.push({ statement: position, node: item });
-            import_typescript22.default.forEachChild(item, visit2);
+            import_typescript23.default.forEachChild(item, visit2);
           };
           visit2(later);
         });
         if (uses.length !== 1) continue;
         const use = uses[0];
         let argument = use.node;
-        while (import_typescript22.default.isParenthesizedExpression(argument.parent) || import_typescript22.default.isAwaitExpression(argument.parent)) argument = argument.parent;
+        while (import_typescript23.default.isParenthesizedExpression(argument.parent) || import_typescript23.default.isAwaitExpression(argument.parent)) argument = argument.parent;
         const outer = argument.parent;
-        if (!import_typescript22.default.isCallExpression(outer) || combinatorOf(outer) !== "map" || outer.arguments[0] !== argument) continue;
+        if (!import_typescript23.default.isCallExpression(outer) || combinatorOf(outer) !== "map" || outer.arguments[0] !== argument) continue;
         const call = inner.call;
         const between = list.slice(index + 1, use.statement);
         const blocked = between.some(hasEffect) || !call.arguments.every(pure) || !outer.arguments.slice(1).every(pure);
@@ -254867,20 +255757,20 @@ function rewriteCombinators(source2, options) {
         if (!allowed("map-fusion", outer)) continue;
         const target = use.node;
         const replaceUse = (inlineContext) => (node) => {
-          const visit2 = (item) => item === target ? f.createParenthesizedExpression(initializer) : import_typescript22.default.visitEachChild(item, visit2, inlineContext);
+          const visit2 = (item) => item === target ? f.createParenthesizedExpression(initializer) : import_typescript23.default.visitEachChild(item, visit2, inlineContext);
           return visit2(node);
         };
-        list[use.statement] = import_typescript22.default.transform(list[use.statement], [replaceUse]).transformed[0];
+        list[use.statement] = import_typescript23.default.transform(list[use.statement], [replaceUse]).transformed[0];
         list.splice(index, 1);
         index--;
       }
       return list;
     };
     const visit = (node) => {
-      if (import_typescript22.default.isBlock(node)) node = f.updateBlock(node, foldIntermediates(node.statements));
-      else if (import_typescript22.default.isSourceFile(node)) node = f.updateSourceFile(node, foldIntermediates(node.statements));
-      node = import_typescript22.default.visitEachChild(node, visit, context);
-      if (!import_typescript22.default.isCallExpression(node)) return node;
+      if (import_typescript23.default.isBlock(node)) node = f.updateBlock(node, foldIntermediates(node.statements));
+      else if (import_typescript23.default.isSourceFile(node)) node = f.updateSourceFile(node, foldIntermediates(node.statements));
+      node = import_typescript23.default.visitEachChild(node, visit, context);
+      if (!import_typescript23.default.isCallExpression(node)) return node;
       const kind = combinatorOf(node);
       const args = node.arguments;
       if (kind === "map" && args.length === 2) {
@@ -254950,7 +255840,7 @@ function rewriteCombinators(source2, options) {
             balanced2(items.slice(Math.ceil(items.length / 2)))
           ]));
           const tree = balanced2(leaves);
-          return import_typescript22.default.isAwaitExpression(tree) ? tree.expression : tree;
+          return import_typescript23.default.isAwaitExpression(tree) ? tree.expression : tree;
         }
       }
       if (kind === "split" && args.length === 1) {
@@ -254970,9 +255860,9 @@ function rewriteCombinators(source2, options) {
     };
     return (root2) => withImports(visit(root2));
   };
-  const result = import_typescript22.default.transform(file, [transformer]);
+  const result = import_typescript23.default.transform(file, [transformer]);
   const transformed = result.transformed[0];
-  const code = applied.length ? import_typescript22.default.createPrinter({ newLine: import_typescript22.default.NewLineKind.LineFeed }).printFile(transformed) : source2;
+  const code = applied.length ? import_typescript23.default.createPrinter({ newLine: import_typescript23.default.NewLineKind.LineFeed }).printFile(transformed) : source2;
   result.dispose();
   return { code, applied, skipped };
 }
@@ -254985,7 +255875,7 @@ init_policy();
 
 // src/compiler/call-flow.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript23 = __toESM(require_typescript(), 1);
+var import_typescript24 = __toESM(require_typescript(), 1);
 function memberStage(record3, names) {
   let current = record3;
   for (const name of names) {
@@ -254998,17 +255888,17 @@ function memberStage(record3, names) {
 function calleeOf(call, imports) {
   const names = [];
   let expression = call.expression;
-  while (import_typescript23.default.isPropertyAccessExpression(expression)) {
+  while (import_typescript24.default.isPropertyAccessExpression(expression)) {
     names.unshift(expression.name.text);
     expression = expression.expression;
   }
-  if (!import_typescript23.default.isIdentifier(expression)) return void 0;
+  if (!import_typescript24.default.isIdentifier(expression)) return void 0;
   const root2 = imports.get(expression.text);
   if (!root2) return void 0;
   const stage = names.length ? memberStage(root2, names) : root2.kind === "natlang" ? root2 : void 0;
   return stage ? { stage, path: [expression.text, ...names].join(".") } : void 0;
 }
-var transparent = (node) => import_typescript23.default.isParenthesizedExpression(node) || import_typescript23.default.isAwaitExpression(node) || import_typescript23.default.isAsExpression(node) || import_typescript23.default.isNonNullExpression(node);
+var transparent = (node) => import_typescript24.default.isParenthesizedExpression(node) || import_typescript24.default.isAwaitExpression(node) || import_typescript24.default.isAsExpression(node) || import_typescript24.default.isNonNullExpression(node);
 var unwrap = (node) => {
   let current = node;
   while (transparent(current)) current = current.expression;
@@ -255016,8 +255906,8 @@ var unwrap = (node) => {
 };
 function nestedCall(node) {
   for (let current = node.parent; current; current = current.parent) {
-    if (import_typescript23.default.isCallExpression(current)) return current;
-    if (!(import_typescript23.default.isParenthesizedExpression(current) || import_typescript23.default.isAwaitExpression(current) || import_typescript23.default.isAsExpression(current))) return void 0;
+    if (import_typescript24.default.isCallExpression(current)) return current;
+    if (!(import_typescript24.default.isParenthesizedExpression(current) || import_typescript24.default.isAwaitExpression(current) || import_typescript24.default.isAsExpression(current))) return void 0;
   }
   return void 0;
 }
@@ -255035,7 +255925,7 @@ function useOf(ctx, node) {
     position: argumentPosition(call, node),
     call
   };
-  if (import_typescript23.default.isReturnStatement(node.parent) || node.parent && import_typescript23.default.isReturnStatement(node.parent.parent ?? node.parent))
+  if (import_typescript24.default.isReturnStatement(node.parent) || node.parent && import_typescript24.default.isReturnStatement(node.parent.parent ?? node.parent))
     return { reader: { kind: "host-return", site: site2, detail: ctx.mode === "eval" ? "returned by the orchestrator" : "returned to the caller", certain: true } };
   if (call && asArgument) {
     const text3 = call.expression.getText(ctx.file);
@@ -255052,7 +255942,7 @@ function useOf(ctx, node) {
 function flowOfCall(ctx, node) {
   const outer = nestedCall(node);
   const parent = node.parent;
-  const direct = outer && outer !== node && (import_typescript23.default.isAwaitExpression(parent) || import_typescript23.default.isParenthesizedExpression(parent) || parent === outer);
+  const direct = outer && outer !== node && (import_typescript24.default.isAwaitExpression(parent) || import_typescript24.default.isParenthesizedExpression(parent) || parent === outer);
   const consumer = direct ? calleeOf(outer, ctx.imports) : void 0;
   if (consumer && outer.arguments.some((argument) => unwrap(argument) === node))
     return { form: "nested", variable: null, anchor: node, uses: [{ reader: {
@@ -255064,23 +255954,23 @@ function flowOfCall(ctx, node) {
     }, consumer, position: argumentPosition(outer, node), call: outer }] };
   let declaration = parent;
   while (declaration && transparent(declaration)) declaration = declaration.parent;
-  if (declaration && import_typescript23.default.isVariableDeclaration(declaration) && import_typescript23.default.isIdentifier(declaration.name)) {
+  if (declaration && import_typescript24.default.isVariableDeclaration(declaration) && import_typescript24.default.isIdentifier(declaration.name)) {
     const bound = declaration;
     const name = declaration.name.text;
     let region = ctx.file;
     for (let current = declaration.parent; current; current = current.parent)
-      if (import_typescript23.default.isFunctionLike(current) || import_typescript23.default.isSourceFile(current)) {
+      if (import_typescript24.default.isFunctionLike(current) || import_typescript24.default.isSourceFile(current)) {
         region = current;
         break;
       }
     const uses = [];
     const find = (item) => {
-      if (import_typescript23.default.isIdentifier(item) && item.text === name && item !== bound.name && !(import_typescript23.default.isPropertyAccessExpression(item.parent) && item.parent.name === item)) uses.push(useOf(ctx, item));
-      import_typescript23.default.forEachChild(item, find);
+      if (import_typescript24.default.isIdentifier(item) && item.text === name && item !== bound.name && !(import_typescript24.default.isPropertyAccessExpression(item.parent) && item.parent.name === item)) uses.push(useOf(ctx, item));
+      import_typescript24.default.forEachChild(item, find);
     };
     find(region);
     const statement = bound.parent?.parent;
-    if (statement && import_typescript23.default.isVariableStatement(statement) && statement.modifiers?.some((modifier) => modifier.kind === import_typescript23.default.SyntaxKind.ExportKeyword))
+    if (statement && import_typescript24.default.isVariableStatement(statement) && statement.modifiers?.some((modifier) => modifier.kind === import_typescript24.default.SyntaxKind.ExportKeyword))
       uses.push({ reader: { kind: "host-return", site: siteIn(ctx, bound), detail: `${name} is exported`, certain: true } });
     return { form: "bound", variable: name, uses, anchor: declaration };
   }
@@ -255093,7 +255983,7 @@ function fusionCallSites(file, modulePath, importedNames) {
   const ctx = { file, fileName: modulePath, imports: importedNames, mode: "crisp-typescript", lineOffset: 0 };
   const mark = (call) => marks.set(`${call.getStart(file)}:${call.getEnd()}`, siteKey(modulePath, call, file));
   const walk = (node) => {
-    if (import_typescript23.default.isCallExpression(node) && calleeOf(node, importedNames)) {
+    if (import_typescript24.default.isCallExpression(node) && calleeOf(node, importedNames)) {
       const flow = flowOfCall(ctx, node);
       const consumers = flow.form === "loose" ? [] : flow.uses.filter((use) => use.consumer && use.call);
       if (consumers.length) {
@@ -255101,7 +255991,7 @@ function fusionCallSites(file, modulePath, importedNames) {
         for (const use of consumers) mark(use.call);
       }
     }
-    import_typescript23.default.forEachChild(node, walk);
+    import_typescript24.default.forEachChild(node, walk);
   };
   walk(file);
   return marks;
@@ -255373,8 +256263,8 @@ function compileProject(options) {
   const diagnostics = [];
   const files2 = sourceFiles(fs2, root2);
   const rel = (path2) => relative(root2, path2);
-  const problem = (file, message2, code = "callable-scope", line = 1) => diagnostics.push({ file, start: 0, end: 0, line, column: 1, code, message: message2, severity: "error" });
-  const sourceProblem = (fallback, error) => error instanceof NatlangSourceError ? problem(rel(error.path), error.reason, "callable-scope", error.line) : problem(rel(fallback), String(error));
+  const problem = (file, message2, code = "callable-scope", line = 1, hint) => diagnostics.push({ file, start: 0, end: 0, line, column: 1, code, message: message2, severity: "error", ...hint ? { hint } : {} });
+  const sourceProblem = (fallback, error) => error instanceof NatlangSourceError ? problem(rel(error.path), error.reason, "callable-scope", error.line, error.hint) : problem(rel(fallback), String(error));
   const layout = callableFolders(fs2, root2);
   const namedRecords = /* @__PURE__ */ new Map();
   for (const path2 of layout.named) {
@@ -255430,21 +256320,21 @@ function compileProject(options) {
     getCurrentDirectory: () => root2,
     fileExists: (path2) => fs2.isFile(path2),
     readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0,
-    readDirectory: (dir, extensions, excludes, includes, depth2) => fs2.compiler ? import_typescript24.default.sys.readDirectory(dir, extensions, excludes, includes, depth2) : walkTs(fs2, dir),
-    onUnRecoverableConfigFileDiagnostic: (diagnostic) => problem(rel(configPath), import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "typescript")
+    readDirectory: (dir, extensions, excludes, includes, depth2) => fs2.compiler?.readDirectory ? fs2.compiler.readDirectory(dir, extensions, excludes, includes, depth2) : walkTs(fs2, dir),
+    onUnRecoverableConfigFileDiagnostic: (diagnostic) => diagnostics.push(fromTypeScript(diagnostic, rel(configPath)))
   };
-  const parsed = configPath ? import_typescript24.default.getParsedCommandLineOfConfigFile(configPath, {}, configHost) : void 0;
+  const parsed = configPath ? import_typescript25.default.getParsedCommandLineOfConfigFile(configPath, {}, configHost) : void 0;
   const compilerOptions = {
-    target: import_typescript24.default.ScriptTarget.ES2022,
-    module: import_typescript24.default.ModuleKind.NodeNext,
-    moduleResolution: import_typescript24.default.ModuleResolutionKind.NodeNext,
+    target: import_typescript25.default.ScriptTarget.ES2022,
+    module: import_typescript25.default.ModuleKind.NodeNext,
+    moduleResolution: import_typescript25.default.ModuleResolutionKind.NodeNext,
     strict: true,
     skipLibCheck: true,
     ...parsed?.options ?? {},
     allowArbitraryExtensions: true,
     noEmit: false,
     declaration: false,
-    ...options.module === "commonjs" ? { module: import_typescript24.default.ModuleKind.CommonJS, moduleResolution: import_typescript24.default.ModuleResolutionKind.Node10 } : {}
+    ...options.module === "commonjs" ? { module: import_typescript25.default.ModuleKind.CommonJS, moduleResolution: import_typescript25.default.ModuleResolutionKind.Node10 } : {}
   };
   const outDir = resolve(options.outDir ?? compilerOptions.outDir ?? join(root2, "dist"));
   compilerOptions.outDir = outDir;
@@ -255454,12 +256344,12 @@ function compileProject(options) {
   const withNeutral = (specifiers) => [.../* @__PURE__ */ new Set([...specifiers, NEUTRAL_RUNTIME_SPECIFIER])];
   const bound = options.runtimeModule && { ...options.runtimeModule, specifiers: withNeutral(options.runtimeModule.specifiers) };
   if (options.runtimeTypeRoots?.length) {
-    const resolutionHost = import_typescript24.default.sys ?? { fileExists: (path2) => fs2.isFile(path2), readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0 };
-    const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript24.default.resolveTypeReferenceDirective(name, join(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
+    const resolutionHost = import_typescript25.default.sys ?? { fileExists: (path2) => fs2.isFile(path2), readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0 };
+    const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript25.default.resolveTypeReferenceDirective(name, join(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
     if (missing) compilerOptions.typeRoots = [...compilerOptions.typeRoots ?? [], ...options.runtimeTypeRoots];
   }
   if (options.runtimeTypes) for (const specifier of options.runtimeTypes.specifiers) {
-    const resolved = import_typescript24.default.resolveModuleName(specifier, join(root2, "index.ts"), compilerOptions, import_typescript24.default.sys ?? {
+    const resolved = import_typescript25.default.resolveModuleName(specifier, join(root2, "index.ts"), compilerOptions, import_typescript25.default.sys ?? {
       fileExists: (path2) => fs2.isFile(path2),
       readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0
     });
@@ -255518,7 +256408,7 @@ function compileProject(options) {
     }
   });
   const hasServicesDeclaration = rootNames.some((path2) => /declare\s+module\s+['"]natlang:services['"]/.test(fs2.read(path2)));
-  const program = import_typescript24.default.createProgram({
+  const program = import_typescript25.default.createProgram({
     rootNames: [
       INTRINSICS_FILE,
       ...hasServicesDeclaration ? [] : [SERVICES_FALLBACK],
@@ -255529,22 +256419,11 @@ function compileProject(options) {
     options: compilerOptions,
     host
   });
-  for (const diagnostic of import_typescript24.default.getPreEmitDiagnostics(program)) {
-    if (diagnostic.category !== import_typescript24.default.DiagnosticCategory.Error) continue;
-    const file = diagnostic.file;
-    const position = file && diagnostic.start !== void 0 ? file.getLineAndCharacterOfPosition(diagnostic.start) : { line: 0, character: 0 };
-    diagnostics.push({
-      file: file ? rel(file.fileName) : "",
-      start: diagnostic.start ?? 0,
-      end: (diagnostic.start ?? 0) + (diagnostic.length ?? 0),
-      line: position.line + 1,
-      column: position.character + 1,
-      code: "typescript",
-      severity: "error",
-      message: import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
-    });
-  }
+  for (const diagnostic of import_typescript25.default.getPreEmitDiagnostics(program))
+    if (diagnostic.category === import_typescript25.default.DiagnosticCategory.Error) diagnostics.push(fromTypeScript(diagnostic, diagnostic.file ? rel(diagnostic.file.fileName) : ""));
   const sources = rootNames.map((path2) => program.getSourceFile(path2)).filter((file) => !!file);
+  const discovered = new Set(sources.map((file) => file.fileName));
+  for (const file of program.getSourceFiles().filter((file2) => !discovered.has(file2.fileName) && !file2.isDeclarationFile && file2.fileName.startsWith(root2 + sep) && !inFolder(file2.fileName) && !rel(file2.fileName).split(sep).includes("node_modules") && /\.(ts|tsx|mts)$/.test(file2.fileName)).sort((a, b) => a.fileName.localeCompare(b.fileName))) sources.push(file);
   if (options.constrained) for (const file of sources) diagnostics.push(...checkConstrainedSource(file, { checker: program.getTypeChecker(), displayPath: (source2) => rel(source2.fileName) }));
   for (const file of sources) diagnostics.push(...checkSequentialNlLoops(file, (source2) => rel(source2.fileName)));
   const revision = (file) => `${rel(file.fileName)}@${file.text.length}`;
@@ -255576,7 +256455,8 @@ function compileProject(options) {
           }
         }
         collectSources(path2);
-      } else if (fs2.isFile(path2) && /\.(?:[cm]?ts|[cm]?js|nl|json|yaml|yml)$/.test(name)) {
+      } else if (dir === root2 && name === "examples.json") continue;
+      else if (fs2.isFile(path2) && /\.(?:[cm]?ts|[cm]?js|nl|json|yaml|yml)$/.test(name)) {
         let text3 = fs2.read(path2);
         if (name.endsWith(".json")) {
           try {
@@ -255663,7 +256543,7 @@ function compileProject(options) {
     const natlangImports = (file) => {
       const found = /* @__PURE__ */ new Set();
       for (const statement of file.statements) {
-        if (!import_typescript24.default.isImportDeclaration(statement) || !import_typescript24.default.isStringLiteral(statement.moduleSpecifier)) continue;
+        if (!import_typescript25.default.isImportDeclaration(statement) && !import_typescript25.default.isExportDeclaration(statement) || !statement.moduleSpecifier || !import_typescript25.default.isStringLiteral(statement.moduleSpecifier)) continue;
         const specifier = statement.moduleSpecifier.text;
         if (specifier.endsWith(".nz")) {
           const target2 = resolve(dirname2(file.fileName), specifier);
@@ -255675,7 +256555,7 @@ function compileProject(options) {
           found.add(specifier);
           generatedNz.set(
             join(outDir, relative(compilerOptions.rootDir, target2)) + ".js",
-            { bytes: bytes2, commonjs: file.impliedNodeFormat === import_typescript24.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS }
+            { bytes: bytes2, commonjs: file.impliedNodeFormat === import_typescript25.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript25.default.ModuleKind.CommonJS }
           );
           continue;
         }
@@ -255689,7 +256569,7 @@ function compileProject(options) {
         found.add(specifier);
         generated.set(
           join(outDir, relative(compilerOptions.rootDir, target)) + ".js",
-          { record: record3, target, commonjs: file.impliedNodeFormat === import_typescript24.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS }
+          { record: record3, target, commonjs: file.impliedNodeFormat === import_typescript25.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript25.default.ModuleKind.CommonJS }
         );
       }
       return found;
@@ -255697,7 +256577,7 @@ function compileProject(options) {
     const fusionSitesOf = (file) => {
       const names = /* @__PURE__ */ new Map();
       for (const statement of file.statements) {
-        if (!import_typescript24.default.isImportDeclaration(statement) || !import_typescript24.default.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.endsWith(".nl")) continue;
+        if (!import_typescript25.default.isImportDeclaration(statement) || !import_typescript25.default.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.endsWith(".nl")) continue;
         const record3 = namedRecords.get(resolve(dirname2(file.fileName), statement.moduleSpecifier.text));
         if (record3 && statement.importClause?.name) names.set(statement.importClause.name.text, record3);
       }
@@ -255711,7 +256591,7 @@ function compileProject(options) {
       const contextDir = findApplicationContext(dirname2(file.fileName), files2);
       const filePlans = plans.get(source2) ?? [];
       const fileReadouts = readouts.get(source2) ?? [];
-      const commonjs = source2.impliedNodeFormat === import_typescript24.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS;
+      const commonjs = source2.impliedNodeFormat === import_typescript25.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript25.default.ModuleKind.CommonJS;
       const rewriteFor = new Map([...rewrite.keys()].map((specifier) => [specifier, specifierFor(commonjs)]));
       return natlangTransformer({
         ...analysisLowering(
@@ -255731,7 +256611,7 @@ function compileProject(options) {
     };
     const emit3 = (fileName, text3) => {
       if ((options.constrained || /\b__natlang\.(?:fuseSite|instantiate)\(/.test(text3)) && /\.js$/.test(fileName) && !/(?:\b(?:const|let|var)\s+__natlang\b|\bimport\s*\{[^}]*\b__natlang\b)/.test(text3)) {
-        const commonjs = compilerOptions.module === import_typescript24.default.ModuleKind.CommonJS || /Object\.defineProperty\(exports/.test(text3);
+        const commonjs = compilerOptions.module === import_typescript25.default.ModuleKind.CommonJS || /Object\.defineProperty\(exports/.test(text3);
         text3 = (commonjs ? `const __natlang = require(${JSON.stringify(specifierFor(true))}).__natlang;
 ` : `import { __natlang } from ${JSON.stringify(specifierFor(false))};
 `) + text3;
@@ -255787,8 +256667,8 @@ const __nz = ${load};
 ` + names.map((name) => `export const ${name} = __nz.${name};
 `).join(""));
     }
-    for (const diagnostic of emitted.diagnostics) if (diagnostic.category === import_typescript24.default.DiagnosticCategory.Error)
-      problem(diagnostic.file ? rel(diagnostic.file.fileName) : "", import_typescript24.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "typescript");
+    for (const diagnostic of emitted.diagnostics) if (diagnostic.category === import_typescript25.default.DiagnosticCategory.Error)
+      diagnostics.push(fromTypeScript(diagnostic, diagnostic.file ? rel(diagnostic.file.fileName) : ""));
     if (options.write !== false) fs2.write?.(join(outDir, "natlang-manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
   diagnostics.sort((a, b) => a.file.localeCompare(b.file) || a.start - b.start);
@@ -255837,7 +256717,9 @@ function detectRuntimeSpecifier(fs2, files2) {
   return;
 }
 function formatDiagnostics(diagnostics) {
-  return diagnostics.map((item) => `${item.file}:${item.line}:${item.column} ${item.severity} ${item.code}: ${item.message}`).join("\n");
+  return diagnostics.map((item) => `${item.file}:${item.line}:${item.column} ${item.severity} ${item.code}: ${item.message}` + (item.detail ? `
+${item.detail.split("\n").map((line) => `  ${line}`).join("\n")}` : "") + (item.hint ? `
+  hint: ${item.hint}` : "")).join("\n");
 }
 
 // src/runtime/virtual-project.ts
@@ -255960,7 +256842,7 @@ init_loader();
 
 // src/compiler/host-cell.ts
 init_define_NATLANG_TS_LIBS();
-var import_typescript25 = __toESM(require_typescript(), 1);
+var import_typescript26 = __toESM(require_typescript(), 1);
 init_host();
 init_inline();
 init_lower();
@@ -255975,8 +256857,8 @@ var CELL_DIRECTORY = "/host-cell";
 var AMBIENT_FILE = `${CELL_DIRECTORY}/ambient.d.ts`;
 var CELL_COMPILER_OPTIONS = {
   ...EVAL_COMPILER_OPTIONS,
-  moduleDetection: import_typescript25.default.ModuleDetectionKind.Force,
-  jsx: import_typescript25.default.JsxEmit.Preserve
+  moduleDetection: import_typescript26.default.ModuleDetectionKind.Force,
+  jsx: import_typescript26.default.JsxEmit.Preserve
 };
 var NO_FILES = {
   readFile: () => void 0,
@@ -256006,29 +256888,17 @@ ${servicesDeclarations(options.services)}
       libs: options.libs,
       virtual: /* @__PURE__ */ new Map([[AMBIENT_FILE, ambient], [cellFile, text4]])
     });
-    const program2 = import_typescript25.default.createProgram({ rootNames: [INTRINSICS_FILE, AMBIENT_FILE, cellFile], options: CELL_COMPILER_OPTIONS, host });
+    const program2 = import_typescript26.default.createProgram({ rootNames: [INTRINSICS_FILE, AMBIENT_FILE, cellFile], options: CELL_COMPILER_OPTIONS, host });
     return { program: program2, cell: program2.getSourceFile(cellFile), checker: program2.getTypeChecker() };
   };
-  const diagnosticOf = (file, shown, diagnostic) => {
-    const start = diagnostic.start ?? 0, location = file.getLineAndCharacterOfPosition(start);
-    return {
-      file: shown,
-      start,
-      end: start + (diagnostic.length ?? 0),
-      line: location.line + 1,
-      column: location.character + 1,
-      code: "typescript",
-      severity: "error",
-      message: import_typescript25.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n")
-    };
-  };
+  const diagnosticOf = (_file, shown, diagnostic) => fromTypeScript(diagnostic, shown);
   let { program, cell, checker } = build(source2);
   const referencesNl = (file, check) => {
     let found = false;
     const visit = (node) => {
       if (found) return;
-      if (import_typescript25.default.isIdentifier(node) && node.text === "nl" && resolveIntrinsic(check, node) === "nl") found = true;
-      else import_typescript25.default.forEachChild(node, visit);
+      if (import_typescript26.default.isIdentifier(node) && node.text === "nl" && resolveIntrinsic(check, node) === "nl") found = true;
+      else import_typescript26.default.forEachChild(node, visit);
     };
     visit(file);
     return found;
@@ -256068,7 +256938,7 @@ ${servicesDeclarations(options.services)}
   }
   if (diagnostics.some((item) => item.severity === "error")) return { code: source2, plans: analysis.plans, diagnostics, usesNl };
   const replaced = [];
-  const result = import_typescript25.default.transform(cell, [natlangTransformer({
+  const result = import_typescript26.default.transform(cell, [natlangTransformer({
     ...analysisLowering(analysis, (item) => `${display}:${item.line}`),
     checker,
     runtime: RUNTIME,
@@ -256080,11 +256950,11 @@ ${servicesDeclarations(options.services)}
   })]);
   result.dispose();
   replaced.sort((a, b) => a.start - b.start || b.end - a.end);
-  const printer = import_typescript25.default.createPrinter();
+  const printer = import_typescript26.default.createPrinter();
   let code = "", cursor = 0;
   for (const site2 of replaced) {
     if (site2.start < cursor) continue;
-    const printed = printer.printNode(import_typescript25.default.EmitHint.Unspecified, site2.lowered, cell);
+    const printed = printer.printNode(import_typescript26.default.EmitHint.Unspecified, site2.lowered, cell);
     const lost = (text3.slice(site2.start, site2.end).match(/\n/g)?.length ?? 0) - (printed.match(/\n/g)?.length ?? 0);
     code += text3.slice(cursor, site2.start) + (lost > 0 && printed.endsWith(")") ? `${printed.slice(0, -1)}${"\n".repeat(lost)})` : printed);
     cursor = site2.end;
@@ -287123,7 +287993,7 @@ function zo(e10, t) {
   }
   return n.build();
 }
-function ts26(e10) {
+function ts27(e10) {
   if (e10 === "") return "''";
   if (/[\n\r\t\x00-\x1f\x7f']/.test(e10)) {
     let n = "$'";
@@ -287353,19 +288223,19 @@ async function K7(e10, t, n, r, s) {
 function Q7(e10, t, n, r, s) {
   e10.coverage?.hit("bash:expansion:transform");
   let i = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[[@*]\]$/);
-  if (i && s.operator === "Q") return xe(e10, i[1]).map(([, c]) => ts26(c)).join(" ");
+  if (i && s.operator === "Q") return xe(e10, i[1]).map(([, c]) => ts27(c)).join(" ");
   if (i && s.operator === "a") return ns(e10, i[1]);
   let o = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[.+\]$/);
   if (o && s.operator === "a") return ns(e10, o[1]);
   switch (s.operator) {
     case "Q":
-      return r ? "" : ts26(n);
+      return r ? "" : ts27(n);
     case "P":
       return zo(e10, n);
     case "a":
       return ns(e10, t);
     case "A":
-      return r ? "" : `${t}=${ts26(n)}`;
+      return r ? "" : `${t}=${ts27(n)}`;
     case "E":
       return n.replace(/\\([\\abefnrtv'"?])/g, (a, l) => {
         switch (l) {
@@ -287400,7 +288270,7 @@ function Q7(e10, t, n, r, s) {
       });
     case "K":
     case "k":
-      return r ? "" : ts26(n);
+      return r ? "" : ts27(n);
     case "u":
       return n.charAt(0).toUpperCase() + n.slice(1);
     case "U":
@@ -288037,7 +288907,7 @@ function uw(e10, t) {
           p = zo(e10, d);
           break;
         case "Q":
-          p = ts26(d);
+          p = ts27(d);
           break;
         default:
           p = d;
@@ -288058,7 +288928,7 @@ function uw(e10, t) {
         p = zo(e10, d);
         break;
       case "Q":
-        p = ts26(d);
+        p = ts27(d);
         break;
       case "u":
         p = d.charAt(0).toUpperCase() + d.slice(1);
@@ -296943,6 +297813,19 @@ function XO(e10, t, n, r, s, i) {
   return i || s.consumeInput(o, "stdin"), t === "bytes" ? e10 : Dn(e10);
 }
 
+// src/native/folder-changes.ts
+init_define_NATLANG_TS_LIBS();
+var folderContents = (folder2) => new Map(folder2.diffSync().changes.map((change) => [change.path, change.after]));
+function pathsChangedSince(folder2, before) {
+  const changedPaths = [], removedPaths = [];
+  for (const change of folder2.diffSync().changes) {
+    const prior = before.get(change.path), after = change.after;
+    if (before.has(change.path) && prior?.length === after?.length && !prior?.some((byte, i) => byte !== after?.[i])) continue;
+    (after === void 0 ? removedPaths : changedPaths).push(change.path);
+  }
+  return { changedPaths, ...removedPaths.length ? { removedPaths } : {} };
+}
+
 // self-contained-python:folder-python
 init_define_NATLANG_TS_LIBS();
 async function runFolderPython() {
@@ -296970,13 +297853,22 @@ function parseAskArgs(args) {
   if (!words.length) throw new Error("natlang ask needs an instruction");
   return { instruction: words.join(" "), options };
 }
-function format(value) {
-  return value === null || typeof value === "object" ? JSON.stringify(value) : String(value);
+function format(value, json = false) {
+  return json || value === null || typeof value === "object" ? JSON.stringify(value) : String(value);
 }
-async function executeNatlangCall(name, stdin, mode, call) {
-  const inputs = mode === "whole" ? [stdin.trim() ? JSON.parse(stdin) : {}] : stdin.split(/\r?\n/).filter((line) => line.length).map((line) => mode === "jsonl" ? JSON.parse(line) : line);
+async function executeNatlangCall(name, stdin, mode, call, options = {}) {
+  const whole = () => {
+    if (!options.text) return stdin.trim() ? JSON.parse(stdin) : {};
+    try {
+      const parsed = JSON.parse(stdin);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch {
+    }
+    return stdin.replace(/\r?\n$/, "");
+  };
+  const inputs = mode === "whole" ? [whole()] : stdin.split(/\r?\n/).filter((line) => line.length).map((line) => mode === "jsonl" ? JSON.parse(line) : line);
   const values = [];
-  for (const input of inputs) values.push(format(await call(name, input, mode)));
+  for (const input of inputs) values.push(format(await call(name, input, mode), options.json));
   return values.length ? `${values.join("\n")}
 ` : "";
 }
@@ -297017,14 +297909,19 @@ var asBytes = (value) => typeof value === "string" ? new TextEncoder().encode(va
 var decodeStdin = (value) => new TextDecoder().decode(Uint8Array.from(value, (char) => char.charCodeAt(0)));
 var EMPTY_DIRS = /* @__PURE__ */ new WeakMap();
 var FolderFs = class {
-  constructor(folder2) {
+  /** `writeBudget`: bytes one bash command may add to the folder (it lives in this process's memory); absent: unbounded. */
+  constructor(folder2, writeBudget) {
     this.folder = folder2;
+    this.writeBudget = writeBudget;
     let dirs = EMPTY_DIRS.get(folder2);
     if (!dirs) EMPTY_DIRS.set(folder2, dirs = /* @__PURE__ */ new Set());
     this.emptyDirs = dirs;
   }
   folder;
+  writeBudget;
   emptyDirs;
+  /** Net bytes this shell's writes added to the folder, against `writeBudget` (the memory bound of one bash command). */
+  grown = 0;
   resolvePath(base, path2) {
     const full = path2.startsWith("/") ? path2 : `${base}/${path2}`;
     const parts = [];
@@ -297062,7 +297959,13 @@ var FolderFs = class {
     return new TextDecoder(encoding === "ascii" ? "ascii" : "utf-8").decode(data);
   }
   async writeFile(path2, content, _options) {
-    this.folder.writeBytes(this.relative(path2), asBytes(content));
+    const relative2 = this.relative(path2), data = asBytes(content);
+    if (this.writeBudget) {
+      const growth = data.length - (this.folder.isFile(relative2) ? (await this.folder.stat(relative2)).bytes : 0);
+      if (this.grown + growth > this.writeBudget.bytes) throw new Error(this.writeBudget.message);
+      this.grown += growth;
+    }
+    this.folder.writeBytes(relative2, data);
   }
   async appendFile(path2, content, options) {
     const old = await this.exists(path2) ? await this.readFileBuffer(path2) : new Uint8Array();
@@ -297185,10 +298088,31 @@ var DeviceFs = class _DeviceFs extends ir {
     if (!_DeviceFs.SINKS.has(this.resolvePath("/", path2))) await super.appendFile(path2, content, options);
   }
 };
-function shellFs(folder2) {
-  return new Li({ base: new FolderFs(folder2), mounts: [
+function bashMemory() {
+  const limitMb = evalMemoryLimitMb();
+  return limitMb ? { bytes: Math.floor(limitMb * 1024 * 1024), message: memoryLimitMessage("bash", "bash command", limitMb) } : void 0;
+}
+function memoryLimits(memory) {
+  if (!memory) return {};
+  const bytes2 = memory.bytes, small = Math.min(bytes2, 64 * 1024 * 1024);
+  return {
+    maxLiveBytes: bytes2,
+    maxInputBytes: bytes2,
+    maxOutputSize: bytes2,
+    maxFileSystemBytes: bytes2,
+    maxDatabaseBytes: bytes2,
+    maxDatabaseResultBytes: bytes2,
+    maxArchiveBytes: bytes2,
+    maxArchiveCompressedBytes: bytes2,
+    maxArchiveEntryBytes: bytes2,
+    maxStringLength: small,
+    maxHeredocSize: small
+  };
+}
+function shellFs(folder2, memory) {
+  return new Li({ base: new FolderFs(folder2, memory), mounts: [
     { mountPoint: "/dev", filesystem: new DeviceFs() },
-    { mountPoint: "/tmp", filesystem: new ir() }
+    { mountPoint: "/tmp", filesystem: new ir({}, memory ? { maxTotalBytes: memory.bytes } : {}) }
   ] });
 }
 function staticWord(word) {
@@ -297253,7 +298177,7 @@ function checkBashAst(tree) {
     throw new SyntaxError(`function ${name} calls itself; use a finite for loop`);
 }
 async function runFolderBash(folder2, command, options = {}) {
-  const before = new Map(folder2.diffSync().changes.map((change) => [change.path, change.after]));
+  const before = folderContents(folder2);
   const changes2 = Vv("changes", async () => ({ stdout: JSON.stringify(folder2.diffSync().changes.map((change) => ({ path: change.path, kind: change.kind })), null, 2) + "\n", stderr: "", exitCode: 0 }));
   const pythonCommand = (name) => Vv(name, async (args, ctx) => {
     try {
@@ -297349,14 +298273,16 @@ print(buffer.getvalue(), end='')
       return { stdout: "", stderr: String(error), exitCode: 1 };
     }
   });
+  const memory = bashMemory();
   const bash = new Hp({
-    fs: shellFs(folder2),
+    fs: shellFs(folder2, memory),
     cwd: ROOT2,
+    env: { HOME: ROOT2 },
     python: false,
     javascript: false,
     ...options.network === false ? {} : { network: { dangerouslyAllowFullInternetAccess: true } },
     customCommands: [changes2, pythonCommand("python"), pythonCommand("python3"), sqlite, natlang],
-    executionLimits: { maxCommandCount: 1e3, maxLoopIterations: 1e4 }
+    executionLimits: { maxCommandCount: 1e3, maxLoopIterations: 1e4, ...memoryLimits(memory) }
   });
   checkBashAst(bash.transform(command).ast);
   const result = await bash.exec(command, {
@@ -297365,11 +298291,9 @@ print(buffer.getvalue(), end='')
     ...options.signal ? { signal: options.signal } : {},
     ...options.args ? { args: options.args } : {}
   });
-  const changedPaths = folder2.diffSync().changes.filter((change) => {
-    const prior = before.get(change.path), after = change.after;
-    return !before.has(change.path) || prior?.length !== after?.length || prior?.some((byte, i) => byte !== after?.[i]);
-  }).map((change) => change.path);
-  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, changedPaths };
+  const stderr = memory && /\b(size|byte|string|length|output) limit exceeded|\boutput size exceeded/.test(result.stderr) && !result.stderr.includes(memory.message) ? `${result.stderr.replace(/\n?$/, "\n")}${memory.message}
+` : result.stderr;
+  return { exitCode: result.exitCode, stdout: result.stdout, stderr, ...pathsChangedSince(folder2, before) };
 }
 export {
   Context,

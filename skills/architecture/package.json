@@ -1,0 +1,11 @@
+{
+  "name": "@workspace-skills/architecture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./workflow": "./workflow.ts" },
+  "dependencies": {
+    "@vibestudio/workspace-contracts": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

@@ -16,6 +16,7 @@ type CaseInput = {
   sources: string[];
   search: string[];
   searchError?: string;
+  retrievedAt: number;
 };
 type CaseExpected = {
   status: CitedBrief["status"];
@@ -97,13 +98,13 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
   fixture: {
     async create(testCase, context) {
       const app = (await context.loadFreshProgram()) as {
-        brief(question: string, sources: string[]): Promise<CitedBrief>;
+        brief(question: string, sources: string[], retrievedAt: number): Promise<CitedBrief>;
       };
       const services = { web: recordedWeb(testCase.input) };
       return {
         execute: () =>
           context.runtime.run(
-            () => app.brief(testCase.input.question, testCase.input.sources),
+            () => app.brief(testCase.input.question, testCase.input.sources, testCase.input.retrievedAt),
             { services },
           ),
       };

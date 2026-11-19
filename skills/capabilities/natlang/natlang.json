@@ -1,0 +1,10 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-authority-preflight",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewAuthority.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "assignedAuthorityRead": ["reviewAuthority/reviewOperation/preflight.nl"]
+  }
+}

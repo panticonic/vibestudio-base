@@ -6,6 +6,7 @@ import { activate } from "./index.js";
 import { createArtifactStoreFromStorage } from "./pdf/artifacts.js";
 import { resolveTesseractModule } from "./pdf/ocr.js";
 import type { PdfRenderedPage } from "./pdf/types.js";
+import { makePdf } from "./pdf/testPdf.js";
 
 const tempRoots: string[] = [];
 
@@ -54,6 +55,25 @@ describe("@workspace-extensions/pdf-ingest", () => {
       ])
     );
     expect(result.pages[0]?.stats.embeddedTextChars).toBeGreaterThan(20);
+  });
+
+  it("can preserve separate text boxes for cells that share a baseline", async () => {
+    const api = await testApi();
+    const pdf = makePdf([
+      "BT /F1 12 Tf",
+      "1 0 0 1 24 150 Tm (Owner) Tj",
+      "1 0 0 1 150 150 Tm (Deadline) Tj",
+      "ET",
+    ]);
+    const ordinary = await api.ingest(pdf);
+    expect(ordinary.pages[0]?.lines[0]?.fragments).toBeUndefined();
+    const observed = await api.ingest(pdf, { includeTextFragments: true });
+    const row = observed.pages[0]?.lines[0];
+    expect(row?.fragments?.map(({ text, bbox }) => [text, bbox[0], bbox[1]])).toEqual([
+      ["Owner", 24, 38],
+      ["Deadline", 150, 38],
+    ]);
+    expect(row?.text).toBe(ordinary.pages[0]?.lines[0]?.text);
   });
 
   it("renders page images and stores them as artifacts", async () => {
@@ -195,40 +215,4 @@ function storageFor(root: string) {
       await fs.writeFile(path.join(root, filePath), data);
     },
   };
-}
-
-function makePdf(contentLines: string[]): Uint8Array {
-  const content = `${contentLines.join("\n")}\n`;
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    [
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200]",
-      "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    ].join(" "),
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${Buffer.byteLength(content, "latin1")} >>\nstream\n${content}endstream`,
-  ];
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  for (let index = 0; index < objects.length; index++) {
-    offsets.push(Buffer.byteLength(pdf, "latin1"));
-    pdf += `${index + 1} 0 obj\n${objects[index]}\nendobj\n`;
-  }
-  const xrefOffset = Buffer.byteLength(pdf, "latin1");
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += "0000000000 65535 f \n";
-  for (const offset of offsets.slice(1)) {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += [
-    "trailer",
-    `<< /Size ${objects.length + 1} /Root 1 0 R >>`,
-    "startxref",
-    String(xrefOffset),
-    "%%EOF",
-    "",
-  ].join("\n");
-  return new Uint8Array(Buffer.from(pdf, "latin1"));
 }

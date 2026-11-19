@@ -761,6 +761,10 @@ attribution because coverage adds overhead. The System workspace's
 
 ## Console diagnostics
 
+The [Natlang panel health workflow](../panel-health/reviewPanelHealth.nl)
+compares assigned DOM markers with retained console records and checks later
+observations for new evidence of recovery.
+
 Use the console history for post-mortem panel debugging. Live CDP console
 events start only after a client connects and cannot recover earlier errors.
 The host captures panel console messages from `webContents` as soon as the

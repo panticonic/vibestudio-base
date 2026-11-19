@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
+import { createNatlangRuntime, workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import {
   NatlangProgramError,
@@ -195,6 +195,25 @@ describe("ProgramLoader", () => {
     expect(Object.keys(value as object).sort()).toEqual(["brief", "other"]);
   });
 
+  it("returns positioned source-policy rejections through both public inspection paths", async () => {
+    const loader = new ProgramLoader({
+      platform: platform(),
+      fs: memoryFs({
+        "skills/s/brief.nl": BRIEF,
+        "skills/s/step.ts": "export function step(): void { while (true) break; }\n",
+      }),
+      bindings: {},
+      runTask: (run) => run(),
+    });
+    for (const attempt of [() => loader.describe("skills/s"), () => loader.load("skills/s")]) {
+      await expect(attempt()).rejects.toMatchObject({
+        name: "NatlangProgramError",
+        message: expect.stringMatching(/skills\/s\/step\.ts:1:\d+ error source: .*loops are not allowed/u),
+        errorData: { reason: "does-not-compile", program: "skills/s" },
+      });
+    }
+  });
+
   it("describes a program's functions with typed, expanded signatures and field docs", async () => {
     const files: Record<string, string> = {
       "skills/s/types.ts": "export type Ticket = {\n  /** What the customer wrote. */\n  text: string;\n  tags?: string[];\n};\nexport type Verdict = 'urgent' | 'normal';\n",
@@ -259,4 +278,144 @@ describe("bindProgram", () => {
     expect(await bound.go.inner()).toBe("deep");
     expect(ran).toEqual(["task", "task"]);
   });
+});
+
+it("keeps explicit declared service adapters isolated across cached program loads", async () => {
+  const tasks: Array<{ services: Record<string, object> }> = [];
+  const loader = new ProgramLoader({
+    platform: platform(),
+    fs: memoryFs({
+      "skills/s/brief.nl": BRIEF,
+      "skills/s/services.d.ts": "declare module 'natlang:services' { export const web: unknown; }",
+    }),
+    bindings: {},
+    runTask: async (_run, task) => {
+      tasks.push(task);
+      throw new Error("bound task observed");
+    },
+  });
+  const adapter = (id: string) => ({ search: async () => id, fetch: async () => id, read: async () => id });
+  const first = (await loader.load("skills/s/brief.nl", { services: { web: adapter("first") } })) as (
+    ...args: unknown[]
+  ) => Promise<unknown>;
+  const second = (await loader.load("skills/s/brief.nl", { services: { web: adapter("second") } })) as (
+    ...args: unknown[]
+  ) => Promise<unknown>;
+  await expect(first("q")).rejects.toThrow("bound task observed");
+  await expect(second("q")).rejects.toThrow("bound task observed");
+  expect(await (tasks[0]!.services["web"] as { search(): Promise<string> }).search()).toBe("first");
+  expect(await (tasks[1]!.services["web"] as { search(): Promise<string> }).search()).toBe("second");
+  await expect(loader.load("skills/s/brief.nl", { services: { fs: {} } })).rejects.toThrow(
+    "does not declare service fs",
+  );
+});
+
+it("limits an authored editing service to the exact root of a loaded program", async () => {
+  const deployed = platform();
+  const visible: Record<string, string[]> = {};
+  const edits: string[] = [];
+  const runtime = createNatlangRuntime({
+    platform: deployed,
+    agent: async (session) => {
+      const name = session.lam.functionName;
+      visible[name] = Object.keys(session.availableServices());
+      const result = await session.applyAsync("eval", {
+        code: name === "brief"
+          ? "await panelRepairEdit.apply('observed', []); return await inspectStage(text);"
+          : "return text;",
+        finish: true,
+      });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform: deployed,
+    fs: memoryFs({
+      "skills/s/brief.nl": BRIEF,
+      "skills/s/brief/inspectStage.nl": BRIEF,
+      "skills/s/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+      "skills/s/natlang.json": '{"serviceScopes":{"panelRepairEdit":["brief.nl"]}}',
+    }),
+    bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const run = await loader.load("skills/s/brief.nl", {
+    services: {
+      panelRepairEdit: {
+        apply: async (basis: string) => { edits.push(basis); return { revision: "new" }; },
+        build: async () => ({}),
+        rebuild: async () => ({}),
+      },
+    },
+  }) as (text: string) => Promise<string>;
+  await expect(run("actual input")).resolves.toBe("actual input");
+  expect(edits).toEqual(["observed"]);
+  expect(visible["brief"]).toContain("panelRepairEdit");
+  expect(visible["inspectStage"]).not.toContain("panelRepairEdit");
+});
+
+it("links installed workspace modules as typed callable subtrees in the same task", async () => {
+  const deployed = platform();
+  const seen: Record<string, string[]> = {};
+  const commands: Record<string, string> = {
+    brief: "return await domains.support.inspect(text);",
+    inspect: "await panelRepairEdit.apply(text, []); return await summarize(text);",
+    summarize: "return text + ' read';",
+  };
+  const runtime = createNatlangRuntime({
+    platform: deployed,
+    agent: async (session) => {
+      const name = session.lam.functionName!;
+      seen[name] = Object.keys(session.availableServices());
+      const result = await session.applyAsync("eval", { code: commands[name]!, finish: true });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const fs = memoryFs({
+    "skills/hub/brief.nl": BRIEF,
+    "skills/hub/natlang.json": JSON.stringify({
+      serviceBinding: "explicit",
+      workspaceModules: {
+        "brief/domains/support": "skills/support-program",
+        "brief/domains/absent": "skills/uninstalled",
+      },
+    }),
+    "skills/support-program/natlang.json": JSON.stringify({
+      serviceScopes: { panelRepairEdit: ["inspect.nl"] },
+    }),
+    "skills/support-program/inspect.nl": BRIEF.replace("returns: string", "returns: string\nuses: [helpers/summarize]"),
+    "skills/support-program/helpers/summarize.nl": BRIEF,
+    "skills/support-program/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+  });
+  const loader = new ProgramLoader({
+    platform: deployed, fs, bindings: {},
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const described = await loader.describe("skills/support-program");
+  expect(described.serviceScopes).toEqual({ panelRepairEdit: ["inspect.nl"] });
+  const edits: string[] = [];
+  const run = await loader.load("skills/hub/brief.nl", { services: {
+    panelRepairEdit: {
+      apply: async (basis: string) => { edits.push(basis); return { revision: "verified" }; },
+      build: async () => ({}),
+      rebuild: async () => ({}),
+    },
+  } }) as (value: string) => Promise<string>;
+  await expect(run("actual")).resolves.toBe("actual read");
+  expect(edits).toEqual(["actual"]);
+  expect(seen).toEqual({ brief: [], inspect: ["panelRepairEdit"], summarize: [] });
+  expect(fs.reads).not.toContain("skills/uninstalled/natlang.json");
+});
+
+it("refuses a mounted package with an unscoped service or overlapping ownership", async () => {
+  const fs = memoryFs({
+    "skills/hub/brief.nl": BRIEF,
+    "skills/hub/natlang.json": '{"workspaceModules":{"brief/domains/support":"skills/support"}}',
+    "skills/support/inspect.nl": BRIEF,
+    "skills/support/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+  });
+  const loader = new ProgramLoader({
+    platform: platform(), fs, bindings: {}, runTask: (run) => run(),
+  });
+  await expect(loader.describe("skills/hub/brief.nl")).rejects.toThrow("Scope service panelRepairEdit");
 });

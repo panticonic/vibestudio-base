@@ -19,7 +19,7 @@ authoritative summary in a live cell. If this skill disagrees with them or with 
 
 | Step | In an eval cell | What it does |
 |---|---|---|
-| Check | `await natlang.describe("skills/x")` | Compiles the program the way `load` does (types, `nl` signatures, callable-folder scope and loop policy, declared services) and returns its functions with typed signatures. A program that does not compile fails with `path:line:column` diagnostics. Nothing runs. |
+| Check | `await natlang.describe("skills/x")` | Compiles the program the way `load` does (types, `nl` signatures, callable-folder scope and loop policy, declared services) and returns its functions with typed signatures and the validated service scope selectors. A program that does not compile fails with `path:line:column` diagnostics. Nothing runs. |
 | Call | `const judge = await natlang.load("skills/x/judge.nl"); await judge(note)` | One real call. A folder loads as a record of callables. |
 | Read | `await natlang.trace(callId)` | What the model did: inputs, each turn's actions and results, child calls, the scope it ended with, why it ended. `{ raw: true }` for the full record. |
 | Navigate | `await natlang.calls({ parentCallId })` | A call's children; `{ run }` a run's calls. |
@@ -28,6 +28,13 @@ authoritative summary in a live cell. If this skill disagrees with them or with 
 Every call is listed in the eval result (`[natlang]` lines): name, outcome or failure reason, model, turns, tokens, and
 its record id, which is the `callId` the methods above take. Calls take seconds on a hosted model and can take minutes
 on the local CPU model: check first, then call deliberately.
+
+Use the shared `domains.natlangAuthoring.reviewProgram` workflow for a candidate
+with an existing interface contract or an assigned baseline. Its
+`authoringCompiler` binding supplies the exact program revisions and compiler
+readbacks. The review covers the entry signature, declared services, service scope selectors, and
+required helper paths. A rejected snapshot keeps the compiler's source
+location so the next edit can address that specific diagnostic.
 
 Template developers also have, from a Vibestudio source checkout: the static check of every program in a template
 (`workspacePrograms.test.ts`, through `pnpm test:userland -- --template T`) and evaluation suites
@@ -81,6 +88,11 @@ children. Items of one folder do not see each other: when `inspect` must call `d
 (`declare module 'natlang:services' { export const serverLog: ... }`) or its TypeScript modules import from
 `natlang:services`, each a narrowed view of the calling eval's own binding: the caller's approvals and authority
 checks apply unchanged. A program returns proposals for consequential effects; the caller commits them.
+
+For a shared program with alternative workflows, set `"serviceBinding": "explicit"` in its
+`natlang.json`. In that mode, `natlang.load(path, { services: {...} })` binds only the declared
+services the caller explicitly supplies. Use `serviceScopes` to restrict them to the stages that need
+them. If a workflow needs an absent service, supply that particular declared binding in the caller.
 
 **Inline `nl` in a cell.** For one focused judgment inside ordinary code:
 

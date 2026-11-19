@@ -1,0 +1,10 @@
+{
+  "name": "@workspace-skills/visualize",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./render": "./preparePresentation/prepareSection/render.ts",
+    "./types": "./types.ts"
+  }
+}

@@ -5,12 +5,14 @@ import {
   formatDiagnostics,
   loadVirtualCallables,
   loadVirtualNatlang,
+  NatlangSourceError,
   type Platform,
 } from "../vendor/workerd/natlang-workerd.js";
 import { describeProgram } from "./describe.js";
 import type { ProgramDescription } from "./describeTypes.js";
 import { NatlangProgramError } from "./programError.js";
-import { declarationsFor, declaredServiceNames, servicesFor } from "./services.js";
+import { declarationsFor, declaredServiceNames, declaredServiceScopes, servicesFor } from "./services.js";
+import { linkWorkspaceModules } from "./workspaceModules.js";
 
 export { NatlangProgramError };
 
@@ -103,6 +105,9 @@ export interface CompiledProgram {
   /** The callable, record of callables, or module exports the path names, not yet bound to a task. */
   readonly value: unknown;
   readonly services: readonly string[];
+  readonly serviceScopes: Record<string, string[]>;
+  /** Shared programs can require the caller to supply only this run's bindings. */
+  readonly explicitServiceBindings: boolean;
   /** The `.d.nl.ts` declarations TypeScript reads for the program's `.nl` imports, by path relative to its root. */
   readonly declarations: Readonly<Record<string, string>>;
 }
@@ -124,13 +129,18 @@ export function compileProgram(options: {
 }): CompiledProgram {
   const { platform, files, entry, label, root = "" } = options;
   const services = declaredServiceNames(files);
+  const serviceScopes = declaredServiceScopes(files, services, label);
+  const binding = JSON.parse(files["natlang.json"] ?? "{}")?.serviceBinding;
+  if (binding !== undefined && binding !== "explicit") {
+    throw new NatlangProgramError('Use "explicit" for natlang.json serviceBinding, or omit it.', label, "does-not-compile");
+  }
   const compiled = compileVirtualProject(
     { files, root: PROJECT_ROOT },
     core as unknown as Record<string, unknown>,
     {
       platform,
       programId: label,
-      ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: {} } } : {}),
+      ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: serviceScopes } } : {}),
     }
   );
   if (!compiled.ok) {
@@ -158,7 +168,7 @@ export function compileProgram(options: {
       text,
     ])
   );
-  return { value, services, declarations };
+  return { value, services, serviceScopes, explicitServiceBindings: binding === "explicit", declarations };
 }
 
 /** Runs one call of a program as a task of its own, with the program's services. */
@@ -167,6 +177,7 @@ export type TaskRunner = <T>(
   task: {
     services: Record<string, object>;
     serviceDeclarations: Record<string, string>;
+    serviceScopes?: Record<string, string[]>;
     /** The workspace folder of the program the task runs: recorded with each of its calls. */
     programRoot?: string;
   }
@@ -196,8 +207,12 @@ export function bindProgram(value: unknown, task: Parameters<TaskRunner>[1], run
       }
       return bound;
     }
-    if (item !== null && typeof item === "object" && Object.getPrototypeOf(item) === Object.prototype) {
-      return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, bind(child)]));
+    if (item !== null && typeof item === "object") {
+      const prototype = Object.getPrototypeOf(item);
+      if (prototype === null || prototype === Object.prototype) {
+        const record = Object.fromEntries(Object.entries(item).map(([key, child]) => [key, bind(child)]));
+        return prototype === null ? Object.setPrototypeOf(record, null) : record;
+      }
     }
     return item;
   };
@@ -241,11 +256,30 @@ export class ProgramLoader {
         "invalid-path"
       );
     }
-    const files = await readProjectFiles(fs, root || ".");
+    const directoryPath = root || ".";
+    const files = await linkWorkspaceModules(fs, directoryPath, await readProjectFiles(fs, directoryPath), readProjectFiles);
     const key = programKey(files, declaredServiceNames(files));
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
-      program = compileProgram({ platform, files, entry, label: path, root });
+      try {
+        program = compileProgram({ platform, files, entry, label: path, root });
+      } catch (error) {
+        if (!(error instanceof NatlangSourceError)) throw error;
+        const relative = error.path.replace(/^\/?project\//u, "");
+        const source = root ? `${root}/${relative}` : relative;
+        const diagnostics = error.reason.split("\n").map((reason) => {
+          const position = /^(\d+):(\d+) (.*)$/u.exec(reason);
+          return position
+            ? `${source}:${position[1]}:${position[2]} error source: ${position[3]}`
+            : `${source}:${error.line ?? 0}:0 error source: ${reason}`;
+        });
+        if (error.hint) diagnostics.push(error.hint);
+        throw new NatlangProgramError(
+          `natlang program ${path} does not compile:\n${diagnostics.join("\n")}`,
+          path,
+          "does-not-compile"
+        );
+      }
       this.compiled.set(`${path}\u0000${key}`, program);
       if (this.compiled.size > PROGRAMS_KEPT) {
         this.compiled.delete(this.compiled.keys().next().value as string);
@@ -254,13 +288,24 @@ export class ProgramLoader {
     return { path, root, program };
   }
 
-  async load(specifier: string): Promise<unknown> {
+  async load(specifier: string, options: { services?: Readonly<Record<string, object>> } = {}): Promise<unknown> {
     const { bindings, runTask } = this.options;
     const { path, root, program } = await this.compiledProgram(specifier);
-    const services = servicesFor(path, program.services, bindings);
+    const overrides = options.services ?? {};
+    for (const name of Object.keys(overrides)) {
+      if (!program.services.includes(name))
+        throw new NatlangProgramError(
+          `Program ${path} does not declare service ${name}; supply only its declared services.`,
+          path,
+          "services-unavailable",
+        );
+    }
+    const names = program.explicitServiceBindings ? Object.keys(overrides) : program.services;
+    const services = servicesFor(path, names, Object.freeze({ ...bindings, ...overrides }),
+      program.explicitServiceBindings ? overrides : undefined);
     return bindProgram(
       program.value,
-      { services, serviceDeclarations: declarationsFor(program.services), programRoot: root },
+      { services, serviceDeclarations: declarationsFor(names), serviceScopes: program.serviceScopes, programRoot: root },
       runTask
     );
   }
@@ -271,6 +316,6 @@ export class ProgramLoader {
    */
   async describe(specifier: string): Promise<ProgramDescription> {
     const { root, program } = await this.compiledProgram(specifier);
-    return describeProgram(program.value, root, program.services);
+    return describeProgram(program.value, root, program.services, program.serviceScopes);
   }
 }

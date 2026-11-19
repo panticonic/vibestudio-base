@@ -5,7 +5,7 @@ import { executorIdentityForChoice, loadModelConfiguration } from "@workspace/na
 // bounds the program runs under. A suite cannot import workspace source, so it is restated here.
 const EXECUTOR_BUDGET = { maxTurns: 12, maxTokens: 16384 };
 
-/** One case calls one exported function of `natlang.ts` with `args`. */
+/** One case calls one exported function of the evaluation entry with `args`. */
 type CaseInput = { function: "chooseComponent" | "componentProps"; args: unknown[] };
 
 type Json = unknown;
@@ -36,7 +36,7 @@ function covered(expected: Json, actual: Json): { matched: number; total: number
 // componentProps mean coverage of at least 0.85 with every case rendering.
 export default defineEvaluationSuite({
   id: "visualize-v1",
-  program: { root: ".", id: "visualize", entry: "natlang.ts" },
+  program: { root: ".", id: "visualize", entry: "preparePresentation/prepareSection/evaluate.ts" },
   components: "lambda-only",
   cases: "./cases.jsonl",
   models: { executor: "default" },

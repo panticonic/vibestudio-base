@@ -1,0 +1,109 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-workflows",
+  "version": "0.1.0",
+  "description": "Typed Natlang skills for caller-owned Vibestudio work.",
+  "targets": {
+    "main": {
+      "entry": "runWorkflow.nl"
+    }
+  },
+  "serviceBinding": "explicit",
+  "workspaceModules": {
+    "runWorkflow/domains/agenticDevelopment": "skills/agentic-development/natlang",
+    "runWorkflow/domains/apiIntegration": "skills/api-integrations/natlang",
+    "runWorkflow/domains/architecture": "skills/architecture/natlang",
+    "runWorkflow/domains/automation": "skills/automations",
+    "runWorkflow/domains/automationLifecycle": "skills/automation-lifecycle",
+    "runWorkflow/domains/capabilities": "skills/capabilities/natlang",
+    "runWorkflow/domains/channelAgent": "skills/agents/channel-membership",
+    "runWorkflow/domains/browserLibrary": "skills/browser-library",
+    "runWorkflow/domains/clientDevelopment": "skills/clientdev/natlang",
+    "runWorkflow/domains/collection": "skills/collection-conductor",
+    "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
+    "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",
+    "runWorkflow/domains/evalRecovery": "skills/sandbox/recovery",
+    "runWorkflow/domains/examples": "skills/examples-review",
+    "runWorkflow/domains/dictation": "skills/offline-dictation",
+    "runWorkflow/domains/extensionDevelopment": "skills/extensiondev/natlang",
+    "runWorkflow/domains/gad": "skills/gad-context/natlang",
+    "runWorkflow/domains/gitBridge": "skills/git-bridge-review",
+    "runWorkflow/domains/gmailReview": "skills/gmail-workflow-review",
+    "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
+    "runWorkflow/domains/localModel": "skills/local-model-task",
+    "runWorkflow/domains/missionPlanning": "skills/mission-planning",
+    "runWorkflow/domains/mobileSystem": "skills/mobile-system-testing/scenario",
+    "runWorkflow/domains/mediaImport": "skills/media-and-import-review",
+    "runWorkflow/domains/natlangAuthoring": "skills/natlang-authoring",
+    "runWorkflow/domains/news": "skills/news-workflows",
+    "runWorkflow/domains/onboarding": "skills/onboarding/prepareSetup",
+    "runWorkflow/domains/pdfIntake": "skills/pdf-intake",
+    "runWorkflow/domains/panelHealth": "skills/panel-health",
+    "runWorkflow/domains/phoneSetup": "skills/phone-setup/natlang",
+    "runWorkflow/domains/personal": "skills/personal-workflows",
+    "runWorkflow/domains/personalFacility": "skills/personal-facility-review",
+    "runWorkflow/domains/problems": "skills/problem-reporting/natlang",
+    "runWorkflow/domains/provenance": "skills/provenance-orientation",
+    "runWorkflow/domains/publication": "skills/publish-preflight",
+    "runWorkflow/domains/remoteAccess": "skills/remote-access",
+    "runWorkflow/domains/research": "skills/research-intake",
+    "runWorkflow/domains/runtimeEvidence": "skills/runtime-evidence-review",
+    "runWorkflow/domains/scratchHandoff": "skills/scratch-handoff",
+    "runWorkflow/domains/serverLogs": "skills/server-logs",
+    "runWorkflow/domains/sessionTest": "skills/session-test-review",
+    "runWorkflow/domains/spectrolite": "skills/spectrolite-review",
+    "runWorkflow/domains/system": "skills/system-investigation",
+    "runWorkflow/domains/templateCandidate": "skills/template-candidate",
+    "runWorkflow/domains/tendril": "skills/tendrils/workflow",
+    "runWorkflow/domains/terminalChecks": "skills/terminal/natlang",
+    "runWorkflow/domains/terminalChecklist": "skills/terminal-apps/checklist",
+    "runWorkflow/domains/templates": "skills/templates",
+    "runWorkflow/domains/testSuite": "skills/native-suite-review",
+    "runWorkflow/domains/testReview": "skills/system-testing/triage",
+    "runWorkflow/domains/unitDesign": "skills/workspace-unit-design",
+    "runWorkflow/domains/webResearch": "skills/web-research/research",
+    "runWorkflow/domains/vcsDelivery": "skills/vibestudio-vcs/natlang",
+    "runWorkflow/domains/verifiedMemory": "skills/memory/verifiedRecall",
+    "runWorkflow/domains/visualize": "skills/visualize"
+  },
+  "serviceScopes": {
+    "panelRepair": [
+      "runWorkflow/repairPanel.nl",
+      "runWorkflow/repairPanel/reproduce.nl",
+      "runWorkflow/repairPanel/diagnose.nl",
+      "runWorkflow/repairPanel/verifyRepair.nl",
+      "runWorkflow/repairPanel/verifyRepair/verifySaveAndDiscard.nl"
+    ],
+    "panelRepairEdit": [
+      "runWorkflow/repairPanel.nl"
+    ],
+    "unitRepair": [
+      "runWorkflow/repairUnit.nl",
+      "runWorkflow/repairUnit/diagnose.nl"
+    ],
+    "unitRepairEdit": [
+      "runWorkflow/repairUnit.nl"
+    ],
+    "projectWorkspace": [
+      "runWorkflow/deliverProject.nl"
+    ],
+    "projectWorkspaceEdit": [
+      "runWorkflow/deliverProject.nl"
+    ],
+    "workspaceIntegration": [
+      "runWorkflow/integrateWorkspace.nl"
+    ],
+    "ownedOperations": [
+      "runWorkflow/operate.nl",
+      "runWorkflow/operate/incident.nl",
+      "runWorkflow/operate/release.nl"
+    ],
+    "localMessagingRead": [
+      "runWorkflow/routeMessage/inspectChannel.nl",
+      "runWorkflow/routeMessage/inspectDelivery.nl"
+    ],
+    "localMessagingSend": [
+      "runWorkflow/routeMessage/deliverMessage.nl"
+    ]
+  }
+}

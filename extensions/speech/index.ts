@@ -1,5 +1,9 @@
 import type { ExtensionContext } from "@vibestudio/extension";
-import type { SpeechRecording, SpeechEvent } from "@workspace/speech";
+import type {
+  SpeechRecording,
+  SpeechEvent,
+  SpeechTranscribeOptions,
+} from "@workspace/speech";
 import { SpeechRuntime } from "./runtime.js";
 
 let runtime: SpeechRuntime | null = null;
@@ -68,9 +72,12 @@ export function activate(ctx: ExtensionContext) {
       streamOperation(signal(), (owner, cancellation, emit) =>
         owner.prepare(cancellation, emit),
       ),
-    transcribe: (recording: SpeechRecording) =>
+    transcribe: (
+      recording: SpeechRecording,
+      options?: SpeechTranscribeOptions,
+    ) =>
       streamOperation(signal(), (owner, cancellation, emit) =>
-        owner.transcribe(recording, cancellation, emit),
+        owner.transcribe(recording, cancellation, emit, options),
       ),
   };
 }

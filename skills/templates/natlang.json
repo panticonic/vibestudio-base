@@ -1,0 +1,14 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-template-lifecycle",
+  "version": "0.1.0",
+  "include": [
+    "reviewTemplate.nl",
+    "reviewTemplate",
+    "types.ts",
+    "templateRole.nl",
+    "templateRemedy.nl",
+    "summarize.ts"
+  ],
+  "targets": { "main": { "entry": "reviewTemplate.nl" } }
+}

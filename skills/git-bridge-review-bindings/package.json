@@ -1,0 +1,7 @@
+{
+  "name": "@workspace-skills/git-bridge-review-bindings",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": { "@workspace/runtime": "workspace:*" }
+}

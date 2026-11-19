@@ -1,0 +1,10 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-panel-health",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewPanelHealth.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "panelHealth": ["reviewPanelHealth.nl", "reviewPanelHealth/checkHealthChange.nl"]
+  }
+}

@@ -17,3 +17,23 @@ Status: **not measured to a gate; stays agent-executed.**
 Why the baseline is incomplete: on the host this was built on (load average 17-30 from other agents' model servers) a decision call costs three cold prefills of a ~3.9k-token opening, about 11-16 minutes, because the scorer sends each candidate reply as its own request and the slots do not share the prefix; the whole split set would take about a day. Two defects in the evaluation path also have to be repaired before `pnpm natlang:eval` can produce these numbers: the evaluation worker (`ts-host/src/evaluation/worker-entry.ts`) hands the runtime a bare turn function, and the CLI/driver in `scripts/natlang-eval.mjs` and `cli/adaptation.ts` pass `executor.turn` only, so a `readout: decision` call reports `decision_readout: unavailable ("model driver cannot score replies")` and runs as a full tool loop. The figures here come from an in-process scratch harness that keeps the readout and uses the suite's own cases, fixture and scorer.
 
 Reference model (the agent's own): not measured; no agent-class model is available in the harness. The case labels were written by the agent-class model from the skill text.
+
+## Shared provenance review
+
+The combined Vibestudio program calls `reviewProvenance` for routing,
+origin attribution and constraint investigations. It reuses the read
+selector and keeps evidence weight, rejection matching, origin selection and
+intent attribution as independently callable stages. Source operations stay
+with the caller's bounded VCS, provenance or memory reads. Typed receipts
+preserve visibility boundaries and compact references.
+
+The live-history path delegates exact VCS reads to readAssignedHistory and interpretation to
+assessHistoryReceipt. The System-testing adapter resolves the caller's repository and paths
+at one pinned semantic head, then walks cause, cohort, or rejections. It retains the raw
+node coordinates for verification and gives the model short refs. History reads carry
+no write authority. The verifier checks the authored rejection cases independently.
+
+When the task also proposes a change, assessProposedProperty prepares one constraint question from
+the pinned history. Its TypeScript helper preserves counteraction details and deduplicates repeated
+reasons. The existing weighConstraint skill decides whether those reasons support the proposal,
+reject a materially equivalent attempt, or leave it open. The report retains the original walk receipts.

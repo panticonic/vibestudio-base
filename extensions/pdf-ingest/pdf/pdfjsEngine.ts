@@ -70,6 +70,7 @@ export async function extractWithPdfjs(
     pages?: string | number[] | { from?: number; to?: number };
     maxPages?: number;
     preserveLayout: boolean;
+    includeTextFragments?: boolean;
   }
 ): Promise<ExtractedPdf> {
   const doc = await loadDocument(data);
@@ -79,7 +80,7 @@ export async function extractWithPdfjs(
     const pages: ExtractedPdfPage[] = [];
     for (const pageNumber of selectedPages) {
       const page = await doc.getPage(pageNumber);
-      pages.push(await extractPage(page, pageNumber, options.preserveLayout));
+      pages.push(await extractPage(page, pageNumber, options.preserveLayout, options.includeTextFragments));
       page.cleanup?.();
     }
     return { document, pages };
@@ -186,7 +187,8 @@ export async function pdfjsEngineStatus(): Promise<PdfEngineStatus[]> {
 async function extractPage(
   page: PdfJsPage,
   pageNumber: number,
-  preserveLayout: boolean
+  preserveLayout: boolean,
+  includeTextFragments?: boolean
 ): Promise<ExtractedPdfPage> {
   const viewport = page.getViewport({ scale: 1 });
   const content = await page.getTextContent({
@@ -194,7 +196,7 @@ async function extractPage(
     disableNormalization: false,
   });
   const textItems = content.items.filter(isPdfTextItem);
-  const lines = groupTextItems(textItems, { width: viewport.width, height: viewport.height });
+  const lines = groupTextItems(textItems, { width: viewport.width, height: viewport.height }, includeTextFragments);
   const text = preserveLayout
     ? linesToLayoutText(lines)
     : textItems

@@ -12,5 +12,86 @@ type ProvenanceMechanism = | "attached-read"
   | "memory-recall"
   | "query"
   | "direct-edges";
+type ProvenanceOrigin = | "managed-edit"
+  | "copy"
+  | "merge"
+  | "external-import";
+type ReasonTier = "stated" | "trigger" | "mechanical";
+type ProvenanceRefusal = | "too-broad"
+  | "outside-visibility"
+  | "pruned"
+  | "none";
+type ProvenanceFact = {
+  ref: string;
+  kind: "cause" | "cohort" | "rejection" | "note" | "history";
+  summary: string;
+  tier: ReasonTier;
+  disclosed: boolean;
+};
+type AttributionReceipt = {
+  origin: ProvenanceOrigin;
+  actor: string | null;
+  sourceRef: string | null;
+  sourceRevision: string | null;
+  decisionRef: string | null;
+  actionRef: string;
+  statedIntentRef: string | null;
+  visibleBoundary: string | null;
+};
+type ConstraintQuestion = {
+  kind: "constraint";
+  goal: string;
+  proposedProperty: string;
+  evidence: ProvenanceFact[];
+  boundary: ProvenanceRefusal;
+};
+type HistoryWalk = "cause" | "cohort" | "rejections";
+type HistoryCheck = { path: string; walk: HistoryWalk; scope: "work-unit" | "turn" };
+type HistoryReceipt = {
+  check: HistoryCheck;
+  exists: boolean;
+  limited: boolean;
+  records: { ref: string; source: string; label: string; intent: string | null; tier: ReasonTier | null; group: string | null; detail: string | null; boundary: string | null }[];
+};
+type HistoryFinding = {
+  check: HistoryCheck;
+  status: "coordinate-absent" | "limited" | "recorded" | "none-visible";
+  evidence: string[];
+};
+type HistoryRequest = {
+  kind: "live-history";
+  goal: string;
+  checks: HistoryCheck[];
+  proposedProperty?: string;
+};
+type ConstraintFinding = {
+  status: "supported" | "rejected" | "inconclusive" | "narrow-scope";
+  evidence: string[];
+};
+type ProvenanceRequest = | HistoryRequest
+  | {
+      kind: "route";
+      goal: string;
+      memoryInstalled: boolean;
+      attachedReadSufficient: boolean;
+    }
+  | { kind: "attribution"; goal: string; receipt: AttributionReceipt }
+  | ConstraintQuestion;
+type EvidenceVote = {
+  supports: string[];
+  conflicts: string[];
+  historicAssumptions: string[];
+  currentRejections: string[];
+};
+type ProvenanceReport = | { kind: "live-history"; findings: HistoryFinding[]; constraint?: ConstraintFinding }
+  | { kind: "route"; mechanism: ProvenanceMechanism }
+  | {
+      kind: "attribution";
+      origin: ProvenanceOrigin;
+      references: string[];
+      supportedIntent: string | null;
+      boundary: string | null;
+    }
+  | ({ kind: "constraint" } & ConstraintFinding);
 declare const fn: NatlangFunction<[question: string], ProvenanceMechanism>;
 export default fn;

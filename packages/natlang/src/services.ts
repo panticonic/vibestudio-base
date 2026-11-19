@@ -84,6 +84,38 @@ export function declarationsFor(names: readonly string[]): Record<string, string
   );
 }
 
+/** Read the runtime's authored service scopes using paths relative to this program. */
+export function declaredServiceScopes(
+  files: Readonly<Record<string, string>>,
+  names: readonly string[],
+  program: string
+): Record<string, string[]> {
+  const source = files["natlang.json"];
+  if (source === undefined) return {};
+  try {
+    const configuration = JSON.parse(source) as { serviceScopes?: unknown } | null;
+    const scopes = configuration?.serviceScopes;
+    if (scopes === undefined) return {};
+    if (!scopes || typeof scopes !== "object" || Array.isArray(scopes))
+      throw new Error("Set serviceScopes to an object mapping declared service names to function paths.");
+    return Object.fromEntries(Object.entries(scopes).map(([name, paths]) => {
+      if (!names.includes(name)) throw new Error(`Declare service ${name} before scoping it.`);
+      if (!Array.isArray(paths) || paths.some((selector) => {
+        if (typeof selector !== "string") return true;
+        const file = selector.endsWith("/**") ? selector.slice(0, -3) : selector;
+        return !file.endsWith(".nl") || !Object.hasOwn(files, file);
+      })) throw new Error(`Use existing relative .nl paths in the scope of ${name}.`);
+      return [name, paths as string[]];
+    }));
+  } catch (error) {
+    throw new NatlangProgramError(
+      `Invalid natlang.json for ${program}: ${error instanceof Error ? error.message : String(error)}`,
+      program,
+      "does-not-compile"
+    );
+  }
+}
+
 /**
  * The service record for a program: exactly its declared services, each a
  * narrowed view of the caller's own binding, so every authority check and
@@ -93,10 +125,11 @@ export function declarationsFor(names: readonly string[]): Record<string, string
 export function servicesFor(
   program: string,
   names: readonly string[],
-  bindings: Readonly<Record<string, unknown>>
+  bindings: Readonly<Record<string, unknown>>,
+  explicit?: Readonly<Record<string, object>>,
 ) {
   try {
-    return selectServices(bindings, names);
+    return selectServices(bindings, names, explicit);
   } catch (error) {
     // The message carries the reason; a `cause` would only repeat it where the failure is shown.
     throw new NatlangProgramError(

@@ -65,7 +65,28 @@ describe("toSubscriptionConfig", () => {
     });
 
     expect([...resolved!.payloadKinds]).toEqual(["application.incident.v1", "build.finished"]);
+    expect(resolved!.maxConsecutiveWakes).toBe(6);
   });
+
+  it("resolves an explicit consecutive wake bound", () => {
+    expect(
+      resolveAgentObservationConfig({ payloadKinds: ["tendril.event"], maxConsecutiveWakes: 1 })
+        ?.maxConsecutiveWakes
+    ).toBe(1);
+    expect(
+      resolveAgentObservationConfig({ payloadKinds: ["tendril.event"], maxConsecutiveWakes: 64 })
+        ?.maxConsecutiveWakes
+    ).toBe(64);
+  });
+
+  it.each([0, 65, 2.5, "6", null])(
+    "fails closed for an invalid consecutive wake bound %#",
+    (maxConsecutiveWakes) => {
+      expect(
+        resolveAgentObservationConfig({ payloadKinds: ["tendril.event"], maxConsecutiveWakes })
+      ).toBeNull();
+    }
+  );
 
   it.each([
     undefined,

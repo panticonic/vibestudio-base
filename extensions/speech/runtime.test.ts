@@ -138,3 +138,32 @@ it("settles queued cancellation without interrupting another caller's inference"
   active.abort(new Error("retire active"));
   await firstRejected;
 });
+
+it("checks ready-only transcription at the serialized worker boundary", async () => {
+  const runtime = owner();
+  const signal = new AbortController().signal;
+  const emit = vi.fn();
+  await expect(
+    runtime.transcribe(recording(), signal, emit, { requireReady: true }),
+  ).rejects.toThrow("Prepare the local speech worker");
+  expect(emit).not.toHaveBeenCalled();
+  expect(runtime.status()).toEqual({ ready: false });
+
+  await runtime.prepare(signal, () => {});
+  await runtime.transcribe(recording(), signal, emit, { requireReady: true });
+  expect(emit).toHaveBeenLastCalledWith({
+    type: "result",
+    text: "hello",
+    model: "whistle",
+    language: "en",
+  });
+
+  const failed = expect(
+    runtime.transcribe(recording(0.5), signal, () => {}),
+  ).rejects.toThrow("original engine failure");
+  const readyOnly = expect(
+    runtime.transcribe(recording(), signal, emit, { requireReady: true }),
+  ).rejects.toThrow("Prepare the local speech worker");
+  await Promise.all([failed, readyOnly]);
+  expect(runtime.status()).toEqual({ ready: false });
+});

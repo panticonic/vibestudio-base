@@ -1,6 +1,6 @@
 import { systemTestRunnerRpcMethods } from "@vibestudio/service-schemas/systemTestRunner";
 import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
-import { SERVICE_CATALOG, SERVICE_NAMES, type ServiceName } from "./catalog.js";
+import { SERVICE_CATALOG, SERVICE_NAMES, type AuthoredServiceName, type ServiceName } from "./catalog.js";
 
 /** The eval bindings (`services`, `web`, `memory`, `extensions`, `rpc`, ...) a program may draw services from. */
 export type ServiceBindings = Readonly<Record<string, unknown>>;
@@ -59,8 +59,47 @@ function hostService(name: ServiceName) {
   };
 }
 
-const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+type AmbientServiceName = Exclude<ServiceName, AuthoredServiceName>;
+const builders: Record<AmbientServiceName, (bindings: ServiceBindings) => NatlangService> = {
+  templateOffer: binding("templateOffer"),
+  templateCandidatePrepare: binding("templateCandidatePrepare"),
+  templateCandidateReview: binding("templateCandidateReview"),
+  scratchHandoffRead: binding("scratchHandoffRead"),
+  scratchHandoffWrite: binding("scratchHandoffWrite"),
+  automationLifecycleRead: binding("automationLifecycleRead"),
+  automationLifecycleChange: binding("automationLifecycleChange"),
+  checklistOpen: binding("checklistOpen"),
+  checklistKeys: binding("checklistKeys"),
+  checklistResume: binding("checklistResume"),
+  onboardingRead: binding("onboardingRead"),
+  decisionRecall: binding("decisionRecall"),
+  decisionSource: binding("decisionSource"),
+  authoringCompiler: binding("authoringCompiler"),
+  mobileInventory: binding("mobileInventory"),
+  mobilePairing: binding("mobilePairing"),
+  mobileWorkspace: binding("mobileWorkspace"),
+  mobileDevelopment: binding("mobileDevelopment"),
+  mobileApp: binding("mobileApp"),
+  pdfIntakeProbe: binding("pdfIntakeProbe"),
+  pdfIntakeRead: binding("pdfIntakeRead"),
+  channelAgentRead: binding("channelAgentRead"),
+  channelAgentAttach: binding("channelAgentAttach"),
+  channelAgentDetach: binding("channelAgentDetach"),
+  localModelTaskInventory: binding("localModelTaskInventory"),
+  localModelTaskInstall: binding("localModelTaskInstall"),
+  websiteReadback: binding("websiteReadback"),
+  googleWorkspaceRead: binding("googleWorkspaceRead"),
+  localMessagingRead: binding("localMessagingRead"),
+  localMessagingSend: binding("localMessagingSend"),
   serverLog: hostService("serverLog"),
+  panelRepair: binding("panelRepair"),
+  panelRepairEdit: binding("panelRepairEdit"),
+  unitRepair: binding("unitRepair"),
+  ownedOperations: binding("ownedOperations"),
+  unitRepairEdit: binding("unitRepairEdit"),
+  workspaceIntegration: binding("workspaceIntegration"),
+  projectWorkspace: binding("projectWorkspace"),
+  projectWorkspaceEdit: binding("projectWorkspaceEdit"),
   docs: hostService("docs"),
   localModels: (bindings) => {
     const extensions = requireBinding("localModels", bindings, "extensions") as {
@@ -99,7 +138,8 @@ const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangServic
  */
 export function selectServices(
   bindings: ServiceBindings,
-  names: readonly string[]
+  names: readonly string[],
+  explicit?: ServiceBindings,
 ): Record<string, NatlangService> {
   const known = new Set<string>(SERVICE_NAMES);
   const unknown = [...new Set(names)].filter((name) => !known.has(name));
@@ -112,7 +152,13 @@ export function selectServices(
   }
   const selected: Record<string, NatlangService> = {};
   for (const name of new Set(names) as Set<ServiceName>) {
-    selected[name] = builders[name](bindings);
+    if (explicit) {
+      selected[name] = expose(name, requireBinding(name, explicit, name), `the explicit \`${name}\` binding`);
+      continue;
+    }
+    if (entryFor(name).contract.origin === "authored")
+      throw new Error(`natlang service "${name}" requires an explicit caller binding`);
+    selected[name] = builders[name as AmbientServiceName](bindings);
   }
   return selected;
 }

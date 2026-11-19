@@ -1,0 +1,7 @@
+{
+  "name": "@workspace-skills/pdf-intake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./checks": "./intakeChecks.ts" }
+}

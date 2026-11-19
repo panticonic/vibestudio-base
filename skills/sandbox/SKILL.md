@@ -90,6 +90,11 @@ workspace and never searches others. A cross-workspace call needs all of:
 These policies are checked before service and capability permissions, and
 neither workspace code nor an approval can enable them.
 
+For recovery of an assigned text-store operation, use
+`runWorkflow.domains.evalRecovery.reviewEvalRecovery`. It compares the native
+journal with the expected content identity and can read back the exact
+digest when the caller authorizes it. [Workflow design](recovery/DECOMPOSITION.md).
+
 ## Component essentials
 
 Inline UI, action-bar, and feedback source files must default-export a

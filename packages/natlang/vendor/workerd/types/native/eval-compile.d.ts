@@ -13,12 +13,17 @@ export type EvalCompileOptions = {
      * whose context store cannot follow promises (browsers); the realm must bind `__natlang_bindAwait`.
      */
     restoreAfterAwait?: boolean;
+    /**
+     * Every loop iteration and function body calls `__natlang_memory()`, the evaluation's memory guard
+     * (native/eval-memory.ts); the realm must bind it.
+     */
+    memoryChecks?: boolean;
 };
 /** The JavaScript for `code`. A body is a function declaration; call `evalRealmBody` for what a realm runs. */
 export declare function compileEval(code: string, options: EvalCompileOptions): string;
 /**
  * The strict-mode function body a realm runs for compiled eval code: the prelude, the code, and its result (the body
  * function's, or the program's completion value). The names a realm binds around it are `self`, `__live`,
- * `__natlang_import`, `console` and, with `restoreAfterAwait`, `__natlang_bindAwait` (see `EVAL_PARAMETERS`).
+ * `__natlang_import`, `console`, with `restoreAfterAwait` `__natlang_bindAwait`, and with `memoryChecks` `__natlang_memory`.
  */
 export declare function evalRealmBody(compiled: string, body: boolean): string;

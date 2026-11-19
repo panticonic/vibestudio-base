@@ -91,6 +91,21 @@ success. The usual installed-agent permission requests and user review apply.
 Do not add eval authority overrides, and do not retry a fixed-code manifest
 denial.
 
+## Assigned Natlang workflow
+
+For an unattended System workspace task, bind an assigned target with
+`bindPhoneSetup` from `@workspace-skills/phone-setup/workflow`. Give the shared
+Natlang program work for `phoneSetup/setUpPhone` using the binding's request and
+explicit services. The workflow prepares an eligible desktop, discovers the
+attached device, and pairs only a ready device from that discovery. It reports
+one physical action or requests a choice when setup cannot proceed.
+
+If pairing succeeded and workspace setup is still opening, retain the paired
+device ID from the binding and start another assignment with `paired` to
+check readiness. The binding retains a confirmed device even if the pairing
+stream fails afterward. An unconfirmed pairing calls for inspecting the setup
+card before retrying. Only a ready workspace means the phone can be unplugged.
+
 ## Android readiness
 
 Use only the steps discovery requires:

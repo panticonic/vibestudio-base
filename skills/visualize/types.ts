@@ -104,4 +104,35 @@ export type ComponentSpec =
   | { component: "PlaceMap"; props: PlaceMapProps }
   | { component: "Choices"; props: ChoicesProps };
 
-export type RenderedComponent = ComponentSpec & { mdx: string };
+export type RenderedComponent =
+  | { component: "Chart"; props: ChartProps; mdx: string }
+  | { component: "Stats"; props: StatsProps; mdx: string }
+  | { component: "Compare"; props: CompareProps; mdx: string }
+  | { component: "Timeline"; props: TimelineProps; mdx: string }
+  | { component: "Checklist"; props: ChecklistProps; mdx: string }
+  | { component: "PlaceMap"; props: PlaceMapProps; mdx: string }
+  | { component: "Choices"; props: ChoicesProps; mdx: string };
+
+export type PresentationSection = {
+  id: string;
+  required: boolean;
+  ask: string;
+  data: string;
+};
+
+export type PresentationRequest = {
+  goal: string;
+  sections: PresentationSection[];
+};
+
+export type PresentationReadback =
+  | { status: "accepted" }
+  | { status: "rejected"; reason: string };
+
+export type PresentationView =
+  | { id: string; status: "plain" }
+  | { id: string; status: "deferred"; component: "Calculator" | "Diagram" | "OneOff" }
+  | { id: string; status: "needs-review"; reason: string }
+  | { id: string; status: "ready"; rendered: RenderedComponent };
+
+export type PresentationReport = { views: PresentationView[]; omitted: string[] };

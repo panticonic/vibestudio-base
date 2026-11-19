@@ -84,6 +84,7 @@ function runtimeHarness(
     replaceEntityOnAgentFailure?: boolean;
     disconnectAgentTarget?: boolean;
     recoverStoppedRoute?: boolean;
+    rollbackBeforeMaterialize?: boolean;
     onCreateSlotTiming?: NonNullable<
       Parameters<typeof createPanelRuntime>[0]["onCreateSlotTiming"]
     >;
@@ -95,6 +96,7 @@ function runtimeHarness(
 ) {
   let currentSlotId = "panel:tree/new";
   let currentEntityId = "panel:nav-new";
+  let failedEntityId: string | undefined;
   let currentSource = options.browserReady
     ? (options.browserSource ?? "browser:data:text/html,<p>ready</p>")
     : "panels/new";
@@ -220,8 +222,22 @@ function runtimeHarness(
         }
         case "workspace-state.panelTree.detail":
           return detail(currentEntityId, currentSource, currentSlotId) as T;
+        case "panelRuntime.historyProof":
+          return [
+            {
+              entryKey: "failed-candidate",
+              entityId: failedEntityId,
+              buildKey: "candidate",
+              state: "failed",
+              failure: { code: "entry_threw" },
+            },
+          ] as T;
         case "panelRuntime.ensureSlot":
           ensureSlotCalls += 1;
+          if (options.rollbackBeforeMaterialize) {
+            failedEntityId = currentEntityId;
+            currentEntityId = "panel:nav-new";
+          }
           if (options.recoverStoppedRoute && ensureSlotCalls > 1) {
             currentEntityId = "panel:nav-replacement";
           }
@@ -1527,6 +1543,131 @@ describe("panel runtime topology composition", () => {
       "main",
       "workspace-state.panelTree.page",
       [{ group: { kind: "roots", ownerUserId: "usr-other" }, limit: 10 }],
+      undefined,
+    );
+  });
+
+  it("appends a rebuild to history when asked, keeping the previous build reachable", async () => {
+    const { runtime, call } = runtimeHarness();
+
+    await runtime
+      .getPanelHandle("panel:tree/new")
+      .rebuild({ history: "append" });
+
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.commitPreparedNavigation",
+      [
+        expect.objectContaining({
+          slotId: "panel:tree/new",
+          mutation: expect.objectContaining({ kind: "append" }),
+        }),
+      ],
+      undefined,
+    );
+  });
+
+  it("reports the failed candidate when rollback wins before rebuild materialization", async () => {
+    const { runtime } = runtimeHarness({ rollbackBeforeMaterialize: true });
+    await expect(
+      runtime.getPanelHandle("panel:tree/new").rebuild({ history: "append" }),
+    ).rejects.toMatchObject({
+      code: "PANEL_OPERATION_FAILED",
+      failure: {
+        stage: "boot",
+        provenance: {
+          runtimeEntityId: expect.stringMatching(/^panel:nav-nav-/u),
+          buildKey: "candidate",
+        },
+        details: {
+          currentRuntimeEntityId: "panel:nav-new",
+          buildFailure: { code: "entry_threw" },
+        },
+      },
+    });
+  });
+
+  it("pins an exact artifact through navigation into the entity and its history entry", async () => {
+    const { runtime, call } = runtimeHarness();
+    const artifact = {
+      buildKey: "b".repeat(64),
+      executionDigest: "a".repeat(64),
+    };
+
+    await runtime.panelTree
+      .get("panel:tree/new")
+      .navigate("panels/next", { contextId: "ctx:test", artifact });
+
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "runtime.createEntity",
+      [
+        expect.objectContaining({
+          execution: expect.objectContaining({
+            surface: "code",
+            source: "panels/next",
+            artifact,
+          }),
+        }),
+      ],
+      undefined,
+    );
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.commitPreparedNavigation",
+      [
+        expect.objectContaining({
+          mutation: expect.objectContaining({
+            kind: "append",
+            entry: expect.objectContaining({
+              options: expect.objectContaining({ artifact }),
+            }),
+          }),
+        }),
+      ],
+      undefined,
+    );
+  });
+
+  it("requests presentation on a device and lists the caller's presentation targets", async () => {
+    const { runtime, call } = runtimeHarness();
+    const original = call.getMockImplementation()!;
+    const targets = [
+      {
+        deviceId: "device-phone",
+        label: "Pixel",
+        platform: "mobile",
+        online: true,
+        clientSessionId: "session-1",
+      },
+    ];
+    call.mockImplementation(async (target, method, args, callOptions) => {
+      if (method === "panelRuntime.listPresentationTargets")
+        return targets as never;
+      if (method === "panelRuntime.requestPresentation")
+        return { state: "pushed" } as never;
+      return original(target, method, args, callOptions);
+    });
+
+    await expect(runtime.panelTree.listPresentationTargets()).resolves.toEqual(
+      targets,
+    );
+    await expect(
+      runtime
+        .getPanelHandle("panel:tree/new")
+        .requestPresentation({ deviceId: "device-phone", alert: "inbox" }),
+    ).resolves.toEqual({ state: "pushed" });
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "panelRuntime.requestPresentation",
+      [
+        {
+          slotId: "panel:tree/new",
+          deviceId: "device-phone",
+          focus: true,
+          alert: "inbox",
+        },
+      ],
       undefined,
     );
   });

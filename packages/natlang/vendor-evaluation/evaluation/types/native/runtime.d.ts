@@ -338,13 +338,12 @@ export declare class NativeSession {
     /** Type aliases from prior evals, made visible to the next eval's inline signature analysis. */
     analysisTypeAliases(): Record<string, string>;
     private captureScopeFailure;
-    /**
-     * A final reply's text as the result when the declared return type accepts it. Neuralese<string> text goes through
-     * the typed block writer; a bare "done" asks for the already staged value.
-     */
-    /** Whether a plain, complete reply would be this call's result (a text-typed call with nothing staged). */
-    takesTextResult(): boolean;
-    acceptTextResult(text: string): Promise<boolean>;
+    /** The runtime or the bound evaluation policy denies code edits. */
+    codeEditsDenied(): boolean;
+    /** The call can change code: its program has functions of its own and code edits are not denied (edit_code, diff_code). */
+    codeEditable(): boolean;
+    /** Whether this call's result is text (a string or Neuralese<string>, with nothing staged). */
+    expectsTextResult(): boolean;
     /** Complete the invocation if an eval has returned a value of the declared type. */
     finish(): boolean;
     /** A text of the current call's result as it fits in a message; all of it goes to the call's transcript entry. */

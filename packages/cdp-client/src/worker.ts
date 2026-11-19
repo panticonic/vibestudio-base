@@ -1279,6 +1279,13 @@ async function __nsRun(P){
     case "boundingBox": { var e=nsFirst(d); return e?nsBox(e):null; }
     case "allTextContents": return nsLocate(d).map(function(e){ return e.textContent||""; });
     case "allInnerTexts": return nsLocate(d).map(function(e){ return e.innerText!=null?e.innerText:(e.textContent||""); });
+    case "roleTargets": {
+      return nsLocate(d).flatMap(function(element){
+        var role=nsRole(element);
+        if(!role||!nsVisible(element)) return [];
+        return [{role:role,name:nsAccName(element)}];
+      });
+    }
     case "evaluate": { var e=await nsWaitForState(d,"attached",t); var fn=(0,eval)("("+a.source+")"); return await fn(e,a.arg); }
     case "evaluateAll": { var fn=(0,eval)("("+a.source+")"); return await fn(nsLocate(d),a.arg); }
     case "roleCandidates": {
@@ -2432,6 +2439,13 @@ class WorkerCdpPage {
     return new WorkerCdpLocator(this, {
       steps: [roleLocatorStep(role, options)],
     });
+  }
+  /** Visible roles and names computed by the same matcher as getByRole. */
+  roleTargets(): Promise<Array<{ role: string; name: string }>> {
+    const descriptor = { steps: [compileLocatorSelector("*")] };
+    return this.runLocatorOp("roleTargets", descriptor, null) as Promise<
+      Array<{ role: string; name: string }>
+    >;
   }
   getByText(text: TextMatcher, options: ByTextOptions = {}): WorkerCdpLocator {
     return new WorkerCdpLocator(this, {

@@ -15,6 +15,12 @@ Prefer a worker when a workerd isolate is enough. This skill is for authoring;
 to call an installed extension, use the live generated docs and the
 `extensions` runtime API.
 
+To review an assigned method across working source, protected main and the
+active runtime, use `extensionDevelopment/reviewExtensionRelease` through the
+shared Natlang workflow. Bind the exact extension and context with
+`@workspace-skills/extensiondev/workflow`. Review and publish the candidate
+through the existing development loop when the report calls for it.
+
 ## Read by task
 
 | Task                                              | Reference                                                           |

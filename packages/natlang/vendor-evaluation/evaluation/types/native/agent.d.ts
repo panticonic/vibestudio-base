@@ -56,6 +56,8 @@ export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSigna
     readonly requiresResultContract?: boolean;
     /** Optional decision readout (contracts.ts `DecisionRequest`); without it the call runs the tool loop. */
     decide?: DecisionScorer;
+    /** The backend continues a cut-off reply (`ModelTurnRequest.continue`; runtime.ts `ModelDriver`). */
+    readonly continuesReplies?: boolean;
     neuraleseRuntime?: () => Promise<NeuraleseRuntimeOptions | undefined>;
 };
 /**

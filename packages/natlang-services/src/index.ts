@@ -14,3 +14,16 @@ export { selectServices, type NatlangService, type ServiceBindings } from "./sel
 
 /** Declaration text per service name: the members of `declare namespace <name> { ... }`. */
 export const serviceDeclarations: Readonly<Record<string, string>> = generatedServiceDeclarations;
+
+export { createPanelRepair } from "./panelRepair.js";
+
+export { createWorkspaceIntegration } from "./workspaceIntegration.js";
+
+export { createUnitRepair } from "./unitRepair.js";
+
+export { createOwnedOperations } from "./ownedOperations.js";
+export { verifyOwnedOperations } from "./ownedOperationsOracle.js";
+export { createProjectDelivery } from "./contentProject.js";
+export { contentProjectRequestSchema, type ContentProjectRequest } from "./contentProjectContracts.js";
+
+export { ownedOperationsRequestSchema } from "./ownedOperationsContracts.js";

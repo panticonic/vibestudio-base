@@ -29,5 +29,37 @@ type ScheduleReading = {
 type Trigger = | { kind: "manual" }
   | { kind: "schedule"; everyMs: number; untilAt?: number; maxRuns?: number }
   | { kind: "cron"; expression: string; timezone: string; untilAt?: number; maxRuns?: number };
+type MissionState = "active" | "paused" | "retired";
+type MissionRun = {
+  id: string;
+  phase: "queued" | "executing" | "finished";
+  outcome: "succeeded" | "failed" | "completed-with-errors" | "skipped" | null;
+  errors: { operation: string; description: string }[];
+};
+type VisibleAutomation = { id: string; name: string; state: MissionState; latestRun: MissionRun | null };
+type Operation = { service: string; method: string; use: "action" | "conditional" };
+type AutomationRequest = {
+  goal: string;
+  timezone: string;
+  now: string;
+  visible: VisibleAutomation[];
+  availableOperations: Operation[];
+};
+type AutomationIntent = "launch" | "control" | "inspect";
+type ConversationChoice = "continue" | "fresh" | "clarify";
+type ControlChoice = "pause" | "resume" | "run" | "retire";
+type LaunchDraft = {
+  kind: "launch"; executor: ExecutorKind; trigger: Trigger;
+  conversation: "continue" | "fresh"; operations: Operation[];
+};
+type ControlDraft = { kind: "control"; automationId: string; action: ControlChoice };
+type RunBrief = {
+  kind: "inspect"; automationId: string; runId: string | null;
+  state: MissionState; outcome: MissionRun["outcome"]; failedOperations: string[];
+};
+type AutomationHold = { kind: "hold"; reason: string };
+type AutomationReport = LaunchDraft | ControlDraft | RunBrief | AutomationHold;
+type RunSelection = | { kind: "found"; automation: VisibleAutomation }
+  | { kind: "hold"; reason: string };
 declare const fn: NatlangFunction<[request: string], ExecutorKind>;
 export default fn;

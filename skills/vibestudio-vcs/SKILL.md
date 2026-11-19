@@ -128,6 +128,11 @@ Managed workspace state is semantic history, not a Git worktree. Tools:
 
 ## Commit and publication
 
+For an assigned-file delivery review, the shared Natlang workflow exposes
+`vcsDelivery/reviewVcsDelivery`. It compares the working and committed
+versions with protected main, reviews open integration decisions, and returns
+candidate-specific verification steps. See [the decomposition](natlang/DECOMPOSITION.md).
+
 `vcs({ operation: "commit", message, concludes?, intent? })` commits the
 complete local chain. Merge parents come only from merge decisions, including
 the decision-only conclusion that `concludes` records atomically.

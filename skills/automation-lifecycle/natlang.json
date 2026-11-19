@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-automation-lifecycle",
+  "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "targets": { "main": { "entry": "reconcileAutomation.nl" } },
+  "serviceScopes": {
+    "automationLifecycleRead": ["reconcileAutomation/observeMission.nl"],
+    "automationLifecycleChange": ["reconcileAutomation/applyTransition.nl"]
+  }
+}

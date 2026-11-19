@@ -13,6 +13,17 @@ service.
 
 ## Native control
 
+For a typed Natlang task with a selected mission ID, revision digest and
+authorized pause or resume, bind the caller's existing `missions` client
+with `bindAutomationLifecycle` from
+`@workspace-skills/automation-lifecycle-bindings`. Call
+`runWorkflow.domains.automationLifecycle.reconcileAutomation` with that
+assignment. The client's `transitionAtRevision(missionId, action, digest)`
+checks the digest in the same operation that
+changes scheduling. A changed definition yields the typed
+`MISSION_REVISION_CHANGED` error. Read the current definition and get a
+new assignment before trying again.
+
 ```ts
 type AgentAutomationControl = {
   action: "pause" | "resume" | "run_now" | "retire";

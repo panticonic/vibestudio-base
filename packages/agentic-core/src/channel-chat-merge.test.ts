@@ -282,6 +282,25 @@ describe("chatMessagesFromChannelView", () => {
     expect(chatMessagesFromChannelView(bad)[0]?.interaction).toBeUndefined();
   });
 
+  it("projects an instruction given through a tendril page's control", () => {
+    const tendril = { tendrilId: "t-1", slotId: "slot-1", deviceId: "phone", via: "voice" };
+    const message: AgenticEvent<"message.completed"> = {
+      kind: "message.completed",
+      actor: agent,
+      causality: { messageId: brandId<MessageId>("msg-tendril") },
+      payload: { ...textPayload("msg-tendril", "user", "slow down"), metadata: { tendril } },
+      createdAt: "2026-05-20T12:00:00.000Z",
+    };
+    const state = [envelope(message, 1)].reduce(reduceChannelView, createInitialChannelViewState());
+    expect(chatMessagesFromChannelView(state)[0]).toMatchObject({
+      id: "msg-tendril",
+      tendril: { tendrilId: "t-1", via: "voice" },
+    });
+    const malformed = { ...message, payload: { ...message.payload, metadata: { tendril: { tendrilId: "t-1", via: "shout" } } } };
+    const bad = [envelope(malformed, 1)].reduce(reduceChannelView, createInitialChannelViewState());
+    expect(chatMessagesFromChannelView(bad)[0]?.tendril).toBeUndefined();
+  });
+
   it("projects assistant model provenance onto chat messages", () => {
     const message: AgenticEvent<"message.completed"> = {
       kind: "message.completed",

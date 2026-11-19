@@ -1,3 +1,4 @@
+import { captureExchange, type ModelExchange } from './modelTurnCapture.js';
 import type { Context } from "@panticonic/pi-ai";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 import type { ModelGatewayTurnOptions } from "@workspace/model-gateway/contract";
@@ -40,6 +41,8 @@ export function gatewayDriver(options: {
   model: string;
   /** Prefix of this driver's turn ids; unique among the caller's in-flight turns. */
   turnPrefix: string;
+  recordExchange?: (exchange: ModelExchange) => void;
+  captureModelTurns?: () => boolean;
 }): ModelDriver {
   const { gateway, resolver, model, turnPrefix } = options;
   let turns = 0;
@@ -49,9 +52,10 @@ export function gatewayDriver(options: {
     const entry = await resolver.resolve(model);
     const api = entry.modelSpec.api;
     const context = toPiContext(request, { api, provider: entry.provider, id: entry.id });
+    const turnId = nextTurnId();
     const result = await gateway.turn(
       {
-        turnId: nextTurnId(),
+        turnId,
         model: entry.ref,
         context: context as unknown as Context,
         options: turnOptions(request, entry),
@@ -64,9 +68,11 @@ export function gatewayDriver(options: {
       raw_response: {
         ...modelTurn.raw_response,
         vibestudio: {
+          turnId,
           model: result.model,
           ...(result.role ? { role: result.role } : {}),
           attribution: result.attribution,
+          ...(options.captureModelTurns?.() ? { context: structuredClone(context), response: structuredClone(result.message), api } : {}),
         },
       },
     };
@@ -103,7 +109,10 @@ export function gatewayDriver(options: {
       ...(scored.promptTokens !== undefined ? { prompt_tokens: scored.promptTokens } : {}),
     };
   };
-  return Object.assign(turn, { decide });
+  return Object.assign(
+    (request: ModelTurnRequest, signal?: AbortSignal) => captureExchange("generation", request, () => turn(request, signal), options.captureModelTurns?.() ? options.recordExchange : undefined),
+    { decide: (request: DecisionRequest, signal?: AbortSignal) => captureExchange("score", request, () => decide(request, signal), options.captureModelTurns?.() ? options.recordExchange : undefined) }
+  );
 }
 
 /**

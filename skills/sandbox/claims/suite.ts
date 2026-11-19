@@ -19,11 +19,11 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
   fixture: {
     async create(testCase, context) {
       const app = (await context.loadFreshProgram()) as {
-        claimCheck: { check(text: string, claims: Claim[]): Promise<ClaimCheck> };
+        claimCheck(text: string, claims: Claim[]): Promise<ClaimCheck>;
       };
       return {
         execute: () =>
-          context.runtime.run(() => app.claimCheck.check(testCase.input.text, testCase.input.claims)),
+          context.runtime.run(() => app.claimCheck(testCase.input.text, testCase.input.claims)),
       };
     },
   },

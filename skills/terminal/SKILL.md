@@ -9,7 +9,10 @@ Use the terminal when the task requires an actual operating-system process or
 command behavior. For programmatic workspace or scratch filesystem work, such
 as creating, listing, moving, or removing a temporary tree, use the scoped
 `@workspace/runtime` filesystem API in eval. It operates on the current context
-and needs no shell permission.
+and needs no shell permission. To gather assigned text evidence into a verified
+scratch handoff, use the joint Natlang workflow's
+`scratchHandoff.assembleHandoff` assignment with the caller-scoped filesystem
+binding described in the scratch handoff decomposition.
 
 Use the installed `shell` extension. For a normal command, use argv mode so
 arguments are passed literally:
@@ -46,3 +49,18 @@ to make first.
 
 Keep output bounded and report exit status, relevant stdout/stderr, and whether
 it timed out or was truncated.
+
+
+## Assigned Natlang terminal checks
+
+Use `bindTerminalChecks` from `@workspace-skills/terminal/workflow` to supply
+the current workspace context with a goal and a bounded list of caller-approved
+command intents. Pass the binding's request to the shared program's
+`terminalChecks/runTerminalChecks` assignment and supply its explicit services.
+The workflow sees check IDs, purposes, dependencies, and the bounded results.
+The caller supplies the exact argv or explicitly intended script. Normal shell
+approval remains in effect.
+
+Each check can run once. A dependency unblocks only after the earlier process
+returns exit code zero with a complete result. The workflow can continue
+independent checks and reports held checks by ID.

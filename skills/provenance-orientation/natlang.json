@@ -1,0 +1,23 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-provenance-investigation",
+  "version": "0.1.0",
+  "targets": {
+    "main": {
+      "entry": "reviewProvenance.nl"
+    }
+  },
+  "include": [
+    "reviewProvenance.nl",
+    "reviewProvenance",
+    "provenanceMechanism.nl",
+    "types.ts",
+    "services.d.ts"
+  ],
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "provenanceHistory": [
+      "reviewProvenance/reviewLiveHistory/readAssignedHistory.nl"
+    ]
+  }
+}
