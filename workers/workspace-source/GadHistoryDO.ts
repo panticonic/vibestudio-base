@@ -482,6 +482,11 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryReferenceContext(input: { contextIds: string[]; reference: VcsSemanticNodeRef }) {
+    return this.#history().contextForReference(input.contextIds, vcsSemanticNodeRefSchema.parse(input.reference));
+  }
+
+  @rpc(hostRead)
   inspectHistoryNode(input: { contextId: string; inspect: VcsInspectInput }) {
     return this.#history().inspect(input.contextId, this.#workspaceId(), vcsInspectInputSchema.parse(input.inspect));
   }

@@ -425,10 +425,7 @@ export class ParticipantHistory {
   referencesReachable(contextIds: readonly string[], references: readonly VcsSemanticNodeRef[]) {
     return this.#run(async () => {
       const { sql } = this.#storage;
-      const requested = new Set(contextIds.map((id) => this.#contextBranch(id)));
-      const tips = [...new Set(this.#dolt.branch.list()
-        .filter(({ name }) => requested.has(name))
-        .map(({ hash }) => hash))];
+      const tips = [...new Set(this.#contextTips(contextIds).map(({ head }) => head))];
       if (tips.length === 0) return false;
       const unresolved = references.filter((ref) =>
         !tips.some((tip) => workspaceReferenceAt(sql, tip, ref)),
@@ -436,6 +433,23 @@ export class ParticipantHistory {
       if (unresolved.length === 0) return true;
       const main = await this.#fetchMain();
       return !tips.includes(main) && unresolved.every((ref) => workspaceReferenceAt(sql, main, ref));
+    });
+  }
+
+  contextForReference(contextIds: readonly string[], ref: VcsSemanticNodeRef): Promise<string | null> {
+    return this.#run(() => {
+      const { sql } = this.#storage;
+      return this.#contextTips(contextIds)
+        .find(({ head }) => workspaceReferenceAt(sql, head, ref))?.contextId ?? null;
+    });
+  }
+
+  #contextTips(contextIds: readonly string[]): Array<{ contextId: string; head: string }> {
+    const branches = new Map(this.#dolt.branch.list().map(({ name, hash }) => [name, hash]));
+    return contextIds.flatMap((contextId) => {
+      const branch = `ctx/${branchSegment(contextId)}`;
+      const head = branches.get(branch);
+      return head && !this.#discardJournal?.get(`history-retired:${branch}`) ? [{ contextId, head }] : [];
     });
   }
 
