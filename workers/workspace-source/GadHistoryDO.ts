@@ -636,6 +636,7 @@ export class GadHistoryDO extends DurableObjectBase {
     head: string;
     transfer: { method: "move"; value: VcsMoveInput } | { method: "copy"; value: VcsCopyInput };
     cause: HistoryCommand["cause"];
+    readableContextIds?: string[];
     triggerEvidence?: WorkUnitRecord["triggerEvidence"];
   }): Promise<HistoryMutationPlan> {
     this.#assertWritable();
@@ -645,7 +646,9 @@ export class GadHistoryDO extends DurableObjectBase {
     const transfer = input.transfer.method === "move"
       ? { method: "move" as const, value: vcsMoveInputSchema.parse(input.transfer.value) }
       : { method: "copy" as const, value: vcsCopyInputSchema.parse(input.transfer.value) };
-    return this.#history().planTransfer(input.head, transfer, input.cause, input.triggerEvidence);
+    return this.#history().planTransfer(
+      input.head, transfer, input.cause, input.triggerEvidence, input.readableContextIds,
+    );
   }
 
   @rpc(hostWrite)

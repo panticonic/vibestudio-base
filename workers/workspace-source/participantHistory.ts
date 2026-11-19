@@ -667,6 +667,7 @@ export class ParticipantHistory {
     transfer: { method: "move"; value: VcsMoveInput } | { method: "copy"; value: VcsCopyInput },
     cause: HistoryCommand["cause"],
     triggerEvidence: WorkUnitRecord["triggerEvidence"] = null,
+    readableContextIds: readonly string[] = [],
   ): Promise<HistoryMutationPlan> {
     return this.#run(async () => {
       const { value, method } = transfer;
@@ -685,20 +686,22 @@ export class ParticipantHistory {
       if (transfer.method === "move") {
         return this.#prepareMutation(head, value, command, SemanticWorkspace.planMove(transfer.value, target), triggerEvidence);
       }
-      const sources = new Map<string, ReturnType<typeof workspaceTransferBasisAt>>();
+      const sources = new Map<string, { head: string; basis: ReturnType<typeof workspaceTransferBasisAt> }>();
+      const basis = stateNodeKey(expectedWorkingHead);
       for (const { source } of transfer.value.copies) {
         const key = stateNodeKey(source.state);
         if (!sources.has(key)) {
-          const at = key === stateNodeKey(expectedWorkingHead) ? head : await this.#requireReadableState(contextId, source.state);
-          sources.set(key, workspaceTransferBasisAt(sql, at));
+          const at = key === basis
+            ? head : await this.#requireReadableState(contextId, source.state, readableContextIds);
+          sources.set(key, { head: at, basis: workspaceTransferBasisAt(sql, at) });
         }
       }
       const draft = SemanticWorkspace.planCopy(transfer.value, target, (state) => {
         const source = sources.get(stateNodeKey(state));
         if (!source) throw new SemanticVcsError("IntegrityFailure", "Workspace copy lost its source revision");
-        return source;
+        return source.basis;
       });
-      return this.#prepareMutation(head, value, command, draft, triggerEvidence);
+      return this.#prepareMutation(head, value, command, draft, triggerEvidence, sources);
     });
   }
 
@@ -708,6 +711,7 @@ export class ParticipantHistory {
     command: HistoryCommand,
     draft: MutationDraft,
     triggerEvidence: WorkUnitRecord["triggerEvidence"],
+    sourceRevisions?: ReadonlyMap<string, { head: string }>,
   ): Promise<Extract<HistoryMutationPlan, { kind: "planned" }>> {
     const { contextId, expectedWorkingHead } = input;
     const basisKey = stateNodeKey(expectedWorkingHead);
@@ -724,7 +728,8 @@ export class ParticipantHistory {
     }
     const originsAt = new Map<string, Map<string, FileContentOrigin>>();
     for (const [key, { state, files }] of needed) {
-      const at = key === basisKey ? head : await this.#requireReadableState(contextId, state);
+      const at = key === basisKey
+        ? head : sourceRevisions?.get(key)?.head ?? await this.#requireReadableState(contextId, state);
       const origins = workspaceContentOriginsAt(this.#storage.sql, at, [...files]);
       for (const fileId of files) {
         if (!origins.has(fileId))
@@ -1786,15 +1791,24 @@ export class ParticipantHistory {
     );
   }
 
-  async #resolveReadableState(contextId: string, ref: StateNodeRef): Promise<string | null> {
+  async #resolveReadableState(contextId: string, ref: StateNodeRef, readableContextIds: readonly string[] = []): Promise<string | null> {
     const local = this.#resolveState(contextId, ref);
     if (local) return local;
+    const { sql } = this.#storage;
+    if (readableContextIds.length > 0) {
+      for (const { head } of this.#contextTips(readableContextIds.filter((id) => id !== contextId))) {
+        const exact = workspaceCommitForRef(sql, head, ref);
+        if (exact) return exact;
+      }
+    }
     const main = await this.#fetchMain();
-    return workspaceCommitForRef(this.#storage.sql, main, ref);
+    return workspaceCommitForRef(sql, main, ref);
   }
 
-  async #requireReadableState(contextId: string, ref: StateNodeRef): Promise<string> {
-    const commit = await this.#resolveReadableState(contextId, ref);
+  async #requireReadableState(
+    contextId: string, ref: StateNodeRef, readableContextIds: readonly string[] = [],
+  ): Promise<string> {
+    const commit = await this.#resolveReadableState(contextId, ref, readableContextIds);
     if (!commit) {
       throw new SemanticVcsError("InvalidReference", "Workspace read names a state outside this workspace context");
     }
