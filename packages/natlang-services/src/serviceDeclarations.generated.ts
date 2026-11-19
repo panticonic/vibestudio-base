@@ -6,6 +6,27 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
+
+type DictationCapture = {
+  ready: boolean;
+  recording: "absent" | "too-short" | "too-large" | "invalid-sample" | "valid";
+  durationMs: number | null;
+  windowed: boolean;
+};
+
+/** Read the assigned recording measurements and live speech worker status. */
+export function inspect(operationId: string): Promise<DictationCapture>;`,
+  dictationTranscription: `/** Transcribe the caller-assigned recording through an already-ready local worker. */
+
+type DictationTranscript = {
+  text: string;
+  language: string;
+  model: "whistle";
+};
+
+/** Transcribe the caller-assigned recording through an already-ready local worker. */
+export function run(operationId: string): Promise<DictationTranscript>;`,
   testSuitePlanRead: `/** Resolve the assigned test-suite declaration. */
 
 type SuiteReviewRuntime = "native" | "workerd" | "browser";

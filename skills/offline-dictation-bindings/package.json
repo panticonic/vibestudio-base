@@ -1,0 +1,12 @@
+{
+  "name": "@workspace-skills/offline-dictation-bindings",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@workspace/runtime": "workspace:*",
+    "@workspace/speech": "workspace:*"
+  }
+}

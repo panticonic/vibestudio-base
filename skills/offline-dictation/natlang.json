@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-offline-dictation",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "reviewDictation.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "dictationCaptureRead": ["reviewDictation.nl"],
+    "dictationTranscription": ["reviewDictation.nl"]
+  }
+}

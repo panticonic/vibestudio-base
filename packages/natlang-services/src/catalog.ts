@@ -56,6 +56,8 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("dictationCaptureRead", "Read the assigned recording measurements and live speech worker status.", "base", "offline-dictation", [{ name: "inspect", params: ["operationId"] }]),
+  authoredService("dictationTranscription", "Transcribe the caller-assigned recording through an already-ready local worker.", "base", "offline-dictation", [{ name: "run", params: ["operationId"] }]),
   authoredService("testSuitePlanRead", "Resolve the assigned test-suite declaration.", "base", "native-suite-review", [{ name: "resolve", params: ["operationId"] }]),
   authoredService("testSuiteVerificationRun", "Verify the exact caller-assigned test plan after live resolution.", "base", "native-suite-review", [{ name: "run", params: ["operationId", "stateHash"] }]),
   authoredService("gitBridgeReviewRead", "Read the assigned Git Bridge upstream and semantic repository state.", "base", "git-bridge-review", [{ name: "observe", params: ["operationId"] }]),

@@ -1,3 +1,5 @@
+import { SPEECH_WINDOW_SAMPLES } from "@workspace/speech";
+
 /** The upstream engine is synchronous and process-global. A worker owns its
  * memory and makes cancellation authoritative: terminate and join that worker. */
 export const engineSource = String.raw`
@@ -26,7 +28,7 @@ const path = require("node:path");
   parentPort.on("message", (audio) => {
     try {
       const output = allocate(65536);
-      const input = allocate(30 * 16000 * 4);
+      const input = allocate(${SPEECH_WINDOW_SAMPLES} * 4);
       const texts = [];
       let language = "";
       const consume = () => {
@@ -41,10 +43,10 @@ const path = require("node:path");
         // Split longer recordings at the quietest 100 ms in its last five seconds.
         let start = 0;
         while (start < audio.length) {
-          let end = Math.min(start + 30 * 16000, audio.length);
+          let end = Math.min(start + ${SPEECH_WINDOW_SAMPLES}, audio.length);
           if (end < audio.length) {
             let quietest = Infinity;
-            for (let candidate = start + 25 * 16000; candidate <= start + 30 * 16000; candidate += 160) {
+            for (let candidate = start + 25 * 16000; candidate <= start + ${SPEECH_WINDOW_SAMPLES}; candidate += 160) {
               let energy = 0;
               for (let i = candidate - 1600; i < candidate; i++) energy += audio[i] ** 2;
               if (energy < quietest) { quietest = energy; end = candidate; }

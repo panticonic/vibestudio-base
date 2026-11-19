@@ -1,6 +1,9 @@
 import { Worker } from "node:worker_threads";
 import {
   SPEECH_MAX_PCM_BYTES,
+  SPEECH_MIN_PCM_SAMPLES,
+  SPEECH_SAMPLE_RATE,
+  type SpeechTranscribeOptions,
   type SpeechRecording,
   type SpeechEvent,
 } from "@workspace/speech";
@@ -14,14 +17,14 @@ export function decodeRecording(
   if (
     !recording ||
     recording.format !== "pcm_f32le" ||
-    recording.sampleRate !== 16000 ||
+    recording.sampleRate !== SPEECH_SAMPLE_RATE ||
     typeof recording.audio !== "string" ||
     recording.audio.length > Math.ceil(SPEECH_MAX_PCM_BYTES / 3) * 4
   )
     throw new Error("Expected mono 16 kHz float32 PCM, up to 4 MiB");
   const bytes = Buffer.from(recording.audio, "base64");
   if (
-    bytes.length < 640 ||
+    bytes.length < SPEECH_MIN_PCM_SAMPLES * Float32Array.BYTES_PER_ELEMENT ||
     bytes.length % 4 ||
     bytes.length > SPEECH_MAX_PCM_BYTES
   )
@@ -101,12 +104,15 @@ export class SpeechRuntime {
     signal: AbortSignal,
     emit: (event: SpeechEvent) => void,
     action: () => Promise<void>,
+    requireReady = false,
   ) {
     let started = false;
     const work = this.tail.then(async () => {
       started = true;
       signal.throwIfAborted();
       if (this.stopped) throw new Error("Speech extension has stopped");
+      if (requireReady && !this.ready)
+        throw new Error("Prepare the local speech worker before transcribing");
       const controller = new AbortController();
       const cancellation = AbortSignal.any([signal, controller.signal]);
       this.active = controller;
@@ -156,16 +162,22 @@ export class SpeechRuntime {
     recording: SpeechRecording,
     signal: AbortSignal,
     emit: (event: SpeechEvent) => void,
+    options?: SpeechTranscribeOptions,
   ) {
     signal.throwIfAborted();
     const audio = decodeRecording(recording);
-    return this.run(signal, emit, async () => {
-      const done = new Promise<void>((resolve, reject) => {
-        this.pending = { resolve, reject };
-      });
-      this.worker!.postMessage(audio, [audio.buffer]);
-      await done;
-    });
+    return this.run(
+      signal,
+      emit,
+      async () => {
+        const done = new Promise<void>((resolve, reject) => {
+          this.pending = { resolve, reject };
+        });
+        this.worker!.postMessage(audio, [audio.buffer]);
+        await done;
+      },
+      options?.requireReady,
+    );
   }
   async stop() {
     this.stopped = true;

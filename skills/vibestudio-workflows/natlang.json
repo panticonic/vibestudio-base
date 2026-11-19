@@ -23,6 +23,7 @@
     "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
     "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",
     "runWorkflow/domains/examples": "skills/examples-review",
+    "runWorkflow/domains/dictation": "skills/offline-dictation",
     "runWorkflow/domains/extensionDevelopment": "skills/extensiondev/natlang",
     "runWorkflow/domains/gad": "skills/gad-context/natlang",
     "runWorkflow/domains/gitBridge": "skills/git-bridge-review",
