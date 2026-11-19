@@ -32,6 +32,7 @@ import type {
   VcsNeighborsInput,
   VcsReadFilesInput,
   VcsReadMemoryInput,
+  VcsQueryInput,
   VcsResolveRepositoryInput,
   VcsRevertInput,
   VcsSearchInput,
@@ -40,7 +41,7 @@ import type {
   VcsWalkInput,
 } from "@vibestudio/service-schemas/vcs";
 import { vcsBlameResultSchema, vcsExternalSnapshotSchema, vcsStateNodeRefSchema } from "@vibestudio/service-schemas/vcs";
-import type { HistorySearchCause, HistoryWalkCohort, HistoryWalkInvocation } from "@vibestudio/service-schemas/workspaceSource";
+import type { HistoryQueryBasis, HistoryQueryTrajectory, HistorySearchCause, HistoryWalkCohort, HistoryWalkInvocation } from "@vibestudio/service-schemas/workspaceSource";
 import { serializeByKey } from "@vibestudio/shared/keyedSerializer";
 import { compactId, resolveIntent, type StateNodeRef } from "@workspace/vcs-engine";
 import {
@@ -68,6 +69,7 @@ import { readInvertedCounteractionMappings } from "./contentBlame.js";
 import { workspaceRevertBasisAt } from "./doltWorkspaceRevert.js";
 import { workspaceReferenceAt } from "./doltWorkspaceReferences.js";
 import { workspaceCauseWalkAt, workspaceCohortSeedAt, workspaceCohortWalk, workspaceRejectionsWalk } from "./doltWorkspaceWalk.js";
+import { queryUsesTrajectories, queryWorkspaceHistory } from "./doltWorkspaceQuery.js";
 import { workspaceReadMemoryAt } from "./doltWorkspaceMemory.js";
 import { historySearchCausesAt, searchHistoryProse } from "./doltWorkspaceSearch.js";
 import { inspectWorkspaceProvenance, workspaceEventHistory, workspaceFileHistory, workspaceProvenanceNeighbors } from "./doltWorkspaceProvenance.js";
@@ -570,6 +572,22 @@ export class ParticipantHistory {
 
   walkCohort(input: VcsWalkInput, revisions: string[], seed: HistoryWalkCohort, invocations: HistoryWalkInvocation[]) {
     return this.#run(() => workspaceCohortWalk(this.#storage.sql, revisions, input, seed, invocations));
+  }
+
+  queryBasis(input: VcsQueryInput, protectedEventId: string): Promise<HistoryQueryBasis> {
+    return this.#run(async () => {
+      const revisions = await this.#admittedHistoryRevisions(input, protectedEventId);
+      return {
+        revisions, state: this.#stateAt(revisions[0]!).state,
+        needsTrajectory: queryUsesTrajectories(input),
+      };
+    });
+  }
+
+  query(input: VcsQueryInput, basis: HistoryQueryBasis, trajectory: HistoryQueryTrajectory) {
+    return this.#run(() => queryWorkspaceHistory(
+      this.#storage.sql, this.#dolt, input, basis.state, basis.revisions, trajectory,
+    ));
   }
 
   searchCausesAt(revision: string, after: HistorySearchCause | null) {

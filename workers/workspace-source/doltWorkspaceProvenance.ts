@@ -60,7 +60,7 @@ function stateAt(sql: SqlStorage, revision: string): StateNodeRef | null {
   return workspaceCommitForRef(sql, revision, application) === revision ? application : null;
 }
 
-function eventLineageAt(sql: SqlStorage, revision: string) {
+export function eventLineageAt(sql: SqlStorage, revision: string) {
   const [first, second, extra] = parentsAt(sql, revision);
   if (!first || extra) throw new SemanticVcsError("IntegrityFailure", "Workspace event has invalid native parents");
   const previous = committedWorkspaceEvent(sql, first);
@@ -101,14 +101,19 @@ function inspectEvent(sql: SqlStorage, revision: string, workspaceId: string, ev
   });
 }
 
+export function workspaceApplicationBasis(sql: SqlStorage, revision: string) {
+  const [parent] = parentsAt(sql, revision);
+  const basis = parent ? stateAt(sql, parent) : null;
+  if (!basis) throw new SemanticVcsError("IntegrityFailure", "Workspace application has no exact native basis");
+  return basis;
+}
+
 function inspectApplication(sql: SqlStorage, revision: string, applicationId: string) {
   const row = sql.exec(
     "SELECT * FROM dolt_at_applications(?) WHERE application_id = ?", revision, applicationId,
   ).toArray()[0];
   if (!row) throw new SemanticVcsError("InvalidReference", "Unknown workspace application");
-  const [parent] = parentsAt(sql, revision);
-  const basis = parent ? stateAt(sql, parent) : null;
-  if (!basis) throw new SemanticVcsError("IntegrityFailure", "Workspace application has no exact native basis");
+  const basis = workspaceApplicationBasis(sql, revision);
   const appliedChanges = readAppliedChanges(sql, revision, "application_id", applicationId, 200);
   const count = sql.exec(
     "SELECT COUNT(*) AS count FROM dolt_at_gad_applied_changes(?) WHERE application_id = ?", revision, applicationId,

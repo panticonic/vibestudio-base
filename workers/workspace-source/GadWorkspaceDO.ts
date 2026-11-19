@@ -8,6 +8,9 @@ import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
   HistoryTrajectorySearchInputSchema,
+  HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
+  HistoryQueryCausesSchema,
+  HistoryQueryTrajectorySchema,
   HistoryWalkCohortSchema,
   type HistoryWalkCohort,
   PrivateLineageForPublishedEnvelopeSchema,
@@ -1911,6 +1914,69 @@ export class GadWorkspaceDO extends DurableObjectBase {
   })
   readHistoryMemoryCause(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
     return this.semanticWorkspace().readHistoryMemoryCause(vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Trajectory query evidence is limited to native command coordinates selected by the host." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryQueryTrajectory(input: ReturnType<typeof HistoryQueryCausesSchema.parse>) {
+    const causes = HistoryQueryCausesSchema.parse(input);
+    const rows = this.sql.exec(
+      `WITH causes AS MATERIALIZED (
+         SELECT json_extract(value, '$[0]') AS log_id, json_extract(value, '$[1]') AS head,
+                json_extract(value, '$[2]') AS invocation_id FROM json_each(?1)
+       ), invocations AS MATERIALIZED (
+         SELECT invocation.log_id, invocation.head, invocation.invocation_id, invocation.turn_id,
+                invocation.status, invocation.terminal_outcome, input.input_log_id, input.input_head, input.input_message_id
+           FROM causes JOIN trajectory_invocations invocation USING (log_id, head, invocation_id)
+           LEFT JOIN trajectory_invocation_inputs input
+             ON input.log_id = invocation.log_id AND input.head = invocation.head
+            AND input.invocation_id = invocation.invocation_id
+       ), turns AS MATERIALIZED (
+         SELECT DISTINCT turn.log_id, turn.head, turn.turn_id, turn.ordinal,
+                         turn.trigger_message_id, substr(turn.summary, 1, 2000) AS summary
+           FROM invocations JOIN trajectory_turns turn USING (log_id, head, turn_id)
+       ), message_keys AS (
+         SELECT message.log_id, message.head, message.message_id FROM turns
+           JOIN trajectory_messages message USING (log_id, head, turn_id)
+         UNION
+         SELECT input_log_id, input_head, input_message_id FROM invocations WHERE input_message_id IS NOT NULL
+       )
+       SELECT 'invocations' AS relation,
+              json_array(log_id, head, invocation_id, turn_id, status, terminal_outcome,
+                         input_log_id, input_head, input_message_id) AS row_json
+         FROM invocations
+       UNION ALL
+       SELECT 'turns', json_array(log_id, head, turn_id, ordinal, trigger_message_id, summary) FROM turns
+       UNION ALL
+       SELECT 'messages', json_array(message.log_id, message.head, message.message_id,
+               message.turn_id, message.role,
+               coalesce(json_extract(event.payload_ref_json, '$.senderRef.kind'), json_extract(event.actor_json, '$.kind')),
+               coalesce(json_extract(event.payload_ref_json, '$.senderRef.id'), json_extract(event.actor_json, '$.id')),
+               json_extract(event.payload_ref_json, '$.sourceMessageId'),
+               substr(coalesce(json_extract(event.payload_ref_json, '$.blocks[0].content'), ''), 1, 400),
+               length(coalesce(json_extract(event.payload_ref_json, '$.blocks[0].content'), '')))
+         FROM message_keys JOIN trajectory_messages message USING (log_id, head, message_id)
+         LEFT JOIN log_events event ON event.log_id = message.log_id AND event.head = message.head
+           AND event.envelope_id = coalesce(message.completed_event_id, message.started_event_id)
+       LIMIT ?2`,
+      JSON.stringify(causes), HISTORY_QUERY_TRAJECTORY_ROW_LIMIT + 1,
+    ).toArray();
+    const result: ReturnType<typeof HistoryQueryTrajectorySchema.parse> = {
+      invocations: [], turns: [], messages: [], truncated: rows.length > HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
+    };
+    if (!result.truncated) {
+      for (const { relation, row_json } of rows) {
+        if ((relation !== "invocations" && relation !== "turns" && relation !== "messages") || typeof row_json !== "string")
+          throw new Error("Workspace trajectory query has an invalid projection");
+        result[relation].push(JSON.parse(row_json));
+      }
+    }
+    return HistoryQueryTrajectorySchema.parse(result);
   }
 
   @rpc({

@@ -19,6 +19,8 @@ import {
   vcsMoveInputSchema,
   vcsNeighborsInputSchema,
   vcsReadFilesInputSchema,
+  vcsQueryInputSchema,
+  type VcsQueryInput,
   vcsReadMemoryInputSchema,
   vcsRevertInputSchema,
   vcsResolveRepositoryInputSchema,
@@ -84,7 +86,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
-import { HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
+import { HistoryQueryRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -598,6 +600,17 @@ export class GadHistoryDO extends DurableObjectBase {
   readHistoryWalkCohort(input: ReturnType<typeof HistoryWalkCohortRequestSchema.parse>) {
     const { walk, revisions, seed, invocations } = HistoryWalkCohortRequestSchema.parse(input);
     return this.#history().walkCohort(walk, revisions, seed, invocations);
+  }
+
+  @rpc(hostRead)
+  readHistoryQueryBasis(input: { query: VcsQueryInput; protectedEventId: string }) {
+    return this.#history().queryBasis(vcsQueryInputSchema.parse(input.query), input.protectedEventId);
+  }
+
+  @rpc(hostRead)
+  readHistoryQuery(input: ReturnType<typeof HistoryQueryRequestSchema.parse>) {
+    const { query, basis, trajectory } = HistoryQueryRequestSchema.parse(input);
+    return this.#history().query(query, basis, trajectory);
   }
 
   @rpc(hostRead)
