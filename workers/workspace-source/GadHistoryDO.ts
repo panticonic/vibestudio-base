@@ -101,6 +101,7 @@ const canonicalId = `do:${source}:${className}:${canonicalKey}`;
 type StoredHistoryApproval = { approval: HistoryPublicationApproval; expiresAt: number };
 type IncomingHistoryPublication = MainPublication & { publicationId: string; sourceNodeId: string };
 const incomingPublicationPrefix = "incoming/";
+const incomingApprovalPrefix = "chronolog-publication:";
 const digest = /^[0-9a-f]{64}$/u;
 const commitHash = /^[0-9a-f]{40}$/u;
 
@@ -1158,6 +1159,13 @@ export class GadHistoryDO extends DurableObjectBase {
   stageIncomingHistory(input: IncomingHistoryPublication) {
     this.#assertCanonical();
     const branch = incomingBranch(input);
+    const completed = this.getStateValue(`history-completed:${input.publicationId}`);
+    if (completed !== null) {
+      const transition = JSON.parse(completed) as MainPublication;
+      if (transition.previousHead !== input.previousHead || transition.proposedHead !== input.proposedHead)
+        throw new Error("Incoming workspace publication names a different completed transition");
+      return { kind: "applied" as const, head: transition.proposedHead };
+    }
     const dolt = this.#remotes();
     const main = this.readHistoryMain();
     if (main.head === input.proposedHead) return { kind: "applied" as const, head: main.head };
@@ -1251,7 +1259,7 @@ export class GadHistoryDO extends DurableObjectBase {
       throw new Error("Incoming workspace history has no verified Chronolog publisher");
     const { main, event } = this.#incomingHistoryHead(input);
     return {
-      publicationId: `chronolog-publication:${input.publicationId}`,
+      publicationId: incomingApprovalPrefix + input.publicationId,
       participantId: `chronolog:${input.group}:${input.publisher}`,
       previousEventId: main.eventId,
       proposedEventId: event.eventId,
@@ -1276,7 +1284,7 @@ export class GadHistoryDO extends DurableObjectBase {
   publishIncomingHistory(input: IncomingHistoryPublication & { group: string; publisher: string }) {
     this.#assertCanonical();
     const branch = incomingBranch(input);
-    const id = `chronolog-publication:${input.publicationId}`;
+    const id = incomingApprovalPrefix + input.publicationId;
     const recorded = this.#storedApproval(id);
     if (!recorded) throw new Error("Incoming workspace history requires durable approval");
     if (recorded.approval.publication.previousHead !== input.previousHead ||
@@ -1336,7 +1344,13 @@ export class GadHistoryDO extends DurableObjectBase {
     if (!this.#publishedApproval(receipt.approval)) {
       throw new Error("Workspace publication has no applied revision");
     }
-    this.deleteStateValue(this.#approvalKey(input.publicationId));
+    this.ctx.storage.transactionSync(() => {
+      if (input.publicationId.startsWith(incomingApprovalPrefix)) {
+        const received = input.publicationId.slice(incomingApprovalPrefix.length);
+        this.setStateValue(`history-completed:${received}`, canonicalJson(receipt.approval.publication));
+      }
+      this.deleteStateValue(this.#approvalKey(input.publicationId));
+    });
   }
 
   @rpc(hostWrite)
