@@ -144,6 +144,11 @@ when you cannot infer them from the workspace or the connected account.
 Vercel and branch deployments default to preview. Promoting to production is a
 new reviewed operation on the same immutable artifact.
 
+Use the shared Natlang [publication revision review](../publish-preflight/reviewPublicationRevision.nl)
+to compare a retained package review with a new exact source or destination.
+The workflow cites the public file changes and checks whether that review
+still applies.
+
 ## Recovery
 
 The Host journal records each operation's completed phase: `prepared`,

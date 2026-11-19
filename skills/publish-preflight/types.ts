@@ -60,3 +60,45 @@ export type PublishPreflightReport = {
   evidence: string[];
   visual: PublishVisual;
 };
+
+export type PublicationRevisionRequest = { goal: string; operationId: string };
+
+export type PublicRevisionFile = {
+  path: string;
+  digest: string;
+  bytes: number;
+};
+
+export type PublicationRevisionPackage = {
+  sourceHash: string;
+  artifactDigest: string;
+  entry: string;
+  intent: PublishIntent;
+  files: PublicRevisionFile[];
+};
+
+export type PublicationRevisionComparison = {
+  source: string;
+  reviewed: PublicationRevisionPackage;
+  candidate: PublicationRevisionPackage;
+  change: {
+    added: PublicRevisionFile[];
+    removed: PublicRevisionFile[];
+    modified: { before: PublicRevisionFile; after: PublicRevisionFile }[];
+  };
+};
+
+export type PublicationRevisionImpact = {
+  entryChanged: boolean;
+  htmlChanged: boolean;
+  manifestChanged: boolean;
+  affectedPaths: string[];
+};
+
+export type PublicationRevisionReport = {
+  comparison: PublicationRevisionComparison;
+  match: "same-target" | "different-target";
+  impact: PublicationRevisionImpact;
+  decision: "keep-review" | "review-public-change" | "review-target";
+  reason: string;
+};

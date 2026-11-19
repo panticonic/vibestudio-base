@@ -63,5 +63,41 @@ type PublishPreflightReport = {
   evidence: string[];
   visual: PublishVisual;
 };
+type PublicationRevisionRequest = { goal: string; operationId: string };
+type PublicRevisionFile = {
+  path: string;
+  digest: string;
+  bytes: number;
+};
+type PublicationRevisionPackage = {
+  sourceHash: string;
+  artifactDigest: string;
+  entry: string;
+  intent: PublishIntent;
+  files: PublicRevisionFile[];
+};
+type PublicationRevisionComparison = {
+  source: string;
+  reviewed: PublicationRevisionPackage;
+  candidate: PublicationRevisionPackage;
+  change: {
+    added: PublicRevisionFile[];
+    removed: PublicRevisionFile[];
+    modified: { before: PublicRevisionFile; after: PublicRevisionFile }[];
+  };
+};
+type PublicationRevisionImpact = {
+  entryChanged: boolean;
+  htmlChanged: boolean;
+  manifestChanged: boolean;
+  affectedPaths: string[];
+};
+type PublicationRevisionReport = {
+  comparison: PublicationRevisionComparison;
+  match: "same-target" | "different-target";
+  impact: PublicationRevisionImpact;
+  decision: "keep-review" | "review-public-change" | "review-target";
+  reason: string;
+};
 declare const fn: NatlangFunction<[request: PublishPreflightRequest], PublishPreflightReport> & { readonly chooseReviewVisual: NatlangFunction<[request: PublishPreflightRequest, blockers: PublishBlocker[], receipt: PublicationObservation | null], PublishVisual>; readonly reviewArtifact: NatlangFunction<[artifact: WebsiteArtifactObservation], PreflightReview> & { readonly checkPublicFiles: NatlangFunction<[artifact: WebsiteArtifactObservation], PreflightReview> }; readonly reviewPresentation: NatlangFunction<[request: PublishPreflightRequest, presentation: PresentationObservation], PreflightReview> & { readonly assessPublicLabels: NatlangFunction<[audience: string, presentation: PresentationObservation], PreflightReview> }; readonly reviewPublication: NatlangFunction<[request: PublishPreflightRequest, receipt: PublicationObservation | null], PreflightReview> & { readonly readProgress: NatlangFunction<[receipt: PublicationObservation], PreflightReview> } };
 export default fn;

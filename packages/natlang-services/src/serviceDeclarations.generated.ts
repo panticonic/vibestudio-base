@@ -6,6 +6,43 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  publicationRevision: `/** Compare caller-assigned immutable website packages and targets. */
+
+type PublishEnvironment = "preview" | "production";
+
+type PublishIntent = {
+  provider: string;
+  destination: string;
+  environment: PublishEnvironment;
+};
+
+type PublicRevisionFile = {
+  path: string;
+  digest: string;
+  bytes: number;
+};
+
+type PublicationRevisionPackage = {
+  sourceHash: string;
+  artifactDigest: string;
+  entry: string;
+  intent: PublishIntent;
+  files: PublicRevisionFile[];
+};
+
+type PublicationRevisionComparison = {
+  source: string;
+  reviewed: PublicationRevisionPackage;
+  candidate: PublicationRevisionPackage;
+  change: {
+    added: PublicRevisionFile[];
+    removed: PublicRevisionFile[];
+    modified: { before: PublicRevisionFile; after: PublicRevisionFile }[];
+  };
+};
+
+/** Compare caller-assigned immutable website packages and targets. */
+export function compare(operationId: string): Promise<PublicationRevisionComparison>;`,
   transcriptCursor: `/** Recover one caller-assigned channel transcript snapshot. */
 
 type TranscriptCursor = { channelId: string; seq: number };
