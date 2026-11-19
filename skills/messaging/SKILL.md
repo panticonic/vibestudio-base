@@ -29,6 +29,11 @@ notify({
 })
 ```
 
+The [Natlang routing workflow](../vibestudio-workflows/runWorkflow/routeMessage.nl)
+uses a caller-owned local channel. It reads the canonical roster, resolves the
+intended recipient, then composes and verifies the addressed note or returns a
+clarification.
+
 ## Who you can address
 
 `to` takes one ref or a list. Omitting it addresses the whole channel.

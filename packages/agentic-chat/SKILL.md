@@ -74,6 +74,10 @@ together. Elide it only when the product provides equivalent delivery and error
 feedback. Connection failures and dirty-repository warnings are rendered
 outside it, because they are safety warnings.
 
+For an assigned conversation, the [Natlang delivery-history review](../../skills/conversation-evidence-review/reviewDeliveryHistory.nl)
+compares a native receipt and durable log row with the reconstructed consumer
+view.
+
 ## Verification
 
 Test capability selection separately from presentation. At minimum, cover that:

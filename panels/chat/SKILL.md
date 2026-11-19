@@ -47,6 +47,10 @@ Where other changes go:
   with the panel runtime and renders its snapshot.
 - Agent execution behavior: `packages/agentic-do` or `workers/agent-worker`.
 
+The [Natlang conversation reviewer](../../skills/conversation-evidence-review/reviewConversation.nl)
+can assess supplied panel evidence for the exact context, recorded opening
+turn, terminal event, observed effect, and cleanup.
+
 ## Verification
 
 1. Run the focused tests in `packages/agentic-core/src/chat-store/host`
