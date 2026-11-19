@@ -131,6 +131,62 @@ export function resolve(operationId: string, intent: IconIntent): Promise<UnitId
 
 /** Read and prepare the caller-assigned workspace icon. */
 export function stage(operationId: string, revision: string, authoringId: string): Promise<UnitIdentityChange>;`,
+  gmailComposeAudit: `/** Project typed review evidence for the assigned Gmail compose receipt. */
+
+type ComposeAuditKind = "draft" | "reconcile";
+
+type GmailScope = {
+  target: { id: string; channelId: string; accountRef: string };
+  observed: {
+    id: string;
+    channelId: string;
+    accountRef: string;
+    binding: "native-original" | "native-mismatch" | "channel-readback";
+  };
+};
+
+type GmailTask = { goal: string; scope: GmailScope };
+
+type GmailCompose = GmailTask & {
+  kind: "compose";
+  card: {
+    id: string;
+    messageId: string;
+    requestedMessageId: string;
+    ownedByChannel: boolean;
+    state:
+      | "drafting"
+      | "review"
+      | "saved"
+      | "sending"
+      | "delivery-unknown"
+      | "sent";
+    hasRecipient: boolean;
+    alias: "default" | "configured" | "unknown";
+  };
+  readback:
+    | {
+        kind: "draft";
+        id: string;
+        origin: "gmail-agent" | "participant" | "channel-readback";
+        beforeDraft: string | null;
+        afterDraft: string | null;
+      }
+    | {
+        kind: "authorization";
+        id: string;
+        actor: "gmail-agent" | "user" | "participant";
+        authority: "explicit-user-instruction" | "user-send-click" | "none";
+      }
+    | {
+        kind: "reconcile";
+        id: string;
+        providerProof: "sent-matched" | "no-match" | "not-checked";
+      };
+};
+
+/** Project typed review evidence for the assigned Gmail compose receipt. */
+export function project(operationId: string, kind: ComposeAuditKind): Promise<GmailCompose>;`,
   gmailComposeHistory: `/** Read native channel history for one assigned Gmail compose card. */
 
 type ComposeHistoryState = {
