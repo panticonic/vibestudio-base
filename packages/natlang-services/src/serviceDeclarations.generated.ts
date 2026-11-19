@@ -6,6 +6,30 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  gmailComposeHistory: `/** Read native channel history for one assigned Gmail compose card. */
+
+type ComposeHistoryState = {
+  status: "drafting" | "review" | "saving" | "saved" | "sending" | "delivery-unknown" | "sent" | "discarding" | "discarded" | "error";
+  recipientPresent: boolean;
+  alias: "default" | "configured" | "unknown";
+  draftId: string | null;
+  mimeIdentity: boolean;
+  sentIdentity: boolean;
+};
+
+type ComposeHistoryReceipt = {
+  channelId: string;
+  messageId: string;
+  events: {
+    id: string;
+    seq: number;
+    state: ComposeHistoryState;
+    event: "start" | "update" | "failed-update";
+  }[];
+};
+
+/** Read native channel history for one assigned Gmail compose card. */
+export function read(operationId: string): Promise<ComposeHistoryReceipt>;`,
   explorerTextProbe: `/** Plan and run an assigned workspace text probe. */
 
 type TextProbeInput = {

@@ -56,6 +56,7 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("gmailComposeHistory", "Read native channel history for one assigned Gmail compose card.", "google-workspace", "gmail-workflow-review", [{ name: "read", params: ["operationId"] }]),
   authoredService("explorerTextProbe", "Plan and run an assigned workspace text probe.", "personal", "explorer-probe", [{ name: "input", params: ["operationId"] }, { name: "run", params: ["operationId", "plan"] }]),
   authoredService("tourRehearsal", "Navigate and verify a caller-assigned tour panel.", "personal", "tour-rehearsal", [{ name: "observe", params: ["operationId"] }, { name: "visit", params: ["operationId", "scene", "notes"] }, { name: "restore", params: ["operationId"] }]),
   authoredService("buildPerformance", "Profile the caller-assigned workspace unit through the native build service.", "system", "performance/build", [{ name: "observe", params: ["operationId"] }]),
