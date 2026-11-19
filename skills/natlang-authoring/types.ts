@@ -18,6 +18,7 @@ export type CompiledProgram = {
   state: "compiled";
   functions: AuthoredFunction[];
   services: string[];
+  serviceScopes: Record<string, string[]>;
 };
 export type RejectedProgram = {
   role: ProgramRole;
@@ -30,6 +31,7 @@ export type AuthoringContract = {
   expectedParameters: string[] | null;
   expectedReturn: string | null;
   declaredServices: string[] | null;
+  expectedServiceScopes?: Record<string, string[] | null>;
   requiredHelpers: string[];
   preserveBaseline: boolean;
 };
@@ -46,6 +48,7 @@ export type AuthoringFinding = {
     | "return-change"
     | "missing-service"
     | "unexpected-service"
+    | "service-scope-change"
     | "missing-helper";
   subject: string;
   observed: string;

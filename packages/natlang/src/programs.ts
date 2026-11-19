@@ -316,6 +316,6 @@ export class ProgramLoader {
    */
   async describe(specifier: string): Promise<ProgramDescription> {
     const { root, program } = await this.compiledProgram(specifier);
-    return describeProgram(program.value, root, program.services);
+    return describeProgram(program.value, root, program.services, program.serviceScopes);
   }
 }

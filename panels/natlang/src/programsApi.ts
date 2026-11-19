@@ -183,7 +183,7 @@ export function programsApi(
         ),
       ]);
       let problem: string | null = null;
-      let described: ProgramDescription = { root: directory, services: [], functions: [] };
+      let described: ProgramDescription = { root: directory, services: [], serviceScopes: {}, functions: [] };
       try {
         described = await describe(directory);
       } catch (error) {

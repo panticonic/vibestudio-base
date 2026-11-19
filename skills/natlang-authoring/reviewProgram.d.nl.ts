@@ -22,6 +22,7 @@ type CompiledProgram = {
   state: "compiled";
   functions: AuthoredFunction[];
   services: string[];
+  serviceScopes: Record<string, string[]>;
 };
 type RejectedProgram = {
   role: ProgramRole;
@@ -34,6 +35,7 @@ type AuthoringContract = {
   expectedParameters: string[] | null;
   expectedReturn: string | null;
   declaredServices: string[] | null;
+  expectedServiceScopes?: Record<string, string[] | null>;
   requiredHelpers: string[];
   preserveBaseline: boolean;
 };
@@ -50,6 +52,7 @@ type AuthoringFinding = {
     | "return-change"
     | "missing-service"
     | "unexpected-service"
+    | "service-scope-change"
     | "missing-helper";
   subject: string;
   observed: string;
@@ -65,5 +68,5 @@ type AuthoringReport = {
   baselineRevision: string | null;
   findings: AuthoringFinding[];
 };
-declare const fn: NatlangFunction<[request: AuthoringRequest], AuthoringReport> & { readonly inspectRevisions: NatlangFunction<[compare: boolean], {candidate: ProgramReadback; baseline: ProgramReadback | null}> & { readonly readAssignedProgram: NatlangFunction<[role: ProgramRole], ProgramReadback> }; readonly reviewContract: NatlangFunction<[contract: AuthoringContract, candidate: CompiledProgram, baseline: CompiledProgram | null], AuthoringFinding[]> & { readonly checkServices: NatlangFunction<[contract: AuthoringContract, candidate: string[], baseline: string[]], AuthoringFinding[]>; readonly checkSignature: NatlangFunction<[contract: AuthoringContract, candidate: AuthoredFunction[], baseline: AuthoredFunction[]], AuthoringFinding[]>; readonly checkTopology: NatlangFunction<[required: string[], functions: AuthoredFunction[]], AuthoringFinding[]> }; readonly triageCompiler: NatlangFunction<[diagnostics: CompilerIssue[]], AuthoringFinding> & { readonly prioritizeDiagnostic: NatlangFunction<[diagnostics: CompilerIssue[]], CompilerIssue> } };
+declare const fn: NatlangFunction<[request: AuthoringRequest], AuthoringReport> & { readonly inspectRevisions: NatlangFunction<[compare: boolean], {candidate: ProgramReadback; baseline: ProgramReadback | null}> & { readonly readAssignedProgram: NatlangFunction<[role: ProgramRole], ProgramReadback> }; readonly reviewContract: NatlangFunction<[contract: AuthoringContract, candidate: CompiledProgram, baseline: CompiledProgram | null], AuthoringFinding[]> & { readonly checkAuthority: NatlangFunction<[contract: AuthoringContract, candidate: CompiledProgram, baseline: CompiledProgram | null], AuthoringFinding[]> & { readonly checkServices: NatlangFunction<[contract: AuthoringContract, candidate: string[], baseline: string[]], AuthoringFinding[]>; readonly compareSelectors: NatlangFunction<[service: string, expected: string[] | null, candidate: string[] | null], AuthoringFinding[]> }; readonly checkSignature: NatlangFunction<[contract: AuthoringContract, candidate: AuthoredFunction[], baseline: AuthoredFunction[]], AuthoringFinding[]>; readonly checkTopology: NatlangFunction<[required: string[], functions: AuthoredFunction[]], AuthoringFinding[]> }; readonly triageCompiler: NatlangFunction<[diagnostics: CompilerIssue[]], AuthoringFinding> & { readonly prioritizeDiagnostic: NatlangFunction<[diagnostics: CompilerIssue[]], CompilerIssue> } };
 export default fn;

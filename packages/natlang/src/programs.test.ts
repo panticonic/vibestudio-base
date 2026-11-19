@@ -391,6 +391,8 @@ it("links installed workspace modules as typed callable subtrees in the same tas
     platform: deployed, fs, bindings: {},
     runTask: (run, task) => runtime.run(run, task),
   });
+  const described = await loader.describe("skills/support-program");
+  expect(described.serviceScopes).toEqual({ panelRepairEdit: ["inspect.nl"] });
   const edits: string[] = [];
   const run = await loader.load("skills/hub/brief.nl", { services: {
     panelRepairEdit: {

@@ -19,7 +19,7 @@ authoritative summary in a live cell. If this skill disagrees with them or with 
 
 | Step | In an eval cell | What it does |
 |---|---|---|
-| Check | `await natlang.describe("skills/x")` | Compiles the program the way `load` does (types, `nl` signatures, callable-folder scope and loop policy, declared services) and returns its functions with typed signatures. A program that does not compile fails with `path:line:column` diagnostics. Nothing runs. |
+| Check | `await natlang.describe("skills/x")` | Compiles the program the way `load` does (types, `nl` signatures, callable-folder scope and loop policy, declared services) and returns its functions with typed signatures and the validated service scope selectors. A program that does not compile fails with `path:line:column` diagnostics. Nothing runs. |
 | Call | `const judge = await natlang.load("skills/x/judge.nl"); await judge(note)` | One real call. A folder loads as a record of callables. |
 | Read | `await natlang.trace(callId)` | What the model did: inputs, each turn's actions and results, child calls, the scope it ended with, why it ended. `{ raw: true }` for the full record. |
 | Navigate | `await natlang.calls({ parentCallId })` | A call's children; `{ run }` a run's calls. |
@@ -32,7 +32,7 @@ on the local CPU model: check first, then call deliberately.
 Use the shared `domains.natlangAuthoring.reviewProgram` workflow for a candidate
 with an existing interface contract or an assigned baseline. Its
 `authoringCompiler` binding supplies the exact program revisions and compiler
-readbacks. The review covers the entry signature, declared services, and
+readbacks. The review covers the entry signature, declared services, service scope selectors, and
 required helper paths. A rejected snapshot keeps the compiler's source
 location so the next edit can address that specific diagnostic.
 
