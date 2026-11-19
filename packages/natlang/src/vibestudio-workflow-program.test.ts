@@ -315,7 +315,12 @@ it("describes the typed workflows in the installed template domains", async () =
     ],
     [
       join(templateRoot, "personal"),
-      ["runPersonalWorkflow", "reviewPersonalFacility"],
+      [
+        "runPersonalWorkflow",
+        "reviewPersonalFacility",
+        "recallDecision",
+        "compareDecisionRevisions",
+      ],
     ],
     [join(templateRoot, "system"), ["investigateSystem", "prepareLocalModel"]],
     [
