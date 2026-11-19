@@ -300,7 +300,19 @@ export function grantApprovedMain(
   peer?: string,
   expiresAt = Date.now() + APPROVED_MAIN_GRANT_LIFETIME_MS,
 ): DoltGrant {
-  const actual = canonical.hashOf("main");
+  return grantExactHistoryTransition(canonical, "main", publication, expiresAt, peer);
+}
+
+/** Scope a remote grant to one branch, sender, and exact pair of heads. */
+export function grantExactHistoryTransition(
+  canonical: DoltRemoteStorage,
+  branch: string,
+  publication: MainPublication,
+  expiresAt: number,
+  peer?: string,
+  label?: string,
+): DoltGrant {
+  const actual = canonical.hashOf(branch);
   if (actual !== publication.previousHead) {
     throw new HistoryHeadChanged(publication.previousHead, actual);
   }
@@ -309,8 +321,9 @@ export function grantApprovedMain(
     next: publication.proposedHead,
   };
   const grant = canonical.remote.grant({
-    push: ["main"],
+    push: [branch],
     pushTransition,
+    ...(label === undefined ? {} : { label }),
     expiresAt,
     ...(peer === undefined ? {} : { peer }),
   });
