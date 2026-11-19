@@ -34,6 +34,7 @@
     "runWorkflow/domains/problems": "skills/problem-reporting/natlang",
     "runWorkflow/domains/provenance": "skills/provenance-orientation",
     "runWorkflow/domains/publication": "skills/publish-preflight",
+    "runWorkflow/domains/remoteAccess": "skills/remote-access",
     "runWorkflow/domains/research": "skills/research-intake",
     "runWorkflow/domains/runtimeEvidence": "skills/runtime-evidence-review",
     "runWorkflow/domains/scratchHandoff": "skills/scratch-handoff",

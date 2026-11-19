@@ -26,7 +26,9 @@ export type ContractOrigin =
   /** A zod method table exported from `packages/service-schemas/src/<module>.ts` in the host. */
   | { readonly origin: "host"; readonly module: string; readonly table: string }
   /** A zod method table exported from a file of this Base template. */
-  | { readonly origin: "base"; readonly file: string; readonly table: string };
+  | { readonly origin: "base"; readonly file: string; readonly table: string }
+  /** A caller-supplied service declared by its owning workflow. */
+  | { readonly origin: "authored"; readonly template: string; readonly file: string };
 
 export interface ServiceCatalogEntry {
   readonly name: string;
@@ -38,7 +40,49 @@ export interface ServiceCatalogEntry {
 
 const scopedAgentFile = "packages/natlang-services/src/scopedAgentContracts.ts";
 
+function authoredService<const Name extends string>(
+  name: Name,
+  summary: string,
+  template: string,
+  skill: string,
+  methods: readonly DeclaredMethod[]
+) {
+  return {
+    name,
+    summary,
+    contract: { origin: "authored", template, file: `skills/${skill}/services.d.ts` },
+    methods,
+  } as const satisfies ServiceCatalogEntry;
+}
+
+const authoredServices = [
+  authoredService("panelHealth", "Read observations from the assigned panel.", "base", "panel-health", [{ name: "observe", params: [] }, { name: "observeAfter", params: ["snapshotId"] }]),
+  authoredService("provenanceHistory", "Read the assigned VCS history coordinate.", "base", "provenance-orientation", [{ name: "readNext", params: ["check"] }]),
+  authoredService("tendrilPresentation", "Present the assigned Tendril on an admitted device.", "base", "tendrils/workflow", [{ name: "devices", params: [] }, { name: "present", params: ["deviceId"] }]),
+  authoredService("tendrilPage", "Observe or operate the assigned Tendril page.", "base", "tendrils/workflow", [{ name: "inspect", params: [] }, { name: "write", params: ["field"] }, { name: "invoke", params: ["name"] }]),
+  authoredService("tendrilBuild", "Update or restore the assigned Tendril build.", "base", "tendrils/workflow", [{ name: "update", params: ["candidate"] }, { name: "back", params: [] }]),
+  authoredService("gardenRead", "Observe the assigned garden and its live state.", "examples", "examples-review", [{ name: "observe", params: [] }]),
+  authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
+  authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
+  authoredService("browserLibraryState", "Read the assigned browser library.", "personal", "browser-library", [{ name: "observe", params: [] }]),
+  authoredService("browserLibraryChange", "Apply a caller-bound mutation on the observed browser library.", "personal", "browser-library", [{ name: "apply", params: ["snapshotId", "mutation"] }]),
+  authoredService("collectionState", "Read the assigned collection tree.", "personal", "collection-conductor", [{ name: "observe", params: [] }]),
+  authoredService("collectionChange", "Apply a caller-bound mutation on the observed collection.", "personal", "collection-conductor", [{ name: "apply", params: ["basisId", "mutation"] }]),
+  authoredService("missionPlanningState", "Read the assigned mission workspace.", "personal", "mission-planning", [{ name: "observe", params: [] }]),
+  authoredService("missionPlanningChange", "Apply an assigned mission change against its observed revision.", "personal", "mission-planning", [{ name: "apply", params: ["snapshotId", "changes"] }]),
+  authoredService("spectroliteRead", "Observe the assigned vault and actual editor.", "spectrolite", "spectrolite-review", [{ name: "observe", params: [] }]),
+  authoredService("remoteAccessRead", "Read the caller-assigned remote profile.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
+  authoredService("remoteAccessPair", "Redeem the caller-assigned invitation.", "system", "remote-access", [{ name: "pair", params: ["profileReceipt"] }]),
+  authoredService("remoteAccessRoute", "Select the caller-assigned workspace through the verified hub.", "system", "remote-access", [{ name: "select", params: ["priorReceipt"] }]),
+  authoredService("remoteAccessVerify", "Verify the child identity on the caller-assigned route.", "system", "remote-access", [{ name: "verify", params: ["routeReceipt"] }]),
+  authoredService("sessionReplay", "Read the assigned durable replay checkpoint.", "system-testing", "session-test-review", [{ name: "inspect", params: ["receipt"] }]),
+  authoredService("testkitCleanup", "Read the assigned live Testkit teardown receipt.", "system-testing", "session-test-review", [{ name: "inspect", params: ["receipt"] }]),
+] as const;
+
+export type AuthoredServiceName = (typeof authoredServices)[number]["name"];
+
 export const SERVICE_CATALOG = [
+  ...authoredServices,
   {
     name: "templateOffer",
     summary: "Read cached upstream status for the caller-assigned template source.",

@@ -1,6 +1,6 @@
 import { systemTestRunnerRpcMethods } from "@vibestudio/service-schemas/systemTestRunner";
 import { localModelsExtensionMethods } from "@workspace/model-catalog/localModels";
-import { SERVICE_CATALOG, SERVICE_NAMES, type ServiceName } from "./catalog.js";
+import { SERVICE_CATALOG, SERVICE_NAMES, type AuthoredServiceName, type ServiceName } from "./catalog.js";
 
 /** The eval bindings (`services`, `web`, `memory`, `extensions`, `rpc`, ...) a program may draw services from. */
 export type ServiceBindings = Readonly<Record<string, unknown>>;
@@ -59,7 +59,8 @@ function hostService(name: ServiceName) {
   };
 }
 
-const builders: Record<ServiceName, (bindings: ServiceBindings) => NatlangService> = {
+type AmbientServiceName = Exclude<ServiceName, AuthoredServiceName>;
+const builders: Record<AmbientServiceName, (bindings: ServiceBindings) => NatlangService> = {
   templateOffer: binding("templateOffer"),
   templateCandidatePrepare: binding("templateCandidatePrepare"),
   templateCandidateReview: binding("templateCandidateReview"),
@@ -151,9 +152,13 @@ export function selectServices(
   }
   const selected: Record<string, NatlangService> = {};
   for (const name of new Set(names) as Set<ServiceName>) {
-    selected[name] = explicit
-      ? expose(name, requireBinding(name, explicit, name), `the explicit \`${name}\` binding`)
-      : builders[name](bindings);
+    if (explicit) {
+      selected[name] = expose(name, requireBinding(name, explicit, name), `the explicit \`${name}\` binding`);
+      continue;
+    }
+    if (entryFor(name).contract.origin === "authored")
+      throw new Error(`natlang service "${name}" requires an explicit caller binding`);
+    selected[name] = builders[name as AmbientServiceName](bindings);
   }
   return selected;
 }

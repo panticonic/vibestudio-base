@@ -30,6 +30,7 @@ export const authoringCompilerMethods = {
           state: z.literal("compiled"),
           functions: z.array(callable),
           services: z.array(z.string()),
+          serviceScopes: z.record(z.array(z.string())),
         })
         .strict(),
       z

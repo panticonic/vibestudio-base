@@ -6,6 +6,569 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  panelHealth: `/** Read observations from the assigned panel. */
+
+type PanelHealthSignal = {
+  sequence: number;
+  level: "error" | "warning" | "info";
+  message: string;
+};
+
+type PanelHealthObservation = {
+  id: string;
+  panelId: string;
+  attemptId: string;
+  buildKey: string;
+  phase: "ready" | "pending" | "failed" | "unavailable";
+  markers: { id: string; values: string[] }[];
+  diagnostics: PanelHealthSignal[];
+  consoleThrough: number;
+  dropped: number;
+};
+
+/** Read observations from the assigned panel. */
+export function observe(): Promise<PanelHealthObservation>;
+
+/** Read observations from the assigned panel. */
+export function observeAfter(snapshotId: string): Promise<PanelHealthObservation>;`,
+  provenanceHistory: `/** Read the assigned VCS history coordinate. */
+
+type HistoryWalk = "cause" | "cohort" | "rejections";
+
+type HistoryCheck = { path: string; walk: HistoryWalk; scope: "work-unit" | "turn" };
+
+type ReasonTier = "stated" | "trigger" | "mechanical";
+
+type HistoryReceipt = {
+  check: HistoryCheck;
+  exists: boolean;
+  limited: boolean;
+  records: { ref: string; source: string; label: string; intent: string | null; tier: ReasonTier | null; group: string | null; detail: string | null; boundary: string | null }[];
+};
+
+/** Read the assigned VCS history coordinate. */
+export function readNext(check: HistoryCheck): Promise<HistoryReceipt>;`,
+  tendrilPresentation: `/** Present the assigned Tendril on an admitted device. */
+
+type TendrilDevice = {
+  id: string;
+  platform: "desktop" | "mobile" | "headless";
+  online: boolean;
+};
+
+type TendrilPresentation = {
+  deviceId: string;
+  slotId: string;
+  state: "presented" | "pending-device" | "pushed";
+};
+
+/** Present the assigned Tendril on an admitted device. */
+export function devices(): Promise<TendrilDevice[]>;
+
+/** Present the assigned Tendril on an admitted device. */
+export function present(deviceId: string): Promise<TendrilPresentation>;`,
+  tendrilPage: `/** Observe or operate the assigned Tendril page. */
+
+type TendrilValue = string | number | boolean | null;
+
+type TendrilField = { key: string; value: TendrilValue };
+
+type TendrilPage = {
+  id: string;
+  slotId: string;
+  build: string;
+  revision: number;
+  stored: TendrilField[];
+  displayed: TendrilField[];
+  exposed: string[];
+};
+
+/** Observe or operate the assigned Tendril page. */
+export function inspect(): Promise<TendrilPage>;
+
+/** Observe or operate the assigned Tendril page. */
+export function write(field: TendrilField): Promise<TendrilPage>;
+
+/** Observe or operate the assigned Tendril page. */
+export function invoke(name: string): Promise<TendrilPage>;`,
+  tendrilBuild: `/** Update or restore the assigned Tendril build. */
+
+type TendrilValue = string | number | boolean | null;
+
+type TendrilField = { key: string; value: TendrilValue };
+
+type TendrilPage = {
+  id: string;
+  slotId: string;
+  build: string;
+  revision: number;
+  stored: TendrilField[];
+  displayed: TendrilField[];
+  exposed: string[];
+};
+
+type TendrilBuildResult = {
+  outcome: "proven" | "pending-device" | "failed";
+  page: TendrilPage | null;
+};
+
+/** Update or restore the assigned Tendril build. */
+export function update(candidate: string): Promise<TendrilBuildResult>;
+
+/** Update or restore the assigned Tendril build. */
+export function back(): Promise<TendrilPage>;`,
+  gardenRead: `/** Observe the assigned garden and its live state. */
+
+type GardenHome = {
+  id: string;
+  values: { key: string; amount: number }[];
+};
+
+type GardenResident = {
+  id: string;
+  name: string;
+  home: string;
+  needs: { key: string; amount: number }[];
+  energy: number;
+  attachment: number;
+  settled: number;
+  lastVisit: number;
+};
+
+type GardenReadback = {
+  id: string;
+  day: number;
+  phase: number;
+  weather: string;
+  homes: GardenHome[];
+  residents: GardenResident[];
+  discoveries: { id: string; title: string }[];
+};
+
+type GardenObservations = {
+  before: GardenReadback;
+  current: GardenReadback;
+};
+
+/** Observe the assigned garden and its live state. */
+export function observe(): Promise<GardenObservations>;`,
+  googleSetupPanel: `/** Read the assigned Google setup journey. */
+
+type GoogleSetupCheck =
+  | { kind: "owners" }
+  | { kind: "launch-gate"; afterReload: boolean }
+  | { kind: "viewport"; width: number }
+  | { kind: "scope-choice"; scope: "gmail" | "workspace" }
+  | { kind: "browser-choice"; opening: "here" | "external" }
+  | { kind: "choice-reload" };
+
+type GoogleSetupControls = {
+  scope: "gmail" | "workspace";
+  opening: "here" | "external";
+  guidance: "gmail" | "workspace" | "unknown";
+  connectEnabled: boolean;
+  gmailEnabled: boolean;
+};
+
+type GoogleSetupReceipt = {
+  id: string;
+  check: GoogleSetupCheck;
+  stage: string;
+  accountOwner: boolean;
+  permissionsOwner: boolean;
+  gmailEnabled: boolean;
+  inheritedLaunch: boolean | null;
+  overflow: boolean;
+  viewportWidth: number | null;
+  controls?: { before: GoogleSetupControls; after: GoogleSetupControls };
+};
+
+/** Read the assigned Google setup journey. */
+export function observe(): Promise<GoogleSetupReceipt[]>;`,
+  newsRead: `/** Read assigned News readers and schedules and complete the assigned cadence change. */
+
+type NewsReaderPage = {
+  id: string;
+  requestedCursor: string | null;
+  nextCursor: string | null;
+  hasMore: boolean;
+  articleIds: string[];
+  briefingIds?: string[];
+};
+
+type NewsReaderEvidence = {
+  kind: "reader";
+  goal: string;
+  view: "inbox" | "saved" | "archive" | "backlog";
+  overview: {
+    id: string;
+    setup: "needs-user-preferences" | "configured";
+    articleCount: number;
+    untriagedCount: number;
+    enabledFeeds: number;
+    failedFeeds: number;
+  };
+  activity: "idle" | "loading" | "retryable-error";
+  pages: NewsReaderPage[];
+};
+
+type NewsScheduleEvidence = {
+  kind: "schedule";
+  goal: string;
+  owner: { id: string; mode: "curator" | "analyst"; paused: boolean };
+  poll: { id: string; intervalMs: number } | null;
+  briefing: {
+    id: string;
+    kind: "interval" | "daily";
+    intervalMs: number | null;
+    at: string | null;
+    timezone: string | null;
+  } | null;
+  intent:
+    | { kind: "poll"; intervalMs: number }
+    | { kind: "interval"; intervalMs: number }
+    | { kind: "daily"; at: string; timezone: string }
+    | { kind: "pause" }
+    | { kind: "resume" }
+    | { kind: "manual" };
+};
+
+type NewsCadenceChange =
+  | { kind: "poll"; intervalMs: number }
+  | { kind: "interval"; intervalMs: number }
+  | { kind: "daily"; at: string; timezone: string }
+  | { kind: "pause" }
+  | { kind: "resume" }
+  | null;
+
+/** Read assigned News readers and schedules and complete the assigned cadence change. */
+export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;
+
+/** Read assigned News readers and schedules and complete the assigned cadence change. */
+export function finishCadence(
+      change: NewsCadenceChange,
+    ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  browserLibraryState: `/** Read the assigned browser library. */
+
+type LibraryBookmark = { id: number; folder: string; title: string; url: string };
+
+type LibraryVisit = { url: string; title: string; lastVisitTime: number };
+
+type BrowserLibrarySnapshot = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: LibraryBookmark[];
+  visits: LibraryVisit[];
+};
+
+/** Read the assigned browser library. */
+export function observe(): Promise<BrowserLibrarySnapshot>;`,
+  browserLibraryChange: `/** Apply a caller-bound mutation on the observed browser library. */
+
+type LibraryMutation =
+  | { kind: "save"; folder: string; url: string; title: string }
+  | { kind: "rename"; id: number; title: string }
+  | { kind: "file"; id: number; folder: string }
+  | { kind: "retire"; id: number; keepId: number };
+
+type LibraryBookmark = { id: number; folder: string; title: string; url: string };
+
+type LibraryVisit = { url: string; title: string; lastVisitTime: number };
+
+type BrowserLibrarySnapshot = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: LibraryBookmark[];
+  visits: LibraryVisit[];
+};
+
+/** Apply a caller-bound mutation on the observed browser library. */
+export function apply(snapshotId: string, mutation: LibraryMutation): Promise<BrowserLibrarySnapshot>;`,
+  collectionState: `/** Read the assigned collection tree. */
+
+type CollectionNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type CollectionSnapshot = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: CollectionNode[];
+};
+
+/** Read the assigned collection tree. */
+export function observe(): Promise<CollectionSnapshot>;`,
+  collectionChange: `/** Apply a caller-bound mutation on the observed collection. */
+
+type CollectionMutation =
+  | { kind: "rename"; panelId: string; title: string }
+  | { kind: "note"; panelId: string; text: string | null }
+  | { kind: "group"; parentId: string; title: string }
+  | { kind: "move"; panelId: string; parentId: string; afterId: string | null };
+
+type CollectionNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type CollectionSnapshot = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: CollectionNode[];
+};
+
+/** Apply a caller-bound mutation on the observed collection. */
+export function apply(basisId: string, mutation: CollectionMutation): Promise<CollectionSnapshot>;`,
+  missionPlanningState: `/** Read the assigned mission workspace. */
+
+type MissionProject = { id: string; name: string; archived: boolean };
+
+type MissionStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type MissionCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: MissionStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type MissionSnapshot = {
+  id: string;
+  projects: MissionProject[];
+  cards: MissionCard[];
+  complete: boolean;
+};
+
+/** Read the assigned mission workspace. */
+export function observe(): Promise<MissionSnapshot>;`,
+  missionPlanningChange: `/** Apply an assigned mission change against its observed revision. */
+
+type MissionChanges =
+  | { cardId: string; revision: number; kind: "prerequisites"; dependencies: string[] }
+  | { cardId: string; revision: number; kind: "relocate"; projectId: string }
+  | { cardId: string; revision: number; kind: "ready" };
+
+type MissionProject = { id: string; name: string; archived: boolean };
+
+type MissionStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type MissionCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: MissionStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type MissionSnapshot = {
+  id: string;
+  projects: MissionProject[];
+  cards: MissionCard[];
+  complete: boolean;
+};
+
+/** Apply an assigned mission change against its observed revision. */
+export function apply(snapshotId: string, changes: MissionChanges): Promise<MissionSnapshot>;`,
+  spectroliteRead: `/** Observe the assigned vault and actual editor. */
+
+type ReviewCheck =
+  | "document"
+  | "preview"
+  | "navigation"
+  | "revision"
+  | "handoff"
+  | "publication";
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultReviewState = {
+  id: string;
+  repositoryId: string;
+  working: VaultReference;
+  committed: VaultReference;
+  mainEventId: string;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+};
+
+type DocumentReviewReceipt = {
+  id: string;
+  repositoryId: string;
+  path: string;
+  ref: VaultReference;
+  fileId: string;
+  contentHash: string;
+  format: "text" | "other";
+  contentClass: "internal" | "external";
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  externalKeys: string[];
+  title: string | null;
+  dependencies: { name: string; reference: string }[];
+  links: { target: string; resolvedPath: string | null }[];
+};
+
+type PreviewReviewReceipt = {
+  id: string;
+  documentPath: string;
+  contentHash: string;
+  phase: "pending" | "rendered" | "compile-error" | "render-error";
+  detail: string | null;
+};
+
+type NavigationHop = { from: string; target: string; to: string };
+
+type NavigationReceipt = {
+  id: string;
+  hops: NavigationHop[];
+};
+
+type ScribeReviewReceipt = {
+  id: string;
+  documentPath: string;
+  recipientId: string;
+  eventId: string | null;
+  phase: "unsent" | "sent" | "failed";
+  selection: string | null;
+};
+
+type PublishReviewReceipt = {
+  id: string;
+  targetEventId: string;
+  observedMainEventId: string | null;
+  outcome: "published" | "up-to-date" | "error" | null;
+  publishing: boolean;
+  conflicts: { kind: "file" | "repository"; id: string; summary: string }[];
+  lastError: string | null;
+};
+
+type SpectroliteReviewRequest = {
+  goal: string;
+  checks: ReviewCheck[];
+  path: string;
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt | null;
+  committedDocument?: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+  navigation?: NavigationReceipt | null;
+  scribeTarget: { recipientId: string; selection: string | null } | null;
+  handoff: ScribeReviewReceipt | null;
+  publication: PublishReviewReceipt | null;
+};
+
+/** Observe the assigned vault and actual editor. */
+export function observe(): Promise<SpectroliteReviewRequest>;`,
+  remoteAccessRead: `/** Read the caller-assigned remote profile. */
+
+type RemoteProfileRead = {
+  receipt: string;
+  state: "unpaired" | "account" | "workspace" | "foreign" | "unusable";
+  inviteAssigned: boolean;
+};
+
+/** Read the caller-assigned remote profile. */
+export function observe(operationId: string): Promise<RemoteProfileRead>;`,
+  remoteAccessPair: `/** Redeem the caller-assigned invitation. */
+
+type RemotePairReceipt = {
+  receipt: string;
+  state: "paired" | "failed";
+};
+
+/** Redeem the caller-assigned invitation. */
+export function pair(profileReceipt: string): Promise<RemotePairReceipt>;`,
+  remoteAccessRoute: `/** Select the caller-assigned workspace through the verified hub. */
+
+type RemoteRouteReceipt = {
+  receipt: string;
+  state: "routed" | "failed";
+};
+
+/** Select the caller-assigned workspace through the verified hub. */
+export function select(priorReceipt: string): Promise<RemoteRouteReceipt>;`,
+  remoteAccessVerify: `/** Verify the child identity on the caller-assigned route. */
+
+type RemoteChildReceipt = {
+  receipt: string;
+  state: "verified" | "unreachable" | "identity-mismatch";
+  workspaceId: string | null;
+};
+
+/** Verify the child identity on the caller-assigned route. */
+export function verify(routeReceipt: string): Promise<RemoteChildReceipt>;`,
+  sessionReplay: `/** Read the assigned durable replay checkpoint. */
+
+type ReplayOperation = { key: string; text: string; messageId: string };
+
+type ReplayMessage = { id: string; text: string; senderId: string };
+
+type ReplayCheckpoint = {
+  receipt: string;
+  originalChannel: string;
+  replayChannel: string;
+  original: ReplayOperation;
+  retry: ReplayOperation | null;
+  originBefore: ReplayMessage[];
+  before: ReplayMessage[];
+  after: ReplayMessage[];
+};
+
+/** Read the assigned durable replay checkpoint. */
+export function inspect(receipt: string): Promise<ReplayCheckpoint>;`,
+  testkitCleanup: `/** Read the assigned live Testkit teardown receipt. */
+
+type TestkitOutcome = "passed" | "failed" | "errored" | "timeout";
+
+type TestkitResourceKind = "panel" | "page-client" | "worker" | "supervisor" | "scratch";
+
+type TestkitOwnedResource = { id: string; kind: TestkitResourceKind };
+
+type TestkitRelease = {
+  kind: "testkit";
+  receipt: string;
+  // Resources in the order their release was registered with defer.
+  resources: {
+    id: string;
+    kind: TestkitResourceKind;
+  }[];
+  released: {
+    id: string;
+    kind: TestkitResourceKind;
+    acknowledgement: "released" | "failed";
+  }[];
+};
+
+type LiveCleanupEvidence = {
+  receipt: string;
+  outcome: TestkitOutcome;
+  error: string | null;
+  logs: string[];
+  acquired: TestkitOwnedResource[];
+  release: TestkitRelease;
+  remaining: TestkitOwnedResource[];
+  protectedUnchanged: boolean;
+};
+
+/** Read the assigned live Testkit teardown receipt. */
+export function inspect(receipt: string): Promise<LiveCleanupEvidence>;`,
   templateOffer: `/** Read cached upstream status for the caller-assigned template source. */
 
 /** Read the identified cached offer and its compatibility evidence. */
@@ -172,6 +735,9 @@ export function inspect(role: "candidate" | "baseline"): Promise<{
     returns: string;
   }[];
   services: string[];
+  serviceScopes: {
+    [key: string]: string[];
+  };
 } | {
   role: "candidate" | "baseline";
   revision: string;

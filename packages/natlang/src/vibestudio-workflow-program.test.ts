@@ -317,6 +317,11 @@ it("describes the typed workflows in the installed template domains", async () =
         result.state === "unavailable") ? earlierSteps[index].id : null;
     `,
     runWorkflow: `
+      const remote = request.work[0];
+      if (remote.domain === "remoteAccess") {
+        const report = await domains.remoteAccess.openRemoteWorkspace(remote.input);
+        return {results: [{kind: "domain", domain: remote.domain, operation: remote.operation, report}], remaining: []};
+      }
       const system = request.work[1];
       if (system.domain === "localModel") {
         const report = await domains.localModel.prepareLocalModel(system.input);
@@ -336,6 +341,39 @@ it("describes the typed workflows in the installed template domains", async () =
       results.push({kind: "domain", domain: next.domain, operation: next.operation,
         report: await domains.automation.prepareAutomation(next.input)});
       return {results, remaining: []};
+    `,
+    openRemoteWorkspace: `
+      const profile = await readAssignedProfile(request.operationId);
+      const gate = await decideAdmission(profile);
+      const evidenceIds = [profile.receipt];
+      if (gate !== "pair" && gate !== "route") return {status:gate, workspaceId:null, evidenceIds};
+      if (gate === "pair") {
+        const paired = await pairAssignedProfile(profile.receipt);
+        evidenceIds.push(paired.receipt);
+        if (paired.state !== "paired") return {status:"pairing-failed", workspaceId:null, evidenceIds};
+      }
+      const report = await openAssignedRoute(evidenceIds.at(-1));
+      return {...report, evidenceIds:[...evidenceIds, ...report.evidenceIds]};
+    `,
+    readAssignedProfile: "return await remoteAccessRead.observe(operationId);",
+    decideAdmission: `
+      if (observed.state === "foreign") return "different-profile";
+      if (observed.state === "unusable") return "recover-profile";
+      if (observed.state === "unpaired") return observed.inviteAssigned ? "pair" : "invite-required";
+      return "route";
+    `,
+    pairAssignedProfile: "return await remoteAccessPair.pair(profileReceipt);",
+    openAssignedRoute: `
+      const route = await routeThroughHub(priorReceipt);
+      if (route.state !== "routed") return {status:"route-unavailable", workspaceId:null, evidenceIds:[route.receipt]};
+      const child = await observeChild(route.receipt);
+      return {status:await interpretChild(child), workspaceId:child.workspaceId, evidenceIds:[route.receipt, child.receipt]};
+    `,
+    routeThroughHub: "return await remoteAccessRoute.select(priorReceipt);",
+    observeChild: "return await remoteAccessVerify.verify(routeReceipt);",
+    interpretChild: `
+      if (child.state === "verified") return "workspace-ready";
+      return child.state === "identity-mismatch" ? "child-identity-mismatch" : "child-unreachable";
     `,
     investigateSystem: "return await comparePerformance(request);",
     comparePerformance:
@@ -469,7 +507,10 @@ it("describes the typed workflows in the installed template domains", async () =
         "reconcileMissionPlan",
       ],
     ],
-    [join(templateRoot, "system"), ["investigateSystem", "prepareLocalModel"]],
+    [
+      join(templateRoot, "system"),
+      ["investigateSystem", "prepareLocalModel", "openRemoteWorkspace"],
+    ],
     [
       join(templateRoot, "system-testing"),
       ["reviewSystemTest", "reviewSessionTest"],
@@ -491,6 +532,143 @@ it("describes the typed workflows in the installed template domains", async () =
       ]);
       expect(definition?.result.problem).toBeUndefined();
     }
+  }
+  if (
+    description.functions.some(({ name }) => name === "openRemoteWorkspace")
+  ) {
+    runReference = true;
+    for (const example of [
+      {
+        profile: "unpaired",
+        invite: true,
+        pair: "paired",
+        route: "routed",
+        child: "verified",
+        result: "workspace-ready",
+        calls: ["read", "pair", "route", "child"],
+      },
+      {
+        profile: "workspace",
+        invite: false,
+        pair: "paired",
+        route: "routed",
+        child: "identity-mismatch",
+        result: "child-identity-mismatch",
+        calls: ["read", "route", "child"],
+      },
+      {
+        profile: "foreign",
+        invite: true,
+        pair: "paired",
+        route: "routed",
+        child: "verified",
+        result: "different-profile",
+        calls: ["read"],
+      },
+      {
+        profile: "unpaired",
+        invite: false,
+        pair: "paired",
+        route: "routed",
+        child: "verified",
+        result: "invite-required",
+        calls: ["read"],
+      },
+      {
+        profile: "unpaired",
+        invite: true,
+        pair: "failed",
+        route: "routed",
+        child: "verified",
+        result: "pairing-failed",
+        calls: ["read", "pair"],
+      },
+      {
+        profile: "account",
+        invite: false,
+        pair: "paired",
+        route: "failed",
+        child: "verified",
+        result: "route-unavailable",
+        calls: ["read", "route"],
+      },
+    ]) {
+      const observed: string[] = [];
+      const remote = (await loader.load(
+        "skills/vibestudio-workflows/runWorkflow.nl",
+        {
+          services: {
+            remoteAccessRead: {
+              observe: async (operationId: string) => {
+                expect(operationId).toBe("assignment");
+                observed.push("read");
+                return {
+                  receipt: "read",
+                  state: example.profile,
+                  inviteAssigned: example.invite,
+                };
+              },
+            },
+            remoteAccessPair: {
+              pair: async (receipt: string) => {
+                expect(receipt).toBe("read");
+                observed.push("pair");
+                return { receipt: "pair", state: example.pair };
+              },
+            },
+            remoteAccessRoute: {
+              select: async (receipt: string) => {
+                expect(receipt).toBe(
+                  example.calls.includes("pair") ? "pair" : "read",
+                );
+                observed.push("route");
+                return { receipt: "route", state: example.route };
+              },
+            },
+            remoteAccessVerify: {
+              verify: async (receipt: string) => {
+                expect(receipt).toBe("route");
+                observed.push("child");
+                return {
+                  receipt: "child",
+                  state: example.child,
+                  workspaceId:
+                    example.child === "verified" ? "workspace" : null,
+                };
+              },
+            },
+          },
+        },
+      )) as (request: unknown) => Promise<unknown>;
+      await expect(
+        remote({
+          goal: "Open the assigned workspace",
+          work: [
+            {
+              kind: "domain",
+              domain: "remoteAccess",
+              operation: "openRemoteWorkspace",
+              input: { operationId: "assignment" },
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
+        results: [
+          {
+            report: {
+              status: example.result,
+              workspaceId:
+                example.result === "workspace-ready" ? "workspace" : null,
+              evidenceIds: example.calls,
+            },
+          },
+        ],
+        remaining: [],
+      });
+      expect(observed).toEqual(example.calls);
+    }
+    stagedCalls.length = 0;
+    runReference = false;
   }
   const rosterCalls: string[] = [];
   const roster = (await loader.load(
