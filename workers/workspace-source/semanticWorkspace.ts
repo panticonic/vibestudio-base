@@ -14207,6 +14207,11 @@ export class SemanticWorkspace {
              JOIN ${table("gad_work_units")} work ON work.work_unit_id = change.work_unit_id
              JOIN ${table("gad_change_coordinates")} coordinate ON coordinate.change_id = change.change_id
              JOIN selected_files file ON file.file_id = coordinate.file_id
+            WHERE work.kind <> 'external-unapplied' OR EXISTS (
+              SELECT 1 FROM ${table("gad_applied_change_predicates")} placement
+               WHERE placement.applied_change_id = applied.applied_change_id
+                 AND json_extract(placement.predicate_json, '$.fileId') = file.file_id
+            )
            UNION
            SELECT CAST(json_extract(predicate.predicate_json, '$.fileId') AS TEXT),
                   applied.applied_change_id, applied.applied_base_json,
