@@ -441,6 +441,8 @@ it("describes the typed workflows in the installed template domains", async () =
         "reviewPersonalFacility",
         "recallDecision",
         "compareDecisionRevisions",
+        "organizeCollection",
+        "curateBrowserLibrary",
       ],
     ],
     [join(templateRoot, "system"), ["investigateSystem", "prepareLocalModel"]],

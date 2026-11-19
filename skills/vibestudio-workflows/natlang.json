@@ -13,6 +13,8 @@
     "runWorkflow/domains/automation": "skills/automations",
     "runWorkflow/domains/automationLifecycle": "skills/automation-lifecycle",
     "runWorkflow/domains/channelAgent": "skills/agents/channel-membership",
+    "runWorkflow/domains/browserLibrary": "skills/browser-library",
+    "runWorkflow/domains/collection": "skills/collection-conductor",
     "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
     "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",
     "runWorkflow/domains/examples": "skills/examples-review",
