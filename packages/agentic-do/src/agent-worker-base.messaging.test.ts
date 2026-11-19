@@ -13,7 +13,7 @@ class OwnedMessagingAgent extends AgentWorkerBase {
   protected override getParticipantInfo():ParticipantDescriptor {return {name:"Synthetic sender",type:"agent",handle:"sender",metadata:{}};}
   protected override async addresseeContext(){return this.roster;}
   protected override conversationAddresseeContext(){return this.roster;}
-  protected override createChannelClient(){const client=new ChannelClient(this.rpc,{source:"workers/pubsub-channel",className:"PubSubChannel",objectKey:"owned"});client.send=this.send;return client;}
+  protected override createChannelClient(){const client=new ChannelClient(this.rpc,{source:"workers/pubsub-channel",className:"PubSubChannel",objectKey:"owned"});client.send=this.send;client.getParticipants=async()=>this.roster.roster.map(ref=>({participantId:ref.id,ref,metadata:ref.metadata??{}}));return client;}
   prepare(){vi.spyOn(this.subscriptions,"getParticipantId").mockReturnValue("sender");}
   callNativeNotify(content:string,to:string){return this.notifyConversation("owned",createRpcFs(this.rpc),{content,to,alert:"none"},{invocationId:"owned-operation",rpc:this.rpc});}
   tool(){return this.createNotifyTool("owned",createRpcFs(this.rpc),{invocationId:"owned-operation",commandId:"owned-operation",rpc:this.rpc});}
@@ -37,7 +37,9 @@ it("unknown recipient fails without a fallback message",async()=>{
 
 it("owned binding resolves and delivers through the original notify with one durable operation identity",async()=>{
  const {instance,db}=await createNativeVesselTestDO(OwnedMessagingAgent);databases.push(db);instance.prepare();
+ vi.spyOn(instance as unknown as { conversationAddresseeContext(): ResolveAddresseeContext }, "conversationAddresseeContext").mockReturnValue({ channelId: "owned", roster: [] });
  const binding=instance.bindings(),snapshot=await binding.read.inspect("Tell Mira the build passed.");
+ expect(snapshot.resolution).toMatchObject({kind:"ref",ref:"@mira"});
  const receipt=await binding.send.send(snapshot.revision,"Tell Mira the build passed.","@mira","Alex reviews tomorrow");
  expect(receipt).toEqual({channelId:"owned",messageId:"say:owned-operation",to:"@mira",alert:"none"});
  await binding.send.send(snapshot.revision,"Tell Mira the build passed.","@mira","Alex reviews tomorrow");

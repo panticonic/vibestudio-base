@@ -45,6 +45,7 @@ import {
   type AddresseeError,
   type ParticipantRef,
   type ResolvedAddressee,
+  type ResolveAddresseeContext,
 } from "@workspace/agentic-protocol";
 import {
   AgentVesselBase,
@@ -1124,14 +1125,27 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
     inspectCommitted: Parameters<typeof createLocalMessaging>[0]["inspectCommitted"];
   }) {
     const { lease } = options;
+    const readLocalContext = async (): Promise<ResolveAddresseeContext> => {
+      if (this.subscriptions.getParticipantId(lease.channelId) !== lease.senderParticipantId)
+        throw new Error("The synthetic fixture sender no longer owns this channel subscription.");
+      const participants = await this.createChannelClient(lease.channelId).getParticipants();
+      return {
+        channelId: lease.channelId,
+        roster: participants
+          .filter(({ participantId }) => participantId !== lease.senderParticipantId)
+          .map(({ participantId, ref, metadata }) => ({
+            ...ref,
+            participantId,
+            metadata: { ...ref.metadata, ...metadata },
+          })),
+      };
+    };
     return createLocalMessaging({
       ...options,
-      addressees: async () => this.conversationAddressees(lease.channelId),
+      addressees: async () => listAddressees(await readLocalContext()),
       notify: async (input, operationId) => {
         await options.assertOwnedFixture();
-        if (this.subscriptions.getParticipantId(lease.channelId) !== lease.senderParticipantId)
-          throw new Error("The synthetic fixture sender no longer owns this channel subscription.");
-        const context = await this.addresseeContext(lease.channelId);
+        const context = await readLocalContext();
         for (const ref of input.to) {
           const resolved = resolveAddressee(ref, context);
           const recipient = lease.recipients.find(value => value.ref === ref);
@@ -1141,9 +1155,10 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
               resolved.participantId !== recipient.participantId)
             throw new Error("Notify requires the exact owned local synthetic agent recipient.");
         }
-        const result = await this.notifyConversation(lease.channelId, createRpcFs(this.rpc), input, {
-          invocationId: operationId, rpc: this.rpc,
-        });
+        const result = await this.notifyConversation(
+          lease.channelId, createRpcFs(this.rpc), input,
+          { invocationId: operationId, rpc: this.rpc }, context,
+        );
         const details = result.details;
         if (!details || typeof details !== "object" || Array.isArray(details)) throw new Error("Notify returned no structured original receipt.");
         const sent = details["sent"];
@@ -1162,6 +1177,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
     fs: ReturnType<typeof createRpcFs>,
     params: unknown,
     execution?: Pick<AgentToolExecutionContext, "rpc" | "metadata" | "invocationId">,
+    localContext?: ResolveAddresseeContext,
   ) {
     const toolRpc = execution?.rpc ?? this.rpc;
         const toolCallId = execution?.invocationId;
@@ -1211,7 +1227,7 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
         if (!participantId) throw new Error("agent is not subscribed to the channel");
 
         const refs = normalizeAddresseeRefs(input.to);
-        const context = await this.addresseeContext(channelId, execution?.metadata);
+        const context = localContext ?? await this.addresseeContext(channelId, execution?.metadata);
         const resolved = refs.map((ref) => {
           const outcome = resolveAddressee(ref, context);
           if (isAddresseeError(outcome)) throw addresseeToolError(ref, outcome);
