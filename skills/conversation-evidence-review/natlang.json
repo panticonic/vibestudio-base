@@ -2,5 +2,15 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-conversation-evidence",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reviewConversation.nl" } }
+  "targets": {
+    "main": {
+      "entry": "reviewConversation.nl"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "deliveryHistory": [
+      "reviewDeliveryHistory.nl"
+    ]
+  }
 }

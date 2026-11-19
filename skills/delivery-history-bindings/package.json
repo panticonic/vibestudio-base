@@ -1,0 +1,12 @@
+{
+  "name": "@workspace-skills/delivery-history-bindings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": {
+    "@workspace/agentic-protocol": "workspace:*",
+    "@workspace/pubsub": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

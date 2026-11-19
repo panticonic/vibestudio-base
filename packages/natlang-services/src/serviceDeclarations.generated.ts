@@ -6,6 +6,10 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  deliveryHistory: `/** Inspect durable and consumer views of one assigned conversation receipt. */
+
+/** Inspect durable and consumer views of one assigned conversation receipt. */
+export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
   publicationRevision: `/** Compare caller-assigned immutable website packages and targets. */
 
 type PublishEnvironment = "preview" | "production";

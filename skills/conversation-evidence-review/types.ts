@@ -44,3 +44,22 @@ export type ConversationReport = {
   blockers: string[];
   ready: boolean;
 };
+
+export type DeliveryHistoryRequest = { goal: string; operationId: string };
+export type DeliveryReceipt = { channelId: string; messageId: string; senderId: string };
+export type DeliveryMessage = { messageId: string; senderId: string; text: string };
+export type DurableDeliveryRow = DeliveryMessage & { envelopeId: string; sequence: number };
+export type DeliveryHistoryObservation = {
+  channelId: string;
+  receipt: DeliveryReceipt;
+  retained: DurableDeliveryRow[];
+  rendered: DeliveryMessage[];
+};
+export type DeliveryOrigin = "matched" | "foreign-channel" | "missing-message" | "repeated-message" | "receipt-mismatch";
+export type DeliveryConsumer = "matched" | "missing" | "divergent" | "unreviewed";
+export type DeliveryHistoryReport = {
+  observation: DeliveryHistoryObservation;
+  origin: DeliveryOrigin;
+  consumer: DeliveryConsumer;
+  verified: boolean;
+};
