@@ -47,6 +47,7 @@ import {
   workspaceCommitForRef,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
+  workspaceTemplateInstallationAt,
 } from "./doltWorkspaceState.js";
 import {
   installPreparedReplayStep,
@@ -440,6 +441,16 @@ export class GadHistoryDO extends DurableObjectBase {
     return workspaceCommitForRef(
       this.sql, this.#remotes().hashOf("main"), vcsStateNodeRefSchema.parse(input.state),
     ) !== null;
+  }
+
+  @rpc(hostRead)
+  readHistoryTemplateInstallation(input: { eventId: string }) {
+    this.#assertCanonical();
+    const main = this.#remotes().hashOf("main");
+    const state = vcsStateNodeRefSchema.parse({ kind: "event", eventId: input.eventId });
+    const revision = workspaceCommitForRef(this.sql, main, state);
+    if (!revision) throw new Error("Workspace event is outside canonical history");
+    return workspaceTemplateInstallationAt(this.sql, revision);
   }
 
   @rpc(hostRead)

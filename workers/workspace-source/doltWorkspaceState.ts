@@ -3,6 +3,7 @@ import type { SqlStorage } from "@vibestudio/durable";
 import type { VcsReadFilesInput } from "@vibestudio/service-schemas/vcs";
 import { semanticFileHostReadSchema } from "@vibestudio/service-schemas/workspaceSource";
 import type { WorkspaceMaterializationRepository } from "@vibestudio/shared/vcs/workspaceProjection";
+import { WorkspaceTemplateInstallationSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
 import {
   compactId,
   workspaceFileStateIdentity,
@@ -409,6 +410,28 @@ const firstParents = `WITH RECURSIVE lineage(hash, parent, depth) AS (
         WHERE parent.parent_index = 0 AND parent.parent_hash IS NOT NULL
           AND (?2 IS NULL OR parent.commit_hash <> ?2)
      )`;
+
+/** Template installations follow the first-parent source history of a saved event. */
+export function workspaceTemplateInstallationAt(sql: SqlStorage, revision: string) {
+  const row = sql.exec(
+    `${firstParents}
+     SELECT diff.to_installation_json AS installation
+       FROM lineage CROSS JOIN dolt_diff_workspace_template_installations(lineage.parent, lineage.hash) AS diff
+      WHERE diff.diff_type = 'added' AND NOT EXISTS (
+        SELECT 1 FROM dolt_commit_ancestors AS parent
+        CROSS JOIN dolt_at_workspace_template_installations(parent.parent_hash) AS inherited
+        WHERE parent.commit_hash = lineage.hash AND parent.parent_index > 0
+          AND inherited.event_id = diff.to_event_id
+      )
+      ORDER BY lineage.depth LIMIT 1`,
+    revision,
+    null,
+  ).toArray()[0];
+  if (!row) return null;
+  if (typeof row["installation"] !== "string")
+    throw new SemanticVcsError("IntegrityFailure", "Workspace template installation is incomplete");
+  return WorkspaceTemplateInstallationSchema.parse(JSON.parse(row["installation"]));
+}
 
 /** List applications introduced on the first-parent lineage, oldest first. */
 export function workspaceApplicationsAt(
