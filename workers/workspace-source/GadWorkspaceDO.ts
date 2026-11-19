@@ -1396,6 +1396,17 @@ export class GadWorkspaceDO extends DurableObjectBase {
     });
   }
 
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  readHistoryReplayFreeze(): { operationId: string; expectedMainEventId: string } | null {
+    this.ensureReady();
+    const stored = this.getStateValue("legacy-history-replay-freeze");
+    return stored === null ? null : JSON.parse(stored);
+  }
+
   #requireLegacyHistoryAvailable(): void {
     if (this.getStateValue("legacy-history-replay-freeze") !== null)
       throw new Error("Legacy workspace history is frozen for migration");
