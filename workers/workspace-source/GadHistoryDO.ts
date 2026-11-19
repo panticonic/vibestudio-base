@@ -161,6 +161,7 @@ function historyContextKey(contextId: string): string {
 /** The hosted, versioned history owner. The workspace's trajectory mirror lives separately. */
 export class GadHistoryDO extends DurableObjectBase {
   readonly #allocations = new Map<string, Promise<unknown>>();
+  readonly #outgoing = new Set<string>();
   #participant: ParticipantHistory | undefined;
 
   protected createTables(): void {
@@ -1094,6 +1095,62 @@ export class GadHistoryDO extends DurableObjectBase {
       id: grant.id,
       origin: { ref: `${className}:${canonicalKey}`, token: grant.token },
     };
+  }
+
+  #assertPublishedHistory(input: { eventId: string; head: string }): void {
+    this.#assertCanonical();
+    const current = this.#remotes().hashOf("main");
+    if (workspaceCommitForRef(this.sql, current, { kind: "event", eventId: input.eventId }) !== input.head)
+      throw new Error("The selected history revision has no published event");
+  }
+
+  @rpc(hostRead)
+  hasOutgoingHistoryContent(input: { eventId: string; head: string; digest: string }): boolean {
+    this.#assertPublishedHistory(input);
+    if (!digest.test(input.digest)) throw new Error("Invalid outgoing workspace content digest");
+    return workspaceHasFileContent(this.sql, input.head, input.digest) ||
+      workspaceExternalDeltaRoots(this.sql, [input.head]).includes(input.digest);
+  }
+
+  @rpc(hostWrite)
+  async pushOutgoingHistory(input: {
+    transferId: string;
+    eventId: string;
+    head: string;
+    origin: DoltRemoteTarget;
+    branch: string;
+  }) {
+    this.#assertPublishedHistory(input);
+    if (!/^[a-f0-9-]{36}$/u.test(input.transferId) || !/^incoming\/[a-f0-9]{64}$/u.test(input.branch) ||
+        this.#outgoing.has(input.transferId)) {
+      throw new Error("Invalid outgoing workspace history transfer");
+    }
+    const dolt = this.#remotes();
+    for (const { name } of dolt.remote.list()) {
+      if (name.startsWith("chronolog-") && !this.#outgoing.has(name.slice("chronolog-".length)))
+        dolt.remote.remove(name);
+    }
+    for (const { name } of dolt.branch.list()) {
+      if (name.startsWith("outgoing/") && !this.#outgoing.has(name.slice("outgoing/".length)))
+        dolt.branch.delete(name, { force: true });
+    }
+    const remoteName = `chronolog-${input.transferId}`;
+    const branch = `outgoing/${input.transferId}`;
+    dolt.branch.create(branch, { from: input.head });
+    this.#outgoing.add(input.transferId);
+    try {
+      dolt.remote.add(remoteName, input.origin);
+      return await dolt.push(remoteName, branch, {
+        to: input.branch,
+        transport: (bytes) => this.rpc.call("main", mainRpcMethods["runtime.forwardHistoryPacket"], [
+          { transferId: input.transferId, bytes },
+        ]),
+      });
+    } finally {
+      this.#outgoing.delete(input.transferId);
+      if (dolt.remote.list().some(({ name }) => name === remoteName)) dolt.remote.remove(remoteName);
+      dolt.branch.delete(branch, { force: true });
+    }
   }
 
   /** The host has verified the signed Chronolog transition and the connected peer. */
