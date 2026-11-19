@@ -17,6 +17,10 @@ export function observeApplication(operationId: string): Promise<AndroidRuntimeO
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  automationPlanning: `/** Read the assigned roster of automation definitions and latest run records. */
+
+/** Read the assigned roster of automation definitions and latest run records. */
+export function inspect(operationId: string): Promise<AutomationPlanningSnapshot>;`,
   chatDeliveryPanel: `/** Read the exact assigned chat panel and its visible delivery evidence. */
 
 /** Read the exact assigned chat panel and its visible delivery evidence. */

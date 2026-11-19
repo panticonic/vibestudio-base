@@ -35,3 +35,17 @@ inspection. It reuses the existing executor and calendar readers and the exact
 operations from the caller's inventory, review launch feasibility, disambiguate
 a visible automation and interpret its original run status. The existing host
 launch and control tools retain final admission and effects.
+
+## Review an assigned live automation
+
+An owner-scoped automation review reads the assigned roster and concrete
+definition revisions through the Missions adapter. It reuses the existing
+planner, including its target disambiguation and run-ledger interpretation.
+A usable plan is checked against a second live observation before handoff.
+
+| Part | Form | Why |
+| --- | --- | --- |
+| Establish the live roster and the later readback | `observePlanningState` with a read-only service | The caller supplies one opaque assignment and the service owns its workspace and mission scope. |
+| Interpret the request and select the existing mission | Existing `prepareAutomation` tree | Resolving ambiguous names, interpreting lifecycle intent, and explaining failures are shared planning policy. |
+| Decide whether the plan can be handed back | `checkHandoff` | Holds and new launches cannot support an existing-mission handoff. A changed roster or revision invalidates the prior decision. |
+| Compare mission identities, revisions and run state | `checkSnapshot` TypeScript helper | These are exact observations. Ordering of otherwise identical records does not change the roster. |

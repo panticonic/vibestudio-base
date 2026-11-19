@@ -61,5 +61,19 @@ type AutomationHold = { kind: "hold"; reason: string };
 type AutomationReport = LaunchDraft | ControlDraft | RunBrief | AutomationHold;
 type RunSelection = | { kind: "found"; automation: VisibleAutomation }
   | { kind: "hold"; reason: string };
+type AutomationPlanningRequest = {
+  goal: string;
+  operationId: string;
+  timezone: string;
+  now: string;
+};
+type AssignedAutomation = VisibleAutomation & { revisionDigest: string };
+type AutomationPlanningSnapshot = { visible: AssignedAutomation[] };
+type AutomationPlanningReview = {
+  status: "ready" | "held" | "changed";
+  plan: AutomationReport;
+  before: AutomationPlanningSnapshot;
+  after: AutomationPlanningSnapshot | null;
+};
 declare const fn: NatlangFunction<[request: string], ExecutorKind>;
 export default fn;

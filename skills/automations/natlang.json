@@ -5,10 +5,17 @@
   "include": [
     "prepareAutomation.nl",
     "prepareAutomation",
+    "reviewAssignedAutomation.nl",
+    "reviewAssignedAutomation",
+    "services.d.ts",
     "chooseExecutor.nl",
     "readSchedule.nl",
     "schedule.ts",
     "types.ts"
   ],
-  "targets": { "main": { "entry": "prepareAutomation.nl" } }
+  "targets": { "main": { "entry": "prepareAutomation.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "automationPlanning": ["reviewAssignedAutomation/observePlanningState.nl"]
+  }
 }

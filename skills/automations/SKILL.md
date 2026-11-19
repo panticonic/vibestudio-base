@@ -25,6 +25,11 @@ off” mean reversible `pause`; use permanent `retire` only for an explicit
 remove/delete request. The tool resolves only automations visible to the
 current user, and the missions service checks ownership again on mutation.
 
+The [assigned automation review](reviewAssignedAutomation.nl) uses the Natlang
+planner to interpret a request about existing missions. It rereads the exact
+assigned roster before handing off a plan and reports any observed change.
+Scheduling and launch still go through the owner-scoped control tools.
+
 ## Choose the executor
 
 - Agent `notify`: deliver fixed text to the owner's inbox (and phone) on each

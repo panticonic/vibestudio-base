@@ -1531,3 +1531,145 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
   );
   expect(reads).toEqual(["receipt"]);
 }, 60_000);
+
+it("reuses the mounted automation planner and rejects a stale handoff", async () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const called: string[] = [];
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      const name = session.lam.functionName!;
+      called.push(name);
+      const services = Object.keys(session.availableServices());
+      expect(services).toEqual(
+        name === "observePlanningState" ? ["automationPlanning"] : [],
+      );
+      const actions: Record<string, string> = {
+        runWorkflow: `
+          const item=request.work[0];
+          const report=await domains.automation.reviewAssignedAutomation(item.input);
+          return {results:[{kind:"domain",domain:item.domain,operation:item.operation,report}],remaining:[]};
+        `,
+        reviewAssignedAutomation: `
+          const before=await observePlanningState(request.operationId);
+          const args=await projectPlanningRequest(request,before);
+          const plan=await prepareAutomation(args);
+          if(plan.kind==="hold"||plan.kind==="launch") return {status:"held",plan,before,after:null};
+          const after=await observePlanningState(request.operationId);
+          return {status:await checkHandoff(plan,before,after),plan,before,after};
+        `,
+        observePlanningState:
+          "return await automationPlanning.inspect(operationId);",
+        prepareAutomation: `
+          if(await classifyIntent(request.goal)!=="control") throw new Error("Wrong path");
+          return await planControl(request);
+        `,
+        classifyIntent: 'return "control";',
+        planControl: `
+          const selected=await resolveVisible(request.goal,request.visible);
+          if(selected.kind==="hold") return selected;
+          const action=await chooseControl(request.goal,selected.automation.state);
+          return {kind:"control",automationId:selected.automation.id,action};
+        `,
+        resolveVisible: `
+          if(visible.some(row=>"revisionDigest" in row)) throw new Error("Planner got extra revision metadata");
+          return visible.length===1
+            ? {kind:"found",automation:visible[0]} : {kind:"hold",reason:"Choose the monitor"};
+        `,
+        chooseControl: 'return "resume";',
+        checkHandoff: `
+          const comparison=await checkSnapshot(plan,before,after);
+          return comparison==="matching" ? "ready" : (comparison==="different" ? "changed" : "held");
+        `,
+      };
+      const result = await session.applyAsync("eval", { code: actions[name]! });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform,
+    fs: {
+      readFile: (path) => readFile(join(root, path), "utf8"),
+      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
+      stat: (path) => stat(join(root, path)),
+    },
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const mission = {
+    id: "assigned",
+    name: "Review",
+    state: "paused",
+    revisionDigest: "one",
+    latestRun: null,
+  };
+  let mode = "stable";
+  let reads = 0;
+  const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+    services: {
+      automationPlanning: {
+        inspect: async (id: string) => {
+          expect(id).toBe("planning-window");
+          reads++;
+          return {
+            visible:
+              mode === "ambiguous"
+                ? [mission, { ...mission, id: "duplicate-name" }]
+                : [
+                    {
+                      ...mission,
+                      revisionDigest:
+                        mode === "edited" && reads === 2 ? "two" : "one",
+                    },
+                  ],
+          };
+        },
+      },
+    },
+  })) as (request: unknown) => Promise<unknown>;
+  const goal = "Review a plan to resume the Review monitor";
+  const request = {
+    goal,
+    work: [
+      {
+        kind: "domain",
+        domain: "automation",
+        operation: "reviewAssignedAutomation",
+        input: {
+          goal,
+          operationId: "planning-window",
+          timezone: "UTC",
+          now: "2026-11-20T00:00:00Z",
+        },
+      },
+    ],
+  };
+  const report = (status: string) => ({
+    results: [{ report: { status } }],
+    remaining: [],
+  });
+
+  await expect(run(request)).resolves.toMatchObject(report("ready"));
+  expect(reads).toBe(2);
+  expect(called.filter((name) => name !== "runWorkflow")).toEqual([
+    "reviewAssignedAutomation",
+    "observePlanningState",
+    "prepareAutomation",
+    "classifyIntent",
+    "planControl",
+    "resolveVisible",
+    "chooseControl",
+    "observePlanningState",
+    "checkHandoff",
+  ]);
+
+  mode = "edited";
+  reads = 0;
+  await expect(run(request)).resolves.toMatchObject(report("changed"));
+  expect(reads).toBe(2);
+
+  mode = "ambiguous";
+  reads = 0;
+  await expect(run(request)).resolves.toMatchObject(report("held"));
+  expect(reads).toBe(1);
+}, 60_000);

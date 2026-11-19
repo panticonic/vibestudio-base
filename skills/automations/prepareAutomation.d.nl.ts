@@ -61,6 +61,20 @@ type AutomationHold = { kind: "hold"; reason: string };
 type AutomationReport = LaunchDraft | ControlDraft | RunBrief | AutomationHold;
 type RunSelection = | { kind: "found"; automation: VisibleAutomation }
   | { kind: "hold"; reason: string };
+type AutomationPlanningRequest = {
+  goal: string;
+  operationId: string;
+  timezone: string;
+  now: string;
+};
+type AssignedAutomation = VisibleAutomation & { revisionDigest: string };
+type AutomationPlanningSnapshot = { visible: AssignedAutomation[] };
+type AutomationPlanningReview = {
+  status: "ready" | "held" | "changed";
+  plan: AutomationReport;
+  before: AutomationPlanningSnapshot;
+  after: AutomationPlanningSnapshot | null;
+};
 type ScheduleError = ScheduleError;
 declare const fn: NatlangFunction<[request: AutomationRequest], AutomationReport> & { readonly classifyIntent: NatlangFunction<[goal: string], AutomationIntent>; readonly draftLaunch: NatlangFunction<[request: AutomationRequest], LaunchDraft | AutomationHold> & { readonly chooseConversation: NatlangFunction<[goal: string, trigger: Trigger], ConversationChoice>; readonly declareOperations: NatlangFunction<[goal: string, executor: ExecutorKind, available: Operation[]], Operation[]>; readonly reviewLaunch: NatlangFunction<[request: AutomationRequest, draft: LaunchDraft], string[]>; readonly chooseExecutor: NatlangFunction<[request: string], ExecutorKind>; readonly readSchedule: NatlangFunction<[request: string], ScheduleReading>; readonly schedule: { readonly toTrigger: (reading: ScheduleReading, defaults: { timezone: string; now: string }) => Trigger } }; readonly inspectRun: NatlangFunction<[request: AutomationRequest], RunBrief | AutomationHold> & { readonly summarizeRun: NatlangFunction<[automation: VisibleAutomation], RunBrief>; readonly resolveVisible: NatlangFunction<[goal: string, visible: VisibleAutomation[]], RunSelection> }; readonly planControl: NatlangFunction<[request: AutomationRequest], ControlDraft | AutomationHold> & { readonly chooseControl: NatlangFunction<[goal: string, state: MissionState], ControlChoice | "hold">; readonly resolveVisible: NatlangFunction<[goal: string, visible: VisibleAutomation[]], RunSelection> }; readonly resolveVisible: NatlangFunction<[goal: string, visible: VisibleAutomation[]], RunSelection> };
 export default fn;

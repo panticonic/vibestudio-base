@@ -66,3 +66,20 @@ export type AutomationReport = LaunchDraft | ControlDraft | RunBrief | Automatio
 export type RunSelection =
   | { kind: "found"; automation: VisibleAutomation }
   | { kind: "hold"; reason: string };
+
+export type AutomationPlanningRequest = {
+  goal: string;
+  operationId: string;
+  timezone: string;
+  now: string;
+};
+
+export type AssignedAutomation = VisibleAutomation & { revisionDigest: string };
+export type AutomationPlanningSnapshot = { visible: AssignedAutomation[] };
+
+export type AutomationPlanningReview = {
+  status: "ready" | "held" | "changed";
+  plan: AutomationReport;
+  before: AutomationPlanningSnapshot;
+  after: AutomationPlanningSnapshot | null;
+};
