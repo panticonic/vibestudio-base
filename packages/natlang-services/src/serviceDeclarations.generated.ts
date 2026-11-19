@@ -513,6 +513,15 @@ type DeploymentVerification = {
 
 /** Verify the managed hub and child after the caller-authorized install. */
 export function verify(actionReceipt: string): Promise<DeploymentVerification>;`,
+  remoteDeploymentHandoff: `/** Bind the assigned device profile to the verified deployment. */
+
+type RemoteDeploymentHandoff = {
+  state: "assigned" | "deployment-changed";
+  operationId: string | null;
+};
+
+/** Bind the assigned device profile to the verified deployment. */
+export function open(deploymentReceipt: string): Promise<RemoteDeploymentHandoff>;`,
   remoteAccessRead: `/** Read the caller-assigned remote profile. */
 
 type RemoteProfileRead = {

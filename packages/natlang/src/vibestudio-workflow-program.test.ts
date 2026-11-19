@@ -321,7 +321,9 @@ it("describes the typed workflows in the installed template domains", async () =
       if (remote.domain === "remoteAccess") {
         const report = remote.operation === "deployRemoteServer"
           ? await domains.remoteAccess.deployRemoteServer(remote.input)
-          : await domains.remoteAccess.openRemoteWorkspace(remote.input);
+          : remote.operation === "commissionRemoteWorkspace"
+            ? await domains.remoteAccess.commissionRemoteWorkspace(remote.input)
+            : await domains.remoteAccess.openRemoteWorkspace(remote.input);
         return {results: [{kind: "domain", domain: remote.domain, operation: remote.operation, report}], remaining: []};
       }
       const system = request.work[1];
@@ -344,6 +346,17 @@ it("describes the typed workflows in the installed template domains", async () =
         report: await domains.automation.prepareAutomation(next.input)});
       return {results, remaining: []};
     `,
+    commissionRemoteWorkspace: `
+      const deployment = await deployRemoteServer(request);
+      if (deployment.status !== "deployment-ready" && deployment.status !== "already-running") {
+        return {deployment, handoff:null, access:null};
+      }
+      const handoff = await bindVerifiedWorkspace(deployment.evidenceIds.at(-1));
+      const access = handoff.state === "assigned"
+        ? await openRemoteWorkspace({operationId:handoff.operationId}) : null;
+      return {deployment, handoff, access};
+    `,
+    bindVerifiedWorkspace: "return await remoteDeploymentHandoff.open(deploymentReceipt);",
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -547,6 +560,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "prepareLocalModel",
         "openRemoteWorkspace",
         "deployRemoteServer",
+        "commissionRemoteWorkspace",
       ],
     ],
     [
@@ -759,10 +773,45 @@ it("describes the typed workflows in the installed template domains", async () =
       },
     ]) {
       const observed: string[] = [];
+      const deploymentReport = {
+        status: example.status,
+        identity: example.status === "deployment-ready" ? identity : null,
+        evidenceIds: example.calls,
+      };
       const deploy = (await loader.load(
         "skills/vibestudio-workflows/runWorkflow.nl",
         {
           services: {
+            remoteDeploymentHandoff: {
+              open: async (receipt: string) => {
+                expect(receipt).toBe(example.calls.at(-1));
+                observed.push("handoff");
+                return example.status === "already-running"
+                  ? { state: "deployment-changed", operationId: null }
+                  : { state: "assigned", operationId: "verified-assignment" };
+              },
+            },
+            remoteAccessRead: {
+              observe: async (operationId: string) => {
+                expect(operationId).toBe("verified-assignment");
+                observed.push("profile");
+                return { receipt: "profile", state: "workspace", inviteAssigned: false };
+              },
+            },
+            remoteAccessRoute: {
+              select: async (receipt: string) => {
+                expect(receipt).toBe("profile");
+                observed.push("route");
+                return { receipt: "route", state: "routed" };
+              },
+            },
+            remoteAccessVerify: {
+              verify: async (receipt: string) => {
+                expect(receipt).toBe("route");
+                observed.push("child");
+                return { receipt: "child", state: "verified", workspaceId: identity.workspaceId };
+              },
+            },
             remoteDeploymentRead: {
               observe: async (operationId: string) => {
                 expect(operationId).toBe("assignment");
@@ -796,31 +845,52 @@ it("describes the typed workflows in the installed template domains", async () =
           },
         },
       )) as (request: unknown) => Promise<unknown>;
-      await expect(
-        deploy({
+      function run(operation: string) {
+        return deploy({
           goal: "Prepare the assigned server",
           work: [
             {
               kind: "domain",
               domain: "remoteAccess",
-              operation: "deployRemoteServer",
+              operation,
               input: { operationId: "assignment" },
             },
           ],
-        }),
-      ).resolves.toMatchObject({
+        });
+      }
+      await expect(run("deployRemoteServer")).resolves.toMatchObject({
+        results: [{ report: deploymentReport }],
+        remaining: [],
+      });
+      expect(observed.splice(0)).toEqual(example.calls);
+      const assignment = example.status === "deployment-ready";
+      const changed = example.status === "already-running";
+      await expect(run("commissionRemoteWorkspace")).resolves.toMatchObject({
         results: [
           {
             report: {
-              status: example.status,
-              identity: example.status === "deployment-ready" ? identity : null,
-              evidenceIds: example.calls,
+              deployment: deploymentReport,
+              handoff: assignment
+                ? { state: "assigned", operationId: "verified-assignment" }
+                : changed
+                  ? { state: "deployment-changed", operationId: null }
+                  : null,
+              access: assignment
+                ? {
+                    status: "workspace-ready",
+                    workspaceId: identity.workspaceId,
+                    evidenceIds: ["profile", "route", "child"],
+                  }
+                : null,
             },
           },
         ],
         remaining: [],
       });
-      expect(observed).toEqual(example.calls);
+      expect(observed).toEqual([
+        ...example.calls,
+        ...(assignment ? ["handoff", "profile", "route", "child"] : changed ? ["handoff"] : []),
+      ]);
     }
     stagedCalls.length = 0;
     runReference = false;
