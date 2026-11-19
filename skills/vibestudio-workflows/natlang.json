@@ -17,6 +17,7 @@
     "runWorkflow/domains/capabilities": "skills/capabilities/natlang",
     "runWorkflow/domains/channelAgent": "skills/agents/channel-membership",
     "runWorkflow/domains/browserLibrary": "skills/browser-library",
+    "runWorkflow/domains/clientDevelopment": "skills/clientdev/natlang",
     "runWorkflow/domains/collection": "skills/collection-conductor",
     "runWorkflow/domains/conversation": "skills/conversation-evidence-review",
     "runWorkflow/domains/deviceAndTerminal": "skills/device-and-terminal-review",

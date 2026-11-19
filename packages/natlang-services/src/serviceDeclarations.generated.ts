@@ -476,6 +476,42 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  clientAdmissionRead: `/** Read the assigned System client, published trust and selected host contract. */
+
+type ClientContract = {
+  hash: string;
+  id: string;
+  runtime: string;
+  abi: string;
+  required: string[];
+  optional: string[];
+};
+
+type ClientAdmissionObservation = {
+  operationId: string;
+  contextId: string;
+  source: string;
+  workingRevision: string;
+  mainRevision: string;
+  working: ClientContract;
+  published: ClientContract;
+  trusted: boolean;
+  host: {
+    kind: "desktop" | "terminal" | "android" | "ios";
+    runtimes: Record<string, string>;
+    capabilities: string[];
+    deviceLevel: string[];
+  };
+  catalog: {
+    status: "available" | "building" | "ready" | "approval-required" | "error";
+    source: string;
+    effectiveVersion: string | null;
+    activeBuildKey: string | null;
+  } | null;
+};
+
+/** Read the assigned System client, published trust and selected host contract. */
+export function observe(operationId: string): Promise<ClientAdmissionObservation>;`,
   extensionReleaseRead: `/** Read assigned extension source and live approved runtime state. */
 
 type ExtensionManifestView = {
