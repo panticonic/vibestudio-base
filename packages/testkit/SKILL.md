@@ -25,6 +25,10 @@ installed in the System workspace.
 - `panelTree` is a top-level runtime API. There is no `workspace.panelTree`
   namespace.
 
+The [Natlang Testkit cleanup reviewer](https://github.com/panticonic/vibestudio-system-testing/blob/main/skills/session-test-review/reviewLiveCleanup.nl)
+uses the actual Testkit outcome, reverse-order release acknowledgements, and
+post-run resource inventory in a caller-owned workspace.
+
 ## Run deterministic suites
 
 ```ts
