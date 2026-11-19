@@ -75,6 +75,7 @@ export function bindSuiteReview(
             before.runtime !== plan.runtime
           ) {
             return {
+              receipt: null,
               status: "state-changed",
               current: false,
               reportDigest: null,
@@ -117,7 +118,17 @@ export function bindSuiteReview(
             "diagnostics" in details
               ? details.diagnostics.map(({ message }) => message)
               : details.details.flatMap(({ errors }) => errors ?? []);
+          const { receipt } = result;
           return {
+            receipt: {
+              operation: receipt.operation,
+              target: receipt.target,
+              suite: receipt.suite ?? null,
+              runtime: receipt.runtime ?? null,
+              contextId: receipt.contextId,
+              ref: receipt.ref,
+              stateHash: receipt.stateHash,
+            },
             status: result.status,
             current:
               result.receipt.stateHash === stateHash &&

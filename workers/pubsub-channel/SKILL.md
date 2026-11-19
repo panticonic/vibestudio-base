@@ -17,6 +17,12 @@ shared event or participant shapes. Reusable channel clients belong in
 `packages/pubsub`; fixed conversation policies belong in
 `packages/channel-policies`.
 
+For a retained delivery receipt, use the
+[delivery history audit](../../skills/conversation-evidence-review/reviewDeliveryHistory.nl)
+in the shared Natlang workflow. Bind the trusted channel target and consumer
+projection with `@workspace-skills/delivery-history-bindings`. The audit
+checks origin, durable cardinality, and the consumer's view without sending.
+
 ## Invariants
 
 - Persist an accepted envelope before advertising or delivering it. A reconnect

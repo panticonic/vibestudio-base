@@ -2,6 +2,7 @@ import { contextId, vcs } from "@workspace/runtime";
 import {
   vcsResolveRepositoryInputSchema,
   type VcsEditChange,
+  type VcsEditInput,
 } from "@vibestudio/service-schemas/vcs";
 import { MAX_UNIT_ICON_BYTES } from "@vibestudio/shared/panel/icon";
 import { prepareUnitIcon } from "./unit-icons.js";
@@ -15,6 +16,8 @@ export interface SetUnitIconParams {
   repoPath: string;
   /** Catalog ID, one emoji, or an existing unit-relative image path. */
   icon: string;
+  /** Optional compare-and-swap basis observed by the caller. */
+  expectedWorkingHead?: VcsEditInput["expectedWorkingHead"];
 }
 
 export interface SetUnitIconResult {
@@ -28,6 +31,7 @@ export interface SetUnitIconResult {
 export async function setUnitIcon({
   repoPath,
   icon,
+  expectedWorkingHead,
 }: SetUnitIconParams): Promise<SetUnitIconResult> {
   if (!/^(about|panels|workers|clients|extensions)\/[^/]+$/u.test(repoPath)) {
     throw new Error(
@@ -36,17 +40,17 @@ export async function setUnitIcon({
   }
   const prepared = await prepareUnitIcon(icon);
   if (!prepared.icon) throw new Error("setUnitIcon requires an icon");
-  const status = await vcs.status({ contextId });
+  const workingHead = expectedWorkingHead ?? (await vcs.status({ contextId })).workingHead;
   const repository = await vcs.resolveRepository(
     vcsResolveRepositoryInputSchema.parse({
-      state: status.workingHead,
+      state: workingHead,
       repoPath,
     }),
   );
   if (!repository) throw new Error(`Unit repository not found: ${repoPath}`);
   const read = (path: string) =>
     vcs.readFile({
-      state: status.workingHead,
+      state: workingHead,
       repositoryId: repository.repositoryId,
       file: { kind: "path", path },
     });
@@ -116,7 +120,7 @@ export async function setUnitIcon({
   const preparation = await prepareChanges(
     changes,
     `Set icon for ${repoPath}`,
-    status,
+    { workingHead },
   );
   return {
     repoPath,

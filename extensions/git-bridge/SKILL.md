@@ -24,7 +24,7 @@ never managed source, build input, or semantic history.
 
 ## Diagnose an assigned repository
 
-The shared Natlang workflow exposes `gitBridge/reviewGitBridge` for an
+The shared Natlang workflow exposes [`gitBridge/reviewGitBridge`](../../skills/git-bridge-review/reviewGitBridge.nl) for an
 assigned import, export, or diagnosis. It reads the current upstream and
 protected-main basis and returns the next step with the exact evidence.
 See [the decomposition](../../skills/git-bridge-review/DECOMPOSITION.md).

@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import matchesSuiteReceipt from "../native-suite-review/reviewTestSuite/reviewResult/checkReceipt/matchesSuiteReceipt.js";
 import { bindSuiteReview } from "./index.js";
 
 const { call, verifyUnit, openPanel } = vi.hoisted(() => ({
@@ -68,6 +69,7 @@ it("runs the exact filter once and preserves a current identity-checked receipt"
     report: { passed: 2, failed: 0, details: [] },
     receipt: {
       ...state,
+      operation: "test",
       contextId: "context:suite",
       ref: "ctx:context:suite",
       reportDigest: "report",
@@ -83,6 +85,7 @@ it("runs the exact filter once and preserves a current identity-checked receipt"
     current: true,
     status: "passed",
     passed: 2,
+    receipt: { ...state, operation: "test", contextId: "context:suite", ref: "ctx:context:suite" },
     reportDigest: "report",
     executionDigest: "execution",
   });
@@ -98,4 +101,22 @@ it("runs the exact filter once and preserves a current identity-checked receipt"
   await expect(
     services.testSuiteVerificationRun.run(request.operationId, plan.stateHash),
   ).rejects.toThrow("once");
+});
+
+it("matches a verification receipt only to its own declared execution plan", () => {
+  const plan = { ...state, runtime: "native" as const, contextId: "context:suite" };
+  const receipt = { ...plan, operation: "test" as const, ref: "ctx:context:suite" };
+  expect(matchesSuiteReceipt(plan, receipt)).toBe(true);
+  expect(matchesSuiteReceipt(plan, null)).toBe(false);
+  for (const change of [
+    { operation: "build" as const },
+    { runtime: "workerd" as const },
+    { suite: "other-suite" },
+    { target: "packages/other" },
+    { contextId: "context:other" },
+    { ref: "ctx:context:other" },
+    { stateHash: "superseded" },
+  ]) {
+    expect(matchesSuiteReceipt(plan, { ...receipt, ...change })).toBe(false);
+  }
 });

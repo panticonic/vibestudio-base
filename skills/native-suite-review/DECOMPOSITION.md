@@ -14,3 +14,11 @@ verification and interpret the result.
 
 A runtime or build failure leaves that runtime as the recorded route. A new
 attempt starts from a newly observed declaration.
+
+## Verification receipts
+
+The TypeScript binding retains the native receipt coordinates alongside the
+bounded execution summary. The result reviewer first matches the receipt
+against the declared plan and checks that the observation is current. Only a
+matching receipt proceeds to outcome classification. A focused run that
+selects no tests reports the actual no-match outcome.

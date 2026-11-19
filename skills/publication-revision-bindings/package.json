@@ -1,0 +1,11 @@
+{
+  "name": "@workspace-skills/publication-revision-bindings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "dependencies": {
+    "@workspace/integrations": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
+}

@@ -6,6 +6,246 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  androidRuntimeAudit: `/** Read an assigned Android device and its current internal application. */
+
+/** Read an assigned Android device and its current internal application. */
+export function observeTarget(operationId: string): Promise<AndroidTargetObservation>;
+
+/** Read an assigned Android device and its current internal application. */
+export function observeApplication(operationId: string): Promise<AndroidRuntimeObservation>;`,
+  deliveryHistory: `/** Inspect durable and consumer views of one assigned conversation receipt. */
+
+/** Inspect durable and consumer views of one assigned conversation receipt. */
+export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  publicationRevision: `/** Compare caller-assigned immutable website packages and targets. */
+
+type PublishEnvironment = "preview" | "production";
+
+type PublishIntent = {
+  provider: string;
+  destination: string;
+  environment: PublishEnvironment;
+};
+
+type PublicRevisionFile = {
+  path: string;
+  digest: string;
+  bytes: number;
+};
+
+type PublicationRevisionPackage = {
+  sourceHash: string;
+  artifactDigest: string;
+  entry: string;
+  intent: PublishIntent;
+  files: PublicRevisionFile[];
+};
+
+type PublicationRevisionComparison = {
+  source: string;
+  reviewed: PublicationRevisionPackage;
+  candidate: PublicationRevisionPackage;
+  change: {
+    added: PublicRevisionFile[];
+    removed: PublicRevisionFile[];
+    modified: { before: PublicRevisionFile; after: PublicRevisionFile }[];
+  };
+};
+
+/** Compare caller-assigned immutable website packages and targets. */
+export function compare(operationId: string): Promise<PublicationRevisionComparison>;`,
+  transcriptCursor: `/** Recover one caller-assigned channel transcript snapshot. */
+
+type TranscriptCursor = { channelId: string; seq: number };
+
+type TranscriptRow = {
+  envelopeId: string;
+  seq: number;
+  messageId: string;
+  role: "user" | "assistant";
+  preview: string;
+};
+
+type TranscriptPage = {
+  after: number;
+  through: number;
+  nextAfter: number;
+  envelopeCount: number;
+  hasMore: boolean;
+  messages: TranscriptRow[];
+};
+
+type TranscriptStart = {
+  channelId: string;
+  saved: TranscriptCursor;
+  maxPages: number;
+  first: TranscriptPage | null;
+};
+
+/** Recover one caller-assigned channel transcript snapshot. */
+export function open(operationId: string): Promise<TranscriptStart>;
+
+/** Recover one caller-assigned channel transcript snapshot. */
+export function next(operationId: string, after: number, through: number): Promise<TranscriptPage>;`,
+  unitIdentity: `/** Read and prepare the caller-assigned workspace icon. */
+
+type UnitIdentityObservation = {
+  repoPath: string;
+  revision: string;
+  icon: string | null;
+  artworkDigest: string | null;
+};
+
+type IconIntent = {
+  family: "brand" | "lucide" | "emoji";
+  term: string;
+};
+
+type IconChoice = {
+  family: "brand" | "lucide" | "emoji";
+  /** "brand:git", "lucide:messages-square", or the emoji itself. */
+  id: string;
+};
+
+type UnitIdentityCandidate = {
+  choice: IconChoice;
+  declaration: string;
+  artworkDigest: string | null;
+};
+
+type UnitIdentityChange = {
+  repoPath: string;
+  revision: string;
+  icon: string;
+  artworkDigest: string | null;
+  mainUnchanged: boolean;
+  manifestOtherwiseUnchanged: boolean;
+  changedFiles: string[];
+};
+
+/** Read and prepare the caller-assigned workspace icon. */
+export function observe(operationId: string): Promise<UnitIdentityObservation>;
+
+/** Read and prepare the caller-assigned workspace icon. */
+export function resolve(operationId: string, intent: IconIntent): Promise<UnitIdentityCandidate | null>;
+
+/** Read and prepare the caller-assigned workspace icon. */
+export function stage(operationId: string, revision: string, authoringId: string): Promise<UnitIdentityChange>;`,
+  gmailComposeAudit: `/** Project typed review evidence for the assigned Gmail compose receipt. */
+
+type ComposeAuditKind = "draft" | "reconcile";
+
+type GmailScope = {
+  target: { id: string; channelId: string; accountRef: string };
+  observed: {
+    id: string;
+    channelId: string;
+    accountRef: string;
+    binding: "native-original" | "native-mismatch" | "channel-readback";
+  };
+};
+
+type GmailTask = { goal: string; scope: GmailScope };
+
+type GmailCompose = GmailTask & {
+  kind: "compose";
+  card: {
+    id: string;
+    messageId: string;
+    requestedMessageId: string;
+    ownedByChannel: boolean;
+    state:
+      | "drafting"
+      | "review"
+      | "saved"
+      | "sending"
+      | "delivery-unknown"
+      | "sent";
+    hasRecipient: boolean;
+    alias: "default" | "configured" | "unknown";
+  };
+  readback:
+    | {
+        kind: "draft";
+        id: string;
+        origin: "gmail-agent" | "participant" | "channel-readback";
+        beforeDraft: string | null;
+        afterDraft: string | null;
+      }
+    | {
+        kind: "authorization";
+        id: string;
+        actor: "gmail-agent" | "user" | "participant";
+        authority: "explicit-user-instruction" | "user-send-click" | "none";
+      }
+    | {
+        kind: "reconcile";
+        id: string;
+        providerProof: "sent-matched" | "no-match" | "not-checked";
+      };
+};
+
+/** Project typed review evidence for the assigned Gmail compose receipt. */
+export function project(operationId: string, kind: ComposeAuditKind): Promise<GmailCompose>;`,
+  gmailComposeHistory: `/** Read native channel history for one assigned Gmail compose card. */
+
+type ComposeHistoryState = {
+  status: "drafting" | "review" | "saving" | "saved" | "sending" | "delivery-unknown" | "sent" | "discarding" | "discarded" | "error";
+  recipientPresent: boolean;
+  alias: "default" | "configured" | "unknown";
+  draftId: string | null;
+  mimeIdentity: boolean;
+  sentIdentity: boolean;
+};
+
+type ComposeHistoryReceipt = {
+  channelId: string;
+  messageId: string;
+  events: {
+    id: string;
+    seq: number;
+    state: ComposeHistoryState;
+    event: "start" | "update" | "failed-update";
+  }[];
+};
+
+/** Read native channel history for one assigned Gmail compose card. */
+export function read(operationId: string): Promise<ComposeHistoryReceipt>;`,
+  explorerTextProbe: `/** Plan and run an assigned workspace text probe. */
+
+type TextProbeInput = {
+  bytes: number;
+  characters: number;
+  digest: string;
+  lineEnding: "lf" | "crlf" | "mixed" | "none";
+  claim: "reports-bytes" | "reports-characters" | "normalizes-line-endings" | null;
+  repeat: boolean;
+};
+
+type TextProbePlan = {
+  expectedBytes: number;
+  expectedDigest: string;
+  comparison: "round-trip" | "repeat-store";
+  check: "utf8-size" | "line-endings" | "exact-content";
+};
+
+type TextProbeReceipt = {
+  blob: {
+    digest: string;
+    writtenBytes: number;
+    exists: boolean;
+    statBytes: number | null;
+    readDigest: string | null;
+    repeatDigest: string | null;
+  };
+  file: { digest: string; bytes: number; removed: boolean };
+};
+
+/** Plan and run an assigned workspace text probe. */
+export function input(operationId: string): Promise<TextProbeInput>;
+
+/** Plan and run an assigned workspace text probe. */
+export function run(operationId: string, plan: TextProbePlan): Promise<TextProbeReceipt>;`,
   tourRehearsal: `/** Navigate and verify a caller-assigned tour panel. */
 
 type TourScene = {
@@ -195,7 +435,20 @@ type SuiteReviewPlan = {
 export function resolve(operationId: string): Promise<SuiteReviewPlan>;`,
   testSuiteVerificationRun: `/** Verify the exact caller-assigned test plan after live resolution. */
 
+type SuiteReviewRuntime = "native" | "workerd" | "browser";
+
+type SuiteVerificationIdentity = {
+  operation: "build" | "test";
+  target: string;
+  suite: string | null;
+  runtime: SuiteReviewRuntime | null;
+  contextId: string;
+  ref: string;
+  stateHash: string;
+};
+
 type SuiteReviewExecution = {
+  receipt: SuiteVerificationIdentity | null;
   status: string;
   current: boolean;
   reportDigest: string | null;

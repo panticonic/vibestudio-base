@@ -196,4 +196,17 @@ describe("setUnitIcon", () => {
     ).rejects.toBe(conflict);
     expect(mocks.edit).toHaveBeenCalledTimes(1);
   });
+
+  it("reads and edits against the caller's exact working basis", async () => {
+    const expectedWorkingHead = { kind: "event", eventId: "event:observed" } as const;
+    await setUnitIcon({ repoPath: "panels/inbox", icon: "🎯", expectedWorkingHead });
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.resolveRepository).toHaveBeenCalledWith(
+      expect.objectContaining({ state: expectedWorkingHead }),
+    );
+    expect(mocks.readFile).toHaveBeenCalledWith(
+      expect.objectContaining({ state: expectedWorkingHead }),
+    );
+    expect(mocks.edit).toHaveBeenCalledWith(expect.objectContaining({ expectedWorkingHead }));
+  });
 });

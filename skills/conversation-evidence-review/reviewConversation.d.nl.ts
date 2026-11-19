@@ -48,5 +48,23 @@ type ConversationReport = {
   blockers: string[];
   ready: boolean;
 };
+type DeliveryHistoryRequest = { goal: string; operationId: string };
+type DeliveryReceipt = { channelId: string; messageId: string; senderId: string };
+type DeliveryMessage = { messageId: string; senderId: string; text: string };
+type DurableDeliveryRow = DeliveryMessage & { envelopeId: string; sequence: number };
+type DeliveryHistoryObservation = {
+  channelId: string;
+  receipt: DeliveryReceipt;
+  retained: DurableDeliveryRow[];
+  rendered: DeliveryMessage[];
+};
+type DeliveryOrigin = "matched" | "foreign-channel" | "missing-message" | "repeated-message" | "receipt-mismatch";
+type DeliveryConsumer = "matched" | "missing" | "divergent" | "unreviewed";
+type DeliveryHistoryReport = {
+  observation: DeliveryHistoryObservation;
+  origin: DeliveryOrigin;
+  consumer: DeliveryConsumer;
+  verified: boolean;
+};
 declare const fn: NatlangFunction<[request: ConversationRequest], ConversationReport> & { readonly reviewContract: NatlangFunction<[request: ContractInput], ConversationReport> & { readonly checkCanonical: NatlangFunction<[request: ContractInput], string[]>; readonly checkConsumers: NatlangFunction<[request: ContractInput], string[]> }; readonly reviewDelivery: NatlangFunction<[request: DeliveryInput], ConversationReport> & { readonly checkEnvelope: NatlangFunction<[request: DeliveryInput], string[]>; readonly checkSettlement: NatlangFunction<[request: DeliveryInput], string[]> }; readonly reviewSurface: NatlangFunction<[request: SurfaceInput], ConversationReport> & { readonly verifyContext: NatlangFunction<[request: SurfaceInput], string[]>; readonly verifyTurn: NatlangFunction<[request: SurfaceInput], string[]> } };
 export default fn;

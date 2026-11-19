@@ -16,7 +16,18 @@ export type SuiteReviewPlan = {
   stateHash: string;
   contextId: string;
 };
+export type SuiteVerificationIdentity = {
+  operation: "build" | "test";
+  target: string;
+  suite: string | null;
+  runtime: SuiteReviewRuntime | null;
+  contextId: string;
+  ref: string;
+  stateHash: string;
+};
+export type SuiteReceiptStatus = "matched" | "incomplete" | "stale";
 export type SuiteReviewExecution = {
+  receipt: SuiteVerificationIdentity | null;
   status: string;
   current: boolean;
   reportDigest: string | null;

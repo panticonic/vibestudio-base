@@ -89,6 +89,11 @@ changes, with suggestions in the error message and catalog matches in the
 structured error data. Brand icons are limited to the Simple Icons marks listed
 below.
 
+The shared Natlang `domains.unitIdentity.prepareUnitIdentity` workflow
+combines icon intent, native catalog resolution and working-state verification.
+Its caller binds one exact unit and chooses whether to prepare an edit or
+review the design alone.
+
 ### Change an existing unit
 
 The same catalog works for panels, workers, apps, extensions, and About pages:

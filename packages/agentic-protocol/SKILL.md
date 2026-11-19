@@ -33,6 +33,12 @@ cross-stack workflow. Runtime consumers include `packages/agentic-do`,
 - Reducers are pure and deterministic over retained history. They do not call
   services, read clocks, or infer missing events from current runtime state.
 
+## Review retained delivery
+
+The [delivery history program](../../skills/conversation-evidence-review/reviewDeliveryHistory.nl)
+joins a caller-assigned receipt to the native envelope by channel, causal
+message ID and sender before it compares the consumer's projection.
+
 ## Changing the contract
 
 1. Decide whether the change affects vocabulary, encoding, or reduction.

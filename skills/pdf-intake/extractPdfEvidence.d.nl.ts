@@ -60,5 +60,29 @@ type PdfIntakeReport = {
   citations: Citation[];
   unanswered: string[];
 };
+type PdfLayoutRequest = { operationId: string; goal: string };
+type PdfLayoutFragment = { text: string; bounds: number[] };
+type PdfLayoutPage = {
+  digest: string;
+  pageNumber: number;
+  width: number;
+  height: number;
+  rows: PdfLayoutFragment[][];
+};
+type PdfLayoutDecision = {
+  kind: "table" | "columns" | "sequence" | "uncertain";
+  basis: string;
+};
+type PdfFragmentLocation = { row: number; fragment: number };
+type PdfLayoutReading = {
+  status: "ordered" | "uncertain";
+  entries: (PdfFragmentLocation & PdfLayoutFragment)[];
+};
+type PdfLayoutReport = {
+  digest: string;
+  pageNumber: number;
+  layout: PdfLayoutDecision;
+  reading: PdfLayoutReading;
+};
 declare const fn: NatlangFunction<[request: PdfIntakeRequest], PdfIntakeReport> & { readonly choosePlan: NatlangFunction<[request: PdfIntakeRequest, probe: ProbeReceipt], IntakePlan> & { readonly intakeChecks: { readonly completeSelection: (pages: number[], probe: ProbeReceipt) => boolean; readonly batches: (pages: number[], size: number) => number[][]; readonly matchesBatch: (digest: string, assigned: number[], receipt: BatchReceipt) => boolean; readonly citations: (pages: ExtractedPage[], locations: Locator[]) => Citation[] } }; readonly findEvidence: NatlangFunction<[request: PdfIntakeRequest, pages: ExtractedPage[]], EvidenceSelection>; readonly probeDocument: NatlangFunction<[document: string], ProbeReceipt>; readonly readBatch: NatlangFunction<[document: string, pages: number[], mode: ExtractionMode], BatchReceipt>; readonly intakeChecks: { readonly completeSelection: (pages: number[], probe: ProbeReceipt) => boolean; readonly batches: (pages: number[], size: number) => number[][]; readonly matchesBatch: (digest: string, assigned: number[], receipt: BatchReceipt) => boolean; readonly citations: (pages: ExtractedPage[], locations: Locator[]) => Citation[] } };
 export default fn;
