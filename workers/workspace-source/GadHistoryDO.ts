@@ -180,6 +180,34 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostWrite)
+  registerHistoryReplayOwners(input: { owners: { contextId: string; participantId: string }[] }) {
+    const receipt = this.readHistoryReplayReceipt();
+    if (!receipt) throw new Error("Workspace history replay has no installed receipt");
+    const contexts = new Set(receipt.contexts.map(({ id }) => id));
+    const requested = new Map<string, string>();
+    for (const { contextId, participantId } of input.owners) {
+      if (!participantId || !contexts.has(contextId) || requested.has(contextId))
+        throw new Error("Invalid workspace history replay owner");
+      requested.set(contextId, participantId);
+    }
+    return this.ctx.storage.transactionSync(() => {
+      const owners: { contextId: string; participantId: string }[] = [];
+      for (const { id: contextId } of receipt.contexts) {
+        const key = `history-replay-owner:${sha256HexSyncText(contextId)}`;
+        const supplied = requested.get(contextId);
+        const recorded = this.getStateValue(key);
+        if (recorded !== null && supplied !== undefined && recorded !== supplied)
+          throw new Error("Workspace history replay owner is already recorded");
+        const participantId = recorded ?? supplied;
+        if (participantId === undefined) continue;
+        if (recorded === null) this.setStateValue(key, participantId);
+        owners.push({ contextId, participantId });
+      }
+      return owners;
+    });
+  }
+
+  @rpc(hostWrite)
   reserveHistoryParticipant(input: { participantId: string; contextId: string }): Promise<{
     targetId: string;
     head: string;
