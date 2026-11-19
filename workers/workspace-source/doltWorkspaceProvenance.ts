@@ -1,4 +1,4 @@
-import { canonicalJson } from "@vibestudio/content-addressing";
+import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import {
   vcsAppliedChangeSchema,
@@ -11,6 +11,8 @@ import {
   vcsWorkUnitSchema,
   vcsWorkspaceEventSchema,
   type VcsInspectResult,
+  type VcsHistoryInput,
+  type VcsHistoryResult,
   type VcsNeighborsInput,
   type VcsNeighborsResult,
   type VcsProvenanceEdge,
@@ -56,11 +58,7 @@ function stateAt(sql: SqlStorage, revision: string): StateNodeRef | null {
   return workspaceCommitForRef(sql, revision, application) === revision ? application : null;
 }
 
-function inspectEvent(sql: SqlStorage, revision: string, workspaceId: string, eventId: string) {
-  const row = sql.exec(
-    "SELECT * FROM dolt_at_events(?) WHERE event_id = ?", revision, eventId,
-  ).toArray()[0];
-  if (!row) throw new SemanticVcsError("InvalidReference", "Unknown workspace event");
+function eventLineageAt(sql: SqlStorage, revision: string) {
   const [first, second, extra] = parentsAt(sql, revision);
   if (!first || extra) throw new SemanticVcsError("IntegrityFailure", "Workspace event has invalid native parents");
   const previous = committedWorkspaceEvent(sql, first);
@@ -72,6 +70,15 @@ function inspectEvent(sql: SqlStorage, revision: string, workspaceId: string, ev
   const sources = integrated ? [integrated.eventId]
     : previous ? workspaceMergeSourcesAt(sql, first, previous.head, applicationIds) : [];
   const parents = [...new Set([...(previous ? [previous.eventId] : []), ...sources])];
+  return { parents, applicationIds };
+}
+
+function inspectEvent(sql: SqlStorage, revision: string, workspaceId: string, eventId: string) {
+  const row = sql.exec(
+    "SELECT * FROM dolt_at_events(?) WHERE event_id = ?", revision, eventId,
+  ).toArray()[0];
+  if (!row) throw new SemanticVcsError("InvalidReference", "Unknown workspace event");
+  const { parents, applicationIds } = eventLineageAt(sql, revision);
   const decisions = applicationIds.length > 0 ? sql.exec(
     `SELECT decisions.decision_id FROM json_each(?2) AS selected
       JOIN dolt_at_applications(?1) AS app ON app.application_id = selected.value
@@ -663,5 +670,100 @@ export function workspaceProvenanceNeighbors(
     root,
     edges: edges.slice(offset, end),
     nextCursor: hasMoreEdges ? semanticCursor("native-neighbors", basis, { offset: end }) : null,
+  };
+}
+
+type EventHistoryInput = Extract<VcsHistoryInput, { root: { kind: "event" } }>;
+type SavedEvent = { eventId: string; head: string };
+
+/** Traverse semantic events at exact native commits, including saved merge parents. */
+export function workspaceEventHistory(
+  sql: SqlStorage, tips: readonly string[], workspaceId: string, contextId: string,
+  input: EventHistoryInput,
+): VcsHistoryResult {
+  const { root, direction, cursor, limit } = input;
+  const rootHead = tips.map((tip) => workspaceCommitForRef(sql, tip, root)).find((head) => head !== null);
+  if (!rootHead) throw new SemanticVcsError("InvalidReference", "Workspace event is outside the admitted history");
+  const basis = { workspaceId, contextId, tips, root, direction };
+  const after = parseSemanticCursor(cursor, "native-event-history", basis);
+  const afterDepth = after ? after["depth"] : 0;
+  const afterId = after ? after["eventId"] : null;
+  if (typeof afterDepth !== "number" || !Number.isSafeInteger(afterDepth) || afterDepth < 0 ||
+      afterDepth > MAX_ANCESTRY_EDGES || (after && typeof afterId !== "string")) {
+    throw new SemanticVcsError("InvalidReference", "Workspace history cursor has an invalid position");
+  }
+
+  const parents = new Map<string, SavedEvent[]>();
+  let edges = 0;
+  const parentsOf = (event: SavedEvent): SavedEvent[] => {
+    const cached = parents.get(event.eventId);
+    if (cached) return cached;
+    const direct = eventLineageAt(sql, event.head).parents.map((eventId) => {
+      const head = workspaceCommitForRef(sql, event.head, { kind: "event", eventId });
+      if (!head) throw new SemanticVcsError("IntegrityFailure", "Workspace event parent has no native revision");
+      return { eventId, head };
+    });
+    edges += direct.length;
+    if (edges > MAX_ANCESTRY_EDGES)
+      throw new SemanticVcsError("ScopeTooLarge", "Workspace event history exceeds its ancestry bound");
+    parents.set(event.eventId, direct);
+    return direct;
+  };
+  const children = new Map<string, SavedEvent[]>();
+  if (direction === "future") {
+    const pending = tips.map((tip) => committedWorkspaceEvent(sql, tip)).filter((event) => event !== null);
+    const seen = new Set<string>();
+    for (const event of pending) {
+      if (seen.has(event.eventId)) continue;
+      seen.add(event.eventId);
+      for (const parent of parentsOf(event)) {
+        const sibling = children.get(parent.eventId) ?? [];
+        sibling.push(event);
+        children.set(parent.eventId, sibling);
+        pending.push(parent);
+      }
+    }
+  }
+
+  const positioned: Array<{ event: SavedEvent; depth: number }> = [];
+  let layer: SavedEvent[] = [{ eventId: root.eventId, head: rootHead }];
+  const visited = new Set([root.eventId]);
+  for (let depth = 0; layer.length > 0 && positioned.length <= limit; depth++) {
+    const next: SavedEvent[] = [];
+    layer.sort((a, b) => compareUtf16CodeUnits(a.eventId, b.eventId));
+    for (const event of layer) {
+      if (depth > afterDepth || (depth === afterDepth && typeof afterId === "string" &&
+          compareUtf16CodeUnits(event.eventId, afterId) > 0)) {
+        positioned.push({ event, depth });
+        if (positioned.length > limit) break;
+      }
+      const relatives = direction === "past" ? parentsOf(event) : children.get(event.eventId) ?? [];
+      for (const relative of relatives) {
+        if (visited.has(relative.eventId)) continue;
+        visited.add(relative.eventId);
+        next.push(relative);
+      }
+    }
+    layer = next;
+  }
+  const page = positioned.slice(0, limit);
+  const entries = page.map(({ event }) => {
+    const row = sql.exec(
+      "SELECT created_at, message, kind FROM dolt_at_events(?) WHERE event_id = ?", event.head, event.eventId,
+    ).toArray()[0];
+    if (!row || typeof row["created_at"] !== "string" || typeof row["kind"] !== "string")
+      throw new SemanticVcsError("IntegrityFailure", "Workspace history event is incomplete");
+    return {
+      node: { kind: "event" as const, eventId: event.eventId },
+      createdAt: row["created_at"],
+      summary: typeof row["message"] === "string" && row["message"] ? row["message"] : row["kind"],
+    };
+  });
+  const last = page.at(-1);
+  return {
+    root, entries,
+    nextCursor: last && positioned.length > limit
+      ? semanticCursor("native-event-history", basis, { depth: last.depth, eventId: last.event.eventId })
+      : null,
   };
 }
