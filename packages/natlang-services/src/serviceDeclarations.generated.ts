@@ -6,6 +6,45 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  buildPerformance: `/** Profile the caller-assigned workspace unit through the native build service. */
+
+type BuildPhaseTimes = {
+  bundlingMs: number;
+  validationMs: number;
+  otherMs: number;
+};
+
+type BuildPayloadObservation = {
+  initialBytes: number;
+  lazyBytes: number;
+  totalBytes: number;
+  largestInitialInputs: { source: string; bytes: number }[];
+};
+
+type BuildPerformanceTarget = {
+  target: string;
+  buildKey: string;
+  artifactBytes: number;
+  executableSourceBytes: number;
+  payload: BuildPayloadObservation | null;
+};
+
+type BuildPerformanceObservation = {
+  source: string;
+  stateHash: string;
+  status: "ok" | "failed" | "skipped";
+  first: {
+    elapsedMs: number;
+    cacheState: "built-during-profile" | "preexisting" | "unknown";
+    phases: BuildPhaseTimes | null;
+  };
+  repeat: { elapsedMs: number; sameBuildKeys: boolean } | null;
+  targets: BuildPerformanceTarget[];
+  firstError: { file: string; message: string } | null;
+};
+
+/** Profile the caller-assigned workspace unit through the native build service. */
+export function observe(operationId: string): Promise<BuildPerformanceObservation>;`,
   serverLogCursor: `/** Observe the assigned saved cursor and a bounded live host-log window. */
 
 type ServerLogCursor = { serverBootId: string; seq: number };
