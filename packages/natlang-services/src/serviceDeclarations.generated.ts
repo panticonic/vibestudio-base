@@ -6,6 +6,39 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  transcriptCursor: `/** Recover one caller-assigned channel transcript snapshot. */
+
+type TranscriptCursor = { channelId: string; seq: number };
+
+type TranscriptRow = {
+  envelopeId: string;
+  seq: number;
+  messageId: string;
+  role: "user" | "assistant";
+  preview: string;
+};
+
+type TranscriptPage = {
+  after: number;
+  through: number;
+  nextAfter: number;
+  envelopeCount: number;
+  hasMore: boolean;
+  messages: TranscriptRow[];
+};
+
+type TranscriptStart = {
+  channelId: string;
+  saved: TranscriptCursor;
+  maxPages: number;
+  first: TranscriptPage | null;
+};
+
+/** Recover one caller-assigned channel transcript snapshot. */
+export function open(operationId: string): Promise<TranscriptStart>;
+
+/** Recover one caller-assigned channel transcript snapshot. */
+export function next(operationId: string, after: number, through: number): Promise<TranscriptPage>;`,
   unitIdentity: `/** Read and prepare the caller-assigned workspace icon. */
 
 type UnitIdentityObservation = {
