@@ -1350,6 +1350,50 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @rpc({
     principals: ["host"],
     website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  beginHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }) {
+    this.ensureReady();
+    if (typeof input.operationId !== "string" || !input.operationId.trim())
+      throw new Error("Workspace history replay requires an operation identity");
+    const marker = canonicalJson(input);
+    const prior = this.getStateValue("legacy-history-replay-freeze");
+    if (prior !== null && prior !== marker) throw new Error("Workspace history has a different frozen replay");
+    const plan = this.exportHistoryReplayPlan();
+    if (plan.main?.kind !== "event" || plan.main.eventId !== input.expectedMainEventId)
+      throw new Error("Workspace main changed before replay was frozen");
+    if (prior === null) {
+      const unfinished = this.sql.exec(
+        "SELECT 1 FROM vcs_command_journal WHERE status <> 'complete' LIMIT 1",
+      ).toArray();
+      if (unfinished.length > 0 || this.semanticWorkspace().pendingEffects().length > 0)
+        throw new Error("Workspace history still has unfinished commands");
+      this.setStateValue("legacy-history-replay-freeze", marker);
+    }
+    return plan;
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  releaseHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }): void {
+    this.ensureReady();
+    const frozen = this.getStateValue("legacy-history-replay-freeze");
+    if (frozen === null) return;
+    if (frozen !== canonicalJson(input)) throw new Error("Workspace history has a different frozen replay");
+    this.deleteStateValue("legacy-history-replay-freeze");
+  }
+
+  #requireLegacyHistoryAvailable(): void {
+    if (this.getStateValue("legacy-history-replay-freeze") !== null)
+      throw new Error("Legacy workspace history is frozen for migration");
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
     effect: { kind: "open" }, tier: "open", sensitivity: "read",
   })
   exportHistoryReplayStep(ref: StateNodeRef): PreparedReplayStep {
@@ -1408,6 +1452,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     input: InitializeExactWorkspaceSnapshotInput,
   ): Promise<WorkspaceSourceInitializationInspection> {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     const requestDigest = sha256HexSyncText(
       canonicalJson({
         pin: input.pin,
@@ -1702,6 +1747,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     request: SemanticDispatchRequest,
   ): Promise<unknown> {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().dispatch(method, request);
   }
 
@@ -1850,6 +1896,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @schemaRpc()
   vcsSemanticEffectAck(input: { acknowledgement: SemanticEffectAcknowledgement }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeEffect(input.acknowledgement);
   }
 
@@ -1861,6 +1908,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     };
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeHostRead(input.acknowledgement);
   }
 
@@ -1869,6 +1917,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     acknowledgement: { request: GadJsonRecord; contentHashes: string[] };
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeContent(input.acknowledgement);
   }
 
@@ -1924,6 +1973,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     ingress: SemanticDispatchRequest["ingress"];
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return input.projection === "deferred"
       ? this.semanticWorkspace().ensureContextCoordinate(input, input.ingress)
       : this.semanticWorkspace().ensureContext(input, input.ingress);
@@ -1951,12 +2001,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
     ingress: SemanticDispatchRequest["ingress"];
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().forkContext(input, input.ingress);
   }
 
   @schemaRpc()
   vcsDropContext(input: { contextId: string }): { dropped: boolean } {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return {
       dropped: this.transaction(() =>
         this.semanticVcsStore().dropContext(input.contextId),
