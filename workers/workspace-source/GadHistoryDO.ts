@@ -435,6 +435,14 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryMainStateVisibility(input: { state: StateNodeRef }): boolean {
+    this.#assertCanonical();
+    return workspaceCommitForRef(
+      this.sql, this.#remotes().hashOf("main"), vcsStateNodeRefSchema.parse(input.state),
+    ) !== null;
+  }
+
+  @rpc(hostRead)
   readHistoryPublishedRevision(input: { eventId: string }) {
     this.#assertCanonical();
     const main = this.#remotes().hashOf("main");
