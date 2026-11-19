@@ -1079,6 +1079,43 @@ export function createPanelRuntime(
     }
   };
 
+  const requireNavigationAttempt = async (id: string, entityId: string) => {
+    const attempt = await ensurePanelMaterialized(id);
+    if (attempt.runtimeEntityId === entityId) return attempt;
+    // A fast rollback can change the slot before ensureSlot returns. Its
+    // restored page is not completion evidence for this navigation.
+    const proof = await rpc.call(
+      "main",
+      mainRpcMethods["panelRuntime.historyProof"],
+      [id],
+    );
+    const failed = proof.find(
+      (entry) => entry.entityId === entityId && entry.state === "failed",
+    );
+    const observed = await observePanel(id);
+    throw new PanelOperationError(
+      panelFailure({
+        code: "host_unavailable",
+        stage: failed ? "boot" : "runtime",
+        message: failed
+          ? `Panel ${id} returned to a proven build after the requested build failed`
+          : `Panel ${id} navigated away before the requested runtime was observed`,
+        provenance: {
+          panelId: id,
+          runtimeEntityId: entityId,
+          source: observed.source,
+          contextId: observed.contextId,
+          requestedRef: observed.requestedRef,
+          buildKey: failed?.buildKey ?? null,
+        },
+        details: {
+          currentRuntimeEntityId: attempt.runtimeEntityId,
+          ...(failed ? { buildFailure: failed.failure } : {}),
+        },
+      }),
+    );
+  };
+
   const navigatePanel = (
     ...args: Parameters<typeof navigatePanelUnfenced>
   ): ReturnType<typeof navigatePanelUnfenced> =>
@@ -1180,7 +1217,7 @@ export function createPanelRuntime(
     });
     reportNavigationCleanup(transition);
     await callState("panel.updateTitle", [id, title, { explicit: false }]);
-    const attempt = await ensurePanelMaterialized(id);
+    const attempt = await requireNavigationAttempt(id, next.id);
     const observation = await observePanel(id);
     rememberMetadata({
       id,
@@ -1216,7 +1253,7 @@ export function createPanelRuntime(
       mutation: { kind: "select", entryKey: target.entry_key },
     });
     reportNavigationCleanup(transition);
-    const attempt = await ensurePanelMaterialized(id);
+    const attempt = await requireNavigationAttempt(id, target.entity_id);
     const observation = await observePanel(id);
     return waitUntilReady(observation, waitOptions?.signal, attempt);
   };

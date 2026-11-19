@@ -84,6 +84,7 @@ function runtimeHarness(
     replaceEntityOnAgentFailure?: boolean;
     disconnectAgentTarget?: boolean;
     recoverStoppedRoute?: boolean;
+    rollbackBeforeMaterialize?: boolean;
     onCreateSlotTiming?: NonNullable<
       Parameters<typeof createPanelRuntime>[0]["onCreateSlotTiming"]
     >;
@@ -95,6 +96,7 @@ function runtimeHarness(
 ) {
   let currentSlotId = "panel:tree/new";
   let currentEntityId = "panel:nav-new";
+  let failedEntityId: string | undefined;
   let currentSource = options.browserReady
     ? (options.browserSource ?? "browser:data:text/html,<p>ready</p>")
     : "panels/new";
@@ -220,8 +222,22 @@ function runtimeHarness(
         }
         case "workspace-state.panelTree.detail":
           return detail(currentEntityId, currentSource, currentSlotId) as T;
+        case "panelRuntime.historyProof":
+          return [
+            {
+              entryKey: "failed-candidate",
+              entityId: failedEntityId,
+              buildKey: "candidate",
+              state: "failed",
+              failure: { code: "entry_threw" },
+            },
+          ] as T;
         case "panelRuntime.ensureSlot":
           ensureSlotCalls += 1;
+          if (options.rollbackBeforeMaterialize) {
+            failedEntityId = currentEntityId;
+            currentEntityId = "panel:nav-new";
+          }
           if (options.recoverStoppedRoute && ensureSlotCalls > 1) {
             currentEntityId = "panel:nav-replacement";
           }
@@ -1519,6 +1535,26 @@ describe("panel runtime topology composition", () => {
       ],
       undefined,
     );
+  });
+
+  it("reports the failed candidate when rollback wins before rebuild materialization", async () => {
+    const { runtime } = runtimeHarness({ rollbackBeforeMaterialize: true });
+    await expect(
+      runtime.getPanelHandle("panel:tree/new").rebuild({ history: "append" }),
+    ).rejects.toMatchObject({
+      code: "PANEL_OPERATION_FAILED",
+      failure: {
+        stage: "boot",
+        provenance: {
+          runtimeEntityId: expect.stringMatching(/^panel:nav-nav-/u),
+          buildKey: "candidate",
+        },
+        details: {
+          currentRuntimeEntityId: "panel:nav-new",
+          buildFailure: { code: "entry_threw" },
+        },
+      },
+    });
   });
 
   it("pins an exact artifact through navigation into the entity and its history entry", async () => {
