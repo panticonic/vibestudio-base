@@ -102,8 +102,9 @@ one physical action or requests a choice when setup cannot proceed.
 
 If pairing succeeded and workspace setup is still opening, retain the paired
 device ID from the binding and start another assignment with `paired` to
-check readiness. An unconfirmed pairing calls for inspecting the setup card
-before retrying. Only a ready workspace means the phone can be unplugged.
+check readiness. The binding retains a confirmed device even if the pairing
+stream fails afterward. An unconfirmed pairing calls for inspecting the setup
+card before retrying. Only a ready workspace means the phone can be unplugged.
 
 ## Android readiness
 

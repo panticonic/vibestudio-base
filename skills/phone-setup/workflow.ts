@@ -173,24 +173,27 @@ export async function bindPhoneSetup(
         claim("discovered", discoveryReceipt, receipt("discovery"));
         const id = receipt("pairing");
         try {
-          const paired = await client.provision({
-            providerId,
-            platform,
-            deviceId,
-            mode: target.mode,
-          });
-          if (
-            paired.providerId === providerId &&
-            paired.platform === platform &&
-            paired.attachedDeviceId === deviceId
-          ) {
-            pairingReceipt = id;
-            pairedDeviceId = paired.pairedDevice.deviceId;
-            phase = "paired";
-          }
+          await client.provision(
+            { providerId, platform, deviceId, mode: target.mode },
+            (event) => {
+              if (event.type !== "paired" || pairingReceipt !== null) return;
+              const paired = event.result;
+              if (
+                paired.providerId !== providerId ||
+                paired.platform !== platform ||
+                paired.attachedDeviceId !== deviceId
+              )
+                return;
+              pairingReceipt = id;
+              pairedDeviceId = paired.pairedDevice.deviceId;
+            },
+          );
         } catch {
+          // A later stream failure cannot undo an already confirmed pairing.
           signal?.throwIfAborted();
         }
+        signal?.throwIfAborted();
+        if (pairedDeviceId) phase = "paired";
         return { receipt: id, pairedDeviceId };
       },
     },

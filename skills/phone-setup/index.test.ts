@@ -124,7 +124,7 @@ it("keeps slow startup opening until authoritative readiness and cancels an owne
   }
 });
 
-it("executes the shared setup tree and resumes a paired device through the public service", async () => {
+it("resumes through the shared setup tree after the pairing stream fails with a confirmed device", async () => {
   const root = fileURLToPath(new URL("../..", import.meta.url));
   const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
   const commands: Record<string, string> = {
@@ -299,9 +299,10 @@ it("executes the shared setup tree and resumes a paired device through the publi
       },
     ]);
     observations.push(method);
-    return phoneSetupStream(async (emit) =>
-      emit({ type: "paired", result: paired }),
-    );
+    return phoneSetupStream(async (emit) => {
+      emit({ type: "paired", result: paired });
+      throw new Error("Desktop disconnected after confirming pairing");
+    });
   });
   const target = {
     platform: "android",
