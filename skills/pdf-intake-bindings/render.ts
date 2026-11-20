@@ -11,8 +11,17 @@ function paeth(left: number, above: number, diagonal: number) {
   return aboveError <= diagonalError ? above : diagonal;
 }
 
+const filters = [
+  () => 0,
+  (left: number) => left,
+  (_left: number, above: number) => above,
+  (left: number, above: number) => (left + above) >> 1,
+  paeth,
+];
+
 /** Measure visible marks against the white PDF canvas, using original raster coordinates. */
 export async function inspectPdfRaster(data: Uint8Array) {
+  if (!(data instanceof Uint8Array)) throw new Error("The PDF renderer did not return retained image bytes.");
   if (data.length < 45 || !pngSignature.every((byte, index) => data[index] === byte))
     throw new Error("The retained PDF page is not a PNG image.");
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -65,19 +74,20 @@ export async function inspectPdfRaster(data: Uint8Array) {
   let maxY = -1;
   for (let y = 0; y < height; y++) {
     const start = y * (stride + 1);
-    const filter = raw[start];
-    if (filter === undefined || filter > 4) throw new Error("The PDF raster has an invalid row filter.");
+    const filter = filters[raw[start]!];
+    if (!filter) throw new Error("The PDF raster has an invalid row filter.");
     for (let index = 0; index < stride; index++) {
       const left = current[index - channels] ?? 0;
       const diagonal = above[index - channels] ?? 0;
       const up = above[index]!;
-      const correction = [0, left, up, (left + up) >> 1, paeth(left, up, diagonal)][filter]!;
-      current[index] = raw[start + 1 + index]! + correction;
+      current[index] = raw[start + 1 + index]! + filter(left, up, diagonal);
     }
     for (let x = 0; x < width; x++) {
       const pixel = x * channels;
       if (alpha && current[pixel + colors] === 0) continue;
-      if (current.subarray(pixel, pixel + colors).every((channel) => channel === 255)) continue;
+      let visible = false;
+      for (let channel = 0; channel < colors; channel++) visible ||= current[pixel + channel] !== 255;
+      if (!visible) continue;
       inkPixels++;
       minX = Math.min(x, minX);
       minY = Math.min(y, minY);
