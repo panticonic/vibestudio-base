@@ -8,6 +8,7 @@ import type {
   PublishIntent,
   WebsiteReviewObservation,
 } from "../publish-preflight/types.js";
+export type { PublicationNext } from "../publish-preflight/types.js";
 
 type PanelEvidence = {
   panel: Awaited<ReturnType<PanelHandle["observe"]>>;

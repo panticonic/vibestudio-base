@@ -28,3 +28,12 @@ packager supplies the current build, public manifest, and per-file digests.
 
 A retained review describes the same artifact and destination. The workflow
 leaves any later publish or provider reconciliation to its caller.
+
+## Recover an existing publication
+
+The publication review first checks the operation, artifact, provider and
+target against the assignment. The progress lambda interprets the latest
+completed journal phase. Its submitted branch calls a separate lambda to
+distinguish provider readiness from verified public contents. The root holds
+the continuation if the reviewed package or rendered panel fails its checks.
+The program returns the next step for the caller and exposes read-only services.

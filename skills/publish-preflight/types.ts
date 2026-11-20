@@ -53,12 +53,21 @@ export type PreflightReview = {
   blockers: PublishBlocker[];
   evidence: string[];
 };
+export type PublicationNext =
+  | "hold-review"
+  | "recover-receipt"
+  | "resume-operation"
+  | "watch-provider"
+  | "verify-public"
+  | "complete";
+export type PublicationProgressReview = PreflightReview & { next?: PublicationNext };
 export type PublishVisual = "Checklist" | "Timeline" | "Compare" | "Prose";
 export type PublishPreflightReport = {
   status: "ready-for-review" | "blocked" | "waiting" | "verified";
   blockers: PublishBlocker[];
   evidence: string[];
   visual: PublishVisual;
+  next?: PublicationNext;
 };
 
 export type PublicationRevisionRequest = { goal: string; operationId: string };

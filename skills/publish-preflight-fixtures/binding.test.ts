@@ -203,8 +203,15 @@ function referenceVerdict(
         )
       ? "waiting"
       : "blocked";
+  const next = world.action === "prepare" ? undefined
+    : blockers.includes("different-publication") ? "hold-review"
+    : !publication ? "recover-receipt"
+    : publication.phase !== "submitted" ? "resume-operation"
+    : !publication.observedReadyUrl ? "watch-provider"
+    : !publication.verifiedPublicDigest ? "verify-public" : "complete";
   return {
     status,
+    next,
     blockers,
     evidence: [artifact.artifactDigest],
     visual: compare
@@ -247,6 +254,9 @@ describe("Vibestudio publication preflight worlds", () => {
       ]);
       const reference = referenceVerdict(world, observed);
       expect(verifyPublicationOutcome(world, reference, observed)).toBe(true);
+      if (world.expectedNext && world.expectedNext !== "resume-operation") {
+        expect(verifyPublicationOutcome(world, { ...reference, next: "resume-operation" }, observed)).toBe(false);
+      }
       expect(
         verifyPublicationOutcome(
           world,

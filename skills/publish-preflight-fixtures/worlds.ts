@@ -5,6 +5,7 @@ import type {
   PublishPreflightRequest,
   PublishVisual,
   PublicationObservation,
+  PublicationNext,
   WebsiteReviewObservation,
 } from "../publish-preflight/types.js";
 
@@ -16,6 +17,7 @@ export type PublishWorld = {
   audience: string;
   action: PublishPreflightRequest["action"];
   phase?: PublicationObservation["phase"];
+  expectedNext?: PublicationNext;
   gap?:
     | "source"
     | "manifest"
@@ -172,6 +174,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Review minutes",
     goal: "Show the publication progress by phase for the annual review site.",
     action: "check-existing",
+    expectedNext: "recover-receipt",
     gap: "receipt",
     expected: {
       status: "blocked",
@@ -187,6 +190,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Dataset definitions",
     goal: "Check the existing provider operation for our public research dashboard.",
     action: "check-existing",
+    expectedNext: "hold-review",
     phase: "uploaded",
     gap: "target",
     expected: {
@@ -203,6 +207,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Road works detour",
     goal: "Give me a publication progress timeline based on the existing upload.",
     action: "check-existing",
+    expectedNext: "resume-operation",
     phase: "uploaded",
     expected: {
       status: "waiting",
@@ -218,6 +223,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Reserve the community room",
     goal: "Tell me whether the manager can share the submitted booking guide yet.",
     action: "check-existing",
+    expectedNext: "watch-provider",
     phase: "submitted",
     gap: "provider",
     expected: {
@@ -234,6 +240,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Find your registration period",
     goal: "Can I share the registration guide after seeing the ready page?",
     action: "check-existing",
+    expectedNext: "verify-public",
     phase: "submitted",
     gap: "unverified",
     expected: {
@@ -250,6 +257,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Wheelchair-accessible entrance",
     goal: "Report the publication progress by phase and whether the verified production artifact matches.",
     action: "check-existing",
+    expectedNext: "complete",
     phase: "submitted",
     provider: "cloudflare-pages",
     environment: "production",
@@ -263,6 +271,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Find orientation materials",
     goal: "Check whether an earlier handoff used the operation we reviewed.",
     action: "check-existing",
+    expectedNext: "hold-review",
     phase: "submitted",
     gap: "operation",
     expected: {
@@ -279,6 +288,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Reporting procedure and follow-up",
     goal: "Is the website operation serving the reviewed reporting FAQ?",
     action: "check-existing",
+    expectedNext: "hold-review",
     phase: "submitted",
     gap: "artifact",
     expected: {
@@ -295,6 +305,7 @@ export const publicationWorlds: PublishWorld[] = [
     requiredLabel: "Cost and project duration",
     goal: "Does the ready web address establish publication for the running brief?",
     action: "check-existing",
+    expectedNext: "watch-provider",
     phase: "submitted",
     gap: "public-url",
     expected: {
@@ -328,6 +339,7 @@ export function verifyPublicationOutcome(
   const expected = world.expected;
   return (
     observed.status === expected.status &&
+    observed.next === world.expectedNext &&
     observed.visual === expected.visual &&
     observed.blockers.length === expected.blockers.length &&
     expected.blockers.every((blocker) => observed.blockers.includes(blocker)) &&

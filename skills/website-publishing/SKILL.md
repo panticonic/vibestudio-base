@@ -151,6 +151,12 @@ still applies.
 
 ## Recovery
 
+Use [publication preflight](../publish-preflight/preflightPublication.nl) with
+the `check-existing` action and the retained host receipt. Its next step tells
+the caller to recover a missing receipt, hold a mismatched review, resume an
+incomplete operation, watch an existing submission, verify its public digest,
+or hand off the completed publication.
+
 The Host journal records each operation's completed phase: `prepared`,
 `destination-ready`, `uploaded`, then `submitted`. Calling the deploy function
 again with the same `operationId` resumes after the last recorded phase, and a
