@@ -1211,6 +1211,74 @@ export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]
 export function finishCadence(
       change: NewsCadenceChange,
     ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  browserImportSource: `/** Read the caller-assigned browser import source readiness. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportSourceObservation = {
+  state: "available" | "host-unavailable" | "source-unavailable" | "blocked";
+  categories: PublicImportCategory[];
+};
+
+/** Read the caller-assigned browser import source readiness. */
+export function observe(): Promise<ImportSourceObservation>;`,
+  browserImportPreview: `/** Preview aggregate counts for the assigned public categories. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportTotal = { category: PublicImportCategory; total: number };
+
+type ImportPreviewObservation = {
+  totals: ImportTotal[];
+  status: "previewed" | "source-changed";
+  warningCount: number;
+};
+
+/** Preview aggregate counts for the assigned public categories. */
+export function observe(): Promise<ImportPreviewObservation>;`,
+  browserImportHistory: `/** Read the assigned retained browser import receipt. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportProgress = {
+  category: PublicImportCategory;
+  stored: number;
+  skipped: number;
+  errors: number;
+};
+
+type RetainedImportObservation = {
+  phase:
+    | "queued"
+    | "discovering"
+    | "copying"
+    | "reading"
+    | "decrypting"
+    | "normalizing"
+    | "storing"
+    | "reconciling"
+    | "complete"
+    | "cancelled"
+    | "failed"
+    | "partial";
+  resumable: boolean;
+  progress: ImportProgress[];
+};
+
+/** Read the assigned retained browser import receipt. */
+export function observe(): Promise<RetainedImportObservation | null>;`,
   browserLibraryState: `/** Read the assigned browser library. */
 
 type LibraryBookmark = { id: number; folder: string; title: string; url: string };
