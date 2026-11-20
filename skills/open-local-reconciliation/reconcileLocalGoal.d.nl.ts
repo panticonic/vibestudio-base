@@ -10,7 +10,7 @@ type ReconcileChoice = {
   id: string;
   options: ReconcileResolution[];
 };
-type ReconcileView = { head: string; source: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
 type ReconcileEdit = { path: string; before: string; after: string };
 type ReconcileDecision = { coordinate: { kind: "file"; id: string }; resolution: ReconcileResolution; rationale: string };
 type ReconcilePlan = { edits: ReconcileEdit[]; decisions: ReconcileDecision[]; reason: string } | null;
@@ -20,7 +20,11 @@ type IntegrationResult = { status: "integrated" | "held"; head: string; reason: 
 type EvidenceRequest = { goal: string; questions: string[]; sources: { id: string; path: string }[] };
 type EvidenceReceipt = { path: string; bytes: number };
 type RetainedResult = { status: "none" | "held" | "staged"; artifact: EvidenceReceipt | null };
-type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult };
-type ReconcilePreparation = { integration: IntegrationResult; handoffRequested: boolean; evidence: EvidenceRequest | null };
-declare const fn: NatlangFunction<[goal: string], ReconcilePreparation> & { readonly prepareEvidence: NatlangFunction<[head: string], EvidenceRequest | null> & { readonly releaseEvidence: NatlangFunction<[head: string], EvidenceRequest | null> }; readonly reconcileProject: NatlangFunction<[goal: string, window: ReviewWindow], IntegrationResult> & { readonly observeProject: NatlangFunction<[], ReconcileView>; readonly planResolution: NatlangFunction<[goal: string, window: ReviewWindow, observed: ReconcileView], ReconcilePlan>; readonly writeResolution: NatlangFunction<[head: string, operation: ReconcileOperation], ReconcileEffect> }; readonly discoverWindow: { readonly readWindow: NatlangFunction<[], ReviewWindow> } };
+type ArchiveCard = { id: string; title: string; revision: string };
+type ArchiveSnapshot = ArchiveCard & { setting: string; key: string; value: unknown; sha256: string };
+type CurrentArchiveValue = { exists: boolean; value: unknown };
+type ArchiveReview = { prior: ArchiveSnapshot; current: CurrentArchiveValue; relation: "matches" | "changed" };
+type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult; archive?: ArchiveReview | null };
+type ReconcilePreparation = { integration: IntegrationResult; handoffRequested: boolean; evidence: EvidenceRequest | null; archive: ArchiveReview | null };
+declare const fn: NatlangFunction<[goal: string], ReconcilePreparation> & { readonly comparePrior: NatlangFunction<[prior: ArchiveSnapshot, head: string], ArchiveReview | null>; readonly prepareEvidence: NatlangFunction<[head: string], EvidenceRequest | null> & { readonly releaseEvidence: NatlangFunction<[head: string], EvidenceRequest | null> }; readonly reconcileProject: NatlangFunction<[goal: string, window: ReviewWindow, prior: ArchiveSnapshot | null], IntegrationResult> & { readonly observeProject: NatlangFunction<[], ReconcileView>; readonly planResolution: NatlangFunction<[goal: string, window: ReviewWindow, observed: ReconcileView], ReconcilePlan>; readonly writeResolution: NatlangFunction<[head: string, operation: ReconcileOperation], ReconcileEffect> }; readonly recoverPrior: NatlangFunction<[goal: string, initialWindow: ReviewWindow, initialView: ReconcileView], ArchiveSnapshot | null> & { readonly chooseHistoricalSource: NatlangFunction<[goal: string, initialWindow: ReviewWindow, initialView: ReconcileView, snapshots: ArchiveSnapshot[]], ArchiveSnapshot | null>; readonly listArchive: NatlangFunction<[], ArchiveCard[]>; readonly readArchive: NatlangFunction<[id: string], ArchiveSnapshot | null> }; readonly discoverWindow: { readonly readWindow: NatlangFunction<[], ReviewWindow> } };
 export default fn;

@@ -6,4 +6,9 @@ export type LocalReconciliationGoalReport = {
   integration: { status: "integrated" | "held"; head: string; reason: string };
   window: { title: string; window: "open" | "pending" | "closed"; note: string; head: string };
   handoff: { status: "none" | "held" | "staged"; artifact: { path: string; bytes: number } | null };
+  archive?: {
+    prior: { id: string; title: string; revision: string; setting: string; key: string; value: unknown; sha256: string };
+    current: { exists: boolean; value: unknown };
+    relation: "matches" | "changed";
+  } | null;
 };

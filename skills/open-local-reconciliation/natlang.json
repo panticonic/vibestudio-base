@@ -16,6 +16,11 @@
     "reconciliationNative": [
       "reconcileLocalGoal/reconcileProject/observeProject.nl",
       "reconcileLocalGoal/reconcileProject/writeResolution.nl"
+    ],
+    "reconciliationArchive": [
+      "reconcileLocalGoal/recoverPrior/listArchive.nl",
+      "reconcileLocalGoal/recoverPrior/readArchive.nl",
+      "reconcileLocalGoal/comparePrior.nl"
     ]
   }
 }

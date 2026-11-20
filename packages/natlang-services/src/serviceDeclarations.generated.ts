@@ -1085,6 +1085,22 @@ type LocalDeliveryEvidence = {
 
 /** Recover the original owned delivery after submission or interruption. */
 export function read(attemptId: string): Promise<LocalDeliveryEvidence | null>;`,
+  reconciliationArchive: `/** Discover and read retained local scratch evidence and compare the selected setting at the exact working revision. */
+
+type ArchiveCard = { id: string; title: string; revision: string };
+
+type ArchiveSnapshot = ArchiveCard & { setting: string; key: string; value: unknown; sha256: string };
+
+type CurrentArchiveValue = { exists: boolean; value: unknown };
+
+/** Discover and read retained local scratch evidence and compare the selected setting at the exact working revision. */
+export function list(): Promise<ArchiveCard[]>;
+
+/** Discover and read retained local scratch evidence and compare the selected setting at the exact working revision. */
+export function read(id: string): Promise<ArchiveSnapshot | null>;
+
+/** Discover and read retained local scratch evidence and compare the selected setting at the exact working revision. */
+export function readCurrent(id: string, head: string): Promise<CurrentArchiveValue | null>;`,
   reconciliationWindow: `/** Read the current local approval window and release an exact reviewed revision for a scratch handoff. */
 
 type ReviewWindow = { title: string; window: "open" | "pending" | "closed"; note: string; head: string };
@@ -1110,7 +1126,7 @@ type ReconcileChoice = {
   options: ReconcileResolution[];
 };
 
-type ReconcileView = { head: string; source: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
 
 type ReconcileEdit = { path: string; before: string; after: string };
 

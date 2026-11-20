@@ -6,7 +6,7 @@ export type ReconcileChoice = {
   id: string;
   options: ReconcileResolution[];
 };
-export type ReconcileView = { head: string; source: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+export type ReconcileView = { head: string; source: string; baseline: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
 export type ReconcileEdit = { path: string; before: string; after: string };
 export type ReconcileDecision = { coordinate: { kind: "file"; id: string }; resolution: ReconcileResolution; rationale: string };
 export type ReconcilePlan = { edits: ReconcileEdit[]; decisions: ReconcileDecision[]; reason: string } | null;
@@ -16,5 +16,9 @@ export type IntegrationResult = { status: "integrated" | "held"; head: string; r
 export type EvidenceRequest = { goal: string; questions: string[]; sources: { id: string; path: string }[] };
 export type EvidenceReceipt = { path: string; bytes: number };
 export type RetainedResult = { status: "none" | "held" | "staged"; artifact: EvidenceReceipt | null };
-export type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult };
-export type ReconcilePreparation = { integration: IntegrationResult; handoffRequested: boolean; evidence: EvidenceRequest | null };
+export type ArchiveCard = { id: string; title: string; revision: string };
+export type ArchiveSnapshot = ArchiveCard & { setting: string; key: string; value: unknown; sha256: string };
+export type CurrentArchiveValue = { exists: boolean; value: unknown };
+export type ArchiveReview = { prior: ArchiveSnapshot; current: CurrentArchiveValue; relation: "matches" | "changed" };
+export type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult; archive?: ArchiveReview | null };
+export type ReconcilePreparation = { integration: IntegrationResult; handoffRequested: boolean; evidence: EvidenceRequest | null; archive: ArchiveReview | null };

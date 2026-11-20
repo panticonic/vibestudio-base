@@ -1,7 +1,12 @@
 import type {
-  EvidenceRequest, ReconcileDecision, ReconcileEdit, ReconcileEffect, ReconcileView, ReviewWindow,
+  ArchiveCard, ArchiveSnapshot, CurrentArchiveValue, EvidenceRequest, ReconcileDecision, ReconcileEdit, ReconcileEffect, ReconcileView, ReviewWindow,
 } from "./types.js";
 declare module "natlang:services" {
+  export const reconciliationArchive: {
+    list(): Promise<ArchiveCard[]>;
+    read(id: string): Promise<ArchiveSnapshot | null>;
+    readCurrent(id: string, head: string): Promise<CurrentArchiveValue | null>;
+  };
   export const reconciliationWindow: {
     read(): Promise<ReviewWindow>;
     release(head: string): Promise<EvidenceRequest | null>;
