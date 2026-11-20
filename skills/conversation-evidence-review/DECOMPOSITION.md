@@ -6,12 +6,11 @@ agentic-do guides own turn admission, supervision and terminal execution.
 The PubSub and protocol guides own causal envelopes, participant state and
 the one canonical event vocabulary.
 
-The program reviews these boundaries through three typed branches:
-delivery checks accepted rows and settlement, surface review checks exact
-context before display and completion, and protocol review checks stored
-vocabulary and historical consumer evidence. It uses actual caller-supplied
-receipts. The existing transport, reducers, authority, test tools and
-workspaces retain their behavior and effects.
+The program reviews these boundaries through typed branches. Delivery checks
+accepted rows and settlement. Surface review checks exact context before
+display and completion. Protocol review checks stored vocabulary and
+historical consumer evidence. Chat handoff uses the live audit to choose
+what the next operator should do. All four use caller-supplied evidence.
 
 ## Delivery history
 
