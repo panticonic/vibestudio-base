@@ -14,6 +14,7 @@ import { localReviewerWorlds } from "../../../skills/channel-agent-membership-fi
 import { approvalVisibilityWorlds } from "../../../skills/approval-visibility-fixtures/worlds.js";
 import { verifyApprovalVisibility } from "../../../skills/approval-visibility-fixtures/verify.js";
 import { membershipReference } from "../../../skills/channel-agent-membership-fixtures/reference.js";
+import { bindTerminalReceiptReview } from "../../../skills/terminal/receipt-review.js";
 
 it("runs two skill trees from the same package using only the caller's scoped bindings", async () => {
   const root = fileURLToPath(new URL("../../..", import.meta.url));
@@ -372,6 +373,10 @@ it("describes the typed workflows in the installed template domains", async () =
         const report = await domains.unitDesign.reviewWorkspaceUnit(remote.input);
         return {results:[{kind:"domain",domain:"unitDesign",operation:remote.operation,report}],remaining:[]};
       }
+      if (remote.domain === "deviceAndTerminal") {
+        const report = await domains.deviceAndTerminal.reviewDeviceAndTerminal(remote.input);
+        return {results:[{kind:"domain",domain:"deviceAndTerminal",operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "remoteAccess") {
         if (remote.operation === "reviewRemoteRoute") {
           const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
@@ -532,6 +537,24 @@ it("describes the typed workflows in the installed template domains", async () =
         finding:invalid?"required-revision":waiting?"pending-lifecycle":"prerequisites-verified",
         evidenceIds:[...new Set(components.flatMap(row=>row.evidenceIds))],components};
     `,
+    reviewDeviceAndTerminal: "return await reviewLiveTerminal(request);",
+    reviewLiveTerminal: "return await reviewTerminal(await readTerminalEvidence(request.operationId));",
+    readTerminalEvidence: "return await terminalEvidenceRead.inspect(operationId);",
+    reviewTerminal: "return (await inspectInvocation(input)) ?? (await inspectExecution(input));",
+    inspectInvocation: `
+      const {target,invocation}=input;
+      if(invocation?.operationId!==target.operationId||invocation?.contextId!==target.contextId)
+        return {status:"blocked",findings:[]};
+      return null;
+    `,
+    inspectExecution: `
+      const {target,result}=input;
+      if(result.operationId!==target.operationId) return {
+        status:"blocked",findings:[{code:"result-target-mismatch",evidenceIds:[target.id,result.id]}]
+      };
+      return {status:result.truncated?"attention":"ready",
+        findings:[{code:result.truncated?"success-output-truncated":"execution-succeeded",evidenceIds:[result.id]}]};
+    `,
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -657,6 +680,9 @@ it("describes the typed workflows in the installed template domains", async () =
       }
       if (["reviewWorkspaceUnit", "reviewLiveExtensionDesign", "readExtensionDesign", "reviewExtension", "inspectManifest", "reviewManifestPublication", "combineWork"].includes(name)) {
         expect(Object.keys(session.availableServices())).toEqual(name === "readExtensionDesign" ? ["extensionDesignRead"] : []);
+      }
+      if (["reviewDeviceAndTerminal", "reviewLiveTerminal", "readTerminalEvidence", "reviewTerminal", "inspectInvocation", "inspectExecution"].includes(name)) {
+        expect(Object.keys(session.availableServices())).toEqual(name === "readTerminalEvidence" ? ["terminalEvidenceRead"] : []);
       }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
@@ -923,6 +949,45 @@ it("describes the typed workflows in the installed template domains", async () =
         "runWorkflow", "reviewWorkspaceUnit", "reviewLiveExtensionDesign", "readExtensionDesign",
         "reviewExtension", "inspectManifest", "reviewExtension", "inspectManifest",
         "reviewManifestPublication", "combineWork",
+      ]);
+    }
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "reviewDeviceAndTerminal")) {
+    runReference = true;
+    const goal = "Review the origin and completeness of the retained result.";
+    for (const [foreign, truncated, status, code] of [
+      [false, false, "ready", "execution-succeeded"],
+      [false, true, "attention", "success-output-truncated"],
+      [true, false, "blocked", "result-target-mismatch"],
+    ] as const) {
+      const makeResult = (operationId: string) => ({
+        contextId: "ctx", operationId,
+        plan: { receipt: `${operationId}:plan`, checks: [{
+          id: "evidence", purpose: "Read the marker", prerequisites: [], mode: "argv" as const,
+        }] },
+        result: {
+          receipt: `${operationId}:check:evidence`, id: "evidence", status: "complete" as const,
+          exitCode: 0, timedOut: false, truncated, stdout: "ready", stderr: "notice",
+        },
+      });
+      const assigned = makeResult("assigned");
+      const retained = foreign ? makeResult("neighbor") : assigned;
+      const bound = bindTerminalReceiptReview({ goal, assigned, retained });
+      const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+        services: bound.services,
+      })) as (input: unknown) => Promise<unknown>;
+      stagedCalls.length = 0;
+      await expect(run({goal, work: [{
+        kind: "domain", domain: "deviceAndTerminal", operation: "reviewDeviceAndTerminal", input: bound.request,
+      }]})).resolves.toMatchObject({
+        results: [{report: {status, findings: [{
+          code, evidenceIds: foreign ? [assigned.operationId, retained.result.receipt] : [retained.result.receipt],
+        }]}}],
+      });
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow", "reviewDeviceAndTerminal", "reviewLiveTerminal", "readTerminalEvidence",
+        "reviewTerminal", "inspectInvocation", "inspectExecution",
       ]);
     }
     runReference = false;
