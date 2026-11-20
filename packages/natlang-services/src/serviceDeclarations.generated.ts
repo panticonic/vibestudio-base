@@ -1264,13 +1264,14 @@ type NewsScheduleEvidence = {
     | { kind: "manual" };
 };
 
-type NewsCadenceChange =
+type NewsGoalChange =
   | { kind: "poll"; intervalMs: number }
   | { kind: "interval"; intervalMs: number }
   | { kind: "daily"; at: string; timezone: string }
   | { kind: "pause" }
-  | { kind: "resume" }
-  | null;
+  | { kind: "resume" };
+
+type NewsCadenceChange = NewsGoalChange | null;
 
 /** Read assigned News readers and schedules and complete the assigned cadence change. */
 export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;
@@ -2257,6 +2258,897 @@ type LiveCleanupEvidence = {
 
 /** Read the assigned live Testkit teardown receipt. */
 export function inspect(receipt: string): Promise<LiveCleanupEvidence>;`,
+  googleHandoffMail: `/** Read mail evidence for the assigned Google handoff. */
+
+type MailMessage = {
+  id: string; from: string; subject: string; receivedAt: string; body: string; fileIds: string[];
+};
+
+type MailThread = { id: string; messages: MailMessage[] };
+
+/** Read mail evidence for the assigned Google handoff. */
+export function discover(): Promise<{ ids: string[]; complete: boolean }>;
+
+/** Read mail evidence for the assigned Google handoff. */
+export function read(id: string): Promise<MailThread | null>;`,
+  googleHandoffDrive: `/** Inspect the linked Drive asset in the assigned handoff. */
+
+type ReviewMode = "metadata" | "content" | "audience" | "content-and-audience";
+
+type AssetIntent = { messageId: string; fileId: string; mode: ReviewMode };
+
+type PermissionEvidence = {
+  id: string; type: string; role: string; address: string | null; deleted: boolean; pendingOwner: boolean;
+  directRoles: string[];
+};
+
+type AssetEvidence = {
+  id: string; status: "current" | "missing" | "inaccessible" | "unavailable" | "trashed" | "shortcut";
+  name: string | null; mimeType: string | null; version: string | null;
+  content: { text: string; sha256: string } | null;
+  permissions: PermissionEvidence[] | null;
+  missingChecks: ("content" | "audience")[];
+};
+
+/** Inspect the linked Drive asset in the assigned handoff. */
+export function inspect(asset: AssetIntent): Promise<AssetEvidence>;`,
+  googleHandoffFreshness: `/** Verify the evidence behind the assigned handoff decision. */
+
+type HandoffDecision = {
+  status: "ready" | "held" | "incomplete" | "stale";
+  reason: "approved" | "withdrawn" | "unresolved" | "missing" | "inaccessible" | "trashed" |
+    "shortcut" | "audience" | "content" | "provider" | "changed";
+  mailIds: string[];
+  assetIds: string[];
+  facts?: { fileId: string; quote: string }[];
+};
+
+/** Verify the evidence behind the assigned handoff decision. */
+export function verify(decision: HandoffDecision): Promise<"current" | "changed" | "unavailable">;`,
+  googleHandoffScratch: `/** Stage the assigned handoff decision for review. */
+
+type HandoffDecision = {
+  status: "ready" | "held" | "incomplete" | "stale";
+  reason: "approved" | "withdrawn" | "unresolved" | "missing" | "inaccessible" | "trashed" |
+    "shortcut" | "audience" | "content" | "provider" | "changed";
+  mailIds: string[];
+  assetIds: string[];
+  facts?: { fileId: string; quote: string }[];
+};
+
+type HandoffReceipt = { path: string; sha256: string };
+
+/** Stage the assigned handoff decision for review. */
+export function stage(decision: HandoffDecision): Promise<HandoffReceipt>;`,
+  gmailGoalCatalog: `/** Discover the mail sources assigned to the Gmail goal. */
+
+type ComposeSelection = { id: string; title: string; room: string };
+
+/** Discover the mail sources assigned to the Gmail goal. */
+export function discover(): Promise<ComposeSelection[]>;`,
+  gmailGoalCompose: `/** Read the assigned Gmail compose record. */
+
+type RetainedCompose = {
+  id: string;
+  channelId: string;
+  state: "review" | "saving" | "saved" | "sent" | "delivery-unknown";
+  draftId: string | null;
+  sentId: string | null;
+  mimeId: string;
+  threadId: string;
+  evidence: string[];
+};
+
+/** Read the assigned Gmail compose record. */
+export function read(id: string): Promise<RetainedCompose>;`,
+  gmailGoalProvider: `/** Verify drafts and delivery against the assigned Gmail compose record. */
+
+type ProviderRecord = {
+  id: string;
+  messageId: string;
+  threadId: string;
+  mimeId: string;
+  subject: string;
+  sender: string;
+  recipient: string;
+  preview: string;
+  sent: boolean;
+  digest: string;
+};
+
+type ReadResult =
+  | { status: "found"; record: ProviderRecord }
+  | { status: "missing" | "unavailable"; record: null };
+
+type SearchResult = {
+  status: "complete" | "unavailable";
+  ids: string[];
+  next: string | null;
+};
+
+/** Verify drafts and delivery against the assigned Gmail compose record. */
+export function getDraft(composeId: string, draftId: string): Promise<ReadResult>;
+
+/** Verify drafts and delivery against the assigned Gmail compose record. */
+export function findDrafts(composeId: string, cursor: string | null): Promise<SearchResult>;
+
+/** Verify drafts and delivery against the assigned Gmail compose record. */
+export function verifyDraft(composeId: string, draftId: string, digest: string): Promise<ReadResult>;
+
+/** Verify drafts and delivery against the assigned Gmail compose record. */
+export function readSent(composeId: string): Promise<ReadResult>;`,
+  calendarGoalCatalog: `/** Discover the calendar sources assigned to the goal. */
+
+type CalendarSource = { id: string; name: string; description: string; timeZone: string };
+
+/** Discover the calendar sources assigned to the goal. */
+export function discover(): Promise<CalendarSource[]>;`,
+  calendarGoalWindows: `/** Open and refresh a time window in the assigned calendar. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarWindow = {
+  id: string;
+  calendarId: string;
+  status: "complete" | "unavailable";
+  records: CalendarRecord[];
+};
+
+/** Open and refresh a time window in the assigned calendar. */
+export function open(id: string, start: string, end: string): Promise<CalendarWindow>;
+
+/** Open and refresh a time window in the assigned calendar. */
+export function refresh(windowId: string): Promise<CalendarWindow>;`,
+  calendarGoalReadback: `/** Verify the exact calendar record from the assigned goal. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarReadback = {
+  status: "current" | "changed" | "missing" | "unavailable";
+  record: CalendarRecord | null;
+};
+
+/** Verify the exact calendar record from the assigned goal. */
+export function verify(record: CalendarRecord): Promise<CalendarReadback>;`,
+  calendarGoalHandoff: `/** Stage the assigned calendar decision for review. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarDecision = {
+  status: "selected" | "held" | "incomplete" | "stale";
+  selection: CalendarRecord | null;
+  evidence: CalendarRecord[];
+};
+
+type CalendarHandoff = { path: string; sha256: string };
+
+/** Stage the assigned calendar decision for review. */
+export function stage(decision: CalendarDecision): Promise<CalendarHandoff>;`,
+  googleGoalDiscovery: `/** Discover the Drive access assigned to the goal. */
+
+type DriveGoalScope = {
+  folders: { id: string; name: string; description: string }[];
+  changeSources: { cursor: string; name: string }[];
+};
+
+/** Discover the Drive access assigned to the goal. */
+export function discover(): Promise<DriveGoalScope>;`,
+  newsGoal: `/** Read the assigned News reader and review a change to its cadence. */
+
+type NewsScheduleEvidence = {
+  kind: "schedule";
+  goal: string;
+  owner: { id: string; mode: "curator" | "analyst"; paused: boolean };
+  poll: { id: string; intervalMs: number } | null;
+  briefing: {
+    id: string;
+    kind: "interval" | "daily";
+    intervalMs: number | null;
+    at: string | null;
+    timezone: string | null;
+  } | null;
+  intent:
+    | { kind: "poll"; intervalMs: number }
+    | { kind: "interval"; intervalMs: number }
+    | { kind: "daily"; at: string; timezone: string }
+    | { kind: "pause" }
+    | { kind: "resume" }
+    | { kind: "manual" };
+};
+
+type NewsCadenceSnapshot = {
+  owner: NewsScheduleEvidence["owner"];
+  poll: NewsScheduleEvidence["poll"];
+  briefing: NewsScheduleEvidence["briefing"];
+};
+
+type NewsReaderSelection =
+  | { kind: "inbox" | "saved" | "backlog" }
+  | { kind: "archive"; query: string };
+
+type NewsReaderPage = {
+  id: string;
+  requestedCursor: string | null;
+  nextCursor: string | null;
+  hasMore: boolean;
+  articleIds: string[];
+  briefingIds?: string[];
+};
+
+type NewsReaderEvidence = {
+  kind: "reader";
+  goal: string;
+  view: "inbox" | "saved" | "archive" | "backlog";
+  overview: {
+    id: string;
+    setup: "needs-user-preferences" | "configured";
+    articleCount: number;
+    untriagedCount: number;
+    enabledFeeds: number;
+    failedFeeds: number;
+  };
+  activity: "idle" | "loading" | "retryable-error";
+  pages: NewsReaderPage[];
+};
+
+type NewsGoalChange =
+  | { kind: "poll"; intervalMs: number }
+  | { kind: "interval"; intervalMs: number }
+  | { kind: "daily"; at: string; timezone: string }
+  | { kind: "pause" }
+  | { kind: "resume" };
+
+type NewsGoalApply = {
+  status: "applied" | "state-changed" | "unchanged" | "denied";
+  cadence: NewsCadenceSnapshot;
+};
+
+/** Read the assigned News reader and review a change to its cadence. */
+export function observeCadence(): Promise<NewsCadenceSnapshot>;
+
+/** Read the assigned News reader and review a change to its cadence. */
+export function readReader(
+      selection: NewsReaderSelection,
+    ): Promise<NewsReaderEvidence>;
+
+/** Read the assigned News reader and review a change to its cadence. */
+export function apply(
+      observationId: string,
+      change: NewsGoalChange,
+    ): Promise<NewsGoalApply>;`,
+  archiveTimeline: `/** Read milestones and files from the assigned Personal archive. */
+
+type Milestone = { label: string; eventId: string };
+
+type Lead = { eventId: string; snippet: string };
+
+type Scope = { milestones: Milestone[]; leads: Lead[] };
+
+type Source = {
+  eventId: string;
+  path: string;
+  contentHash: string;
+  text: string;
+};
+
+/** Read milestones and files from the assigned Personal archive. */
+export function discover(): Promise<Scope>;
+
+/** Read milestones and files from the assigned Personal archive. */
+export function list(eventId: string): Promise<string[]>;
+
+/** Read milestones and files from the assigned Personal archive. */
+export function read(eventId: string, path: string): Promise<Source | null>;`,
+  missionGoalBoard: `/** Observe the assigned Mission Control planning board. */
+
+type BoardStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type BoardCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: BoardStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type BoardSnapshot = {
+  id: string;
+  projects: { id: string; name: string; archived: boolean }[];
+  cards: BoardCard[];
+  complete: boolean;
+};
+
+/** Observe the assigned Mission Control planning board. */
+export function observe(): Promise<BoardSnapshot>;`,
+  missionGoalChange: `/** Apply an assigned change against the exact planning snapshot. */
+
+type BoardChange =
+  | { kind: "ready"; cardId: string; revision: number }
+  | { kind: "relocate"; cardId: string; revision: number; projectId: string }
+  | { kind: "prerequisites"; cardId: string; revision: number; dependencies: string[] };
+
+type BoardStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type BoardCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: BoardStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type BoardSnapshot = {
+  id: string;
+  projects: { id: string; name: string; archived: boolean }[];
+  cards: BoardCard[];
+  complete: boolean;
+};
+
+type ChangeResult = { status: "applied" | "changed"; snapshot: BoardSnapshot };
+
+/** Apply an assigned change against the exact planning snapshot. */
+export function apply(snapshotId: string, change: BoardChange): Promise<ChangeResult>;`,
+  missionGoalHandoff: `/** Stage the assigned planning cards for handoff. */
+
+type HandoffReceipt = { path: string; sha256: string; snapshotId: string; cardIds: string[] };
+
+/** Stage the assigned planning cards for handoff. */
+export function stage(snapshotId: string, cardIds: string[]): Promise<HandoffReceipt>;`,
+  operatorQueue: `/** Read and act on the assigned Personal automation queue. */
+
+type State = "active" | "paused";
+
+type Action = "pause" | "resume";
+
+type Monitor = {
+  id: string;
+  name: string;
+  team: string;
+  state: State;
+  revision: string;
+  reviewedRevision: string | null;
+  needs: string[];
+  permitted: Action[];
+};
+
+type Queue = { id: string; monitors: Monitor[] };
+
+type Receipt = "applied" | "already" | "blocked" | "interrupted";
+
+/** Read and act on the assigned Personal automation queue. */
+export function observe(): Promise<Queue>;
+
+/** Read and act on the assigned Personal automation queue. */
+export function apply(basis: string, id: string, action: Action): Promise<Receipt>;`,
+  artifactLibrary: `/** Read and update the assigned artifact library. */
+
+type ArtifactBookmark = {
+  id: number;
+  folder: string;
+  title: string;
+  url: string;
+};
+
+type ArtifactVisit = {
+  url: string;
+  title: string;
+  lastVisitTime: number;
+};
+
+type ArtifactLibrary = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: ArtifactBookmark[];
+  visits: ArtifactVisit[];
+};
+
+type ArtifactLibraryMutation =
+  | { kind: "save"; folder: string; url: string; title: string }
+  | { kind: "rename"; id: number; title: string }
+  | { kind: "file"; id: number; folder: string }
+  | { kind: "retire"; id: number; keepId: number };
+
+type ArtifactMutationStatus = "applied" | "changed" | "held";
+
+type ArtifactLibraryEffect = {
+  status: ArtifactMutationStatus;
+  state: ArtifactLibrary;
+};
+
+/** Read and update the assigned artifact library. */
+export function observe(): Promise<ArtifactLibrary>;
+
+/** Read and update the assigned artifact library. */
+export function apply(
+      basis: string,
+      mutation: ArtifactLibraryMutation,
+    ): Promise<ArtifactLibraryEffect>;`,
+  artifactCollection: `/** Read, update and link items in the assigned artifact collection. */
+
+type ArtifactNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type ArtifactCollection = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: ArtifactNode[];
+};
+
+type ArtifactCollectionMutation =
+  | { kind: "note"; panelId: string; text: string | null }
+  | { kind: "group"; parentId: string; title: string }
+  | { kind: "move"; panelId: string; parentId: string; afterId: string | null };
+
+type ArtifactMutationStatus = "applied" | "changed" | "held";
+
+type ArtifactCollectionEffect = {
+  status: ArtifactMutationStatus;
+  state: ArtifactCollection;
+};
+
+/** Read, update and link items in the assigned artifact collection. */
+export function observe(): Promise<ArtifactCollection>;
+
+/** Read, update and link items in the assigned artifact collection. */
+export function apply(
+      basis: string,
+      mutation: ArtifactCollectionMutation,
+    ): Promise<ArtifactCollectionEffect>;
+
+/** Read, update and link items in the assigned artifact collection. */
+export function link(
+      basis: string,
+      panelId: string,
+      libraryBasis: string,
+      bookmarkId: number,
+      heading: string,
+    ): Promise<ArtifactCollectionEffect>;`,
+  openBrowserMigration: `/** Review and stage the assigned browser data handoff. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportProgress = {
+  category: PublicImportCategory;
+  stored: number;
+  skipped: number;
+  errors: number;
+};
+
+type RetainedImportObservation = {
+  phase:
+    | "queued"
+    | "discovering"
+    | "copying"
+    | "reading"
+    | "decrypting"
+    | "normalizing"
+    | "storing"
+    | "reconciling"
+    | "complete"
+    | "cancelled"
+    | "failed"
+    | "partial";
+  resumable: boolean;
+  progress: ImportProgress[];
+};
+
+type MigrationProfile = {
+  id: string;
+  label: string;
+  device: string;
+  categories: PublicImportCategory[];
+  approved: PublicImportCategory[];
+  retained: RetainedImportObservation["phase"] | null;
+};
+
+type MigrationCatalog = {
+  revision: string;
+  profiles: MigrationProfile[];
+  collection: string | null;
+};
+
+type MigrationChoice = {
+  sourceId: string;
+  operation: "preview" | "execute" | "recover";
+  categories: PublicImportCategory[];
+};
+
+type ImportTotal = { category: PublicImportCategory; total: number };
+
+type ImportPreviewObservation = {
+  totals: ImportTotal[];
+  status: "previewed" | "source-changed";
+  warningCount: number;
+};
+
+type BrowserImportReviewRequest =
+  | {
+      goal: string;
+      kind: "preview" | "recover";
+      categories: PublicImportCategory[];
+    }
+  | {
+      goal: string;
+      kind: "execute";
+      categories: PublicImportCategory[];
+      approvedPreview: ImportPreviewObservation;
+    };
+
+type MigrationBookmark = { title: string; url: string };
+
+type MigrationOutcomeEvidence = {
+  preview: ImportPreviewObservation | null;
+  approvedPreview: ImportPreviewObservation | null;
+  receiptId: string | null;
+  phase: RetainedImportObservation["phase"] | null;
+  retainedBookmarks: MigrationBookmark[];
+};
+
+type BrowserImportNext =
+  | "review-preview"
+  | "use-inspector"
+  | "observe-existing"
+  | "keep-results"
+  | "review-retry";
+
+type ImportSourceObservation = {
+  state: "available" | "host-unavailable" | "source-unavailable" | "blocked";
+  categories: PublicImportCategory[];
+};
+
+type BrowserImportReviewReport = {
+  next: BrowserImportNext;
+  source: ImportSourceObservation | null;
+  totals: ImportTotal[];
+  progress: ImportProgress[];
+  findings: string[];
+};
+
+type MigrationTarget = {
+  id: string;
+  title: string;
+  parent: string | null;
+};
+
+type MigrationHandoffView = {
+  revision: string;
+  receiptId: string;
+  bookmarks: MigrationBookmark[];
+  targets: MigrationTarget[];
+};
+
+type MigrationHandoffChoice = {
+  bookmark: MigrationBookmark;
+  targetId: string;
+};
+
+type MigrationDelivery = {
+  receiptId: string;
+  targetId: string;
+  bookmark: MigrationBookmark;
+  note: string;
+};
+
+/** Review and stage the assigned browser data handoff. */
+export function discover(): Promise<MigrationCatalog>;
+
+/** Review and stage the assigned browser data handoff. */
+export function bind(
+      revision: string,
+      choice: MigrationChoice,
+    ): Promise<BrowserImportReviewRequest | null>;
+
+/** Review and stage the assigned browser data handoff. */
+export function readOutcome(): Promise<MigrationOutcomeEvidence>;
+
+/** Review and stage the assigned browser data handoff. */
+export function inspectHandoff(
+      review: BrowserImportReviewReport,
+    ): Promise<MigrationHandoffView | null>;
+
+/** Review and stage the assigned browser data handoff. */
+export function stageHandoff(
+      revision: string,
+      choice: MigrationHandoffChoice,
+    ): Promise<MigrationDelivery | null>;`,
+  operatorDiscovery: `/** Read the candidate systems and observe the assigned target. */
+
+type OperatorGrant = "start" | "restart" | "pair";
+
+type OperatorTarget = {
+  id: string;
+  label: string;
+  surface: "deployment" | "terminal-profile";
+  grant: OperatorGrant | null;
+};
+
+type OperatorIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type OperatorBaseline = {
+  target: OperatorTarget;
+  state: "ready" | "inactive" | "unverified";
+  identity: OperatorIdentity | null;
+  receipt: string;
+};
+
+/** Read the candidate systems and observe the assigned target. */
+export function list(): Promise<OperatorTarget[]>;
+
+/** Read the candidate systems and observe the assigned target. */
+export function observe(targetId: string): Promise<OperatorBaseline>;`,
+  operatorDeployment: `/** Apply and verify the assigned deployment operation. */
+
+type OperatorAttempt = {
+  state: "applied" | "failed" | "baseline-changed";
+  receipt: string;
+};
+
+type OperatorIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type OperatorReadback = {
+  state: "verified" | "unready" | "unchanged-boot" | "identity-changed";
+  identity: OperatorIdentity | null;
+  receipt: string;
+};
+
+/** Apply and verify the assigned deployment operation. */
+export function apply(
+      observationReceipt: string,
+      operation: "start" | "restart",
+    ): Promise<OperatorAttempt>;
+
+/** Apply and verify the assigned deployment operation. */
+export function verify(installationReceipt: string): Promise<OperatorReadback>;`,
+  operatorProfile: `/** Inspect the assigned profile and verify its paired runtime route. */
+
+type OperatorProfile = {
+  state: "unpaired" | "account" | "workspace" | "foreign" | "unusable";
+  inviteAssigned: boolean;
+  receipt: string;
+};
+
+type OperatorPair = { state: "paired" | "failed"; receipt: string };
+
+type OperatorRoute = { state: "routed" | "failed"; receipt: string };
+
+type OperatorChild = {
+  state: "verified" | "unreachable" | "identity-mismatch";
+  workspaceId: string | null;
+  receipt: string;
+};
+
+/** Inspect the assigned profile and verify its paired runtime route. */
+export function inspect(observationReceipt: string): Promise<OperatorProfile>;
+
+/** Inspect the assigned profile and verify its paired runtime route. */
+export function pair(profileReceipt: string): Promise<OperatorPair>;
+
+/** Inspect the assigned profile and verify its paired runtime route. */
+export function open(pairReceipt: string): Promise<OperatorRoute>;
+
+/** Inspect the assigned profile and verify its paired runtime route. */
+export function verify(routeReceipt: string): Promise<OperatorChild>;`,
+  diagnosticCatalog: `/** Discover the diagnostic sources assigned to the incident. */
+
+type DiagnosticSource = {
+  id: string;
+  label: string;
+  component: string;
+  description: string;
+};
+
+type DiagnosticSources = { checkpoints: DiagnosticSource[]; mayStage: boolean };
+
+/** Discover the diagnostic sources assigned to the incident. */
+export function discover(): Promise<DiagnosticSources>;`,
+  diagnosticLog: `/** Read an assigned diagnostic log source. */
+
+type DiagnosticSource = {
+  id: string;
+  label: string;
+  component: string;
+  description: string;
+};
+
+type WindowStatus = "observed" | "other-boot" | "future" | "expired" | "overflow" | "changed";
+
+type DiagnosticRecord = { seq: number; text: string };
+
+type DiagnosticWindow = {
+  source: DiagnosticSource;
+  status: WindowStatus;
+  saved: { boot: string; sequence: number };
+  liveBoot: string;
+  through: number | null;
+  records: DiagnosticRecord[];
+};
+
+/** Read an assigned diagnostic log source. */
+export function read(sourceId: string): Promise<DiagnosticWindow>;`,
+  diagnosticHandoff: `/** Stage the assigned diagnostic finding for review. */
+
+type Disposition = "ongoing" | "recovered" | "attention" | "clear" | "unconfirmed";
+
+type ExactDiagnosticCitation = { sourceId: string; boot: string; seq: number; text: string };
+
+type DiagnosticFinding = { status: Disposition; reason: string; citations: ExactDiagnosticCitation[] };
+
+type DiagnosticArtifact = { path: string; sha256: string };
+
+/** Stage the assigned diagnostic finding for review. */
+export function stage(finding: DiagnosticFinding): Promise<DiagnosticArtifact>;`,
+  spectroliteGoal: `/** Review and revise the assigned vault source at its exact revision. */
+
+type OpenVaultView = {
+  path: string;
+  revision: string;
+  source: string;
+  visible: string;
+  links: { target: string; path: string | null }[];
+};
+
+type ReviewCheck =
+  | "document"
+  | "preview"
+  | "navigation"
+  | "revision"
+  | "handoff"
+  | "publication";
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultReviewState = {
+  id: string;
+  repositoryId: string;
+  working: VaultReference;
+  committed: VaultReference;
+  mainEventId: string;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+};
+
+type DocumentReviewReceipt = {
+  id: string;
+  repositoryId: string;
+  path: string;
+  ref: VaultReference;
+  fileId: string;
+  contentHash: string;
+  format: "text" | "other";
+  contentClass: "internal" | "external";
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  externalKeys: string[];
+  title: string | null;
+  dependencies: { name: string; reference: string }[];
+  links: { target: string; resolvedPath: string | null }[];
+};
+
+type PreviewReviewReceipt = {
+  id: string;
+  documentPath: string;
+  contentHash: string;
+  phase: "pending" | "rendered" | "compile-error" | "render-error";
+  detail: string | null;
+};
+
+type NavigationHop = { from: string; target: string; to: string };
+
+type NavigationReceipt = {
+  id: string;
+  hops: NavigationHop[];
+};
+
+type ScribeReviewReceipt = {
+  id: string;
+  documentPath: string;
+  recipientId: string;
+  eventId: string | null;
+  phase: "unsent" | "sent" | "failed";
+  selection: string | null;
+};
+
+type PublishReviewReceipt = {
+  id: string;
+  targetEventId: string;
+  observedMainEventId: string | null;
+  outcome: "published" | "up-to-date" | "error" | null;
+  publishing: boolean;
+  conflicts: { kind: "file" | "repository"; id: string; summary: string }[];
+  lastError: string | null;
+};
+
+type SpectroliteReviewRequest = {
+  goal: string;
+  checks: ReviewCheck[];
+  path: string;
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt | null;
+  committedDocument?: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+  navigation?: NavigationReceipt | null;
+  scribeTarget: { recipientId: string; selection: string | null } | null;
+  handoff: ScribeReviewReceipt | null;
+  publication: PublishReviewReceipt | null;
+};
+
+/** Review and revise the assigned vault source at its exact revision. */
+export function inspect(): Promise<OpenVaultView>;
+
+/** Review and revise the assigned vault source at its exact revision. */
+export function follow(target: string, revision: string): Promise<"followed" | "changed" | "unavailable">;
+
+/** Review and revise the assigned vault source at its exact revision. */
+export function revise(revision: string, source: string): Promise<"written" | "changed" | "unavailable">;
+
+/** Review and revise the assigned vault source at its exact revision. */
+export function evidence(checks: ReviewCheck[]): Promise<SpectroliteReviewRequest>;`,
   templateOffer: `/** Read cached upstream status for the caller-assigned template source. */
 
 /** Read the identified cached offer and its compatibility evidence. */
