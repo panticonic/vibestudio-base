@@ -6,6 +6,8 @@ args:
   current: ConversationRead
   selection: ResultSelection
   output: 'OutputReadback | null'
-returns: RetainedDelivery
+returns: DeliveryReviewEvidence
 ---
-Use conversation.reviewConversation in delivery mode. A uniquely accepted original envelope is channelAccepted and originMatched only when the selected record is retained in this conversation and binds the exact requested provider, revision, action and recipient. Count the matching retained result message, and require exact audience for recipient resolution and membership. A committed result with matching cache readback is delivered and replayMeaningMatches. A preliminary receipt is pending. A failed result is failed. Do not invent a retry or a delivered result. Return the installed review.
+1. Build a delivery request with the goal and selected channel. Set channelAccepted and originMatched when exactly one original result envelope has the selected message ID in this conversation and binds the exact request ID, provider, revision, operation and audience. Set durableCount to that matching count and set recipientsResolved and membershipVerified to true for the matching retained audience.
+2. Set replayMeaningMatches when the exact result is committed and the cache readback matches. In that case settlement is delivered. Use failed for an exact failed result, otherwise pending. Set accountedRetry to false.
+3. Call conversation.reviewConversation. Return the exact request and its unchanged report as result.
