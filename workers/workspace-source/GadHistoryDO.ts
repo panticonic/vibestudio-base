@@ -1,5 +1,5 @@
 import { canonicalJson, compareUtf16CodeUnits, sha256HexSyncText } from "@vibestudio/content-addressing";
-import { readPublishedCommitMemory } from "./doltWorkspaceProvenance.js";
+import { readPublishedCommitMemory, readPublishedCommitMemoryPage } from "./doltWorkspaceProvenance.js";
 import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
@@ -1000,15 +1000,33 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  readHistoryMain(input?: { commitMemoryEventId: string }) {
+  readHistoryMain(input?: {
+    commitMemoryEventId: string;
+    commitMemoryPage?: { previousEventId: string | null; after: string | null } | null;
+  }) {
     this.#assertCanonical();
     const head = this.#remotes().hashOf("main");
     const main = committedWorkspaceEvent(this.sql, head);
     if (main?.head !== head) throw new Error("Workspace main is missing its committed event");
     if (!input) return main;
+    if (input.commitMemoryPage === null) return { ...main, commitMemoryPage: null };
     const event = vcsStateNodeRefSchema.parse({ kind: "event", eventId: input.commitMemoryEventId });
     const revision = workspaceCommitForRef(this.sql, head, event);
     if (!revision) throw new Error("Commit memory event is outside canonical history");
+    if (input.commitMemoryPage) {
+      const { previousEventId, after } = input.commitMemoryPage;
+      if (after !== null && (typeof after !== "string" || !after))
+        throw new Error("Invalid commit memory cursor");
+      const previous = previousEventId === null ? null : workspaceCommitForRef(
+        this.sql, revision, vcsStateNodeRefSchema.parse({ kind: "event", eventId: previousEventId }),
+      );
+      if (previousEventId !== null && !previous)
+        throw new Error("Prior commit memory event is outside the protected snapshot");
+      return { ...main, commitMemoryPage: {
+        eventId: input.commitMemoryEventId,
+        ...readPublishedCommitMemoryPage(this.sql, revision, previous, after),
+      } };
+    }
     return { ...main, commitMemory: readPublishedCommitMemory(this.sql, revision, input.commitMemoryEventId) };
   }
 

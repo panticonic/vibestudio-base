@@ -48,6 +48,24 @@ describe("GadWorkspaceDO — recall deduplication", () => {
     }]);
   });
 
+  it("commits native recall documents and the page marker atomically", () => {
+    const document = {
+      eventId: "event:batch", revision: "d".repeat(40), text: "Private fixture batch summary",
+      createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    const page = { previousMarker: null, marker: "batch-one", documents: [document] };
+    expect(() => doi.recordHistoryCommitMemoryPage({
+      ...page, documents: [document, { ...document, createdAt: "invalid" }],
+    })).toThrow("Invalid native commit memory");
+    expect(doi.readHistoryCommitMemoryIndex()).toBeNull();
+    expect(doi.recallMemory({ query: "batch summary", kinds: ["commit"] }).results).toEqual([]);
+    expect(doi.recordHistoryCommitMemoryPage(page)).toBe(true);
+    expect(doi.readHistoryCommitMemoryIndex()).toBe("batch-one");
+    expect(() => doi.recordHistoryCommitMemoryPage(page)).toThrow("index advanced concurrently");
+    expect(doi.recallMemory({ query: "batch summary", kinds: ["commit"] }).results)
+      .toMatchObject([{ eventId: document.eventId }]);
+  });
+
   it("dedup keeps the page full: a duplicate copy is collapsed without stealing a slot", () => {
     // Six distinct items sharing the term "widget", each a distinct event id.
     for (let i = 1; i <= 6; i += 1) {

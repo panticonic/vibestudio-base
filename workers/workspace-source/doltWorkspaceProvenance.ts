@@ -99,6 +99,43 @@ export function readPublishedCommitMemory(sql: SqlStorage, revision: string, eve
   return text ? { eventId, revision, text, createdAt: event["created_at"] } : null;
 }
 
+/** One bounded page of commits newly reachable at an immutable protected tip. */
+export function readPublishedCommitMemoryPage(
+  sql: SqlStorage,
+  revision: string,
+  previousRevision: string | null,
+  after: string | null,
+) {
+  const size = 16;
+  const rows = previousRevision === null
+    ? sql.exec(
+        `SELECT event_id FROM dolt_at_events(?1)
+          WHERE kind <> 'genesis' AND event_id > ?2
+          ORDER BY event_id LIMIT ?3`,
+        revision, after ?? "", size + 1,
+      ).toArray()
+    : sql.exec(
+        `SELECT diff.to_event_id AS event_id FROM dolt_diff_events(?1, ?2) AS diff
+          JOIN dolt_at_events(?2) AS event ON event.event_id = diff.to_event_id
+          WHERE diff.diff_type = 'added' AND event.kind <> 'genesis' AND diff.to_event_id > ?3
+          ORDER BY diff.to_event_id LIMIT ?4`,
+        previousRevision, revision, after ?? "", size + 1,
+      ).toArray();
+  const eventIds = rows.slice(0, size).map(({ event_id }) => {
+    if (typeof event_id !== "string" || !event_id)
+      throw new SemanticVcsError("IntegrityFailure", "Invalid published workspace event");
+    return event_id;
+  });
+  const documents = eventIds.flatMap((eventId) => {
+    const ref = { kind: "event" as const, eventId };
+    const at = workspaceCommitForRef(sql, revision, ref);
+    if (!at) throw new SemanticVcsError("IntegrityFailure", "Published memory event is outside its snapshot");
+    const memory = readPublishedCommitMemory(sql, at, eventId);
+    return memory ? [memory] : [];
+  });
+  return { documents, nextAfter: rows.length > size ? eventIds.at(-1)! : null };
+}
+
 function inspectEvent(sql: SqlStorage, revision: string, workspaceId: string, eventId: string) {
   const row = sql.exec(
     "SELECT * FROM dolt_at_events(?) WHERE event_id = ?", revision, eventId,

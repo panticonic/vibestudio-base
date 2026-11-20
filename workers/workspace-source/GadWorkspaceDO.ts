@@ -772,6 +772,8 @@ interface ProjectionKey {
   head: string;
 }
 
+const historyCommitMemoryIndexKey = "native-commit-memory-index-v1";
+
 export class GadWorkspaceDO extends DurableObjectBase {
   static override rpcMethods = {
     ...gadWireMethods,
@@ -4316,6 +4318,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
   })
   recordHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): true {
     this.ensureReady();
+    this.transaction(() => this.indexHistoryCommitMemory(input));
+    return true;
+  }
+
+  private indexHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): void {
     const { eventId, revision, text, createdAt } = input;
     if (typeof eventId !== "string" || !eventId ||
         typeof revision !== "string" || !/^[a-f0-9]{40}$/u.test(revision) ||
@@ -4323,11 +4330,41 @@ export class GadWorkspaceDO extends DurableObjectBase {
         !Number.isFinite(Date.parse(createdAt))) {
       throw new Error("Invalid native commit memory");
     }
+    this.indexMemoryRow({
+      text, kind: "commit", eventId,
+      anchor: { workspaceEventId: eventId, revision, createdAt },
+    });
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Protected commit recall indexing is managed by the host." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  readHistoryCommitMemoryIndex(): string | null {
+    this.ensureReady();
+    return this.getStateValue(historyCommitMemoryIndexKey);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Protected commit recall indexing is managed by the host." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  recordHistoryCommitMemoryPage(input: {
+    previousMarker: string | null;
+    marker: string;
+    documents: { eventId: string; revision: string; text: string; createdAt: string }[];
+  }): true {
+    this.ensureReady();
+    if (typeof input.marker !== "string" || !input.marker || input.marker.length > 4096 ||
+        !Array.isArray(input.documents) || input.documents.length > 16)
+      throw new Error("Invalid native commit memory page");
     this.transaction(() => {
-      this.indexMemoryRow({
-        text, kind: "commit", eventId,
-        anchor: { workspaceEventId: eventId, revision, createdAt },
-      });
+      if (this.getStateValue(historyCommitMemoryIndexKey) !== input.previousMarker)
+        throw new Error("Native commit memory index advanced concurrently");
+      for (const document of input.documents) this.indexHistoryCommitMemory(document);
+      this.setStateValue(historyCommitMemoryIndexKey, input.marker);
     });
     return true;
   }
