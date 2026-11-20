@@ -318,6 +318,10 @@ it("describes the typed workflows in the installed template domains", async () =
     `,
     runWorkflow: `
       const remote = request.work[0];
+      if (remote.domain === "testReview") {
+        const report = await domains.testReview.reviewRetainedFailure(remote.input);
+        return {results:[{kind:"domain",domain:"testReview",operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "github") {
         const report = await domains.github.reviewGitHubSetup(remote.input);
         return {results:[{kind:"domain",domain:"github",operation:remote.operation,report}],remaining:[]};
@@ -361,6 +365,17 @@ it("describes the typed workflows in the installed template domains", async () =
       return {deployment, handoff, access};
     `,
     bindVerifiedWorkspace: "return await remoteDeploymentHandoff.open(deploymentReceipt);",
+    reviewRetainedFailure: `
+      const packet = await readRetainedFailure(request.operationId);
+      const identified = await matchesAssignment(request,packet);
+      const ids = {runId:request.runId,testName:request.testName};
+      if (!identified) return {...ids,status:"unavailable",triage:null};
+      const {class: failureClass, evidence} = await reviewSystemTest({kind:"triage",goal:request.goal,failure:packet.failure});
+      return {...ids,status:"triaged",triage:{class:failureClass,evidence}};
+    `,
+    readRetainedFailure: "return await retainedTestFailure.inspect(operationId);",
+    reviewSystemTest: 'return { kind:"triage", ...(await triageFailure(request.failure)) };',
+    triageFailure: "return await triage(failure);",
     reviewGitHubSetup: `
       const status = await readGitHubSetup(request.operationId);
       const accessLevel = await accessLevelFor(request.goal);
@@ -580,7 +595,7 @@ it("describes the typed workflows in the installed template domains", async () =
     ],
     [
       join(templateRoot, "system-testing"),
-      ["reviewSystemTest", "reviewSessionTest"],
+      ["reviewSystemTest", "reviewRetainedFailure", "reviewSessionTest"],
     ],
     [join(templateRoot, "examples"), ["reviewExample"]],
     [join(templateRoot, "news"), ["reviewNews"]],
@@ -599,6 +614,62 @@ it("describes the typed workflows in the installed template domains", async () =
       ]);
       expect(definition?.result.problem).toBeUndefined();
     }
+  }
+  if (description.functions.some(({ name }) => name === "reviewRetainedFailure")) {
+    runReference = true;
+    const request = {
+      goal: "Diagnose the assigned failed test",
+      operationId: "owned-record",
+      runId: "assigned-run",
+      testName: "assigned-test",
+    };
+    const packet = {
+      runId: request.runId,
+      failure: {
+        name: request.testName,
+        failure: { phase: "validation", error: { name: "Error", message: "Cannot read digest" } },
+        validationFailure: { validator: "harness" },
+        validationReason: "Cannot read digest",
+        sessionError: null,
+        finalAgentMessage: null,
+        invocations: [],
+        toolFailures: [],
+        cleanupErrors: [],
+        cleanupFailures: [],
+        channelDeliveryLatency: null,
+        workspaceRepoFixture: null,
+        orchestration: null,
+        likelyIssue: "",
+      },
+    };
+    const run = (await loader.load(
+      "skills/vibestudio-workflows/runWorkflow.nl",
+      { services: { retainedTestFailure: {
+        inspect: async (id: string) => {
+          expect(id).toBe(request.operationId);
+          return structuredClone(packet);
+        },
+      } } },
+    )) as (request: unknown) => Promise<unknown>;
+    const workflow = {
+      goal: request.goal,
+      work: [{kind:"domain",domain:"testReview",operation:"reviewRetainedFailure",input:request}],
+    };
+    await expect(run(workflow)).resolves.toMatchObject({
+      remaining: [],
+      results: [{report:{status:"triaged",runId:request.runId,triage:{
+        class:"validator",evidence:[{source:"validator-error",text:"the harness validator threw"},
+          {source:"validation",text:"Cannot read digest"},
+          {source:"phase",text:"validation: Error: Cannot read digest"}],
+      }}}],
+    });
+    expect(stagedCalls.splice(0)).toEqual([
+      "runWorkflow","reviewRetainedFailure","readRetainedFailure","reviewSystemTest","triageFailure",
+    ]);
+    packet.runId = "different-run";
+    await expect(run(workflow)).resolves.toMatchObject({results:[{report:{status:"unavailable",triage:null}}]});
+    expect(stagedCalls.splice(0)).toEqual(["runWorkflow","reviewRetainedFailure","readRetainedFailure"]);
+    runReference = false;
   }
   if (description.functions.some(({ name }) => name === "reviewGitHubSetup")) {
     runReference = true;

@@ -17,6 +17,10 @@ export function observeApplication(operationId: string): Promise<AndroidRuntimeO
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  retainedTestFailure: `/** Read and identify the assigned durable system-test failure after its run has settled. */
+
+/** Read and identify the assigned durable system-test failure after its run has settled. */
+export function inspect(operationId: string): Promise<RetainedFailurePacket | null>;`,
   githubSetupRead: `/** Read the assigned local GitHub connection stage without verification. */
 
 /** Read the assigned local GitHub connection stage without verification. */

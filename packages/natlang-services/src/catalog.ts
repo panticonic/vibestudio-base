@@ -58,6 +58,7 @@ function authoredService<const Name extends string>(
 const authoredServices = [
   authoredService("androidRuntimeAudit", "Read an assigned Android device and its current internal application.", "system", "mobile-runtime-audit", [{ name: "observeTarget", params: ["operationId"] }, { name: "observeApplication", params: ["operationId"] }]),
   authoredService("deliveryHistory", "Inspect durable and consumer views of one assigned conversation receipt.", "base", "conversation-evidence-review", [{ name: "inspect", params: ["operationId"] }]),
+  authoredService("retainedTestFailure", "Read and identify the assigned durable system-test failure after its run has settled.", "system-testing", "system-testing/triage", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("githubSetupRead", "Read the assigned local GitHub connection stage without verification.", "personal", "github/natlang", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("githubSetupRoute", "Resolve the native GitHub setup route from the observed connection stage.", "personal", "github/natlang", [{ name: "resolve", params: ["operationId", "accessLevel"] }]),
   authoredService("templateAuthoringRead", "Inspect the caller-assigned protected-main template authoring plan.", "base", "templates", [{ name: "inspect", params: ["operationId"] }]),
