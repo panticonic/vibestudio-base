@@ -1,4 +1,8 @@
 declare module "natlang:services" {
+  export const publicationGoal: {
+    discover(): Promise<import("./types.js").PublicationGoalObservation>;
+    bind(revision: string, choice: import("./types.js").PublicationGoalChoice): Promise<import("./types.js").PublicationGoalBinding | null>;
+  };
   export const websiteReadback: {
     observe(): Promise<import("./types.js").WebsiteReviewObservation>;
   };

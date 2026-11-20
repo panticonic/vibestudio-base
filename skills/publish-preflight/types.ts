@@ -111,3 +111,33 @@ export type PublicationRevisionReport = {
   decision: "keep-review" | "review-public-change" | "review-target";
   reason: string;
 };
+
+export type PublicationGoalTarget = {
+  id: string;
+  name: string;
+  intent: PublishIntent;
+  audience: string;
+  hasRetainedReview: boolean;
+};
+export type PublicationGoalObservation = {
+  site: string;
+  revision: string;
+  targets: PublicationGoalTarget[];
+};
+export type PublicationGoalChoice = {
+  targetId: string;
+  preflight: "prepare" | "check-existing" | null;
+  compareRevision: boolean;
+};
+export type PublicationGoalBinding = {
+  preflight: PublishPreflightRequest | null;
+  revision: PublicationRevisionRequest | null;
+};
+export type PublicationGoalReport =
+  | {
+      status: "reviewed";
+      choice: PublicationGoalChoice;
+      preflight: PublishPreflightReport | null;
+      revision: PublicationRevisionReport | null;
+    }
+  | { status: "blocked"; reason: string };
