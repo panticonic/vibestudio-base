@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-doc-help",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "docHelp.nl" } },
+  "include": ["docHelp.nl", "docHelp", "types.ts", "services.d.ts"],
+  "serviceScopes": {
+    "docs": ["docHelp.nl/**"],
+    "fs": ["docHelp.nl/**"]
+  }
+}

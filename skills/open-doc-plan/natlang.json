@@ -1,0 +1,26 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-doc-plan",
+  "version": "0.1.0",
+  "targets": {
+    "main": {
+      "entry": "readPlanningState.nl"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "docPlanContext": [
+      "readPlanningState.nl"
+    ],
+    "docPlanHandoff": [
+      "stageCapabilityPlan.nl"
+    ],
+    "docPlanCatalog": [
+      "collectCapabilityEvidence.nl",
+      "synthesizeCapabilityPlan.nl"
+    ],
+    "docPlanSkills": [
+      "synthesizeCapabilityPlan.nl"
+    ]
+  }
+}
