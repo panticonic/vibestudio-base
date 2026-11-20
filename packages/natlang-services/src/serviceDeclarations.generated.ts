@@ -1130,6 +1130,112 @@ type DictationArtifact = { path: string; bytes: number; sha256: string };
 
 /** Stage a verified local dictation correction or alternative. */
 export function stage(plan: DictationPlan, review: DraftReview): Promise<DictationArtifact | null>;`,
+  ownedSpecialistIndex: `/** List the current owned specialist roster. */
+
+type SpecialistScope = {
+  channelId: string;
+  contextId: string;
+  taskId: string;
+  concern: string;
+  parentRevision: string;
+  requiredProvider: string;
+  mayStage: boolean;
+};
+
+type Specialist = {
+  handle: string;
+  specialty: string;
+  provider: string;
+  participantId: string | null;
+  availability: "member" | "absent" | "conflict";
+};
+
+type SpecialistIndex = { scope: SpecialistScope; agents: Specialist[] };
+
+/** List the current owned specialist roster. */
+export function list(): Promise<SpecialistIndex>;`,
+  ownedSpecialistRun: `/** Read exact retained specialist attempts and results in one owned channel. */
+
+type Attempt = {
+  kind: "attempt";
+  handle: string;
+  participantId: string;
+  contextId: string;
+  channelId: string;
+  taskId: string;
+  attemptId: string;
+  provider: string;
+  parentRevision: string;
+  state: "running" | "completed" | "cancelled" | "failed";
+};
+
+type ProductUnit = "panels/chat" | "packages/agentic-chat" | "workers/agent-worker" | "packages/agentic-do" |
+  "packages/agentic-protocol" | "workers/pubsub-channel" | "packages/agentic-core" | "packages/pubsub";
+
+type Result = {
+  kind: "result";
+  handle: string;
+  participantId: string;
+  contextId: string;
+  taskId: string;
+  attemptId: string;
+  provider: string;
+  parentRevision: string;
+  sourceEvent: string | null;
+  sourceState: "committed" | "working";
+  owner: ProductUnit;
+  consumers: ProductUnit[];
+  digest: string;
+};
+
+type SpecialistRecord = Attempt | Result;
+
+type SpecialistRow = { messageId: string; envelopeId: string; seq: number; record: SpecialistRecord };
+
+type SpecialistSnapshot = { channelId: string; through: number; rows: SpecialistRow[] };
+
+/** Read exact retained specialist attempts and results in one owned channel. */
+export function read(channelId: string): Promise<SpecialistSnapshot | null>;`,
+  ownedSpecialistArtifact: `/** Read the original eligible specialist artifact. */
+
+type OriginalArtifact = { digest: string; bytes: number; text: string };
+
+/** Read the original eligible specialist artifact. */
+export function read(channelId: string, resultMessage: string): Promise<OriginalArtifact | null>;`,
+  ownedSpecialistHandoff: `/** Stage the verified user-authorized local integration brief. */
+
+type SpecialistReason = "no-suitable-specialist" | "ambiguous-specialist" | "unavailable-specialist" |
+  "awaiting-settlement" | "cancelled-attempt" | "failed-attempt" | "unlinked-result" | "wrong-scope" |
+  "provider-mismatch" | "revision-drift" | "source-uncommitted" | "readback-unavailable" | "verified";
+
+type ReceiptJoin = { attemptMessage: string | null; resultMessage: string | null; reason: SpecialistReason };
+
+type OriginalArtifact = { digest: string; bytes: number; text: string };
+
+type SpecialistPlan = ReceiptJoin & {
+  handle: string | null;
+  channelId: string;
+  taskId: string;
+  through: number;
+  sourceEvent: string | null;
+  artifact: OriginalArtifact | null;
+  action: "hold" | "report" | "stage";
+  explanation: string;
+};
+
+type ProductUnit = "panels/chat" | "packages/agentic-chat" | "workers/agent-worker" | "packages/agentic-do" |
+  "packages/agentic-protocol" | "workers/pubsub-channel" | "packages/agentic-core" | "packages/pubsub";
+
+type HistoryReview = {
+  goal: string;
+  units: { owner: ProductUnit | null; consumers: ProductUnit[]; blockers: string[] };
+  result: { persistedContract: boolean; retainedHistoryChecks: string[] };
+};
+
+type IntegrationArtifact = { path: string; bytes: number; sha256: string };
+
+/** Stage the verified user-authorized local integration brief. */
+export function stage(plan: SpecialistPlan, history: HistoryReview): Promise<IntegrationArtifact | null>;`,
   dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
 
 type DictationCapture = {

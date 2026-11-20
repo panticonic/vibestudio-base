@@ -25,4 +25,5 @@ export * from "./workOnRecoveryHandoff/types.js";
 export * from "./workOnProblemReportGoal/types.js";
 
 export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
+export type { SpecialistGoalReport } from "./workOnSpecialistHandoffGoal/types.js";
 export * from "./workOnProviderHandoffGoal/types.js";

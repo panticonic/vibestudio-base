@@ -37,6 +37,8 @@ When the user asks to publish, resume, or conditionally run an authorized public
 
 For recovering acknowledged offline dictation, checking its original source and draft revision, or staging an explicitly requested local correction, call workOnDictationHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "dictationHandoff", and its actual outcome.
 
+For selecting a workspace specialist and verifying the originating work before an authorized local integration handoff, call workOnSpecialistHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "specialistHandoff", and its actual outcome.
+
 For checking a retained provider approval and its original conversation result together, including a scoped local handoff of that evidence, call workOnProviderHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "providerHandoff", and its actual outcome.
 
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.

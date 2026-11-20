@@ -7,6 +7,9 @@
   "workspaceModules": {
     "runUserGoal/workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
     "runUserGoal/workOnDictationHandoffGoal/dictation": "skills/offline-dictation",
+    "runUserGoal/workOnSpecialistHandoffGoal/workspace": "skills/open-specialist-handoff",
+    "runUserGoal/workOnSpecialistHandoffGoal/agents": "skills/agents/channel-membership",
+    "runUserGoal/workOnSpecialistHandoffGoal/development": "skills/agentic-development/natlang",
     "runUserGoal/workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
     "runUserGoal/workOnProviderHandoffGoal/authority": "skills/capabilities/natlang",
     "runUserGoal/workOnProviderHandoffGoal/conversation": "skills/conversation-evidence-review",
