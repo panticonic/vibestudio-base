@@ -1967,6 +1967,51 @@ export function open(pairReceipt: string): Promise<OperatorRoute>;
 
 /** Inspect, pair and verify a private terminal profile against the observed hub. */
 export function verify(routeReceipt: string): Promise<OperatorChild>;`,
+  authoringDiscovery: `/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
+
+type AuthoringSource = {
+  id: string;
+  label: string;
+  product: string;
+  state: "candidate" | "released" | "withdrawn";
+  note: string;
+};
+
+type AuthoringSelection = { candidateId: string; baselineId: string | null };
+
+type SelectedAuthoring = {
+  selection: AuthoringSelection;
+  request: { goal: string; compare: boolean; contract: unknown };
+};
+
+/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
+export function list(): Promise<AuthoringSource[]>;
+
+/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
+export function open(goal: string, selection: AuthoringSelection): Promise<SelectedAuthoring | null>;`,
+  authoringReviewControl: `/** Check current compiler receipt identity or stage an authorized scratch review handoff. */
+
+type AuthoringSelection = { candidateId: string; baselineId: string | null };
+
+type ObservedAuthoringReview = {
+  status: "ready" | "changes-required" | "candidate-rejected" | "baseline-rejected";
+  candidateRevision: string;
+  baselineRevision: string | null;
+  findings: { code: string; subject: string; observed: string; recovery: string }[];
+};
+
+type AuthoringReceipt = {
+  selection: AuthoringSelection;
+  review: ObservedAuthoringReview;
+};
+
+type AuthoringHandoff = { path: string; revision: string };
+
+/** Check current compiler receipt identity or stage an authorized scratch review handoff. */
+export function confirm(receipt: AuthoringReceipt): Promise<"current" | "changed">;
+
+/** Check current compiler receipt identity or stage an authorized scratch review handoff. */
+export function stage(receipt: AuthoringReceipt): Promise<AuthoringHandoff | null>;`,
   recoverySessions: `/** Discover authorized retained conversation sources and their saved cursor state. */
 
 type RecoverySource = { id: string; title: string; description: string };
