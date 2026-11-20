@@ -1437,6 +1437,47 @@ export function open(pairReceipt: string): Promise<OperatorRoute>;
 
 /** Inspect, pair and verify a private terminal profile against the observed hub. */
 export function verify(routeReceipt: string): Promise<OperatorChild>;`,
+  recoverySessions: `/** Discover authorized retained conversation sources and their saved cursor state. */
+
+type RecoverySource = { id: string; title: string; description: string };
+
+/** Discover authorized retained conversation sources and their saved cursor state. */
+export function discover(): Promise<RecoverySource[]>;`,
+  recoveryReplay: `/** Read one discovered conversation from its bound cursor. */
+
+type RecoverySource = { id: string; title: string; description: string };
+
+type RecoveryCursor = { channelId: string; seq: number };
+
+type RecoveryNote = { channelId: string; messageId: string; seq: number; text: string };
+
+type RecoveryWindow = {
+  source: RecoverySource;
+  saved: RecoveryCursor;
+  status: "complete" | "partial" | "foreign" | "caught-up" | "future";
+  frontier: number | null;
+  next: RecoveryCursor | null;
+  notes: RecoveryNote[];
+};
+
+/** Read one discovered conversation from its bound cursor. */
+export function resume(id: string): Promise<RecoveryWindow>;`,
+  recoveryHandoff: `/** Stage an approved handoff backed by observed retained transcript citations. */
+
+type Disposition = "continue" | "hold" | "incomplete" | "caught-up";
+
+type RecoveryNote = { channelId: string; messageId: string; seq: number; text: string };
+
+type RecoveryFinding = {
+  disposition: Disposition;
+  reason: string;
+  citations: RecoveryNote[];
+};
+
+type RecoveryArtifact = { path: string; sha256: string; citationIds: string[] };
+
+/** Stage an approved handoff backed by observed retained transcript citations. */
+export function stage(review: RecoveryFinding): Promise<RecoveryArtifact>;`,
   newsGoal: `/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
 
 type NewsScheduleEvidence = {

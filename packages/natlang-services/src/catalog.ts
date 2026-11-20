@@ -115,6 +115,9 @@ const authoredServices = [
   authoredService("operatorDiscovery", "Discover the authorized operations target and observe its current identity.", "system", "open-system-operations", [{ name: "list", params: [] }, { name: "observe", params: ["targetId"] }]),
   authoredService("operatorDeployment", "Apply an authorized installation operation and verify the resulting hub.", "system", "open-system-operations", [{ name: "apply", params: ["observationReceipt", "operation"] }, { name: "verify", params: ["installationReceipt"] }]),
   authoredService("operatorProfile", "Inspect, pair and verify a private terminal profile against the observed hub.", "system", "open-system-operations", [{ name: "inspect", params: ["observationReceipt"] }, { name: "pair", params: ["profileReceipt"] }, { name: "open", params: ["pairReceipt"] }, { name: "verify", params: ["routeReceipt"] }]),
+  authoredService("recoverySessions", "Discover authorized retained conversation sources and their saved cursor state.", "base", "open-session-recovery/program", [{ name: "discover", params: [] }]),
+  authoredService("recoveryReplay", "Read one discovered conversation from its bound cursor.", "base", "open-session-recovery/program", [{ name: "resume", params: ["id"] }]),
+  authoredService("recoveryHandoff", "Stage an approved handoff backed by observed retained transcript citations.", "base", "open-session-recovery/program", [{ name: "stage", params: ["review"] }]),
   authoredService("newsGoal", "Observe the current News reader and cadence, then apply an authorized change against an observation.", "news", "news-workflows", [
     { name: "observeCadence", params: [] }, { name: "readReader", params: ["selection"] },
     { name: "apply", params: ["observationId", "change"] },
