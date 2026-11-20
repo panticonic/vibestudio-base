@@ -63,6 +63,8 @@ const authoredServices = [
   authoredService("assignedResearchIntake", "Read back the public sources assigned to this research review.", "base", "research-intake", [{ name: "read", params: ["operationId"] }]),
   authoredService("retainedTestFailure", "Read and identify the assigned durable system-test failure after its run has settled.", "system-testing", "system-testing/triage", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("githubSetupRead", "Read the assigned local GitHub connection stage without verification.", "personal", "github/natlang", [{ name: "inspect", params: ["operationId"] }]),
+  authoredService("repositoryResumeRead", "Read the assigned local worktree and available GitHub access.", "personal", "personal-workflows", [{ name: "inspect", params: ["operationId"] }]),
+  authoredService("repositoryOwnerRead", "Resolve the assigned GitHub onboarding route without executing it.", "personal", "personal-workflows", [{ name: "resolve", params: ["operationId", "action"] }]),
   authoredService("githubSetupRoute", "Resolve the native GitHub setup route from the observed connection stage.", "personal", "github/natlang", [{ name: "resolve", params: ["operationId", "accessLevel"] }]),
   authoredService("templateAuthoringRead", "Inspect the caller-assigned protected-main template authoring plan.", "base", "templates", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("automationPlanning", "Read the assigned roster of automation definitions and latest run records.", "base", "automations", [{ name: "inspect", params: ["operationId"] }]),

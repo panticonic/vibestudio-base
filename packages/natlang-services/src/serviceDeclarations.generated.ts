@@ -109,6 +109,62 @@ export function inspect(operationId: string): Promise<RetainedFailurePacket | nu
 
 /** Read the assigned local GitHub connection stage without verification. */
 export function inspect(operationId: string): Promise<GitHubSetupStatus>;`,
+  repositoryResumeRead: `/** Read the assigned local worktree and available GitHub access. */
+
+type PersonalAccess =
+  | "read-only"
+  | "collaborate"
+  | "publish"
+  | "publish-pages"
+  | "code-workflows"
+  | "broad";
+
+type PersonalRepoRequest = {
+  goal: string;
+  repository: string;
+  remoteVerified: boolean | null;
+  availableAccess: PersonalAccess[] | null;
+  workingTree: "clean" | "dirty" | "unknown";
+  upstream: "aligned" | "ahead" | "behind" | "diverged" | "unknown";
+};
+
+/** Read the assigned local worktree and available GitHub access. */
+export function inspect(operationId: string): Promise<PersonalRepoRequest>;`,
+  repositoryOwnerRead: `/** Resolve the assigned GitHub onboarding route without executing it. */
+
+type PersonalOwnerRoute = {
+  id: string;
+  capabilityId: string;
+  action: string;
+  via: "owner-skill" | "model-settings" | "conversation";
+  ownerSkillPath: string | null;
+};
+
+type PersonalCapability = {
+  id: string;
+  label: string;
+  owner: string;
+  state:
+    | "connected"
+    | "connected-unverified"
+    | "configured"
+    | "using-defaults"
+    | "not-configured"
+    | "in-progress"
+    | "needs-attention"
+    | "unavailable"
+    | "unknown";
+};
+
+type PersonalSetupRequest = {
+  goal: string;
+  selection: PersonalOwnerRoute | null;
+  capabilities: PersonalCapability[];
+  origin: "welcome" | "selection" | "refresh" | "workspace-creation";
+};
+
+/** Resolve the assigned GitHub onboarding route without executing it. */
+export function resolve(operationId: string, action: "setup" | "check"): Promise<PersonalSetupRequest>;`,
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
 
 /** Resolve the native GitHub setup route from the observed connection stage. */

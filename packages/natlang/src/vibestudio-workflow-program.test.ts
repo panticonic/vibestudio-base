@@ -360,6 +360,10 @@ it("describes the typed workflows in the installed template domains", async () =
         const report = await domains.github.reviewGitHubSetup(remote.input);
         return {results:[{kind:"domain",domain:"github",operation:remote.operation,report}],remaining:[]};
       }
+      if (remote.domain === "personal") {
+        const report = await domains.personal.runPersonalWorkflow(remote.input);
+        return {results:[{kind:"domain",domain:"personal",operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "remoteAccess") {
         if (remote.operation === "reviewRemoteRoute") {
           const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
@@ -441,6 +445,37 @@ it("describes the typed workflows in the installed template domains", async () =
     accessLevelFor: 'return intent.includes("Pages") ? "publish-pages" : "read-only";',
     resolveGitHubRoute: "return await githubSetupRoute.resolve(operationId, accessLevel);",
     chooseSetupHandoff: 'return route.action==="render-setup" ? (interactive?"offer-setup":"interactive-required") : route.action;',
+    runPersonalWorkflow: `
+      const task=request.work[0];
+      return {results:[{kind:task.kind,report:await resumeRepositoryWork(task.input)}],unresolved:[]};
+    `,
+    resumeRepositoryWork: `
+      const repository=await planRepositoryWork(await readRepository(request.operationId));
+      const action=await chooseOwnerAction(repository);
+      const owner=action==="skip"?null:await routeSetup(await readOwnerRoute(request.operationId,action));
+      return {repository,owner};
+    `,
+    readRepository: "return await repositoryResumeRead.inspect(operationId);",
+    readOwnerRoute: "return await repositoryOwnerRead.resolve(operationId,action);",
+    chooseOwnerAction: 'return repository.decision==="request-access"?"setup":"skip";',
+    planRepositoryWork: `
+      const {operation,ambiguous}=await interpretGitWork(request.goal);
+      const access=await chooseAccess(request.goal,operation);
+      const decision=await assessRepo(request,operation,access,ambiguous);
+      return {repository:request.repository,operation,access,decision,...await writePlan(request,operation,decision)};
+    `,
+    interpretGitWork: 'return {operation:goal.includes("push")?"push":"pull",ambiguous:false};',
+    chooseAccess: 'return operation==="push"?"collaborate":"read-only";',
+    assessRepo: 'return request.workingTree==="dirty"?"review-local-changes":"request-access";',
+    writePlan: "return {facts:[request.workingTree],next:[decision]};",
+    routeSetup: `
+      const {capabilityIds,unknownIds}=await assessSetup(request);
+      const selected=await selectAction(request,capabilityIds);
+      return {...selected,capabilityIds,unknownIds,brief:await explainNext(request,selected.action,unknownIds)};
+    `,
+    assessSetup: "return {capabilityIds:[request.selection.capabilityId],unknownIds:[]};",
+    selectAction: 'return {action:"follow-owner-route",routeId:request.selection.id,workspaceScope:"current"};',
+    explainNext: 'return "Open the installed GitHub owner route.";',
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -556,6 +591,11 @@ it("describes the typed workflows in the installed template domains", async () =
       const name = session.lam.functionName;
       const code = name && referenceSteps[name];
       if (!code) throw new Error(`No scripted reference for ${name}`);
+      if (["resumeRepositoryWork", "readRepository", "readOwnerRoute", "chooseOwnerAction", "routeSetup"].includes(name)) {
+        const expected = name === "readRepository" ? ["repositoryResumeRead"] :
+          name === "readOwnerRoute" ? ["repositoryOwnerRead"] : [];
+        expect(Object.keys(session.availableServices())).toEqual(expected);
+      }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
       if (action.kind === "rejected") throw new Error(action.text);
@@ -670,6 +710,66 @@ it("describes the typed workflows in the installed template domains", async () =
       ]);
       expect(definition?.result.problem).toBeUndefined();
     }
+  }
+  if (description.functions.some(({ name }) => name === "runPersonalWorkflow")) {
+    runReference = true;
+    for (const [operation, dirty, decision] of [
+      ["pull", false, "request-access"],
+      ["push", true, "review-local-changes"],
+    ] as const) {
+      const goal = `Prepare to ${operation} the assigned repository.`;
+      const readbacks: string[] = [];
+      const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+        services: {
+          repositoryResumeRead: {
+            async inspect(operationId: string) {
+              expect(operationId).toBe("assigned-repository");
+              readbacks.push("inspect");
+              return {
+                goal, repository: "projects/assigned",
+                workingTree: dirty ? "dirty" : "clean",
+                availableAccess: [], remoteVerified: null, upstream: "unknown",
+              };
+            },
+          },
+          repositoryOwnerRead: {
+            async resolve(operationId: string, action: string) {
+              expect([operationId, action]).toEqual(["assigned-repository", "setup"]);
+              readbacks.push("resolve");
+              return {
+                goal, origin: "selection",
+                selection: {
+                  id: "connection.github/setup", capabilityId: "connection.github",
+                  action, via: "owner-skill", ownerSkillPath: "skills/github/SKILL.md",
+                },
+                capabilities: [{
+                  id: "connection.github", label: "GitHub", owner: "skills/github/SKILL.md", state: "not-configured",
+                }],
+              };
+            },
+          },
+        },
+      })) as (input: unknown) => Promise<unknown>;
+      stagedCalls.length = 0;
+      await expect(run({
+        goal,
+        work: [{ kind: "domain", domain: "personal", operation: "runPersonalWorkflow", input: {
+          goal, work: [{ kind: "resumeRepositoryWork", input: { goal, operationId: "assigned-repository" } }],
+        } }],
+      })).resolves.toMatchObject({
+        results: [{ report: { results: [{ kind: "resumeRepositoryWork", report: {
+          repository: { operation, decision },
+          owner: dirty ? null : { routeId: "connection.github/setup" },
+        } }] } }],
+      });
+      expect(readbacks).toEqual(dirty ? ["inspect"] : ["inspect", "resolve"]);
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow", "runPersonalWorkflow", "resumeRepositoryWork", "readRepository",
+        "planRepositoryWork", "interpretGitWork", "chooseAccess", "assessRepo", "writePlan", "chooseOwnerAction",
+        ...(dirty ? [] : ["readOwnerRoute", "routeSetup", "assessSetup", "selectAction", "explainNext"]),
+      ]);
+    }
+    runReference = false;
   }
   if (description.functions.some(({ name }) => name === "reviewRetainedFailure")) {
     runReference = true;
