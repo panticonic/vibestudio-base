@@ -329,10 +329,6 @@ export function walkTrajectoryInvocation(sql: SqlStorage, cause: Row, depth: num
   return { entries, omitted: [], notes };
 }
 
-export const isTrajectoryNodeKind = (kind: string): boolean =>
-  kind === "trajectory" || kind === "trajectory-invocation" ||
-  kind === "trajectory-turn" || kind === "trajectory-message";
-
 export function inspectTrajectoryNode(sql: SqlStorage, node: Row): Row {
   switch (node["kind"]) {
     case "trajectory":
@@ -465,8 +461,6 @@ export function trajectoryNeighborEdges(
   node: Row,
   after: Readonly<{ phase: number; key: string | null }>,
   limit: number,
-  includeJournal = false,
-  sameHeadOnly = false,
 ): Array<{ position: { phase: number; key: string }; edge: Row }> {
   const kind = node["kind"];
   if (kind === "trajectory-invocation") {
@@ -502,15 +496,11 @@ export function trajectoryNeighborEdges(
            SELECT 1, turn_id, 'part-of-turn', turn_id, NULL, NULL
              FROM trajectory_invocations
             WHERE log_id = ? AND head = ? AND invocation_id = ? AND turn_id IS NOT NULL
-           ${includeJournal ? `UNION ALL
-           SELECT 2, command_id, 'caused-by', command_id, NULL, NULL
-             FROM vcs_command_journal
-            WHERE cause_log_id = ? AND cause_head = ? AND cause_invocation_id = ?` : ""}
            UNION ALL
            SELECT 3, input_message_id, 'triggered-by', input_message_id, input_log_id, input_head
              FROM trajectory_invocation_inputs
             WHERE log_id = ? AND head = ? AND invocation_id = ?
-              ${sameHeadOnly ? "AND input_log_id = log_id AND input_head = head" : ""}
+              AND input_log_id = log_id AND input_head = head
          ) adjacency
          WHERE edge_group > ?
             OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
@@ -521,7 +511,6 @@ export function trajectoryNeighborEdges(
         String(node["logId"]),
         String(node["head"]),
         String(node["invocationId"]),
-        ...(includeJournal ? [node["logId"], node["head"], node["invocationId"]] : []),
         String(node["logId"]),
         String(node["head"]),
         String(node["invocationId"]),
@@ -562,22 +551,16 @@ export function trajectoryNeighborEdges(
                     turnId: targetId,
                   },
                 }
-              : edgeKind === "triggered-by"
-                ? {
-                    kind: edgeKind,
-                    from: invocation,
-                    to: {
-                      kind: "trajectory-message",
-                      logId: String(row["input_log_id"]),
-                      head: String(row["input_head"]),
-                      messageId: targetId,
-                    },
-                  }
-                : {
-                    kind: edgeKind,
-                    from: { kind: "command", commandId: targetId },
-                    to: invocation,
+              : {
+                  kind: "triggered-by",
+                  from: invocation,
+                  to: {
+                    kind: "trajectory-message",
+                    logId: String(row["input_log_id"]),
+                    head: String(row["input_head"]),
+                    messageId: targetId,
                   },
+                },
       };
     });
   } else if (kind === "trajectory-turn") {
@@ -734,7 +717,7 @@ export function trajectoryNeighborEdges(
                   'invocation', log_id, head
              FROM trajectory_invocation_inputs
             WHERE input_log_id = ? AND input_head = ? AND input_message_id = ?
-              ${sameHeadOnly ? "AND log_id = input_log_id AND head = input_head" : ""}
+              AND log_id = input_log_id AND head = input_head
          ) adjacency
          WHERE edge_group > ?
             OR (edge_group = ? AND (? IS NULL OR sort_key > ?))

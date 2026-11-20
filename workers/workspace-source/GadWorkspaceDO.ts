@@ -1320,7 +1320,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const { node: root, edgeLimit } = parsed.request;
       const node = inspectTrajectoryNode(this.sql, root);
       const edges = parsed.expand
-        ? trajectoryNeighborEdges(this.sql, root, { phase: 0, key: null }, edgeLimit + 1, false, true)
+        ? trajectoryNeighborEdges(this.sql, root, { phase: 0, key: null }, edgeLimit + 1)
         : [];
       return {
         root,
@@ -1340,7 +1340,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       throw new SemanticVcsError("InvalidReference", "Invalid trajectory neighbor cursor");
     }
     const edges = parsed.expand
-      ? trajectoryNeighborEdges(this.sql, root, { phase, key }, limit + 1, false, true)
+      ? trajectoryNeighborEdges(this.sql, root, { phase, key }, limit + 1)
       : [];
     return {
       root,

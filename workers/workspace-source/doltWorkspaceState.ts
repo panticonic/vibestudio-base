@@ -9,7 +9,8 @@ import {
   workspaceFileStateIdentity,
   workspaceRepositoryStateIdentity,
   type StateNodeRef,
-  type WorkspaceFactChangeSet,
+  type WorkspaceFileStateChange,
+  type WorkspaceRepositoryChange,
 } from "@workspace/vcs-engine";
 import type {
   ApplicationRecord,
@@ -56,10 +57,10 @@ export function restoreDoltFileRow(sql: SqlStorage, at: string, fileId: string):
     fileId,
   );
 }
-export type WorkspacePlacementChange = Pick<
-  WorkspaceFactChangeSet,
-  "repositoryUpdates" | "fileUpdates"
->;
+export interface WorkspacePlacementChange {
+  repositoryUpdates: readonly WorkspaceRepositoryChange[];
+  fileUpdates: readonly WorkspaceFileStateChange[];
+}
 
 /** Resolve a public state identity against one reachable history. */
 export function workspaceCommitForRef(
