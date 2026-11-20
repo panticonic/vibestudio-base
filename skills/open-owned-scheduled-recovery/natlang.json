@@ -1,0 +1,26 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-owned-scheduled-recovery",
+  "version": "0.1.0",
+  "targets": {
+    "main": {
+      "entry": "recoverScheduledAutomation.nl"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "scheduledMission": [
+      "recoverScheduledAutomation/discoverSchedules/listSchedules.nl",
+      "recoverScheduledAutomation/discoverSchedules/readSchedule.nl",
+      "recoverScheduledAutomation/applyChange/commitChange.nl"
+    ],
+    "scheduledHistory": [
+      "recoverScheduledAutomation/reviewRetainedInput/listLanes.nl",
+      "recoverScheduledAutomation/reviewRetainedInput/readLane.nl"
+    ],
+    "scheduledHandoff": [
+      "recoverScheduledAutomation/recoverHandoff/submit.nl",
+      "recoverScheduledAutomation/recoverHandoff/readback.nl"
+    ]
+  }
+}
