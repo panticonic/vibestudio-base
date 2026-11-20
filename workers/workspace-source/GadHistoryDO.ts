@@ -63,6 +63,7 @@ import { compactId, type StateNodeRef } from "@workspace/vcs-engine";
 import {
   committedWorkspaceEvent,
   createDoltWorkspaceState,
+  recordDoltWorkspaceEvent,
   workspaceCommitForRef,
   workspaceExternalDeltaRoots,
   workspaceHasFileContent,
@@ -72,6 +73,7 @@ import {
   workspaceTemplateInstallationAt,
   verifyWorkspaceTemplatePublication,
 } from "./doltWorkspaceState.js";
+import { execBatchedInsert } from "./sqlBatch.js";
 import {
   installPreparedReplayStep,
   installReplayedMain,
@@ -135,6 +137,15 @@ type SharedHistorySeedReceipt = { seed: SharedHistorySeed; originalHead: string;
 const seedRemote = "workspace-seed";
 const seedReceiptKey = "history-seed-receipt";
 const localSeedBranch = "seed/initial";
+const freshRootBranch = "root/initial";
+const freshRootKey = "history-fresh-root";
+type FreshRootInput = ReturnType<typeof gadWireMethods.workspaceSourceInitializeExactSnapshot.args.parse>[0];
+type FreshRootRecord = {
+  requestDigest: string;
+  eventId: string;
+  originalHead: string;
+  pin: FreshRootInput["pin"];
+};
 
 function sharedSeedBranch(peer: string, head: string): string {
   if (!digest.test(peer) || !commitHash.test(head)) throw new Error("Invalid workspace history seed");
@@ -206,6 +217,105 @@ export class GadHistoryDO extends DurableObjectBase {
       "commands",
       "gad_history_allocations",
     ];
+  }
+
+  @rpc(hostRead)
+  readFreshHistoryRoot() {
+    this.#assertCanonical();
+    const raw = this.getStateValue(freshRootKey);
+    if (raw === null) return null;
+    const recorded = JSON.parse(raw) as FreshRootRecord;
+    const installedHead = this.getStateValue("history-installed");
+    const head = installedHead ?? this.#remotes().hashOf(freshRootBranch);
+    this.#assertSeedEvent({ head, eventId: recorded.eventId });
+    return { ...recorded, head, installed: installedHead !== null };
+  }
+
+  /** Stage the first workspace revision directly from the exact prepared template. */
+  @rpc(hostWrite)
+  stageFreshHistoryRoot(input: FreshRootInput) {
+    this.#assertCanonical();
+    const [snapshot] = gadWireMethods.workspaceSourceInitializeExactSnapshot.args.parse([input]);
+    if (snapshot.acknowledgement !== undefined)
+      throw new Error("Native workspace initialization does not consume source effects");
+    const requestDigest = sha256HexSyncText(canonicalJson(snapshot));
+    const staged = this.readFreshHistoryRoot();
+    if (staged) {
+      if (staged.requestDigest !== requestDigest)
+        throw new Error("Workspace history already has a different root snapshot");
+      return { ...staged, repositories: workspaceRepositoriesAt(this.sql, staged.head) };
+    }
+    const paths = new Set(snapshot.repositories.map(({ repoPath }) => repoPath));
+    if (!paths.has("meta") || paths.size !== snapshot.repositories.length)
+      throw new Error("Fresh workspace root requires distinct repositories and a meta repository");
+    const dolt = this.#remotes();
+    const originalHead = this.#schemaHead();
+    if (this.getStateValue("history-installed") !== null ||
+        this.getStateValue(seedReceiptKey) !== null ||
+        dolt.hashOf("main") !== originalHead || committedWorkspaceEvent(this.sql, originalHead) ||
+        dolt.branch.current() !== "main" || dolt.status().length !== 0)
+      throw new Error("Fresh workspace root requires an empty canonical history");
+    const branch = dolt.branch.list().find(({ name }) => name === freshRootBranch);
+    if (branch && branch.hash !== originalHead)
+      throw new Error("Workspace root staging does not match canonical history");
+    if (!branch) dolt.branch.create(freshRootBranch, { from: originalHead });
+    const eventId = compactId("workspace-event", { kind: "genesis", requestDigest });
+    const repositoryRows: string[][] = [];
+    const fileRows: Array<Array<string | number>> = [];
+    for (const { repoPath, files } of snapshot.repositories) {
+      const repositoryId = compactId("repository", { commandId: snapshot.commandId, repoPath });
+      repositoryRows.push([repositoryId, repoPath, "present"]);
+      for (const file of files) {
+        const fileId = compactId("file", { commandId: snapshot.commandId, repositoryId, path: file.path });
+        fileRows.push([fileId, repositoryId, file.path, file.contentHash, file.mode,
+          file.contentKind, file.byteLength, file.coordinateExtent, "placed"]);
+      }
+    }
+    dolt.checkout(freshRootBranch);
+    try {
+      this.committedTransaction(() => "Initialize workspace from the root template", () => {
+        execBatchedInsert(this.sql, "INSERT INTO repositories (repository_id, repo_path, presence)", 3, repositoryRows);
+        execBatchedInsert(this.sql, `INSERT INTO files (file_id, repository_id, path, content_hash,
+          mode, content_kind, byte_length, coordinate_extent, presence)`, 9, fileRows);
+        recordDoltWorkspaceEvent(this.sql, {
+          eventId, commandId: snapshot.commandId, kind: "genesis", message: null,
+          createdAt: new Date().toISOString(),
+          snapshotSource: { sourceUri: "vibestudio://workspace/root-template", snapshotRevision: snapshot.pin.commit },
+        });
+        this.sql.exec("INSERT INTO workspace_template_installations (event_id, installation_json) VALUES (?, ?)",
+          eventId, canonicalJson(snapshot.installation));
+        this.setStateValue(freshRootKey, canonicalJson({
+          requestDigest, eventId, originalHead, pin: snapshot.pin,
+        } satisfies FreshRootRecord));
+      });
+    } finally {
+      dolt.checkout("main");
+    }
+    const head = dolt.hashOf(freshRootBranch);
+    return {
+      requestDigest, eventId, originalHead, pin: snapshot.pin, head, installed: false,
+      repositories: workspaceRepositoriesAt(this.sql, head),
+    };
+  }
+
+  @rpc(hostWrite)
+  installFreshHistoryRoot(input: { head: string; eventId: string; requestDigest: string }) {
+    const staged = this.readFreshHistoryRoot();
+    if (!staged || staged.head !== input.head || staged.eventId !== input.eventId ||
+        staged.requestDigest !== input.requestDigest)
+      throw new Error("Workspace root installation requires its exact staged revision");
+    const dolt = this.#remotes();
+    if (!staged.installed) {
+      const current = dolt.hashOf("main");
+      if ((current !== staged.originalHead && current !== staged.head) ||
+          dolt.branch.current() !== "main" || dolt.status().length !== 0)
+        throw new Error("Canonical workspace history changed before root installation");
+      if (current !== staged.head) dolt.reset({ hard: true, to: staged.head });
+      this.setStateValue("history-installed", staged.head);
+    }
+    if (dolt.branch.list().some(({ name }) => name === freshRootBranch))
+      dolt.branch.delete(freshRootBranch, { force: true });
+    return { head: staged.head, eventId: staged.eventId };
   }
 
   @rpc(hostWrite)
@@ -404,7 +514,7 @@ export class GadHistoryDO extends DurableObjectBase {
     return seed;
   }
 
-  #assertSeedEvent(seed: SharedHistorySeed): void {
+  #assertSeedEvent(seed: Pick<SharedHistorySeed, "head" | "eventId">): void {
     const event = committedWorkspaceEvent(this.sql, seed.head);
     if (event?.head !== seed.head || event.eventId !== seed.eventId)
       throw new Error("Workspace history seed has a different committed event");
