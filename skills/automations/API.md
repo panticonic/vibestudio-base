@@ -211,7 +211,10 @@ plan as the caller, then calls the controller.
 import { missions } from "@workspace/runtime";
 
 const automation = await missions.launch({ name, charter });
-await missions.edit(automation.missionId, { name: "Renamed" });
+await missions.edit(automation.missionId, {
+  name: "Renamed",
+  expectedRevision: automation.revision,
+});
 ```
 
 The content-addressed plan fixes the full execution intent, service arguments,
@@ -258,6 +261,11 @@ Editing only the name or cadence reuses the installed plan. `missions.edit`
 compiles a new plan when the action, image, conversation, or operations change,
 or when a seeded definition is customized (a new definition with a new author).
 Each plan binds the exact invocation intent and its authenticated author.
+When editing an automation you already read, pass its numeric revision as
+`expectedRevision`. If a different edit commits first, the controller rejects
+the new edit with `MISSION_REVISION_CHANGED`. Read the current definition and
+reconsider the change. A retry with the same idempotency key and edit recovers
+its committed revision even if another edit has since taken effect.
 
 Compilation does not give future executors access to the author's context
 graph. Fresh and method executions still go through target admission and the

@@ -10,7 +10,10 @@ import type {
   MissionAuthorityPlanReference,
   MissionRunRecord,
 } from "@vibestudio/automation/mission";
-import { missionPrincipal } from "@vibestudio/automation/mission";
+import {
+  MISSION_REVISION_CHANGED,
+  missionPrincipal,
+} from "@vibestudio/automation/mission";
 import { MissionsDO } from "./MissionsDO.js";
 import { durableObjectServiceFixture } from "@vibestudio/service-schemas/test-utils";
 import { RuntimeEntityHandleSchema } from "@vibestudio/service-schemas/runtime";
@@ -60,8 +63,9 @@ class IdempotentLaunchMissionsDO extends TestMissionsDO {
 }
 
 class IdempotentCommandMissionsDO extends TestMissionsDO {
+  commandKey = "stable-command";
   protected override get rpcIdempotencyKey(): string | null {
-    return "stable-command";
+    return this.commandKey;
   }
 }
 
@@ -981,6 +985,145 @@ describe("MissionsDO", () => {
         ),
       },
     ]);
+  });
+
+  it("rejects a stale guarded edit after an intervening rename with the same digest", async () => {
+    const harness = await createMissions();
+    const original = await harness.callAs(alice, "launch", {
+      name: "Original",
+      authorityPlan: policy(),
+      charter: agentCharter(),
+    });
+    const peer = await harness.callAs(alice, "edit", original.missionId, {
+      name: "Peer rename",
+    });
+    expect(peer.revisionDigest).toBe(original.revisionDigest);
+    await expect(
+      harness.callAs(alice, "edit", original.missionId, {
+        name: "Stale owner edit",
+        expectedRevision: original.revision,
+      }),
+    ).rejects.toMatchObject({ code: MISSION_REVISION_CHANGED });
+    expect(await harness.callAs(alice, "get", original.missionId)).toEqual(
+      peer,
+    );
+    expect(
+      harness.sql.exec("SELECT COUNT(*) AS count FROM mission_revisions").one(),
+    ).toEqual({
+      count: 1,
+    });
+  });
+
+  it("checks the observed revision again at commit after authority verification yields", async () => {
+    const harness = await createMissions(IdempotentCommandMissionsDO);
+    const original = await harness.callAs(alice, "launch", {
+      name: "Original",
+      authorityPlan: policy(),
+      charter: agentCharter(),
+    });
+    let finishVerification!: () => void;
+    const waitForPeer = new Promise<void>((resolve) => {
+      finishVerification = resolve;
+    });
+    let startVerification!: () => void;
+    const verificationStarted = new Promise<void>((resolve) => {
+      startVerification = resolve;
+    });
+    const externalCall = harness.rpcCall.getMockImplementation()!;
+    harness.rpcCall.mockImplementation(
+      async (target, method, args, options) => {
+        if (method === "authority.verifyAuthorityPlan") {
+          startVerification();
+          await waitForPeer;
+          return policy(HASH_B);
+        }
+        return externalCall(target, method, args, options);
+      },
+    );
+    const pending = harness.callAs(alice, "edit", original.missionId, {
+      charter: agentCharter("Replace the instructions"),
+      authorityPlan: policy(HASH_B),
+      expectedRevision: original.revision,
+    });
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: MISSION_REVISION_CHANGED,
+    });
+    await verificationStarted;
+    harness.instance.commandKey = "peer";
+    const peer = await harness.callAs(alice, "edit", original.missionId, {
+      name: "Peer rename",
+    });
+    finishVerification();
+    await rejected;
+    expect(await harness.callAs(alice, "get", original.missionId)).toEqual(
+      peer,
+    );
+    expect(
+      harness.sql.exec("SELECT COUNT(*) AS count FROM mission_revisions").one(),
+    ).toEqual({
+      count: 1,
+    });
+  });
+
+  it("recovers its exact guarded edit after an effect fails and a later revision commits", async () => {
+    const harness = await createMissions(IdempotentCommandMissionsDO);
+    const original = await harness.callAs(alice, "launch", {
+      name: "Original",
+      authorityPlan: policy(),
+      charter: agentCharter(),
+    });
+    const authored = {
+      charter: agentCharter("Replace the instructions"),
+      expectedRevision: original.revision,
+    };
+    harness.setPolicyDigest(HASH_B);
+    const externalCall = harness.rpcCall.getMockImplementation()!;
+    let failedOnce = false;
+    harness.rpcCall.mockImplementation(
+      async (target, method, args, options) => {
+        if (!failedOnce && method === "authority.acquireForTarget") {
+          failedOnce = true;
+          throw new Error("lost post-commit effect response");
+        }
+        return externalCall(target, method, args, options);
+      },
+    );
+    await expect(
+      harness.callAs(alice, "edit", original.missionId, {
+        ...authored,
+        authorityPlan: policy(HASH_B),
+      }),
+    ).rejects.toThrow("lost post-commit effect response");
+    const committed = await harness.callAs(alice, "get", original.missionId);
+    expect(committed).toMatchObject({ revision: 2, charter: authored.charter });
+
+    harness.instance.commandKey = "peer";
+    const peer = await harness.callAs(alice, "edit", original.missionId, {
+      name: "Peer rename",
+      expectedRevision: 2,
+    });
+    harness.instance.commandKey = "stable-command";
+    const replay = await harness.callAs(
+      alice,
+      "edit",
+      original.missionId,
+      authored,
+    );
+    expect(replay).toEqual(committed);
+    expect(await harness.callAs(alice, "get", original.missionId)).toEqual(
+      peer,
+    );
+    await expect(
+      harness.callAs(alice, "edit", original.missionId, {
+        ...authored,
+        name: "Different command",
+      }),
+    ).rejects.toMatchObject({ code: "EACCES" });
+    expect(
+      harness.sql.exec("SELECT COUNT(*) AS count FROM mission_revisions").one(),
+    ).toEqual({
+      count: 2,
+    });
   });
 
   it("deduplicates edit retries to the exact committed revision", async () => {
@@ -2285,9 +2428,7 @@ describe("MissionsDO cancellation ownership", () => {
       { state: "paused" },
     );
     expect(
-      harness.sql
-        .exec("SELECT phase,context_id FROM mission_runs")
-        .one(),
+      harness.sql.exec("SELECT phase,context_id FROM mission_runs").one(),
     ).toEqual({ phase: "context-preparing", context_id: null });
     expect(
       harness.sql

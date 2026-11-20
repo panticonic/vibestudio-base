@@ -22,6 +22,7 @@ import type {
   MissionCharter,
   MissionCompletionReason,
   MissionExecution,
+  MissionEditPatch,
   MissionAuthorityPlanReference,
   MissionRecord,
   MissionRunEffectFailure,
@@ -37,6 +38,7 @@ import type {
 // during shutdown advances directly to the next future time.
 const SCHEDULE_DELIVERY_WINDOW_MS = 5_000;
 import {
+  MISSION_REVISION_CHANGED,
   missionCompletionResponse,
   sameMissionExecution,
   missionUsesAuthority,
@@ -861,19 +863,20 @@ export class MissionsDO extends DurableObjectBase {
   @schemaRpc()
   async edit(
     missionId: string,
-    input: {
-      name?: string;
-      charter?: MissionCharter;
-      authorityPlan?: MissionAuthorityPlanReference;
-    },
+    input: MissionEditPatch & { authorityPlan?: MissionAuthorityPlanReference },
   ): Promise<MissionRecord> {
     const current = this.requireMission(missionId);
     const caller = this.requireOwnerCaller();
     if (current.owner.userId !== caller.userId)
       throw denied("Automation belongs to another user");
-    if (current.state === "retired")
-      throw denied("Retired automations cannot be edited");
     if (current.seeded) {
+      if (current.state === "retired")
+        throw denied("Retired automations cannot be edited");
+      if (
+        input.expectedRevision !== undefined &&
+        current.revision !== input.expectedRevision
+      )
+        throw missionRevisionChanged();
       if (!input.authorityPlan)
         throw denied(
           "Customizing a workspace automation requires a newly compiled plan",
@@ -887,25 +890,41 @@ export class MissionsDO extends DurableObjectBase {
     const editKey = this.rpcIdempotencyKey ?? this.rpcRequestId;
     if (!editKey)
       throw new Error("Automation edit requires a command identity");
-    const intentJson = canonicalJson({ missionId, input });
-    const prior = this.sql
-      .exec(
-        "SELECT target_revision,intent_json,state,result_json FROM mission_edits WHERE owner_user_id=? AND edit_key=?",
-        caller.userId,
-        editKey,
-      )
-      .toArray()[0];
+    const { authorityPlan, ...authoredPatch } = input;
+    const guarded = input.expectedRevision !== undefined;
+    // A guarded replay can omit an already verified proof after the revision has
+    // moved. Its command is the original authored patch and observed revision.
+    const intentJson = canonicalJson({
+      missionId,
+      input: guarded ? authoredPatch : input,
+    });
+    const readEdit = () =>
+      this.sql
+        .exec(
+          "SELECT target_revision,intent_json,state,result_json FROM mission_edits WHERE owner_user_id=? AND edit_key=?",
+          caller.userId,
+          editKey,
+        )
+        .toArray()[0];
+    const prior = readEdit();
+    if (prior && String(prior["intent_json"]) !== intentJson)
+      throw denied(
+        "Edit idempotency key was reused for a different automation change",
+      );
+    if (prior?.["result_json"]) {
+      const receipt = JSON.parse(String(prior["result_json"])) as MissionRecord;
+      if (prior["state"] === "active") return receipt;
+      return this.finishCommittedEdit(caller.userId, editKey, receipt);
+    }
+    if (current.state === "retired")
+      throw denied("Retired automations cannot be edited");
+    if (guarded && current.revision !== input.expectedRevision)
+      throw missionRevisionChanged();
+
     const targetRevision = prior
       ? Number(prior["target_revision"])
       : current.revision + 1;
-    if (prior) {
-      if (String(prior["intent_json"]) !== intentJson)
-        throw denied(
-          "Edit idempotency key was reused for a different automation change",
-        );
-      if (prior["state"] === "active" && prior["result_json"])
-        return JSON.parse(String(prior["result_json"])) as MissionRecord;
-    } else {
+    if (!prior) {
       this.sql.exec(
         "INSERT INTO mission_edits (owner_user_id,edit_key,mission_id,target_revision,intent_json,state,created_at) VALUES (?,?,?,?,?,'preparing',?)",
         caller.userId,
@@ -922,45 +941,43 @@ export class MissionsDO extends DurableObjectBase {
       charter.execution,
       current.charter.execution,
     );
-    if (executionChanged && !input.authorityPlan)
+    if (executionChanged && !authorityPlan)
       throw denied(
         "Changed automation execution requires a newly compiled authority plan",
       );
-    const policy = input.authorityPlan
-      ? await this.verifyPolicy(charter, input.authorityPlan)
+    const policy = authorityPlan
+      ? await this.verifyPolicy(charter, authorityPlan)
       : current.authorityPlan;
     const digest = missionRevisionDigest(charter, policy.digest);
-    if (current.revision === targetRevision) {
+    // Rows created before atomic receipt stamping can still be recovered using
+    // the original unguarded command protocol.
+    if (!guarded && current.revision === targetRevision) {
       if (current.revisionDigest !== digest)
         throw new Error(
           "Prepared automation edit conflicts with the active revision",
         );
-      await this.resumeRuns();
-      await this.ensureAuthority(current);
-      await this.reconcileEffects(true);
-      const result = this.requireMission(missionId);
-      this.sql.exec(
-        "UPDATE mission_edits SET state='active',result_json=?,error=NULL WHERE owner_user_id=? AND edit_key=?",
-        canonicalJson(result),
-        caller.userId,
-        editKey,
-      );
-      return result;
+      return this.finishCommittedEdit(caller.userId, editKey, current);
     }
     if (current.revision + 1 !== targetRevision)
       throw new Error(
         "Prepared automation edit no longer follows the active revision",
       );
+
     const now = Date.now();
     const origin = scheduleOrigin(charter, now);
-    this.ctx.storage.transactionSync(() => {
+    const committed = this.ctx.storage.transactionSync(() => {
       const committing = this.requireMission(missionId);
-      if (committing.state === "retired")
-        throw denied("Retired automations cannot be edited");
-      if (committing.revision !== current.revision)
+      if (committing.revision !== current.revision) {
+        const receipt = readEdit()?.["result_json"];
+        if (receipt)
+          return { receipt: JSON.parse(String(receipt)) as MissionRecord };
+        if (guarded) throw missionRevisionChanged();
         throw new Error(
           "Prepared automation edit no longer follows the active revision",
         );
+      }
+      if (committing.state === "retired")
+        throw denied("Retired automations cannot be edited");
       // Editing the definition of a paused mission does not admit new runs.
       const state = committing.state === "paused" ? "paused" : "active";
       this.sql.exec(
@@ -985,27 +1002,66 @@ export class MissionsDO extends DurableObjectBase {
         now,
         missionId,
       );
-      if (missionUsesAuthority(current.charter.execution)) {
-        this.enqueueRetirement(
-          missionPrincipal(current.missionId, current.revisionDigest),
-          now,
-        );
-      }
+      const previousSubject = missionPrincipal(
+        current.missionId,
+        current.revisionDigest,
+      );
+      if (missionUsesAuthority(current.charter.execution))
+        this.enqueueRetirement(previousSubject, now);
+      const receipt = this.requireMission(missionId);
+      this.sql.exec(
+        "UPDATE mission_edits SET result_json=? WHERE owner_user_id=? AND edit_key=?",
+        canonicalJson(receipt),
+        caller.userId,
+        editKey,
+      );
+      return { receipt, previousSubject };
     });
-    await this.interruptRunsForRevision(
-      missionPrincipal(current.missionId, current.revisionDigest),
-      "Automation revision was replaced",
-    );
-    await this.ensureAuthority(this.requireMission(missionId));
-    await this.reconcileEffects(true);
-    const result = this.requireMission(missionId);
-    this.sql.exec(
-      "UPDATE mission_edits SET state='active',result_json=?,error=NULL WHERE owner_user_id=? AND edit_key=?",
-      canonicalJson(result),
+    return this.finishCommittedEdit(
       caller.userId,
       editKey,
+      committed.receipt,
+      committed.previousSubject,
     );
-    return result;
+  }
+
+  private async finishCommittedEdit(
+    ownerUserId: string,
+    editKey: string,
+    receipt: MissionRecord,
+    previousSubject?: ReturnType<typeof missionPrincipal>,
+  ): Promise<MissionRecord> {
+    const { missionId, revision } = receipt;
+    if (previousSubject) {
+      await this.interruptRunsForRevision(
+        previousSubject,
+        "Automation revision was replaced",
+      );
+    } else if (this.requireMission(missionId).revision === revision) {
+      await this.resumeRuns();
+    }
+    const current = this.requireMission(missionId);
+    if (current.revision === revision && current.state !== "retired") {
+      await this.ensureAuthority(current);
+      await this.reconcileEffects(true);
+    }
+    const now = this.requireMission(missionId);
+    const result =
+      now.revision === revision && now.state !== "retired" ? now : receipt;
+    this.sql.exec(
+      "UPDATE mission_edits SET state='active',result_json=?,error=NULL WHERE owner_user_id=? AND edit_key=? AND state!='active'",
+      canonicalJson(result),
+      ownerUserId,
+      editKey,
+    );
+    const finalized = this.sql
+      .exec(
+        "SELECT result_json FROM mission_edits WHERE owner_user_id=? AND edit_key=?",
+        ownerUserId,
+        editKey,
+      )
+      .one();
+    return JSON.parse(String(finalized["result_json"])) as MissionRecord;
   }
 
   @schemaRpc()
@@ -1072,14 +1128,8 @@ export class MissionsDO extends DurableObjectBase {
     expectedRevisionDigest: string,
   ): MissionRecord {
     const mission = this.requireMission(missionId);
-    if (mission.revisionDigest !== expectedRevisionDigest) {
-      throw Object.assign(
-        new Error(
-          "The automation definition changed. Read its current revision before changing scheduling.",
-        ),
-        { code: "MISSION_REVISION_CHANGED" },
-      );
-    }
+    if (mission.revisionDigest !== expectedRevisionDigest)
+      throw missionRevisionChanged();
     return action === "pause"
       ? this.pauseScheduling(mission)
       : this.resumeScheduling(mission);
@@ -2627,6 +2677,14 @@ function bounded(value: string | undefined): string | undefined {
   return value.length <= MAX_RUN_TEXT
     ? value
     : `${value.slice(0, MAX_RUN_TEXT)}\n…`;
+}
+function missionRevisionChanged(): Error {
+  return Object.assign(
+    new Error(
+      "The automation definition changed. Read its current revision before changing it.",
+    ),
+    { code: MISSION_REVISION_CHANGED },
+  );
 }
 function denied(message: string): Error {
   return Object.assign(new Error(message), { code: "EACCES" });
