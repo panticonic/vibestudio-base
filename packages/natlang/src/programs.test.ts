@@ -448,3 +448,31 @@ it("compiles the open goal program with its installed research skill and scoped 
     web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
   });
 });
+
+it.each([
+  ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal"],
+  ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
+  ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
+])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable) => {
+  const base = new URL("../../../", import.meta.url);
+  const installed = new URL(`../${template}/`, base);
+  const skillPath = `skills/${skill}`;
+  const source = (path: string) => new URL(path, path === skillPath || path.startsWith(skillPath + "/") ? installed : base);
+  const fs: WorkspaceFs = {
+    async readdir(path) {
+      const entries = await readdir(source(path + "/"), { withFileTypes: true });
+      if (path !== "skills") return entries;
+      const extras = await readdir(new URL("skills/", installed), { withFileTypes: true });
+      return [...entries, ...extras.filter(entry => entry.name === skill)];
+    },
+    readFile: path => readFile(source(path), "utf8"),
+    async stat(path) { return { isDirectory: () => !/\.[a-z]+$/u.test(path) }; },
+  };
+  const loader = new ProgramLoader({ platform: platform(), fs, bindings: {}, runTask: run => run() });
+  const program = await loader.describe("skills/open-user-goal/runUserGoal.nl");
+  const path = `runUserGoal/${namespace}/${callable}.nl`;
+  expect(program.functions.map(fn => fn.source)).toContain(path);
+  const scopes = program.serviceScopes[service] ?? [];
+  expect(scopes).toContain(path);
+  expect(scopes.every(scope => scope.startsWith(`runUserGoal/${namespace}/`))).toBe(true);
+});

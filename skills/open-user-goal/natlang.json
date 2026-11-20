@@ -6,7 +6,10 @@
   "serviceBinding": "explicit",
   "workspaceModules": {
     "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research",
-    "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review"
+    "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review",
+    "runUserGoal/news": "skills/news-workflows",
+    "runUserGoal/spectrolite": "skills/spectrolite-review",
+    "runUserGoal/google": "skills/google-drive/driveWorkflow"
   },
   "serviceScopes": {
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
