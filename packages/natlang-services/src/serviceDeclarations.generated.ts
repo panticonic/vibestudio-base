@@ -984,6 +984,49 @@ export function observe(): Promise<PanelHealthObservation>;
 
 /** Read observations from the assigned panel. */
 export function observeAfter(snapshotId: string): Promise<PanelHealthObservation>;`,
+  localDeliveryCatalog: `/** Discover owned local conversations and their send grants. */
+
+type LocalConversation = { id: string; title: string; maySend: boolean };
+
+/** Discover owned local conversations and their send grants. */
+export function discover(): Promise<LocalConversation[]>;`,
+  localDeliveryHistory: `/** Read the current roster and original receipt of an owned conversation. */
+
+type LocalConversation = { id: string; title: string; maySend: boolean };
+
+type LocalRecipient = { ref: string; kind: string; note: string };
+
+type LocalResolution =
+  | { kind: "ref"; ref: string; note: string }
+  | { kind: "ambiguous"; reason: "none" | "several"; candidates: LocalRecipient[] };
+
+type LocalDeliveryEvidence = {
+  roomId: string; channelId: string; messageId: string; senderId: string; recipientRef: string;
+  content: string; sequence: number; acknowledged: boolean;
+};
+
+type LocalObservation = {
+  room: LocalConversation; basis: string; phrase: string | null; roster: LocalRecipient[];
+  resolution: LocalResolution | null; prior: LocalDeliveryEvidence | null;
+};
+
+/** Read the current roster and original receipt of an owned conversation. */
+export function inspect(roomId: string, recipientPhrase: string | null): Promise<LocalObservation>;`,
+  localDeliverySend: `/** Submit one local note against its exact current roster basis. */
+
+type LocalAttempt = { attemptId: string; response: "submitted" | "interrupted" };
+
+/** Submit one local note against its exact current roster basis. */
+export function submit(basis: string, content: string): Promise<LocalAttempt>;`,
+  localDeliveryReadback: `/** Recover the original owned delivery after submission or interruption. */
+
+type LocalDeliveryEvidence = {
+  roomId: string; channelId: string; messageId: string; senderId: string; recipientRef: string;
+  content: string; sequence: number; acknowledged: boolean;
+};
+
+/** Recover the original owned delivery after submission or interruption. */
+export function read(attemptId: string): Promise<LocalDeliveryEvidence | null>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };

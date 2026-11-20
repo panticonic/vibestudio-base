@@ -32,6 +32,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `personal.workOnMissionGoal` for Mission Control.
 - `diagnostics.workTowardDiagnosticGoal` for System host incident evidence, saved log checkpoints, and follow-up diagnosis.
 - `operator.workOnSystemGoal` for System operations.
+- `localDelivery.workTowardLocalDelivery` for local recipient identity, retained delivery receipts, authorized follow-up, and recovering the original attempt.
 - `recovery.recoverSessionGoal` for retained conversations and recovery handoffs.
 - `publication.workTowardPublicationGoal` for website readiness and publication progress.
 - `pdf.workOnPdfGoal` for PDF inspection, reading order, and accessibility.
