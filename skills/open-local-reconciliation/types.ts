@@ -1,0 +1,19 @@
+export type ReviewWindow = { title: string; window: "open" | "pending" | "closed"; note: string; head: string };
+export type ReconcileFile = { path: string; baseline: string; local: string; incoming: string };
+export type ReconcileResolution = "composed" | "theirs" | "ours" | "current";
+export type ReconcileChoice = {
+  path: string;
+  id: string;
+  options: ReconcileResolution[];
+};
+export type ReconcileView = { head: string; source: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+export type ReconcileEdit = { path: string; before: string; after: string };
+export type ReconcileDecision = { coordinate: { kind: "file"; id: string }; resolution: ReconcileResolution; rationale: string };
+export type ReconcilePlan = { edits: ReconcileEdit[]; decisions: ReconcileDecision[]; reason: string } | null;
+export type ReconcileEffect = { status: "accepted" | "changed" | "held"; head: string };
+export type ReconcileOperation = { kind: "apply"; edits: ReconcileEdit[] } | { kind: "merge"; decisions: ReconcileDecision[] };
+export type IntegrationResult = { status: "integrated" | "held"; head: string; reason: string };
+export type EvidenceRequest = { goal: string; questions: string[]; sources: { id: string; path: string }[] };
+export type EvidenceReceipt = { path: string; bytes: number };
+export type RetainedResult = { status: "none" | "held" | "staged"; artifact: EvidenceReceipt | null };
+export type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult };
