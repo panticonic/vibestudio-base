@@ -90,6 +90,59 @@ it("resumes an interrupted reservation at the original fork and returns one gran
   }
 });
 
+it("revokes publication grants left by a lost reply when acknowledging the applied event", async () => {
+  const cell = await FakeDoltStorage.create({ doltLocal: ["state", "gad_history_allocations"] });
+  const { instance } = await createTestDO(GadHistoryDO, { __objectKey: "canonical" }, { storage: cell.storage });
+  const previousHead = cell.dolt.hashOf("main");
+  cell.dolt.branch.create("candidate");
+  cell.dolt.checkout("candidate");
+  cell.sql.exec("CREATE TABLE published_revision (name TEXT PRIMARY KEY)");
+  const proposedHead = cell.dolt.commit("Publish candidate");
+  cell.dolt.checkout("main");
+  const participantId = "writer";
+  const peer = `do:workers/workspace-source:GadHistoryDO:work-${sha256HexSyncText(participantId)}`;
+  Object.defineProperty(instance, "rpc", { value: { call: async () => ({ targetId: peer }) } });
+  const committed = vi.spyOn(historyState, "committedWorkspaceEvent")
+    .mockImplementation((_sql, head) => ({ head, eventId: head === proposedHead ? "next" : "previous" }));
+  const resolve = vi.spyOn(historyState, "workspaceCommitForRef")
+    .mockImplementation((_sql, head, state) =>
+      head === proposedHead && state.kind === "event" && state.eventId === "next" ? proposedHead : null);
+  const request = { publicationId: "publication" };
+  try {
+    await instance.reserveHistoryParticipant({ participantId, contextId: "context:work" });
+    const remote = doltRemotesOf(cell.storage)!.remote;
+    const unrelated = remote.grant({ peer, push: ["main"], pushTransition: {
+      previous: previousHead, next: "a".repeat(40),
+    }, expiresAt: Date.now() + 60_000 });
+    instance.authorizeHistoryPublication({
+      ...request, participantId, previousEventId: "previous", proposedEventId: "next",
+      publication: { previousHead, proposedHead },
+    });
+    const dropped = instance.grantHistoryPublication(request);
+    const retried = instance.grantHistoryPublication(request);
+    expect(dropped.kind).toBe("grant");
+    expect(retried.kind).toBe("grant");
+    expect(() => instance.acknowledgeHistoryPublication(request)).toThrow("no applied revision");
+    expect(remote.grants()).toHaveLength(4);
+    cell.dolt.merge("candidate");
+    expect(instance.listHistoryAppliedPublications()).toMatchObject([
+      { approval: { ...request, proposedEventId: "next" }, applied: true },
+    ]);
+    instance.acknowledgeHistoryPublication(request);
+    instance.acknowledgeHistoryPublication(request);
+    expect(remote.grants()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: participantId, peer }),
+      expect.objectContaining({ id: unrelated.id, peer }),
+    ]));
+    expect(remote.grants()).toHaveLength(2);
+    expect(instance.listHistoryAppliedPublications()).toEqual([]);
+    expect(cell.dolt.hashOf("main")).toBe(proposedHead);
+  } finally {
+    committed.mockRestore();
+    resolve.mockRestore();
+  }
+});
+
 it("records the sealed legacy generation only for the exact installed replay", async () => {
   const replay = {
     head: "a".repeat(40), eventId: "shared-tip", contexts: [], frozenPlanDigest: "b".repeat(64),

@@ -1624,8 +1624,23 @@ export class GadHistoryDO extends DurableObjectBase {
     if (!this.#publishedApproval(receipt.approval)) {
       throw new Error("Workspace publication has no applied revision");
     }
+    const incoming = input.publicationId.startsWith(incomingApprovalPrefix);
+    if (!incoming) {
+      // A lost grant or push reply can prevent the host from releasing its permit.
+      // Keep the receipt until every permit for this applied transition is gone.
+      const { participantId, publication } = receipt.approval;
+      const peer = participantPeerPrefix + workKey(participantId);
+      const remote = this.#remotes().remote;
+      for (const grant of remote.grants()) {
+        if (grant.peer === peer && grant.push.length === 1 && grant.push[0] === "main" &&
+            grant.pushTransition?.previous === publication.previousHead &&
+            grant.pushTransition.next === publication.proposedHead) {
+          remote.revoke(grant.id);
+        }
+      }
+    }
     this.ctx.storage.transactionSync(() => {
-      if (input.publicationId.startsWith(incomingApprovalPrefix)) {
+      if (incoming) {
         const received = input.publicationId.slice(incomingApprovalPrefix.length);
         this.setStateValue(`history-completed:${received}`, canonicalJson(receipt.approval.publication));
       }
