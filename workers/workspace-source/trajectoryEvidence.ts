@@ -328,3 +328,555 @@ export function walkTrajectoryInvocation(sql: SqlStorage, cause: Row, depth: num
   }
   return { entries, omitted: [], notes };
 }
+
+export const isTrajectoryNodeKind = (kind: string): boolean =>
+  kind === "trajectory" || kind === "trajectory-invocation" ||
+  kind === "trajectory-turn" || kind === "trajectory-message";
+
+export function inspectTrajectoryNode(sql: SqlStorage, node: Row): Row {
+  switch (node["kind"]) {
+    case "trajectory":
+      return { kind: "trajectory", value: node };
+    case "trajectory-invocation": {
+      const row = sql
+        .exec(
+          `SELECT turn_id, kind, status, terminal_outcome, request_ref_json,
+                  started_event_id, completed_event_id
+             FROM trajectory_invocations
+            WHERE log_id = ? AND head = ? AND invocation_id = ? LIMIT 1`,
+          String(node["logId"]),
+          String(node["head"]),
+          String(node["invocationId"]),
+        )
+        .toArray()[0];
+      if (!row)
+        throw new SemanticVcsError(
+          "InvalidReference",
+          "Unknown trajectory invocation",
+        );
+      const started =
+        row["started_event_id"] == null
+          ? null
+          : sql
+              .exec(
+                "SELECT payload_ref_json FROM log_events WHERE log_id=? AND head=? AND envelope_id=? LIMIT 1",
+                String(node["logId"]),
+                String(node["head"]),
+                String(row["started_event_id"]),
+              )
+              .toArray()[0];
+      const payload =
+        started == null
+          ? null
+          : (JSON.parse(String(started["payload_ref_json"])) as Row);
+      const nativeSource =
+        payload?.["nativeSource"] === undefined
+          ? null
+          : nativeInvocationSourceSchema.parse(payload["nativeSource"]);
+      return {
+        kind: "trajectory-invocation",
+        value: {
+          logId: String(node["logId"]),
+          head: String(node["head"]),
+          invocationId: String(node["invocationId"]),
+          nativeInvocation:
+            nativeSource === null
+              ? null
+              : nativeInvocationIdentity(nativeSource),
+          originatingInput:
+            nativeSource === null
+              ? null
+              : nativeOriginatingInputSchema
+                  .nullable()
+                  .parse(payload!["originatingInput"]),
+          turnId: row["turn_id"] == null ? null : String(row["turn_id"]),
+          name: row["kind"] == null ? null : String(row["kind"]),
+          status: String(row["status"]),
+          terminalOutcome:
+            row["terminal_outcome"] == null
+              ? null
+              : String(row["terminal_outcome"]),
+          requestRef:
+            row["request_ref_json"] == null
+              ? null
+              : trajectoryRequestRef(
+                  JSON.parse(String(row["request_ref_json"])),
+                ),
+          startedEventId:
+            row["started_event_id"] == null
+              ? null
+              : String(row["started_event_id"]),
+          completedEventId:
+            row["completed_event_id"] == null
+              ? null
+              : String(row["completed_event_id"]),
+        },
+      };
+    }
+    case "trajectory-turn": {
+      const row = sql
+        .exec(
+          `SELECT trigger_message_id, opened_at, closed_at, summary, ordinal
+             FROM trajectory_turns
+            WHERE log_id = ? AND head = ? AND turn_id = ? LIMIT 1`,
+          String(node["logId"]),
+          String(node["head"]),
+          String(node["turnId"]),
+        )
+        .toArray()[0];
+      if (!row)
+        throw new SemanticVcsError(
+          "InvalidReference",
+          "Unknown trajectory turn",
+        );
+      return {
+        kind: "trajectory-turn",
+        value: {
+          logId: String(node["logId"]),
+          head: String(node["head"]),
+          turnId: String(node["turnId"]),
+          triggerMessageId:
+            row["trigger_message_id"] == null
+              ? null
+              : String(row["trigger_message_id"]),
+          openedAt:
+            row["opened_at"] == null ? null : String(row["opened_at"]),
+          closedAt:
+            row["closed_at"] == null ? null : String(row["closed_at"]),
+          summary: row["summary"] == null ? null : String(row["summary"]),
+          ordinal: row["ordinal"] == null ? null : Number(row["ordinal"]),
+        },
+      };
+    }
+    case "trajectory-message": {
+      const value = readTrajectoryMessage(
+        sql, String(node["logId"]), String(node["head"]), String(node["messageId"]),
+      );
+      if (!value) throw new SemanticVcsError("InvalidReference", "Unknown trajectory message");
+      return { kind: "trajectory-message", value };
+    }
+    default:
+      throw new SemanticVcsError("InvalidReference", "Unknown trajectory node kind");
+  }
+}
+
+export function trajectoryNeighborEdges(
+  sql: SqlStorage,
+  node: Row,
+  after: Readonly<{ phase: number; key: string | null }>,
+  limit: number,
+  includeJournal = false,
+  sameHeadOnly = false,
+): Array<{ position: { phase: number; key: string }; edge: Row }> {
+  const kind = node["kind"];
+  if (kind === "trajectory-invocation") {
+    const invocation = {
+      kind: "trajectory-invocation",
+      logId: node["logId"],
+      head: node["head"],
+      invocationId: node["invocationId"],
+    };
+    const invocationRow = sql
+      .exec(
+        `SELECT turn_id FROM trajectory_invocations
+          WHERE log_id = ? AND head = ? AND invocation_id = ? LIMIT 1`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["invocationId"]),
+      )
+      .toArray()[0] as Row | undefined;
+    if (!invocationRow) {
+      throw new SemanticVcsError(
+        "InvalidReference",
+        "Unknown trajectory invocation",
+      );
+    }
+    const rows = sql
+      .exec(
+        `SELECT edge_group, sort_key, edge_kind, target_id, input_log_id, input_head FROM (
+           SELECT 0 AS edge_group, '' AS sort_key, 'part-of-trajectory' AS edge_kind,
+                  invocation_id AS target_id, NULL AS input_log_id, NULL AS input_head
+             FROM trajectory_invocations
+            WHERE log_id = ? AND head = ? AND invocation_id = ?
+           UNION ALL
+           SELECT 1, turn_id, 'part-of-turn', turn_id, NULL, NULL
+             FROM trajectory_invocations
+            WHERE log_id = ? AND head = ? AND invocation_id = ? AND turn_id IS NOT NULL
+           ${includeJournal ? `UNION ALL
+           SELECT 2, command_id, 'caused-by', command_id, NULL, NULL
+             FROM vcs_command_journal
+            WHERE cause_log_id = ? AND cause_head = ? AND cause_invocation_id = ?` : ""}
+           UNION ALL
+           SELECT 3, input_message_id, 'triggered-by', input_message_id, input_log_id, input_head
+             FROM trajectory_invocation_inputs
+            WHERE log_id = ? AND head = ? AND invocation_id = ?
+              ${sameHeadOnly ? "AND input_log_id = log_id AND input_head = head" : ""}
+         ) adjacency
+         WHERE edge_group > ?
+            OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
+         ORDER BY edge_group, sort_key, target_id LIMIT ?`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["invocationId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["invocationId"]),
+        ...(includeJournal ? [node["logId"], node["head"], node["invocationId"]] : []),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["invocationId"]),
+        after.phase,
+        after.phase,
+        after.key,
+        after.key,
+        limit,
+      )
+      .toArray() as Row[];
+    return rows.map((row) => {
+      const edgeKind = String(row["edge_kind"]);
+      const targetId = String(row["target_id"]);
+      return {
+        position: {
+          phase: Number(row["edge_group"]),
+          key: String(row["sort_key"]),
+        },
+        edge:
+          edgeKind === "part-of-trajectory"
+            ? {
+                kind: edgeKind,
+                from: invocation,
+                to: {
+                  kind: "trajectory",
+                  logId: node["logId"],
+                  head: node["head"],
+                },
+              }
+            : edgeKind === "part-of-turn"
+              ? {
+                  kind: edgeKind,
+                  from: invocation,
+                  to: {
+                    kind: "trajectory-turn",
+                    logId: node["logId"],
+                    head: node["head"],
+                    turnId: targetId,
+                  },
+                }
+              : edgeKind === "triggered-by"
+                ? {
+                    kind: edgeKind,
+                    from: invocation,
+                    to: {
+                      kind: "trajectory-message",
+                      logId: String(row["input_log_id"]),
+                      head: String(row["input_head"]),
+                      messageId: targetId,
+                    },
+                  }
+                : {
+                    kind: edgeKind,
+                    from: { kind: "command", commandId: targetId },
+                    to: invocation,
+                  },
+      };
+    });
+  } else if (kind === "trajectory-turn") {
+    const turn = {
+      kind: "trajectory-turn",
+      logId: node["logId"],
+      head: node["head"],
+      turnId: node["turnId"],
+    };
+    const turnRow = sql
+      .exec(
+        `SELECT trigger_message_id FROM trajectory_turns
+          WHERE log_id = ? AND head = ? AND turn_id = ? LIMIT 1`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["turnId"]),
+      )
+      .toArray()[0] as Row | undefined;
+    if (!turnRow)
+      throw new SemanticVcsError(
+        "InvalidReference",
+        "Unknown trajectory turn",
+      );
+    const rows = sql
+      .exec(
+        `SELECT edge_group, sort_key, edge_kind, target_id FROM (
+           SELECT 0 AS edge_group, '' AS sort_key, 'part-of-trajectory' AS edge_kind,
+                  turn_id AS target_id
+             FROM trajectory_turns WHERE log_id = ? AND head = ? AND turn_id = ?
+           UNION ALL
+           SELECT 1, trigger_message_id, 'triggered-by', trigger_message_id
+             FROM trajectory_turns
+            WHERE log_id = ? AND head = ? AND turn_id = ? AND trigger_message_id IS NOT NULL
+           UNION ALL
+           SELECT 2, invocation_id, 'part-of-turn', invocation_id
+             FROM trajectory_invocations WHERE log_id = ? AND head = ? AND turn_id = ?
+           UNION ALL
+           SELECT 3, message_id, 'turn-message', message_id
+             FROM trajectory_messages WHERE log_id = ? AND head = ? AND turn_id = ?
+         ) adjacency
+         WHERE edge_group > ?
+            OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
+         ORDER BY edge_group, sort_key, target_id LIMIT ?`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["turnId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["turnId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["turnId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["turnId"]),
+        after.phase,
+        after.phase,
+        after.key,
+        after.key,
+        limit,
+      )
+      .toArray() as Row[];
+    return rows.map((row) => {
+      const edgeKind = String(row["edge_kind"]);
+      const targetId = String(row["target_id"]);
+      return {
+        position: {
+          phase: Number(row["edge_group"]),
+          key: String(row["sort_key"]),
+        },
+        edge:
+          edgeKind === "part-of-trajectory"
+            ? {
+                kind: edgeKind,
+                from: turn,
+                to: {
+                  kind: "trajectory",
+                  logId: node["logId"],
+                  head: node["head"],
+                },
+              }
+            : edgeKind === "triggered-by"
+              ? {
+                  kind: edgeKind,
+                  from: turn,
+                  to: {
+                    kind: "trajectory-message",
+                    logId: node["logId"],
+                    head: node["head"],
+                    messageId: targetId,
+                  },
+                }
+              : edgeKind === "part-of-turn"
+                ? {
+                    kind: edgeKind,
+                    from: {
+                      kind: "trajectory-invocation",
+                      logId: node["logId"],
+                      head: node["head"],
+                      invocationId: targetId,
+                    },
+                    to: turn,
+                  }
+                : {
+                    kind: "part-of-turn",
+                    from: {
+                      kind: "trajectory-message",
+                      logId: node["logId"],
+                      head: node["head"],
+                      messageId: targetId,
+                    },
+                    to: turn,
+                  },
+      };
+    });
+  } else if (kind === "trajectory-message") {
+    const message = {
+      kind: "trajectory-message",
+      logId: node["logId"],
+      head: node["head"],
+      messageId: node["messageId"],
+    };
+    const messageRow = sql
+      .exec(
+        `SELECT turn_id FROM trajectory_messages
+          WHERE log_id = ? AND head = ? AND message_id = ? LIMIT 1`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["messageId"]),
+      )
+      .toArray()[0] as Row | undefined;
+    if (!messageRow) {
+      throw new SemanticVcsError(
+        "InvalidReference",
+        "Unknown trajectory message",
+      );
+    }
+    const rows = sql
+      .exec(
+        `SELECT edge_group, sort_key, edge_kind, target_id, target_kind, target_log_id, target_head FROM (
+           SELECT 0 AS edge_group, '' AS sort_key, 'part-of-trajectory' AS edge_kind,
+                  message_id AS target_id, 'trajectory' AS target_kind, NULL AS target_log_id, NULL AS target_head
+             FROM trajectory_messages WHERE log_id = ? AND head = ? AND message_id = ?
+           UNION ALL
+           SELECT 1, turn_id, 'part-of-turn', turn_id, 'turn', NULL, NULL
+             FROM trajectory_messages
+            WHERE log_id = ? AND head = ? AND message_id = ? AND turn_id IS NOT NULL
+           UNION ALL
+           SELECT 2, turn_id, 'triggered-by', turn_id, 'turn', NULL, NULL
+             FROM trajectory_turns
+            WHERE log_id = ? AND head = ? AND trigger_message_id = ?
+           UNION ALL
+           SELECT 3, json_array(log_id, head, invocation_id), 'triggered-by', invocation_id,
+                  'invocation', log_id, head
+             FROM trajectory_invocation_inputs
+            WHERE input_log_id = ? AND input_head = ? AND input_message_id = ?
+              ${sameHeadOnly ? "AND log_id = input_log_id AND head = input_head" : ""}
+         ) adjacency
+         WHERE edge_group > ?
+            OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
+         ORDER BY edge_group, sort_key, target_id LIMIT ?`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["messageId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["messageId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["messageId"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["messageId"]),
+        after.phase,
+        after.phase,
+        after.key,
+        after.key,
+        limit,
+      )
+      .toArray() as Row[];
+    return rows.map((row) => {
+      const edgeKind = String(row["edge_kind"]);
+      const targetId = String(row["target_id"]);
+      return {
+        position: {
+          phase: Number(row["edge_group"]),
+          key: String(row["sort_key"]),
+        },
+        edge:
+          edgeKind === "part-of-trajectory"
+            ? {
+                kind: edgeKind,
+                from: message,
+                to: {
+                  kind: "trajectory",
+                  logId: node["logId"],
+                  head: node["head"],
+                },
+              }
+            : edgeKind === "part-of-turn"
+              ? {
+                  kind: edgeKind,
+                  from: message,
+                  to: {
+                    kind: "trajectory-turn",
+                    logId: node["logId"],
+                    head: node["head"],
+                    turnId: targetId,
+                  },
+                }
+              : row["target_kind"] === "invocation"
+                ? {
+                    kind: edgeKind,
+                    from: {
+                      kind: "trajectory-invocation",
+                      logId: String(row["target_log_id"]),
+                      head: String(row["target_head"]),
+                      invocationId: targetId,
+                    },
+                    to: message,
+                  }
+                : {
+                    kind: edgeKind,
+                    from: {
+                      kind: "trajectory-turn",
+                      logId: node["logId"],
+                      head: node["head"],
+                      turnId: targetId,
+                    },
+                    to: message,
+                  },
+      };
+    });
+  } else if (kind === "trajectory") {
+    const trajectory = {
+      kind: "trajectory",
+      logId: node["logId"],
+      head: node["head"],
+    };
+    const members = sql
+      .exec(
+        `SELECT edge_group, sort_key, member_kind, member_id FROM (
+           SELECT 0 AS edge_group, invocation_id AS sort_key,
+                  'trajectory-invocation' AS member_kind, invocation_id AS member_id
+             FROM trajectory_invocations WHERE log_id = ? AND head = ?
+           UNION ALL
+           SELECT 1, message_id, 'trajectory-message', message_id
+             FROM trajectory_messages WHERE log_id = ? AND head = ?
+           UNION ALL
+           SELECT 2, turn_id, 'trajectory-turn', turn_id
+             FROM trajectory_turns WHERE log_id = ? AND head = ?
+         ) adjacency
+         WHERE edge_group > ?
+            OR (edge_group = ? AND (? IS NULL OR sort_key > ?))
+         ORDER BY edge_group, sort_key, member_id LIMIT ?`,
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["logId"]),
+        String(node["head"]),
+        String(node["logId"]),
+        String(node["head"]),
+        after.phase,
+        after.phase,
+        after.key,
+        after.key,
+        limit,
+      )
+      .toArray() as Row[];
+    return members.map((row) => ({
+      position: {
+        phase: Number(row["edge_group"]),
+        key: String(row["sort_key"]),
+      },
+      edge: {
+        kind: "part-of-trajectory",
+        from:
+          row["member_kind"] === "trajectory-invocation"
+            ? {
+                kind: "trajectory-invocation",
+                logId: node["logId"],
+                head: node["head"],
+                invocationId: String(row["member_id"]),
+              }
+            : row["member_kind"] === "trajectory-message"
+              ? {
+                  kind: "trajectory-message",
+                  logId: node["logId"],
+                  head: node["head"],
+                  messageId: String(row["member_id"]),
+                }
+              : {
+                  kind: "trajectory-turn",
+                  logId: node["logId"],
+                  head: node["head"],
+                  turnId: String(row["member_id"]),
+                },
+        to: trajectory,
+      },
+    }));
+  }
+  throw new SemanticVcsError("InvalidReference", "Unknown trajectory node kind");
+}

@@ -25,7 +25,7 @@ import {
   type SemanticDispatchResult,
 } from "./semanticWorkspace.testHost.js";
 import { SemanticVcsStore } from "./semanticVcsStore.js";
-import { readHistoryMemoryCause, readHistoryWalkInvocation } from "./trajectoryEvidence.js";
+import { inspectTrajectoryNode, readHistoryMemoryCause, readHistoryWalkInvocation, trajectoryNeighborEdges } from "./trajectoryEvidence.js";
 
 const timestamp = "2026-08-14T00:00:00.000Z";
 
@@ -62,6 +62,11 @@ it("reads a native invocation's causal evidence from trajectory tables alone", a
     triggerText: "Change the config",
     sender: { kind: "user", id: "user:alice" },
   });
+  const root = { kind: "trajectory-invocation", ...invocation };
+  expect(inspectTrajectoryNode(sql, root)).toMatchObject({ kind: root.kind, value: invocation });
+  const edges = trajectoryNeighborEdges(sql, root, { phase: 0, key: null }, 10, false, true);
+  expect(edges.map(({ edge }) => edge.kind)).toEqual(["part-of-trajectory", "part-of-turn"]);
+  expect(trajectoryNeighborEdges(sql, root, edges[0]!.position, 1, false, true)).toEqual(edges.slice(1));
   expect(readHistoryWalkInvocation(sql, invocation).entries).toMatchObject([
     { node: { kind: "trajectory-invocation" }, depth: 0 },
     { node: { kind: "trajectory-turn" }, depth: 1 },
@@ -393,6 +398,10 @@ describe("provenance walks", () => {
     });
     const source = { kind: "trajectory-invocation", logId: "trajectory:test", head: "main", invocationId: nativeInvocationId(f.nativeSource) };
     const target = { kind: "trajectory-message", logId: "input-channel", head: "main", messageId: "message:trigger" };
+    for (const root of [source, target]) {
+      expect(trajectoryNeighborEdges(f.sql, root, { phase: 0, key: null }, 20, false, true)
+        .map(({ edge }) => edge)).not.toContainEqual({ kind: "triggered-by", from: source, to: target });
+    }
     for (const root of [source, target]) {
       const page = vcsNeighborsResultSchema.parse(complete(await f.semantic.dispatch("neighbors", { ingress, input: { root, limit: 20 } })));
       expect(page.edges).toContainEqual({ kind: "triggered-by", from: source, to: target });

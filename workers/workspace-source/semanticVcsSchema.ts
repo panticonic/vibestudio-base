@@ -468,4 +468,17 @@ export function createTrajectoryMirrorSchema(sql: SqlStorage): void {
     `CREATE INDEX IF NOT EXISTS idx_trajectory_invocations_identity
      ON trajectory_invocations(invocation_id, log_id, head)`,
   );
+  sql.exec(`
+    CREATE VIEW IF NOT EXISTS trajectory_invocation_inputs AS
+      SELECT invocation.log_id, invocation.head, invocation.invocation_id,
+             json_extract(event.payload_ref_json, '$.originatingInput.channelRef.objectKey') AS input_log_id,
+             'main' AS input_head,
+             json_extract(event.payload_ref_json, '$.originatingInput.messageId') AS input_message_id
+        FROM trajectory_invocations invocation
+        JOIN log_events event
+          ON event.log_id = invocation.log_id AND event.head = invocation.head
+         AND event.envelope_id = invocation.started_event_id
+       WHERE json_type(event.payload_ref_json, '$.nativeSource') = 'object'
+         AND json_type(event.payload_ref_json, '$.originatingInput') = 'object';
+  `);
 }

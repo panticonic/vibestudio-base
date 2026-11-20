@@ -15,7 +15,7 @@ import {
   type GadJsonValue,
   type HistoryTrajectorySearchInput,
 } from "@vibestudio/service-schemas/workspaceSource";
-import { vcsTrajectoryInvocationRefSchema } from "@vibestudio/service-schemas/vcs";
+import { vcsProvenanceEdgeSchema, vcsTrajectoryInvocationRefSchema } from "@vibestudio/service-schemas/vcs";
 import { searchTrajectoryProse } from "./doltWorkspaceSearch.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWorkOwner";
@@ -38,12 +38,14 @@ import type {
 } from "@vibestudio/shared/durableWork";
 import {
   gadWireMethods,
+  HistoryTrajectoryProvenanceRequestSchema,
+  type HistoryTrajectoryProvenanceRequest,
 } from "@vibestudio/service-schemas/workspaceSource";
 import {
   logIdForChannel,
   headForChannel,
 } from "@vibestudio/trajectory-identity";
-import { readHistoryMemoryCause, readHistoryWalkInvocation } from "./trajectoryEvidence.js";
+import { inspectTrajectoryNode, readHistoryMemoryCause, readHistoryWalkInvocation, trajectoryNeighborEdges } from "./trajectoryEvidence.js";
 import { DurableObjectBase } from "@vibestudio/durable";
 import type {
   ChannelInvite,
@@ -166,6 +168,8 @@ import {
 import { SemanticVcsError, SemanticVcsStore } from "./semanticVcsStore.js";
 import {
   SemanticWorkspace,
+  parseSemanticCursor,
+  semanticCursor,
   type SemanticDispatchRequest,
   type SemanticEffectAcknowledgement,
 } from "./semanticWorkspace.js";
@@ -1461,6 +1465,51 @@ export class GadWorkspaceDO extends DurableObjectBase {
   searchHistoryTrajectory(input: HistoryTrajectorySearchInput) {
     const { causes, ...search } = HistoryTrajectorySearchInputSchema.parse(input);
     return searchTrajectoryProse(this.sql, search, causes);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host admits exact trajectory provenance coordinates." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryTrajectoryProvenance(input: HistoryTrajectoryProvenanceRequest) {
+    this.ensureReady();
+    const parsed = HistoryTrajectoryProvenanceRequestSchema.parse(input);
+    if (parsed.operation === "inspect") {
+      const { node: root, edgeLimit } = parsed.request;
+      const node = inspectTrajectoryNode(this.sql, root);
+      const edges = parsed.expand
+        ? trajectoryNeighborEdges(this.sql, root, { phase: 0, key: null }, edgeLimit + 1, false, true)
+        : [];
+      return {
+        root,
+        node,
+        edges: edges.slice(0, edgeLimit).map(({ edge }) => vcsProvenanceEdgeSchema.parse(edge)),
+        hasMoreEdges: edges.length > edgeLimit,
+      };
+    }
+    const { root, cursor, limit } = parsed.request;
+    inspectTrajectoryNode(this.sql, root);
+    const basis = { root, expand: parsed.expand };
+    const position = parseSemanticCursor(cursor, "trajectory-neighbors", basis);
+    const phase = position ? position["phase"] : 0;
+    const key = position ? position["key"] : null;
+    if (typeof phase !== "number" || !Number.isSafeInteger(phase) || phase < 0 || phase > 3 ||
+        (position && typeof key !== "string") || (key !== null && typeof key !== "string")) {
+      throw new SemanticVcsError("InvalidReference", "Invalid trajectory neighbor cursor");
+    }
+    const edges = parsed.expand
+      ? trajectoryNeighborEdges(this.sql, root, { phase, key }, limit + 1, false, true)
+      : [];
+    return {
+      root,
+      edges: edges.slice(0, limit).map(({ edge }) => vcsProvenanceEdgeSchema.parse(edge)),
+      nextCursor: edges.length > limit
+        ? semanticCursor("trajectory-neighbors", basis, edges[limit - 1]!.position)
+        : null,
+    };
   }
 
   @rpc({
