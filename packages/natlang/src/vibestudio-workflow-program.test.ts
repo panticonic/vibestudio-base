@@ -388,12 +388,8 @@ it("describes the typed workflows in the installed template domains", async () =
           const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
           return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
         }
-        const report = remote.operation === "deployRemoteServer"
-          ? await domains.remoteAccess.deployRemoteServer(remote.input)
-          : remote.operation === "commissionRemoteWorkspace"
-            ? await domains.remoteAccess.commissionRemoteWorkspace(remote.input)
-            : await domains.remoteAccess.openRemoteWorkspace(remote.input);
-        return {results: [{kind: "domain", domain: remote.domain, operation: remote.operation, report}], remaining: []};
+        const report = await domains.remoteAccess[remote.operation](remote.input);
+        return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
       }
       const system = request.work[1];
       if (system.domain === "localModel") {
@@ -415,17 +411,6 @@ it("describes the typed workflows in the installed template domains", async () =
         report: await domains.automation.prepareAutomation(next.input)});
       return {results, remaining: []};
     `,
-    commissionRemoteWorkspace: `
-      const deployment = await deployRemoteServer(request);
-      if (deployment.status !== "deployment-ready" && deployment.status !== "already-running") {
-        return {deployment, handoff:null, access:null};
-      }
-      const handoff = await bindVerifiedWorkspace(deployment.evidenceIds.at(-1));
-      const access = handoff.state === "assigned"
-        ? await openRemoteWorkspace({operationId:handoff.operationId}) : null;
-      return {deployment, handoff, access};
-    `,
-    bindVerifiedWorkspace: "return await remoteDeploymentHandoff.open(deploymentReceipt);",
     reviewRemoteRoute: `
       const observed=await readGatewayIdentity(request.operationId);
       const {verdict,diagnostic}=await compareGatewayIdentity(request,observed);
@@ -592,70 +577,6 @@ it("describes the typed workflows in the installed template domains", async () =
       if (later.findings.some(finding => earlier.findings.some(old => old.message === finding.message)))
         return "recurring-failure";
       return "new-failure";
-    `,
-    deployRemoteServer: `
-      const baseline = await observeBaseline(request.operationId);
-      const decision = await decideDeployment(baseline);
-      const evidenceIds = [baseline.receipt];
-      if (decision !== "apply") return {status:decision, identity:null, evidenceIds};
-      const attempt = await applyDeployment(baseline.receipt);
-      evidenceIds.push(attempt.receipt);
-      if (attempt.state !== "applied") {
-        return {status:attempt.state === "failed" ? "installer-failed" : "baseline-changed", identity:null, evidenceIds};
-      }
-      const report = await checkReadiness(attempt.receipt);
-      return {...report, evidenceIds:[...evidenceIds, ...report.evidenceIds]};
-    `,
-    observeBaseline: "return await remoteDeploymentRead.observe(operationId);",
-    decideDeployment: `
-      if (baseline.state === "unverified") return "baseline-unverified";
-      if (baseline.intent === "update") return baseline.hasPriorIdentity ? "apply" : "update-needs-existing-server";
-      return baseline.state === "ready" ? "already-running" : "apply";
-    `,
-    applyDeployment:
-      "return await remoteDeploymentApply.apply(baselineReceipt);",
-    checkReadiness: `
-      const result = await observeReadiness(actionReceipt);
-      return {status:await interpretReadiness(result), identity:result.identity, evidenceIds:[result.receipt]};
-    `,
-    observeReadiness:
-      "return await remoteDeploymentVerify.verify(actionReceipt);",
-    interpretReadiness: `
-      return {verified:"deployment-ready", unready:"readiness-unverified",
-        "unchanged-boot":"boot-unchanged", "identity-changed":"server-identity-changed"}[verified.state];
-    `,
-    openRemoteWorkspace: `
-      const profile = await readAssignedProfile(request.operationId);
-      const gate = await decideAdmission(profile);
-      const evidenceIds = [profile.receipt];
-      if (gate !== "pair" && gate !== "route") return {status:gate, workspaceId:null, evidenceIds};
-      if (gate === "pair") {
-        const paired = await pairAssignedProfile(profile.receipt);
-        evidenceIds.push(paired.receipt);
-        if (paired.state !== "paired") return {status:"pairing-failed", workspaceId:null, evidenceIds};
-      }
-      const report = await openAssignedRoute(evidenceIds.at(-1));
-      return {...report, evidenceIds:[...evidenceIds, ...report.evidenceIds]};
-    `,
-    readAssignedProfile: "return await remoteAccessRead.observe(operationId);",
-    decideAdmission: `
-      if (observed.state === "foreign") return "different-profile";
-      if (observed.state === "unusable") return "recover-profile";
-      if (observed.state === "unpaired") return observed.inviteAssigned ? "pair" : "invite-required";
-      return "route";
-    `,
-    pairAssignedProfile: "return await remoteAccessPair.pair(profileReceipt);",
-    openAssignedRoute: `
-      const route = await routeThroughHub(priorReceipt);
-      if (route.state !== "routed") return {status:"route-unavailable", workspaceId:null, evidenceIds:[route.receipt]};
-      const child = await observeChild(route.receipt);
-      return {status:await interpretChild(child), workspaceId:child.workspaceId, evidenceIds:[route.receipt, child.receipt]};
-    `,
-    routeThroughHub: "return await remoteAccessRoute.select(priorReceipt);",
-    observeChild: "return await remoteAccessVerify.verify(routeReceipt);",
-    interpretChild: `
-      if (child.state === "verified") return "workspace-ready";
-      return child.state === "identity-mismatch" ? "child-identity-mismatch" : "child-unreachable";
     `,
     investigateSystem: "return await comparePerformance(request);",
     comparePerformance:
@@ -1275,315 +1196,33 @@ it("describes the typed workflows in the installed template domains", async () =
     }
     runReference = false;
   }
-  if (
-    description.functions.some(({ name }) => name === "openRemoteWorkspace")
-  ) {
-    runReference = true;
-    for (const example of [
-      {
-        profile: "unpaired",
-        invite: true,
-        pair: "paired",
-        route: "routed",
-        child: "verified",
-        result: "workspace-ready",
-        calls: ["read", "pair", "route", "child"],
-      },
-      {
-        profile: "workspace",
-        invite: false,
-        pair: "paired",
-        route: "routed",
-        child: "identity-mismatch",
-        result: "child-identity-mismatch",
-        calls: ["read", "route", "child"],
-      },
-      {
-        profile: "foreign",
-        invite: true,
-        pair: "paired",
-        route: "routed",
-        child: "verified",
-        result: "different-profile",
-        calls: ["read"],
-      },
-      {
-        profile: "unpaired",
-        invite: false,
-        pair: "paired",
-        route: "routed",
-        child: "verified",
-        result: "invite-required",
-        calls: ["read"],
-      },
-      {
-        profile: "unpaired",
-        invite: true,
-        pair: "failed",
-        route: "routed",
-        child: "verified",
-        result: "pairing-failed",
-        calls: ["read", "pair"],
-      },
-      {
-        profile: "account",
-        invite: false,
-        pair: "paired",
-        route: "failed",
-        child: "verified",
-        result: "route-unavailable",
-        calls: ["read", "route"],
-      },
-    ]) {
-      const observed: string[] = [];
-      const remote = (await loader.load(
-        "skills/vibestudio-workflows/runWorkflow.nl",
-        {
-          services: {
-            remoteAccessRead: {
-              observe: async (operationId: string) => {
-                expect(operationId).toBe("assignment");
-                observed.push("read");
-                return {
-                  receipt: "read",
-                  state: example.profile,
-                  inviteAssigned: example.invite,
-                };
-              },
-            },
-            remoteAccessPair: {
-              pair: async (receipt: string) => {
-                expect(receipt).toBe("read");
-                observed.push("pair");
-                return { receipt: "pair", state: example.pair };
-              },
-            },
-            remoteAccessRoute: {
-              select: async (receipt: string) => {
-                expect(receipt).toBe(
-                  example.calls.includes("pair") ? "pair" : "read",
-                );
-                observed.push("route");
-                return { receipt: "route", state: example.route };
-              },
-            },
-            remoteAccessVerify: {
-              verify: async (receipt: string) => {
-                expect(receipt).toBe("route");
-                observed.push("child");
-                return {
-                  receipt: "child",
-                  state: example.child,
-                  workspaceId:
-                    example.child === "verified" ? "workspace" : null,
-                };
-              },
-            },
-          },
-        },
-      )) as (request: unknown) => Promise<unknown>;
-      await expect(
-        remote({
-          goal: "Open the assigned workspace",
-          work: [
-            {
-              kind: "domain",
-              domain: "remoteAccess",
-              operation: "openRemoteWorkspace",
-              input: { operationId: "assignment" },
-            },
-          ],
-        }),
-      ).resolves.toMatchObject({
-        results: [
-          {
-            report: {
-              status: example.result,
-              workspaceId:
-                example.result === "workspace-ready" ? "workspace" : null,
-              evidenceIds: example.calls,
-            },
-          },
-        ],
-        remaining: [],
-      });
-      expect(observed).toEqual(example.calls);
-    }
-    stagedCalls.length = 0;
-    runReference = false;
-  }
-  if (description.functions.some(({ name }) => name === "deployRemoteServer")) {
-    runReference = true;
-    const identity = {
-      serverId: "hub",
-      bootId: "new-boot",
-      buildId: "build",
-      workspaceId: "child",
-    };
-    for (const example of [
-      {
-        intent: "deploy",
-        state: "inactive",
-        applied: "applied",
-        verdict: "verified",
-        status: "deployment-ready",
-        calls: ["baseline", "install", "verify"],
-      },
-      {
-        intent: "deploy",
-        state: "ready",
-        applied: "applied",
-        verdict: "verified",
-        status: "already-running",
-        calls: ["baseline"],
-      },
-      {
-        intent: "update",
-        state: "ready",
-        applied: "applied",
-        verdict: "identity-changed",
-        status: "server-identity-changed",
-        calls: ["baseline", "install", "verify"],
-      },
-      {
-        intent: "update",
-        state: "ready",
-        applied: "failed",
-        verdict: "verified",
-        status: "installer-failed",
-        calls: ["baseline", "install"],
-      },
-      {
-        intent: "update",
-        state: "unverified",
-        applied: "applied",
-        verdict: "verified",
-        status: "baseline-unverified",
-        calls: ["baseline"],
-      },
-    ]) {
-      const observed: string[] = [];
-      const deploymentReport = {
-        status: example.status,
-        identity: example.status === "deployment-ready" ? identity : null,
-        evidenceIds: example.calls,
-      };
-      const deploy = (await loader.load(
-        "skills/vibestudio-workflows/runWorkflow.nl",
-        {
-          services: {
-            remoteDeploymentHandoff: {
-              open: async (receipt: string) => {
-                expect(receipt).toBe(example.calls.at(-1));
-                observed.push("handoff");
-                return example.status === "already-running"
-                  ? { state: "deployment-changed", operationId: null }
-                  : { state: "assigned", operationId: "verified-assignment" };
-              },
-            },
-            remoteAccessRead: {
-              observe: async (operationId: string) => {
-                expect(operationId).toBe("verified-assignment");
-                observed.push("profile");
-                return { receipt: "profile", state: "workspace", inviteAssigned: false };
-              },
-            },
-            remoteAccessRoute: {
-              select: async (receipt: string) => {
-                expect(receipt).toBe("profile");
-                observed.push("route");
-                return { receipt: "route", state: "routed" };
-              },
-            },
-            remoteAccessVerify: {
-              verify: async (receipt: string) => {
-                expect(receipt).toBe("route");
-                observed.push("child");
-                return { receipt: "child", state: "verified", workspaceId: identity.workspaceId };
-              },
-            },
-            remoteDeploymentRead: {
-              observe: async (operationId: string) => {
-                expect(operationId).toBe("assignment");
-                observed.push("baseline");
-                return {
-                  receipt: "baseline",
-                  intent: example.intent,
-                  state: example.state,
-                  hasPriorIdentity: example.state === "ready",
-                };
-              },
-            },
-            remoteDeploymentApply: {
-              apply: async (receipt: string) => {
-                expect(receipt).toBe("baseline");
-                observed.push("install");
-                return { receipt: "install", state: example.applied };
-              },
-            },
-            remoteDeploymentVerify: {
-              verify: async (receipt: string) => {
-                expect(receipt).toBe("install");
-                observed.push("verify");
-                return {
-                  receipt: "verify",
-                  state: example.verdict,
-                  identity: example.verdict === "verified" ? identity : null,
-                };
-              },
-            },
-          },
-        },
-      )) as (request: unknown) => Promise<unknown>;
-      function run(operation: string) {
-        return deploy({
-          goal: "Prepare the assigned server",
-          work: [
-            {
-              kind: "domain",
-              domain: "remoteAccess",
-              operation,
-              input: { operationId: "assignment" },
-            },
-          ],
-        });
-      }
-      await expect(run("deployRemoteServer")).resolves.toMatchObject({
-        results: [{ report: deploymentReport }],
-        remaining: [],
-      });
-      expect(observed.splice(0)).toEqual(example.calls);
-      const assignment = example.status === "deployment-ready";
-      const changed = example.status === "already-running";
-      await expect(run("commissionRemoteWorkspace")).resolves.toMatchObject({
-        results: [
-          {
-            report: {
-              deployment: deploymentReport,
-              handoff: assignment
-                ? { state: "assigned", operationId: "verified-assignment" }
-                : changed
-                  ? { state: "deployment-changed", operationId: null }
-                  : null,
-              access: assignment
-                ? {
-                    status: "workspace-ready",
-                    workspaceId: identity.workspaceId,
-                    evidenceIds: ["profile", "route", "child"],
-                  }
-                : null,
-            },
-          },
-        ],
-        remaining: [],
-      });
-      expect(observed).toEqual([
-        ...example.calls,
-        ...(assignment ? ["handoff", "profile", "route", "child"] : changed ? ["handoff"] : []),
+  const commissioning = join(templateRoot, "system", "skills", "remote-commission-fixtures");
+  if ((await stat(commissioning).catch(() => null))?.isDirectory()) {
+    const [{ remoteCommissionWorlds }, { createRemoteCommissionFixture }, { remoteCommissionReferenceSteps }] =
+      await Promise.all([
+        import(join(commissioning, "worlds.ts")),
+        import(join(commissioning, "fixture.ts")),
+        import(join(commissioning, "reference.ts")),
       ]);
+    const { runWorkflow: _root, ...remoteStages } = remoteCommissionReferenceSteps;
+    Object.assign(referenceSteps, remoteStages);
+    runReference = true;
+    for (const world of remoteCommissionWorlds) {
+      const { bindings, verify } = createRemoteCommissionFixture(world);
+      const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+        services: bindings,
+      })) as (request: unknown) => Promise<{
+        results: { operation: string; report: unknown }[];
+        remaining: unknown[];
+      }>;
+      const result = await run(world.request);
+      expect(result.remaining, world.id).toEqual([]);
+      expect(result.results, world.id).toHaveLength(1);
+      expect(result.results[0]?.operation, world.id).toBe(world.operation);
+      expect(verify(result.results[0]?.report), world.id).toBe(true);
     }
-    stagedCalls.length = 0;
     runReference = false;
+    stagedCalls.length = 0;
   }
   const rosterCalls: string[] = [];
   const roster = (await loader.load(
