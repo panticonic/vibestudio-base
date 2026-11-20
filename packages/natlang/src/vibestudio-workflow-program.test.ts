@@ -1275,6 +1275,23 @@ it("describes the typed workflows in the installed template domains", async () =
       "locatePendingApproval",
     ]);
   }
+  const approvalReadback = process.env.VIBESTUDIO_APPROVAL_VISIBILITY_SMOKE_JSON;
+  if (approvalReadback) {
+    const world = JSON.parse(await readFile(approvalReadback, "utf8")) as
+      (typeof approvalVisibilityWorlds)[number];
+    const report = await program({
+      goal: world.request.goal,
+      work: [{
+        kind: "domain",
+        domain: "capabilities",
+        operation: "reviewApprovalQueues",
+        input: world.request,
+      }],
+    }) as { results: { report: unknown }[]; remaining: string[] };
+    expect(report.remaining).toEqual([]);
+    expect(report.results).toHaveLength(1);
+    expect(verifyApprovalVisibility(world, report.results[0]?.report).passed).toBe(true);
+  }
   for (const world of localReviewerWorlds) {
     const catalog = cases.find((scenario) => scenario.id === world.id);
     expect(catalog?.request, world.id).toBeDefined();
