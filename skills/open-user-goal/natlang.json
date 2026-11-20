@@ -74,6 +74,11 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "notificationState": [
+      "runUserGoal/reviewNotificationState/locateNotificationLane.nl",
+      "runUserGoal/reviewNotificationState/readNotificationLifecycle.nl",
+      "runUserGoal/reviewNotificationState/finishNotificationReview.nl"
+    ],
     "mobileContinuity": [
       "runUserGoal/reviewMobileContinuity/selectProfile/listProfiles.nl",
       "runUserGoal/reviewMobileContinuity/selectProfile/readProfile.nl",

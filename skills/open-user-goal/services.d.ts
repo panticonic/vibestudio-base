@@ -112,3 +112,13 @@ declare module "natlang:services" {
     bind(pdf: unknown, citationIndices: number[]): Promise<import("./types.js").PdfVaultHandoff>;
   };
 }
+
+declare module "natlang:services" {
+  export const notificationState: {
+    discover(): Promise<import("./types.js").NotificationLane[]>;
+    read(lane: import("./types.js").NotificationLane): Promise<import("./types.js").NotificationSnapshot | null>;
+    refresh(lane: import("./types.js").NotificationLane): Promise<import("./types.js").NotificationRefresh>;
+    acknowledge(lane: import("./types.js").NotificationLane, id: string, revision: number):
+      Promise<import("./types.js").NotificationAcknowledgment>;
+  };
+}

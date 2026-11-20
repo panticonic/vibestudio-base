@@ -2065,6 +2065,44 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  notificationState: `/** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
+
+type NotificationLane = { id: string; label: string; generation: number };
+
+type NotificationRecord = {
+  id: string; kind: string; title: string; message?: string; revision: number;
+  createdAt: number; acknowledgedAt?: number; data?: unknown;
+};
+
+type NotificationSnapshot = {
+  lane: NotificationLane; attention: NotificationRecord[]; retained: NotificationRecord[];
+  unreadCount: number; retainedCount: number;
+};
+
+type NotificationRefresh = {
+  authority: "unchanged" | "changed" | "retired";
+  lane: NotificationLane | null;
+  discardedPriorRead: boolean;
+  producerReceipt: "applied" | "idempotent" | "older" | "collision" | "removed" | "missing" | "none";
+};
+
+type NotificationAcknowledgment = {
+  status: "acknowledged" | "already-read" | "stale" | "unavailable";
+  id: string; revision: number;
+};
+
+/** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
+export function discover(): Promise<NotificationLane[]>;
+
+/** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
+export function read(lane: NotificationLane): Promise<NotificationSnapshot | null>;
+
+/** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
+export function refresh(lane: NotificationLane): Promise<NotificationRefresh>;
+
+/** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
+export function acknowledge(lane: NotificationLane, id: string, revision: number):
+      Promise<NotificationAcknowledgment>;`,
   mobileContinuity: `/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
 
 type MobileContinuityCard = { id: string; title: string; workspace: string; device: string; edition: "current" | "archive" };

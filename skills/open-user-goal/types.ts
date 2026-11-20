@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "agentCapability"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
@@ -258,4 +259,45 @@ export type MobileContinuityOutcome = {
   scope: "owned-fixture";
   evidence: MobileContinuityEvidence;
   reason: string;
+};
+
+export type NotificationLane = { id: string; label: string; generation: number };
+export type NotificationRecord = {
+  id: string; kind: string; title: string; message?: string; revision: number;
+  createdAt: number; acknowledgedAt?: number; data?: unknown;
+};
+export type NotificationSnapshot = {
+  lane: NotificationLane; attention: NotificationRecord[]; retained: NotificationRecord[];
+  unreadCount: number; retainedCount: number;
+};
+export type NotificationRefresh = {
+  authority: "unchanged" | "changed" | "retired";
+  lane: NotificationLane | null;
+  discardedPriorRead: boolean;
+  producerReceipt: "applied" | "idempotent" | "older" | "collision" | "removed" | "missing" | "none";
+};
+export type NotificationLifecycle = {
+  original: NotificationSnapshot; refresh: NotificationRefresh;
+  current: NotificationSnapshot | null;
+};
+export type NotificationFinding = {
+  state: "pending" | "read" | "superseded" | "hidden" | "missing" | "ambiguous" | "scope-changed";
+  id: string | null;
+  revision: number | null;
+};
+export type NotificationDecision = {
+  action: "acknowledge" | "retain" | "hold";
+  finding: NotificationFinding;
+  reason: string;
+};
+export type NotificationAcknowledgment = {
+  status: "acknowledged" | "already-read" | "stale" | "unavailable";
+  id: string; revision: number;
+};
+export type NotificationStateOutcome = {
+  scope: "owned-notification-fixture";
+  lifecycle: NotificationLifecycle;
+  decision: NotificationDecision;
+  acknowledgement: NotificationAcknowledgment | null;
+  final: NotificationSnapshot | null;
 };
