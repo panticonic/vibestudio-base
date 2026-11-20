@@ -149,7 +149,7 @@ class TestableAiChatWorker extends AiChatWorker {
             logId: input.logId,
             head: input.head,
             headSeq: input.events.length,
-            headHash: "test-head-hash",
+            headEnvelopeId: input.events.at(-1)?.envelopeId ?? `test-envelope:${input.events.length - 1}`,
             envelopes: input.events.map((event, index) => ({
               logId: input.logId,
               head: input.head,

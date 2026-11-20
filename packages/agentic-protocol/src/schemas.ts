@@ -1239,8 +1239,6 @@ const trajectoryStorageSchema = z
     trajectoryId: idSchema,
     branchId: idSchema,
     seq: z.number().int().nonnegative(),
-    prevEventHash: z.string().min(1),
-    eventHash: z.string().min(1),
   })
   .passthrough();
 
@@ -1255,8 +1253,6 @@ function stripTrajectoryStorage(value: unknown): unknown {
     trajectoryId: _trajectoryId,
     branchId: _branchId,
     seq: _seq,
-    prevEventHash: _prevEventHash,
-    eventHash: _eventHash,
     ...event
   } = value as Record<string, unknown>;
   return event;

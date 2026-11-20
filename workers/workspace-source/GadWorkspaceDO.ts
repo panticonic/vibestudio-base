@@ -131,7 +131,6 @@ import {
   agenticEventFromLogEnvelope,
   isAgenticLogEventKind,
   eventKindSchemas,
-  GENESIS_EVENT_HASH,
   brandId,
   collectStoredValueRefs,
   publicActorRef,
@@ -144,11 +143,6 @@ import {
   type LogKind,
   type TrajectoryEvent,
 } from "@workspace/agentic-protocol";
-import {
-  type ChainedLogEnvelope,
-  logChainPreimage,
-  wireLogEnvelope,
-} from "./logChain.js";
 import {
   gadAppendErrorMessage,
   logEnvelopeSemantic,
@@ -180,7 +174,7 @@ type ChannelRosterRow = ChannelRosterInspection["rows"][number];
 type StorageDiagnostic = AgentHealthInspection["storage"]["rows"][number];
 
 /** Transcript and channel storage schema for fresh workspaces. */
-const GAD_WORKSPACE_SCHEMA_VERSION = 68;
+const GAD_WORKSPACE_SCHEMA_VERSION = 69;
 
 
 const utf8Bytes = (value: string): number =>
@@ -406,7 +400,7 @@ export interface AppendLogEventInput {
   head: string;
   logKind: LogKind | string;
   owner?: ActorRef | null;
-  expectedHeadHash?: string | null;
+  expectedHead?: { seq: number; envelopeId: string | null };
   /** Append idempotency intent — see AppendIdempotency in agentic-protocol.
    *  Default "exact": same-id-different-content is a hard integrity error.
    *  "idempotent-by-id" (client publish paths only): first write wins; the
@@ -419,7 +413,7 @@ export interface AppendLogEventResult {
   logId: string;
   head: string;
   headSeq: number;
-  headHash: string;
+  headEnvelopeId: string;
   envelopes: LogEnvelope[];
   published: Array<{
     originEnvelopeId: string;
@@ -443,7 +437,7 @@ export interface ForkLogResult {
   toLogId: string;
   toHead: string;
   forkSeq: number;
-  forkHash: string;
+  forkEnvelopeId: string | null;
   inherited: number;
 }
 
@@ -465,10 +459,9 @@ export interface LogHeadInfo {
   head: string;
   logKind: string;
   seq: number;
-  hash: string;
   envelopeId: string | null;
   forkSeq: number | null;
-  forkHash: string | null;
+  forkEnvelopeId: string | null;
   parentLogId: string | null;
   parentHead: string | null;
 }
@@ -486,7 +479,7 @@ export interface ForkTrajectoryBranchInput {
   toTrajectoryId: string;
   toBranchId: string;
   throughSeq?: number | null;
-  throughEventHash?: string | null;
+  throughEventId?: string | null;
   throughPublishedChannelId?: string | null;
   throughPublishedChannelSeq?: number | null;
   toPublishedChannelId?: string | null;
@@ -500,14 +493,12 @@ export interface ForkTrajectoryBranchResult {
   toBranchId: string;
   copied: number;
   headEventId: string | null;
-  headEventHash: string | null;
+  headSeq: number;
   lineage: Array<{
     sourceEventId: string;
     forkEventId: string;
     sourceSeq: number;
     forkSeq: number;
-    sourceEventHash: string;
-    forkEventHash: string;
   }>;
 }
 
@@ -1067,9 +1058,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
         parent_log_id TEXT,
         parent_head TEXT,
         fork_seq INTEGER,
-        fork_hash TEXT,
+        fork_envelope_id TEXT,
         current_seq INTEGER NOT NULL DEFAULT 0,
-        current_hash TEXT NOT NULL DEFAULT '${GENESIS_EVENT_HASH}',
         current_envelope_id TEXT,
         created_at TEXT NOT NULL,
         PRIMARY KEY (log_id, head)
@@ -1088,8 +1078,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
         annotations_json TEXT,
         payload_ref_json TEXT NOT NULL,
         appended_at TEXT NOT NULL,
-        hash TEXT NOT NULL UNIQUE,
-        prev_hash TEXT NOT NULL,
         origin_log_id TEXT,
         origin_head TEXT,
         origin_envelope_id TEXT,
@@ -1189,11 +1177,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
       CREATE TABLE IF NOT EXISTS trajectory_checkpoints (
         log_id TEXT NOT NULL,
         head TEXT NOT NULL,
-        anchor_event_hash TEXT NOT NULL,
+        anchor_event_id TEXT NOT NULL,
         materialized_blob_json TEXT NOT NULL,
         materializer_version TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        PRIMARY KEY (log_id, head, anchor_event_hash)
+        PRIMARY KEY (log_id, head, anchor_event_id)
       )
     `);
     this.sql.exec(`
@@ -1642,10 +1630,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
       head: input.head,
       logKind: String(row["log_kind"]),
       seq: pointer.seq,
-      hash: pointer.hash,
       envelopeId: pointer.envelopeId,
       forkSeq: row["fork_seq"] == null ? null : asNumber(row["fork_seq"]),
-      forkHash: asString(row["fork_hash"]),
+      forkEnvelopeId: asString(row["fork_envelope_id"]),
       parentLogId: asString(row["parent_log_id"]),
       parentHead: asString(row["parent_head"]),
     };
@@ -1653,8 +1640,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   /**
    * The fork lineage recorded on a `log_heads` row: its parent log and the
-   * `(seq, hash)` it forked at (all null for a root / un-forked head). A pure
-   * read of the `parent_log_id`/`fork_seq`/`fork_hash` columns {@link forkLog}
+   * `(sequence, envelope ID)` it forked at (all null for a root / un-forked head). A pure
+   * read of the `parent_log_id`/`fork_seq`/`fork_envelope_id` columns {@link forkLog}
    * populates — the LOG lineage surface (trajectory-fork provenance), distinct
    * from the state-DAG merge base a context fork shares. `head` defaults to the
    * log's primary head.
@@ -1663,7 +1650,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   getLogLineage(input: { logId: string; head?: string }): {
     parentLogId: string | null;
     forkSeq: number | null;
-    forkHash: string | null;
+    forkEnvelopeId: string | null;
   } {
     this.ensureReady();
     const row = this.logHeadRow(input.logId, input.head ?? CHANNEL_LOG_HEAD);
@@ -1671,7 +1658,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       parentLogId: row ? asString(row["parent_log_id"]) : null,
       forkSeq:
         row && row["fork_seq"] != null ? asNumber(row["fork_seq"]) : null,
-      forkHash: row ? asString(row["fork_hash"]) : null,
+      forkEnvelopeId: row ? asString(row["fork_envelope_id"]) : null,
     };
   }
 
@@ -1693,16 +1680,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
     logId: string,
     head: string,
     headRow?: JsonRecord | null,
-  ): { seq: number; hash: string; envelopeId: string | null } {
+  ): { seq: number; envelopeId: string | null } {
     const row = headRow ?? this.logHeadRow(logId, head);
     if (row) {
       return {
         seq: asNumber(row["current_seq"]),
-        hash: asString(row["current_hash"]) ?? GENESIS_EVENT_HASH,
         envelopeId: asString(row["current_envelope_id"]),
       };
     }
-    return { seq: 0, hash: GENESIS_EVENT_HASH, envelopeId: null };
+    return { seq: 0, envelopeId: null };
   }
 
   /** Lineage segments, self first, each capped at the seq visible from the
@@ -1735,22 +1721,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return segments;
   }
 
-  /** Sync twin of the protocol's computeLogEnvelopeHash — same preimage
-   *  builder, sync sha256 (workerd has no sync crypto and hashes are needed
-   *  inside SQL transactions). */
-  private computeEnvelopeHash(
-    logId: string,
-    head: string,
-    seq: number,
-    prevHash: string,
-    semantic: Record<string, unknown>,
-  ): string {
-    return sha256HexSyncText(
-      logChainPreimage({ prevHash, logId, head, seq, semantic }),
-    );
-  }
-
-  /** The hash-covered slice — the protocol's logEnvelopeSemantic. */
   private semanticSlice(
     event: LogEnvelopeSemanticInput,
   ): Record<string, unknown> {
@@ -1801,7 +1771,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       : "(no field-level diff — likely appendedAt handling or stored-value encoding)";
   }
 
-  private mapLogEnvelope(row: JsonRecord): ChainedLogEnvelope {
+  private mapLogEnvelope(row: JsonRecord): LogEnvelope {
     return {
       logId: String(row["log_id"]),
       head: String(row["head"]),
@@ -1824,8 +1794,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           }
         : {}),
       appendedAt: String(row["appended_at"]),
-      prevHash: String(row["prev_hash"]),
-      hash: String(row["hash"]),
     };
   }
 
@@ -1895,16 +1863,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   readLog(input: ReadLogInput): LogEnvelope[] {
-    return this.readLogQuery(input).map(wireLogEnvelope);
+    return this.readLogQuery(input);
   }
 
-  private readLogQuery(input: LogReadQuery): ChainedLogEnvelope[] {
+  private readLogQuery(input: LogReadQuery): LogEnvelope[] {
     this.ensureReady();
     const limit =
       input.limit == null ? null : Math.max(Math.trunc(input.limit), 0);
     if (limit === 0) return [];
     const segments = this.logLineage(input.logId, input.head);
-    const collected: ChainedLogEnvelope[] = [];
+    const collected: LogEnvelope[] = [];
     // Ancestors hold the lowest seqs: walk root-first.
     for (const segment of [...segments].reverse()) {
       const remaining = limit != null ? limit - collected.length : null;
@@ -1925,7 +1893,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return collected;
   }
 
-  private readLogTail(input: LogReadQuery): ChainedLogEnvelope[] {
+  private readLogTail(input: LogReadQuery): LogEnvelope[] {
     this.ensureReady();
     const limit =
       input.limit == null ? null : Math.max(Math.trunc(input.limit), 0);
@@ -1950,15 +1918,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   getLogEvent(input: { logId: string; head: string; envelopeId: string }): LogEnvelope | null {
-    const stored = this.getChainedLogEvent(input);
-    return stored ? wireLogEnvelope(stored) : null;
-  }
-
-  private getChainedLogEvent(input: {
-    logId: string;
-    head: string;
-    envelopeId: string;
-  }): ChainedLogEnvelope | null {
     this.ensureReady();
     const row = this.lineageEventRow(input.logId, input.head, input.envelopeId);
     return row ? this.mapLogEnvelope(row) : null;
@@ -2072,7 +2031,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  initializeLogHead(input: { logId: string; head: string; logKind: string }): { seq: 0; hash: string } {
+  initializeLogHead(input: { logId: string; head: string; logKind: string }): { seq: 0; envelopeId: null } {
     this.ensureReady();
     return this.transaction(() => {
       const existing = this.logHeadRow(input.logId, input.head);
@@ -2082,7 +2041,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       } else {
         this.sql.exec(`INSERT INTO log_heads (log_id, head, log_kind, owner_json, created_at) VALUES (?, ?, ?, ?, ?)`, input.logId, input.head, input.logKind, json(null), nowIso());
       }
-      return { seq: 0, hash: GENESIS_EVENT_HASH };
+      return { seq: 0, envelopeId: null };
     });
   }
 
@@ -2099,14 +2058,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!publicationWasReady && this.hasReadyPublicationDelivery()) {
       this.markWorkReady("workspace-publication");
     }
-    return { ...result, envelopes: result.envelopes.map(wireLogEnvelope) };
+    return result;
   }
 
   private appendLogEventInTxn(
     input: AppendLogEventInput,
-  ): Omit<AppendLogEventResult, "envelopes"> & {
-    envelopes: ChainedLogEnvelope[];
-  } {
+  ): AppendLogEventResult {
     if (!input.logId) throw new Error("appendLogEvent requires logId");
     if (!input.head) throw new Error("appendLogEvent requires head");
     if (!input.events.length)
@@ -2136,7 +2093,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     );
 
     // Lineage-scoped idempotent replay: skip the longest already-applied prefix.
-    const replayed: ChainedLogEnvelope[] = [];
+    const replayed: LogEnvelope[] = [];
     for (const event of prepared) {
       const existing = existingHead
         ? this.lineageEventRow(input.logId, input.head, event.envelopeId)
@@ -2178,7 +2135,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     // and the duplicate is skipped (loudly, via warn). Same id with DIFFERENT
     // content remains a hard replay-mismatch failure — that is a genuine
     // causality/ordering bug, never benign redelivery.
-    const midBatchReplayed: ChainedLogEnvelope[] = [];
+    const midBatchReplayed: LogEnvelope[] = [];
     const remaining: typeof prepared = [];
     for (const [suffixIndex, event] of prepared
       .slice(replayed.length)
@@ -2241,11 +2198,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
     // can change independently inside the transaction.
     const pointer = existingHead
       ? this.headPointer(input.logId, input.head, existingHead)
-      : { seq: 0, hash: GENESIS_EVENT_HASH, envelopeId: null };
+      : { seq: 0, envelopeId: null };
     if (
       replayed.length === 0 &&
-      "expectedHeadHash" in input &&
-      (input.expectedHeadHash ?? GENESIS_EVENT_HASH) !== pointer.hash
+      input.expectedHead !== undefined &&
+      (input.expectedHead.seq !== pointer.seq ||
+        input.expectedHead.envelopeId !== pointer.envelopeId)
     ) {
       throw new Error(
         gadAppendErrorMessage("head-conflict", `log head conflict for ${input.logId}:${input.head}`)
@@ -2253,7 +2211,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     }
     if (remaining.length > 0 && replayed.length > 0) {
       const lastReplayed = replayed[replayed.length - 1]!;
-      if (lastReplayed.hash !== pointer.hash) {
+      if (lastReplayed.seq !== pointer.seq || lastReplayed.envelopeId !== pointer.envelopeId) {
         throw new Error(
           gadAppendErrorMessage(
             "replay-mismatch",
@@ -2275,9 +2233,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       }
     }
 
-    const appended: ChainedLogEnvelope[] = [];
+    const appended: LogEnvelope[] = [];
     let seq = pointer.seq;
-    let prevHash = pointer.hash;
     for (const event of remaining) {
       if (
         isAgenticLogKind(logKind) &&
@@ -2292,15 +2249,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         );
       }
       seq += 1;
-      const semantic = this.semanticSlice(event);
-      const hash = this.computeEnvelopeHash(
-        input.logId,
-        input.head,
-        seq,
-        prevHash,
-        semantic,
-      );
-      const envelope: ChainedLogEnvelope = {
+      const envelope: LogEnvelope = {
         logId: input.logId,
         head: input.head,
         seq,
@@ -2316,12 +2265,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
           ? { causality: event.causality }
           : {}),
         appendedAt: event.appendedAt,
-        prevHash,
-        hash,
       };
       this.insertLogEvent(envelope);
       this.applyProjections(logKind, envelope);
-      prevHash = hash;
       appended.push(envelope);
 
       for (const target of event.publish) {
@@ -2377,10 +2323,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const last = appended[appended.length - 1]!;
       this.sql.exec(
         `UPDATE log_heads
-            SET current_seq = ?, current_hash = ?, current_envelope_id = ?
+            SET current_seq = ?, current_envelope_id = ?
           WHERE log_id = ? AND head = ?`,
         last.seq,
-        last.hash,
         String(last.envelopeId),
         input.logId,
         input.head,
@@ -2391,15 +2336,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const finalPointer = lastAppended
       ? {
           seq: lastAppended.seq,
-          hash: lastAppended.hash,
           envelopeId: String(lastAppended.envelopeId),
         }
       : pointer;
+    if (!finalPointer.envelopeId) throw new Error("Append has no resulting log head");
     return {
       logId: input.logId,
       head: input.head,
       headSeq: finalPointer.seq,
-      headHash: finalPointer.hash,
+      headEnvelopeId: finalPointer.envelopeId,
       envelopes: [...replayed, ...midBatchReplayed, ...appended],
       published,
     };
@@ -2468,13 +2413,13 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return prepareLogEvent(logKind, input, { envelopeId: input.envelopeId ?? crypto.randomUUID(), appendedAt: input.appendedAt ?? nowIso() });
   }
 
-  private insertLogEvent(envelope: ChainedLogEnvelope): void {
+  private insertLogEvent(envelope: LogEnvelope): void {
     this.sql.exec(
       `INSERT INTO log_events (
          log_id, head, seq, envelope_id, payload_kind, actor_json, to_json,
          causality_json, annotations_json, payload_ref_json, appended_at,
-         hash, prev_hash, origin_log_id, origin_head, origin_envelope_id, turn_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         origin_log_id, origin_head, origin_envelope_id, turn_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       envelope.logId,
       envelope.head,
       envelope.seq,
@@ -2486,8 +2431,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       json(envelope.annotations),
       JSON.stringify(envelope.payload),
       envelope.appendedAt,
-      envelope.hash,
-      envelope.prevHash,
       envelope.causality?.originLogId ?? null,
       envelope.causality?.originHead ?? null,
       envelope.causality?.originEnvelopeId ?? null,
@@ -2541,12 +2484,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
         sourceRow,
       );
       const forkSeq = input.atSeq ?? sourcePointer.seq;
-      if (forkSeq > sourcePointer.seq) {
+      if (!Number.isSafeInteger(forkSeq) || forkSeq < 0 || forkSeq > sourcePointer.seq) {
         throw new Error(
-          `forkLog atSeq ${forkSeq} is beyond the source head ${sourcePointer.seq}`,
+          `forkLog atSeq ${forkSeq} is outside the source head ${sourcePointer.seq}`,
         );
       }
-      let forkHash = GENESIS_EVENT_HASH;
       let forkEnvelopeId: string | null = null;
       if (forkSeq > 0) {
         const eventRow = this.lineageEventBySeq(
@@ -2558,7 +2500,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           throw new Error(
             `forkLog atSeq ${forkSeq} not found in source lineage`,
           );
-        forkHash = String(eventRow["hash"]);
         forkEnvelopeId = String(eventRow["envelope_id"]);
       }
 
@@ -2568,7 +2509,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
           asString(existing["parent_log_id"]) !== input.fromLogId ||
           asString(existing["parent_head"]) !== input.fromHead ||
           asNumber(existing["fork_seq"]) !== forkSeq ||
-          asString(existing["fork_hash"]) !== forkHash
+          asString(existing["fork_envelope_id"]) !== forkEnvelopeId
         ) {
           throw new Error(
             `target log already exists with different fork lineage: ${input.toLogId}:${input.toHead}`,
@@ -2580,7 +2521,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
           toLogId: input.toLogId,
           toHead: input.toHead,
           forkSeq,
-          forkHash,
+          forkEnvelopeId,
           inherited: this.lineageEventCountThrough(
             input.toLogId,
             input.toHead,
@@ -2593,8 +2534,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       this.sql.exec(
         `INSERT INTO log_heads (
            log_id, head, log_kind, owner_json, parent_log_id, parent_head,
-           fork_seq, fork_hash, current_seq, current_hash, current_envelope_id, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           fork_seq, fork_envelope_id, current_seq, current_envelope_id, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         input.toLogId,
         input.toHead,
         logKind,
@@ -2602,9 +2543,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
         input.fromLogId,
         input.fromHead,
         forkSeq,
-        forkHash,
+        forkEnvelopeId,
         forkSeq,
-        forkHash,
         forkEnvelopeId,
         nowIso(),
       );
@@ -2629,7 +2569,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         toLogId: input.toLogId,
         toHead: input.toHead,
         forkSeq,
-        forkHash,
+        forkEnvelopeId,
         inherited: inherited.length,
       };
     });
@@ -2663,65 +2603,61 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const head = String(headRow["head"]);
       const startSeq =
         headRow["fork_seq"] == null ? 0 : asNumber(headRow["fork_seq"]);
-      const startHash = asString(headRow["fork_hash"]) ?? GENESIS_EVENT_HASH;
+      const startEnvelopeId = asString(headRow["fork_envelope_id"]);
+      const parentLogId = asString(headRow["parent_log_id"]);
+      const parentHead = asString(headRow["parent_head"]);
+      const forked = headRow["fork_seq"] != null;
+      if (forked || parentLogId !== null || parentHead !== null || startEnvelopeId !== null) {
+        let validFork = false;
+        if (forked && parentLogId && parentHead) {
+          try {
+            const parent = this.logHeadRow(parentLogId, parentHead);
+            const anchor = startSeq > 0 ? this.lineageEventBySeq(parentLogId, parentHead, startSeq) : null;
+            validFork = parent !== null && startSeq <= asNumber(parent["current_seq"]) &&
+              (startSeq === 0 ? startEnvelopeId === null : anchor !== null && anchor["envelope_id"] === startEnvelopeId);
+            this.logLineage(logId, head);
+          } catch {
+            validFork = false;
+          }
+        }
+        if (!validFork) errors.push({
+          type: "log-fork-boundary",
+          message: `log fork boundary disagrees with its parent for ${logId}:${head}`,
+          logId,
+          head,
+        });
+      }
+
       const rows = this.sql
         .exec(
-          `SELECT * FROM log_events WHERE log_id = ? AND head = ? ORDER BY seq ASC`,
+          `SELECT seq, envelope_id FROM log_events WHERE log_id = ? AND head = ? ORDER BY seq ASC`,
           logId,
           head,
         )
-        .toArray() as JsonRecord[];
+        .toArray();
       let expectedSeq = startSeq;
-      let prevHash = startHash;
       for (const row of rows) {
-        const envelope = this.mapLogEnvelope(row);
+        const seq = asNumber(row["seq"]);
         expectedSeq += 1;
-        if (envelope.seq !== expectedSeq) {
+        if (seq !== expectedSeq) {
           errors.push({
-            type: "log-chain",
-            message: `log ${logId}:${head} seq gap: expected ${expectedSeq}, found ${envelope.seq}`,
+            type: "log-sequence",
+            message: `log ${logId}:${head} seq gap: expected ${expectedSeq}, found ${seq}`,
             logId,
             head,
-            envelopeId: String(envelope.envelopeId),
+            envelopeId: String(row["envelope_id"]),
           });
-          expectedSeq = envelope.seq;
+          expectedSeq = seq;
         }
-        if (envelope.prevHash !== prevHash) {
-          errors.push({
-            type: "log-chain",
-            message: `log ${logId}:${head} seq ${envelope.seq} prevHash does not link`,
-            logId,
-            head,
-            envelopeId: String(envelope.envelopeId),
-          });
-        }
-        const recomputed = this.computeEnvelopeHash(
-          logId,
-          head,
-          envelope.seq,
-          envelope.prevHash,
-          this.semanticSlice(envelope),
-        );
-        if (recomputed !== envelope.hash) {
-          errors.push({
-            type: "log-hash",
-            message: `log ${logId}:${head} seq ${envelope.seq} hash mismatch (${String(envelope.envelopeId)})`,
-            logId,
-            head,
-            envelopeId: String(envelope.envelopeId),
-          });
-        }
-        prevHash = envelope.hash;
       }
       const pointer = this.headPointer(logId, head, headRow);
-      const lastSeq =
-        rows.length > 0 ? asNumber(rows[rows.length - 1]!["seq"]) : startSeq;
-      const lastHash =
-        rows.length > 0 ? String(rows[rows.length - 1]!["hash"]) : startHash;
-      if (pointer.seq !== lastSeq || pointer.hash !== lastHash) {
+      const last = rows.at(-1);
+      const lastSeq = last ? asNumber(last["seq"]) : startSeq;
+      const lastEnvelopeId = last ? String(last["envelope_id"]) : startEnvelopeId;
+      if (pointer.seq !== lastSeq || pointer.envelopeId !== lastEnvelopeId) {
         errors.push({
           type: "log-head-pointer",
-          message: `log head pointer disagrees with the stored chain for ${logId}:${head}`,
+          message: `log head pointer disagrees with the stored sequence for ${logId}:${head}`,
           logId,
           head,
         });
@@ -3795,7 +3731,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const anchor = parseJson(asString(row["anchor_json"])) as Record<string, unknown> | null;
       let appendedAt = row["kind"] === "commit" ? asString(anchor?.["createdAt"]) : null;
       if (eventId && logId && head) {
-        const event = this.getChainedLogEvent({ logId, head, envelopeId: eventId });
+        const event = this.getLogEvent({ logId, head, envelopeId: eventId });
         if (event) {
           actor = event.actor;
           appendedAt = event.appendedAt;
@@ -4045,7 +3981,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     );
     this.copyProjectionRows(
       "trajectory_checkpoints",
-      "anchor_event_hash, materialized_blob_json, materializer_version, created_at",
+      "anchor_event_id, materialized_blob_json, materializer_version, created_at",
       from,
       to,
     );
@@ -4133,7 +4069,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   // -------------------------------------------------------------------------
 
   private trajectoryEventView(
-    envelope: ChainedLogEnvelope,
+    envelope: LogEnvelope,
     override?: { trajectoryId: string; branchId: string },
   ): TrajectoryEvent {
     const causality = agenticCausality(envelope.causality);
@@ -4143,8 +4079,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       trajectoryId: override?.trajectoryId ?? envelope.logId,
       branchId: override?.branchId ?? envelope.head,
       seq: envelope.seq,
-      prevEventHash: envelope.prevHash,
-      eventHash: envelope.hash,
       kind: envelope.payloadKind,
       actor: envelope.actor,
       ...(turnId ? { turnId } : {}),
@@ -4276,7 +4210,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
                 head AS branch_id,
                 owner_json,
                 current_seq AS seq,
-                current_hash AS head_event_hash,
                 current_envelope_id AS head_event_id,
                 parent_head AS parent_branch_id,
                 created_at,
@@ -4379,9 +4312,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       branch_id: input.branchId,
       owner_json: (row["owner_json"] ?? null) as JsonValue,
       head_event_id: pointer.envelopeId,
-      head_event_hash: pointer.seq > 0 ? pointer.hash : null,
       parent_branch_id: (row["parent_head"] ?? null) as JsonValue,
-      fork_event_id: null,
+      fork_event_id: asString(row["fork_envelope_id"]),
       created_at: row["created_at"] as JsonValue,
       updated_at: row["created_at"] as JsonValue,
     };
@@ -4393,15 +4325,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
   ): Promise<ForkTrajectoryBranchResult> {
     this.ensureReady();
     let atSeq: number | null = input.throughSeq ?? null;
-    if (input.throughEventHash) {
-      const row = this.sql
-        .exec(
-          `SELECT seq FROM log_events WHERE hash = ? LIMIT 1`,
-          input.throughEventHash,
-        )
-        .toArray()[0] as JsonRecord | undefined;
-      if (!row)
-        throw new Error("forkTrajectoryBranch throughEventHash not found");
+    if (input.throughEventId) {
+      const row = this.lineageEventRow(input.fromTrajectoryId, input.fromBranchId, input.throughEventId);
+      if (!row) throw new Error("forkTrajectoryBranch event is outside the source lineage");
       atSeq = asNumber(row["seq"]);
     }
     if (
@@ -4445,7 +4371,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       toBranchId: input.toBranchId,
       copied: fork.inherited,
       headEventId: pointer.envelopeId,
-      headEventHash: pointer.seq > 0 ? pointer.hash : null,
+      headSeq: pointer.seq,
       lineage: [],
     };
   }
@@ -6565,7 +6491,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  async validateGadHashes(): Promise<{ ok: boolean; errors: string[] }> {
+  async validateGadIntegrity(): Promise<{ ok: boolean; errors: string[] }> {
     const integrity = await this.checkGadIntegrity();
     return {
       ok: integrity.ok,
@@ -6577,7 +6503,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   clearDirtyAfterValidation(): Promise<{ ok: boolean; errors: string[] }> {
-    return this.validateGadHashes();
+    return this.validateGadIntegrity();
   }
 
   @schemaRpc()

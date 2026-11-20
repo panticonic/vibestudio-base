@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
-  GENESIS_EVENT_HASH,
   MAX_INLINE_TRAJECTORY_EVENT_BYTES,
   assertNoStoredValueRefs,
   agenticSlice,
@@ -95,24 +93,13 @@ async function trajectoryEvent(
   event: AgenticEvent,
   overrides: Partial<TrajectoryEvent> = {},
 ): Promise<TrajectoryEvent> {
-  const base = {
+  return {
     ...event,
     eventId: brandId<EventId>(overrides.eventId ?? "evt-1"),
     trajectoryId: brandId<TrajectoryId>(overrides.trajectoryId ?? "traj-1"),
     branchId: brandId<BranchId>(overrides.branchId ?? "branch-1"),
     seq: overrides.seq ?? 0,
-    prevEventHash: overrides.prevEventHash ?? GENESIS_EVENT_HASH,
-    eventHash: "",
   } as TrajectoryEvent;
-  return {
-    ...base,
-    eventHash:
-      overrides.eventHash ??
-      // A fixture identity: the retired per-branch hash chain is not under test here.
-      sha256HexSyncText(
-        `${base.prevEventHash}${base.branchId}${base.seq}${canonicalJson(event)}`,
-      ),
-  };
 }
 
 function envelope(
@@ -1334,7 +1321,6 @@ describe("@workspace/agentic-protocol reducers", () => {
       {
         eventId: brandId<EventId>("evt-start"),
         seq: 1,
-        prevEventHash: turnOpened.eventHash,
       },
     );
     const completed = await trajectoryEvent(
@@ -1349,7 +1335,6 @@ describe("@workspace/agentic-protocol reducers", () => {
       {
         eventId: brandId<EventId>("evt-complete"),
         seq: 2,
-        prevEventHash: started.eventHash,
       },
     );
 
@@ -1371,15 +1356,13 @@ describe("@workspace/agentic-protocol reducers", () => {
     const kinds = ["turn.opened", "turn.waiting", "turn.resumed", "turn.waiting", "turn.resumed", "turn.closed", "turn.resumed"] as const;
     let channel = createInitialChannelViewState();
     let trajectory = createInitialTrajectoryState();
-    let previousHash = GENESIS_EVENT_HASH;
     for (const [index, kind] of kinds.entries()) {
       const event = { kind, actor: agent, turnId, payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
         ...(kind === "turn.waiting" ? { reason: "waiting_for_background", summary: "Waiting for child" } : {}),
       }, createdAt: `2026-05-20T12:00:0${index}.000Z` } as AgenticEvent;
       agenticEventSchema.parse(event);
-      const retained = await trajectoryEvent(event, { eventId: brandId<EventId>(`resume-${index}`), seq: index, prevEventHash: previousHash });
-      previousHash = retained.eventHash;
+      const retained = await trajectoryEvent(event, { eventId: brandId<EventId>(`resume-${index}`), seq: index });
       trajectory = reduceTrajectory(trajectory, retained);
       channel = reduceChannelView(channel, envelope(event, index + 1));
       const expected = index >= 5 ? "closed" : kind === "turn.waiting" ? "waiting" : "open";
@@ -1447,7 +1430,6 @@ describe("@workspace/agentic-protocol reducers", () => {
       {
         eventId: brandId<EventId>("evt-waiting"),
         seq: 1,
-        prevEventHash: turnOpened.eventHash,
       },
     );
 

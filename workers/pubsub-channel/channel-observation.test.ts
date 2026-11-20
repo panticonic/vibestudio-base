@@ -34,7 +34,7 @@ function fixture(response: LogEnvelope | LogEnvelope[] = envelope, failure?: Err
       logId: channelId,
       head: "main",
       headSeq: last.seq,
-      headHash: `chain:${last.seq}`,
+      headEnvelopeId: last.envelopeId,
       envelopes: responses,
       published: [],
     };

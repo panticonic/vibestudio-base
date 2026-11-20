@@ -63,7 +63,6 @@ async function appendTrajectory(
       payload: unknown;
       causality?: unknown;
     }>;
-    expectedHeadHash?: string | null;
   },
 ): Promise<void> {
   await call("appendLogEvent", {

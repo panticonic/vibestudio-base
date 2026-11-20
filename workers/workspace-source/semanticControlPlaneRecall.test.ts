@@ -255,8 +255,8 @@ describe("GadWorkspaceDO — recall visibility", () => {
     };
     gad.sql.exec(
       `INSERT INTO log_events
-         (log_id, head, seq, envelope_id, payload_kind, actor_json, payload_ref_json, appended_at, hash, prev_hash)
-       VALUES ('agent-log', 'branch', 1, 'started', 'invocation.started', '{}', ?, '2026-01-02', 'hash', '')`,
+         (log_id, head, seq, envelope_id, payload_kind, actor_json, payload_ref_json, appended_at)
+       VALUES ('agent-log', 'branch', 1, 'started', 'invocation.started', '{}', ?, '2026-01-02')`,
       JSON.stringify(originatingInput),
     );
     gad.sql.exec(`

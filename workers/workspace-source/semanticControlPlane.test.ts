@@ -20,7 +20,6 @@ import {
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
-  GENESIS_EVENT_HASH,
   agentToolFailureFromUnknown,
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
@@ -66,7 +65,6 @@ async function observePublicationIntents(
 }
 
 const owner = { kind: "agent" as const, id: "agent-1" };
-const GENESIS = GENESIS_EVENT_HASH;
 
 const channelCaller = (channelId: string) => ({
   callerId: `do:workers/pubsub-channel:PubSubChannel:${channelId}`,
@@ -182,7 +180,7 @@ async function appendTrajectoryEvents(
     trajectoryId: string;
     branchId: string;
     owner: { kind: "agent"; id: string; metadata?: Record<string, unknown> };
-    expectedHeadHash?: string | null;
+    expectedHead?: { seq: number; envelopeId: string | null };
     events: TrajectoryEventFixture[];
   },
 ) {
@@ -191,9 +189,7 @@ async function appendTrajectoryEvents(
     head: input.branchId,
     logKind: "trajectory",
     owner: input.owner,
-    ...("expectedHeadHash" in input
-      ? { expectedHeadHash: input.expectedHeadHash ?? null }
-      : {}),
+    ...(input.expectedHead ? { expectedHead: input.expectedHead } : {}),
     events: input.events.map((item) => {
       const causality = {
         ...(item.event.causality ?? {}),
@@ -745,11 +741,11 @@ describe("appendLogEvent core (§3.2)", () => {
   it("commits an empty root without events and preserves its exact identity on replay", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
     const root = { logId: "channel:empty-root", head: "main", logKind: "channel" };
-    await expect(call("initializeLogHead", root)).resolves.toEqual({ seq: 0, hash: GENESIS });
-    await expect(call("initializeLogHead", root)).resolves.toEqual({ seq: 0, hash: GENESIS });
+    await expect(call("initializeLogHead", root)).resolves.toEqual({ seq: 0, envelopeId: null });
+    await expect(call("initializeLogHead", root)).resolves.toEqual({ seq: 0, envelopeId: null });
     await expect(call("initializeLogHead", { ...root, logKind: "trajectory" })).rejects.toThrow("root identity");
     const fork = await call("forkLog", { fromLogId: root.logId, fromHead: "main", toLogId: "channel:empty-child", toHead: "main", atSeq: 0 });
-    expect(fork).toMatchObject({ forkSeq: 0, forkHash: GENESIS });
+    expect(fork).toMatchObject({ forkSeq: 0, forkEnvelopeId: null });
     await expect(call("initializeLogHead", { ...root, logId: "channel:empty-child" })).rejects.toThrow("root identity");
     const rows = await call("readLog", { logId: root.logId, head: "main" });
     expect(rows).toEqual([]);
@@ -891,7 +887,7 @@ describe("appendLogEvent core (§3.2)", () => {
     ).toHaveLength(appendCount);
   });
 
-  it("appends a hash-chained trajectory log starting at seq 1 and publishes via causality edges", async () => {
+  it("appends a trajectory log starting at seq 1 and publishes via causality edges", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
     const result = await call("appendLogEvent", {
       logId: "traj-core",
@@ -923,7 +919,7 @@ describe("appendLogEvent core (§3.2)", () => {
       ],
     });
 
-    // seq starts at 1; the head pointer is GAD's private chain from GENESIS
+    // Sequence starts at one and the head identifies the last envelope.
     expect(result.logId).toBe("traj-core");
     expect(result.head).toBe("main");
     expect(result.envelopes).toHaveLength(2);
@@ -933,11 +929,10 @@ describe("appendLogEvent core (§3.2)", () => {
       throw new Error("Expected both appended trajectory events");
     expect(firstEnvelope).toMatchObject({ envelopeId: "evt-1", seq: 1 });
     expect(secondEnvelope).toMatchObject({ envelopeId: "evt-2", seq: 2 });
-    // The wire envelope carries no hash; the head pointer is the chain GAD keeps for itself.
     expect(Object.keys(firstEnvelope)).not.toContain("hash");
     expect(Object.keys(firstEnvelope)).not.toContain("prevHash");
     expect(result.headSeq).toBe(2);
-    expect(result.headHash).not.toBe(GENESIS);
+    expect(result.headEnvelopeId).toBe("evt-2");
 
     // publication is a deterministic causality edge, not a synthesized event
     expect(result.published).toEqual([
@@ -998,7 +993,6 @@ describe("appendLogEvent core (§3.2)", () => {
     });
     expect(head).toMatchObject({
       seq: 2,
-      hash: result.headHash,
       envelopeId: "evt-2",
     });
 
@@ -1172,7 +1166,7 @@ describe("appendLogEvent core (§3.2)", () => {
     ).rejects.toThrow();
   });
 
-  it("enforces expectedHeadHash CAS on appendLogEvent", async () => {
+  it("enforces log head compare-and-set on appendLogEvent", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
     const first = await call("appendLogEvent", {
       logId: "log-cas",
@@ -1185,17 +1179,22 @@ describe("appendLogEvent core (§3.2)", () => {
         logId: "log-cas",
         head: "main",
         logKind: "generic",
-        expectedHeadHash: GENESIS, // stale: head has moved past genesis
+        expectedHead: { seq: 0, envelopeId: null }, // stale: head has moved past genesis
         events: [opaque("evt-2", 2)],
       }),
     ).rejects.toThrow(/log head conflict/u);
+    await expect(call("appendLogEvent", {
+      logId: "log-cas", head: "main", logKind: "generic",
+      expectedHead: { seq: first.headSeq, envelopeId: "another-envelope" },
+      events: [opaque("evt-2", 2)],
+    })).rejects.toThrow(/log head conflict/u);
     // matching expectation succeeds
     await expect(
       call("appendLogEvent", {
         logId: "log-cas",
         head: "main",
         logKind: "generic",
-        expectedHeadHash: first.headHash,
+        expectedHead: { seq: first.headSeq, envelopeId: first.headEnvelopeId },
         events: [opaque("evt-2", 2)],
       }),
     ).resolves.toMatchObject({ headSeq: 2 });
@@ -1471,7 +1470,7 @@ describe("trajectory projection invariants", () => {
     const second = await appendTrajectoryEvents(call, input);
 
     expect(second.headSeq).toBe(first.headSeq);
-    expect(second.headHash).toBe(first.headHash);
+    expect(second.headEnvelopeId).toBe(first.headEnvelopeId);
     expect(
       second.envelopes.map((row: { envelopeId: string }) => row.envelopeId),
     ).toEqual(["event-message-idempotent"]);
@@ -1602,7 +1601,7 @@ describe("trajectory projection invariants", () => {
     );
   });
 
-  it("rejects appends whose expectedHeadHash does not match the current head", async () => {
+  it("rejects appends whose expected head does not match the current head", async () => {
     const { call } = await createTestDO(GadWorkspaceDO);
     const first = await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
@@ -1625,7 +1624,7 @@ describe("trajectory projection invariants", () => {
         trajectoryId: "traj-1",
         branchId: "main",
         owner,
-        expectedHeadHash: GENESIS, // stale
+        expectedHead: { seq: 0, envelopeId: null }, // stale
         events: [
           {
             eventId: "event-next",
@@ -1645,7 +1644,7 @@ describe("trajectory projection invariants", () => {
         trajectoryId: "traj-1",
         branchId: "main",
         owner,
-        expectedHeadHash: first.headHash,
+        expectedHead: { seq: first.headSeq, envelopeId: first.headEnvelopeId },
         events: [
           {
             eventId: "event-next",
@@ -2472,7 +2471,7 @@ describe("channel projections (§3.4)", () => {
     expectNoPrivateParticipantMetadata(registered);
   });
 
-  it("sanitizes roster snapshot method metadata before hashing log events", async () => {
+  it("sanitizes roster snapshot method metadata before storing log events", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
     const hugeMetadata = largeParticipantMetadata();
 
@@ -2699,10 +2698,10 @@ describe("forkLog no-copy (§3.5)", () => {
       ],
     });
     const parentRows = await querySql<{
-      rows: Array<{ seq: number; hash: string }>;
+      rows: Array<{ seq: number; envelope_id: string }>;
     }>(
       sql,
-      "SELECT seq, hash FROM log_events WHERE log_id = ? AND head = ? ORDER BY seq",
+      "SELECT seq, envelope_id FROM log_events WHERE log_id = ? AND head = ? ORDER BY seq",
       ["chan-parent", "main"],
     );
 
@@ -2719,7 +2718,7 @@ describe("forkLog no-copy (§3.5)", () => {
       toLogId: "chan-fork",
       toHead: "main",
       forkSeq: 2,
-      forkHash: parentRows.rows[1]?.hash,
+      forkEnvelopeId: parentRows.rows[1]?.envelope_id,
       inherited: 2,
     });
 
@@ -2736,7 +2735,7 @@ describe("forkLog no-copy (§3.5)", () => {
     // no rows were copied
     expect(await countRows(sql, "log_id = ?", ["chan-fork"])).toBe(0);
 
-    // child appends continue at forkSeq + 1, chained from the fork hash
+    // Child appends continue at the sequence after the inherited prefix.
     const appended = await call("appendLogEvent", {
       logId: "chan-fork",
       head: "main",
@@ -2747,16 +2746,6 @@ describe("forkLog no-copy (§3.5)", () => {
       envelopeId: "env-fork-new",
       seq: 3,
     });
-    // GAD's private chain continues from the fork hash (the wire envelope carries none).
-    expect(
-      (
-        await querySql<{ rows: Array<{ prev_hash: string }> }>(
-          sql,
-          "SELECT prev_hash FROM log_events WHERE log_id = ? AND seq = 3",
-          ["chan-fork"],
-        )
-      ).rows,
-    ).toEqual([{ prev_hash: fork.forkHash }]);
     expect(await countRows(sql, "log_id = ?", ["chan-fork"])).toBe(1);
 
     // fork idempotency
@@ -2768,7 +2757,7 @@ describe("forkLog no-copy (§3.5)", () => {
         toHead: "main",
         atSeq: 2,
       }),
-    ).resolves.toMatchObject({ forkSeq: 2, forkHash: fork.forkHash });
+    ).resolves.toMatchObject({ forkSeq: 2, forkEnvelopeId: fork.forkEnvelopeId });
     await expect(
       call("forkLog", {
         fromLogId: "chan-parent",
@@ -2789,7 +2778,7 @@ describe("forkLog no-copy (§3.5)", () => {
       parentLogId: "chan-parent",
       parentHead: "main",
       forkSeq: 2,
-      forkHash: fork.forkHash,
+      forkEnvelopeId: fork.forkEnvelopeId,
     });
 
     // one integrity path passes for both heads
@@ -2837,15 +2826,16 @@ describe("forkLog no-copy (§3.5)", () => {
       ],
     });
 
-    const fork = await call("forkLog", {
-      fromLogId: "traj-p5",
-      fromHead: "main",
-      toLogId: "traj-p5-fork",
-      toHead: "main",
-      atSeq: 2,
-      owner,
-    });
-    expect(fork).toMatchObject({ forkSeq: 2, inherited: 2 });
+    const forkInput = {
+      fromTrajectoryId: "traj-p5", fromBranchId: "main",
+      toTrajectoryId: "traj-p5-fork", toBranchId: "main",
+    };
+    const fork = await call("forkTrajectoryBranch", { ...forkInput, throughEventId: "msg-2" });
+    expect(fork).toMatchObject({ headSeq: 2, headEventId: "msg-2", copied: 2 });
+    await expect(call("forkTrajectoryBranch", {
+      ...forkInput, fromTrajectoryId: "traj-p5-fork",
+      toTrajectoryId: "outside-fork", throughEventId: "msg-3",
+    })).rejects.toThrow("outside the source lineage");
 
     const childView = await call("readLog", {
       logId: "traj-p5-fork",
@@ -2888,16 +2878,6 @@ describe("forkLog no-copy (§3.5)", () => {
       ],
     });
     expect(appended.envelopes[0]).toMatchObject({ seq: 3 });
-    // GAD's private chain continues from the fork hash (the wire envelope carries none).
-    expect(
-      (
-        await querySql<{ rows: Array<{ prev_hash: string }> }>(
-          sql,
-          "SELECT prev_hash FROM log_events WHERE log_id = ? AND head = ? AND seq = 3",
-          ["traj-p5-fork", "main"],
-        )
-      ).rows,
-    ).toEqual([{ prev_hash: fork.forkHash }]);
 
     await expect(
       call("checkLogIntegrity", { logId: "traj-p5", head: "main" }),
@@ -2905,6 +2885,11 @@ describe("forkLog no-copy (§3.5)", () => {
     await expect(
       call("checkLogIntegrity", { logId: "traj-p5-fork", head: "main" }),
     ).resolves.toMatchObject({ ok: true });
+    sql.exec(
+      "UPDATE log_heads SET fork_envelope_id = 'msg-1' WHERE log_id = 'traj-p5-fork' AND head = 'main'",
+    );
+    await expect(call("checkLogIntegrity", { logId: "traj-p5-fork", head: "main" }))
+      .resolves.toMatchObject({ ok: false, errors: [{ type: "log-fork-boundary" }] });
   });
 
   it("forks channel history through the canonical unified-log RPC", async () => {
@@ -4028,7 +4013,7 @@ describe("lineage queries over causality edges (§3.15)", () => {
 });
 
 describe("checkGadIntegrity (§3.16)", () => {
-  it("detects a tampered log event", async () => {
+  it("detects a gap in the stored log", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
     await appendTrajectoryEvents(call, {
       trajectoryId: "traj-1",
@@ -4047,8 +4032,8 @@ describe("checkGadIntegrity (§3.16)", () => {
     });
 
     sql.exec(
-      "UPDATE log_events SET payload_ref_json = ? WHERE envelope_id = ?",
-      "{}",
+      "UPDATE log_events SET seq = ? WHERE envelope_id = ?",
+      2,
       "msg-1",
     );
 
@@ -4067,7 +4052,7 @@ describe("checkGadIntegrity (§3.16)", () => {
     expect(JSON.stringify(integrity.errors)).toContain("msg-1");
   });
 
-  it("detects a log head pointer that disagrees with the stored chain", async () => {
+  it("detects a log head pointer that disagrees with the stored sequence", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);
     await call("appendChannelEnvelope", {
       channelId: "channel-1",
@@ -4078,9 +4063,8 @@ describe("checkGadIntegrity (§3.16)", () => {
     });
 
     sql.exec(
-      "UPDATE log_heads SET current_seq = ?, current_hash = ?, current_envelope_id = ? WHERE log_id = ? AND head = ?",
+      "UPDATE log_heads SET current_seq = ?, current_envelope_id = ? WHERE log_id = ? AND head = ?",
       99,
-      "deadbeef",
       "env-x",
       "channel-1",
       "main",

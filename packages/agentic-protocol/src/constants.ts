@@ -7,8 +7,6 @@ export const AGENTIC_EVENT_PAYLOAD_KIND = "agentic.trajectory.v1/event" as const
  *  `ChannelViewState.credentialRequests` and rendered by the chat UI. */
 export const CREDENTIAL_CONNECT_PAYLOAD_KIND = "agentic.credential-connect.v1" as const;
 
-export const GENESIS_EVENT_HASH = "0".repeat(64);
-
 export const TERMINAL_MESSAGE_KINDS = ["message.completed", "message.failed"] as const;
 
 export const TERMINAL_INVOCATION_KINDS = [
