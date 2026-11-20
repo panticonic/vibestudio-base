@@ -7,7 +7,7 @@
   "serviceScopes": {
     "localDeliveryCatalog": ["workTowardLocalDelivery.nl"],
     "localDeliveryHistory": ["workTowardLocalDelivery/inspectConversation.nl"],
-    "localDeliverySend": ["workTowardLocalDelivery/completeDelivery/commitNote.ts"],
-    "localDeliveryReadback": ["workTowardLocalDelivery/completeDelivery/readAttempt.ts"]
+    "localDeliverySend": ["workTowardLocalDelivery/completeDelivery.nl"],
+    "localDeliveryReadback": ["workTowardLocalDelivery/completeDelivery.nl"]
   }
 }
