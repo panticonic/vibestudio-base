@@ -1,0 +1,14 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-unit-rollout",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "repairWorkspaceUnit.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "unitRolloutCatalog": ["repairWorkspaceUnit.nl"],
+    "unitRolloutObserve": ["repairWorkspaceUnit/inspectUnit.nl", "repairWorkspaceUnit/evolveCandidate/diagnose.nl"],
+    "unitRolloutEdit": ["repairWorkspaceUnit/evolveCandidate/applyEdit.ts"],
+    "unitRolloutVerify": ["repairWorkspaceUnit/inspectUnit.nl", "repairWorkspaceUnit/evolveCandidate/checkCandidate.ts"],
+    "unitRolloutCommit": ["repairWorkspaceUnit/commitCandidate.ts"]
+  }
+}

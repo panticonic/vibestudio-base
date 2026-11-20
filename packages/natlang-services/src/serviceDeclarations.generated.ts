@@ -1142,6 +1142,58 @@ export function apply(head: string, edits: ReconcileEdit[]): Promise<ReconcileEf
 
 /** Observe and reconcile the assigned local and incoming revisions using scoped native editor and merge effects. */
 export function merge(head: string, decisions: ReconcileDecision[]): Promise<ReconcileEffect>;`,
+  unitRolloutCatalog: `/** Discover the owned workspace units and their current rollout authority. */
+
+type RolloutUnit = {
+  id: string; title: string; kind: "worker" | "panel"; mayEdit: boolean; mayRunChecks: boolean; mayCommit: boolean;
+};
+
+/** Discover the owned workspace units and their current rollout authority. */
+export function discover(): Promise<RolloutUnit[]>;`,
+  unitRolloutObserve: `/** Inspect the current compiler state and read authorized production source. */
+
+type RolloutUnit = {
+  id: string; title: string; kind: "worker" | "panel"; mayEdit: boolean; mayRunChecks: boolean; mayCommit: boolean;
+};
+
+type RolloutSummary = { stateHash: string; status: "ok" | "failed" | "skipped"; diagnostics: string[] };
+
+type RolloutObservation = { unit: RolloutUnit; revision: string; editablePaths: string[]; build: RolloutSummary };
+
+type RolloutSource = { path: string; text: string };
+
+/** Inspect the current compiler state and read authorized production source. */
+export function inspect(unitId: string): Promise<RolloutObservation>;
+
+/** Inspect the current compiler state and read authorized production source. */
+export function read(unitId: string, revision: string, paths: string[]): Promise<RolloutSource[]>;`,
+  unitRolloutEdit: `/** Apply exact production edits against the observed working revision. */
+
+type RolloutEdit = { path: string; before: string; after: string };
+
+type RolloutApply = { status: "changed" | "applied"; revision: string };
+
+/** Apply exact production edits against the observed working revision. */
+export function apply(unitId: string, revision: string, edits: RolloutEdit[]): Promise<RolloutApply>;`,
+  unitRolloutVerify: `/** Build and verify the current exact candidate in its declared native runtime. */
+
+type RolloutSummary = { stateHash: string; status: "ok" | "failed" | "skipped"; diagnostics: string[] };
+
+type RolloutCheck = {
+  revision: string; build: RolloutSummary;
+  check: { runtime: "workerd" | "browser"; status: "passed" | "failed" | "unavailable"; count: number; receipt: string | null } | null;
+};
+
+/** Build and verify the current exact candidate in its declared native runtime. */
+export function check(unitId: string, revision: string): Promise<RolloutCheck>;`,
+  unitRolloutCommit: `/** Save the exact verified candidate in the owned local context when authorized. */
+
+type RolloutCommit =
+  | { status: "changed"; revision: string }
+  | { status: "committed"; verifiedRevision: string; revision: string; eventId: string };
+
+/** Save the exact verified candidate in the owned local context when authorized. */
+export function commit(unitId: string, revision: string): Promise<RolloutCommit>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };

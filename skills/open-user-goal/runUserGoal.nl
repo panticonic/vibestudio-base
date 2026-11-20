@@ -42,6 +42,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - For integrating local and incoming workspace settings, approval-window decisions, or retaining evidence of the reconciled settings, call workOnLocalReconciliationGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "localReconciliation", and its actual outcome.
 - `diagnostics.workTowardDiagnosticGoal` for System host incident evidence, saved log checkpoints, and follow-up diagnosis.
 - `operator.workOnSystemGoal` for System operations.
+- `unitRollout.repairWorkspaceUnit` for owned workspace code defects, build or native verification, and explicitly authorized local source rollout.
 - `localDelivery.workTowardLocalDelivery` for local recipient identity, retained delivery receipts, authorized follow-up, and recovering the original attempt.
 - `recovery.recoverSessionGoal` for retained conversations and recovery handoffs.
 - `publication.workTowardPublicationGoal` for website readiness and publication progress.
