@@ -1649,8 +1649,22 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
       const commands: Record<string, string> = {
         runWorkflow: `
           const item=request.work[0];
-          const report=await domains.conversation.reviewChatDelivery(item.input);
+          const report=item.operation==="reviewConversation"
+            ? await domains.conversation.reviewConversation(item.input)
+            : await domains.conversation.reviewChatDelivery(item.input);
           return {results:[{kind:"domain",domain:item.domain,operation:item.operation,report}],remaining:[]};
+        `,
+        reviewConversation: `
+          const {goal,operationId,contextId,panelId}=request;
+          const chat=await reviewChatDelivery({goal,operationId,contextId,panelId});
+          const next=await chooseChatHandoff(chat);
+          return {kind:"chat-handoff",basis:chat.delivery.observation.channelId,chat,next,
+            blockers:next==="ready"?[]:[chat.verdict],ready:next==="ready"};
+        `,
+        chooseChatHandoff: `
+          if(chat.verdict==="history-unverified") return "trace-original-receipt";
+          if(chat.verdict==="panel-mismatch") return "reopen-assigned-chat";
+          return chat.verdict==="verified"?"ready":"inspect-renderer";
         `,
         reviewChatDelivery: `
           const delivery=await reviewDeliveryHistory({goal:request.goal,operationId:request.operationId});
@@ -1772,6 +1786,26 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
   expect(scopedServices.inspectPanel).toEqual(["chatDeliveryPanel"]);
   expect(scopedServices.checkMessage).toEqual([]);
 
+  const handoff = {
+    goal,
+    work: [{
+      ...request.work[0],
+      operation: "reviewConversation",
+      input: { kind: "chat-handoff", ...request.work[0]!.input },
+    }],
+  };
+  const handoffResult = (next: string, blockers: string[]) => ({
+    remaining: [],
+    results: [{
+      operation: "reviewConversation",
+      report: { kind: "chat-handoff", basis: "channel", next, blockers, ready: next === "ready" },
+    }],
+  });
+  await expect(run(handoff)).resolves.toMatchObject(handoffResult("ready", []));
+  expect(reads.splice(0)).toEqual(["receipt", "panel"]);
+  expect(scopedServices.reviewConversation).toEqual([]);
+  expect(scopedServices.chooseChatHandoff).toEqual([]);
+
   panel.messages = [{ ...actualMessage, messageId: "other-message" }];
   await expect(run(request)).resolves.toMatchObject(result("message-missing"));
   panel.messages = [actualMessage, actualMessage];
@@ -1780,13 +1814,26 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
   await expect(run(request)).resolves.toMatchObject(
     result("message-divergent"),
   );
+  await expect(run(handoff)).resolves.toMatchObject(
+    handoffResult("inspect-renderer", ["message-divergent"]),
+  );
   panel.channelId = "wrong-channel";
   await expect(run(request)).resolves.toMatchObject(result("panel-mismatch"));
+  reads.length = 0;
+  await expect(run(handoff)).resolves.toMatchObject(
+    handoffResult("reopen-assigned-chat", ["panel-mismatch"]),
+  );
+  expect(reads.splice(0)).toEqual(["receipt", "panel"]);
 
   observation.receipt.channelId = "another-channel";
   reads.length = 0;
   await expect(run(request)).resolves.toMatchObject(
     result("history-unverified"),
+  );
+  expect(reads).toEqual(["receipt"]);
+  reads.length = 0;
+  await expect(run(handoff)).resolves.toMatchObject(
+    handoffResult("trace-original-receipt", ["history-unverified"]),
   );
   expect(reads).toEqual(["receipt"]);
 }, 60_000);
