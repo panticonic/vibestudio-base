@@ -300,6 +300,7 @@ it("describes the typed workflows in the installed template domains", async () =
   const referenceSteps: Record<string, string> = {
     ...membershipReference,
     reviewBrowserImport: `
+      if (request.kind === "execute") return await executeApprovedImport(request);
       const job = await inspectRetainedJob();
       let {next, findings} = await interpretRetainedJob(job);
       let source = null;
@@ -310,9 +311,26 @@ it("describes the typed workflows in the installed template domains", async () =
       }
       return {next, source, progress: job.progress, totals: [], findings};
     `,
+    executeApprovedImport: `
+      const checked = await inspectAssignedSource(request.categories);
+      const observation = await inspectPreview(request.categories);
+      const next = await compareApprovedPreview(request.approvedPreview, observation.observation);
+      if (!next) return {next:"use-inspector",source:checked.observation,totals:observation.totals,progress:[],findings:[]};
+      await startApprovedImport(observation.observation);
+      const job = await inspectRetainedJob();
+      return {...await interpretRetainedJob(job),source:checked.observation,totals:observation.totals,progress:job.progress};
+    `,
+    inspectPreview: `
+      const observation = await browserImportPreview.observe();
+      return {next:"review-preview",totals:observation.totals,findings:[],observation};
+    `,
+    compareApprovedPreview: `
+      return approved.warningCount === observed.warningCount && approved.totals[0].total === observed.totals[0].total;
+    `,
+    startApprovedImport: "return await browserImportStart.start(observed);",
     inspectRetainedJob: "return await browserImportHistory.observe();",
     interpretRetainedJob: `
-      return {next: job.phase === "cancelled" ? "keep-results" : "review-retry", findings: []};
+      return {next: job.phase === "cancelled" || job.phase === "complete" ? "keep-results" : "review-retry", findings: []};
     `,
     inspectAssignedSource: `
       const observation = await browserImportSource.observe();
@@ -695,6 +713,9 @@ it("describes the typed workflows in the installed template domains", async () =
       }
       const importScopes: Record<string, string[]> = {
         reviewBrowserImport: [],
+        executeApprovedImport: [],
+        compareApprovedPreview: [],
+        startApprovedImport: ["browserImportStart"],
         inspectAssignedSource: ["browserImportSource"],
         inspectPreview: ["browserImportPreview"],
         inspectRetainedJob: ["browserImportHistory"],
@@ -901,6 +922,44 @@ it("describes the typed workflows in the installed template domains", async () =
       results: [{ report: { next: "keep-results", source: null, progress } }],
     });
     expect(stagedCalls.splice(0)).toEqual(steps);
+
+    const approvedPreview = { status: "previewed", warningCount: 0, totals: [{ category: "bookmarks", total: 3 }] };
+    const available = { ...source, state: "available" };
+    let observed = approvedPreview;
+    let starts = 0;
+    const execute = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+      services: {
+        browserImportSource: { async observe() { return available; } },
+        browserImportPreview: { async observe() { return observed; } },
+        browserImportStart: { async start(value: unknown) {
+          expect(value).toEqual(approvedPreview);
+          starts++;
+          return "started";
+        } },
+        browserImportHistory: { async observe() {
+          expect(starts).toBe(1);
+          return { phase: "complete", progress, resumable: false };
+        } },
+      },
+    })) as (input: unknown) => Promise<unknown>;
+    const execution = { goal, work: [{
+      ...request.work[0],
+      input: { goal, kind: "execute", categories: ["bookmarks"], approvedPreview },
+    }] };
+    const comparison = ["runWorkflow", "reviewBrowserImport", "executeApprovedImport",
+      "inspectAssignedSource", "inspectPreview", "compareApprovedPreview"];
+    await expect(execute(execution)).resolves.toMatchObject({
+      results: [{ report: { next: "keep-results", source: available, totals: approvedPreview.totals, progress } }],
+    });
+    expect(stagedCalls.splice(0)).toEqual([
+      ...comparison, "startApprovedImport", "inspectRetainedJob", "interpretRetainedJob",
+    ]);
+    observed = { ...approvedPreview, warningCount: 1 };
+    await expect(execute(execution)).resolves.toMatchObject({
+      results: [{ report: { next: "use-inspector", progress: [] } }],
+    });
+    expect(stagedCalls.splice(0)).toEqual(comparison);
+    expect(starts).toBe(1);
     runReference = false;
   }
   if (description.functions.some(({ name }) => name === "runPersonalWorkflow")) {
