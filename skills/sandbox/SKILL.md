@@ -93,7 +93,10 @@ neither workspace code nor an approval can enable them.
 For recovery of an assigned text-store operation, use
 `runWorkflow.domains.evalRecovery.reviewEvalRecovery`. It compares the native
 journal with the expected content identity and can read back the exact
-digest when the caller authorizes it. [Workflow design](recovery/DECOMPOSITION.md).
+digest when the caller authorizes it and the complete journal contains one
+exact store receipt. Recover the journal when its retained prefix cannot
+establish the store. Investigate integrity when the retained evidence
+contains duplicate or conflicting receipts. [Workflow design](recovery/DECOMPOSITION.md).
 
 ## Component essentials
 
