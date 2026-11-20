@@ -2925,6 +2925,66 @@ type AssemblyHandoff = { path: string; bytes: number; sha256: string };
 
 /** Store an authorized assembly manifest plan and native receipts in local scratch. */
 export function stage(plan: AssemblyPlan): Promise<AssemblyHandoff | null>;`,
+  retainedConversationIndex: `/** Discover assigned owned provider conversations. */
+
+type RequestIdentity = { id: string; provider: string; operation: string; audience: string; revision: string };
+
+type ApprovalViewer = "device-workspace" | "device-account" | "linked-agent";
+
+type ConversationCard = { channelId: string; label: string; request: RequestIdentity; owner: string; viewer: ApprovalViewer; mayStage: boolean };
+
+/** Discover assigned owned provider conversations. */
+export function list(): Promise<ConversationCard[]>;`,
+  retainedConversationState: `/** Read one owned retained conversation and its actual frontier. */
+
+type QueueReceipt = { source: "workspace" | "hub"; kind: "snapshot" | "acknowledged" | "unavailable"; ids: string[] };
+
+type RequestIdentity = { id: string; provider: string; operation: string; audience: string; revision: string };
+
+type ProviderRecord =
+  | { kind: "queue"; receipt: QueueReceipt }
+  | { kind: "decision"; request: RequestIdentity; owner: string; state: "granted" | "denied" | "withdrawn"; hostRendered: boolean }
+  | { kind: "result"; request: RequestIdentity; state: "accepted" | "committed" | "failed"; digest: string | null }
+  | { kind: "note"; text: string };
+
+type EvidenceRow = { messageId: string; envelopeId: string; seq: number; senderId: string; record: ProviderRecord };
+
+type ConversationRead = { channelId: string; through: number; rows: EvidenceRow[] };
+
+/** Read one owned retained conversation and its actual frontier. */
+export function read(channelId: string): Promise<ConversationRead | null>;`,
+  retainedProviderOutput: `/** Read the original in-scope committed output by exact retained message. */
+
+type OutputReadback = { digest: string; sha256: string; text: string; bytes: number };
+
+/** Read the original in-scope committed output by exact retained message. */
+export function read(channelId: string, resultMessage: string): Promise<OutputReadback | null>;`,
+  retainedProviderHandoff: `/** Commit authorized scoped retained evidence into a local scratch handoff. */
+
+type ProviderDisposition = "waiting" | "held" | "denied" | "ready";
+
+type ProviderReason = "pending-consent" | "visibility-unconfirmed" | "decision-unconfirmed" |
+  "decision-denied" | "decision-withdrawn" | "request-mismatch" | "attribution-mismatch" |
+  "receipt-missing" | "receipt-preliminary" | "provider-failed" | "readback-unavailable" | "verified";
+
+type OutputReadback = { digest: string; sha256: string; text: string; bytes: number };
+
+type ProviderPlan = {
+  channelId: string;
+  through: number;
+  requestId: string;
+  disposition: ProviderDisposition;
+  reason: ProviderReason;
+  decisionMessage: string | null;
+  resultMessage: string | null;
+  output: OutputReadback | null;
+  explanation: string;
+};
+
+type ProviderHandoff = { path: string; sha256: string; bytes: number };
+
+/** Commit authorized scoped retained evidence into a local scratch handoff. */
+export function stage(plan: ProviderPlan): Promise<ProviderHandoff | null>;`,
   programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
 
 type RunSample = {
