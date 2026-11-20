@@ -2176,6 +2176,91 @@ type EvalHandoffArtifact = { path: string; bytes: number; sha256: string; runId:
 
 /** Stage an independently verified committed eval result in an authorized scratch handoff. */
 export function stage(jobId: string, runId: string): Promise<EvalHandoffArtifact | null>;`,
+  openTerminalRead: `/** Open and observe the one owned release checklist and granted scope. */
+
+type ItemKey = "1" | "2" | "3";
+
+type Screen = {
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ItemKey[];
+};
+
+type Grants = {
+  edit: boolean;
+  inspectSuite: boolean;
+  restart: boolean;
+  interrupt: boolean;
+  finish: boolean;
+  stage: boolean;
+};
+
+type TerminalStart = {
+  screen: Screen;
+  grants: Grants;
+  note: string | null;
+  checkOperationId: string | null;
+};
+
+/** Open and observe the one owned release checklist and granted scope. */
+export function open(): Promise<TerminalStart>;`,
+  openTerminalInput: `/** Apply a bounded checklist edit through actual keyboard or pointer input. */
+
+type ItemKey = "1" | "2" | "3";
+
+type ChecklistChange = { item: ItemKey; checked: boolean; input: "key" | "mouse" };
+
+type Screen = {
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ItemKey[];
+};
+
+type NativeExit = { code: number | null; signal: string | null };
+
+type TerminalEvent = { operation: "change"; change: ChecklistChange; from: Screen; to: Screen } |
+  { operation: "reattach" | "restart" | "resume"; from: Screen; to: Screen } |
+  { operation: "quit" | "interrupt"; from: Screen; exit: NativeExit } |
+  { operation: "retire"; from: Screen; absentFromRegistry: boolean };
+
+/** Apply a bounded checklist edit through actual keyboard or pointer input. */
+export function change(request: ChecklistChange): Promise<TerminalEvent | null>;`,
+  openTerminalLifecycle: `/** Observe an authorized owned PTY lifecycle transition. */
+
+type TerminalTransition = { operation: "reattach" | "restart" | "resume"; size: "small" | "wide" } |
+  { operation: "quit" | "interrupt" | "retire" };
+
+type ItemKey = "1" | "2" | "3";
+
+type ChecklistChange = { item: ItemKey; checked: boolean; input: "key" | "mouse" };
+
+type Screen = {
+  sessionId: string;
+  ptyId: string;
+  cols: number;
+  rows: number;
+  checked: ItemKey[];
+};
+
+type NativeExit = { code: number | null; signal: string | null };
+
+type TerminalEvent = { operation: "change"; change: ChecklistChange; from: Screen; to: Screen } |
+  { operation: "reattach" | "restart" | "resume"; from: Screen; to: Screen } |
+  { operation: "quit" | "interrupt"; from: Screen; exit: NativeExit } |
+  { operation: "retire"; from: Screen; absentFromRegistry: boolean };
+
+/** Observe an authorized owned PTY lifecycle transition. */
+export function advance(request: TerminalTransition): Promise<TerminalEvent | null>;`,
+  openTerminalHandoff: `/** Commit the owned terminal receipts to local scratch. */
+
+type TerminalHandoff = { path: string; bytes: number; sha256: string };
+
+/** Commit the owned terminal receipts to local scratch. */
+export function stage(): Promise<TerminalHandoff | null>;`,
   programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
 
 type RunSample = {

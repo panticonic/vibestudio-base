@@ -1,0 +1,13 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-terminal-operator",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "openTerminal.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "openTerminalRead": ["openTerminal.nl"],
+    "openTerminalInput": ["applyChecklistChange.nl"],
+    "openTerminalLifecycle": ["advanceTerminal.nl"],
+    "openTerminalHandoff": ["stageTerminalHandoff.nl"]
+  }
+}
