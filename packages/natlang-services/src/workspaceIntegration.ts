@@ -200,16 +200,26 @@ export function createWorkspaceIntegration(options: {
           );
         seen.add(key(decision.coordinate));
       }
-      if (!decisions.length)
-        throw new Error(
-          "Observe and verify an already complete source rather than making an empty merge request.",
-        );
+      // The native default also selects nonconflicting coordinates outside an
+      // explicit decision list. Limit every selection to assigned files.
+      const coordinates = [...allowed.values()]
+        .filter(({ coordinate, status }) =>
+          coordinate.kind === "file" &&
+          fileIds.has(coordinate.id) &&
+          (seen.has(key(coordinate)) ||
+            status === "convergent" ||
+            (decisions.length > 0 && (status === "adopt" || status === "composed"))),
+        )
+        .map(({ coordinate: { kind, id } }) => ({ kind, id }));
+      if (!coordinates.length)
+        throw new Error("No assigned coordinate can be selected for this merge.");
       await current(expected);
       const result = await vcs.merge({
         contextId,
         commandId: crypto.randomUUID(),
         expectedWorkingHead: state,
         source,
+        coordinates,
         resolutions: decisions,
       });
       return { head: remember(result.workingHead) };
