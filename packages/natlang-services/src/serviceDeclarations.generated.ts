@@ -4627,6 +4627,64 @@ type ClientAdmissionObservation = {
 
 /** Read the assigned System client, published trust and selected host contract. */
 export function observe(operationId: string): Promise<ClientAdmissionObservation>;`,
+  extensionDossierRead: `/** Read exact owned approval, candidate manifest and release history. */
+
+type ReviewOwner = {
+  name: string;
+  source: string;
+  candidateTree: string | null;
+  grant: "inspect" | "local-verification" | "local-rollback-dossier" | "withdrawn" | "publish";
+  retainedBuild: string | null;
+};
+
+type DossierAssignment = {
+  request: { goal: string; operationId: string; method: string };
+  owner: ReviewOwner;
+  purpose: "comparison" | "verification" | "rollback";
+};
+
+type ManifestDelta = {
+  workingDigest: string | null;
+  publishedDigest: string | null;
+  candidateValidationError: string | null;
+  activation: { working: string[]; published: string[] };
+  dependencyChanges: string[];
+  methodChanges: { method: string; change: "added" | "removed" | "changed"; accessExpansion: boolean }[];
+  capabilityChanges: string[];
+  expandedCapabilities: boolean;
+};
+
+type RetainedBuild = { buildKey: string; effectiveVersion: string | null; version: string };
+
+type ReleaseHistory = {
+  current: RetainedBuild | null;
+  previous: RetainedBuild[];
+  retentionLimit: number;
+  requested: RetainedBuild | null;
+  requestedBuildVerified: boolean;
+  receiverMatches: boolean;
+};
+
+/** Read exact owned approval, candidate manifest and release history. */
+export function discover(): Promise<DossierAssignment>;
+
+/** Read exact owned approval, candidate manifest and release history. */
+export function candidate(operationId: string): Promise<ManifestDelta>;
+
+/** Read exact owned approval, candidate manifest and release history. */
+export function history(operationId: string): Promise<ReleaseHistory>;`,
+  extensionDossierWrite: `/** Stage one authorized private extension release dossier. */
+
+type DossierDecision =
+  | "stale-owner-scope" | "outside-local-scope" | "candidate-incompatible" | "authority-review-required"
+  | "verify-local-candidate" | "release-evidence-conflict" | "wait-for-release" | "record-current-comparison"
+  | "rollback-not-retained" | "record-retained-rollback";
+
+type DossierReceipt = { path: string; bytes: number; sha256: string };
+
+/** Stage one authorized private extension release dossier. */
+export function stage(decision: DossierDecision):
+      Promise<DossierReceipt | null>;`,
   extensionReleaseRead: `/** Read assigned extension source and live approved runtime state. */
 
 type ExtensionManifestView = {

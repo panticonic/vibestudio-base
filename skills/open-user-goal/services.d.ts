@@ -41,6 +41,15 @@ declare module "natlang:services" {
       decision: import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceDecision):
       Promise<import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceHandoff | null>;
   };
+  export const extensionDossierRead: {
+    discover(): Promise<import("./runUserGoal/reviewExtensionDossier/contract.js").DossierAssignment>;
+    candidate(operationId: string): Promise<import("./runUserGoal/reviewExtensionDossier/contract.js").ManifestDelta>;
+    history(operationId: string): Promise<import("./runUserGoal/reviewExtensionDossier/contract.js").ReleaseHistory>;
+  };
+  export const extensionDossierWrite: {
+    stage(decision: import("./runUserGoal/reviewExtensionDossier/contract.js").DossierDecision):
+      Promise<import("./runUserGoal/reviewExtensionDossier/contract.js").DossierReceipt | null>;
+  };
   export const goalDiscovery: {
     search(queries: string[]): Promise<import("./types.js").GoalSearchResult[]>;
     snapshotTime(): number;

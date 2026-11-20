@@ -242,6 +242,8 @@ const authoredServices = [
   ]),
   authoredService("architectureProviderRead", "Read the assigned installed service and its exact authored declaration.", "base", "architecture/natlang", [{ name: "resolve", params: ["operationId"] }, { name: "declaration", params: ["routeReceipt"] }]),
   authoredService("clientAdmissionRead", "Read the assigned System client, published trust and selected host contract.", "system", "clientdev/natlang", [{ name: "observe", params: ["operationId"] }]),
+  authoredService("extensionDossierRead", "Read exact owned approval, candidate manifest and release history.", "base", "open-user-goal", [{ name: "discover", params: [] }, { name: "candidate", params: ["operationId"] }, { name: "history", params: ["operationId"] }]),
+  authoredService("extensionDossierWrite", "Stage one authorized private extension release dossier.", "base", "open-user-goal", [{ name: "stage", params: ["decision"] }]),
   authoredService("extensionReleaseRead", "Read assigned extension source and live approved runtime state.", "base", "extensiondev/natlang", [{ name: "source", params: ["operationId"] }, { name: "runtime", params: ["operationId"] }]),
   authoredService("assignedAuthorityRead", "Dry-run the next caller-assigned operation against current Vibestudio authority.", "base", "capabilities/natlang", [{ name: "preflight", params: ["operationId"] }]),
   authoredService("problemDraftRead", "Observe and confirm the caller's assigned local manual problem report.", "base", "problem-reporting/natlang", [{ name: "observe", params: ["operationId"] }, { name: "confirm", params: ["write"] }]),
