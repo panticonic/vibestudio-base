@@ -368,6 +368,10 @@ it("describes the typed workflows in the installed template domains", async () =
         const report = await domains.personalFacility.reviewPersonalFacility(remote.input);
         return {results:[{kind:"domain",domain:"personalFacility",operation:remote.operation,report}],remaining:[]};
       }
+      if (remote.domain === "unitDesign") {
+        const report = await domains.unitDesign.reviewWorkspaceUnit(remote.input);
+        return {results:[{kind:"domain",domain:"unitDesign",operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "remoteAccess") {
         if (remote.operation === "reviewRemoteRoute") {
           const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
@@ -501,6 +505,33 @@ it("describes the typed workflows in the installed template domains", async () =
     inspectMissionBoundary: `
       return {status:"waiting",findings:[{code:"canonical-run-unobserved",evidenceIds:[input.card.id]}]};
     `,
+    reviewWorkspaceUnit: "return await reviewLiveExtensionDesign(request);",
+    reviewLiveExtensionDesign: `
+      const observation=await readExtensionDesign(request.operationId);
+      const working=await reviewExtension(observation.working);
+      const published=await reviewExtension(observation.published);
+      return await combineWork([working,published,await reviewManifestPublication(observation)]);
+    `,
+    readExtensionDesign: "return await extensionDesignRead.inspect(operationId);",
+    reviewExtension: "return await inspectManifest(evidence);",
+    inspectManifest: `
+      const {receipt}=evidence;
+      return {decision:receipt.errorCode?"revision-needed":"ready",
+        finding:receipt.errorCode??"manifest-verified",evidenceIds:[receipt.id]};
+    `,
+    reviewManifestPublication: `
+      const {working,published}=observation;
+      const same=working.candidateDigest===published.candidateDigest;
+      return {decision:same?"ready":"waiting",finding:same?"manifest-published":"manifest-not-published",
+        evidenceIds:[working.receipt.id,published.receipt.id]};
+    `,
+    combineWork: `
+      const invalid=components.some(row=>row.decision==="revision-needed");
+      const waiting=components.some(row=>row.decision==="waiting");
+      return {decision:invalid?"revision-needed":waiting?"waiting":"ready",
+        finding:invalid?"required-revision":waiting?"pending-lifecycle":"prerequisites-verified",
+        evidenceIds:[...new Set(components.flatMap(row=>row.evidenceIds))],components};
+    `,
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -623,6 +654,9 @@ it("describes the typed workflows in the installed template domains", async () =
       }
       if (["reviewPersonalFacility", "reviewLiveMission", "readMissionCard", "reviewMission", "establishMissionCard", "inspectMissionBoundary"].includes(name)) {
         expect(Object.keys(session.availableServices())).toEqual(name === "readMissionCard" ? ["missionFacilityRead"] : []);
+      }
+      if (["reviewWorkspaceUnit", "reviewLiveExtensionDesign", "readExtensionDesign", "reviewExtension", "inspectManifest", "reviewManifestPublication", "combineWork"].includes(name)) {
+        expect(Object.keys(session.availableServices())).toEqual(name === "readExtensionDesign" ? ["extensionDesignRead"] : []);
       }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
@@ -840,6 +874,55 @@ it("describes the typed workflows in the installed template domains", async () =
       expect(stagedCalls.splice(0)).toEqual([
         "runWorkflow", "reviewPersonalFacility", "reviewLiveMission", "readMissionCard",
         "reviewMission", "establishMissionCard", ...(revision === 3 && accepted ? ["inspectMissionBoundary"] : []),
+      ]);
+    }
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "reviewWorkspaceUnit")) {
+    runReference = true;
+    const goal = "Review the assigned extension's design against protected main.";
+    const operationId = "assigned-design";
+    const input = { kind: "extension-design-live", goal, operationId };
+    const reads: string[] = [];
+    const makeManifest = (side: string, candidateDigest: string, errorCode: string | null) => ({
+      kind: "manifest", source: "extensions/assigned", candidateDigest,
+      receipt: { id: `${operationId}:${side}`, unit: "extensions/assigned", candidateDigest, errorCode },
+    });
+    for (const [digest, failure, decision] of [
+      ["published-hash", null, "ready"],
+      ["local-hash", null, "waiting"],
+      ["bad-hash", "MANIFEST_ICON", "revision-needed"],
+    ] as const) {
+      const observation = {
+        contextId: "ctx", workingRevision: "current", mainRevision: "protected",
+        working: makeManifest("working", digest, failure),
+        published: makeManifest("published", "published-hash", null),
+      };
+      const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+        services: { extensionDesignRead: { async inspect(id: string) {
+          reads.push(id);
+          return observation;
+        } } },
+      })) as (input: unknown) => Promise<unknown>;
+      stagedCalls.length = 0;
+      await expect(run({ goal, work: [{
+        kind: "domain", domain: "unitDesign", operation: "reviewWorkspaceUnit", input,
+      }] })).resolves.toMatchObject({
+        results: [{ report: {
+          decision,
+          evidenceIds: [observation.working.receipt.id, observation.published.receipt.id],
+          components: [
+            { finding: failure ?? "manifest-verified", evidenceIds: [observation.working.receipt.id] },
+            { finding: "manifest-verified", evidenceIds: [observation.published.receipt.id] },
+            { finding: decision === "ready" ? "manifest-published" : "manifest-not-published" },
+          ],
+        } }],
+      });
+      expect(reads.splice(0)).toEqual([operationId]);
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow", "reviewWorkspaceUnit", "reviewLiveExtensionDesign", "readExtensionDesign",
+        "reviewExtension", "inspectManifest", "reviewExtension", "inspectManifest",
+        "reviewManifestPublication", "combineWork",
       ]);
     }
     runReference = false;

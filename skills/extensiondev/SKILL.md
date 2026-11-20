@@ -21,6 +21,12 @@ shared Natlang workflow. Bind the exact extension and context with
 `@workspace-skills/extensiondev/workflow`. Review and publish the candidate
 through the existing development loop when the report calls for it.
 
+For a manifest design review, bind the exact extension and context with
+`@workspace-skills/extensiondev/unit-design` and call
+`unitDesign/reviewWorkspaceUnit` with the returned request. It reports the
+working and protected-main validator findings and whether their manifest
+digests match.
+
 ## Read by task
 
 | Task                                              | Reference                                                           |
