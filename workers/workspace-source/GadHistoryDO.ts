@@ -91,7 +91,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
-import { gadWireMethods, HistoryQueryRequestSchema, HistoryRecallBasisRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
+import { workspaceHistoryInitializationInputSchema, HistoryQueryRequestSchema, HistoryRecallBasisRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -123,7 +123,7 @@ const seedReceiptKey = "history-seed-receipt";
 const localSeedBranch = "seed/initial";
 const freshRootBranch = "root/initial";
 const freshRootKey = "history-fresh-root";
-type FreshRootInput = ReturnType<typeof gadWireMethods.workspaceSourceInitializeExactSnapshot.args.parse>[0];
+type FreshRootInput = ReturnType<typeof workspaceHistoryInitializationInputSchema.parse>;
 type FreshRootRecord = {
   requestDigest: string;
   eventId: string;
@@ -219,9 +219,7 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostWrite)
   stageFreshHistoryRoot(input: FreshRootInput) {
     this.#assertCanonical();
-    const [snapshot] = gadWireMethods.workspaceSourceInitializeExactSnapshot.args.parse([input]);
-    if (snapshot.acknowledgement !== undefined)
-      throw new Error("Native workspace initialization does not consume source effects");
+    const snapshot = workspaceHistoryInitializationInputSchema.parse(input);
     const requestDigest = sha256HexSyncText(canonicalJson(snapshot));
     const staged = this.readFreshHistoryRoot();
     if (staged) {

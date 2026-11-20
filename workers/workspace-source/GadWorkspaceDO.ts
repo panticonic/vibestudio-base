@@ -157,7 +157,6 @@ import {
   sha256HexSyncText,
   sortForCanonicalJson,
   canonicalJson,
-  stateHashForRoot,
 } from "@vibestudio/content-addressing";
 import {
   createSemanticVcsSchema,
@@ -170,12 +169,6 @@ import {
   type SemanticDispatchRequest,
   type SemanticEffectAcknowledgement,
 } from "./semanticWorkspace.js";
-import type {
-  InitializeExactWorkspaceSnapshotInput,
-  WorkspaceSourceEffect,
-  WorkspaceSourceInitializationInspection,
-  WorkspaceSourceInitializationReceipt,
-} from "@vibestudio/workspace-contracts/workspaceSource";
 
 type JsonPrimitive = null | string | number | boolean;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -194,32 +187,13 @@ type ChannelRosterRow = ChannelRosterInspection["rows"][number];
 type StorageDiagnostic = AgentHealthInspection["storage"]["rows"][number];
 
 /** First supported production schema for the semantic workspace authority. */
-const GAD_WORKSPACE_SCHEMA_VERSION = 66;
+const GAD_WORKSPACE_SCHEMA_VERSION = 67;
 
 
 const utf8Bytes = (value: string): number =>
   new TextEncoder().encode(value).byteLength;
 
 const CHANNEL_LOG_HEAD = "main";
-
-function createWorkspaceSourceInitializationTable(sql: {
-  exec(query: string, ...bindings: SqlBinding[]): unknown;
-}): void {
-  sql.exec(`
-    CREATE TABLE IF NOT EXISTS workspace_source_initializations (
-      command_id TEXT PRIMARY KEY,
-      request_digest TEXT NOT NULL,
-      phase TEXT NOT NULL CHECK (
-        phase IN ('observe', 'publish', 'ready', 'failed')
-      ),
-      context_id TEXT NOT NULL,
-      genesis_event_id TEXT,
-      receipt_json TEXT CHECK (receipt_json IS NULL OR json_valid(receipt_json) = 1),
-      failure_json TEXT CHECK (failure_json IS NULL OR json_valid(failure_json) = 1),
-      updated_at TEXT NOT NULL
-    )
-  `);
-}
 
 function createPublicationDeliveryOutbox(sql: {
   exec(query: string, ...bindings: SqlBinding[]): unknown;
@@ -417,7 +391,6 @@ const GAD_REQUIRED_TABLES = [
   "channel_membership_revisions",
   "agent_directory",
   "gad_blobs",
-  "workspace_source_initializations",
   "publication_intents",
   "publication_delivery_outbox",
   ...SEMANTIC_VCS_REQUIRED_TABLES,
@@ -1308,7 +1281,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
         created_at TEXT NOT NULL
       )
     `);
-    createWorkspaceSourceInitializationTable(this.sql);
     createPublicationDeliveryOutbox(this.sql);
     createSemanticVcsSchema(this.sql);
     // The recall contents are disposable, but the index table is part of the
@@ -1339,13 +1311,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return new SemanticVcsStore(this.sql, nowIso);
   }
 
-  #requireLegacyHistoryAvailable(): void {
-    if (this.getStateValue("legacy-history-replay-seal") !== null)
-      throw new Error("Legacy workspace history has been retired");
-    if (this.getStateValue("legacy-history-replay-freeze") !== null)
-      throw new Error("Legacy workspace history is frozen for migration");
-  }
-
   private semanticWorkspace(): SemanticWorkspace {
     return new SemanticWorkspace({
       workspaceId: this.semanticWorkspaceId(),
@@ -1366,333 +1331,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return configured;
   }
 
-  @schemaRpc()
-  workspaceSourceTemplateInstallation(input: {
-    eventId: string;
-  }): import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation | null {
-    this.ensureReady();
-    if (!this.semanticVcsStore().event(input.eventId))
-      throw new Error(`Unknown workspace event ${input.eventId}`);
-    const row = this.sql
-      .exec(
-        `
-      WITH RECURSIVE ancestry(event_id, depth) AS (
-        SELECT ?, 0
-        UNION ALL
-        SELECT p.parent_event_id, a.depth + 1 FROM ancestry a
-        JOIN gad_workspace_event_parents p ON p.event_id = a.event_id AND p.ordinal = 0
-      )
-      SELECT i.installation_json FROM ancestry a
-      JOIN workspace_template_installations i ON i.event_id = a.event_id
-      ORDER BY a.depth LIMIT 1
-    `,
-        input.eventId,
-      )
-      .toArray()[0] as JsonRecord | undefined;
-    return row ? JSON.parse(String(row["installation_json"])) : null;
-  }
-
-  @schemaRpc()
-  async workspaceSourceInitializeExactSnapshot(
-    input: InitializeExactWorkspaceSnapshotInput,
-  ): Promise<WorkspaceSourceInitializationInspection> {
-    this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
-    const requestDigest = sha256HexSyncText(
-      canonicalJson({
-        pin: input.pin,
-        repositories: input.repositories,
-        installation: input.installation,
-      }),
-    );
-    const existing = this.workspaceSourceInitializationRow();
-    if (existing && String(existing["command_id"]) !== input.commandId) {
-      throw new Error(
-        `Workspace source was already initialized by ${String(existing["command_id"])}`,
-      );
-    }
-    if (existing && String(existing["request_digest"]) !== requestDigest) {
-      throw new Error(
-        `Workspace source initialization command ${input.commandId} was reused`,
-      );
-    }
-    if (!existing) {
-      const repoPaths = new Set<string>();
-      for (const repository of input.repositories) {
-        if (repoPaths.has(repository.repoPath)) {
-          throw new Error(
-            `Workspace source snapshot repeats ${repository.repoPath}`,
-          );
-        }
-        repoPaths.add(repository.repoPath);
-      }
-      if (!repoPaths.has("meta")) {
-        throw new Error("Workspace source snapshot has no meta repository");
-      }
-      this.transaction(() => {
-        const contextId = `workspace-initialization:${this.objectKey}`;
-        const store = this.semanticVcsStore();
-        const context = store.initializeWorkspace(
-          contextId,
-          `${input.commandId}:snapshot`,
-          {
-            source: {
-              sourceUri: "vibestudio://workspace/root-template",
-              snapshotRevision: input.pin.commit,
-            },
-            repositories: input.repositories,
-          },
-        );
-        store.recordInitializedRepositoryContentRoots({
-          workspaceFactRootId: context.committed.workspaceFactRootId,
-          provenanceId: `workspace-source:${input.commandId}`,
-          repositories: input.repositories.map(({ repoPath, contentRoot }) => ({
-            repoPath,
-            contentRoot,
-          })),
-        });
-        this.sql.exec(
-          `INSERT INTO workspace_source_initializations
-           (command_id, request_digest, phase, context_id, genesis_event_id, receipt_json, failure_json, updated_at)
-           VALUES (?, ?, 'publish', ?, ?, NULL, NULL, ?)`,
-          input.commandId,
-          requestDigest,
-          contextId,
-          context.committed.ref.eventId,
-          nowIso(),
-        );
-      });
-    }
-
-    const ready = this.workspaceSourceInitializationInspection();
-    if (ready.state === "ready" || ready.state === "failed") return ready;
-
-    const workspace = this.semanticWorkspace();
-    if (input.acknowledgement) {
-      const pending = workspace
-        .pendingEffects()
-        .find(
-          (effect) =>
-            effect.effectId === input.acknowledgement?.effectId &&
-            effect.payloadDigest === input.acknowledgement.payloadDigest,
-        );
-      if (!pending || !pending.commandId.startsWith(`${input.commandId}:`)) {
-        throw new Error(
-          `Initialization acknowledgement does not match a pending effect for ${input.commandId}`,
-        );
-      }
-      const acknowledged = workspace.acknowledgeEffect(
-        input.acknowledgement as SemanticEffectAcknowledgement,
-      );
-      if (acknowledged.kind === "effects-pending")
-        return this.workspaceSourcePendingInspection(
-          input.commandId,
-          acknowledged.effects[0],
-        );
-      if (acknowledged.kind === "host-read")
-        throw new Error(
-          "Workspace initialization emitted an unsupported host read",
-        );
-    }
-
-    for (let step = 0; step < input.repositories.length + 4; step += 1) {
-      const pending = workspace
-        .pendingEffects()
-        .find((effect) => effect.commandId.startsWith(`${input.commandId}:`));
-      if (pending)
-        return this.workspaceSourcePendingInspection(input.commandId, pending);
-
-      const row = this.workspaceSourceInitializationRow();
-      if (!row)
-        throw new Error("Workspace source initialization record disappeared");
-      const phase = String(row["phase"]);
-      const contextId = String(row["context_id"]);
-      const store = this.semanticVcsStore();
-
-      if (phase === "publish") {
-        const pushCommandId = `${input.commandId}:publish`;
-        const command = this.sql
-          .exec(
-            `SELECT status FROM vcs_command_journal WHERE command_id = ?`,
-            pushCommandId,
-          )
-          .toArray()[0] as JsonRecord | undefined;
-        if (command?.["status"] === "complete") {
-          const context = store.contextRequired(contextId);
-          if (context.committed.ref.kind !== "event") {
-            throw new Error("Initialized workspace source is not committed");
-          }
-          const receipt: WorkspaceSourceInitializationReceipt = {
-            commandId: input.commandId,
-            pin: input.pin,
-            initializedEventId: context.committed.ref.eventId,
-            initializedStateHash: stateHashForRoot(
-              context.committed.workspaceFactRootId,
-            ),
-          };
-          this.sql.exec(
-            `UPDATE workspace_source_initializations
-                SET phase = 'ready', receipt_json = ?, updated_at = ?
-              WHERE command_id = ?`,
-            canonicalJson(receipt),
-            nowIso(),
-            input.commandId,
-          );
-          return { state: "ready", commandId: input.commandId, receipt };
-        }
-        const context = store.contextRequired(contextId);
-        const genesisEventId = String(row["genesis_event_id"] ?? "");
-        const dispatched = await workspace.dispatch("vcsPush", {
-          input: {
-            contextId,
-            commandId: pushCommandId,
-            expectedCommittedEventId: context.committed.ref.eventId,
-            expectedMainEventId: genesisEventId,
-            templateInstallation: input.installation,
-          },
-          ingress: {
-            causalParent: null,
-          },
-        });
-        if (dispatched.kind === "host-read") {
-          throw new Error(
-            "Workspace initialization emitted an unsupported host read",
-          );
-        }
-        if (dispatched.kind === "effects-pending") {
-          return this.workspaceSourcePendingInspection(
-            input.commandId,
-            dispatched.effects[0],
-          );
-        }
-        continue;
-      }
-
-      if (phase === "ready")
-        return this.workspaceSourceInitializationInspection();
-      throw new Error(`Unknown workspace source initialization phase ${phase}`);
-    }
-    throw new Error("Workspace source initialization made no progress");
-  }
-
-  @schemaRpc()
-  workspaceSourceResolve(input: { ref: string }): { stateHash: string } {
-    const current = this.workspaceSourceCurrent();
-    if (!current) throw new Error("Workspace source is not initialized");
-    if (input.ref !== "main" && input.ref !== current.stateHash) {
-      throw new Error(`Unknown workspace source reference ${input.ref}`);
-    }
-    return current;
-  }
-
-  @schemaRpc()
-  workspaceSourceCurrent(): { stateHash: string } | null {
-    this.ensureReady();
-    const mainEventId = this.semanticVcsStore().mainEventId();
-    if (!mainEventId) return null;
-    return {
-      stateHash: stateHashForRoot(
-        this.semanticVcsStore().stateRoot({
-          kind: "event",
-          eventId: mainEventId,
-        }),
-      ),
-    };
-  }
-
-  @schemaRpc()
-  workspaceSourceInspectInitialization(): WorkspaceSourceInitializationInspection {
-    this.ensureReady();
-    return this.workspaceSourceInitializationInspection();
-  }
-
-  @schemaRpc()
-  workspaceSourceHealth(): {
-    ok: true;
-    protocol: "vibestudio.workspace-source.v1";
-  } {
-    this.ensureReady();
-    return { ok: true, protocol: "vibestudio.workspace-source.v1" };
-  }
-
-  private workspaceSourceInitializationRow(): JsonRecord | undefined {
-    return this.sql
-      .exec(
-        `SELECT command_id, request_digest, phase,
-                context_id, genesis_event_id, receipt_json,
-                failure_json, updated_at
-           FROM workspace_source_initializations
-          ORDER BY updated_at DESC LIMIT 1`,
-      )
-      .toArray()[0] as JsonRecord | undefined;
-  }
-
-  private workspaceSourceInitializationInspection(): WorkspaceSourceInitializationInspection {
-    const row = this.workspaceSourceInitializationRow();
-    if (!row) return { state: "empty" };
-    const commandId = String(row["command_id"]);
-    const phase = String(row["phase"]);
-    if (phase === "ready") {
-      return {
-        state: "ready",
-        commandId,
-        receipt: JSON.parse(
-          String(row["receipt_json"]),
-        ) as WorkspaceSourceInitializationReceipt,
-      };
-    }
-    if (phase === "failed") {
-      return {
-        state: "failed",
-        commandId,
-        failure: rpcFailureSchema.parse(JSON.parse(String(row["failure_json"]))),
-      };
-    }
-    const pending = this.semanticWorkspace()
-      .pendingEffects()
-      .find((effect) => effect.commandId.startsWith(`${commandId}:`));
-    return pending
-      ? this.workspaceSourcePendingInspection(commandId, pending)
-      : { state: "initializing", commandId };
-  }
-
-  private workspaceSourcePendingInspection(
-    commandId: string,
-    effect:
-      | {
-          effectId: string;
-          scopeKind: "context" | "workspace";
-          scopeId: string;
-          commandId: string;
-          kind: "observe-content" | "materialize-context" | "publish-main";
-          payload: Record<string, unknown>;
-          payloadDigest: string;
-        }
-      | undefined,
-  ): WorkspaceSourceInitializationInspection {
-    if (!effect)
-      throw new Error(
-        "Workspace source initialization reported no pending effect",
-      );
-    const pendingEffect: WorkspaceSourceEffect = {
-      effectId: effect.effectId,
-      scopeKind: effect.scopeKind,
-      scopeId: effect.scopeId,
-      commandId: effect.commandId,
-      kind: effect.kind,
-      payload: effect.payload,
-      payloadDigest: effect.payloadDigest,
-      status: "pending",
-    };
-    return { state: "initializing", commandId, pendingEffect };
-  }
-
   private vcsSemantic(
     method: import("@vibestudio/service-schemas/vcs").VcsSemanticMethodName,
     request: SemanticDispatchRequest,
   ): Promise<unknown> {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().dispatch(method, request);
   }
 
@@ -1976,7 +1619,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @schemaRpc()
   vcsSemanticEffectAck(input: { acknowledgement: SemanticEffectAcknowledgement }): unknown {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeEffect(input.acknowledgement);
   }
 
@@ -1988,7 +1630,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     };
   }): unknown {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeHostRead(input.acknowledgement);
   }
 
@@ -1997,7 +1638,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     acknowledgement: { request: GadJsonRecord; contentHashes: string[] };
   }): unknown {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeContent(input.acknowledgement);
   }
 
@@ -2053,7 +1693,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     ingress: SemanticDispatchRequest["ingress"];
   }): unknown {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return input.projection === "deferred"
       ? this.semanticWorkspace().ensureContextCoordinate(input, input.ingress)
       : this.semanticWorkspace().ensureContext(input, input.ingress);
@@ -2081,14 +1720,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
     ingress: SemanticDispatchRequest["ingress"];
   }): unknown {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().forkContext(input, input.ingress);
   }
 
   @schemaRpc()
   vcsDropContext(input: { contextId: string }): { dropped: boolean } {
     this.ensureReady();
-    this.#requireLegacyHistoryAvailable();
     return {
       dropped: this.transaction(() =>
         this.semanticVcsStore().dropContext(input.contextId),
