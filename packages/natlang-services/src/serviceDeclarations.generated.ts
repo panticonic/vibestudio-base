@@ -2202,6 +2202,7 @@ type TerminalStart = {
   grants: Grants;
   note: string | null;
   checkOperationId: string | null;
+  discoveryAvailable: boolean;
 };
 
 /** Open and observe the one owned release checklist and granted scope. */
@@ -2255,6 +2256,27 @@ type TerminalEvent = { operation: "change"; change: ChecklistChange; from: Scree
 
 /** Observe an authorized owned PTY lifecycle transition. */
 export function advance(request: TerminalTransition): Promise<TerminalEvent | null>;`,
+  openTerminalDiscovery: `/** Read live role-filtered capability contracts and bounded exact installed terminal guidance. */
+
+type RecoveryRouteHit = { id: string; qualifiedName: string; description: string };
+
+type RecoveryRoute = RecoveryRouteHit & { sha256: string; argumentNames: string[] };
+
+type RecoverySkill = { dirPath: string; skillPath: string; name: string; description: string };
+
+type RecoveryKnowledge = { skillPath: string; sha256: string; passages: string[] };
+
+/** Read live role-filtered capability contracts and bounded exact installed terminal guidance. */
+export function search(query: string): Promise<RecoveryRouteHit[]>;
+
+/** Read live role-filtered capability contracts and bounded exact installed terminal guidance. */
+export function open(id: string): Promise<RecoveryRoute | null>;
+
+/** Read live role-filtered capability contracts and bounded exact installed terminal guidance. */
+export function installed(): Promise<RecoverySkill[]>;
+
+/** Read live role-filtered capability contracts and bounded exact installed terminal guidance. */
+export function load(dirPath: string, focus: string[]): Promise<RecoveryKnowledge | null>;`,
   openTerminalHandoff: `/** Commit the owned terminal receipts to local scratch. */
 
 type TerminalHandoff = { path: string; bytes: number; sha256: string };
