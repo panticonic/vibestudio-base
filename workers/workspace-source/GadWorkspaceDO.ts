@@ -7,6 +7,7 @@ import { prepareLogEvent, agenticLogCausality as agenticCausality, type Prepared
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
+  HistoryCommitMemoryMarkerSchema,
   HistoryTrajectorySearchInputSchema,
   HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
   HistoryQueryCausesSchema,
@@ -773,6 +774,8 @@ interface ProjectionKey {
 }
 
 const historyCommitMemoryIndexKey = "native-commit-memory-index-v1";
+const commitMemoryProjectionVersionKey = "memory:commit-projection-version";
+const nativeCommitMemoryProjectionVersion = "native-v1";
 
 export class GadWorkspaceDO extends DurableObjectBase {
   static override rpcMethods = {
@@ -4193,13 +4196,21 @@ export class GadWorkspaceDO extends DurableObjectBase {
    * intents remain the authority. */
   private ensureCommitMemoryIndex(): void {
     this.ensureMemoryIndex();
+    const projectionVersion = this.getStateValue(commitMemoryProjectionVersionKey);
+    if (projectionVersion === nativeCommitMemoryProjectionVersion) return;
+    const rawMarker = this.getStateValue(historyCommitMemoryIndexKey);
+    if (rawMarker !== null && HistoryCommitMemoryMarkerSchema.parse(JSON.parse(rawMarker)).completedEventId) {
+      // A previous release can have finished backfill before it knew how to retire
+      // the old projection. Its completed marker proves the same coverage.
+      this.transaction(() => this.retireLegacyCommitMemory());
+      return;
+    }
 
     // Rebuild old recall indexes once to retain authored intent and remove
     // commits outside protected main. Subsequent calls add missing entries
     // from protected legacy history without replacing native documents.
-    const projectionVersionKey = "memory:commit-projection-version";
-    const projectionVersion = "3";
-    if (this.getStateValue(projectionVersionKey) !== projectionVersion) {
+    const legacyProjectionVersion = "3";
+    if (projectionVersion !== legacyProjectionVersion) {
       this.sql.exec(
         `DELETE FROM gad_memory_fts
           WHERE kind = 'commit'
@@ -4261,7 +4272,13 @@ export class GadWorkspaceDO extends DurableObjectBase {
         anchor: { workspaceEventId: eventId, workspaceFactRootId },
       });
     }
-    this.setStateValue(projectionVersionKey, projectionVersion);
+    this.setStateValue(commitMemoryProjectionVersionKey, legacyProjectionVersion);
+  }
+
+  private retireLegacyCommitMemory(): void {
+    this.sql.exec(`DELETE FROM gad_memory_fts
+      WHERE kind = 'commit' AND json_extract(anchor_json, '$.revision') IS NULL`);
+    this.setStateValue(commitMemoryProjectionVersionKey, nativeCommitMemoryProjectionVersion);
   }
 
   private indexMemoryRow(row: {
@@ -4360,10 +4377,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (typeof input.marker !== "string" || !input.marker || input.marker.length > 4096 ||
         !Array.isArray(input.documents) || input.documents.length > 16)
       throw new Error("Invalid native commit memory page");
+    const marker = HistoryCommitMemoryMarkerSchema.parse(JSON.parse(input.marker));
     this.transaction(() => {
       if (this.getStateValue(historyCommitMemoryIndexKey) !== input.previousMarker)
         throw new Error("Native commit memory index advanced concurrently");
       for (const document of input.documents) this.indexHistoryCommitMemory(document);
+      if (marker.completedEventId !== null &&
+          this.getStateValue(commitMemoryProjectionVersionKey) !== nativeCommitMemoryProjectionVersion) {
+        this.retireLegacyCommitMemory();
+      }
       this.setStateValue(historyCommitMemoryIndexKey, input.marker);
     });
     return true;

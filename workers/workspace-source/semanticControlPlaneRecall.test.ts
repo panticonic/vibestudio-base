@@ -53,17 +53,71 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       eventId: "event:batch", revision: "d".repeat(40), text: "Private fixture batch summary",
       createdAt: "2026-08-14T00:00:00.000Z",
     };
-    const page = { previousMarker: null, marker: "batch-one", documents: [document] };
+    const marker = JSON.stringify({ completedEventId: document.eventId, pending: null });
+    const page = { previousMarker: null, marker, documents: [document] };
     expect(() => doi.recordHistoryCommitMemoryPage({
       ...page, documents: [document, { ...document, createdAt: "invalid" }],
     })).toThrow("Invalid native commit memory");
     expect(doi.readHistoryCommitMemoryIndex()).toBeNull();
     expect(doi.recallMemory({ query: "batch summary", kinds: ["commit"] }).results).toEqual([]);
     expect(doi.recordHistoryCommitMemoryPage(page)).toBe(true);
-    expect(doi.readHistoryCommitMemoryIndex()).toBe("batch-one");
+    expect(doi.readHistoryCommitMemoryIndex()).toBe(marker);
     expect(() => doi.recordHistoryCommitMemoryPage(page)).toThrow("index advanced concurrently");
     expect(doi.recallMemory({ query: "batch summary", kinds: ["commit"] }).results)
       .toMatchObject([{ eventId: document.eventId }]);
+  });
+
+  it("keeps legacy published recall during backfill and retires it on completion", () => {
+    gad.sql.exec(`
+      INSERT INTO gad_workspace_events
+        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
+      VALUES ('event:legacy', 'command:legacy', 'commit', 'root:legacy', 'Northstar saved', '2026-01-02');
+      INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
+      VALUES ('main', 'event:legacy', '2026-01-02');
+    `);
+    const pending = JSON.stringify({
+      completedEventId: null, pending: { eventId: "event:main", after: "event:first" },
+    });
+    const nativeDocument = {
+      eventId: "event:first", revision: "a".repeat(40), text: "Northstar first",
+      createdAt: "2026-01-02T00:00:00Z",
+    };
+    const recalled = () => doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results;
+    doi.recordHistoryCommitMemoryPage({ previousMarker: null, marker: pending, documents: [nativeDocument] });
+    expect(recalled().map(({ eventId }) => eventId).sort()).toEqual(["event:first", "event:legacy"]);
+
+    const migrated = { ...nativeDocument, eventId: "event:legacy", revision: "b".repeat(40) };
+    const completed = JSON.stringify({ completedEventId: "event:main", pending: null });
+    reach(doi).indexMemoryRow({ kind: "commit", eventId: "obsolete", text: "Northstar old projection" });
+    const finalPage = { previousMarker: pending, marker: completed, documents: [migrated] };
+    expect(() => doi.recordHistoryCommitMemoryPage({
+      ...finalPage, documents: [migrated, { ...migrated, text: "" }],
+    })).toThrow("Invalid native commit memory");
+    expect(doi.readHistoryCommitMemoryIndex()).toBe(pending);
+    expect(recalled().find(({ eventId }) => eventId === "event:legacy")?.anchor?.revision).toBeUndefined();
+    expect(recalled().some(({ eventId }) => eventId === "obsolete")).toBe(true);
+
+    doi.recordHistoryCommitMemoryPage(finalPage);
+    gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
+    expect(recalled().map(({ eventId, anchor }) => [eventId, anchor?.revision]).sort()).toEqual([
+      ["event:first", nativeDocument.revision],
+      ["event:legacy", migrated.revision],
+    ]);
+  });
+
+  it("retires old rows when opening an index completed by the previous release", () => {
+    const document = {
+      eventId: "event:native", revision: "a".repeat(40), text: "Northstar saved",
+      createdAt: "2026-01-02T00:00:00Z",
+    };
+    const marker = JSON.stringify({ completedEventId: document.eventId, pending: null });
+    doi.recordHistoryCommitMemory(document);
+    reach(doi).indexMemoryRow({ kind: "commit", eventId: "obsolete", text: "Northstar old projection" });
+    gad.sql.exec("INSERT INTO state (key, value) VALUES ('native-commit-memory-index-v1', ?)", marker);
+    gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
+    expect(doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results)
+      .toMatchObject([{ eventId: document.eventId }]);
+    expect(doi.readHistoryCommitMemoryIndex()).toBe(marker);
   });
 
   it("dedup keeps the page full: a duplicate copy is collapsed without stealing a slot", () => {
