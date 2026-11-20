@@ -1036,6 +1036,100 @@ type PdfLayoutPage = {
 
 /** Read the original embedded fragment geometry of one assigned local PDF page. */
 export function inspect(operationId: string): Promise<PdfLayoutPage>;`,
+  retainedDictationIndex: `/** List owned conversations with retained local dictation. */
+
+type DictationThread = {
+  threadId: string;
+  title: string;
+  owner: string;
+  draftId: string;
+  baseline: string;
+  device: string;
+  language: string;
+  usePrefix: boolean;
+  localAction: "none" | "correction" | "alternative";
+};
+
+/** List owned conversations with retained local dictation. */
+export function list(): Promise<DictationThread[]>;`,
+  retainedDictationState: `/** Read the retained frontier of one owned dictation conversation. */
+
+type CaptureReceipt = {
+  kind: "capture";
+  captureId: string;
+  owner: string;
+  draftId: string;
+  device: string;
+  language: string;
+  state: "finished" | "interrupted" | "abandoned";
+};
+
+type SegmentReceipt = {
+  kind: "segment";
+  captureId: string;
+  segmentId: string;
+  ordinal: number;
+  device: string;
+  language: string;
+  state: "final" | "preview";
+  text: string;
+};
+
+type Acknowledgment = {
+  kind: "acknowledgment";
+  captureId: string;
+  draftId: string;
+  throughOrdinal: number;
+  state: "confirmed" | "interrupted";
+};
+
+type DraftReceipt = {
+  kind: "draft";
+  draftId: string;
+  revision: string;
+  state: "editable" | "closed";
+  text: string;
+};
+
+type DictationRecord = CaptureReceipt | SegmentReceipt | Acknowledgment | DraftReceipt;
+
+type DictationRow = { messageId: string; envelopeId: string; seq: number; senderId: string; record: DictationRecord };
+
+type DictationSnapshot = { threadId: string; through: number; rows: DictationRow[] };
+
+/** Read the retained frontier of one owned dictation conversation. */
+export function read(threadId: string): Promise<DictationSnapshot | null>;`,
+  retainedDictationHandoff: `/** Stage a verified local dictation correction or alternative. */
+
+type RetainedTranscript = { text: string; language: string; model: "whistle" };
+
+type DictationReason = "verified" | "verified-prefix" | "wrong-device" | "language-conflict" |
+  "unconfirmed" | "segment-conflict" | "missing-continuation" | "silence" | "revision-conflict" |
+  "draft-closed" | "wrong-scope" | "capture-abandoned";
+
+type DictationSelection = {
+  captureId: string;
+  segmentMessages: string[];
+  draftRevision: string;
+  acknowledgementMessage: string | null;
+  transcript: RetainedTranscript | null;
+  reason: DictationReason;
+};
+
+type DictationPlan = DictationSelection & {
+  threadId: string;
+  through: number;
+  draftId: string;
+  action: "report" | "hold" | "stage-correction" | "stage-alternative";
+  explanation: string;
+};
+
+type DraftReview = { status: "draft" | "silence"; text: string | null };
+
+type DictationArtifact = { path: string; bytes: number; sha256: string };
+
+/** Stage a verified local dictation correction or alternative. */
+export function stage(plan: DictationPlan, review: DraftReview): Promise<DictationArtifact | null>;`,
   dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
 
 type DictationCapture = {

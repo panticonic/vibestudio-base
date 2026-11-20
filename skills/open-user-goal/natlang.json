@@ -5,6 +5,8 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
+    "runUserGoal/workOnDictationHandoffGoal/dictation": "skills/offline-dictation",
     "runUserGoal/workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
     "runUserGoal/workOnProviderHandoffGoal/authority": "skills/capabilities/natlang",
     "runUserGoal/workOnProviderHandoffGoal/conversation": "skills/conversation-evidence-review",

@@ -67,8 +67,9 @@ export type DictationPlan = DictationSelection & {
   explanation: string;
 };
 export type DictationArtifact = { path: string; bytes: number; sha256: string };
+export type DictationDraftWitness = { transcript: RetainedTranscript; presentation: "verbatim"; goal: string; result: DraftReview };
 export type DictationGoalReport = {
   plan: DictationPlan;
-  review: { transcript: RetainedTranscript; presentation: "verbatim"; goal: string; result: DraftReview } | null;
+  review: DictationDraftWitness | null;
   handoff: DictationArtifact | null;
 };
