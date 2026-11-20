@@ -19,6 +19,14 @@ declare module "natlang:services" {
     stage(checkpoints: string[], focus: import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentFocus):
       Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentReceipt | null>;
   };
+  export const assetHistory: {
+    discover(): Promise<import("./types.js").AssetVersion[]>;
+    listFiles(version: string): Promise<import("./types.js").AssetFile[]>;
+    inspect(version: string, fileId: string): Promise<import("./types.js").AssetRead>;
+  };
+  export const assetRecovery: {
+    stage(source: string, working: string, selection: import("./types.js").AssetSelection[]): Promise<import("./types.js").AssetStageResult>;
+  };
   export const tendrilRouteRead: {
     listBoards(): Promise<import("./types.js").TendrilBoardCard[]>;
     readBoard(id: string): Promise<import("./types.js").TendrilRouteSnapshot>;

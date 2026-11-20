@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }
   | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
   | { status: "workspace-skill-reviewed"; skill: "workspaceAssembly"; outcome: unknown }
@@ -165,3 +166,37 @@ export type TendrilRouteOutcome = {
   receipt: TendrilRouteReceipt | null;
   reason: string;
 };
+
+export type AssetVersion = { id: string; edition: "archive" | "approved" | "working"; bundle: string; dossier: string };
+export type AssetManifestRow = { key: string; path: string; digest: string; mode: number; output: string };
+export type AssetManifest = { bundle: string; edition: string; release: "verified" | "review" | "blocked"; assets: AssetManifestRow[] };
+export type AssetFile = { id: string; path: string; digest: string; mode: number; size: number; type: "bytes" | "text" };
+export type AssetRead = AssetFile & { manifest: AssetManifest | null };
+export type AssetVersionRead = {
+  version: AssetVersion;
+  files: AssetFile[];
+  manifest: AssetManifest;
+  inspected: AssetRead[];
+};
+export type AssetDifference = "same" | "moved" | "bytes" | "mode" | "missing" | "replaced" | "manifest";
+export type AssetFinding = {
+  key: string;
+  retained: string | null;
+  working: string | null;
+  differences: AssetDifference[];
+};
+export type AssetSelection = { id: string; digest: string; output: string };
+export type AssetRecoveryReceipt = { directory: string; manifestDigest: string; source: string; files: AssetSelection[] };
+export type AssetStageResult = { status: "staged"; receipt: AssetRecoveryReceipt }
+  | { status: "changed"; working: string }
+  | { status: "held"; reason: string };
+export type AssetIntegrityOutcome = {
+  status: "verified" | "staged" | "held";
+  approved: string;
+  working: string;
+  findings: AssetFinding[];
+  receipt: AssetRecoveryReceipt | null;
+  reason: string;
+};
+export type AssetRecoveryPlan = { status: "copy"; selection: AssetSelection[] }
+  | { status: "verified" | "held"; reason: string };

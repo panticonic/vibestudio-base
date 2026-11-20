@@ -2065,6 +2065,38 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  assetHistory: `/** Read exact owned asset manifests and binary file evidence at historical and working VCS states. */
+
+type AssetVersion = { id: string; edition: "archive" | "approved" | "working"; bundle: string; dossier: string };
+
+type AssetFile = { id: string; path: string; digest: string; mode: number; size: number; type: "bytes" | "text" };
+
+type AssetManifestRow = { key: string; path: string; digest: string; mode: number; output: string };
+
+type AssetManifest = { bundle: string; edition: string; release: "verified" | "review" | "blocked"; assets: AssetManifestRow[] };
+
+type AssetRead = AssetFile & { manifest: AssetManifest | null };
+
+/** Read exact owned asset manifests and binary file evidence at historical and working VCS states. */
+export function discover(): Promise<AssetVersion[]>;
+
+/** Read exact owned asset manifests and binary file evidence at historical and working VCS states. */
+export function listFiles(version: string): Promise<AssetFile[]>;
+
+/** Read exact owned asset manifests and binary file evidence at historical and working VCS states. */
+export function inspect(version: string, fileId: string): Promise<AssetRead>;`,
+  assetRecovery: `/** Copy an exact approved historical asset selection to an independently verified local scratch bundle. */
+
+type AssetSelection = { id: string; digest: string; output: string };
+
+type AssetRecoveryReceipt = { directory: string; manifestDigest: string; source: string; files: AssetSelection[] };
+
+type AssetStageResult = { status: "staged"; receipt: AssetRecoveryReceipt }
+  | { status: "changed"; working: string }
+  | { status: "held"; reason: string };
+
+/** Copy an exact approved historical asset selection to an independently verified local scratch bundle. */
+export function stage(source: string, working: string, selection: AssetSelection[]): Promise<AssetStageResult>;`,
   tendrilRouteRead: `/** Review owned Tendril audiences and project a retained instruction against current registered page capabilities. */
 
 type TendrilBoardCard = { id: string; title: string; room: string; audience: string; edition: "current" | "retired" | "draft" };

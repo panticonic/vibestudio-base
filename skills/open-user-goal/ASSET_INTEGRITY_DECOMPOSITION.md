@@ -1,0 +1,11 @@
+# Recover exact assets from retained workspace history
+
+| Stage | Form | Reason |
+| --- | --- | --- |
+| Discover the retained manifests, committed states and current working state | Typed Natlang source discovery over exact VCS projections | Match the user's bundle, edition, approval scope and requested destinations to the actual retained records. |
+| Join assets across versions and assess each discrepancy | Typed Natlang inspectAsset and nested comparison | Paths and display names are ambiguous after moves or replacements. Compare stable file identity, exact bytes and mode independently. A checksum match alone establishes neither lineage nor permission. |
+| Decide what to hold, keep, or copy to private scratch | Typed Natlang recovery planning and reporting | Authority, all-or-nothing versus authorized subset, intended edition and concurrent work affect the valid next action. No operation can restore into the live workspace. |
+| Preserve the approved bytes and verify the private package | Exact VCS and scratch IO | Before any copy read the immutable source again and check the current working basis. Stage under owned scratch, verify the complete bytes and manifest, and publish the directory locally by a rename. Independently inspect the local readback. |
+| Join the artifact and policy to captured effects | Host exact value-reference verification | Verify performed catalogue, provenance and copy operations and preserve immutable event, stable file identity, digest, role and local receipt. |
+
+Mechanism inventory: native VCS status identifies current protected main and owned working/committed states. VCS edit, commit and move create fixture evidence through public semantic commands. VCS resolveRepository, listFiles and readFile back both panels and tools and already preserve stable identity, typed text/binary content, declared hashes and mode. The source gate uses the production SemanticWorkspace SQL engine and its existing test host to process content reads and writes. Production scratch RPCs write Uint8Array and read the complete bounded byte range. The installed VCS delivery skill checks delivery and ancestry and remains unchanged. This workflow concerns local recovery copies and does not use Git Bridge, publishing, worker reset, or remote backups.

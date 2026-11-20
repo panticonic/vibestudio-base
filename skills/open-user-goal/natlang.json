@@ -70,6 +70,12 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "assetHistory": [
+      "runUserGoal/reviewAssetIntegrity/discoverVersions.nl",
+      "runUserGoal/reviewAssetIntegrity/readVersion/listFiles.nl",
+      "runUserGoal/reviewAssetIntegrity/readVersion/inspectFile.nl"
+    ],
+    "assetRecovery": ["runUserGoal/reviewAssetIntegrity/stageRecovery.nl"],
     "tendrilRouteRead": [
       "runUserGoal/reviewTendrilRoute/identifyTendril/listBoards.nl",
       "runUserGoal/reviewTendrilRoute/identifyTendril/readBoard.nl",
