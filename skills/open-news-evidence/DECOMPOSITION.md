@@ -17,3 +17,12 @@ The managed fixture uses owned native PubSub, blobstore and scratch. Article,
 archive, and owner records are invented, using the production feed ID and
 reader wire formats. No public sites, live News database, automation run,
 or teacher is contacted by the standalone reference.
+
+## Installed capability coverage
+
+| Installed capability | Open selectors by suffix | Exact independent checks |
+| --- | --- | --- |
+| `packages/feeds` canonical ID and attributed reader readback; `reviewers/readReader` | `news-evidence-canonical-tracking-inflation`, `news-evidence-triage-independent-saved`, `news-evidence-held-edition-unobserved` | Both requested views, canonical URL and article IDs, loaded page and archive edition IDs, owned context and exact topic. |
+| `reviewers/reviewSchedule` and its owner-lane selection | `news-evidence-archive-after-pause`, `news-evidence-analyst-lane-scope`, `news-evidence-timezone-copied-slot`, `news-evidence-cadence-updated-separately` | Curator or analyst lane, current pause, exact timetable timezone, current poll interval, unchanged workspace state. |
+| `reviewNews/synthesizeBriefing` and its phase, primary-read and continuity children | `news-evidence-canceled-card-latest`, `news-evidence-missing-primary-bytes`, `news-evidence-conserved-archival-claim`, `news-evidence-held-staged-owner-follow-up` | Distinct original bytes and digests, exact new or previous claim and source receipt, latest edition phase and prior archive identity. |
+| Owned PubSub source boundary and scratch handoff | `news-evidence-foreign-similar-outlet`, `news-evidence-held-protected-retarget`, `news-evidence-held-late-reader-revocation` | Match assigned reader and frontier, reject foreign topic and context before source readback, and sign only the private authorized note. The shared scratch listing preserves authorization failures. |

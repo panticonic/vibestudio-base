@@ -1359,6 +1359,120 @@ type WelcomeHandoff = { path: string; bytes: number; sha256: string };
 
 /** Stage the exact authorized Personal next-step note. */
 export function stage(plan: WelcomePlan, reviews: WelcomeReviews): Promise<WelcomeHandoff | null>;`,
+  newsEvidenceIndex: `/** List the assigned News reader and retained topic inventory. */
+
+type CadenceIntent = {kind:"manual"|"resume"|"pause"}|{kind:"poll"|"interval";intervalMs:number}|{kind:"daily";at:string;timezone:string};
+
+type ArticleEvidence = {id:string;articleId:string;url:string;type:"primary"|"syndication"|"secondary"|"listing";read:boolean;supports:string[]};
+
+type BriefingEvidence = {kind:"briefing";goal:string;briefingId:string;phase:"collecting"|"summarizing"|"ready"|"error";
+  declaredSourcesRead:number;sources:ArticleEvidence[];claims:{id:string;text:string}[];previousClaimIds:string[];mutedArticleIds:string[];
+  focus:"publication"|"credibility"|"continuity"|"digest"};
+
+type NewsScope = {contextId:string;channelId:string;reader:string;generation:string;requestedReader:string;mayStage:boolean;
+  desk:string;cadenceIntent:CadenceIntent;focus:BriefingEvidence["focus"]};
+
+type NewsEvidenceIndex = {scope:NewsScope;topics:{id:string;title:string}[]};
+
+/** List the assigned News reader and retained topic inventory. */
+export function list(): Promise<NewsEvidenceIndex>;`,
+  newsEvidenceJournal: `/** Read an exact owned News evidence frontier. */
+
+type ReaderSelection = {kind:"inbox"|"saved"|"backlog"} | {kind:"archive";query:string};
+
+type ReaderPage = {id:string;requestedCursor:string|null;nextCursor:string|null;hasMore:boolean;articleIds:string[];briefingIds?:string[]};
+
+type ReaderEvidence = {kind:"reader";goal:string;view:ReaderSelection["kind"];
+  overview:{id:string;setup:"needs-user-preferences"|"configured";articleCount:number;untriagedCount:number;enabledFeeds:number;failedFeeds:number};
+  activity:"idle"|"loading"|"retryable-error";pages:ReaderPage[]};
+
+type ReaderState = {kind:"reader-state";contextId:string;reader:string;generation:string;allowed:boolean;
+  setup:ReaderEvidence["overview"]["setup"];enabledFeeds:number;failedFeeds:number};
+
+type ArticleEvidence = {id:string;articleId:string;url:string;type:"primary"|"syndication"|"secondary"|"listing";read:boolean;supports:string[]};
+
+type SourceRecord = {kind:"article";topic:string;id:string;articleId:string;url:string;title:string;source:string;
+  type:ArticleEvidence["type"];supports:string[];digest:string;muted:boolean;saved:boolean;backlog:boolean;contextId:string;reader:string};
+
+type BriefingEvidence = {kind:"briefing";goal:string;briefingId:string;phase:"collecting"|"summarizing"|"ready"|"error";
+  declaredSourcesRead:number;sources:ArticleEvidence[];claims:{id:string;text:string}[];previousClaimIds:string[];mutedArticleIds:string[];
+  focus:"publication"|"credibility"|"continuity"|"digest"};
+
+type Edition = {kind:"edition";topic:string;id:string;declaredSourcesRead:number;phase:BriefingEvidence["phase"];
+  claims:BriefingEvidence["claims"];previousClaimIds:string[]};
+
+type Cadence = {owner:{id:string;mode:"curator"|"analyst";paused:boolean};poll:{id:string;intervalMs:number}|null;
+  briefing:{id:string;kind:"interval"|"daily";intervalMs:number|null;at:string|null;timezone:string|null}|null};
+
+type NewsRecord = ReaderState|SourceRecord|Edition|{kind:"cadence";current:Cadence};
+
+type NewsEvidenceRow = {messageId:string;envelopeId:string;seq:number;record:NewsRecord};
+
+type NewsEvidenceSnapshot = {channelId:string;through:number;rows:NewsEvidenceRow[]};
+
+/** Read an exact owned News evidence frontier. */
+export function read(channelId:string): Promise<NewsEvidenceSnapshot|null>;`,
+  newsEvidenceReader: `/** Read one attributed archive or reader window. */
+
+type ReaderSelection = {kind:"inbox"|"saved"|"backlog"} | {kind:"archive";query:string};
+
+type ReaderPage = {id:string;requestedCursor:string|null;nextCursor:string|null;hasMore:boolean;articleIds:string[];briefingIds?:string[]};
+
+type ReaderEvidence = {kind:"reader";goal:string;view:ReaderSelection["kind"];
+  overview:{id:string;setup:"needs-user-preferences"|"configured";articleCount:number;untriagedCount:number;enabledFeeds:number;failedFeeds:number};
+  activity:"idle"|"loading"|"retryable-error";pages:ReaderPage[]};
+
+/** Read one attributed archive or reader window. */
+export function read(channelId:string,selection:ReaderSelection): Promise<ReaderEvidence|null>;`,
+  newsEvidenceSource: `/** Read exact original article bytes for one scoped retained receipt. */
+
+type SourceReadback = {message:string;articleId:string;url:string;digest:string;bytes:number;text:string};
+
+/** Read exact original article bytes for one scoped retained receipt. */
+export function read(channelId:string,message:string): Promise<SourceReadback|null>;`,
+  newsEvidenceHandoff: `/** Stage the checked private News evidence note. */
+
+type NewsEvidencePlan = {channelId:string;through:number;readerMessage:string|null;topic:string;reason:string;
+  action:"report"|"hold"|"stage";explanation:string};
+
+type ReaderSelection = {kind:"inbox"|"saved"|"backlog"} | {kind:"archive";query:string};
+
+type ReaderPage = {id:string;requestedCursor:string|null;nextCursor:string|null;hasMore:boolean;articleIds:string[];briefingIds?:string[]};
+
+type ReaderEvidence = {kind:"reader";goal:string;view:ReaderSelection["kind"];
+  overview:{id:string;setup:"needs-user-preferences"|"configured";articleCount:number;untriagedCount:number;enabledFeeds:number;failedFeeds:number};
+  activity:"idle"|"loading"|"retryable-error";pages:ReaderPage[]};
+
+type Review = {status:"ready"|"attention"|"waiting"|"blocked";findings:{code:string;evidenceIds:string[]}[]};
+
+type ReaderWitness = {selection:ReaderSelection;input:ReaderEvidence;result:Review};
+
+type Cadence = {owner:{id:string;mode:"curator"|"analyst";paused:boolean};poll:{id:string;intervalMs:number}|null;
+  briefing:{id:string;kind:"interval"|"daily";intervalMs:number|null;at:string|null;timezone:string|null}|null};
+
+type CadenceIntent = {kind:"manual"|"resume"|"pause"}|{kind:"poll"|"interval";intervalMs:number}|{kind:"daily";at:string;timezone:string};
+
+type ScheduleEvidence = Cadence & {kind:"schedule";goal:string;intent:CadenceIntent};
+
+type ScheduleWitness = {input:ScheduleEvidence;result:Review};
+
+type ArticleEvidence = {id:string;articleId:string;url:string;type:"primary"|"syndication"|"secondary"|"listing";read:boolean;supports:string[]};
+
+type BriefingEvidence = {kind:"briefing";goal:string;briefingId:string;phase:"collecting"|"summarizing"|"ready"|"error";
+  declaredSourcesRead:number;sources:ArticleEvidence[];claims:{id:string;text:string}[];previousClaimIds:string[];mutedArticleIds:string[];
+  focus:"publication"|"credibility"|"continuity"|"digest"};
+
+type BriefingWitness = {input:BriefingEvidence;result:Review};
+
+type SourceReadback = {message:string;articleId:string;url:string;digest:string;bytes:number;text:string};
+
+type NewsEvidenceArtifact = {path:string;sha256:string;bytes:number};
+
+type NewsEvidenceReport = {plan:NewsEvidencePlan;readers:ReaderWitness[];schedule:ScheduleWitness;briefing:BriefingWitness|null;
+  sources:SourceReadback[];handoff:NewsEvidenceArtifact|null};
+
+/** Stage the checked private News evidence note. */
+export function stage(report:NewsEvidenceReport): Promise<NewsEvidenceArtifact|null>;`,
   dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
 
 type DictationCapture = {

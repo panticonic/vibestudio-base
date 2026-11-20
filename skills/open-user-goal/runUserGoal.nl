@@ -43,6 +43,8 @@ For the retained Personal first-run welcome, current device, remote, local infer
 
 For checking a retained provider approval and its original conversation result together, including a scoped local handoff of that evidence, call workOnProviderHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "providerHandoff", and its actual outcome.
 
+For a News goal requiring cross-checks among retained archive or reader windows, exact original article evidence, the current scheduling lane and a private editorial handoff, call workOnNewsEvidenceGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "newsEvidence", and its actual outcome.
+
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
 - For comparing an extension release candidate and the protected or deployed package, changes in extension approval or permissions, or an extension rollback evidence dossier, call reviewExtensionDossier with the unchanged goal. Return status "workspace-skill-reviewed", skill "extensionDossier", and the actual outcome.
