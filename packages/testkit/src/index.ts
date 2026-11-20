@@ -85,3 +85,5 @@ export type {
   HostSpanProfile,
   HostSpanSummary,
 } from "./performance.js";
+
+export { observeBuildProfile } from "./build-profile-observation.js";
