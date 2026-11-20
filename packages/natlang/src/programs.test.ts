@@ -448,8 +448,12 @@ it("compiles the open goal program with its installed research skill and scoped 
     recoveryHandoff: ["runUserGoal/recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
     testSuitePlanRead: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     testSuiteVerificationRun: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
+    publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],
+    websiteReadback: ["runUserGoal/publication/preflightPublication.nl"],
     web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
   });
+  expect(result.functions.some(fn => fn.source === "runUserGoal/publication/workTowardPublicationGoal.nl")).toBe(true);
 });
 
 it.each([

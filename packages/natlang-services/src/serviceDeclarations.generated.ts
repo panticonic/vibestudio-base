@@ -890,6 +890,55 @@ export function inspect(): Promise<BrowserView>;
 
 /** Inspect a live workspace panel and activate a visible control against its observed revision. */
 export function activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;`,
+  publicationGoal: `/** Discover the current website review destinations and bind review work to an observed source revision. */
+
+type PublishEnvironment = "preview" | "production";
+
+type PublishIntent = {
+  provider: string;
+  destination: string;
+  environment: PublishEnvironment;
+};
+
+type PublicationGoalTarget = {
+  id: string;
+  name: string;
+  intent: PublishIntent;
+  audience: string;
+  hasRetainedReview: boolean;
+};
+
+type PublicationGoalObservation = {
+  site: string;
+  revision: string;
+  targets: PublicationGoalTarget[];
+};
+
+type PublicationGoalChoice = {
+  targetId: string;
+  preflight: "prepare" | "check-existing" | null;
+  compareRevision: boolean;
+};
+
+type PublishPreflightRequest = {
+  goal: string;
+  action: "prepare" | "check-existing";
+  audience: string;
+  intendedDestination: PublishIntent;
+};
+
+type PublicationRevisionRequest = { goal: string; operationId: string };
+
+type PublicationGoalBinding = {
+  preflight: PublishPreflightRequest | null;
+  revision: PublicationRevisionRequest | null;
+};
+
+/** Discover the current website review destinations and bind review work to an observed source revision. */
+export function discover(): Promise<PublicationGoalObservation>;
+
+/** Discover the current website review destinations and bind review work to an observed source revision. */
+export function bind(revision: string, choice: PublicationGoalChoice): Promise<PublicationGoalBinding | null>;`,
   goalSuite: `/** Discover declared test routes and bind a requested suite operation to the current workspace. */
 
 type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };

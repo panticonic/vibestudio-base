@@ -12,7 +12,8 @@
     "runUserGoal/google": "skills/google-drive/driveWorkflow",
     "runUserGoal/personal": "skills/open-personal-goal/program",
     "runUserGoal/operator": "skills/open-system-operations",
-    "runUserGoal/recovery": "skills/open-session-recovery/program"
+    "runUserGoal/recovery": "skills/open-session-recovery/program",
+    "runUserGoal/publication": "skills/publish-preflight"
   },
   "serviceScopes": {
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
