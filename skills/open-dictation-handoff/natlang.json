@@ -1,0 +1,12 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-dictation-handoff",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "discoverDictationThreads.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "retainedDictationIndex": ["discoverDictationThreads.nl"],
+    "retainedDictationState": ["readDictationThread.nl"],
+    "retainedDictationHandoff": ["stageDictationCorrection.nl"]
+  }
+}
