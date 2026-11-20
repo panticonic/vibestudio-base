@@ -13,3 +13,5 @@ export type LocalReconciliationGoalReport = {
     relation: "matches" | "changed";
   } | null;
 };
+
+export * from "./workOnCapabilityGoal/workspace/types.js";

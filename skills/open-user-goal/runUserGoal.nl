@@ -13,6 +13,8 @@ If the user asks to revise a workspace document, call reviseWorkspaceDocument. P
 
 When client diagnostics are available, for a diagnosis that compares clients or joins an owned renderer to durable GAD conversation evidence, call clients.workOnClientDiagnostics with the unchanged goal and return skill "clientDiagnostics" and the actual outcome.
 
+When the user asks for a read-only capability plan, exact callable signatures, or installed skill provenance, call workOnCapabilityGoal with the unchanged goal. An explicitly authorized scratch plan remains this route. Return status "workspace-skill-reviewed", skill "capabilityPlan", and its actual outcome.
+
 For panel health, an interrupted visual surface, or a request to restore a specific owned renderer, use visualRecovery.recoverPanelGoal when its panel recovery capability is available. Pass the unchanged goal and return its actual outcome with status "workspace-skill-reviewed" and skill "visualRecovery".
 
 For owned browser migration, retained import evidence, or a handoff that depends on imported bookmarks, use browserMigration.workOnBrowserMigrationGoal when its scoped capability is available. Return its actual result with status "workspace-skill-reviewed" and skill "browserMigration".
