@@ -3,5 +3,8 @@
   "name": "vibestudio-device-and-terminal-review",
   "version": "0.1.0",
   "serviceBinding": "explicit",
-  "targets": { "main": { "entry": "reviewDeviceAndTerminal.nl" } }
+  "targets": { "main": { "entry": "reviewDeviceAndTerminal.nl" } },
+  "serviceScopes": {
+    "terminalEvidenceRead": ["reviewDeviceAndTerminal/reviewLiveTerminal/readTerminalEvidence.nl"]
+  }
 }

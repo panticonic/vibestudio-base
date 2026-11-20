@@ -10,3 +10,8 @@ This workflow interprets receipts already available to an authorized Vibestudio 
 | Terminal apps | Match the selected workspace, manifest source, principal and session, then diagnose PTY continuity, state recovery or app-owned approval. | Use the terminal app session list, launch/resume result, durable state revisions and attributed host approval observations. |
 
 Fixture records adapt the underlying schema into these smaller observations. They preserve identities used for scope checks and omit credentials and app connection material. The independent verifier checks expected findings and ordered evidence. Natlang owns the interpretations.
+
+For a retained terminal operation, `reviewLiveTerminal` reads one scoped
+receipt and delegates to `reviewTerminal`. The binding preserves the result's
+origin even when it differs from the assigned operation. It projects flags
+and exit status without supplying command text or output to the reviewer.

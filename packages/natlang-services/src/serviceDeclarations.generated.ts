@@ -238,6 +238,38 @@ type LiveExtensionDesignEvidence = {
 
 /** Validate the assigned working and protected-main extension manifests. */
 export function inspect(operationId: string): Promise<LiveExtensionDesignEvidence>;`,
+  terminalEvidenceRead: `/** Read the assigned terminal invocation and bounded result metadata. */
+
+type TerminalOperationEvidence = {
+  kind: "terminal";
+  goal: string;
+  target: {
+    id: string;
+    contextId: string;
+    operationId: string;
+    purpose: "filesystem" | "ordinary-process" | "shell-composition";
+  };
+  invocation: {
+    id: string;
+    contextId: string;
+    operationId: string;
+    mode: "filesystem" | "argv" | "shell";
+    admission: "pending" | "denied" | "admitted";
+  } | null;
+  result: {
+    id: string;
+    contextId: string;
+    operationId: string;
+    exitCode: number | null;
+    timedOut: boolean;
+    truncated: boolean;
+    hasStdout: boolean;
+    hasStderr: boolean;
+  } | null;
+};
+
+/** Read the assigned terminal invocation and bounded result metadata. */
+export function inspect(operationId: string): Promise<TerminalOperationEvidence>;`,
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
 
 /** Resolve the native GitHub setup route from the observed connection stage. */

@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { "./workflow": "./workflow.ts" },
+  "exports": { "./workflow": "./workflow.ts", "./receipt-review": "./receipt-review.ts" },
   "dependencies": { "@workspace/runtime": "workspace:*" }
 }

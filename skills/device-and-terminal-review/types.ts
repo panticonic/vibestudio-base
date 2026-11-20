@@ -169,4 +169,5 @@ export type DeviceTerminalRequest =
   | PhoneSetupEvidence
   | TendrilEvidence
   | TerminalOperationEvidence
+  | { kind: "terminal-receipt"; goal: string; operationId: string }
   | TerminalAppEvidence;

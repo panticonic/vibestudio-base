@@ -53,6 +53,11 @@ it timed out or was truncated.
 
 ## Assigned Natlang terminal checks
 
+To interpret an existing receipt, bind the assigned invocation and retained
+result with `@workspace-skills/terminal/receipt-review` and submit the returned
+request to `deviceAndTerminal/reviewDeviceAndTerminal`. The workflow checks
+provenance before reporting the exit and output boundary.
+
 Use `bindTerminalChecks` from `@workspace-skills/terminal/workflow` to supply
 the current workspace context with a goal and a bounded list of caller-approved
 command intents. Pass the binding's request to the shared program's

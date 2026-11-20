@@ -67,6 +67,7 @@ const authoredServices = [
   authoredService("repositoryOwnerRead", "Resolve the assigned GitHub onboarding route without executing it.", "personal", "personal-workflows", [{ name: "resolve", params: ["operationId", "action"] }]),
   authoredService("missionFacilityRead", "Read one assigned Mission Control card, project and its prerequisites.", "personal", "personal-facility-review", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("extensionDesignRead", "Validate the assigned working and protected-main extension manifests.", "base", "workspace-unit-design", [{ name: "inspect", params: ["operationId"] }]),
+  authoredService("terminalEvidenceRead", "Read the assigned terminal invocation and bounded result metadata.", "base", "device-and-terminal-review", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("githubSetupRoute", "Resolve the native GitHub setup route from the observed connection stage.", "personal", "github/natlang", [{ name: "resolve", params: ["operationId", "accessLevel"] }]),
   authoredService("templateAuthoringRead", "Inspect the caller-assigned protected-main template authoring plan.", "base", "templates", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("automationPlanning", "Read the assigned roster of automation definitions and latest run records.", "base", "automations", [{ name: "inspect", params: ["operationId"] }]),
