@@ -270,6 +270,10 @@ type TerminalOperationEvidence = {
 
 /** Read the assigned terminal invocation and bounded result metadata. */
 export function inspect(operationId: string): Promise<TerminalOperationEvidence>;`,
+  githubDiagnosisRead: `/** Check the assigned GitHub remote syntax or local credential preflight. */
+
+/** Check the assigned GitHub remote syntax or local credential preflight. */
+export function inspect(operationId: string): Promise<GitHubDiagnosisObservation>;`,
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
 
 /** Resolve the native GitHub setup route from the observed connection stage. */

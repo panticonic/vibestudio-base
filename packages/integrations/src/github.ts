@@ -275,15 +275,22 @@ export function validateGitHubPublishCredential(
   }
 }
 
-export async function resolveGitHubPublishOperation(
-  credentials: CredentialClient,
-  opts: {
-    credentialId?: string;
-    organization?: string;
-    owner?: string;
-    publication?: "repository" | "pages" | "existing-repository";
-  } = {},
-): Promise<GitHubPublishOperationResolution> {
+type GitHubPublishOptions = {
+  credentialId?: string;
+  organization?: string;
+  owner?: string;
+  publication?: "repository" | "pages" | "existing-repository";
+};
+
+export class GitHubCredentialsUnavailableError extends Error {
+  override readonly name = "GitHubCredentialsUnavailableError";
+}
+
+/** Check credential selection, local bindings, permissions and owner without a GitHub request. */
+export async function preflightGitHubPublishCredential(
+  credentials: Pick<CredentialClient, "listStoredCredentials">,
+  opts: GitHubPublishOptions = {},
+) {
   if (opts.organization && opts.owner) {
     throw new Error("Choose one explicit GitHub owner field");
   }
@@ -301,6 +308,10 @@ export async function resolveGitHubPublishOperation(
       ? activeCandidates[0]
       : undefined;
   if (!credential) {
+    if (!opts.credentialId && activeCandidates.length === 0)
+      throw new GitHubCredentialsUnavailableError(
+        `No active GitHub credential is available. Connect GitHub with ${opts.publication === "pages" ? "Publish websites" : "Publish repositories"} access.`,
+      );
     const available = activeCandidates
       .map((candidate) => `${candidate.label} (${candidate.id})`)
       .join(", ");
@@ -308,10 +319,8 @@ export async function resolveGitHubPublishOperation(
       opts.credentialId
         ? `GitHub credential "${opts.credentialId}" was not found. ` +
             "Reconnect GitHub or choose one of the connected GitHub credentials."
-        : activeCandidates.length > 1
-          ? `Multiple active GitHub credentials are available (${available}). ` +
-            "Pass credentialId explicitly; Vibestudio will not guess."
-          : `No active GitHub credential is available. Connect GitHub with ${opts.publication === "pages" ? "Publish websites" : "Publish repositories"} access.`,
+        : `Multiple active GitHub credentials are available (${available}). ` +
+          "Pass credentialId explicitly; Vibestudio will not guess.",
     );
   }
   validateGitHubPublishCredential(credential, opts.publication);
@@ -323,6 +332,15 @@ export async function resolveGitHubPublishOperation(
         "Use the matching owner or reconnect with a token targeted to it.",
     );
   }
+  return { credential, requestedOwner, targetName };
+}
+
+export async function resolveGitHubPublishOperation(
+  credentials: CredentialClient,
+  opts: GitHubPublishOptions = {},
+): Promise<GitHubPublishOperationResolution> {
+  const { credential, requestedOwner, targetName } =
+    await preflightGitHubPublishCredential(credentials, opts);
   const github = createGitHubClient(credentials, {
     credentialId: credential.id,
   });
