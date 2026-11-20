@@ -788,6 +788,34 @@ describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
   });
 });
 
+it("keeps the retired legacy replay bound to its installed receipt across restart", async () => {
+  const first = await createTestDO(GadWorkspaceDO);
+  const freeze = { expectedMainEventId: "event:main", operationId: "workspace-participant-history-v1" };
+  const generation = "651b30c5-20f1-42b8-8b31-df2de5b13aed";
+  const receiptDigest = "a".repeat(64);
+  first.sql.exec("INSERT INTO state (key, value) VALUES (?, ?), (?, ?)",
+    "legacy-history-replay-freeze", JSON.stringify(freeze),
+    "legacy-history-replay-generation", generation,
+  );
+  expect(first.instance.readHistoryReplayFreeze()).toEqual(freeze);
+  expect(first.instance.readHistoryReplayFreeze({ receiptDigest })).toEqual({
+    ...freeze, verification: { generation, sealed: false },
+  });
+  expect(() => first.instance.sealHistoryReplayFreeze({ freeze, generation: "replaced", receiptDigest }))
+    .toThrow("Cannot retire a different legacy history freeze");
+  first.instance.sealHistoryReplayFreeze({ freeze, generation, receiptDigest });
+
+  const { instance } = await createTestDO(GadWorkspaceDO, undefined, { db: first.db });
+  expect(instance.readHistoryReplayFreeze()).toEqual(freeze);
+  expect(instance.readHistoryReplayFreeze({ receiptDigest })).toEqual({
+    ...freeze, verification: { generation, sealed: true },
+  });
+  expect(() => instance.sealHistoryReplayFreeze({ freeze, generation, receiptDigest })).not.toThrow();
+  expect(() => instance.readHistoryReplayFreeze({ receiptDigest: "b".repeat(64) }))
+    .toThrow("Installed history does not match the retired legacy source");
+  expect(() => instance.releaseHistoryReplayFreeze(freeze)).toThrow("Legacy workspace history has been retired");
+});
+
 describe("appendLogEvent core (§3.2)", () => {
   it("owns one immutable publication intent per canonical destination and rejects conflicting audiences before commit", async () => {
     const { call, sql } = await createTestDO(GadWorkspaceDO);

@@ -1367,6 +1367,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       throw new Error("Workspace history replay requires an operation identity");
     const marker = canonicalJson(input);
     const prior = this.getStateValue("legacy-history-replay-freeze");
+    if (prior === null && this.getStateValue("legacy-history-replay-seal") !== null)
+      throw new Error("Retired legacy workspace history is missing its original freeze");
     if (prior !== null && prior !== marker) throw new Error("Workspace history has a different frozen replay");
     const plan = this.exportHistoryReplayPlan();
     if (plan.main?.kind !== "event" || plan.main.eventId !== input.expectedMainEventId)
@@ -1396,6 +1398,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
   })
   releaseHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }): void {
     this.ensureReady();
+    if (this.getStateValue("legacy-history-replay-seal") !== null)
+      throw new Error("Legacy workspace history has been retired");
     const frozen = this.getStateValue("legacy-history-replay-freeze");
     if (frozen === null) return;
     if (frozen !== canonicalJson(input)) throw new Error("Workspace history has a different frozen replay");
@@ -1410,13 +1414,50 @@ export class GadWorkspaceDO extends DurableObjectBase {
     website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
     effect: { kind: "open" }, tier: "open", sensitivity: "read",
   })
-  readHistoryReplayFreeze(): { operationId: string; expectedMainEventId: string } | null {
+  readHistoryReplayFreeze(verify?: { receiptDigest: string }): (
+    { operationId: string; expectedMainEventId: string; verification?: { generation: string; sealed: boolean } }
+  ) | null {
     this.ensureReady();
     const stored = this.getStateValue("legacy-history-replay-freeze");
-    return stored === null ? null : JSON.parse(stored);
+    const sealed = this.getStateValue("legacy-history-replay-seal");
+    if (stored === null) {
+      if (sealed !== null) throw new Error("Retired legacy workspace history is missing its original freeze");
+      return null;
+    }
+    const freeze = JSON.parse(stored) as { operationId: string; expectedMainEventId: string };
+    if (!verify) return freeze;
+    const generation = this.getStateValue("legacy-history-replay-generation");
+    if (!generation) throw new Error("Legacy workspace history freeze has no generation");
+    if (sealed !== null && sealed !== canonicalJson({ generation, receiptDigest: verify.receiptDigest }))
+      throw new Error("Installed history does not match the retired legacy source");
+    return { ...freeze, verification: { generation, sealed: sealed !== null } };
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  sealHistoryReplayFreeze(input: {
+    freeze: { operationId: string; expectedMainEventId: string };
+    generation: string;
+    receiptDigest: string;
+  }): void {
+    this.ensureReady();
+    if (!/^[0-9a-f]{64}$/u.test(input.receiptDigest) ||
+        this.getStateValue("legacy-history-replay-freeze") !== canonicalJson(input.freeze) ||
+        this.getStateValue("legacy-history-replay-generation") !== input.generation)
+      throw new Error("Cannot retire a different legacy history freeze");
+    const seal = canonicalJson({ generation: input.generation, receiptDigest: input.receiptDigest });
+    const previous = this.getStateValue("legacy-history-replay-seal");
+    if (previous !== null && previous !== seal)
+      throw new Error("Legacy workspace history was retired for a different receipt");
+    if (previous === null) this.setStateValue("legacy-history-replay-seal", seal);
   }
 
   #requireLegacyHistoryAvailable(): void {
+    if (this.getStateValue("legacy-history-replay-seal") !== null)
+      throw new Error("Legacy workspace history has been retired");
     if (this.getStateValue("legacy-history-replay-freeze") !== null)
       throw new Error("Legacy workspace history is frozen for migration");
   }
