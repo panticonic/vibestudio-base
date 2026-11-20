@@ -1643,7 +1643,8 @@ type SetupCheckpoint = {
   phase: SetupPhase;
   coverage: "none" | "gmail" | "drive" | "workspace";
   durable: boolean;
-  warning: "declined" | "revoked" | "unavailable" | "session-only" | null;
+  /** An explicit no-warning value survives the panel's JSON merge-patch semantics. */
+  warning: "declined" | "revoked" | "unavailable" | "session-only" | "none";
 };
 
 type SetupScope = "gmail" | "workspace";
