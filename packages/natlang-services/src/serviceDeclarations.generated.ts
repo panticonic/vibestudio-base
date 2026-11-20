@@ -235,6 +235,12 @@ type ComposeHistoryReceipt = {
 
 /** Read native channel history for one assigned Gmail compose card. */
 export function read(operationId: string): Promise<ComposeHistoryReceipt>;`,
+  gmailContinuationRead: `/** Read the assigned Gmail launch control after observing Google setup. */
+
+type GmailLaunchEvidence = { evidenceId: string; enabled: boolean };
+
+/** Read the assigned Gmail launch control after observing Google setup. */
+export function launchEvidence(): Promise<GmailLaunchEvidence>;`,
   explorerTextProbe: `/** Plan and run an assigned workspace text probe. */
 
 type TextProbeInput = {
