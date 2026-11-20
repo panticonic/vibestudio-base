@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
 import { createNatlangRuntime, workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import {
@@ -418,4 +419,28 @@ it("refuses a mounted package with an unscoped service or overlapping ownership"
     platform: platform(), fs, bindings: {}, runTask: (run) => run(),
   });
   await expect(loader.describe("skills/hub/brief.nl")).rejects.toThrow("Scope service panelRepairEdit");
+});
+
+it("compiles the open goal program with its installed research skill and scoped services", async () => {
+  const root = new URL("../../../", import.meta.url);
+  const fs: WorkspaceFs = {
+    async readdir(path) {
+      return readdir(new URL(path + "/", root), { withFileTypes: true });
+    },
+    async readFile(path) {
+      return readFile(new URL(path, root), "utf8");
+    },
+    async stat(path) {
+      return { isDirectory: () => !/\.[a-z]+$/u.test(path) };
+    },
+  };
+  const loader = new ProgramLoader({
+    platform: platform(), fs, bindings: {}, runTask: (run) => run(),
+  });
+  const result = await loader.describe("skills/open-user-goal/runUserGoal.nl");
+  expect(result.serviceScopes).toEqual({
+    goalDiscovery: ["runUserGoal/investigatePublicQuestion.nl"],
+    goalWorkspace: ["runUserGoal/reviseWorkspaceDocument.nl"],
+    web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
+  });
 });

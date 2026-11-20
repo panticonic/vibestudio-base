@@ -1,0 +1,14 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-user-goal",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "runUserGoal.nl" } },
+  "serviceBinding": "explicit",
+  "workspaceModules": {
+    "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research"
+  },
+  "serviceScopes": {
+    "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
+    "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"]
+  }
+}
