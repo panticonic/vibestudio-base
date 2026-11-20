@@ -1648,12 +1648,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  vcsContentGcRoots(): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().contentGcRoots();
-  }
-
-  @schemaRpc()
   vcsReferencesReachable(input: {
     contextIds: string[];
     references: Array<{ kind: string; value: unknown }>;
