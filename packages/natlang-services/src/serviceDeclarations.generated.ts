@@ -985,6 +985,37 @@ type GardenObservations = {
 
 /** Observe the assigned garden and its live state. */
 export function observe(): Promise<GardenObservations>;`,
+  adventureRead: `/** Read the assigned Adventure opening and saved artwork. */
+
+type AdventureObject = {
+  id: string;
+  location: string | null;
+  kind: string;
+  open: boolean | null;
+  sealed: boolean | null;
+  locked: boolean | null;
+};
+
+type AdventureView = {
+  id: string;
+  place: string;
+  tick: number;
+  entities: AdventureObject[];
+  inventory: string[];
+  exits: string[];
+  signature: string;
+};
+
+type ExistingArt = { id: string; place: string; signature: string };
+
+type AdventureObservations = {
+  before: AdventureView;
+  current: AdventureView;
+  artwork: ExistingArt | null;
+};
+
+/** Read the assigned Adventure opening and saved artwork. */
+export function observe(): Promise<AdventureObservations>;`,
   googleSetupPanel: `/** Read the assigned Google setup journey. */
 
 type GoogleSetupCheck =

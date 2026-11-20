@@ -98,6 +98,7 @@ const authoredServices = [
   authoredService("tendrilPage", "Observe or operate the assigned Tendril page.", "base", "tendrils/workflow", [{ name: "inspect", params: [] }, { name: "write", params: ["field"] }, { name: "invoke", params: ["name"] }]),
   authoredService("tendrilBuild", "Update or restore the assigned Tendril build.", "base", "tendrils/workflow", [{ name: "update", params: ["candidate"] }, { name: "back", params: [] }]),
   authoredService("gardenRead", "Observe the assigned garden and its live state.", "examples", "examples-review", [{ name: "observe", params: [] }]),
+  authoredService("adventureRead", "Read the assigned Adventure opening and saved artwork.", "examples", "examples-review", [{ name: "observe", params: [] }]),
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
   authoredService("browserLibraryState", "Read the assigned browser library.", "personal", "browser-library", [{ name: "observe", params: [] }]),
