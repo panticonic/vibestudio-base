@@ -879,6 +879,17 @@ export function search(queries: string[]): Promise<GoalSearchResult[]>;
 
 /** Discover public sources in the current user-goal invocation. */
 export function snapshotTime(): number;`,
+  goalBrowser: `/** Inspect a live workspace panel and activate a visible control against its observed revision. */
+
+type BrowserRow = { label: string; state: string; detail: string; controls: { id: string; label: string }[] };
+
+type BrowserView = { heading: string; revision: string; rows: BrowserRow[] };
+
+/** Inspect a live workspace panel and activate a visible control against its observed revision. */
+export function inspect(): Promise<BrowserView>;
+
+/** Inspect a live workspace panel and activate a visible control against its observed revision. */
+export function activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;`,
   goalWorkspace: `/** Read the authorized workspace and revise a document against its observed version. */
 
 type WorkspaceRevision = { path: string; version: string; text: string };

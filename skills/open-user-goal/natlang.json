@@ -9,6 +9,7 @@
   },
   "serviceScopes": {
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
-    "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"]
+    "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"],
+    "goalBrowser": ["runUserGoal/workInBrowser.nl"]
   }
 }

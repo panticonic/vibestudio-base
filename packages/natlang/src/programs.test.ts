@@ -439,6 +439,7 @@ it("compiles the open goal program with its installed research skill and scoped 
   });
   const result = await loader.describe("skills/open-user-goal/runUserGoal.nl");
   expect(result.serviceScopes).toEqual({
+    goalBrowser: ["runUserGoal/workInBrowser.nl"],
     goalDiscovery: ["runUserGoal/investigatePublicQuestion.nl"],
     goalWorkspace: ["runUserGoal/reviseWorkspaceDocument.nl"],
     web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],

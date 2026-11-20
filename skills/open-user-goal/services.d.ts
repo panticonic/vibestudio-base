@@ -8,4 +8,8 @@ declare module "natlang:services" {
     read(path: string): Promise<import("./types.js").WorkspaceRevision | null>;
     revise(path: string, version: string, text: string): Promise<import("./types.js").WorkspaceWrite>;
   };
+  export const goalBrowser: {
+    inspect(): Promise<import("./types.js").BrowserView>;
+    activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;
+  };
 }

@@ -24,4 +24,15 @@ export type WorkspaceEditReport =
 export type UserGoalReport =
   | { status: "answered" | "insufficient"; research: ResearchGoalReport }
   | { status: "edited"; path: string; version: string; research: ResearchGoalReport }
-  | WorkspaceEditReport;
+  | WorkspaceEditReport
+  | BrowserGoalReport;
+
+export type BrowserRow = { label: string; state: string; detail: string; controls: { id: string; label: string }[] };
+export type BrowserView = { heading: string; revision: string; rows: BrowserRow[] };
+export type BrowserDecision =
+  | { kind: "act"; control: string }
+  | { kind: "report"; labels: string[] }
+  | { kind: "blocked"; reason: string };
+export type BrowserGoalReport =
+  | { status: "observed" | "changed"; revision: string; rows: { label: string; state: string; detail: string }[] }
+  | { status: "blocked"; reason: string };

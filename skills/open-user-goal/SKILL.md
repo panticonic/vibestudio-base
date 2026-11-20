@@ -8,7 +8,9 @@ description: Execute a user goal by selecting and composing the available Vibest
 Load `skills/open-user-goal/runUserGoal.nl` with the current workspace's authorized
 service bindings. Pass the user's request as the sole argument. The program can
 investigate a public question or revise a workspace document using authoritative
-information it discovers there.
+information it discovers there. For a browser goal, it observes the authorized
+panel, chooses visible controls only for requested changes, and reads back the
+result after each operation.
 
 Web actions use the current invocation's authorized public search and page cache.
 Workspace revisions are scoped to the authorized documents and use an observed

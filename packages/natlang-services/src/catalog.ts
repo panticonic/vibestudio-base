@@ -94,6 +94,7 @@ const authoredServices = [
   authoredService("vcsDeliveryRead", "Read one assigned semantic VCS file across working, committed, and protected-main states.", "base", "vibestudio-vcs/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("panelHealth", "Read observations from the assigned panel.", "base", "panel-health", [{ name: "observe", params: [] }, { name: "observeAfter", params: ["snapshotId"] }]),
   authoredService("goalDiscovery", "Discover public sources in the current user-goal invocation.", "base", "open-user-goal", [{ name: "search", params: ["queries"] }, { name: "snapshotTime", params: [] }]),
+  authoredService("goalBrowser", "Inspect a live workspace panel and activate a visible control against its observed revision.", "base", "open-user-goal", [{ name: "inspect", params: [] }, { name: "activate", params: ["control", "revision"] }]),
   authoredService("goalWorkspace", "Read the authorized workspace and revise a document against its observed version.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["path"] }, { name: "revise", params: ["path", "version", "text"] }]),
   authoredService("provenanceHistory", "Read the assigned VCS history coordinate.", "base", "provenance-orientation", [{ name: "readNext", params: ["check"] }]),
   authoredService("tendrilPresentation", "Present the assigned Tendril on an admitted device.", "base", "tendrils/workflow", [{ name: "devices", params: [] }, { name: "present", params: ["deviceId"] }]),
