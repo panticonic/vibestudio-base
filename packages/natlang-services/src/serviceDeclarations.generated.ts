@@ -1100,6 +1100,21 @@ type RealmObservations = {
 
 /** Read the assigned Regency accounts and bounded forecast. */
 export function observe(months: number): Promise<RealmObservations>;`,
+  driveCheckpoint: `/** Read and compare the assigned Drive checkpoint file. */
+
+type GoogleCheckpointReceipt = {
+  state: "saved" | "held" | "stale";
+  cursor: string;
+};
+
+/** Read and compare the assigned Drive checkpoint file. */
+export function read(): Promise<string>;
+
+/** Read and compare the assigned Drive checkpoint file. */
+export function commit(
+      expected: string,
+      terminal: string,
+    ): Promise<GoogleCheckpointReceipt>;`,
   googleSetupPanel: `/** Read the assigned Google setup journey. */
 
 type GoogleSetupCheck =

@@ -101,6 +101,7 @@ const authoredServices = [
   authoredService("adventureRead", "Read the assigned Adventure opening and saved artwork.", "examples", "examples-review", [{ name: "observe", params: [] }]),
   authoredService("adventureTransitionRead", "Read the assigned committed Adventure turn and reloaded panel.", "examples", "examples-review", [{ name: "observe", params: [] }]),
   authoredService("realmRead", "Read the assigned Regency accounts and bounded forecast.", "examples", "examples-review", [{ name: "observe", params: ["months"] }]),
+  authoredService("driveCheckpoint", "Read and compare the assigned Drive checkpoint file.", "google-workspace", "google-drive/driveWorkflow", [{ name: "read", params: [] }, { name: "commit", params: ["expected", "terminal"] }]),
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
   authoredService("browserLibraryState", "Read the assigned browser library.", "personal", "browser-library", [{ name: "observe", params: [] }]),
