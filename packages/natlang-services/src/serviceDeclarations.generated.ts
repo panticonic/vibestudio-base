@@ -864,6 +864,37 @@ export function observe(): Promise<PanelHealthObservation>;
 
 /** Read observations from the assigned panel. */
 export function observeAfter(snapshotId: string): Promise<PanelHealthObservation>;`,
+  goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
+
+type GoalCandidate = { url: string; title?: string; snippet?: string };
+
+type GoalSearchResult = {
+  query: string;
+  sources: GoalCandidate[];
+  error?: string;
+};
+
+/** Discover public sources in the current user-goal invocation. */
+export function search(queries: string[]): Promise<GoalSearchResult[]>;
+
+/** Discover public sources in the current user-goal invocation. */
+export function snapshotTime(): number;`,
+  goalWorkspace: `/** Read the authorized workspace and revise a document against its observed version. */
+
+type WorkspaceRevision = { path: string; version: string; text: string };
+
+type WorkspaceWrite =
+  | { status: "written"; version: string }
+  | { status: "changed" | "unavailable" };
+
+/** Read the authorized workspace and revise a document against its observed version. */
+export function list(): Promise<string[]>;
+
+/** Read the authorized workspace and revise a document against its observed version. */
+export function read(path: string): Promise<WorkspaceRevision | null>;
+
+/** Read the authorized workspace and revise a document against its observed version. */
+export function revise(path: string, version: string, text: string): Promise<WorkspaceWrite>;`,
   provenanceHistory: `/** Read the assigned VCS history coordinate. */
 
 type HistoryWalk = "cause" | "cohort" | "rejections";

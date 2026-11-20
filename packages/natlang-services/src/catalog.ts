@@ -93,6 +93,8 @@ const authoredServices = [
   authoredService("gitBridgeReviewRead", "Read the assigned Git Bridge upstream and semantic repository state.", "base", "git-bridge-review", [{ name: "observe", params: ["operationId"] }]),
   authoredService("vcsDeliveryRead", "Read one assigned semantic VCS file across working, committed, and protected-main states.", "base", "vibestudio-vcs/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("panelHealth", "Read observations from the assigned panel.", "base", "panel-health", [{ name: "observe", params: [] }, { name: "observeAfter", params: ["snapshotId"] }]),
+  authoredService("goalDiscovery", "Discover public sources in the current user-goal invocation.", "base", "open-user-goal", [{ name: "search", params: ["queries"] }, { name: "snapshotTime", params: [] }]),
+  authoredService("goalWorkspace", "Read the authorized workspace and revise a document against its observed version.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["path"] }, { name: "revise", params: ["path", "version", "text"] }]),
   authoredService("provenanceHistory", "Read the assigned VCS history coordinate.", "base", "provenance-orientation", [{ name: "readNext", params: ["check"] }]),
   authoredService("tendrilPresentation", "Present the assigned Tendril on an admitted device.", "base", "tendrils/workflow", [{ name: "devices", params: [] }, { name: "present", params: ["deviceId"] }]),
   authoredService("tendrilPage", "Observe or operate the assigned Tendril page.", "base", "tendrils/workflow", [{ name: "inspect", params: [] }, { name: "write", params: ["field"] }, { name: "invoke", params: ["name"] }]),
