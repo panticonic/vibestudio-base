@@ -636,6 +636,55 @@ type ServerLogCursorWindow = {
 
 /** Observe the assigned saved cursor and a bounded live host-log window. */
 export function observe(operationId: string): Promise<ServerLogCursorWindow>;`,
+  diagnosticCatalog: `/** Discover owned incident checkpoints and the current handoff authority. */
+
+type DiagnosticSource = {
+  id: string;
+  label: string;
+  component: string;
+  description: string;
+};
+
+type DiagnosticSources = { checkpoints: DiagnosticSource[]; mayStage: boolean };
+
+/** Discover owned incident checkpoints and the current handoff authority. */
+export function discover(): Promise<DiagnosticSources>;`,
+  diagnosticLog: `/** Read a bounded native log window from an observed incident checkpoint. */
+
+type DiagnosticSource = {
+  id: string;
+  label: string;
+  component: string;
+  description: string;
+};
+
+type WindowStatus = "observed" | "other-boot" | "future" | "expired" | "overflow" | "changed";
+
+type DiagnosticRecord = { seq: number; text: string };
+
+type DiagnosticWindow = {
+  source: DiagnosticSource;
+  status: WindowStatus;
+  saved: { boot: string; sequence: number };
+  liveBoot: string;
+  through: number | null;
+  records: DiagnosticRecord[];
+};
+
+/** Read a bounded native log window from an observed incident checkpoint. */
+export function read(sourceId: string): Promise<DiagnosticWindow>;`,
+  diagnosticHandoff: `/** Stage the authorized incident finding with verified native citations. */
+
+type Disposition = "ongoing" | "recovered" | "attention" | "clear" | "unconfirmed";
+
+type ExactDiagnosticCitation = { sourceId: string; boot: string; seq: number; text: string };
+
+type DiagnosticFinding = { status: Disposition; reason: string; citations: ExactDiagnosticCitation[] };
+
+type DiagnosticArtifact = { path: string; sha256: string };
+
+/** Stage the authorized incident finding with verified native citations. */
+export function stage(finding: DiagnosticFinding): Promise<DiagnosticArtifact>;`,
   evalRecoveryJournal: `/** Observe the assigned completed EvalDO attempt and native receipts. */
 
 type EvalRecoveryStore = { digest: string; contentDigest: string; size: number };
