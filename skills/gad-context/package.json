@@ -6,7 +6,8 @@
   "description": "Explore Vibestudio gad provenance, file history, branches, sessions, and semantic context through the gad service.",
   "exports": {
     ".": "./index.ts",
-    "./workflow": "./workflow.ts"
+    "./workflow": "./workflow.ts",
+    "./natlang-types": "./natlang/types.ts"
   },
   "dependencies": {
     "@vibestudio/trajectory-identity": "workspace:*",

@@ -3840,6 +3840,93 @@ export function execute(
       assignmentReceipt: string,
       checkId: string,
     ): Promise<TerminalCheckResult>;`,
+  clientDiagnostics: `/** Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff. */
+
+type ClientSurface = {
+  id: string;
+  title: string;
+  audience: string;
+  device: string;
+  modifiable: boolean;
+};
+
+type ClientCatalog = {
+  surfaces: ClientSurface[];
+  channel: string | null;
+};
+
+type ClientView = {
+  id: string;
+  surface: ClientSurface;
+  stage: string;
+  text: string;
+  version: string;
+  width: number;
+  overflow: boolean;
+  controls: { id: string; label: string; enabled: boolean }[];
+  signals: { sequence: number; level: string; message: string }[];
+};
+
+type ClientViewAction =
+  | { kind: "click"; control: string }
+  | { kind: "viewport"; width: 320 | 390 | 1280 }
+  | { kind: "reload" };
+
+type ClientActionReceipt = {
+  status: "applied" | "changed" | "denied";
+  id: string;
+};
+
+type ChannelReviewRequest = {
+  goal: string;
+  operationId: string;
+  view: "health" | "recap" | "triage";
+};
+
+type ClientDiagnosticOutcome =
+  | "healthy"
+  | "local-disagreement"
+  | "stale-view"
+  | "action-held"
+  | "recovered"
+  | "awaiting-agent"
+  | "roster-needed"
+  | "handoff-staged";
+
+type ClientDecision = {
+  outcome: ClientDiagnosticOutcome;
+  answer: string;
+  evidenceIds: string[];
+};
+
+type ClientHandoff = {
+  audience: string;
+  receipt: string;
+  decision: ClientDecision;
+};
+
+/** Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff. */
+export function discover(): Promise<ClientCatalog>;
+
+/** Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff. */
+export function observe(surfaceId: string): Promise<ClientView | null>;
+
+/** Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff. */
+export function apply(
+      viewId: string,
+      action: ClientViewAction,
+    ): Promise<ClientActionReceipt>;
+
+/** Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff. */
+export function channel(
+      view: ChannelReviewRequest["view"],
+    ): Promise<ChannelReviewRequest | null>;
+
+/** Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff. */
+export function stage(
+      audience: string,
+      decision: ClientDecision,
+    ): Promise<ClientHandoff | null>;`,
   gadHealth: `/** Observe one assigned GAD health snapshot. */
 
 type ChannelFinding = {

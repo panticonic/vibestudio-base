@@ -216,6 +216,7 @@ const authoredServices = [
   authoredService("integrationCredentialLookup", "Resolve the exact assigned destination and intended transport.", "base", "api-integrations/natlang", [{ name: "resolve", params: ["planReceipt", "destinationId"] }]),
   authoredService("terminalCheckRead", "Read the caller's assigned terminal check plan.", "base", "terminal/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("terminalCheckRun", "Execute the exact assigned terminal check.", "base", "terminal/natlang", [{ name: "execute", params: ["assignmentReceipt", "checkId"] }]),
+  authoredService("clientDiagnostics", "Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff.", "base", "gad-context/natlang", [{ name: "discover", params: [] }, { name: "observe", params: ["surfaceId"] }, { name: "apply", params: ["viewId", "action"] }, { name: "channel", params: ["view"] }, { name: "stage", params: ["audience", "decision"] }]),
   authoredService("gadHealth", "Observe one assigned GAD health snapshot.", "base", "gad-context/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("gadFollowUp", "Inspect the exact assigned channel finding.", "base", "gad-context/natlang", [{ name: "inspect", params: ["healthReceipt", "kind"] }]),
   authoredService("gadConversation", "Read the assigned bounded channel tail.", "base", "gad-context/natlang", [{ name: "read", params: ["operationId"] }]),

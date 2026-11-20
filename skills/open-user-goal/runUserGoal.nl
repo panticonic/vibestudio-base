@@ -11,6 +11,8 @@ If the goal connects exact facts from a local PDF to a working Spectrolite vault
 
 If the user asks to revise a workspace document, call reviseWorkspaceDocument. Pass null for public evidence when the request can be fulfilled from workspace information alone. When the goal requires verifying a fact publicly before revising, pass the successful research result to the revision. Stop before revising if the required research is insufficient. Return the actual outcome and include the research in a successful combined result. Preserve the user's scope and restrictions.
 
+When client diagnostics are available, for a diagnosis that compares clients or joins an owned renderer to durable GAD conversation evidence, call clients.workOnClientDiagnostics with the unchanged goal and return skill "clientDiagnostics" and the actual outcome.
+
 For panel health, an interrupted visual surface, or a request to restore a specific owned renderer, use visualRecovery.recoverPanelGoal when its panel recovery capability is available. Pass the unchanged goal and return its actual outcome with status "workspace-skill-reviewed" and skill "visualRecovery".
 
 For owned browser migration, retained import evidence, or a handoff that depends on imported bookmarks, use browserMigration.workOnBrowserMigrationGoal when its scoped capability is available. Return its actual result with status "workspace-skill-reviewed" and skill "browserMigration".

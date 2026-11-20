@@ -51,3 +51,65 @@ export type ChannelReview = {
   followUp: ChannelFollowUp | null;
   conversation: ConversationReview | null;
 };
+
+export type ClientSurface = {
+  id: string;
+  title: string;
+  audience: string;
+  device: string;
+  modifiable: boolean;
+};
+export type ClientCatalog = {
+  surfaces: ClientSurface[];
+  channel: string | null;
+};
+export type ClientView = {
+  id: string;
+  surface: ClientSurface;
+  stage: string;
+  text: string;
+  version: string;
+  width: number;
+  overflow: boolean;
+  controls: { id: string; label: string; enabled: boolean }[];
+  signals: { sequence: number; level: string; message: string }[];
+};
+export type ClientViewAction =
+  | { kind: "click"; control: string }
+  | { kind: "viewport"; width: 320 | 390 | 1280 }
+  | { kind: "reload" };
+export type ClientDiagnosticStep =
+  | { kind: "inspect"; surfaceId: string }
+  | { kind: "act"; viewId: string; action: ClientViewAction }
+  | { kind: "channel"; view: ChannelReviewRequest["view"] }
+  | { kind: "finish" };
+export type ClientActionReceipt = {
+  status: "applied" | "changed" | "denied";
+  id: string;
+};
+export type ClientDiagnosticOutcome =
+  | "healthy"
+  | "local-disagreement"
+  | "stale-view"
+  | "action-held"
+  | "recovered"
+  | "awaiting-agent"
+  | "roster-needed"
+  | "handoff-staged";
+export type ClientDecision = {
+  outcome: ClientDiagnosticOutcome;
+  answer: string;
+  evidenceIds: string[];
+};
+export type ClientHandoff = {
+  audience: string;
+  receipt: string;
+  decision: ClientDecision;
+};
+export type ClientDiagnosticsReport = {
+  views: ClientView[];
+  effects: ClientActionReceipt[];
+  channel: ChannelReview | null;
+  decision: ClientDecision;
+  handoff: ClientHandoff | null;
+};

@@ -24,6 +24,7 @@ export type WorkspaceEditReport =
 export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "vaultWork"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "googleSetup"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "clientDiagnostics"; outcome: unknown }
   | { status: "answered" | "insufficient"; research: ResearchGoalReport }
   | { status: "edited"; path: string; version: string; research: ResearchGoalReport }
   | WorkspaceEditReport

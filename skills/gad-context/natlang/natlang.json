@@ -5,6 +5,7 @@
   "targets": { "main": { "entry": "reviewChannel.nl" } },
   "serviceBinding": "explicit",
   "serviceScopes": {
+    "clientDiagnostics": ["workOnClientDiagnostics.nl", "workOnClientDiagnostics/stageClientHandoff.nl"],
     "gadHealth": ["reviewChannel/reviewHealth/readHealth.nl"],
     "gadFollowUp": ["reviewChannel/inspectFinding.nl"],
     "gadConversation": ["reviewChannel/reviewConversation/readConversation.nl"]

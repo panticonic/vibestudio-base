@@ -55,5 +55,63 @@ type ChannelReview = {
   followUp: ChannelFollowUp | null;
   conversation: ConversationReview | null;
 };
+type ClientSurface = {
+  id: string;
+  title: string;
+  audience: string;
+  device: string;
+  modifiable: boolean;
+};
+type ClientCatalog = {
+  surfaces: ClientSurface[];
+  channel: string | null;
+};
+type ClientView = {
+  id: string;
+  surface: ClientSurface;
+  stage: string;
+  text: string;
+  version: string;
+  width: number;
+  overflow: boolean;
+  controls: { id: string; label: string; enabled: boolean }[];
+  signals: { sequence: number; level: string; message: string }[];
+};
+type ClientViewAction = | { kind: "click"; control: string }
+  | { kind: "viewport"; width: 320 | 390 | 1280 }
+  | { kind: "reload" };
+type ClientDiagnosticStep = | { kind: "inspect"; surfaceId: string }
+  | { kind: "act"; viewId: string; action: ClientViewAction }
+  | { kind: "channel"; view: ChannelReviewRequest["view"] }
+  | { kind: "finish" };
+type ClientActionReceipt = {
+  status: "applied" | "changed" | "denied";
+  id: string;
+};
+type ClientDiagnosticOutcome = | "healthy"
+  | "local-disagreement"
+  | "stale-view"
+  | "action-held"
+  | "recovered"
+  | "awaiting-agent"
+  | "roster-needed"
+  | "handoff-staged";
+type ClientDecision = {
+  outcome: ClientDiagnosticOutcome;
+  answer: string;
+  evidenceIds: string[];
+};
+type ClientHandoff = {
+  audience: string;
+  receipt: string;
+  decision: ClientDecision;
+};
+type ClientDiagnosticsReport = {
+  views: ClientView[];
+  effects: ClientActionReceipt[];
+  channel: ChannelReview | null;
+  decision: ClientDecision;
+  handoff: ClientHandoff | null;
+};
 declare const fn: NatlangFunction<[request: ChannelReviewRequest], ChannelReview> & { readonly chooseFollowUp: NatlangFunction<[goal: string, health: ChannelHealthReview], string | null>; readonly inspectFinding: NatlangFunction<[healthReceipt: string, kind: string], ChannelFollowUp>; readonly reviewConversation: NatlangFunction<[operationId: string, goal: string], ConversationReview> & { readonly interpretLatest: NatlangFunction<[evidence: ChannelTail, goal: string], ConversationReview>; readonly readConversation: NatlangFunction<[operationId: string], ChannelTail> }; readonly reviewHealth: NatlangFunction<[operationId: string], ChannelHealthReview> & { readonly classifyFinding: NatlangFunction<[finding: ChannelFinding], FindingJudgment>; readonly readHealth: NatlangFunction<[operationId: string], ChannelHealth> } };
 export default fn;
