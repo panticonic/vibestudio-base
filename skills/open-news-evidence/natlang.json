@@ -1,0 +1,14 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-news-evidence",
+  "version": "0.1.0",
+  "targets": {"main":{"entry":"discoverOwnedNewsEvidence.nl"}},
+  "serviceBinding":"explicit",
+  "serviceScopes":{
+    "newsEvidenceIndex":["discoverOwnedNewsEvidence.nl"],
+    "newsEvidenceJournal":["readNewsEvidenceFrontier.nl"],
+    "newsEvidenceReader":["readNewsEvidenceView.nl"],
+    "newsEvidenceSource":["readNewsArticleBytes.nl"],
+    "newsEvidenceHandoff":["stageNewsEvidenceNote.nl"]
+  }
+}
