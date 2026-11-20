@@ -3,5 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Guide to using the eval sandbox, inline UI, and all runtime APIs in the chat panel"
+  "description": "Guide to using the eval sandbox, inline UI, and all runtime APIs in the chat panel",
+  "exports": {
+    "./doc-sections": "./help/docHelp/sections.ts",
+    "./doc-ranking": "./help/docHelp/rank.ts",
+    "./doc-search-terms": "./help/docHelp/searchTerms.ts"
+  }
 }

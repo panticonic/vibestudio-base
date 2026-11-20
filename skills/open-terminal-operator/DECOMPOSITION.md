@@ -14,3 +14,23 @@ or a local artifact as the user's goal and observed results warrant.
 | User authority and decisions | `operateTerminalGoal`, `chooseTerminalAction`, and `composeTerminalOutcome` | Plan one goal-relevant operation at a time from real screen and check evidence. Route state changes, retirement, and local evidence writing through named typed children. Summarize actual on-screen state, expected hold, and verified receipt. No model-authored shell text is executable. |
 | Owned handoff | Base `scratch-handoff-bindings`, System Testing `readWorkspaceBytes` | Commit an atomic, bounded artifact only after explicit authority and the necessary live receipts. Independently read and hash its exact bytes. |
 | Verification, trace and controls | New open family in System Testing and Host reader | Private recipes specify ordered meaningful outcomes, clean or interrupted native lifecycle, held steps, changed and unchanged state, and artifact contents. Verify session retirement independently of the model narrative. References share transport, never the semantic decision or scorer's expected values. |
+
+## Live recovery discovery
+
+A recovery goal can ask how to choose between interfaces before allowing any
+operation. The actor decides whether to discover. One typed discovery lambda
+uses the live caller-filtered Host catalog and the current workspace's
+installed skill index, then loads bounded exact passages into its own decision
+context. This reuses the role behavior of the docs-discovery suite, the Base
+sandbox help's Markdown bounds and ranking, and the native workspace skill
+receiver. Knowledge augments the lambda's session and user context instead of
+being summarized by an isolated tool call. The adapter seals exact replies,
+joins role-visible hits to typed descriptions, and verifies whole-document
+digests and selected quotes independently. Source-private expected routes
+remain in System Testing.
+
+The managed check is the ordinary headless open-goal reference path. The
+System workspace uses the same terminal app and launch authority as the
+original checklist qualification. It binds a command process only for cases
+with an explicit suite assignment and keeps the original checklist receiver
+and legacy identities.

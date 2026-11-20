@@ -156,6 +156,7 @@ const authoredServices = [
   authoredService("openTerminalRead", "Open and observe the one owned release checklist and granted scope.", "base", "open-terminal-operator", [{ name: "open", params: [] }]),
   authoredService("openTerminalInput", "Apply a bounded checklist edit through actual keyboard or pointer input.", "base", "open-terminal-operator", [{ name: "change", params: ["request"] }]),
   authoredService("openTerminalLifecycle", "Observe an authorized owned PTY lifecycle transition.", "base", "open-terminal-operator", [{ name: "advance", params: ["request"] }]),
+  authoredService("openTerminalDiscovery", "Read live role-filtered capability contracts and bounded exact installed terminal guidance.", "base", "open-terminal-operator", [{ name: "search", params: ["query"] }, { name: "open", params: ["id"] }, { name: "installed", params: [] }, { name: "load", params: ["dirPath", "focus"] }]),
   authoredService("openTerminalHandoff", "Commit the owned terminal receipts to local scratch.", "base", "open-terminal-operator", [{ name: "stage", params: [] }]),
   authoredService("programRunCatalog", "Discover and compile the owned current workspace program and its authorized sample scope.", "base", "open-program-run", [{ name: "list", params: [] }, { name: "inspect", params: ["programId"] }]),
   authoredService("programExecution", "Run an authorized typed sample and independently read its retained native output.", "base", "open-program-run", [{ name: "run", params: ["programId", "revision", "sampleId"] }, { name: "read", params: ["receiptId"] }]),

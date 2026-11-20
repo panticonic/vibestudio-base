@@ -8,6 +8,7 @@
     "openTerminalRead": ["openTerminal.nl"],
     "openTerminalInput": ["applyChecklistChange.nl"],
     "openTerminalLifecycle": ["advanceTerminal.nl"],
+    "openTerminalDiscovery": ["discoverTerminalOptions.nl"],
     "openTerminalHandoff": ["stageTerminalHandoff.nl"]
   }
 }

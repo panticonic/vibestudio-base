@@ -19,6 +19,7 @@ export type TerminalStart = {
   grants: Grants;
   note: string | null;
   checkOperationId: string | null;
+  discoveryAvailable: boolean;
 };
 export type ChecklistChange = { item: ItemKey; checked: boolean; input: "key" | "mouse" };
 export type TerminalTransition = { operation: "reattach" | "restart" | "resume"; size: "small" | "wide" } |
@@ -31,6 +32,14 @@ export type TerminalEvent = { operation: "change"; change: ChecklistChange; from
 export type TerminalHandoff = { path: string; bytes: number; sha256: string };
 export type TerminalAction = { kind: "change"; change: ChecklistChange } |
   { kind: "transition"; transition: TerminalTransition } |
-  { kind: "check" | "stage" | "finish" };
+  { kind: "check" | "discover" | "stage" | "finish" };
 export type TerminalDisposition = "observed" | "ready" | "held";
 export type TerminalSummary = { disposition: TerminalDisposition; explanation: string };
+
+
+export type RecoveryRouteHit = { id: string; qualifiedName: string; description: string };
+export type RecoveryRoute = RecoveryRouteHit & { sha256: string; argumentNames: string[] };
+export type RecoverySkill = { dirPath: string; skillPath: string; name: string; description: string };
+export type RecoveryKnowledge = { skillPath: string; sha256: string; passages: string[] };
+export type RecoveryCitation = { skillPath: string; sha256: string; quote: string };
+export type TerminalDiscovery = { routes: RecoveryRoute[]; guidance: RecoveryCitation[] };
