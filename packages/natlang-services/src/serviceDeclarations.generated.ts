@@ -5342,6 +5342,72 @@ type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietReque
 
 /** Stage one authorized quiet readiness note with no provider claim. */
 export function stage(report:ReadinessReport):Promise<ReadinessArtifact|null>;`,
+  imageCandidateBriefs: `/** Discover exact owned briefs for retained image selection. */
+
+type Format = "png" | "jpeg" | "webp";
+
+type ImageBrief = {
+  id: string; project: string; title: string; intent: string; formats: Format[];
+  reference: string | null; outputPurpose: string; owner: string;
+};
+
+type ImageIndex = { channelId:string; owner:string; briefs:ImageBrief[] };
+
+/** Discover exact owned briefs for retained image selection. */
+export function list(): Promise<ImageIndex>;`,
+  imageCandidateJournal: `/** Read the native retained image attempt and selection frontier. */
+
+type Format = "png" | "jpeg" | "webp";
+
+type Candidate = {
+  kind: "candidate"; briefId: string; owner: string; label: string; jobId: string; attempt: number;
+  state: "succeeded" | "cancelled" | "failed" | "running"; candidateId: string; assetId: string | null;
+  assetDigest: string | null; providerReceipt: string | null; prompt: string; revisedPrompt: string;
+  reference: string | null; format: Format; outputPath: string; save: "applied" | "preview-only" | "superseded";
+};
+
+type Rights = "local-handoff" | "review-only" | "unknown" | "revoked";
+
+type JournalRecord = Candidate
+  | {kind:"selection"; briefId:string; candidateId:string; owner:string}
+  | {kind:"rights"; briefId:string; reference:string|null; rights:Rights; owner:string}
+  | {kind:"preview"; briefId:string; candidateId:string; label:string; owner:string};
+
+type EvidenceRow = {id:string; seq:number; record:JournalRecord};
+
+type ImageJournal = { channelId:string; through:number; rows:EvidenceRow[] };
+
+/** Read the native retained image attempt and selection frontier. */
+export function read(channelId:string): Promise<ImageJournal|null>;`,
+  imageCandidateOriginal: `/** Read the exact original bytes of an owned image candidate. */
+
+type ImageRead = { candidateId:string; rowId:string|null; status:"verified"|"missing"|"mismatch"|"refused";
+  original:{id:string;digest:string;mime:string;width:number;height:number;byteLength:number}|null };
+
+/** Read the exact original bytes of an owned image candidate. */
+export function read(briefId:string,candidateId:string): Promise<ImageRead>;`,
+  imageCandidateHandoff: `/** Stage one authorized private retained candidate handoff. */
+
+type Format = "png" | "jpeg" | "webp";
+
+type ImagePlan = { briefId:string; mode:"current"|"compare"|"historical"; historicalLabel:string|null;
+  localHandoff:boolean; acceptedFormats:Format[] };
+
+type CandidateAssessment = { id:string; reasons:string[]; eligible:boolean };
+
+type ImageAssessment = { queue:string[]; candidates:CandidateAssessment[] };
+
+type ImageRead = { candidateId:string; rowId:string|null; status:"verified"|"missing"|"mismatch"|"refused";
+  original:{id:string;digest:string;mime:string;width:number;height:number;byteLength:number}|null };
+
+type ImageDecision = {action:"report"|"hold"|"stage"; candidateId:string|null; explanation:string};
+
+type ImageHandoff = {path:string; digest:string; candidateId:string; assetDigest:string; frontier:number};
+
+type ImageReport = {plan:ImagePlan; assessment:ImageAssessment; reads:ImageRead[]; decision:ImageDecision; handoff:ImageHandoff|null};
+
+/** Stage one authorized private retained candidate handoff. */
+export function stage(report:ImageReport): Promise<ImageHandoff|null>;`,
   integrationPlanRead: `/** Read the caller's assigned API integration plan. */
 
 type IntegrationUse = "fetch" | "publish" | "git-http" | "git-ssh";

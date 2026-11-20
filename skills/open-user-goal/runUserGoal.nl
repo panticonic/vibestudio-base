@@ -45,6 +45,8 @@ For the retained Personal first-run welcome, current device, remote, local infer
 
 For checking a retained provider approval and its original conversation result together, including a scoped local handoff of that evidence, call workOnProviderHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "providerHandoff", and its actual outcome.
 
+For an owned retained image generation review, compare prior and current attempts, verify the original image and permissions, and make a private local candidate note when authorized. Call workOnImageCandidateGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "imageCandidate", and its actual outcome.
+
 For a News goal requiring cross-checks among retained archive or reader windows, exact original article evidence, the current scheduling lane and a private editorial handoff, call workOnNewsEvidenceGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "newsEvidence", and its actual outcome.
 
 For a trusted API integration profile's quiet binding-readiness review across required and optional endpoints, or a local readiness note based on exact audiences and transports, call workOnApiReadinessGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "apiReadiness", and its actual outcome.

@@ -49,6 +49,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "buildIncident"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "deployedInterface"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "apiReadiness"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "imageCandidate"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "newsEvidence"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "installedPackage"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "extensionDossier"; outcome: unknown }
