@@ -448,12 +448,18 @@ it("compiles the open goal program with its installed research skill and scoped 
     recoveryHandoff: ["runUserGoal/recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
     testSuitePlanRead: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     testSuiteVerificationRun: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    pdfGoalDocuments: ["runUserGoal/pdf/workOnPdfGoal.nl"],
+    pdfGoalVisual: ["runUserGoal/pdf/workOnPdfGoal/readRenderedPages.nl"],
+    pdfIntakeProbe: ["runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],
+    pdfIntakeRead: ["runUserGoal/pdf/extractPdfEvidence/readBatch.nl"],
+    pdfLayoutRead: ["runUserGoal/pdf/reviewPdfLayout.nl"],
     publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
     publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],
     websiteReadback: ["runUserGoal/publication/preflightPublication.nl"],
     web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
   });
   expect(result.functions.some(fn => fn.source === "runUserGoal/publication/workTowardPublicationGoal.nl")).toBe(true);
+  expect(result.functions.some(fn => fn.source === "runUserGoal/pdf/workOnPdfGoal.nl")).toBe(true);
 });
 
 it.each([

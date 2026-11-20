@@ -27,7 +27,7 @@ export type UserGoalReport =
   | WorkspaceEditReport
   | BrowserGoalReport
   | WorkspaceSuiteReport
-  | { status: "workspace-skill-reviewed"; skill: "news" | "spectrolite" | "google" | "personal" | "operator" | "recovery" | "publication"; outcome: unknown };
+  | { status: "workspace-skill-reviewed"; skill: "news" | "spectrolite" | "google" | "personal" | "operator" | "recovery" | "publication" | "pdf"; outcome: unknown };
 
 export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
 export type OpenSuiteChoice = {

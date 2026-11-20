@@ -13,7 +13,8 @@
     "runUserGoal/personal": "skills/open-personal-goal/program",
     "runUserGoal/operator": "skills/open-system-operations",
     "runUserGoal/recovery": "skills/open-session-recovery/program",
-    "runUserGoal/publication": "skills/publish-preflight"
+    "runUserGoal/publication": "skills/publish-preflight",
+    "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],

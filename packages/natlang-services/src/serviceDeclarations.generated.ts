@@ -663,6 +663,65 @@ type EvalRecoveryReadback = {
 
 /** Read back an exact assigned digest after its complete native store receipt. */
 export function read(operationId: string, digest: string): Promise<EvalRecoveryReadback>;`,
+  pdfGoalDocuments: `/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
+
+type PdfGoalFile = {
+  name: string;
+  digest: string;
+  pageCount: number;
+  encrypted: boolean;
+};
+
+type PdfGoalObservation = { revision: string; documents: PdfGoalFile[] };
+
+type PdfGoalSelection = {
+  document: string;
+  pages: number[];
+  textQuery: string | null;
+  layoutPages: number[];
+  renderPages: number[];
+};
+
+type PdfIntakeRequest = {
+  goal: string;
+  document: string;
+  pages: number[];
+  batchSize: number;
+  purpose: "text" | "layout" | "ocr";
+  allowOcr: boolean;
+  query: string;
+};
+
+type PdfLayoutRequest = { operationId: string; goal: string };
+
+type PdfGoalBinding = {
+  document: PdfGoalFile;
+  missingPages: number[];
+  text: PdfIntakeRequest | null;
+  layouts: PdfLayoutRequest[];
+  visual: { operationId: string; pages: number[] } | null;
+};
+
+/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
+export function discover(): Promise<PdfGoalObservation>;
+
+/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
+export function bind(revision: string, selection: PdfGoalSelection): Promise<PdfGoalBinding | null>;`,
+  pdfGoalVisual: `/** Render one bound PDF page and retain original PNG and ink evidence. */
+
+type PdfGoalRender = {
+  documentDigest: string;
+  pageNumber: number;
+  artifactId: string;
+  imageDigest: string;
+  width: number;
+  height: number;
+  inkPixels: number;
+  inkBounds: number[] | null;
+};
+
+/** Render one bound PDF page and retain original PNG and ink evidence. */
+export function render(operationId: string, pageNumber: number): Promise<PdfGoalRender>;`,
   pdfLayoutRead: `/** Read the original embedded fragment geometry of one assigned local PDF page. */
 
 type PdfLayoutFragment = { text: string; bounds: number[] };
