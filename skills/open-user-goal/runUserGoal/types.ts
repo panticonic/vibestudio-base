@@ -19,3 +19,5 @@ export * from "./workOnCapabilityGoal/workspace/types.js";
 export * from "./workOnAssemblyGoal/workspace/types.js";
 
 export * from "./workOnRecoveryHandoff/types.js";
+
+export * from "./workOnProblemReportGoal/types.js";

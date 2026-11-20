@@ -1,4 +1,10 @@
 declare module "natlang:services" {
+  export const problemIncident: {
+    discover(): Promise<import("./runUserGoal/workOnProblemReportGoal/types.js").IncidentCard[]>;
+    open(incident: string): Promise<{ operationId: string } | null>;
+  };
+}
+declare module "natlang:services" {
   export const recoveryHandoffLink: {
     discover(): Promise<import("./runUserGoal/workOnRecoveryHandoff/contract.js").RecoveryHandoffDirective>;
     prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
