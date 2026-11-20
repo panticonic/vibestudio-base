@@ -1016,6 +1016,50 @@ type AdventureObservations = {
 
 /** Read the assigned Adventure opening and saved artwork. */
 export function observe(): Promise<AdventureObservations>;`,
+  adventureTransitionRead: `/** Read the assigned committed Adventure turn and reloaded panel. */
+
+type AdventureObject = {
+  id: string;
+  location: string | null;
+  kind: string;
+  open: boolean | null;
+  sealed: boolean | null;
+  locked: boolean | null;
+};
+
+type AdventureView = {
+  id: string;
+  place: string;
+  tick: number;
+  entities: AdventureObject[];
+  inventory: string[];
+  exits: string[];
+  signature: string;
+};
+
+type ExistingArt = { id: string; place: string; signature: string };
+
+type AdventureTransitionFrame = {
+  location: string;
+  asset: string;
+  tick: number;
+  narration: string;
+  light: string;
+};
+
+type AdventureTransitionObservations = {
+  before: AdventureView;
+  current: AdventureView;
+  openingArtwork: ExistingArt;
+  replacementArtwork: ExistingArt;
+  covering: { id: string; from: string; to: string } | null;
+  effectiveLight: boolean | null;
+  repaint: AdventureTransitionFrame;
+  reload: AdventureTransitionFrame & { id: string };
+};
+
+/** Read the assigned committed Adventure turn and reloaded panel. */
+export function observe(): Promise<AdventureTransitionObservations>;`,
   realmRead: `/** Read the assigned Regency accounts and bounded forecast. */
 
 type RealmRoute = {
