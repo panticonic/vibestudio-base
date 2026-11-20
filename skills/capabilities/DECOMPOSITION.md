@@ -25,3 +25,13 @@ while `summarizeApprovalVisibility` determines what the combined view establishe
 `latestApprovalReceipt` implements the exact reverse lookup in TypeScript.
 `locatePendingApproval` attributes the supplied ID to an observed queue.
 The caller supplies redacted receipts and retains access to the CLI.
+
+## Follow an assigned approval across observations
+
+`reviewApprovalTransition` calls `reviewApprovalQueues` for two ordered
+observations of the same caller and approval ID. Queue selection, latest
+receipts, and exact ID attribution remain with the existing nested stages.
+`interpretApprovalTransition` decides what changed between the two complete
+reports. A disappearance from every visible queue supports a statement about
+the current pending list. The caller needs a separate resolution record to
+claim a decision was made. The root returns both reports for follow-up.

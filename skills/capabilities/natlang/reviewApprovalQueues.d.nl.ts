@@ -62,5 +62,24 @@ type ApprovalVisibilityReport = {
   surfaces: ApprovalSurfaceReview[];
   location: ApprovalLocation;
 };
+type ApprovalTransitionRequest = {
+  goal: string;
+  caller: ApprovalCaller;
+  approvalId: string;
+  earlier: ApprovalQueueReceipt[];
+  later: ApprovalQueueReceipt[];
+};
+type ApprovalTransition = | "appeared"
+  | "still-pending"
+  | "queue-changed"
+  | "no-longer-listed"
+  | "not-listed"
+  | "now-visible"
+  | "unconfirmed";
+type ApprovalTransitionReport = {
+  transition: ApprovalTransition;
+  earlier: ApprovalVisibilityReport;
+  later: ApprovalVisibilityReport;
+};
 declare const fn: NatlangFunction<[request: ApprovalVisibilityRequest], ApprovalVisibilityReport> & { readonly locatePendingApproval: NatlangFunction<[approvalId: string | null, surfaces: ApprovalSurfaceReview[], coverage: ApprovalVisibility], ApprovalLocation>; readonly reviewApprovalSurface: NatlangFunction<[source: ApprovalSurface, receipts: ApprovalQueueReceipt[]], ApprovalSurfaceReview> & { readonly latestApprovalReceipt: ((source: ApprovalSurface, receipts: ApprovalQueueReceipt[]) => ApprovalQueueReceipt | null) & {  } }; readonly selectApprovalSurfaces: NatlangFunction<[caller: ApprovalCaller], ApprovalSurface[]>; readonly summarizeApprovalVisibility: NatlangFunction<[surfaces: ApprovalSurfaceReview[]], ApprovalVisibility> };
 export default fn;

@@ -60,3 +60,24 @@ export type ApprovalVisibilityReport = {
   surfaces: ApprovalSurfaceReview[];
   location: ApprovalLocation;
 };
+
+export type ApprovalTransitionRequest = {
+  goal: string;
+  caller: ApprovalCaller;
+  approvalId: string;
+  earlier: ApprovalQueueReceipt[];
+  later: ApprovalQueueReceipt[];
+};
+export type ApprovalTransition =
+  | "appeared"
+  | "still-pending"
+  | "queue-changed"
+  | "no-longer-listed"
+  | "not-listed"
+  | "now-visible"
+  | "unconfirmed";
+export type ApprovalTransitionReport = {
+  transition: ApprovalTransition;
+  earlier: ApprovalVisibilityReport;
+  later: ApprovalVisibilityReport;
+};

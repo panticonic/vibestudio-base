@@ -11,6 +11,7 @@ import { confinedRealm } from "./realm.js";
 import { testNewFunction } from "./testSupport.js";
 import { bindChannelMembership } from "../../../skills/agents/channelMembershipBoundary.js";
 import { localReviewerWorlds } from "../../../skills/channel-agent-membership-fixtures/localReviewerWorlds.js";
+import { approvalTransitionWorlds } from "../../../skills/approval-visibility-fixtures/transition-worlds.js";
 import { approvalVisibilityWorlds } from "../../../skills/approval-visibility-fixtures/worlds.js";
 import { verifyApprovalVisibility } from "../../../skills/approval-visibility-fixtures/verify.js";
 import { membershipReference } from "../../../skills/channel-agent-membership-fixtures/reference.js";
@@ -326,6 +327,24 @@ it("describes the typed workflows in the installed template domains", async () =
       if (found) return {status: "located", source: found.source};
       return {status: coverage === "complete" ? "absent" : "unconfirmed", source: null};
     `,
+    reviewApprovalTransition: `
+      const {goal,caller,approvalId}=request;
+      const earlier=await reviewApprovalQueues({goal,caller,approvalId,receipts:request.earlier});
+      const later=await reviewApprovalQueues({goal,caller,approvalId,receipts:request.later});
+      return {transition:await interpretApprovalTransition(earlier,later),earlier,later};
+    `,
+    interpretApprovalTransition: `
+      const previous=earlier.location, current=later.location;
+      if(current.status==="located"){
+        if(previous.status==="located") return previous.source===current.source?"still-pending":"queue-changed";
+        return previous.status==="absent"?"appeared":"now-visible";
+      }
+      if(current.status==="absent"){
+        if(previous.status==="located") return "no-longer-listed";
+        if(previous.status==="absent") return "not-listed";
+      }
+      return "unconfirmed";
+    `,
     runRosterPlan: `
       const earlier = [], findings = [];
       for (const step of request.steps) {
@@ -349,8 +368,8 @@ it("describes the typed workflows in the installed template domains", async () =
     `,
     runWorkflow: `
       const remote = request.work[0];
-      if (remote.domain === "capabilities" && remote.operation === "reviewApprovalQueues") {
-        const report = await domains.capabilities.reviewApprovalQueues(remote.input);
+      if (remote.domain === "capabilities") {
+        const report = await domains.capabilities[remote.operation](remote.input);
         return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
       }
       if (remote.domain === "testReview") {
@@ -1386,22 +1405,35 @@ it("describes the typed workflows in the installed template domains", async () =
       "locatePendingApproval",
     ]);
   }
+  for (const world of approvalTransitionWorlds) {
+    const catalog = cases.find((scenario) => scenario.id === world.id);
+    expect(catalog?.request?.work[0]?.input, world.id).toEqual(world.request);
+    stagedCalls.length = 0;
+    const result = await program(catalog?.request) as { results: { report: unknown }[]; remaining: string[] };
+    expect(result.remaining, world.id).toEqual([]);
+    expect(result.results, world.id).toHaveLength(1);
+    expect(verifyApprovalVisibility(world, result.results[0]?.report).passed, world.id).toBe(true);
+    expect(stagedCalls.filter((name) => name === "reviewApprovalQueues"), world.id).toHaveLength(2);
+    expect(stagedCalls.at(-1), world.id).toBe("interpretApprovalTransition");
+  }
   const approvalReadback = process.env.VIBESTUDIO_APPROVAL_VISIBILITY_SMOKE_JSON;
   if (approvalReadback) {
-    const world = JSON.parse(await readFile(approvalReadback, "utf8")) as
-      (typeof approvalVisibilityWorlds)[number];
-    const report = await program({
-      goal: world.request.goal,
-      work: [{
-        kind: "domain",
-        domain: "capabilities",
-        operation: "reviewApprovalQueues",
-        input: world.request,
-      }],
-    }) as { results: { report: unknown }[]; remaining: string[] };
-    expect(report.remaining).toEqual([]);
-    expect(report.results).toHaveLength(1);
-    expect(verifyApprovalVisibility(world, report.results[0]?.report).passed).toBe(true);
+    const worlds = JSON.parse(await readFile(approvalReadback, "utf8")) as
+      (typeof approvalVisibilityWorlds[number] | typeof approvalTransitionWorlds[number])[];
+    for (const world of worlds) {
+      const report = await program({
+        goal: world.request.goal,
+        work: [{
+          kind: "domain",
+          domain: "capabilities",
+          operation: "earlier" in world.request ? "reviewApprovalTransition" : "reviewApprovalQueues",
+          input: world.request,
+        }],
+      }) as { results: { report: unknown }[]; remaining: string[] };
+      expect(report.remaining, world.id).toEqual([]);
+      expect(report.results, world.id).toHaveLength(1);
+      expect(verifyApprovalVisibility(world, report.results[0]?.report).passed, world.id).toBe(true);
+    }
   }
   for (const world of localReviewerWorlds) {
     const catalog = cases.find((scenario) => scenario.id === world.id);

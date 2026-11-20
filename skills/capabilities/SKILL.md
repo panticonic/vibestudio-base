@@ -209,3 +209,8 @@ Inspect sealed build metadata and execution identity, not just current source.
 Keep structured errors and the original caller across internal calls. Unknown
 schemas, missing provider declarations, missing provenance, and unclassified
 authority fail closed.
+
+To follow an assigned request across two observations, use
+[reviewApprovalTransition](natlang/reviewApprovalTransition.nl). Supply the
+same caller and approval ID with ordered receipt sets from the two reads.
+The result retains both queue reviews and describes the change in visibility.

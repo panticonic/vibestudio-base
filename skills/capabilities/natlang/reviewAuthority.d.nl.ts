@@ -62,5 +62,24 @@ type ApprovalVisibilityReport = {
   surfaces: ApprovalSurfaceReview[];
   location: ApprovalLocation;
 };
+type ApprovalTransitionRequest = {
+  goal: string;
+  caller: ApprovalCaller;
+  approvalId: string;
+  earlier: ApprovalQueueReceipt[];
+  later: ApprovalQueueReceipt[];
+};
+type ApprovalTransition = | "appeared"
+  | "still-pending"
+  | "queue-changed"
+  | "no-longer-listed"
+  | "not-listed"
+  | "now-visible"
+  | "unconfirmed";
+type ApprovalTransitionReport = {
+  transition: ApprovalTransition;
+  earlier: ApprovalVisibilityReport;
+  later: ApprovalVisibilityReport;
+};
 declare const fn: NatlangFunction<[request: AuthorityReviewRequest], AuthorityReview> & { readonly combineCeiling: NatlangFunction<[reviews: AuthorityOperationReview[]], AuthorityCombined> & { readonly collectProtected: NatlangFunction<[reviews: AuthorityOperationReview[]], ExactAuthority[]> }; readonly reviewOperation: NatlangFunction<[operationId: string, ceiling: ExactAuthority[]], AuthorityOperationReview> & { readonly decideDisposition: NatlangFunction<[decision: AuthorityObservation["decision"], outside: ExactAuthority[]], AuthorityDisposition>; readonly findOutside: NatlangFunction<[leaves: AuthorityHostLeaf[], ceiling: ExactAuthority[]], ExactAuthority[]>; readonly preflight: NatlangFunction<[operationId: string], AuthorityObservation> } };
 export default fn;
