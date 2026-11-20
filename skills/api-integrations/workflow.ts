@@ -8,11 +8,15 @@ import type {
 
 type AssignedDestination = IntegrationDestination & { url: string };
 
+type ResolveIntegrationDestination = (input: {url:string;use:IntegrationDestination["use"]}) => Promise<{
+  lifecycle: {state:"active"|"expired"|"revoked";canRefresh:boolean};
+} | null>;
+
 /** Use the caller's existing authority policy for one sealed integration review. */
-export function bindIntegrationReview(assignment: {
-  goal: string;
-  destinations: AssignedDestination[];
-}) {
+export function bindIntegrationReview(
+  assignment: {goal:string;destinations:AssignedDestination[]},
+  resolveDestination: ResolveIntegrationDestination = input => credentials.resolveCredential(input),
+) {
   const destinations = structuredClone(assignment.destinations);
   const ids = new Set(destinations.map(({ id }) => id));
   if (
@@ -83,7 +87,7 @@ export function bindIntegrationReview(assignment: {
           index++;
           const evidence = { id, receipt: `${operationId}:binding:${id}` };
           try {
-            const result = await credentials.resolveCredential({
+            const result = await resolveDestination({
               url: destination.url,
               use: destination.use,
             });

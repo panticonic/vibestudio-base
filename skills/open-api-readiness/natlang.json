@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2", "name": "vibestudio-open-api-readiness", "version": "0.1.0",
+  "targets": {"main":{"entry":"discoverIntegrationReview.nl"}},
+  "serviceBinding":"explicit",
+  "serviceScopes":{
+    "quietIntegrationIndex":["discoverIntegrationReview.nl"],
+    "quietIntegrationJournal":["readIntegrationSelection.nl"],
+    "quietIntegrationProtocol":["openQuietIntegrationPlan.nl","readQuietIntegrationAudit.nl"],
+    "quietIntegrationHandoff":["stageIntegrationReadiness.nl"]
+  }
+}
