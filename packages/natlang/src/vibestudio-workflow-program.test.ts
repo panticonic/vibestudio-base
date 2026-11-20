@@ -364,6 +364,10 @@ it("describes the typed workflows in the installed template domains", async () =
         const report = await domains.personal.runPersonalWorkflow(remote.input);
         return {results:[{kind:"domain",domain:"personal",operation:remote.operation,report}],remaining:[]};
       }
+      if (remote.domain === "personalFacility") {
+        const report = await domains.personalFacility.reviewPersonalFacility(remote.input);
+        return {results:[{kind:"domain",domain:"personalFacility",operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "remoteAccess") {
         if (remote.operation === "reviewRemoteRoute") {
           const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
@@ -476,6 +480,27 @@ it("describes the typed workflows in the installed template domains", async () =
     assessSetup: "return {capabilityIds:[request.selection.capabilityId],unknownIds:[]};",
     selectAction: 'return {action:"follow-owner-route",routeId:request.selection.id,workspaceScope:"current"};',
     explainNext: 'return "Open the installed GitHub owner route.";',
+    reviewPersonalFacility: "return await reviewLiveMission(request);",
+    reviewLiveMission: "return await reviewMission(await readMissionCard(request.operationId));",
+    readMissionCard: "return await missionFacilityRead.inspect(operationId);",
+    reviewMission: `
+      const gate=await establishMissionCard(input);
+      if(gate) return gate;
+      return await inspectMissionBoundary(input);
+    `,
+    establishMissionCard: `
+      const {target,card}=input;
+      if(card.revision!==target.expectedRevision) return {
+        status:"attention",findings:[{code:"reread-task-revision",evidenceIds:[target.id,card.id]}]
+      };
+      if(!card.dependencyAccepted) return {
+        status:"waiting",findings:[{code:"dependencies-unaccepted",evidenceIds:[card.id]}]
+      };
+      return null;
+    `,
+    inspectMissionBoundary: `
+      return {status:"waiting",findings:[{code:"canonical-run-unobserved",evidenceIds:[input.card.id]}]};
+    `,
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -595,6 +620,9 @@ it("describes the typed workflows in the installed template domains", async () =
         const expected = name === "readRepository" ? ["repositoryResumeRead"] :
           name === "readOwnerRoute" ? ["repositoryOwnerRead"] : [];
         expect(Object.keys(session.availableServices())).toEqual(expected);
+      }
+      if (["reviewPersonalFacility", "reviewLiveMission", "readMissionCard", "reviewMission", "establishMissionCard", "inspectMissionBoundary"].includes(name)) {
+        expect(Object.keys(session.availableServices())).toEqual(name === "readMissionCard" ? ["missionFacilityRead"] : []);
       }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
@@ -767,6 +795,51 @@ it("describes the typed workflows in the installed template domains", async () =
         "runWorkflow", "runPersonalWorkflow", "resumeRepositoryWork", "readRepository",
         "planRepositoryWork", "interpretGitWork", "chooseAccess", "assessRepo", "writePlan", "chooseOwnerAction",
         ...(dirty ? [] : ["readOwnerRoute", "routeSetup", "assessSetup", "selectAction", "explainNext"]),
+      ]);
+    }
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "reviewPersonalFacility")) {
+    runReference = true;
+    const goal = "Check the assigned card before assuming it can run.";
+    const operationId = "released-card";
+    const input = { kind: "mission-live", goal, operationId };
+    const readback = {
+      kind: "mission", goal,
+      target: { id: operationId, taskId: "card", expectedRevision: 3 },
+      card: {
+        id: "card", taskId: "card", revision: 3, state: "ready",
+        projectArchived: false, dependencyAccepted: true, automationId: null,
+      },
+      detail: { kind: "execution", intent: "start", automationKind: null, receipt: null },
+    };
+    const reads: string[] = [];
+    const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+      services: { missionFacilityRead: { async inspect(id: string) {
+        reads.push(id);
+        return structuredClone(readback);
+      } } },
+    })) as (input: unknown) => Promise<unknown>;
+    for (const [revision, accepted, code] of [
+      [4, true, "reread-task-revision"],
+      [3, false, "dependencies-unaccepted"],
+      [3, true, "canonical-run-unobserved"],
+    ] as const) {
+      readback.card.revision = revision;
+      readback.card.dependencyAccepted = accepted;
+      stagedCalls.length = 0;
+      await expect(run({ goal, work: [{
+        kind: "domain", domain: "personalFacility", operation: "reviewPersonalFacility", input,
+      }] })).resolves.toMatchObject({
+        results: [{report: {
+          status: revision === 4 ? "attention" : "waiting",
+          findings: [{code, evidenceIds: revision === 4 ? [operationId, "card"] : ["card"]}],
+        }}],
+      });
+      expect(reads.splice(0)).toEqual([operationId]);
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow", "reviewPersonalFacility", "reviewLiveMission", "readMissionCard",
+        "reviewMission", "establishMissionCard", ...(revision === 3 && accepted ? ["inspectMissionBoundary"] : []),
       ]);
     }
     runReference = false;
