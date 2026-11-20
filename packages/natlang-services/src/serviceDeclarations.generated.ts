@@ -1542,6 +1542,32 @@ export function apply(
       basis: string,
       mutation: ArtifactLibraryMutation,
     ): Promise<ArtifactLibraryEffect>;`,
+  operatorQueue: `/** Observe owned monitor scheduling and apply changes to the current authorized revision. */
+
+type State = "active" | "paused";
+
+type Action = "pause" | "resume";
+
+type Monitor = {
+  id: string;
+  name: string;
+  team: string;
+  state: State;
+  revision: string;
+  reviewedRevision: string | null;
+  needs: string[];
+  permitted: Action[];
+};
+
+type Queue = { id: string; monitors: Monitor[] };
+
+type Receipt = "applied" | "already" | "blocked" | "interrupted";
+
+/** Observe owned monitor scheduling and apply changes to the current authorized revision. */
+export function observe(): Promise<Queue>;
+
+/** Observe owned monitor scheduling and apply changes to the current authorized revision. */
+export function apply(basis: string, id: string, action: Action): Promise<Receipt>;`,
   archiveTimeline: `/** Discover milestones and read committed documents from the authorized archive. */
 
 type Milestone = { label: string; eventId: string };

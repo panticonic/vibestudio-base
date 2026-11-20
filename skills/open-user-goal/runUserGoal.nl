@@ -24,6 +24,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `calendar.workOnCalendarGoal` for reconciling current calendar proposals and staging a scheduling handoff.
 - `personalArtifacts.workOnPersonalArtifactsGoal` for saved browser references and their use in a collection.
 - `personalHistory.reviewPersonalHistory` for historical decisions and evidence across recorded milestones.
+- `personalAutomation.coordinatePersonalAutomation` for coordinated changes across authorized monitors, including interrupted acknowledgments.
 - `personal.workOnMissionGoal` for Mission Control.
 - `operator.workOnSystemGoal` for System operations.
 - `recovery.recoverSessionGoal` for retained conversations and recovery handoffs.

@@ -472,6 +472,7 @@ it.each([
   ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
   ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal", "workOnPersonalArtifactsGoal/maintainLibrary"],
   ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory"],
+  ["personal", "open-personal-automation", "operatorQueue", "personalAutomation", "coordinatePersonalAutomation"],
   ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal"],
   ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
 ])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable, owner = callable) => {

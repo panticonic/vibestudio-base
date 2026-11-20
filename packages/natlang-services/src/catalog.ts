@@ -122,6 +122,9 @@ const authoredServices = [
   authoredService("calendarGoalReadback", "Verify a calendar record freshly before using it.", "google-workspace", "open-calendar-goal/program", [{ name: "verify", params: ["record"] }]),
   authoredService("calendarGoalHandoff", "Stage a verified scheduling decision in workspace scratch.", "google-workspace", "open-calendar-goal/program", [{ name: "stage", params: ["decision"] }]),
   authoredService("artifactLibrary", "Observe authorized references and apply a change against the current library basis.", "personal", "open-personal-artifacts", [{ name: "observe", params: [] }, { name: "apply", params: ["basis", "mutation"] }]),
+  authoredService("operatorQueue", "Observe owned monitor scheduling and apply changes to the current authorized revision.", "personal", "open-personal-automation", [
+    { name: "observe", params: [] }, { name: "apply", params: ["basis", "id", "action"] },
+  ]),
   authoredService("archiveTimeline", "Discover milestones and read committed documents from the authorized archive.", "personal", "open-personal-history", [
     { name: "discover", params: [] }, { name: "list", params: ["eventId"] }, { name: "read", params: ["eventId", "path"] },
   ]),
