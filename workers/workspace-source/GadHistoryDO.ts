@@ -3,6 +3,7 @@ import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import type { WorkspaceSourceInitializationReceipt } from "@vibestudio/workspace-contracts/workspaceSource";
 import {
   vcsBlameInputSchema,
   vcsCompareInputSchema,
@@ -94,7 +95,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
-import { HistoryQueryRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
+import { gadWireMethods, HistoryQueryRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -121,6 +122,7 @@ function incomingBranch(input: IncomingHistoryPublication): string {
 }
 type ReplayContextTip = { id: string; committed: string; working: string };
 type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[]; frozenPlanDigest?: string };
+const sourceInitializationKey = "history-source-initialization";
 type SharedHistorySeed = { sourceNodeId: string; head: string; eventId: string };
 type SharedHistorySeedReceipt = { seed: SharedHistorySeed; originalHead: string; installed: boolean };
 const seedRemote = "workspace-seed";
@@ -422,7 +424,8 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  readHistoryReplayReceipt(): ReplayReceipt | null {
+  readHistoryReplayReceipt(input?: { includeSourceInitialization: true }):
+    (ReplayReceipt & { sourceInitialization?: WorkspaceSourceInitializationReceipt | null }) | null {
     this.#assertCanonical();
     const stored = this.getStateValue("history-replay-receipt");
     if (!stored) return null;
@@ -430,7 +433,47 @@ export class GadHistoryDO extends DurableObjectBase {
     if (receipt.head !== this.getStateValue("history-installed")) {
       throw new Error("Workspace replay receipt has a different installed head");
     }
-    return receipt;
+    if (!input?.includeSourceInitialization) return receipt;
+    const initialization = this.getStateValue(sourceInitializationKey);
+    return {
+      ...receipt,
+      sourceInitialization: initialization
+        ? this.#sourceInitializationReceipt(JSON.parse(initialization))
+        : null,
+    };
+  }
+
+  @rpc(hostWrite)
+  rememberHistorySourceInitialization(input: {
+    replayReceiptDigest: string;
+    receipt: WorkspaceSourceInitializationReceipt;
+  }): true {
+    const replay = this.readHistoryReplayReceipt();
+    if (!replay?.frozenPlanDigest ||
+        sha256HexSyncText(canonicalJson(replay)) !== input.replayReceiptDigest)
+      throw new Error("Source initialization requires the exact history replay receipt");
+    const receipt = this.#sourceInitializationReceipt(input.receipt);
+    if (!workspaceCommitForRef(this.sql, replay.head, {
+      kind: "event", eventId: receipt.initializedEventId,
+    })) {
+      throw new Error("Source initialization event is outside the replayed history");
+    }
+    const next = canonicalJson(receipt);
+    const prior = this.getStateValue(sourceInitializationKey);
+    if (prior !== null && prior !== next)
+      throw new Error("A different source initialization receipt is already recorded");
+    if (prior === null) this.setStateValue(sourceInitializationKey, next);
+    return true;
+  }
+
+  #sourceInitializationReceipt(input: unknown): WorkspaceSourceInitializationReceipt {
+    const inspection = gadWireMethods.workspaceSourceInspectInitialization.returns.parse({
+      state: "ready",
+      commandId: (input as Partial<WorkspaceSourceInitializationReceipt> | null)?.commandId,
+      receipt: input,
+    });
+    if (inspection.state !== "ready") throw new Error("Invalid source initialization receipt");
+    return inspection.receipt;
   }
 
   @rpc(hostRead)
