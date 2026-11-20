@@ -1211,6 +1211,26 @@ export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]
 export function finishCadence(
       change: NewsCadenceChange,
     ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  browserImportStart: `/** Start the caller-approved public import after fresh preview verification. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportTotal = { category: PublicImportCategory; total: number };
+
+type ImportPreviewObservation = {
+  totals: ImportTotal[];
+  status: "previewed" | "source-changed";
+  warningCount: number;
+};
+
+type BrowserImportDispatch = "started" | "held";
+
+/** Start the caller-approved public import after fresh preview verification. */
+export function start(observed: ImportPreviewObservation): Promise<BrowserImportDispatch>;`,
   browserImportSource: `/** Read the caller-assigned browser import source readiness. */
 
 type PublicImportCategory =

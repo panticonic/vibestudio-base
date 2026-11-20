@@ -104,6 +104,7 @@ const authoredServices = [
   authoredService("driveCheckpoint", "Read and compare the assigned Drive checkpoint file.", "google-workspace", "google-drive/driveWorkflow", [{ name: "read", params: [] }, { name: "commit", params: ["expected", "terminal"] }]),
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
+  authoredService("browserImportStart", "Start the caller-approved public import after fresh preview verification.", "personal", "browser-import-review", [{ name: "start", params: ["observed"] }]),
   authoredService("browserImportSource", "Read the caller-assigned browser import source readiness.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),
   authoredService("browserImportPreview", "Preview aggregate counts for the assigned public categories.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),
   authoredService("browserImportHistory", "Read the assigned retained browser import receipt.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),
