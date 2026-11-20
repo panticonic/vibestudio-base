@@ -18,7 +18,7 @@
           "className": "GadHistoryDO",
           "storage": "dolt",
           "doltRemotes": true,
-          "doltLocal": ["gad_history_allocations", "content_roots", "content_root_basis"]
+          "doltLocal": ["gad_history_allocations", "content_roots", "content_root_basis", "commit_index"]
         }
       ]
     },

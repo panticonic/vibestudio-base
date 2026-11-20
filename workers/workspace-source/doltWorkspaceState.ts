@@ -28,6 +28,7 @@ import {
   type WorkspaceTransferBasis,
 } from "./workspaceMutation.js";
 import { execBatchedInsert } from "./sqlBatch.js";
+import { indexedWorkspaceCommit } from "./workspaceCommitIndex.js";
 
 const repositoryColumns = [
   "repository_id",
@@ -68,6 +69,10 @@ export function workspaceCommitForRef(
   at: string,
   ref: StateNodeRef
 ): string | null {
+  return indexedWorkspaceCommit(sql, at, ref, () => resolveWorkspaceCommit(sql, at, ref));
+}
+
+function resolveWorkspaceCommit(sql: SqlStorage, at: string, ref: StateNodeRef): string | null {
   const event = ref.kind === "event";
   const table = event ? "events" : "applications";
   const key = event ? "event_id" : "application_id";

@@ -1,6 +1,6 @@
 import { canonicalJson, compareUtf16CodeUnits, sha256HexSyncText } from "@vibestudio/content-addressing";
 import { readPublishedCommitMemory, readPublishedCommitMemoryPage } from "./doltWorkspaceProvenance.js";
-import { DurableObjectBase, rpc } from "@vibestudio/durable";
+import { DurableObjectBase, rpc, type DurableObjectContext } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
@@ -91,6 +91,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticHistoryRecords.js";
+import { createWorkspaceCommitIndex, enableWorkspaceCommitIndex } from "./workspaceCommitIndex.js";
 import { createWorkspaceContentRootIndex, indexedWorkspacePlacementRoots } from "./workspaceContentRoots.js";
 import { workspaceHistoryInitializationInputSchema, HistoryQueryRequestSchema, HistoryRecallBasisRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
@@ -179,15 +180,21 @@ function historyContextKey(contextId: string): string {
 
 /** The hosted, versioned history owner. The workspace's trajectory mirror lives separately. */
 export class GadHistoryDO extends DurableObjectBase {
-  static override schemaVersion = 2;
+  static override schemaVersion = 3;
 
   readonly #allocations = new Map<string, Promise<unknown>>();
   readonly #outgoing = new Set<string>();
   #participant: ParticipantHistory | undefined;
 
+  constructor(ctx: DurableObjectContext, env: unknown) {
+    super(ctx, env);
+    enableWorkspaceCommitIndex(this.sql);
+  }
+
   protected createTables(): void {
     createDoltWorkspaceState(this.sql);
     createWorkspaceContentRootIndex(this.sql);
+    createWorkspaceCommitIndex(this.sql);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS gad_history_allocations (
       target_key TEXT PRIMARY KEY,
       context_id TEXT NOT NULL,
@@ -206,6 +213,7 @@ export class GadHistoryDO extends DurableObjectBase {
       "gad_history_allocations",
       "content_roots",
       "content_root_basis",
+      "commit_index",
     ];
   }
 
