@@ -1216,6 +1216,15 @@ type GoogleSetupReceipt = {
 
 /** Read the assigned Google setup journey. */
 export function observe(): Promise<GoogleSetupReceipt[]>;`,
+  googleGoalDiscovery: `/** Discover the authorized Drive folders and change sources for the current goal. */
+
+type DriveGoalScope = {
+  folders: { id: string; name: string; description: string }[];
+  changeSources: { cursor: string; name: string }[];
+};
+
+/** Discover the authorized Drive folders and change sources for the current goal. */
+export function discover(): Promise<DriveGoalScope>;`,
   newsRead: `/** Read assigned News readers and schedules and complete the assigned cadence change. */
 
 type NewsReaderPage = {
@@ -1264,13 +1273,14 @@ type NewsScheduleEvidence = {
     | { kind: "manual" };
 };
 
-type NewsCadenceChange =
+type NewsGoalChange =
   | { kind: "poll"; intervalMs: number }
   | { kind: "interval"; intervalMs: number }
   | { kind: "daily"; at: string; timezone: string }
   | { kind: "pause" }
-  | { kind: "resume" }
-  | null;
+  | { kind: "resume" };
+
+type NewsCadenceChange = NewsGoalChange | null;
 
 /** Read assigned News readers and schedules and complete the assigned cadence change. */
 export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;
@@ -1279,6 +1289,89 @@ export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]
 export function finishCadence(
       change: NewsCadenceChange,
     ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  newsGoal: `/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+
+type NewsScheduleEvidence = {
+  kind: "schedule";
+  goal: string;
+  owner: { id: string; mode: "curator" | "analyst"; paused: boolean };
+  poll: { id: string; intervalMs: number } | null;
+  briefing: {
+    id: string;
+    kind: "interval" | "daily";
+    intervalMs: number | null;
+    at: string | null;
+    timezone: string | null;
+  } | null;
+  intent:
+    | { kind: "poll"; intervalMs: number }
+    | { kind: "interval"; intervalMs: number }
+    | { kind: "daily"; at: string; timezone: string }
+    | { kind: "pause" }
+    | { kind: "resume" }
+    | { kind: "manual" };
+};
+
+type NewsCadenceSnapshot = {
+  owner: NewsScheduleEvidence["owner"];
+  poll: NewsScheduleEvidence["poll"];
+  briefing: NewsScheduleEvidence["briefing"];
+};
+
+type NewsReaderSelection =
+  | { kind: "inbox" | "saved" | "backlog" }
+  | { kind: "archive"; query: string };
+
+type NewsReaderPage = {
+  id: string;
+  requestedCursor: string | null;
+  nextCursor: string | null;
+  hasMore: boolean;
+  articleIds: string[];
+  briefingIds?: string[];
+};
+
+type NewsReaderEvidence = {
+  kind: "reader";
+  goal: string;
+  view: "inbox" | "saved" | "archive" | "backlog";
+  overview: {
+    id: string;
+    setup: "needs-user-preferences" | "configured";
+    articleCount: number;
+    untriagedCount: number;
+    enabledFeeds: number;
+    failedFeeds: number;
+  };
+  activity: "idle" | "loading" | "retryable-error";
+  pages: NewsReaderPage[];
+};
+
+type NewsGoalChange =
+  | { kind: "poll"; intervalMs: number }
+  | { kind: "interval"; intervalMs: number }
+  | { kind: "daily"; at: string; timezone: string }
+  | { kind: "pause" }
+  | { kind: "resume" };
+
+type NewsGoalApply = {
+  status: "applied" | "state-changed" | "unchanged" | "denied";
+  cadence: NewsCadenceSnapshot;
+};
+
+/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+export function observeCadence(): Promise<NewsCadenceSnapshot>;
+
+/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+export function readReader(
+      selection: NewsReaderSelection,
+    ): Promise<NewsReaderEvidence>;
+
+/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+export function apply(
+      observationId: string,
+      change: NewsGoalChange,
+    ): Promise<NewsGoalApply>;`,
   browserImportStart: `/** Start the caller-approved public import after fresh preview verification. */
 
 type PublicImportCategory =
@@ -1643,6 +1736,112 @@ type VaultHandoffEvidence = {
 
 /** Read the verified document and preview from the assigned vault review. */
 export function evidence(): Promise<VaultHandoffEvidence>;`,
+  spectroliteGoal: `/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+
+type OpenVaultView = {
+  path: string;
+  revision: string;
+  source: string;
+  visible: string;
+  links: { target: string; path: string | null }[];
+};
+
+type ReviewCheck =
+  | "document"
+  | "preview"
+  | "navigation"
+  | "revision"
+  | "handoff"
+  | "publication";
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultReviewState = {
+  id: string;
+  repositoryId: string;
+  working: VaultReference;
+  committed: VaultReference;
+  mainEventId: string;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+};
+
+type DocumentReviewReceipt = {
+  id: string;
+  repositoryId: string;
+  path: string;
+  ref: VaultReference;
+  fileId: string;
+  contentHash: string;
+  format: "text" | "other";
+  contentClass: "internal" | "external";
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  externalKeys: string[];
+  title: string | null;
+  dependencies: { name: string; reference: string }[];
+  links: { target: string; resolvedPath: string | null }[];
+};
+
+type PreviewReviewReceipt = {
+  id: string;
+  documentPath: string;
+  contentHash: string;
+  phase: "pending" | "rendered" | "compile-error" | "render-error";
+  detail: string | null;
+};
+
+type NavigationHop = { from: string; target: string; to: string };
+
+type NavigationReceipt = {
+  id: string;
+  hops: NavigationHop[];
+};
+
+type ScribeReviewReceipt = {
+  id: string;
+  documentPath: string;
+  recipientId: string;
+  eventId: string | null;
+  phase: "unsent" | "sent" | "failed";
+  selection: string | null;
+};
+
+type PublishReviewReceipt = {
+  id: string;
+  targetEventId: string;
+  observedMainEventId: string | null;
+  outcome: "published" | "up-to-date" | "error" | null;
+  publishing: boolean;
+  conflicts: { kind: "file" | "repository"; id: string; summary: string }[];
+  lastError: string | null;
+};
+
+type SpectroliteReviewRequest = {
+  goal: string;
+  checks: ReviewCheck[];
+  path: string;
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt | null;
+  committedDocument?: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+  navigation?: NavigationReceipt | null;
+  scribeTarget: { recipientId: string; selection: string | null } | null;
+  handoff: ScribeReviewReceipt | null;
+  publication: PublishReviewReceipt | null;
+};
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function inspect(): Promise<OpenVaultView>;
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function follow(target: string, revision: string): Promise<"followed" | "changed" | "unavailable">;
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function revise(revision: string, source: string): Promise<"written" | "changed" | "unavailable">;
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function evidence(checks: ReviewCheck[]): Promise<SpectroliteReviewRequest>;`,
   architectureProviderRead: `/** Read the assigned installed service and its exact authored declaration. */
 
 type ArchitectureRoute = {

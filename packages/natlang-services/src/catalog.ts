@@ -107,7 +107,12 @@ const authoredServices = [
   authoredService("realmRead", "Read the assigned Regency accounts and bounded forecast.", "examples", "examples-review", [{ name: "observe", params: ["months"] }]),
   authoredService("driveCheckpoint", "Read and compare the assigned Drive checkpoint file.", "google-workspace", "google-drive/driveWorkflow", [{ name: "read", params: [] }, { name: "commit", params: ["expected", "terminal"] }]),
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
+  authoredService("googleGoalDiscovery", "Discover the authorized Drive folders and change sources for the current goal.", "google-workspace", "google-drive/driveWorkflow", [{ name: "discover", params: [] }]),
   authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
+  authoredService("newsGoal", "Observe the current News reader and cadence, then apply an authorized change against an observation.", "news", "news-workflows", [
+    { name: "observeCadence", params: [] }, { name: "readReader", params: ["selection"] },
+    { name: "apply", params: ["observationId", "change"] },
+  ]),
   authoredService("browserImportStart", "Start the caller-approved public import after fresh preview verification.", "personal", "browser-import-review", [{ name: "start", params: ["observed"] }]),
   authoredService("browserImportSource", "Read the caller-assigned browser import source readiness.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),
   authoredService("browserImportPreview", "Preview aggregate counts for the assigned public categories.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),
@@ -120,6 +125,10 @@ const authoredServices = [
   authoredService("missionPlanningChange", "Apply an assigned mission change against its observed revision.", "personal", "mission-planning", [{ name: "apply", params: ["snapshotId", "changes"] }]),
   authoredService("spectroliteRead", "Observe the assigned vault and actual editor.", "spectrolite", "spectrolite-review", [{ name: "observe", params: [] }]),
   authoredService("spectroliteHandoffRead", "Read the verified document and preview from the assigned vault review.", "spectrolite", "spectrolite-review", [{ name: "evidence", params: [] }]),
+  authoredService("spectroliteGoal", "Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence.", "spectrolite", "spectrolite-review", [
+    { name: "inspect", params: [] }, { name: "follow", params: ["target", "revision"] },
+    { name: "revise", params: ["revision", "source"] }, { name: "evidence", params: ["checks"] },
+  ]),
   authoredService("architectureProviderRead", "Read the assigned installed service and its exact authored declaration.", "base", "architecture/natlang", [{ name: "resolve", params: ["operationId"] }, { name: "declaration", params: ["routeReceipt"] }]),
   authoredService("clientAdmissionRead", "Read the assigned System client, published trust and selected host contract.", "system", "clientdev/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("extensionReleaseRead", "Read assigned extension source and live approved runtime state.", "base", "extensiondev/natlang", [{ name: "source", params: ["operationId"] }, { name: "runtime", params: ["operationId"] }]),
