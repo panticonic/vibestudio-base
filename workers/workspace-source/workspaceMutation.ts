@@ -57,7 +57,6 @@ import {
   type ContentEndpoint,
   type FileContentOrigin,
   contentEndpoint,
-  coordinateKindForFile,
 } from "./workspaceHistoryReads.js";
 
 type Row = Record<string, unknown>;
@@ -2366,11 +2365,11 @@ export function prepareApplication<Placement>(
           return [];
         }
         relation = "incorporates";
-        const counteractedChangeIds = counteractedChangeIds(change);
+        const counteractions = counteractedChangeIds(change);
         mappings =
-          counteractedChangeIds.length > 0
+          counteractions.length > 0
             ? preparation.invertedCounteractions(
-                counteractedChangeIds,
+                counteractions,
                 child,
                 parentEndpoint,
               )

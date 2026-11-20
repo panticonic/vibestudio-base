@@ -1250,7 +1250,7 @@ describe("appendLogEvent core (§3.2)", () => {
 
 describe("trajectory projection invariants", () => {
   it("inspects an invocation and follows its triggering transcript message", async () => {
-    const { call, instance, sql } = await createTestDO(GadWorkspaceDO, {
+    const { call, instance } = await createTestDO(GadWorkspaceDO, {
       WORKSPACE_ID: "workspace-test",
     });
     const triggerMessageId = "recv:channel-1:prompt-envelope-1";

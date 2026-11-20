@@ -57,7 +57,7 @@ it("reads a native invocation's causal evidence from trajectory tables alone", a
     value: invocation,
   });
   const edges = trajectoryNeighborEdges(sql, root, { phase: 0, key: null }, 10);
-  expect(edges.map(({ edge }) => edge.kind)).toEqual([
+  expect(edges.map(({ edge }) => edge["kind"])).toEqual([
     "part-of-trajectory",
     "part-of-turn",
   ]);
