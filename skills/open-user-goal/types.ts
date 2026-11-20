@@ -27,7 +27,8 @@ export type UserGoalReport =
   | WorkspaceEditReport
   | BrowserGoalReport
   | WorkspaceSuiteReport
-  | { status: "workspace-skill-reviewed"; skill: "news" | "spectrolite" | "google" | "gmail" | "personal" | "operator" | "recovery" | "publication" | "pdf"; outcome: unknown };
+  | { status: "workspace-skill-reviewed"; skill: "news" | "spectrolite" | "google" | "gmail" | "personal" | "operator" | "recovery" | "publication" | "pdf"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "pdfVault"; outcome: PdfVaultOutcome };
 
 export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
 export type OpenSuiteChoice = {
@@ -58,3 +59,16 @@ export type BrowserDecision =
 export type BrowserGoalReport =
   | { status: "observed" | "changed"; revision: string; rows: { label: string; state: string; detail: string }[] }
   | { status: "blocked"; reason: string };
+
+export type PdfVaultDecision =
+  | { status: "hold"; reason: string }
+  | { status: "use-evidence"; citationIndices: number[] };
+export type PdfVaultHandoff =
+  | { status: "hold"; reason: string }
+  | {
+    status: "bound";
+    source: { document: string; digest: string; citations: { page: number; line: number; quote: string }[] };
+    directive: string;
+  };
+
+export type PdfVaultOutcome = { pdf: unknown; handoff: PdfVaultHandoff; vault: unknown };

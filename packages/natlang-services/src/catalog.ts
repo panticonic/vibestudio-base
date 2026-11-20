@@ -85,6 +85,7 @@ const authoredServices = [
   authoredService("serverLogCursor", "Observe the assigned saved cursor and a bounded live host-log window.", "system", "server-logs", [{ name: "observe", params: ["operationId"] }]),
   authoredService("evalRecoveryJournal", "Observe the assigned completed EvalDO attempt and native receipts.", "base", "sandbox/recovery", [{ name: "observe", params: ["operationId"] }]),
   authoredService("evalRecoveryReadback", "Read back an exact assigned digest after its complete native store receipt.", "base", "sandbox/recovery", [{ name: "read", params: ["operationId", "digest"] }]),
+  authoredService("pdfVaultBridge", "Attest live PDF evidence and carry exact citations into the authorized working-vault correction.", "base", "open-user-goal", [{ name: "bind", params: ["pdf", "citationIndices"] }]),
   authoredService("pdfGoalDocuments", "Discover local PDFs in the owned workspace and bind the chosen document and pages.", "base", "pdf-intake", [{ name: "discover", params: [] }, { name: "bind", params: ["revision", "selection"] }]),
   authoredService("pdfGoalVisual", "Render one bound PDF page and retain original PNG and ink evidence.", "base", "pdf-intake", [{ name: "render", params: ["operationId", "pageNumber"] }]),
   authoredService("pdfLayoutRead", "Read the original embedded fragment geometry of one assigned local PDF page.", "base", "pdf-intake", [{ name: "inspect", params: ["operationId"] }]),

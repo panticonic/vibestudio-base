@@ -21,6 +21,7 @@
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
     "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"],
     "goalBrowser": ["runUserGoal/workInBrowser.nl"],
-    "goalSuite": ["runUserGoal/verifyWorkspaceSuite.nl"]
+    "goalSuite": ["runUserGoal/verifyWorkspaceSuite.nl"],
+    "pdfVaultBridge": ["runUserGoal/authorizePdfVaultHandoff.nl"]
   }
 }

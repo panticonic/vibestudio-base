@@ -663,6 +663,18 @@ type EvalRecoveryReadback = {
 
 /** Read back an exact assigned digest after its complete native store receipt. */
 export function read(operationId: string, digest: string): Promise<EvalRecoveryReadback>;`,
+  pdfVaultBridge: `/** Attest live PDF evidence and carry exact citations into the authorized working-vault correction. */
+
+type PdfVaultHandoff =
+  | { status: "hold"; reason: string }
+  | {
+    status: "bound";
+    source: { document: string; digest: string; citations: { page: number; line: number; quote: string }[] };
+    directive: string;
+  };
+
+/** Attest live PDF evidence and carry exact citations into the authorized working-vault correction. */
+export function bind(pdf: unknown, citationIndices: number[]): Promise<PdfVaultHandoff>;`,
   pdfGoalDocuments: `/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
 
 type PdfGoalFile = {

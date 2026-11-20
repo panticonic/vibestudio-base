@@ -448,6 +448,7 @@ it("compiles the open goal program with its installed research skill and scoped 
     recoveryHandoff: ["runUserGoal/recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
     testSuitePlanRead: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     testSuiteVerificationRun: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    pdfVaultBridge: ["runUserGoal/authorizePdfVaultHandoff.nl"],
     pdfGoalDocuments: ["runUserGoal/pdf/workOnPdfGoal.nl"],
     pdfGoalVisual: ["runUserGoal/pdf/workOnPdfGoal/readRenderedPages.nl"],
     pdfIntakeProbe: ["runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],

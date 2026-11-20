@@ -16,4 +16,7 @@ declare module "natlang:services" {
     discover(): Promise<import("./types.js").OpenSuiteRoute[]>;
     prepare(choice: import("./types.js").OpenSuiteChoice): Promise<import("./types.js").OpenSuiteRequest | null>;
   };
+  export const pdfVaultBridge: {
+    bind(pdf: unknown, citationIndices: number[]): Promise<import("./types.js").PdfVaultHandoff>;
+  };
 }
