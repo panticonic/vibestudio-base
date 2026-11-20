@@ -4,5 +4,8 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./index.ts" },
-  "dependencies": { "@vibestudio/service-schemas": "workspace:*" }
+  "dependencies": { "@vibestudio/service-schemas": "workspace:*" },
+  "devDependencies": {
+    "@workspace-skills/template-candidate": "workspace:*"
+  }
 }

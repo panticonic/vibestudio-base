@@ -11,5 +11,8 @@
   "dependencies": {
     "@workspace/agentic-protocol": "workspace:*",
     "@vibestudio/content-addressing": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace-skills/vibestudio-workflows": "workspace:*"
   }
 }

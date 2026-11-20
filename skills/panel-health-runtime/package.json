@@ -8,5 +8,8 @@
   },
   "dependencies": {
     "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace-skills/panel-health": "workspace:*"
   }
 }

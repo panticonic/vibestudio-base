@@ -10,5 +10,8 @@
   "dependencies": {
     "@vibestudio/shared": "workspace:*",
     "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace-skills/workspace-unit-design": "workspace:*"
   }
 }

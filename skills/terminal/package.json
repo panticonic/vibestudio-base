@@ -4,5 +4,8 @@
   "private": true,
   "type": "module",
   "exports": { "./workflow": "./workflow.ts", "./receipt-review": "./receipt-review.ts" },
-  "dependencies": { "@workspace/runtime": "workspace:*" }
+  "dependencies": { "@workspace/runtime": "workspace:*" },
+  "devDependencies": {
+    "@workspace-skills/device-and-terminal-review": "workspace:*"
+  }
 }

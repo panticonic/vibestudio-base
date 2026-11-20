@@ -7,5 +7,8 @@
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/harness": "workspace:*",
     "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace-skills/native-suite-review": "workspace:*"
   }
 }
