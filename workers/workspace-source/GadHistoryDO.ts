@@ -600,33 +600,39 @@ export class GadHistoryDO extends DurableObjectBase {
       const main = dolt.hashOf("main");
       if (!committedWorkspaceEvent(this.sql, main))
         throw new Error("Workspace history has no installed main");
-      this.sql.exec(
-        `INSERT OR IGNORE INTO gad_history_allocations (target_key, context_id, fork_head) VALUES (?, ?, ?)`,
-        target,
-        input.contextId,
-        main
-      );
-      const stored = this.sql
-        .exec(
-          "SELECT context_id, fork_head, status FROM gad_history_allocations WHERE target_key = ?",
-          target
-        )
-        .one();
-      if (stored["context_id"] !== input.contextId || typeof stored["fork_head"] !== "string") {
-        throw new Error("Workspace participant allocation changed its owner context");
-      }
-      const forkHead = stored["fork_head"];
-      if (stored["status"] !== "reserved" && stored["status"] !== "active") {
-        throw new Error("Workspace participant is retiring");
-      }
-      const identityKey = `history-allocation-identity:${target}`;
-      const previousIdentity = this.getStateValue(identityKey);
-      if (previousIdentity !== null && previousIdentity !== input.participantId) {
-        throw new Error("Workspace participant allocation changed its identity");
-      }
-      if (previousIdentity === null) this.setStateValue(identityKey, input.participantId);
+      // Retirement must be able to identify a reserved owner even if the
+      // runtime has yet to create its storage copy.
+      const { forkHead, status } = this.ctx.storage.transactionSync(() => {
+        this.sql.exec(
+          `INSERT OR IGNORE INTO gad_history_allocations (target_key, context_id, fork_head) VALUES (?, ?, ?)`,
+          target,
+          input.contextId,
+          main
+        );
+        const stored = this.sql
+          .exec(
+            "SELECT context_id, fork_head, status FROM gad_history_allocations WHERE target_key = ?",
+            target
+          )
+          .one();
+        const forkHead = stored["fork_head"];
+        const status = stored["status"];
+        if (stored["context_id"] !== input.contextId || typeof forkHead !== "string") {
+          throw new Error("Workspace participant allocation changed its owner context");
+        }
+        if (status !== "reserved" && status !== "active") {
+          throw new Error("Workspace participant is retiring");
+        }
+        const identityKey = `history-allocation-identity:${target}`;
+        const previousIdentity = this.getStateValue(identityKey);
+        if (previousIdentity !== null && previousIdentity !== input.participantId) {
+          throw new Error("Workspace participant allocation changed its identity");
+        }
+        if (previousIdentity === null) this.setStateValue(identityKey, input.participantId);
+        return { forkHead, status };
+      });
       const targetId = `do:${source}:${className}:${target}`;
-      if (stored["status"] === "reserved") {
+      if (status === "reserved") {
         const handle = await this.rpc.call("main", mainRpcMethods["runtime.createEntity"], [
           {
             kind: "do",

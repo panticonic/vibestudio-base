@@ -1,4 +1,6 @@
 import { canonicalJson, sha256HexSyncText } from "@vibestudio/content-addressing";
+import { doltRemotesOf } from "@vibestudio/durable/dolt";
+import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
 import { createTestDO } from "@vibestudio/durable/test-utils";
 import { expect, it, vi } from "vitest";
 import { GadHistoryDO } from "./GadHistoryDO.js";
@@ -10,6 +12,83 @@ class ReplayHistoryFixture extends GadHistoryDO {
     this.setStateValue("history-replay-receipt", canonicalJson(replay));
   }
 }
+
+it("does not leave an unowned participant reservation when recording its identity fails", async () => {
+  const cell = await FakeDoltStorage.create({ doltLocal: ["state", "gad_history_allocations"] });
+  const { instance } = await createTestDO(GadHistoryDO, { __objectKey: "canonical" }, { storage: cell.storage });
+  const event = vi.spyOn(historyState, "committedWorkspaceEvent")
+    .mockReturnValue({ head: cell.dolt.hashOf("main"), eventId: "shared-tip" });
+  try {
+    cell.sql.exec(`CREATE TRIGGER fail_participant_identity BEFORE INSERT ON state
+      WHEN new.key GLOB 'history-allocation-identity:*' BEGIN
+        SELECT RAISE(ABORT, 'Participant identity write interrupted');
+      END`);
+    await expect(instance.reserveHistoryParticipant({ contextId: "context:work", participantId: "writer" }))
+      .rejects.toThrow("Participant identity write interrupted");
+    expect(cell.sql.exec("SELECT target_key FROM gad_history_allocations").toArray()).toEqual([]);
+    await expect(instance.retireHistoryContext({ contextId: "context:work" }))
+      .resolves.toEqual({ contextId: "context:work", targets: [], branchOwners: [] });
+  } finally {
+    event.mockRestore();
+  }
+});
+
+it("resumes an interrupted reservation at the original fork and returns one grant", async () => {
+  const env = { __objectKey: "canonical" };
+  const cell = await FakeDoltStorage.create({ doltLocal: ["state", "gad_history_allocations"] });
+  const input = { contextId: "context:work", participantId: "writer" };
+  const target = `work-${sha256HexSyncText(input.participantId)}`;
+  const targetId = `do:workers/workspace-source:GadHistoryDO:${target}`;
+  let original: string;
+  const event = vi.spyOn(historyState, "committedWorkspaceEvent")
+    .mockImplementation((_sql, head) => ({ head, eventId: "shared-tip" }));
+  const copies = new Map<string, FakeDoltStorage>();
+  let current = cell;
+  const create = vi.fn(async (
+    _receiver: string,
+    method: { name: string },
+    [spec]: [{ key: string; forkStorage: { at: string } }],
+  ) => {
+    expect(method.name).toBe("runtime.createEntity");
+    expect(spec.key).toBe(target);
+    expect(spec.forkStorage.at).toBe(original);
+    if (!copies.has(target)) {
+      copies.set(target, await current.fork({ at: spec.forkStorage.at }));
+      throw new Error("The host did not receive the completed fork");
+    }
+    return { targetId };
+  });
+  async function open(cell: FakeDoltStorage) {
+    const { instance } = await createTestDO(GadHistoryDO, env, { storage: cell.storage });
+    Object.defineProperty(instance, "rpc", { value: { call: create } });
+    return instance;
+  }
+  try {
+    const previous = await open(cell);
+    original = cell.dolt.hashOf("main");
+    await expect(previous.reserveHistoryParticipant(input)).rejects.toThrow("completed fork");
+    current = await cell.restart();
+    current.sql.exec("CREATE TABLE later_workspace_revisions (name TEXT PRIMARY KEY)");
+    const newer = current.dolt.commit("Advance shared history");
+    expect(newer).not.toBe(original);
+    const reopened = await open(current);
+    const reservations = await Promise.all([
+      reopened.reserveHistoryParticipant(input),
+      reopened.reserveHistoryParticipant(input),
+      reopened.reserveHistoryParticipant(input),
+    ]);
+    expect(reservations).toEqual(Array(3).fill(reservations[0]));
+    expect(reservations[0]).toMatchObject({ targetId, head: original });
+    expect(copies.size).toBe(1);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(doltRemotesOf(current.storage)?.remote.grants()).toEqual([
+      expect.objectContaining({ peer: targetId, label: input.participantId }),
+    ]);
+    expect(current.dolt.hashOf("main")).toBe(newer);
+  } finally {
+    event.mockRestore();
+  }
+});
 
 it("records the sealed legacy generation only for the exact installed replay", async () => {
   const replay = {
