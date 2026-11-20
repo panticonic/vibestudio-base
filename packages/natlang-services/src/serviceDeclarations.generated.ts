@@ -1628,6 +1628,54 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  localWidthEvidence: `/** Read an owned machine's retained provider and execution evidence. */
+
+type MachineScope = { machine: string; boot: string; configuration: string };
+
+type WorkNeed = { requestedRef: string | null; alternativesAllowed: boolean; lanes: number; minimumContext: number; tools: boolean };
+
+type ProviderRow = { id: string; ref: string; scope: MachineScope; selectable: boolean; tools: boolean; contextWindow: number; lane: "main" | "utility" };
+
+type ServerEvidence = { id: string; scope: MachineScope; lane: "main" | "utility"; modelRefs: string[]; advertisedWidth: number; running: boolean };
+
+type WidthSurvey = {
+  scope: MachineScope;
+  requirement: WorkNeed;
+  providers: ProviderRow[];
+  servers: ServerEvidence[];
+  inventory: { ref: string; tools: boolean; contextWindow: number; lane: "main" | "utility" }[];
+  witnesses: { id: string; scope: MachineScope; provider: string; ref: string; lane: "main" | "utility" }[];
+  release: "none" | "verified" | "include-hold";
+};
+
+type WorkInterval = { id: string; start: number; end: number; contextTokens: number; usedTools: boolean; terminal: "complete" | "failed" | "cancelled" };
+
+type WidthReceipt = { id: string; scope: MachineScope; provider: string; ref: string; lane: "main" | "utility"; intervals: WorkInterval[] };
+
+/** Read an owned machine's retained provider and execution evidence. */
+export function discover(): Promise<WidthSurvey>;
+
+/** Read an owned machine's retained provider and execution evidence. */
+export function readWitness(id: string): Promise<WidthReceipt>;`,
+  localWidthHandoff: `/** Stage one supported local model readiness handoff in scratch. */
+
+type WidthDisposition = "verified" | "startable" | "model-unavailable" | "provider-unavailable" | "incompatible" | "unproven-width" | "short-width";
+
+type WidthFinding = {
+  disposition: WidthDisposition;
+  ref: string | null;
+  provider: string | null;
+  advertisedWidth: number | null;
+  witnessedWidth: number | null;
+  witness: string | null;
+  reason: string;
+};
+
+type WidthHandoff = { path: string; bytes: number; sha256: string };
+
+/** Stage one supported local model readiness handoff in scratch. */
+export function stage(finding: WidthFinding):
+      Promise<WidthHandoff | null>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };

@@ -1,5 +1,6 @@
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { BuildIncidentOutcome } from "./reviewRetainedBuildIncident/types.js";
+export type { LocalWidthOutcome } from "./reviewLocalExecutionWidth/types.js";
 export * from "./workOnEvalHandoffGoal/journal/types.js";
 export * from "./workOnProgramRunGoal/runtime/types.js";
 export * from "./workOnTerminalGoal/types.js";

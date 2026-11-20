@@ -40,6 +40,7 @@ For checking a retained provider approval and its original conversation result t
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
 - For a timing, cache, initial payload, compiler or memory claim grounded in retained workspace build checkpoints, call reviewRetainedBuildIncident with the unchanged goal. Return status "workspace-skill-reviewed", skill "buildIncident", and its actual outcome.
+- For a retained local model or provider readiness question, or evidence of how many local branches completed together at an exact scope, call reviewLocalExecutionWidth with the user’s unchanged goal. Return status "workspace-skill-reviewed", skill "localWidth", and its actual outcome.
 - For recovering a cancelled, failed, or incomplete native eval and handing off verified retained output, call workOnEvalHandoffGoal with the user's goal. Return status "workspace-skill-reviewed", skill "evalHandoff", and its actual outcome.
 - For an actual typed program trial, a verified output receipt, or inspecting a callable specifically for a requested trial, call workOnProgramRunGoal with the user's goal. Return status "workspace-skill-reviewed", skill "programRun", and its actual outcome.
 - For reviewing the current authored Natlang program, release compatibility, or compiler evidence, call workOnAuthoringGoal with the user's goal. Return status "workspace-skill-reviewed", skill "authoring", and its actual outcome.
