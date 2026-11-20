@@ -29,6 +29,78 @@ type NotificationDismissal = { notificationId: string };
 
 /** Dismiss the temporary notification named by host acceptance. */
 export function dismiss(operationId: string, notificationId: string): Promise<NotificationDismissal>;`,
+  assignedResearchIntake: `/** Read back the public sources assigned to this research review. */
+
+type Intent = "research" | "comparison" | "integration";
+
+type SearchReceipt = {
+  id: string;
+  query: string;
+  urls: string[];
+  outcome: "results" | "empty" | "failed";
+};
+
+type ReadPassage = {
+  digest: string;
+  offset: number;
+  limit: number;
+  bytes: number;
+  nextOffset: number;
+  text: string;
+};
+
+type SourceReceipt = {
+  id: string;
+  requestedUrl: string;
+  finalUrl: string;
+  title: string;
+  authority: "primary" | "secondary";
+  outcome: "fetched" | "blocked" | "empty" | "failed";
+  session: "public" | "browser";
+  browserApproved: boolean;
+  digest: string | null;
+  size: number;
+  head: string;
+  headBytes: number;
+  truncated: boolean;
+  reads: ReadPassage[];
+  publicationDate: string | null;
+  eventDate: string | null;
+};
+
+type IntegrationReceipt = {
+  id: string;
+  endpoint: string;
+  method: string;
+  transport: "http" | "git";
+  documented: boolean;
+  matchedAudience: boolean | null;
+  phase:
+    | "no-attempt"
+    | "matched"
+    | "missing"
+    | "needs-approval"
+    | "denied"
+    | "cancelled"
+    | "response"
+    | "provider-error"
+    | "transport-error";
+  requestBoundToEndpoint: boolean;
+  responseStatus: number | null;
+  responseShape: "match" | "mismatch" | "unavailable";
+};
+
+type ResearchIntakeRequest = {
+  goal: string;
+  checks: Intent[];
+  suppliedUrls: string[];
+  search: SearchReceipt[];
+  pages: SourceReceipt[];
+  integration: IntegrationReceipt | null;
+};
+
+/** Read back the public sources assigned to this research review. */
+export function read(operationId: string): Promise<ResearchIntakeRequest>;`,
   retainedTestFailure: `/** Read and identify the assigned durable system-test failure after its run has settled. */
 
 /** Read and identify the assigned durable system-test failure after its run has settled. */

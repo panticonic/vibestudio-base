@@ -96,4 +96,5 @@ export type ResearchFinding = {
   detail: string;
 };
 export type ResearchIntakeReport = { findings: ResearchFinding[] };
+export type LiveResearchIntakeRequest = { goal: string; operationId: string };
 export type ReceiptState = "usable" | "held" | "missing" | "invalid";

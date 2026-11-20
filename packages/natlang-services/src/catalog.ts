@@ -60,6 +60,7 @@ const authoredServices = [
   authoredService("deliveryHistory", "Inspect durable and consumer views of one assigned conversation receipt.", "base", "conversation-evidence-review", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("temporaryNotificationShow", "Request the caller-assigned temporary shell notification.", "base", "conversation-evidence-review", [{ name: "show", params: ["operationId"] }]),
   authoredService("temporaryNotificationDismiss", "Dismiss the temporary notification named by host acceptance.", "base", "conversation-evidence-review", [{ name: "dismiss", params: ["operationId", "notificationId"] }]),
+  authoredService("assignedResearchIntake", "Read back the public sources assigned to this research review.", "base", "research-intake", [{ name: "read", params: ["operationId"] }]),
   authoredService("retainedTestFailure", "Read and identify the assigned durable system-test failure after its run has settled.", "system-testing", "system-testing/triage", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("githubSetupRead", "Read the assigned local GitHub connection stage without verification.", "personal", "github/natlang", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("githubSetupRoute", "Resolve the native GitHub setup route from the observed connection stage.", "personal", "github/natlang", [{ name: "resolve", params: ["operationId", "accessLevel"] }]),

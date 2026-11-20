@@ -2,5 +2,7 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-research-intake",
   "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "serviceScopes": { "assignedResearchIntake": ["reviewLiveResearchIntake.nl"] },
   "targets": { "main": { "entry": "reviewResearchIntake.nl" } }
 }

@@ -99,6 +99,7 @@ type ResearchFinding = {
   detail: string;
 };
 type ResearchIntakeReport = { findings: ResearchFinding[] };
+type LiveResearchIntakeRequest = { goal: string; operationId: string };
 type ReceiptState = "usable" | "held" | "missing" | "invalid";
 declare const fn: NatlangFunction<[goal: string, page: SourceReceipt], EvidenceCitation | null>;
 export default fn;

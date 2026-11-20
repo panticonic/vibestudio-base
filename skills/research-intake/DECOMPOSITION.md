@@ -10,3 +10,11 @@ The workflow reviews observations already obtained by a Vibestudio caller. It ta
 | API integrations | Decide whether a documented read is ready, the host says authorization or setup is needed, or the relevant receiver/response is wrong. | Use the exact host URL/operation matching and sanitized outcomes; a schema or error code never authorizes a new request. |
 
 The workflow does not ingest credentials or issue a web/API call. The public workflow is pure over caller-owned observations. Existing Web Research and API Integrations workflows retain the actual authority, egress and setup UI.
+
+## Assigned live source intake
+
+`reviewLiveResearchIntake` gets the receipts for the caller's assigned public
+sources and delegates them to the existing `reviewResearchIntake` tree. The
+binding controls the source list, checks cached bytes against the digest, and
+projects the exact receipt fields. The existing Natlang stages decide whether
+those receipts support the claim and select the citation.
