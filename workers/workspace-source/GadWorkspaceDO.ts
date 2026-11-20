@@ -1713,17 +1713,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  vcsForkContext(input: {
-    sourceContextId: string;
-    targetContextId: string;
-    commandId: string;
-    ingress: SemanticDispatchRequest["ingress"];
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().forkContext(input, input.ingress);
-  }
-
-  @schemaRpc()
   vcsDropContext(input: { contextId: string }): { dropped: boolean } {
     this.ensureReady();
     return {

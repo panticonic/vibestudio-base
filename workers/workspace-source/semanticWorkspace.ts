@@ -2134,56 +2134,6 @@ export class SemanticWorkspace {
     );
   }
 
-  forkContext(
-    input: {
-      sourceContextId: string;
-      targetContextId: string;
-      commandId: string;
-    },
-    ingress: SemanticDispatchRequest["ingress"],
-  ): SemanticDispatchResult {
-    return this.deps.transaction(() => {
-      const existing = this.deps.store.beginCommand({
-        scopeKind: "context",
-        scopeId: input.targetContextId,
-        commandId: input.commandId,
-        method: "fork-context",
-        requestDigest: compactId("fork-context-request", input),
-        cause: causalCommandRef(ingress),
-      });
-      if (existing) {
-        const effects = this.deps.store.pendingEffects(input.commandId);
-        return effects.length > 0
-          ? { kind: "effects-pending", result: existing.result, effects }
-          : { kind: "complete", result: existing.result };
-      }
-      const context = this.deps.store.forkContext(
-        input.sourceContextId,
-        input.targetContextId,
-      );
-      const effect = this.queueRealization(
-        input.targetContextId,
-        input.commandId,
-        null,
-        context.working.ref,
-      );
-      if (!effect) {
-        throw new SemanticVcsError(
-          "IntegrityFailure",
-          `Forked context ${input.targetContextId} did not request materialization`,
-        );
-      }
-      this.deps.store.finishCommand({
-        scopeKind: "context",
-        scopeId: input.targetContextId,
-        commandId: input.commandId,
-        result: context,
-        effectPending: true,
-      });
-      return { kind: "effects-pending", result: context, effects: [effect] };
-    });
-  }
-
   private publicMethods(): Record<VcsSemanticMethodName, true> {
     return {
       edit: true,

@@ -397,39 +397,6 @@ describe("SemanticWorkspace snapshot import", () => {
     expect(store.contextProjectionRequired("context:semantic-only")).toBe(true);
   });
 
-  it("does not initialize a forked context again when a runtime attaches to it", async () => {
-    const { semantic, store, initial } = await authorityFixture();
-    const forked = semantic.forkContext(
-      {
-        sourceContextId: "context:test",
-        targetContextId: "context:subagent",
-        commandId: "command:fork-subagent",
-      },
-      { causalParent: null },
-    );
-    expect(forked).toMatchObject({ kind: "effects-pending" });
-    acknowledgeMaterialization(semantic, forked);
-
-    const attached = semantic.ensureContext(
-      {
-        contextId: "context:subagent",
-        commandId: "command:attach-subagent-runtime",
-      },
-      { causalParent: null },
-    );
-
-    expect(attached).toEqual({
-      kind: "complete",
-      result: {
-        ...store.context("context:subagent"),
-      },
-    });
-    expect(store.pendingEffects("command:attach-subagent-runtime")).toEqual([]);
-    expect(store.context("context:subagent")?.working.ref).toEqual(
-      initial.working.ref,
-    );
-  });
-
   it("stops honestly at the exact import boundary without a parallel external graph", async () => {
     const { semantic, restart, store, initial } = await authorityFixture();
     const sourceFile = textFile("src/index.ts", "hello");
