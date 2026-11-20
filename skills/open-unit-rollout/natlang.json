@@ -7,8 +7,8 @@
   "serviceScopes": {
     "unitRolloutCatalog": ["repairWorkspaceUnit.nl"],
     "unitRolloutObserve": ["repairWorkspaceUnit/inspectUnit.nl", "repairWorkspaceUnit/evolveCandidate/diagnose.nl"],
-    "unitRolloutEdit": ["repairWorkspaceUnit/evolveCandidate/applyEdit.ts"],
-    "unitRolloutVerify": ["repairWorkspaceUnit/inspectUnit.nl", "repairWorkspaceUnit/evolveCandidate/checkCandidate.ts"],
-    "unitRolloutCommit": ["repairWorkspaceUnit/commitCandidate.ts"]
+    "unitRolloutEdit": ["repairWorkspaceUnit/evolveCandidate.nl"],
+    "unitRolloutVerify": ["repairWorkspaceUnit/inspectUnit.nl", "repairWorkspaceUnit/evolveCandidate.nl"],
+    "unitRolloutCommit": ["repairWorkspaceUnit.nl"]
   }
 }
