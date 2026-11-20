@@ -318,6 +318,10 @@ it("describes the typed workflows in the installed template domains", async () =
     `,
     runWorkflow: `
       const remote = request.work[0];
+      if (remote.domain === "github") {
+        const report = await domains.github.reviewGitHubSetup(remote.input);
+        return {results:[{kind:"domain",domain:"github",operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "remoteAccess") {
         const report = remote.operation === "deployRemoteServer"
           ? await domains.remoteAccess.deployRemoteServer(remote.input)
@@ -357,6 +361,16 @@ it("describes the typed workflows in the installed template domains", async () =
       return {deployment, handoff, access};
     `,
     bindVerifiedWorkspace: "return await remoteDeploymentHandoff.open(deploymentReceipt);",
+    reviewGitHubSetup: `
+      const status = await readGitHubSetup(request.operationId);
+      const accessLevel = await accessLevelFor(request.goal);
+      const route = await resolveGitHubRoute(request.operationId, accessLevel);
+      return {status, accessLevel, route, handoff: await chooseSetupHandoff(route,request.interactive)};
+    `,
+    readGitHubSetup: "return await githubSetupRead.inspect(operationId);",
+    accessLevelFor: 'return intent.includes("Pages") ? "publish-pages" : "read-only";',
+    resolveGitHubRoute: "return await githubSetupRoute.resolve(operationId, accessLevel);",
+    chooseSetupHandoff: 'return route.action==="render-setup" ? (interactive?"offer-setup":"interactive-required") : route.action;',
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -545,6 +559,7 @@ it("describes the typed workflows in the installed template domains", async () =
       join(templateRoot, "personal"),
       [
         "runPersonalWorkflow",
+        "reviewGitHubSetup",
         "reviewPersonalFacility",
         "recallDecision",
         "compareDecisionRevisions",
@@ -584,6 +599,54 @@ it("describes the typed workflows in the installed template domains", async () =
       ]);
       expect(definition?.result.problem).toBeUndefined();
     }
+  }
+  if (description.functions.some(({ name }) => name === "reviewGitHubSetup")) {
+    runReference = true;
+    const status = { stage: "needs-token", connected: false, verified: false };
+    for (const [goal, interactive, level, handoff] of [
+      ["Publish my website on GitHub Pages", true, "publish-pages", "offer-setup"],
+      ["Read the open pull requests", false, "read-only", "interactive-required"],
+    ] as const) {
+      const observed: string[] = [];
+      const route = {
+        action: "render-setup",
+        accessLevel: level,
+        next: "open the GitHub setup component",
+        reason: "GitHub is disconnected",
+      };
+      const run = (await loader.load(
+        "skills/vibestudio-workflows/runWorkflow.nl",
+        { services: {
+          githubSetupRead: {
+            inspect: async (id: string) => {
+              expect(id).toBe("github-assignment");
+              observed.push("inspect");
+              return status;
+            },
+          },
+          githubSetupRoute: {
+            resolve: async (id: string, needed: string) => {
+              expect(id).toBe("github-assignment");
+              expect(needed).toBe(level);
+              observed.push("resolve");
+              return route;
+            },
+          },
+        } },
+      )) as (request: unknown) => Promise<unknown>;
+      await expect(run({
+        goal,
+        work: [{kind:"domain",domain:"github",operation:"reviewGitHubSetup",input:{goal,interactive,operationId:"github-assignment"}}],
+      })).resolves.toMatchObject({
+        remaining: [], results: [{report:{status,accessLevel:level,route,handoff}}],
+      });
+      expect(observed).toEqual(["inspect", "resolve"]);
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow", "reviewGitHubSetup", "readGitHubSetup", "accessLevelFor",
+        "resolveGitHubRoute", "chooseSetupHandoff",
+      ]);
+    }
+    runReference = false;
   }
   if (
     description.functions.some(({ name }) => name === "openRemoteWorkspace")

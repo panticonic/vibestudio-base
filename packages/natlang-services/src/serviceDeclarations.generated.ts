@@ -17,6 +17,14 @@ export function observeApplication(operationId: string): Promise<AndroidRuntimeO
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  githubSetupRead: `/** Read the assigned local GitHub connection stage without verification. */
+
+/** Read the assigned local GitHub connection stage without verification. */
+export function inspect(operationId: string): Promise<GitHubSetupStatus>;`,
+  githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
+
+/** Resolve the native GitHub setup route from the observed connection stage. */
+export function resolve(operationId: string, accessLevel: GitHubAccessLevel): Promise<GitHubSetupReceipt>;`,
   templateAuthoringRead: `/** Inspect the caller-assigned protected-main template authoring plan. */
 
 /** Inspect the caller-assigned protected-main template authoring plan. */

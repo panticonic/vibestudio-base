@@ -28,6 +28,7 @@
     "runWorkflow/domains/explorer": "skills/explorer-probe",
     "runWorkflow/domains/extensionDevelopment": "skills/extensiondev/natlang",
     "runWorkflow/domains/gad": "skills/gad-context/natlang",
+    "runWorkflow/domains/github": "skills/github/natlang",
     "runWorkflow/domains/gitBridge": "skills/git-bridge-review",
     "runWorkflow/domains/gmailReview": "skills/gmail-workflow-review",
     "runWorkflow/domains/google": "skills/google-drive/driveWorkflow",
