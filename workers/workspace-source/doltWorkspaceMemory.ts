@@ -24,6 +24,8 @@ type AuthoredEpisode = Exclude<VcsReadMemoryEpisode, { stop: "snapshot-boundary"
 export function firstSavedApplication(
   sql: SqlStorage, revision: string, applicationId: string,
 ): AuthoredEpisode["commit"] {
+  // Fetched commits can be outside local refs. Bind the containing commit
+  // before scanning for its first parent.
   const row = sql.exec(
     `WITH RECURSIVE containing(hash) AS (
        SELECT ?1
@@ -37,7 +39,7 @@ export function firstSavedApplication(
      )
      SELECT events.event_id, events.message, events.created_at
        FROM containing
-       JOIN dolt_commit_ancestors AS first
+       CROSS JOIN dolt_commit_ancestors AS first
          ON first.commit_hash = containing.hash AND first.parent_index = 0
        CROSS JOIN dolt_diff_events(first.parent_hash, containing.hash) AS diff
        JOIN dolt_at_events(containing.hash) AS events ON events.event_id = diff.to_event_id
