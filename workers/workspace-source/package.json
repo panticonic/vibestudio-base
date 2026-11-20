@@ -107,6 +107,7 @@
     ".": "./index.ts",
     "./semanticVcsSchema": "./semanticVcsSchema.ts",
     "./semanticVcsStore": "./semanticVcsStore.ts",
-    "./semanticWorkspace": "./semanticWorkspace.ts"
+    "./semanticWorkspace": "./semanticWorkspace.ts",
+    "./userNotificationStore": "./userNotificationStore.ts"
   }
 }
