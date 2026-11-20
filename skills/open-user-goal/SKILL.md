@@ -12,7 +12,7 @@ information it discovers there. For a browser goal, it observes the authorized
 panel, chooses visible controls only for requested changes, and reads back the
 result after each operation.
 
-The same entry point exposes the workspace's installed News, Spectrolite, Drive,
+The same entry point exposes the workspace's installed News, Spectrolite, Drive, Gmail,
 Mission Control, System operations, and session recovery subtrees when available. Each subtree takes the original user goal,
 discovers its current state through the caller's services, and returns its
 verified outcome.

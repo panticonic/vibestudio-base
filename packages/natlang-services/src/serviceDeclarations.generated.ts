@@ -1333,6 +1333,63 @@ type DriveGoalScope = {
 
 /** Discover the authorized Drive folders and change sources for the current goal. */
 export function discover(): Promise<DriveGoalScope>;`,
+  gmailGoalCatalog: `/** Discover authorized retained Gmail compose records. */
+
+type ComposeSelection = { id: string; title: string; room: string };
+
+/** Discover authorized retained Gmail compose records. */
+export function discover(): Promise<ComposeSelection[]>;`,
+  gmailGoalCompose: `/** Read the retained lineage of a discovered Gmail compose. */
+
+type RetainedCompose = {
+  id: string;
+  channelId: string;
+  state: "review" | "saving" | "saved" | "sent" | "delivery-unknown";
+  draftId: string | null;
+  sentId: string | null;
+  mimeId: string;
+  threadId: string;
+  evidence: string[];
+};
+
+/** Read the retained lineage of a discovered Gmail compose. */
+export function read(id: string): Promise<RetainedCompose>;`,
+  gmailGoalProvider: `/** Read provider evidence bound to the observed draft or retained delivery. */
+
+type ProviderRecord = {
+  id: string;
+  messageId: string;
+  threadId: string;
+  mimeId: string;
+  subject: string;
+  sender: string;
+  recipient: string;
+  preview: string;
+  sent: boolean;
+  digest: string;
+};
+
+type ReadResult =
+  | { status: "found"; record: ProviderRecord }
+  | { status: "missing" | "unavailable"; record: null };
+
+type SearchResult = {
+  status: "complete" | "unavailable";
+  ids: string[];
+  next: string | null;
+};
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function getDraft(composeId: string, draftId: string): Promise<ReadResult>;
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function findDrafts(composeId: string, cursor: string | null): Promise<SearchResult>;
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function verifyDraft(composeId: string, draftId: string, digest: string): Promise<ReadResult>;
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function readSent(composeId: string): Promise<ReadResult>;`,
   newsRead: `/** Read assigned News readers and schedules and complete the assigned cadence change. */
 
 type NewsReaderPage = {

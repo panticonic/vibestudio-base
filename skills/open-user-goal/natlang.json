@@ -10,6 +10,7 @@
     "runUserGoal/news": "skills/news-workflows",
     "runUserGoal/spectrolite": "skills/spectrolite-review",
     "runUserGoal/google": "skills/google-drive/driveWorkflow",
+    "runUserGoal/gmail": "skills/open-gmail-goal/program",
     "runUserGoal/personal": "skills/open-personal-goal/program",
     "runUserGoal/operator": "skills/open-system-operations",
     "runUserGoal/recovery": "skills/open-session-recovery/program",

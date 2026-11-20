@@ -466,6 +466,7 @@ it.each([
   ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal"],
   ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
+  ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal"],
   ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
   ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
 ])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable) => {

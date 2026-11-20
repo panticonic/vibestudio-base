@@ -111,6 +111,12 @@ const authoredServices = [
   authoredService("driveCheckpoint", "Read and compare the assigned Drive checkpoint file.", "google-workspace", "google-drive/driveWorkflow", [{ name: "read", params: [] }, { name: "commit", params: ["expected", "terminal"] }]),
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("googleGoalDiscovery", "Discover the authorized Drive folders and change sources for the current goal.", "google-workspace", "google-drive/driveWorkflow", [{ name: "discover", params: [] }]),
+  authoredService("gmailGoalCatalog", "Discover authorized retained Gmail compose records.", "google-workspace", "open-gmail-goal/program", [{ name: "discover", params: [] }]),
+  authoredService("gmailGoalCompose", "Read the retained lineage of a discovered Gmail compose.", "google-workspace", "open-gmail-goal/program", [{ name: "read", params: ["id"] }]),
+  authoredService("gmailGoalProvider", "Read provider evidence bound to the observed draft or retained delivery.", "google-workspace", "open-gmail-goal/program", [
+    { name: "getDraft", params: ["composeId", "draftId"] }, { name: "findDrafts", params: ["composeId", "cursor"] },
+    { name: "verifyDraft", params: ["composeId", "draftId", "digest"] }, { name: "readSent", params: ["composeId"] },
+  ]),
   authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
   authoredService("missionGoalBoard", "Observe current mission cards, dependencies and revisions.", "personal", "open-personal-goal/program", [{ name: "observe", params: [] }]),
   authoredService("missionGoalChange", "Apply an authorized mission change against a current board snapshot.", "personal", "open-personal-goal/program", [{ name: "apply", params: ["snapshotId", "change"] }]),
