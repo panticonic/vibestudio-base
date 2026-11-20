@@ -5,6 +5,8 @@
   "serviceBinding": "explicit",
   "targets": { "main": { "entry": "extractPdfEvidence.nl" } },
   "serviceScopes": {
+    "pdfGoalDocuments": ["workOnPdfGoal.nl"],
+    "pdfGoalVisual": ["workOnPdfGoal/readRenderedPages.nl"],
     "pdfIntakeProbe": ["extractPdfEvidence/probeDocument.nl"],
     "pdfIntakeRead": ["extractPdfEvidence/readBatch.nl"],
     "pdfLayoutRead": ["reviewPdfLayout.nl"]

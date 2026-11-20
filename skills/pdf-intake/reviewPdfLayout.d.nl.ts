@@ -84,5 +84,52 @@ type PdfLayoutReport = {
   layout: PdfLayoutDecision;
   reading: PdfLayoutReading;
 };
+type PdfGoalFile = {
+  name: string;
+  digest: string;
+  pageCount: number;
+  encrypted: boolean;
+};
+type PdfGoalObservation = { revision: string; documents: PdfGoalFile[] };
+type PdfGoalSelection = {
+  document: string;
+  pages: number[];
+  textQuery: string | null;
+  layoutPages: number[];
+  renderPages: number[];
+};
+type PdfGoalBinding = {
+  document: PdfGoalFile;
+  missingPages: number[];
+  text: PdfIntakeRequest | null;
+  layouts: PdfLayoutRequest[];
+  visual: { operationId: string; pages: number[] } | null;
+};
+type PdfGoalRender = {
+  documentDigest: string;
+  pageNumber: number;
+  artifactId: string;
+  imageDigest: string;
+  width: number;
+  height: number;
+  inkPixels: number;
+  inkBounds: number[] | null;
+};
+type PdfGoalRecommendation = {
+  action: "preserve-text" | "preserve-table-rows" | "read-columns-in-order" |
+    "provide-text-equivalent" | "recover-missing-pages" | "keep-page-specific-structure" | "needs-review";
+  rationale: string;
+};
+type PdfGoalReport = | {
+    status: "inspected";
+    document: PdfGoalFile;
+    selection: PdfGoalSelection;
+    missingPages: number[];
+    text: PdfIntakeReport | null;
+    layouts: PdfLayoutReport[];
+    rendered: PdfGoalRender[];
+    recommendation: PdfGoalRecommendation;
+  }
+  | { status: "blocked"; reason: string };
 declare const fn: NatlangFunction<[request: PdfLayoutRequest], PdfLayoutReport> & { readonly inspectLayout: NatlangFunction<[page: PdfLayoutPage, goal: string], PdfLayoutDecision> & { readonly classifyLayout: NatlangFunction<[geometry: string, goal: string], PdfLayoutDecision>; readonly describeGeometry: NatlangFunction<[page: PdfLayoutPage], string> }; readonly resolveReadingOrder: NatlangFunction<[page: PdfLayoutPage, layout: PdfLayoutDecision], PdfLayoutReading> & { readonly arrangeFragments: NatlangFunction<[page: PdfLayoutPage, layout: PdfLayoutDecision], PdfFragmentLocation[]>; readonly citeLayout: { readonly resolveOrder: (page: PdfLayoutPage, order: PdfFragmentLocation[]) => PdfLayoutReading } } };
 export default fn;
