@@ -379,6 +379,10 @@ it("describes the typed workflows in the installed template domains", async () =
         const report = await domains.deviceAndTerminal.reviewDeviceAndTerminal(remote.input);
         return {results:[{kind:"domain",domain:"deviceAndTerminal",operation:remote.operation,report}],remaining:[]};
       }
+      if (remote.domain === "serverLogs") {
+        const report = await domains.serverLogs.reviewHostLogHandoff(remote.input);
+        return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "remoteAccess") {
         if (remote.operation === "reviewRemoteRoute") {
           const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
@@ -570,6 +574,25 @@ it("describes the typed workflows in the installed template domains", async () =
       return {status:result.truncated?"attention":"ready",
         findings:[{code:result.truncated?"success-output-truncated":"execution-succeeded",evidenceIds:[result.id]}]};
     `,
+    reviewHostLogHandoff: `
+      const windows = await prepareWindows(request);
+      const earlier = await briefServerLog(windows.earlier);
+      const later = await briefServerLog(windows.later);
+      await checkBoot(request.serverBootId, earlier, later);
+      return {status:await interpretLogProgress(request.goal, earlier, later), earlier, later};
+    `,
+    briefServerLog: `
+      const snapshot = await gather(request);
+      const groups = await condense(snapshot.records);
+      const classes = await Promise.all(groups.map(group => classifyHostLogGroup(group)));
+      return await assemble(snapshot, groups, classes);
+    `,
+    classifyHostLogGroup: 'return group.message.includes("failed") ? "failure" : "routine";',
+    interpretLogProgress: `
+      if (later.findings.some(finding => earlier.findings.some(old => old.message === finding.message)))
+        return "recurring-failure";
+      return "new-failure";
+    `,
     deployRemoteServer: `
       const baseline = await observeBaseline(request.operationId);
       const decision = await decideDeployment(baseline);
@@ -702,6 +725,9 @@ it("describes the typed workflows in the installed template domains", async () =
       if (["diagnoseGitHubOperation", "readGitHubDiagnosis", "troubleshootGithub", "cause"].includes(name)) {
         expect(Object.keys(session.availableServices())).toEqual(name === "readGitHubDiagnosis" ? ["githubDiagnosisRead"] : []);
       }
+      if (["reviewHostLogHandoff", "briefServerLog", "classifyHostLogGroup", "interpretLogProgress"].includes(name)) {
+        expect(Object.keys(session.availableServices())).toEqual(name === "briefServerLog" ? ["serverLog"] : []);
+      }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
       if (action.kind === "rejected") throw new Error(action.text);
@@ -790,6 +816,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "investigateSystem",
         "prepareLocalModel",
         "openRemoteWorkspace",
+        "reviewHostLogHandoff",
         "reviewRemoteRoute",
         "deployRemoteServer",
         "commissionRemoteWorkspace",
@@ -816,6 +843,61 @@ it("describes the typed workflows in the installed template domains", async () =
       ]);
       expect(definition?.result.problem).toBeUndefined();
     }
+  }
+  if (description.functions.some(({ name }) => name === "reviewHostLogHandoff")) {
+    runReference = true;
+    const queries: unknown[] = [];
+    const logLines = [11, 12, 21].map((seq) => ({
+      seq, timestamp: 1000 + seq, level: "warn", tag: "Worker",
+      message: "Preparation failed on the storage binding", pid: 1,
+    }));
+    const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+      services: {
+        serverLog: {
+          async tail() { throw new Error("Expected two fixed windows"); },
+          async query(filter: { sinceSeq: number; untilSeq: number }) {
+            queries.push(filter);
+            return {
+              records: logLines.filter(({ seq }) => seq > filter.sinceSeq && seq <= filter.untilSeq),
+              latestSeq: 24, workspaceId: "system", serverBootId: "boot", pid: 1, startedAt: 1,
+            };
+          },
+          async stats() {
+            return { bufferSize: 24, totalCaptured: 24, oldestSeq: 1, latestSeq: 24,
+              byLevel: { verbose: 0, info: 0, warn: 24, error: 0 }, byTag: [] };
+          },
+        },
+      },
+    })) as (input: unknown) => Promise<unknown>;
+    const request = {
+      goal: "Check for recurring worker preparation failure", serverBootId: "boot",
+      earlier: { after: 10, through: 12 }, later: { after: 20, through: 21 }, tag: "Worker",
+    };
+    const execute = (input: typeof request) => run({ goal: input.goal, work: [
+      { kind: "domain", domain: "serverLogs", operation: "reviewHostLogHandoff", input },
+    ] });
+    await expect(execute(request)).resolves.toMatchObject({
+      remaining: [], results: [{ report: {
+        status: "recurring-failure",
+        earlier: { findings: [{ count: 2, firstSeq: 11, lastSeq: 12 }] },
+        later: { findings: [{ count: 1, firstSeq: 21, lastSeq: 21 }] },
+      } }],
+    });
+    expect(queries).toMatchObject([
+      { sinceSeq: 10, untilSeq: 12, tag: "Worker", limit: 301 },
+      { sinceSeq: 20, untilSeq: 21, tag: "Worker", limit: 301 },
+    ]);
+    expect(stagedCalls.splice(0)).toEqual([
+      "runWorkflow", "reviewHostLogHandoff", "briefServerLog", "classifyHostLogGroup",
+      "briefServerLog", "classifyHostLogGroup", "interpretLogProgress",
+    ]);
+    queries.length = 0;
+    await expect(execute({ ...request, later: { after: 11, through: 21 } })).rejects.toThrow();
+    expect(queries).toEqual([]);
+    stagedCalls.length = 0;
+    await expect(execute({ ...request, serverBootId: "expired-boot" })).rejects.toThrow();
+    expect(stagedCalls.splice(0)).not.toContain("interpretLogProgress");
+    runReference = false;
   }
   if (description.functions.some(({ name }) => name === "runPersonalWorkflow")) {
     runReference = true;
