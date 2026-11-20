@@ -41,13 +41,26 @@ type ContractInput = {
   retainedHistoryChecked: boolean;
   consumersChecked: boolean;
 };
-type ConversationRequest = DeliveryInput | SurfaceInput | ContractInput;
-type ConversationReport = {
-  kind: "delivery" | "surface" | "contract";
+type ChatHandoffInput = ChatDeliveryRequest & { kind: "chat-handoff" };
+type ConversationRequest = DeliveryInput | SurfaceInput | ContractInput | ChatHandoffInput;
+type ConversationAssessment = {
   basis: string;
   blockers: string[];
   ready: boolean;
 };
+type ReceiptAssessment = ConversationAssessment & {
+  kind: "delivery" | "surface" | "contract";
+};
+type ChatHandoffStep = | "ready"
+  | "trace-original-receipt"
+  | "reopen-assigned-chat"
+  | "inspect-renderer";
+type ChatHandoffReport = ConversationAssessment & {
+  kind: "chat-handoff";
+  chat: ChatDeliveryReport;
+  next: ChatHandoffStep;
+};
+type ConversationReport = ReceiptAssessment | ChatHandoffReport;
 type DeliveryHistoryRequest = { goal: string; operationId: string };
 type DeliveryReceipt = { channelId: string; messageId: string; senderId: string };
 type DeliveryMessage = { messageId: string; senderId: string; text: string };

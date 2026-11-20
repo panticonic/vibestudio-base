@@ -37,13 +37,27 @@ export type ContractInput = {
   retainedHistoryChecked: boolean;
   consumersChecked: boolean;
 };
-export type ConversationRequest = DeliveryInput | SurfaceInput | ContractInput;
-export type ConversationReport = {
-  kind: "delivery" | "surface" | "contract";
+export type ChatHandoffInput = ChatDeliveryRequest & { kind: "chat-handoff" };
+export type ConversationRequest = DeliveryInput | SurfaceInput | ContractInput | ChatHandoffInput;
+type ConversationAssessment = {
   basis: string;
   blockers: string[];
   ready: boolean;
 };
+type ReceiptAssessment = ConversationAssessment & {
+  kind: "delivery" | "surface" | "contract";
+};
+export type ChatHandoffStep =
+  | "ready"
+  | "trace-original-receipt"
+  | "reopen-assigned-chat"
+  | "inspect-renderer";
+export type ChatHandoffReport = ConversationAssessment & {
+  kind: "chat-handoff";
+  chat: ChatDeliveryReport;
+  next: ChatHandoffStep;
+};
+export type ConversationReport = ReceiptAssessment | ChatHandoffReport;
 
 export type DeliveryHistoryRequest = { goal: string; operationId: string };
 export type DeliveryReceipt = { channelId: string; messageId: string; senderId: string };

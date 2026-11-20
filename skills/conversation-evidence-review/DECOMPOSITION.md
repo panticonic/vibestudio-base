@@ -41,6 +41,12 @@ a stale panel and a missing, duplicate, or divergent visible row.
 | Validate panel identity before considering its contents | `checkPanel` | A matching transcript in a different panel, channel, or context cannot prove delivery. |
 | Compare the single rendered message with the accepted history | `checkMessage` with a crisp comparison | Message identity, cardinality, and text equality are exact. |
 
+For a conversation handoff, `reviewConversation` delegates the live chat audit to
+`reviewChatDelivery` and passes its report to `chooseChatHandoff`. That decision
+distinguishes tracing an unverified receipt, reopening the correct chat, and
+inspecting a divergent renderer. The report retains both the original audit and
+the next step. The handoff proposes an action and performs only bounded reads.
+
 ## Temporary notification lifecycle
 
 `runNotificationLifecycle` presents one assigned shell notification, passes the

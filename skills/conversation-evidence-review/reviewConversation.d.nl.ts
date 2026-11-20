@@ -41,13 +41,26 @@ type ContractInput = {
   retainedHistoryChecked: boolean;
   consumersChecked: boolean;
 };
-type ConversationRequest = DeliveryInput | SurfaceInput | ContractInput;
-type ConversationReport = {
-  kind: "delivery" | "surface" | "contract";
+type ChatHandoffInput = ChatDeliveryRequest & { kind: "chat-handoff" };
+type ConversationRequest = DeliveryInput | SurfaceInput | ContractInput | ChatHandoffInput;
+type ConversationAssessment = {
   basis: string;
   blockers: string[];
   ready: boolean;
 };
+type ReceiptAssessment = ConversationAssessment & {
+  kind: "delivery" | "surface" | "contract";
+};
+type ChatHandoffStep = | "ready"
+  | "trace-original-receipt"
+  | "reopen-assigned-chat"
+  | "inspect-renderer";
+type ChatHandoffReport = ConversationAssessment & {
+  kind: "chat-handoff";
+  chat: ChatDeliveryReport;
+  next: ChatHandoffStep;
+};
+type ConversationReport = ReceiptAssessment | ChatHandoffReport;
 type DeliveryHistoryRequest = { goal: string; operationId: string };
 type DeliveryReceipt = { channelId: string; messageId: string; senderId: string };
 type DeliveryMessage = { messageId: string; senderId: string; text: string };
@@ -97,5 +110,5 @@ type NotificationLifecycleReport = {
   actionLabels: string[];
   interaction: "unobserved";
 };
-declare const fn: NatlangFunction<[request: ConversationRequest], ConversationReport> & { readonly reviewContract: NatlangFunction<[request: ContractInput], ConversationReport> & { readonly checkCanonical: NatlangFunction<[request: ContractInput], string[]>; readonly checkConsumers: NatlangFunction<[request: ContractInput], string[]> }; readonly reviewDelivery: NatlangFunction<[request: DeliveryInput], ConversationReport> & { readonly checkEnvelope: NatlangFunction<[request: DeliveryInput], string[]>; readonly checkSettlement: NatlangFunction<[request: DeliveryInput], string[]> }; readonly reviewSurface: NatlangFunction<[request: SurfaceInput], ConversationReport> & { readonly verifyContext: NatlangFunction<[request: SurfaceInput], string[]>; readonly verifyTurn: NatlangFunction<[request: SurfaceInput], string[]> } };
+declare const fn: NatlangFunction<[request: ConversationRequest], ConversationReport> & { readonly chooseChatHandoff: NatlangFunction<[chat: ChatDeliveryReport], ChatHandoffStep>; readonly reviewContract: NatlangFunction<[request: ContractInput], ConversationReport> & { readonly checkCanonical: NatlangFunction<[request: ContractInput], string[]>; readonly checkConsumers: NatlangFunction<[request: ContractInput], string[]> }; readonly reviewDelivery: NatlangFunction<[request: DeliveryInput], ConversationReport> & { readonly checkEnvelope: NatlangFunction<[request: DeliveryInput], string[]>; readonly checkSettlement: NatlangFunction<[request: DeliveryInput], string[]> }; readonly reviewSurface: NatlangFunction<[request: SurfaceInput], ConversationReport> & { readonly verifyContext: NatlangFunction<[request: SurfaceInput], string[]>; readonly verifyTurn: NatlangFunction<[request: SurfaceInput], string[]> }; readonly reviewChatDelivery: NatlangFunction<[request: ChatDeliveryRequest], ChatDeliveryReport> & { readonly checkMessage: NatlangFunction<[retained: DurableDeliveryRow, messages: ChatDeliveryMessage[]], ChatDeliveryMessageVerdict> & { readonly compareVisibleMessage: ((retained: DurableDeliveryRow, messages: ChatDeliveryMessage[]) => ChatDeliveryMessageVerdict) & {  } }; readonly checkPanel: NatlangFunction<[request: ChatDeliveryRequest, channelId: string, panel: ChatDeliveryPanel], boolean>; readonly inspectPanel: NatlangFunction<[panelId: string], ChatDeliveryPanel>; readonly reviewDeliveryHistory: NatlangFunction<[request: DeliveryHistoryRequest], DeliveryHistoryReport> & { readonly checkOrigin: NatlangFunction<[observation: DeliveryHistoryObservation], DeliveryOrigin> & { readonly matchReceipt: NatlangFunction<[receipt: DeliveryReceipt, row: DurableDeliveryRow], DeliveryOrigin> }; readonly compareConsumer: NatlangFunction<[retained: DurableDeliveryRow, rendered: DeliveryMessage[]], DeliveryConsumer> & { readonly sameMessage: ((original: DeliveryMessage, rendered: DeliveryMessage) => boolean) & {  } } } } };
 export default fn;

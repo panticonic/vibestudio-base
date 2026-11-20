@@ -52,6 +52,11 @@ can assess supplied panel evidence for the exact context, recorded opening
 turn, terminal event, observed effect, and cleanup. The [browser delivery audit](../../skills/conversation-evidence-review/reviewChatDelivery.nl)
 checks a specific delivery receipt against durable replay before checking the
 assigned panel’s context, channel, and visible message.
+For an operator handoff, call the conversation reviewer with `kind: "chat-handoff"`
+and the assigned delivery operation, context and panel. It returns the audit and
+the next action. Reopen the original chat when the durable receipt verifies and
+the panel points to another channel. Trace the receipt first when its durable
+history is unverified.
 
 ## Verification
 
