@@ -6,6 +6,64 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  scheduledMission: `/** Inspect owned future interval schedules and perform a revision-bound update. */
+
+type ScheduleState = "active" | "paused";
+
+type Schedule = {
+  id: string; title: string; owner: string; group: string; revision: number; digest: string;
+  state: ScheduleState; minutes: number; maxRuns: number | null; anchorAt: number; nextRunAt: number | null;
+};
+
+type Change =
+  | { kind: "cadence"; minutes: number }
+  | { kind: "cap"; maxRuns: number }
+  | { kind: "window"; minutes: number; maxRuns: number }
+  | { kind: "pause" | "resume" };
+
+type Receipt = { messageId: string; lane: string; sender: string; sequence: number; text: string };
+
+type Resolution = { status: "applied" | "unchanged" | "held" | "changed"; current: Schedule };
+
+/** Inspect owned future interval schedules and perform a revision-bound update. */
+export function discover(): Promise<Schedule[]>;
+
+/** Inspect owned future interval schedules and perform a revision-bound update. */
+export function observe(id: string): Promise<Schedule>;
+
+/** Inspect owned future interval schedules and perform a revision-bound update. */
+export function change(schedule: Schedule, change: Change, authorization: Receipt): Promise<Resolution>;`,
+  scheduledHistory: `/** Read an owned retained scheduling decision or archive lane. */
+
+type Lane = { id: string; title: string; role: "decision" | "archive" | "handoff" };
+
+type Receipt = { messageId: string; lane: string; sender: string; sequence: number; text: string };
+
+/** Read an owned retained scheduling decision or archive lane. */
+export function discover(): Promise<Lane[]>;
+
+/** Read an owned retained scheduling decision or archive lane. */
+export function read(lane: string): Promise<Receipt[]>;`,
+  scheduledHandoff: `/** Record and independently recover one exact local scheduling handoff attempt. */
+
+type ScheduleState = "active" | "paused";
+
+type Schedule = {
+  id: string; title: string; owner: string; group: string; revision: number; digest: string;
+  state: ScheduleState; minutes: number; maxRuns: number | null; anchorAt: number; nextRunAt: number | null;
+};
+
+type Receipt = { messageId: string; lane: string; sender: string; sequence: number; text: string };
+
+type Lane = { id: string; title: string; role: "decision" | "archive" | "handoff" };
+
+type Submission = { attemptId: string; response: "recorded" | "interrupted" };
+
+/** Record and independently recover one exact local scheduling handoff attempt. */
+export function submit(schedule: Schedule, authorization: Receipt, lane: Lane): Promise<Submission>;
+
+/** Record and independently recover one exact local scheduling handoff attempt. */
+export function read(submission: Submission): Promise<Receipt | null>;`,
   androidRuntimeAudit: `/** Read an assigned Android device and its current internal application. */
 
 /** Read an assigned Android device and its current internal application. */

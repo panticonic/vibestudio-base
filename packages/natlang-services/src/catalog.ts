@@ -56,6 +56,9 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("scheduledMission", "Inspect owned future interval schedules and perform a revision-bound update.", "base", "open-owned-scheduled-recovery", [{ name: "discover", params: [] }, { name: "observe", params: ["id"] }, { name: "change", params: ["schedule", "change", "authorization"] }]),
+  authoredService("scheduledHistory", "Read an owned retained scheduling decision or archive lane.", "base", "open-owned-scheduled-recovery", [{ name: "discover", params: [] }, { name: "read", params: ["lane"] }]),
+  authoredService("scheduledHandoff", "Record and independently recover one exact local scheduling handoff attempt.", "base", "open-owned-scheduled-recovery", [{ name: "submit", params: ["schedule", "authorization", "lane"] }, { name: "read", params: ["submission"] }]),
   authoredService("androidRuntimeAudit", "Read an assigned Android device and its current internal application.", "system", "mobile-runtime-audit", [{ name: "observeTarget", params: ["operationId"] }, { name: "observeApplication", params: ["operationId"] }]),
   authoredService("deliveryHistory", "Inspect durable and consumer views of one assigned conversation receipt.", "base", "conversation-evidence-review", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("temporaryNotificationShow", "Request the caller-assigned temporary shell notification.", "base", "conversation-evidence-review", [{ name: "show", params: ["operationId"] }]),

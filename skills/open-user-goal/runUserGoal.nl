@@ -45,6 +45,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `personalArtifacts.workOnPersonalArtifactsGoal` for saved browser references and their use in a collection.
 - `githubWork.workOnGitHubGoal` for local Git evidence, GitHub setup and current owner approvals or a protected handoff.
 - `personalHistory.reviewPersonalHistory` for historical decisions and evidence across recorded milestones.
+- `scheduledRecovery.recoverScheduledAutomation` for an owned interval or run-cap change, current prerequisites and retained schedule decisions, or recovery of its authorized local handoff.
 - `personalAutomation.coordinatePersonalAutomation` for coordinated changes across authorized monitors, including interrupted acknowledgments.
 - `personal.workOnMissionGoal` for Mission Control.
 - For integrating local and incoming workspace settings, approval-window decisions, or retaining evidence of the reconciled settings, call workOnLocalReconciliationGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "localReconciliation", and its actual outcome.

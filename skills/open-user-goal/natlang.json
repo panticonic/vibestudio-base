@@ -32,6 +32,7 @@
     "runUserGoal/personalArtifacts": "skills/open-personal-artifacts",
     "runUserGoal/githubWork": "skills/github/natlang",
     "runUserGoal/personalHistory": "skills/open-personal-history",
+    "runUserGoal/scheduledRecovery": "skills/open-owned-scheduled-recovery",
     "runUserGoal/personalAutomation": "skills/open-personal-automation",
     "runUserGoal/personal": "skills/open-personal-goal/program",
     "runUserGoal/workOnLocalReconciliationGoal/project": "skills/open-local-reconciliation",
