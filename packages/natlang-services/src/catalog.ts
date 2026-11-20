@@ -165,6 +165,7 @@ const authoredServices = [
     { name: "observeCadence", params: [] }, { name: "readReader", params: ["selection"] },
     { name: "apply", params: ["observationId", "change"] },
   ]),
+  authoredService("openBrowserMigration", "Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark.", "personal", "browser-import-review", [{ name: "discover", params: [] }, { name: "bind", params: ["revision", "choice"] }, { name: "readOutcome", params: [] }, { name: "inspectHandoff", params: ["review"] }, { name: "stageHandoff", params: ["revision", "choice"] }]),
   authoredService("browserImportStart", "Start the caller-approved public import after fresh preview verification.", "personal", "browser-import-review", [{ name: "start", params: ["observed"] }]),
   authoredService("browserImportSource", "Read the caller-assigned browser import source readiness.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),
   authoredService("browserImportPreview", "Preview aggregate counts for the assigned public categories.", "personal", "browser-import-review", [{ name: "observe", params: [] }]),

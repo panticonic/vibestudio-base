@@ -2404,6 +2404,158 @@ export function apply(
       observationId: string,
       change: NewsGoalChange,
     ): Promise<NewsGoalApply>;`,
+  openBrowserMigration: `/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportProgress = {
+  category: PublicImportCategory;
+  stored: number;
+  skipped: number;
+  errors: number;
+};
+
+type RetainedImportObservation = {
+  phase:
+    | "queued"
+    | "discovering"
+    | "copying"
+    | "reading"
+    | "decrypting"
+    | "normalizing"
+    | "storing"
+    | "reconciling"
+    | "complete"
+    | "cancelled"
+    | "failed"
+    | "partial";
+  resumable: boolean;
+  progress: ImportProgress[];
+};
+
+type MigrationProfile = {
+  id: string;
+  label: string;
+  device: string;
+  categories: PublicImportCategory[];
+  approved: PublicImportCategory[];
+  retained: RetainedImportObservation["phase"] | null;
+};
+
+type MigrationCatalog = {
+  revision: string;
+  profiles: MigrationProfile[];
+  collection: string | null;
+};
+
+type MigrationChoice = {
+  sourceId: string;
+  operation: "preview" | "execute" | "recover";
+  categories: PublicImportCategory[];
+};
+
+type ImportTotal = { category: PublicImportCategory; total: number };
+
+type ImportPreviewObservation = {
+  totals: ImportTotal[];
+  status: "previewed" | "source-changed";
+  warningCount: number;
+};
+
+type BrowserImportReviewRequest =
+  | {
+      goal: string;
+      kind: "preview" | "recover";
+      categories: PublicImportCategory[];
+    }
+  | {
+      goal: string;
+      kind: "execute";
+      categories: PublicImportCategory[];
+      approvedPreview: ImportPreviewObservation;
+    };
+
+type MigrationBookmark = { title: string; url: string };
+
+type MigrationOutcomeEvidence = {
+  preview: ImportPreviewObservation | null;
+  approvedPreview: ImportPreviewObservation | null;
+  receiptId: string | null;
+  phase: RetainedImportObservation["phase"] | null;
+  retainedBookmarks: MigrationBookmark[];
+};
+
+type BrowserImportNext =
+  | "review-preview"
+  | "use-inspector"
+  | "observe-existing"
+  | "keep-results"
+  | "review-retry";
+
+type ImportSourceObservation = {
+  state: "available" | "host-unavailable" | "source-unavailable" | "blocked";
+  categories: PublicImportCategory[];
+};
+
+type BrowserImportReviewReport = {
+  next: BrowserImportNext;
+  source: ImportSourceObservation | null;
+  totals: ImportTotal[];
+  progress: ImportProgress[];
+  findings: string[];
+};
+
+type MigrationTarget = {
+  id: string;
+  title: string;
+  parent: string | null;
+};
+
+type MigrationHandoffView = {
+  revision: string;
+  receiptId: string;
+  bookmarks: MigrationBookmark[];
+  targets: MigrationTarget[];
+};
+
+type MigrationHandoffChoice = {
+  bookmark: MigrationBookmark;
+  targetId: string;
+};
+
+type MigrationDelivery = {
+  receiptId: string;
+  targetId: string;
+  bookmark: MigrationBookmark;
+  note: string;
+};
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function discover(): Promise<MigrationCatalog>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function bind(
+      revision: string,
+      choice: MigrationChoice,
+    ): Promise<BrowserImportReviewRequest | null>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function readOutcome(): Promise<MigrationOutcomeEvidence>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function inspectHandoff(
+      review: BrowserImportReviewReport,
+    ): Promise<MigrationHandoffView | null>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function stageHandoff(
+      revision: string,
+      choice: MigrationHandoffChoice,
+    ): Promise<MigrationDelivery | null>;`,
   browserImportStart: `/** Start the caller-approved public import after fresh preview verification. */
 
 type PublicImportCategory =

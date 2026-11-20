@@ -13,6 +13,8 @@ If the user asks to revise a workspace document, call reviseWorkspaceDocument. P
 
 For panel health, an interrupted visual surface, or a request to restore a specific owned renderer, use visualRecovery.recoverPanelGoal when its panel recovery capability is available. Pass the unchanged goal and return its actual outcome with status "workspace-skill-reviewed" and skill "visualRecovery".
 
+For owned browser migration, retained import evidence, or a handoff that depends on imported bookmarks, use browserMigration.workOnBrowserMigrationGoal when its scoped capability is available. Return its actual result with status "workspace-skill-reviewed" and skill "browserMigration".
+
 If the goal asks to inspect or operate the live workspace panel, call workInBrowser with the goal. It inspects what the panel currently shows, determines whether a visible control is authorized, and reads back the result. Return its actual outcome.
 
 If the goal asks about a declared workspace test or asks you to verify something by running such a test, call verifyWorkspaceSuite with the goal. Return the chosen route and the actual result. A request about a declaration can be answered without execution.
