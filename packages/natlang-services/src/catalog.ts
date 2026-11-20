@@ -85,6 +85,8 @@ const authoredServices = [
   authoredService("gmailContinuationRead", "Read the assigned Gmail launch control after observing Google setup.", "google-workspace", "gmail-workflow-review", [{ name: "launchEvidence", params: [] }]),
   authoredService("explorerTextProbe", "Plan and run an assigned workspace text probe.", "personal", "explorer-probe", [{ name: "input", params: ["operationId"] }, { name: "run", params: ["operationId", "plan"] }]),
   authoredService("tourRehearsal", "Navigate and verify a caller-assigned tour panel.", "personal", "tour-rehearsal", [{ name: "observe", params: ["operationId"] }, { name: "visit", params: ["operationId", "scene", "notes"] }, { name: "restore", params: ["operationId"] }]),
+  authoredService("buildIncidentCatalog", "Read the current scoped build and open a retained native checkpoint.", "base", "open-user-goal", [{ name: "discover", params: [] }, { name: "open", params: ["id"] }]),
+  authoredService("buildIncidentHandoff", "Stage independently verified retained build evidence in owned local scratch.", "base", "open-user-goal", [{ name: "stage", params: ["checkpoints", "focus"] }]),
   authoredService("buildPerformance", "Profile the caller-assigned workspace unit through the native build service.", "system", "performance/build", [{ name: "observe", params: ["operationId"] }]),
   authoredService("serverLogCursor", "Observe the assigned saved cursor and a bounded live host-log window.", "system", "server-logs", [{ name: "observe", params: ["operationId"] }]),
   authoredService("diagnosticCatalog", "Discover owned incident checkpoints and the current handoff authority.", "system", "open-system-diagnostics", [{ name: "discover", params: [] }]),

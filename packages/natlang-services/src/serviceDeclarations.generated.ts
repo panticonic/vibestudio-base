@@ -751,6 +751,51 @@ export function visit(operationId: string, scene: string, notes: boolean): Promi
 
 /** Navigate and verify a caller-assigned tour panel. */
 export function restore(operationId: string): Promise<TourFrame>;`,
+  buildIncidentCatalog: `/** Read the current scoped build and open a retained native checkpoint. */
+
+type CheckpointCard = {
+  id: string;
+  label: string;
+  source: string;
+  owner: string;
+  revision: string;
+  stateHash: string | null;
+  complete: boolean;
+  released: boolean;
+};
+
+type IncidentSurvey = {
+  subject: { title: string; source: string; owner: string; revision: string };
+  checkpoints: CheckpointCard[];
+  budgetBytes: number | null;
+  localHandoffAllowed: boolean;
+};
+
+type BuildTraceStamp = { startedAt: number; reportDigest: string };
+
+type NativeBuildDiagnostic = { source: string; file: string; line: number; column: number; message: string };
+
+type RetainedProfile = {
+  checkpoint: CheckpointCard;
+  trace: BuildTraceStamp | null;
+  diagnostic: NativeBuildDiagnostic | null;
+  request: { operationId: string; goal: string; initialBudgetBytes?: number } | null;
+};
+
+/** Read the current scoped build and open a retained native checkpoint. */
+export function discover(): Promise<IncidentSurvey>;
+
+/** Read the current scoped build and open a retained native checkpoint. */
+export function open(id: string): Promise<RetainedProfile>;`,
+  buildIncidentHandoff: `/** Stage independently verified retained build evidence in owned local scratch. */
+
+type IncidentFocus = "build-time" | "initial-payload" | "cache" | "compiler" | "compare" | "runtime-memory";
+
+type IncidentReceipt = { path: string; bytes: number; sha256: string; checkpoints: string[] };
+
+/** Stage independently verified retained build evidence in owned local scratch. */
+export function stage(checkpoints: string[], focus: IncidentFocus):
+      Promise<IncidentReceipt | null>;`,
   buildPerformance: `/** Profile the caller-assigned workspace unit through the native build service. */
 
 type BuildPhaseTimes = {

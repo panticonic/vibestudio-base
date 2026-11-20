@@ -11,6 +11,14 @@ declare module "natlang:services" {
       directive: import("./runUserGoal/workOnRecoveryHandoff/contract.js").RecoveryHandoffDirective
     ): Promise<import("./runUserGoal/workOnRecoveryHandoff/contract.js").RecoveryHandoffInput>;
   };
+  export const buildIncidentCatalog: {
+    discover(): Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentSurvey>;
+    open(id: string): Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").RetainedProfile>;
+  };
+  export const buildIncidentHandoff: {
+    stage(checkpoints: string[], focus: import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentFocus):
+      Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentReceipt | null>;
+  };
   export const goalDiscovery: {
     search(queries: string[]): Promise<import("./types.js").GoalSearchResult[]>;
     snapshotTime(): number;

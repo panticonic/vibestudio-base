@@ -16,6 +16,7 @@
     "runUserGoal/workOnTerminalGoal/terminal": "skills/open-terminal-operator",
     "runUserGoal/workOnTerminalGoal/checklist": "skills/terminal-apps/checklist",
     "runUserGoal/workOnTerminalGoal/checks": "skills/terminal/natlang",
+    "runUserGoal/reviewRetainedBuildIncident/performance": "skills/performance/build",
     "runUserGoal/browserMigration": "skills/browser-import-review",
     "runUserGoal/workOnEvalHandoffGoal/journal": "skills/open-eval-handoff",
     "runUserGoal/workOnEvalHandoffGoal/reviewer": "skills/sandbox/recovery",
@@ -54,6 +55,8 @@
   "serviceScopes": {
     "problemIncident": ["runUserGoal/workOnProblemReportGoal.nl"],
     "recoveryHandoffLink": ["runUserGoal/workOnRecoveryHandoff/readDirective.nl", "runUserGoal/workOnRecoveryHandoff/acquireSources.nl"],
+    "buildIncidentCatalog": ["runUserGoal/reviewRetainedBuildIncident/discoverIncident.nl", "runUserGoal/reviewRetainedBuildIncident/selectCheckpoints/openCheckpoint.nl"],
+    "buildIncidentHandoff": ["runUserGoal/reviewRetainedBuildIncident/stageEvidence.nl"],
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
     "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"],
     "goalBrowser": ["runUserGoal/workInBrowser.nl"],
