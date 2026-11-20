@@ -17,6 +17,7 @@ export type PackageObservation = {
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
   declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
+  suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
 };
 export type PackageDecision = "preserve-current" | "hold-foreign-package" | "hold-review-scope" | "hold-authorization" | "restore-approved-field";
