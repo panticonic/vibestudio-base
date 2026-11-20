@@ -1110,15 +1110,15 @@ function inlineDescriptor(program, plan) {
     } }
   );
 }
-function describeProgram(id2, sources, components, guidance = "", importedPrograms = [], services) {
+function describeProgram(id3, sources, components, guidance = "", importedPrograms = [], services) {
   if (guidance || importedPrograms.length || services) sources = {
     ...sources,
     "@natlang/program-policy.json": canonical({ guidance, importedPrograms, services: services ?? null })
   };
-  const guidanceComponent = descriptor(encodeURIComponent(id2) + "::program.guidance", "program", { kind: "program.guidance", text: guidance }, baseContract());
+  const guidanceComponent = descriptor(encodeURIComponent(id3) + "::program.guidance", "program", { kind: "program.guidance", text: guidance }, baseContract());
   const program = {
     schema: "natlang.program/v1",
-    id: id2,
+    id: id3,
     protocol: NATLANG_COMPILE_VERSION,
     buildHash: fingerprint(sources, "natlang.build/v1"),
     sources,
@@ -4335,31 +4335,31 @@ var require_typescript = __commonJS({
       }
       function clone(object2) {
         const result = {};
-        for (const id2 in object2) {
-          if (hasOwnProperty.call(object2, id2)) {
-            result[id2] = object2[id2];
+        for (const id3 in object2) {
+          if (hasOwnProperty.call(object2, id3)) {
+            result[id3] = object2[id3];
           }
         }
         return result;
       }
       function extend2(first2, second) {
         const result = {};
-        for (const id2 in second) {
-          if (hasOwnProperty.call(second, id2)) {
-            result[id2] = second[id2];
+        for (const id3 in second) {
+          if (hasOwnProperty.call(second, id3)) {
+            result[id3] = second[id3];
           }
         }
-        for (const id2 in first2) {
-          if (hasOwnProperty.call(first2, id2)) {
-            result[id2] = first2[id2];
+        for (const id3 in first2) {
+          if (hasOwnProperty.call(first2, id3)) {
+            result[id3] = first2[id3];
           }
         }
         return result;
       }
       function copyProperties(first2, second) {
-        for (const id2 in second) {
-          if (hasOwnProperty.call(second, id2)) {
-            first2[id2] = second[id2];
+        for (const id3 in second) {
+          if (hasOwnProperty.call(second, id3)) {
+            first2[id3] = second[id3];
           }
         }
       }
@@ -5753,8 +5753,8 @@ m2: ${this.mapper2.__debugToString().split("\n").join("\n    ")}`;
             return parents;
           }
           function buildGraphNode(flowNode2, seen) {
-            const id2 = getDebugFlowNodeId(flowNode2);
-            let graphNode2 = links[id2];
+            const id3 = getDebugFlowNodeId(flowNode2);
+            let graphNode2 = links[id3];
             if (graphNode2 && seen.has(flowNode2)) {
               graphNode2.circular = true;
               graphNode2 = {
@@ -5772,7 +5772,7 @@ m2: ${this.mapper2.__debugToString().split("\n").join("\n    ")}`;
             }
             seen.add(flowNode2);
             if (!graphNode2) {
-              links[id2] = graphNode2 = { id: id2, flowNode: flowNode2, edges: [], text: "", lane: -1, endLane: -1, level: -1, circular: false };
+              links[id3] = graphNode2 = { id: id3, flowNode: flowNode2, edges: [], text: "", lane: -1, endLane: -1, level: -1, circular: false };
               nodes.push(graphNode2);
               if (hasAntecedents(flowNode2)) {
                 for (const antecedent of flowNode2.antecedent) {
@@ -16582,8 +16582,8 @@ ${lanes.join("\n")}
         return identifier.length >= 2 && identifier.charCodeAt(0) === 95 && identifier.charCodeAt(1) === 95 ? "_" + identifier : identifier;
       }
       function unescapeLeadingUnderscores(identifier) {
-        const id2 = identifier;
-        return id2.length >= 3 && id2.charCodeAt(0) === 95 && id2.charCodeAt(1) === 95 && id2.charCodeAt(2) === 95 ? id2.substr(1) : id2;
+        const id3 = identifier;
+        return id3.length >= 3 && id3.charCodeAt(0) === 95 && id3.charCodeAt(1) === 95 && id3.charCodeAt(2) === 95 ? id3.substr(1) : id3;
       }
       function idText(identifierOrPrivateName) {
         return unescapeLeadingUnderscores(identifierOrPrivateName.escapedText);
@@ -20443,8 +20443,8 @@ ${lanes.join("\n")}
           while (!isIdentifier(nextToLast.expression)) {
             nextToLast = nextToLast.expression;
           }
-          const id2 = nextToLast.expression;
-          if ((id2.escapedText === "exports" || id2.escapedText === "module" && getElementOrPropertyAccessName(nextToLast) === "exports") && // ExportsProperty does not support binding with computed names
+          const id3 = nextToLast.expression;
+          if ((id3.escapedText === "exports" || id3.escapedText === "module" && getElementOrPropertyAccessName(nextToLast) === "exports") && // ExportsProperty does not support binding with computed names
           isBindableStaticAccessExpression(lhs)) {
             return 1;
           }
@@ -22194,8 +22194,8 @@ ${lanes.join("\n")}
         }
         return node.parent.kind === 187;
       }
-      function identifierIsThisKeyword(id2) {
-        return id2.escapedText === "this";
+      function identifierIsThisKeyword(id3) {
+        return id3.escapedText === "this";
       }
       function getAllAccessorDeclarations(declarations, accessor) {
         let firstAccessor;
@@ -39439,10 +39439,10 @@ ${lanes.join("\n")}
           }
         }
         function parseTypePredicatePrefix() {
-          const id2 = parseIdentifier();
+          const id3 = parseIdentifier();
           if (token() === 142 && !scanner2.hasPrecedingLineBreak()) {
             nextToken();
-            return id2;
+            return id3;
           }
         }
         function parseAssertsTypePredicate() {
@@ -48059,12 +48059,12 @@ ${lanes.join("\n")}
         if (!jsonOptions) {
           return;
         }
-        for (const id2 in jsonOptions) {
-          const opt = optionsNameMap.get(id2);
+        for (const id3 in jsonOptions) {
+          const opt = optionsNameMap.get(id3);
           if (opt) {
-            (defaultOptions || (defaultOptions = {}))[opt.name] = convertJsonOption(opt, jsonOptions[id2], basePath, errors);
+            (defaultOptions || (defaultOptions = {}))[opt.name] = convertJsonOption(opt, jsonOptions[id3], basePath, errors);
           } else {
-            errors.push(createUnknownOptionError(id2, diagnostics));
+            errors.push(createUnknownOptionError(id3, diagnostics));
           }
         }
         return defaultOptions;
@@ -53655,11 +53655,11 @@ ${lanes.join("\n")}
             node.arguments[0],
             /*parent*/
             void 0,
-            (id2, symbol2) => {
+            (id3, symbol2) => {
               if (symbol2) {
                 addDeclarationToSymbol(
                   symbol2,
-                  id2,
+                  id3,
                   1536 | 67108864
                   /* Assignment */
                 );
@@ -53687,11 +53687,11 @@ ${lanes.join("\n")}
             node.left.expression,
             /*parent*/
             void 0,
-            (id2, symbol2) => {
+            (id3, symbol2) => {
               if (symbol2) {
                 addDeclarationToSymbol(
                   symbol2,
-                  id2,
+                  id3,
                   1536 | 67108864
                   /* Assignment */
                 );
@@ -53988,13 +53988,13 @@ ${lanes.join("\n")}
           if (isToplevel && !isPrototypeProperty) {
             const flags = 1536 | 67108864;
             const excludeFlags = 110735 & ~67108864;
-            namespaceSymbol = forEachIdentifierInEntityName(entityName, namespaceSymbol, (id2, symbol, parent3) => {
+            namespaceSymbol = forEachIdentifierInEntityName(entityName, namespaceSymbol, (id3, symbol, parent3) => {
               if (symbol) {
-                addDeclarationToSymbol(symbol, id2, flags);
+                addDeclarationToSymbol(symbol, id3, flags);
                 return symbol;
               } else {
                 const table = parent3 ? parent3.exports : file.jsGlobalAugmentations || (file.jsGlobalAugmentations = createSymbolTable());
-                return declareSymbol(table, parent3, id2, flags, excludeFlags);
+                return declareSymbol(table, parent3, id3, flags, excludeFlags);
               }
             });
           }
@@ -54020,15 +54020,15 @@ ${lanes.join("\n")}
             excludes = 103359;
           } else if (isCallExpression(declaration) && isBindableObjectDefinePropertyCall(declaration)) {
             if (some(declaration.arguments[2].properties, (p) => {
-              const id2 = getNameOfDeclaration(p);
-              return !!id2 && isIdentifier(id2) && idText(id2) === "set";
+              const id3 = getNameOfDeclaration(p);
+              return !!id3 && isIdentifier(id3) && idText(id3) === "set";
             })) {
               includes |= 65536 | 4;
               excludes |= 78783;
             }
             if (some(declaration.arguments[2].properties, (p) => {
-              const id2 = getNameOfDeclaration(p);
-              return !!id2 && isIdentifier(id2) && idText(id2) === "get";
+              const id3 = getNameOfDeclaration(p);
+              return !!id3 && isIdentifier(id3) && idText(id3) === "get";
             })) {
               includes |= 32768 | 4;
               excludes |= 46015;
@@ -57335,13 +57335,13 @@ ${lanes.join("\n")}
           return combined;
         }
         function mergeSymbolTable(target, source2, unidirectional = false, mergedParent) {
-          source2.forEach((sourceSymbol, id2) => {
-            const targetSymbol = target.get(id2);
+          source2.forEach((sourceSymbol, id3) => {
+            const targetSymbol = target.get(id3);
             const merged = targetSymbol ? mergeSymbol(targetSymbol, sourceSymbol, unidirectional) : getMergedSymbol(sourceSymbol);
             if (mergedParent && targetSymbol) {
               merged.parent = mergedParent;
             }
-            target.set(id2, merged);
+            target.set(id3, merged);
           });
         }
         function mergeModuleAugmentation(moduleName) {
@@ -57418,8 +57418,8 @@ ${lanes.join("\n")}
         }
         function getSymbolLinks(symbol) {
           if (symbol.flags & 33554432) return symbol.links;
-          const id2 = getSymbolId(symbol);
-          return symbolLinks[id2] ?? (symbolLinks[id2] = new SymbolLinks());
+          const id3 = getSymbolId(symbol);
+          return symbolLinks[id3] ?? (symbolLinks[id3] = new SymbolLinks());
         }
         function getNodeLinks(node) {
           const nodeId = getNodeId(node);
@@ -59458,18 +59458,18 @@ ${lanes.join("\n")}
         }
         function extendExportSymbols(target, source2, lookupTable, exportNode) {
           if (!source2) return;
-          source2.forEach((sourceSymbol, id2) => {
-            if (id2 === "default") return;
-            const targetSymbol = target.get(id2);
+          source2.forEach((sourceSymbol, id3) => {
+            if (id3 === "default") return;
+            const targetSymbol = target.get(id3);
             if (!targetSymbol) {
-              target.set(id2, sourceSymbol);
+              target.set(id3, sourceSymbol);
               if (lookupTable && exportNode) {
-                lookupTable.set(id2, {
+                lookupTable.set(id3, {
                   specifierText: getTextOfNode(exportNode.moduleSpecifier)
                 });
               }
             } else if (lookupTable && exportNode && targetSymbol && resolveSymbol(targetSymbol) !== resolveSymbol(sourceSymbol)) {
-              const collisionTracker = lookupTable.get(id2);
+              const collisionTracker = lookupTable.get(id3);
               if (!collisionTracker.exportsWithDuplicate) {
                 collisionTracker.exportsWithDuplicate = [exportNode];
               } else {
@@ -59518,16 +59518,16 @@ ${lanes.join("\n")}
                   );
                 }
               }
-              lookupTable.forEach(({ exportsWithDuplicate }, id2) => {
-                if (id2 === "export=" || !(exportsWithDuplicate && exportsWithDuplicate.length) || symbols.has(id2)) {
+              lookupTable.forEach(({ exportsWithDuplicate }, id3) => {
+                if (id3 === "export=" || !(exportsWithDuplicate && exportsWithDuplicate.length) || symbols.has(id3)) {
                   return;
                 }
                 for (const node of exportsWithDuplicate) {
                   diagnostics.add(createDiagnosticForNode(
                     node,
                     Diagnostics.Module_0_has_already_exported_a_member_named_1_Consider_explicitly_re_exporting_to_resolve_the_ambiguity,
-                    lookupTable.get(id2).specifierText,
-                    unescapeLeadingUnderscores(id2)
+                    lookupTable.get(id3).specifierText,
+                    unescapeLeadingUnderscores(id3)
                   ));
                 }
               });
@@ -59564,10 +59564,10 @@ ${lanes.join("\n")}
         }
         function getAlternativeContainingModules(symbol, enclosingDeclaration) {
           const containingFile = getSourceFileOfNode(enclosingDeclaration);
-          const id2 = getNodeId(containingFile);
+          const id3 = getNodeId(containingFile);
           const links = getSymbolLinks(symbol);
           let results;
-          if (links.extendedContainersByFile && (results = links.extendedContainersByFile.get(id2))) {
+          if (links.extendedContainersByFile && (results = links.extendedContainersByFile.get(id3))) {
             return results;
           }
           if (containingFile && containingFile.imports) {
@@ -59585,7 +59585,7 @@ ${lanes.join("\n")}
               results = append(results, resolvedModule);
             }
             if (length(results)) {
-              (links.extendedContainersByFile || (links.extendedContainersByFile = /* @__PURE__ */ new Map())).set(id2, results);
+              (links.extendedContainersByFile || (links.extendedContainersByFile = /* @__PURE__ */ new Map())).set(id3, results);
               return results;
             }
           }
@@ -59766,8 +59766,8 @@ ${lanes.join("\n")}
         }
         function getNamedMembers(members) {
           let result;
-          members.forEach((symbol, id2) => {
-            if (isNamedMember(symbol, id2)) {
+          members.forEach((symbol, id3) => {
+            if (isNamedMember(symbol, id3)) {
               (result || (result = [])).push(symbol);
             }
           });
@@ -59888,10 +59888,10 @@ ${lanes.join("\n")}
           if (cache.has(key)) {
             return cache.get(key);
           }
-          const id2 = getSymbolId(symbol);
-          let visitedSymbolTables = visitedSymbolTablesMap.get(id2);
+          const id3 = getSymbolId(symbol);
+          let visitedSymbolTables = visitedSymbolTablesMap.get(id3);
           if (!visitedSymbolTables) {
-            visitedSymbolTablesMap.set(id2, visitedSymbolTables = []);
+            visitedSymbolTablesMap.set(id3, visitedSymbolTables = []);
           }
           const result = forEachSymbolTableInScope(enclosingDeclaration, getAccessibleSymbolChainFromSymbolTable);
           cache.set(key, result);
@@ -60895,15 +60895,15 @@ ${lanes.join("\n")}
             return context.encounteredError ? void 0 : resultingNode;
           }
           function addSymbolTypeToContext(context, symbol, type) {
-            const id2 = getSymbolId(symbol);
-            const oldType = context.enclosingSymbolTypes.get(id2);
-            context.enclosingSymbolTypes.set(id2, type);
+            const id3 = getSymbolId(symbol);
+            const oldType = context.enclosingSymbolTypes.get(id3);
+            context.enclosingSymbolTypes.set(id3, type);
             return restore;
             function restore() {
               if (oldType) {
-                context.enclosingSymbolTypes.set(id2, oldType);
+                context.enclosingSymbolTypes.set(id3, oldType);
               } else {
-                context.enclosingSymbolTypes.delete(id2);
+                context.enclosingSymbolTypes.delete(id3);
               }
             }
           }
@@ -61547,11 +61547,11 @@ ${lanes.join("\n")}
               var _a22, _b22, _c2;
               const typeId = type2.id;
               const isConstructorObject = getObjectFlags(type2) & 16 && type2.symbol && type2.symbol.flags & 32;
-              const id2 = getObjectFlags(type2) & 4 && type2.node ? "N" + getNodeId(type2.node) : type2.flags & 16777216 ? "N" + getNodeId(type2.root.node) : type2.symbol ? (isConstructorObject ? "+" : "") + getSymbolId(type2.symbol) : void 0;
+              const id3 = getObjectFlags(type2) & 4 && type2.node ? "N" + getNodeId(type2.node) : type2.flags & 16777216 ? "N" + getNodeId(type2.root.node) : type2.symbol ? (isConstructorObject ? "+" : "") + getSymbolId(type2.symbol) : void 0;
               if (!context.visitedTypes) {
                 context.visitedTypes = /* @__PURE__ */ new Set();
               }
-              if (id2 && !context.symbolDepth) {
+              if (id3 && !context.symbolDepth) {
                 context.symbolDepth = /* @__PURE__ */ new Map();
               }
               const links = context.maxExpansionDepth >= 0 ? void 0 : context.enclosingDeclaration && getNodeLinks(context.enclosingDeclaration);
@@ -61575,12 +61575,12 @@ ${lanes.join("\n")}
                 return deepCloneOrReuseNode(cachedResult.node);
               }
               let depth2;
-              if (id2) {
-                depth2 = context.symbolDepth.get(id2) || 0;
+              if (id3) {
+                depth2 = context.symbolDepth.get(id3) || 0;
                 if (depth2 > 10) {
                   return createElidedInformationPlaceholder(context);
                 }
-                context.symbolDepth.set(id2, depth2 + 1);
+                context.symbolDepth.set(id3, depth2 + 1);
               }
               context.visitedTypes.add(typeId);
               const prevTrackedSymbols = context.trackedSymbols;
@@ -61597,8 +61597,8 @@ ${lanes.join("\n")}
                 });
               }
               context.visitedTypes.delete(typeId);
-              if (id2) {
-                context.symbolDepth.set(id2, depth2);
+              if (id3) {
+                context.symbolDepth.set(id3, depth2);
               }
               context.trackedSymbols = prevTrackedSymbols;
               return result;
@@ -61814,8 +61814,8 @@ ${lanes.join("\n")}
                 }
                 typeArguments = ref.typeArguments;
                 const ids = getAccessStack(ref);
-                for (const id2 of ids) {
-                  qualifier = qualifier ? factory.createQualifiedName(qualifier, id2) : id2;
+                for (const id3 of ids) {
+                  qualifier = qualifier ? factory.createQualifiedName(qualifier, id3) : id3;
                 }
                 return factory.updateImportTypeNode(
                   root2,
@@ -61839,8 +61839,8 @@ ${lanes.join("\n")}
                 }
                 typeArguments = ref.typeArguments;
                 const ids = getAccessStack(ref);
-                for (const id2 of ids) {
-                  typeName = factory.createQualifiedName(typeName, id2);
+                for (const id3 of ids) {
+                  typeName = factory.createQualifiedName(typeName, id3);
                 }
                 return factory.updateTypeReferenceNode(
                   root2,
@@ -63755,12 +63755,12 @@ ${lanes.join("\n")}
                           void 0,
                           /*isTypeOnly*/
                           false,
-                          factory.createNamedExports(map(flatMap(excessExports, (e10) => getNamesOfDeclaration(e10)), (id2) => factory.createExportSpecifier(
+                          factory.createNamedExports(map(flatMap(excessExports, (e10) => getNamesOfDeclaration(e10)), (id3) => factory.createExportSpecifier(
                             /*isTypeOnly*/
                             false,
                             /*propertyName*/
                             void 0,
-                            id2
+                            id3
                           ))),
                           /*moduleSpecifier*/
                           void 0
@@ -65166,8 +65166,8 @@ ${lanes.join("\n")}
                       }
                       if (isCallExpression(d) && isBindableObjectDefinePropertyCall(d)) {
                         return forEach(d.arguments[2].properties, (propDecl) => {
-                          const id2 = getNameOfDeclaration(propDecl);
-                          if (!!id2 && isIdentifier(id2) && idText(id2) === "set") {
+                          const id3 = getNameOfDeclaration(propDecl);
+                          if (!!id3 && isIdentifier(id3) && idText(id3) === "set") {
                             return propDecl;
                           }
                         });
@@ -65488,10 +65488,10 @@ ${lanes.join("\n")}
             }
             function getUnusedName(input, symbol) {
               var _a22, _b2;
-              const id2 = symbol ? getSymbolId(symbol) : void 0;
-              if (id2) {
-                if (context.remappedSymbolNames.has(id2)) {
-                  return context.remappedSymbolNames.get(id2);
+              const id3 = symbol ? getSymbolId(symbol) : void 0;
+              if (id3) {
+                if (context.remappedSymbolNames.has(id3)) {
+                  return context.remappedSymbolNames.get(id3);
                 }
               }
               if (symbol) {
@@ -65504,8 +65504,8 @@ ${lanes.join("\n")}
                 input = `${original}_${i}`;
               }
               (_b2 = context.usedSymbolNames) == null ? void 0 : _b2.add(input);
-              if (id2) {
-                context.remappedSymbolNames.set(id2, input);
+              if (id3) {
+                context.remappedSymbolNames.set(id3, input);
               }
               return input;
             }
@@ -65526,12 +65526,12 @@ ${lanes.join("\n")}
               return localName;
             }
             function getInternalSymbolName(symbol, localName) {
-              const id2 = getSymbolId(symbol);
-              if (context.remappedSymbolNames.has(id2)) {
-                return context.remappedSymbolNames.get(id2);
+              const id3 = getSymbolId(symbol);
+              if (context.remappedSymbolNames.has(id3)) {
+                return context.remappedSymbolNames.get(id3);
               }
               localName = getNameCandidateWorker(symbol, localName);
-              context.remappedSymbolNames.set(id2, localName);
+              context.remappedSymbolNames.set(id3, localName);
               return localName;
             }
           }
@@ -69496,9 +69496,9 @@ ${lanes.join("\n")}
                       propSet = /* @__PURE__ */ new Map();
                       propSet.set(getSymbolId(singleProp), singleProp);
                     }
-                    const id2 = getSymbolId(prop);
-                    if (!propSet.has(id2)) {
-                      propSet.set(id2, prop);
+                    const id3 = getSymbolId(prop);
+                    if (!propSet.has(id3)) {
+                      propSet.set(id3, prop);
                     }
                   }
                   if (propFlags & 98304 && (prop.flags & 98304) !== (propFlags & 98304)) {
@@ -69852,8 +69852,8 @@ ${lanes.join("\n")}
         }
         function symbolsToArray(symbols) {
           const result = [];
-          symbols.forEach((symbol, id2) => {
-            if (!isReservedMemberName(id2)) {
+          symbols.forEach((symbol, id3) => {
+            if (!isReservedMemberName(id3)) {
               result.push(symbol);
             }
           });
@@ -70307,10 +70307,10 @@ ${lanes.join("\n")}
         }
         function getSignatureInstantiationWithoutFillingInTypeArguments(signature, typeArguments) {
           const instantiations = signature.instantiations || (signature.instantiations = /* @__PURE__ */ new Map());
-          const id2 = getTypeListId(typeArguments);
-          let instantiation = instantiations.get(id2);
+          const id3 = getTypeListId(typeArguments);
+          let instantiation = instantiations.get(id3);
           if (!instantiation) {
-            instantiations.set(id2, instantiation = createSignatureInstantiation(signature, typeArguments));
+            instantiations.set(id3, instantiation = createSignatureInstantiation(signature, typeArguments));
           }
           return instantiation;
         }
@@ -70584,11 +70584,11 @@ ${lanes.join("\n")}
           return createTypeReference(target, typeArguments);
         }
         function createTypeReference(target, typeArguments) {
-          const id2 = getTypeListId(typeArguments);
-          let type = target.instantiations.get(id2);
+          const id3 = getTypeListId(typeArguments);
+          let type = target.instantiations.get(id3);
           if (!type) {
             type = createObjectType(4, target.symbol);
-            target.instantiations.set(id2, type);
+            target.instantiations.set(id3, type);
             type.objectFlags |= typeArguments ? getPropagatingFlagsOfTypes(typeArguments) : 0;
             type.target = target;
             type.resolvedTypeArguments = typeArguments;
@@ -70690,29 +70690,29 @@ ${lanes.join("\n")}
           }
           const links = getSymbolLinks(symbol);
           const typeParameters = links.typeParameters;
-          const id2 = getTypeListId(typeArguments) + getAliasId(aliasSymbol, aliasTypeArguments);
-          let instantiation = links.instantiations.get(id2);
+          const id3 = getTypeListId(typeArguments) + getAliasId(aliasSymbol, aliasTypeArguments);
+          let instantiation = links.instantiations.get(id3);
           if (!instantiation) {
-            links.instantiations.set(id2, instantiation = instantiateTypeWithAlias(type, createTypeMapper(typeParameters, fillMissingTypeArguments(typeArguments, typeParameters, getMinTypeArgumentCount(typeParameters), isInJSFile(symbol.valueDeclaration))), aliasSymbol, aliasTypeArguments));
+            links.instantiations.set(id3, instantiation = instantiateTypeWithAlias(type, createTypeMapper(typeParameters, fillMissingTypeArguments(typeArguments, typeParameters, getMinTypeArgumentCount(typeParameters), isInJSFile(symbol.valueDeclaration))), aliasSymbol, aliasTypeArguments));
           }
           return instantiation;
         }
         function getTypeFromTypeAliasReference(node, symbol) {
           if (getCheckFlags(symbol) & 1048576) {
             const typeArguments = typeArgumentsFromTypeReferenceNode(node);
-            const id2 = getAliasId(symbol, typeArguments);
-            let errorType2 = errorTypes.get(id2);
+            const id3 = getAliasId(symbol, typeArguments);
+            let errorType2 = errorTypes.get(id3);
             if (!errorType2) {
               errorType2 = createIntrinsicType(
                 1,
                 "error",
                 /*objectFlags*/
                 void 0,
-                `alias ${id2}`
+                `alias ${id3}`
               );
               errorType2.aliasSymbol = symbol;
               errorType2.aliasTypeArguments = typeArguments;
-              errorTypes.set(id2, errorType2);
+              errorTypes.set(id3, errorType2);
             }
             return errorType2;
           }
@@ -70862,8 +70862,8 @@ ${lanes.join("\n")}
           return constraint.flags & 3 || constraint === baseType2 || baseType2.flags & 1 ? baseType2 : getOrCreateSubstitutionType(baseType2, constraint);
         }
         function getOrCreateSubstitutionType(baseType2, constraint) {
-          const id2 = `${getTypeId(baseType2)}>${getTypeId(constraint)}`;
-          const cached = substitutionTypes.get(id2);
+          const id3 = `${getTypeId(baseType2)}>${getTypeId(constraint)}`;
+          const cached = substitutionTypes.get(id3);
           if (cached) {
             return cached;
           }
@@ -70873,7 +70873,7 @@ ${lanes.join("\n")}
           );
           result.baseType = baseType2;
           result.constraint = constraint;
-          substitutionTypes.set(id2, result);
+          substitutionTypes.set(id3, result);
           return result;
         }
         function getSubstitutionIntersection(substitutionType) {
@@ -71832,8 +71832,8 @@ ${lanes.join("\n")}
           if (types3.length < 2) {
             return types3;
           }
-          const id2 = getTypeListId(types3);
-          const match2 = subtypeReductionCache.get(id2);
+          const id3 = getTypeListId(types3);
+          const match2 = subtypeReductionCache.get(id3);
           if (match2) {
             return match2;
           }
@@ -71878,7 +71878,7 @@ ${lanes.join("\n")}
               }
             }
           }
-          subtypeReductionCache.set(id2, types3);
+          subtypeReductionCache.set(id3, types3);
           return types3;
         }
         function removeRedundantLiteralTypes(types3, includes, reduceVoidUndefined) {
@@ -71974,8 +71974,8 @@ ${lanes.join("\n")}
           if (types3.length === 2 && !origin && (types3[0].flags & 1048576 || types3[1].flags & 1048576)) {
             const infix = unionReduction === 0 ? "N" : unionReduction === 2 ? "S" : "L";
             const index = types3[0].id < types3[1].id ? 0 : 1;
-            const id2 = types3[index].id + infix + types3[1 - index].id + getAliasId(aliasSymbol, aliasTypeArguments);
-            let type = unionOfUnionTypes.get(id2);
+            const id3 = types3[index].id + infix + types3[1 - index].id + getAliasId(aliasSymbol, aliasTypeArguments);
+            let type = unionOfUnionTypes.get(id3);
             if (!type) {
               type = getUnionTypeWorker(
                 types3,
@@ -71985,7 +71985,7 @@ ${lanes.join("\n")}
                 /*origin*/
                 void 0
               );
-              unionOfUnionTypes.set(id2, type);
+              unionOfUnionTypes.set(id3, type);
             }
             return type;
           }
@@ -72080,8 +72080,8 @@ ${lanes.join("\n")}
             return types3[0];
           }
           const typeKey = !origin ? getTypeListId(types3) : origin.flags & 1048576 ? `|${getTypeListId(origin.types)}` : origin.flags & 2097152 ? `&${getTypeListId(origin.types)}` : `#${origin.type.id}|${getTypeListId(types3)}`;
-          const id2 = typeKey + getAliasId(aliasSymbol, aliasTypeArguments);
-          let type = unionTypes.get(id2);
+          const id3 = typeKey + getAliasId(aliasSymbol, aliasTypeArguments);
+          let type = unionTypes.get(id3);
           if (!type) {
             type = createType(
               1048576
@@ -72101,7 +72101,7 @@ ${lanes.join("\n")}
               type.flags |= 16;
               type.intrinsicName = "boolean";
             }
-            unionTypes.set(id2, type);
+            unionTypes.set(id3, type);
           }
           return type;
         }
@@ -72311,8 +72311,8 @@ ${lanes.join("\n")}
               }
             }
           }
-          const id2 = getTypeListId(typeSet) + (flags & 2 ? "*" : getAliasId(aliasSymbol, aliasTypeArguments));
-          let result = intersectionTypes.get(id2);
+          const id3 = getTypeListId(typeSet) + (flags & 2 ? "*" : getAliasId(aliasSymbol, aliasTypeArguments));
+          let result = intersectionTypes.get(id3);
           if (!result) {
             if (includes & 1048576) {
               if (intersectUnionsOfPrimitiveTypes(typeSet)) {
@@ -72346,7 +72346,7 @@ ${lanes.join("\n")}
             } else {
               result = createIntersectionType(typeSet, objectFlags, aliasSymbol, aliasTypeArguments);
             }
-            intersectionTypes.set(id2, result);
+            intersectionTypes.set(id3, result);
           }
           return result;
         }
@@ -72592,10 +72592,10 @@ ${lanes.join("\n")}
               return newTypes[0];
             }
           }
-          const id2 = `${getTypeListId(newTypes)}|${map(newTexts, (t) => t.length).join(",")}|${newTexts.join("")}`;
-          let type = templateLiteralTypes.get(id2);
+          const id3 = `${getTypeListId(newTypes)}|${map(newTexts, (t) => t.length).join(",")}|${newTexts.join("")}`;
+          let type = templateLiteralTypes.get(id3);
           if (!type) {
-            templateLiteralTypes.set(id2, type = createTemplateLiteralType(newTexts, newTypes));
+            templateLiteralTypes.set(id3, type = createTemplateLiteralType(newTexts, newTypes));
           }
           return type;
           function addSpans(texts2, types22) {
@@ -72667,10 +72667,10 @@ ${lanes.join("\n")}
           return [texts, types3];
         }
         function getStringMappingTypeForGenericType(symbol, type) {
-          const id2 = `${getSymbolId(symbol)},${getTypeId(type)}`;
-          let result = stringMappingTypes.get(id2);
+          const id3 = `${getSymbolId(symbol)},${getTypeId(type)}`;
+          let result = stringMappingTypes.get(id3);
           if (!result) {
-            stringMappingTypes.set(id2, result = createStringMappingType(symbol, type));
+            stringMappingTypes.set(id3, result = createStringMappingType(symbol, type));
           }
           return result;
         }
@@ -73106,10 +73106,10 @@ ${lanes.join("\n")}
               return objectType;
             }
             const persistentAccessFlags = accessFlags & 1;
-            const id2 = objectType.id + "," + indexType.id + "," + persistentAccessFlags + getAliasId(aliasSymbol, aliasTypeArguments);
-            let type = indexedAccessTypes.get(id2);
+            const id3 = objectType.id + "," + indexType.id + "," + persistentAccessFlags + getAliasId(aliasSymbol, aliasTypeArguments);
+            let type = indexedAccessTypes.get(id3);
             if (!type) {
-              indexedAccessTypes.set(id2, type = createIndexedAccessType(objectType, indexType, persistentAccessFlags, aliasSymbol, aliasTypeArguments));
+              indexedAccessTypes.set(id3, type = createIndexedAccessType(objectType, indexType, persistentAccessFlags, aliasSymbol, aliasTypeArguments));
             }
             return type;
           }
@@ -74039,19 +74039,19 @@ ${lanes.join("\n")}
             const typeArguments = map(typeParameters, (t) => getMappedType(t, combinedMapper));
             const newAliasSymbol = aliasSymbol || type.aliasSymbol;
             const newAliasTypeArguments = aliasSymbol ? aliasTypeArguments : instantiateTypes(type.aliasTypeArguments, mapper);
-            const id2 = getTypeListId(typeArguments) + getAliasId(newAliasSymbol, newAliasTypeArguments);
+            const id3 = getTypeListId(typeArguments) + getAliasId(newAliasSymbol, newAliasTypeArguments);
             if (!target.instantiations) {
               target.instantiations = /* @__PURE__ */ new Map();
               target.instantiations.set(getTypeListId(typeParameters) + getAliasId(target.aliasSymbol, target.aliasTypeArguments), target);
             }
-            let result = target.instantiations.get(id2);
+            let result = target.instantiations.get(id3);
             if (!result) {
               let newMapper = createTypeMapper(typeParameters, typeArguments);
               if (target.objectFlags & 134217728 && mapper) {
                 newMapper = combineTypeMappers(newMapper, mapper);
               }
               result = target.objectFlags & 4 ? createDeferredTypeReference(type.target, type.node, newMapper, newAliasSymbol, newAliasTypeArguments) : target.objectFlags & 32 ? instantiateMappedType(target, newMapper, newAliasSymbol, newAliasTypeArguments) : instantiateAnonymousType(target, newMapper, newAliasSymbol, newAliasTypeArguments);
-              target.instantiations.set(id2, result);
+              target.instantiations.set(id3, result);
               const resultObjectFlags = getObjectFlags(result);
               if (result.flags & 3899393 && !(resultObjectFlags & 524288)) {
                 const resultCouldContainTypeVariables = some(typeArguments, couldContainTypeVariables);
@@ -74225,14 +74225,14 @@ ${lanes.join("\n")}
           const root2 = type.root;
           if (root2.outerTypeParameters) {
             const typeArguments = map(root2.outerTypeParameters, (t) => getMappedType(t, mapper));
-            const id2 = (forConstraint ? "C" : "") + getTypeListId(typeArguments) + getAliasId(aliasSymbol, aliasTypeArguments);
-            let result = root2.instantiations.get(id2);
+            const id3 = (forConstraint ? "C" : "") + getTypeListId(typeArguments) + getAliasId(aliasSymbol, aliasTypeArguments);
+            let result = root2.instantiations.get(id3);
             if (!result) {
               const newMapper = createTypeMapper(root2.outerTypeParameters, typeArguments);
               const checkType = root2.checkType;
               const distributionType = root2.isDistributive ? getReducedType(getMappedType(checkType, newMapper)) : void 0;
               result = distributionType && checkType !== distributionType && distributionType.flags & (1048576 | 131072) ? mapTypeWithAlias(distributionType, (t) => getConditionalType(root2, prependTypeMapping(checkType, t, newMapper), forConstraint), aliasSymbol, aliasTypeArguments) : getConditionalType(root2, newMapper, forConstraint, aliasSymbol, aliasTypeArguments);
-              root2.instantiations.set(id2, result);
+              root2.instantiations.set(id3, result);
             }
             return result;
           }
@@ -75273,8 +75273,8 @@ ${lanes.join("\n")}
           if (sourceSymbol.escapedName !== targetSymbol.escapedName || !(sourceSymbol.flags & 256) || !(targetSymbol.flags & 256)) {
             return false;
           }
-          const id2 = getSymbolId(sourceSymbol) + "," + getSymbolId(targetSymbol);
-          const entry = enumRelation.get(id2);
+          const id3 = getSymbolId(sourceSymbol) + "," + getSymbolId(targetSymbol);
+          const entry = enumRelation.get(id3);
           if (entry !== void 0 && !(entry & 2 && errorReporter)) {
             return !!(entry & 1);
           }
@@ -75293,7 +75293,7 @@ ${lanes.join("\n")}
                   ));
                 }
                 enumRelation.set(
-                  id2,
+                  id3,
                   2
                   /* Failed */
                 );
@@ -75319,7 +75319,7 @@ ${lanes.join("\n")}
                     errorReporter(Diagnostics.Each_declaration_of_0_1_differs_in_its_value_where_2_was_expected_but_3_was_given, symbolName(targetSymbol), symbolName(targetProperty), escapedTarget, escapedSource);
                   }
                   enumRelation.set(
-                    id2,
+                    id3,
                     2
                     /* Failed */
                   );
@@ -75333,7 +75333,7 @@ ${lanes.join("\n")}
                     errorReporter(Diagnostics.One_value_of_0_1_is_the_string_2_and_the_other_is_assumed_to_be_an_unknown_numeric_value, symbolName(targetSymbol), symbolName(targetProperty), escapedValue);
                   }
                   enumRelation.set(
-                    id2,
+                    id3,
                     2
                     /* Failed */
                   );
@@ -75343,7 +75343,7 @@ ${lanes.join("\n")}
             }
           }
           enumRelation.set(
-            id2,
+            id3,
             1
             /* Succeeded */
           );
@@ -75489,7 +75489,7 @@ ${lanes.join("\n")}
             reportIncompatibleStack();
           }
           if (overflow) {
-            const id2 = getRelationKey(
+            const id3 = getRelationKey(
               source2,
               target,
               /*intersectionState*/
@@ -75498,7 +75498,7 @@ ${lanes.join("\n")}
               /*ignoreConstraints*/
               false
             );
-            relation.set(id2, 2 | (relationCount <= 0 ? 32 : 64));
+            relation.set(id3, 2 | (relationCount <= 0 ? 32 : 64));
             (_a3 = tracing) == null ? void 0 : _a3.instant(tracing.Phase.CheckTypes, "checkTypeRelatedTo_DepthLimit", { sourceId: source2.id, targetId: target.id, depth: sourceDepth, targetDepth });
             const message2 = relationCount <= 0 ? Diagnostics.Excessive_complexity_comparing_types_0_and_1 : Diagnostics.Excessive_stack_depth_comparing_types_0_and_1;
             const diag2 = error2(errorNode || currentNode, message2, typeToString(source2), typeToString(target));
@@ -76361,7 +76361,7 @@ ${lanes.join("\n")}
             if (overflow) {
               return 0;
             }
-            const id2 = getRelationKey(
+            const id3 = getRelationKey(
               source22,
               target2,
               intersectionState,
@@ -76369,7 +76369,7 @@ ${lanes.join("\n")}
               /*ignoreConstraints*/
               false
             );
-            const entry = relation.get(id2);
+            const entry = relation.get(id3);
             if (entry !== void 0) {
               if (reportErrors2 && entry & 2 && !(entry & 96)) {
               } else {
@@ -76400,10 +76400,10 @@ ${lanes.join("\n")}
               sourceStack = [];
               targetStack = [];
             } else {
-              if (maybeKeysSet.has(id2)) {
+              if (maybeKeysSet.has(id3)) {
                 return 3;
               }
-              const broadestEquivalentId = id2.startsWith("*") ? getRelationKey(
+              const broadestEquivalentId = id3.startsWith("*") ? getRelationKey(
                 source22,
                 target2,
                 intersectionState,
@@ -76420,8 +76420,8 @@ ${lanes.join("\n")}
               }
             }
             const maybeStart = maybeCount;
-            maybeKeys[maybeCount] = id2;
-            maybeKeysSet.add(id2);
+            maybeKeys[maybeCount] = id3;
+            maybeKeysSet.add(id3);
             maybeCount++;
             const saveExpandingFlags = expandingFlags;
             if (recursionFlags & 1) {
@@ -76484,7 +76484,7 @@ ${lanes.join("\n")}
                 }
               }
             } else {
-              relation.set(id2, 2 | propagatingVarianceFlags);
+              relation.set(id3, 2 | propagatingVarianceFlags);
               relationCount--;
               resetMaybeStack(
                 /*markAllAsSucceeded*/
@@ -80455,12 +80455,12 @@ ${lanes.join("\n")}
                 }
                 let duplicate = false;
                 forEachType(discriminant, (t) => {
-                  const id2 = getTypeId(getRegularTypeOfLiteralType(t));
-                  const existing = map2.get(id2);
+                  const id3 = getTypeId(getRegularTypeOfLiteralType(t));
+                  const existing = map2.get(id3);
                   if (!existing) {
-                    map2.set(id2, type);
+                    map2.set(id3, type);
                   } else if (existing !== unknownType) {
-                    map2.set(id2, unknownType);
+                    map2.set(id3, unknownType);
                     duplicate = true;
                   }
                 });
@@ -81188,9 +81188,9 @@ ${lanes.join("\n")}
             const flags = flow.flags;
             if (flags & 4096) {
               if (!noCacheCheck) {
-                const id2 = getFlowNodeId(flow);
-                const reachable = flowNodeReachable[id2];
-                return reachable !== void 0 ? reachable : flowNodeReachable[id2] = isReachableFlowNodeWorker(
+                const id3 = getFlowNodeId(flow);
+                const reachable = flowNodeReachable[id3];
+                return reachable !== void 0 ? reachable : flowNodeReachable[id3] = isReachableFlowNodeWorker(
                   flow,
                   /*noCacheCheck*/
                   true
@@ -81255,9 +81255,9 @@ ${lanes.join("\n")}
             const flags = flow.flags;
             if (flags & 4096) {
               if (!noCacheCheck) {
-                const id2 = getFlowNodeId(flow);
-                const postSuper = flowNodePostSuper[id2];
-                return postSuper !== void 0 ? postSuper : flowNodePostSuper[id2] = isPostSuperFlowNode(
+                const id3 = getFlowNodeId(flow);
+                const postSuper = flowNodePostSuper[id3];
+                return postSuper !== void 0 ? postSuper : flowNodePostSuper[id3] = isPostSuperFlowNode(
                   flow,
                   /*noCacheCheck*/
                   true
@@ -81629,8 +81629,8 @@ ${lanes.join("\n")}
             ), seenIncomplete);
           }
           function getTypeAtFlowLoopLabel(flow) {
-            const id2 = getFlowNodeId(flow);
-            const cache = flowLoopCaches[id2] || (flowLoopCaches[id2] = /* @__PURE__ */ new Map());
+            const id3 = getFlowNodeId(flow);
+            const cache = flowLoopCaches[id3] || (flowLoopCaches[id3] = /* @__PURE__ */ new Map());
             const key2 = getOrSetCacheKey();
             if (!key2) {
               return declaredType;
@@ -82872,9 +82872,9 @@ ${lanes.join("\n")}
         }
         function markExportAssignmentAliasReferenced(location) {
           if (isIdentifier(location.expression)) {
-            const id2 = location.expression;
+            const id3 = location.expression;
             const sym = getExportSymbolOfValueSymbolIfExported(resolveEntityName(
-              id2,
+              id3,
               -1,
               /*ignoreErrors*/
               true,
@@ -82883,7 +82883,7 @@ ${lanes.join("\n")}
               location
             ));
             if (sym) {
-              markAliasReferenced(sym, id2);
+              markAliasReferenced(sym, id3);
             }
           }
         }
@@ -84122,8 +84122,8 @@ ${lanes.join("\n")}
             return getPropertyOfType(lhsType, getPropertyNameFromType(propType));
           }
           return void 0;
-          function tryGetPrivateIdentifierPropertyOfType(type, id2) {
-            const lexicallyScopedSymbol = lookupSymbolForPrivateIdentifierDeclaration(id2.escapedText, id2);
+          function tryGetPrivateIdentifierPropertyOfType(type, id3) {
+            const lexicallyScopedSymbol = lookupSymbolForPrivateIdentifierDeclaration(id3.escapedText, id3);
             return lexicallyScopedSymbol && getPrivateIdentifierPropertyOfType(type, lexicallyScopedSymbol);
           }
         }
@@ -84158,10 +84158,10 @@ ${lanes.join("\n")}
                 if (overallAnnotation) {
                   return getTypeFromTypeNode(overallAnnotation);
                 } else if (isIdentifier(lhs.expression)) {
-                  const id2 = lhs.expression;
+                  const id3 = lhs.expression;
                   const parentSymbol = resolveName(
-                    id2,
-                    id2.escapedText,
+                    id3,
+                    id3.escapedText,
                     111551,
                     /*nameNotFoundMessage*/
                     void 0,
@@ -96049,11 +96049,11 @@ ${lanes.join("\n")}
         }
         function createIterationTypes(yieldType = neverType, returnType = neverType, nextType = unknownType) {
           if (yieldType.flags & 67359327 && returnType.flags & (1 | 131072 | 2 | 16384 | 32768) && nextType.flags & (1 | 131072 | 2 | 16384 | 32768)) {
-            const id2 = getTypeListId([yieldType, returnType, nextType]);
-            let iterationTypes = iterationTypesCache.get(id2);
+            const id3 = getTypeListId([yieldType, returnType, nextType]);
+            let iterationTypes = iterationTypesCache.get(id3);
             if (!iterationTypes) {
               iterationTypes = { yieldType, returnType, nextType };
-              iterationTypesCache.set(id2, iterationTypes);
+              iterationTypesCache.set(id3, iterationTypes);
             }
             return iterationTypes;
           }
@@ -98579,9 +98579,9 @@ ${lanes.join("\n")}
           }
           const isIllegalExportDefaultInCJS = !node.isExportEquals && !(node.flags & 33554432) && compilerOptions.verbatimModuleSyntax && host.getEmitModuleFormatOfFile(getSourceFileOfNode(node)) === 1;
           if (node.expression.kind === 80) {
-            const id2 = node.expression;
+            const id3 = node.expression;
             const sym = getExportSymbolOfValueSymbolIfExported(resolveEntityName(
-              id2,
+              id3,
               -1,
               /*ignoreErrors*/
               true,
@@ -98601,19 +98601,19 @@ ${lanes.join("\n")}
                 /* Value */
               );
               if (getSymbolFlags(sym) & 111551) {
-                checkExpressionCached(id2);
+                checkExpressionCached(id3);
                 if (!isIllegalExportDefaultInCJS && !(node.flags & 33554432) && compilerOptions.verbatimModuleSyntax && typeOnlyDeclaration) {
                   error2(
-                    id2,
+                    id3,
                     node.isExportEquals ? Diagnostics.An_export_declaration_must_reference_a_real_value_when_verbatimModuleSyntax_is_enabled_but_0_resolves_to_a_type_only_declaration : Diagnostics.An_export_default_must_reference_a_real_value_when_verbatimModuleSyntax_is_enabled_but_0_resolves_to_a_type_only_declaration,
-                    idText(id2)
+                    idText(id3)
                   );
                 }
               } else if (!isIllegalExportDefaultInCJS && !(node.flags & 33554432) && compilerOptions.verbatimModuleSyntax) {
                 error2(
-                  id2,
+                  id3,
                   node.isExportEquals ? Diagnostics.An_export_declaration_must_reference_a_value_when_verbatimModuleSyntax_is_enabled_but_0_only_refers_to_a_type : Diagnostics.An_export_default_must_reference_a_value_when_verbatimModuleSyntax_is_enabled_but_0_only_refers_to_a_type,
-                  idText(id2)
+                  idText(id3)
                 );
               }
               if (!isIllegalExportDefaultInCJS && !(node.flags & 33554432) && getIsolatedModules(compilerOptions) && !(sym.flags & 111551)) {
@@ -98626,30 +98626,30 @@ ${lanes.join("\n")}
                 );
                 if (sym.flags & 2097152 && nonLocalMeanings & 788968 && !(nonLocalMeanings & 111551) && (!typeOnlyDeclaration || getSourceFileOfNode(typeOnlyDeclaration) !== getSourceFileOfNode(node))) {
                   error2(
-                    id2,
+                    id3,
                     node.isExportEquals ? Diagnostics._0_resolves_to_a_type_and_must_be_marked_type_only_in_this_file_before_re_exporting_when_1_is_enabled_Consider_using_import_type_where_0_is_imported : Diagnostics._0_resolves_to_a_type_and_must_be_marked_type_only_in_this_file_before_re_exporting_when_1_is_enabled_Consider_using_export_type_0_as_default,
-                    idText(id2),
+                    idText(id3),
                     isolatedModulesLikeFlagName
                   );
                 } else if (typeOnlyDeclaration && getSourceFileOfNode(typeOnlyDeclaration) !== getSourceFileOfNode(node)) {
                   addTypeOnlyDeclarationRelatedInfo(
                     error2(
-                      id2,
+                      id3,
                       node.isExportEquals ? Diagnostics._0_resolves_to_a_type_only_declaration_and_must_be_marked_type_only_in_this_file_before_re_exporting_when_1_is_enabled_Consider_using_import_type_where_0_is_imported : Diagnostics._0_resolves_to_a_type_only_declaration_and_must_be_marked_type_only_in_this_file_before_re_exporting_when_1_is_enabled_Consider_using_export_type_0_as_default,
-                      idText(id2),
+                      idText(id3),
                       isolatedModulesLikeFlagName
                     ),
                     typeOnlyDeclaration,
-                    idText(id2)
+                    idText(id3)
                   );
                 }
               }
             } else {
-              checkExpressionCached(id2);
+              checkExpressionCached(id3);
             }
             if (getEmitDeclarations(compilerOptions)) {
               collectLinkedAliases(
-                id2,
+                id3,
                 /*setVisibility*/
                 true
               );
@@ -98673,7 +98673,7 @@ ${lanes.join("\n")}
           }
         }
         function hasExportedMembers(moduleSymbol) {
-          return forEachEntry(moduleSymbol.exports, (_10, id2) => id2 !== "export=");
+          return forEachEntry(moduleSymbol.exports, (_10, id3) => id3 !== "export=");
         }
         function checkExternalModuleExports(node) {
           const moduleSymbol = getSymbolOfDeclaration(node);
@@ -98688,8 +98688,8 @@ ${lanes.join("\n")}
             }
             const exports2 = getExportsOfModule(moduleSymbol);
             if (exports2) {
-              exports2.forEach(({ declarations, flags }, id2) => {
-                if (id2 === "__export") {
+              exports2.forEach(({ declarations, flags }, id3) => {
+                if (id3 === "__export") {
                   return;
                 }
                 if (flags & (1920 | 384)) {
@@ -98703,7 +98703,7 @@ ${lanes.join("\n")}
                   if (!isDuplicatedCommonJSExport(declarations)) {
                     for (const declaration of declarations) {
                       if (isNotOverload(declaration)) {
-                        diagnostics.add(createDiagnosticForNode(declaration, Diagnostics.Cannot_redeclare_exported_variable_0, unescapeLeadingUnderscores(id2)));
+                        diagnostics.add(createDiagnosticForNode(declaration, Diagnostics.Cannot_redeclare_exported_variable_0, unescapeLeadingUnderscores(id3)));
                       }
                     }
                   }
@@ -99315,9 +99315,9 @@ ${lanes.join("\n")}
           }
           function copySymbol(symbol, meaning2) {
             if (getCombinedLocalAndExportSymbolFlags(symbol) & meaning2) {
-              const id2 = symbol.escapedName;
-              if (!symbols.has(id2)) {
-                symbols.set(id2, symbol);
+              const id3 = symbol.escapedName;
+              if (!symbols.has(id3)) {
+                symbols.set(id3, symbol);
               }
             }
           }
@@ -101021,9 +101021,9 @@ ${lanes.join("\n")}
             }
             if (file.symbol && file.symbol.globalExports) {
               const source2 = file.symbol.globalExports;
-              source2.forEach((sourceSymbol, id2) => {
-                if (!globals.has(id2)) {
-                  globals.set(id2, sourceSymbol);
+              source2.forEach((sourceSymbol, id3) => {
+                if (!globals.has(id3)) {
+                  globals.set(id3, sourceSymbol);
                 }
               });
             }
@@ -106206,8 +106206,8 @@ ${lanes.join("\n")}
           flattenContext.emitBindingOrAssignment(flattenContext.createArrayBindingOrAssignmentPattern(bindingElements), value, location, pattern2);
         }
         if (restContainingElements) {
-          for (const [id2, element] of restContainingElements) {
-            flattenBindingOrAssignmentElement(flattenContext, element, id2, element);
+          for (const [id3, element] of restContainingElements) {
+            flattenBindingOrAssignmentElement(flattenContext, element, id3, element);
           }
         }
       }
@@ -126060,13 +126060,13 @@ ${lanes.join("\n")}
           if (node.isDeclarationFile || !(isEffectiveExternalModule(node, compilerOptions) || node.transformFlags & 8388608)) {
             return node;
           }
-          const id2 = getOriginalNodeId(node);
+          const id3 = getOriginalNodeId(node);
           currentSourceFile = node;
           enclosingBlockScopedContainer = node;
-          moduleInfo = moduleInfoMap[id2] = collectExternalModuleInfo(context, node);
+          moduleInfo = moduleInfoMap[id3] = collectExternalModuleInfo(context, node);
           exportFunction = factory2.createUniqueName("exports");
-          exportFunctionsMap[id2] = exportFunction;
-          contextObject = contextObjectMap[id2] = factory2.createUniqueName("context");
+          exportFunctionsMap[id3] = exportFunction;
+          contextObject = contextObjectMap[id3] = factory2.createUniqueName("context");
           const dependencyGroups = collectDependencyGroups(moduleInfo.externalImports);
           const moduleBodyBlock = createSystemModuleBody(node, dependencyGroups);
           const moduleBodyFunction = factory2.createFunctionExpression(
@@ -126124,7 +126124,7 @@ ${lanes.join("\n")}
             moveEmitHelpers(updated, moduleBodyBlock, (helper) => !helper.scoped);
           }
           if (noSubstitution) {
-            noSubstitutionMap[id2] = noSubstitution;
+            noSubstitutionMap[id3] = noSubstitution;
             noSubstitution = void 0;
           }
           currentSourceFile = void 0;
@@ -127194,14 +127194,14 @@ ${lanes.join("\n")}
         }
         function onEmitNode(hint, node, emitCallback) {
           if (node.kind === 308) {
-            const id2 = getOriginalNodeId(node);
+            const id3 = getOriginalNodeId(node);
             currentSourceFile = node;
-            moduleInfo = moduleInfoMap[id2];
-            exportFunction = exportFunctionsMap[id2];
-            noSubstitution = noSubstitutionMap[id2];
-            contextObject = contextObjectMap[id2];
+            moduleInfo = moduleInfoMap[id3];
+            exportFunction = exportFunctionsMap[id3];
+            noSubstitution = noSubstitutionMap[id3];
+            contextObject = contextObjectMap[id3];
             if (noSubstitution) {
-              delete noSubstitutionMap[id2];
+              delete noSubstitutionMap[id3];
             }
             previousOnEmitNode(hint, node, emitCallback);
             currentSourceFile = void 0;
@@ -129752,9 +129752,9 @@ ${lanes.join("\n")}
                 const mods = ensureModifiers(input);
                 needsDeclare = false;
                 visitNode(inner, visitDeclarationStatements);
-                const id2 = getOriginalNodeId(inner);
-                const body = lateStatementReplacementMap.get(id2);
-                lateStatementReplacementMap.delete(id2);
+                const id3 = getOriginalNodeId(inner);
+                const body = lateStatementReplacementMap.get(id3);
+                lateStatementReplacementMap.delete(id3);
                 return cleanup(updateModuleDeclarationAndKeyword(
                   input,
                   mods,
@@ -151463,8 +151463,8 @@ ${lanes.join("\n")}
       function nodeSeenTracker() {
         const seen = [];
         return (node) => {
-          const id2 = getNodeId(node);
-          return !seen[id2] && (seen[id2] = true);
+          const id3 = getNodeId(node);
+          return !seen[id3] && (seen[id3] = true);
         };
       }
       function getSnapshotText(snap) {
@@ -152966,13 +152966,13 @@ ${lanes.join("\n")}
             const symbolName2 = typeof names === "string" ? names : names[0];
             const capitalizedSymbolName = typeof names === "string" ? void 0 : names[1];
             const moduleName = stripQuotes(moduleSymbol.name);
-            const id2 = exportInfoId++;
+            const id3 = exportInfoId++;
             const target = skipAlias(symbol, checker);
             const storedSymbol = symbol.flags & 33554432 ? void 0 : symbol;
             const storedModuleSymbol = moduleSymbol.flags & 33554432 ? void 0 : moduleSymbol;
-            if (!storedSymbol || !storedModuleSymbol) symbols.set(id2, [symbol, moduleSymbol]);
+            if (!storedSymbol || !storedModuleSymbol) symbols.set(id3, [symbol, moduleSymbol]);
             exportInfo.add(key(symbolName2, symbol, isExternalModuleNameRelative(moduleName) ? void 0 : moduleName, checker), {
-              id: id2,
+              id: id3,
               symbolTableKey,
               symbolName: symbolName2,
               capitalizedSymbolName,
@@ -153033,8 +153033,8 @@ ${lanes.join("\n")}
         return cache;
         function rehydrateCachedInfo(info) {
           if (info.symbol && info.moduleSymbol) return info;
-          const { id: id2, exportKind, targetFlags, isFromPackageJson, moduleFileName } = info;
-          const [cachedSymbol, cachedModuleSymbol] = symbols.get(id2) || emptyArray;
+          const { id: id3, exportKind, targetFlags, isFromPackageJson, moduleFileName } = info;
+          const [cachedSymbol, cachedModuleSymbol] = symbols.get(id3) || emptyArray;
           if (cachedSymbol && cachedModuleSymbol) {
             return {
               symbol: cachedSymbol,
@@ -153053,7 +153053,7 @@ ${lanes.join("\n")}
             exportKind === 2 ? checker.resolveExternalModuleSymbol(moduleSymbol) : checker.tryGetMemberInModuleExportsAndProperties(unescapeLeadingUnderscores(info.symbolTableKey), moduleSymbol),
             `Could not find symbol '${info.symbolName}' by key '${info.symbolTableKey}' in module ${moduleSymbol.name}`
           );
-          symbols.set(id2, [symbol, moduleSymbol]);
+          symbols.set(id3, [symbol, moduleSymbol]);
           return {
             symbol,
             moduleSymbol,
@@ -157467,7 +157467,7 @@ interface Symbol {
         )) {
           return { error: getLocaleSpecificMessage(Diagnostics.This_file_already_has_a_default_export) };
         }
-        const noSymbolError = (id2) => isIdentifier(id2) && checker.getSymbolAtLocation(id2) ? void 0 : { error: getLocaleSpecificMessage(Diagnostics.Can_only_convert_named_export) };
+        const noSymbolError = (id3) => isIdentifier(id3) && checker.getSymbolAtLocation(id3) ? void 0 : { error: getLocaleSpecificMessage(Diagnostics.Can_only_convert_named_export) };
         switch (exportNode.kind) {
           case 263:
           case 264:
@@ -157758,22 +157758,22 @@ interface Symbol {
         let usedAsNamespaceOrDefault = false;
         const nodesToReplace = [];
         const conflictingNames = /* @__PURE__ */ new Map();
-        ts_FindAllReferences_exports.Core.eachSymbolReferenceInFile(toConvert.name, checker, sourceFile, (id2) => {
-          if (!isPropertyAccessOrQualifiedName(id2.parent)) {
+        ts_FindAllReferences_exports.Core.eachSymbolReferenceInFile(toConvert.name, checker, sourceFile, (id3) => {
+          if (!isPropertyAccessOrQualifiedName(id3.parent)) {
             usedAsNamespaceOrDefault = true;
           } else {
-            const exportName = getRightOfPropertyAccessOrQualifiedName(id2.parent).text;
+            const exportName = getRightOfPropertyAccessOrQualifiedName(id3.parent).text;
             if (checker.resolveName(
               exportName,
-              id2,
+              id3,
               -1,
               /*excludeGlobals*/
               true
             )) {
               conflictingNames.set(exportName, true);
             }
-            Debug.assert(getLeftOfPropertyAccessOrQualifiedName(id2.parent) === id2, "Parent expression should match id");
-            nodesToReplace.push(id2.parent);
+            Debug.assert(getLeftOfPropertyAccessOrQualifiedName(id3.parent) === id3, "Parent expression should match id");
+            nodesToReplace.push(id3.parent);
           }
         });
         const exportNameToImportName = /* @__PURE__ */ new Map();
@@ -157830,17 +157830,17 @@ interface Symbol {
           /* ESNext */
         ) : "module";
         function hasNamespaceNameConflict(namedImport) {
-          return !!ts_FindAllReferences_exports.Core.eachSymbolReferenceInFile(namedImport.name, checker, sourceFile, (id2) => {
+          return !!ts_FindAllReferences_exports.Core.eachSymbolReferenceInFile(namedImport.name, checker, sourceFile, (id3) => {
             const symbol = checker.resolveName(
               preferredName,
-              id2,
+              id3,
               -1,
               /*excludeGlobals*/
               true
             );
             if (symbol) {
               if (toConvertSymbols.has(symbol)) {
-                return isExportSpecifier(id2.parent);
+                return isExportSpecifier(id3.parent);
               }
               return true;
             }
@@ -157852,14 +157852,14 @@ interface Symbol {
         const neededNamedImports = /* @__PURE__ */ new Set();
         for (const element of toConvert.elements) {
           const propertyName = element.propertyName || element.name;
-          ts_FindAllReferences_exports.Core.eachSymbolReferenceInFile(element.name, checker, sourceFile, (id2) => {
+          ts_FindAllReferences_exports.Core.eachSymbolReferenceInFile(element.name, checker, sourceFile, (id3) => {
             const access = propertyName.kind === 11 ? factory.createElementAccessExpression(factory.createIdentifier(namespaceImportName), factory.cloneNode(propertyName)) : factory.createPropertyAccessExpression(factory.createIdentifier(namespaceImportName), factory.cloneNode(propertyName));
-            if (isShorthandPropertyAssignment(id2.parent)) {
-              changes2.replaceNode(sourceFile, id2.parent, factory.createPropertyAssignment(id2.text, access));
-            } else if (isExportSpecifier(id2.parent)) {
+            if (isShorthandPropertyAssignment(id3.parent)) {
+              changes2.replaceNode(sourceFile, id3.parent, factory.createPropertyAssignment(id3.text, access));
+            } else if (isExportSpecifier(id3.parent)) {
               neededNamedImports.add(element);
             } else {
-              changes2.replaceNode(sourceFile, id2, access);
+              changes2.replaceNode(sourceFile, id3, access);
             }
           });
         }
@@ -158138,11 +158138,11 @@ interface Symbol {
           /*modifiers*/
           void 0,
           name,
-          typeParameters.map((id2) => factory.updateTypeParameterDeclaration(
-            id2,
-            id2.modifiers,
-            id2.name,
-            id2.constraint,
+          typeParameters.map((id3) => factory.updateTypeParameterDeclaration(
+            id3,
+            id3.modifiers,
+            id3.name,
+            id3.constraint,
             /*defaultType*/
             void 0
           )),
@@ -158155,8 +158155,8 @@ interface Symbol {
           /*blankLineBetween*/
           true
         );
-        changes2.replaceNodeRange(file, firstTypeNode, lastTypeNode, factory.createTypeReferenceNode(name, typeParameters.map((id2) => factory.createTypeReferenceNode(
-          id2.name,
+        changes2.replaceNodeRange(file, firstTypeNode, lastTypeNode, factory.createTypeReferenceNode(name, typeParameters.map((id3) => factory.createTypeReferenceNode(
+          id3.name,
           /*typeArguments*/
           void 0
         ))), { leadingTriviaOption: ts_textChanges_exports.LeadingTriviaOption.Exclude, trailingTriviaOption: ts_textChanges_exports.TrailingTriviaOption.ExcludeWhitespace });
@@ -158182,8 +158182,8 @@ interface Symbol {
           true
         );
         const { firstTypeNode, lastTypeNode } = getNodesToEdit(info);
-        changes2.replaceNodeRange(file, firstTypeNode, lastTypeNode, factory.createTypeReferenceNode(name, typeParameters.map((id2) => factory.createTypeReferenceNode(
-          id2.name,
+        changes2.replaceNodeRange(file, firstTypeNode, lastTypeNode, factory.createTypeReferenceNode(name, typeParameters.map((id3) => factory.createTypeReferenceNode(
+          id3.name,
           /*typeArguments*/
           void 0
         ))), { leadingTriviaOption: ts_textChanges_exports.LeadingTriviaOption.Exclude, trailingTriviaOption: ts_textChanges_exports.TrailingTriviaOption.ExcludeWhitespace });
@@ -158239,8 +158239,8 @@ interface Symbol {
             true
           );
         }
-        changes2.replaceNodeRange(file, firstTypeNode, lastTypeNode, factory.createTypeReferenceNode(name, typeParameters.map((id2) => factory.createTypeReferenceNode(
-          id2.name,
+        changes2.replaceNodeRange(file, firstTypeNode, lastTypeNode, factory.createTypeReferenceNode(name, typeParameters.map((id3) => factory.createTypeReferenceNode(
+          id3.name,
           /*typeArguments*/
           void 0
         ))));
@@ -162338,8 +162338,8 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
           let i = 0;
           for (let curr = unmodifiedNode; curr !== void 0 && i < scopes.length; curr = curr.parent) {
             if (curr === scopes[i]) {
-              seenTypeParameterUsages.forEach((typeParameter, id2) => {
-                usagesPerScope[i].typeParameterUsages.set(id2, typeParameter);
+              seenTypeParameterUsages.forEach((typeParameter, id3) => {
+                usagesPerScope[i].typeParameterUsages.set(id3, typeParameter);
               });
               i++;
             }
@@ -168972,7 +168972,7 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
       }
       function collectFreeIdentifiers(file) {
         const map2 = createMultiMap();
-        forEachFreeIdentifier(file, (id2) => map2.add(id2.text, id2));
+        forEachFreeIdentifier(file, (id3) => map2.add(id3.text, id3));
         return map2;
       }
       function forEachFreeIdentifier(node, cb2) {
@@ -184045,10 +184045,10 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
           forEachImport(sourceFile, (importDecl, moduleSpecifier) => {
             const moduleSymbol = checker.getSymbolAtLocation(moduleSpecifier);
             if (moduleSymbol) {
-              const id2 = getSymbolId(moduleSymbol).toString();
-              let imports = map2.get(id2);
+              const id3 = getSymbolId(moduleSymbol).toString();
+              let imports = map2.get(id3);
               if (!imports) {
-                map2.set(id2, imports = []);
+                map2.set(id3, imports = []);
               }
               imports.push(importDecl);
             }
@@ -199335,7 +199335,7 @@ ${options.prefix}` : "\n" : options.prefix
         }
         /** @internal */
         installPackage(req) {
-          const { fileName, packageName, projectName, projectRootPath, id: id2 } = req;
+          const { fileName, packageName, projectName, projectRootPath, id: id3 } = req;
           const cwd = forEachAncestorDirectory(getDirectoryPath(fileName), (directory) => {
             if (this.installTypingHost.fileExists(combinePaths(directory, "package.json"))) {
               return directory;
@@ -199347,7 +199347,7 @@ ${options.prefix}` : "\n" : options.prefix
               const response = {
                 kind: ActionPackageInstalled,
                 projectName,
-                id: id2,
+                id: id3,
                 success,
                 message: message2
               };
@@ -199357,7 +199357,7 @@ ${options.prefix}` : "\n" : options.prefix
             const response = {
               kind: ActionPackageInstalled,
               projectName,
-              id: id2,
+              id: id3,
               success: false,
               message: "Could not determine a project root path."
             };
@@ -202955,10 +202955,10 @@ ${options.prefix}` : "\n" : options.prefix
         return protocolOptions;
       }
       function convertCompilerOptions(protocolOptions) {
-        compilerOptionConverters.forEach((mappedValues, id2) => {
-          const propertyValue = protocolOptions[id2];
+        compilerOptionConverters.forEach((mappedValues, id3) => {
+          const propertyValue = protocolOptions[id3];
           if (isString(propertyValue)) {
-            protocolOptions[id2] = mappedValues.get(propertyValue.toLowerCase());
+            protocolOptions[id3] = mappedValues.get(propertyValue.toLowerCase());
           }
         });
         return protocolOptions;
@@ -203340,7 +203340,7 @@ ${options.prefix}` : "\n" : options.prefix
             watchedFiles,
             path2,
             callback,
-            (id2) => ({ eventName: CreateFileWatcherEvent, data: { id: id2, path: path2 } })
+            (id3) => ({ eventName: CreateFileWatcherEvent, data: { id: id3, path: path2 } })
           );
         }
         function watchDirectory(path2, callback, recursive) {
@@ -203348,10 +203348,10 @@ ${options.prefix}` : "\n" : options.prefix
             recursive ? watchedDirectoriesRecursive : watchedDirectories,
             path2,
             callback,
-            (id2) => ({
+            (id3) => ({
               eventName: CreateDirectoryWatcherEvent,
               data: {
-                id: id2,
+                id: id3,
                 path: path2,
                 recursive: !!recursive,
                 // Special case node_modules as we watch it for changes to closed script infos as well
@@ -203362,22 +203362,22 @@ ${options.prefix}` : "\n" : options.prefix
         }
         function getOrCreateFileWatcher({ pathToId, idToCallbacks }, path2, callback, event) {
           const key = service2.toPath(path2);
-          let id2 = pathToId.get(key);
-          if (!id2) pathToId.set(key, id2 = ids++);
-          let callbacks = idToCallbacks.get(id2);
+          let id3 = pathToId.get(key);
+          if (!id3) pathToId.set(key, id3 = ids++);
+          let callbacks = idToCallbacks.get(id3);
           if (!callbacks) {
-            idToCallbacks.set(id2, callbacks = /* @__PURE__ */ new Set());
-            service2.eventHandler(event(id2));
+            idToCallbacks.set(id3, callbacks = /* @__PURE__ */ new Set());
+            service2.eventHandler(event(id3));
           }
           callbacks.add(callback);
           return {
             close() {
-              const callbacks2 = idToCallbacks.get(id2);
+              const callbacks2 = idToCallbacks.get(id3);
               if (!(callbacks2 == null ? void 0 : callbacks2.delete(callback))) return;
               if (callbacks2.size) return;
-              idToCallbacks.delete(id2);
+              idToCallbacks.delete(id3);
               pathToId.delete(key);
-              service2.eventHandler({ eventName: CloseFileWatcherEvent, data: { id: id2 } });
+              service2.eventHandler({ eventName: CloseFileWatcherEvent, data: { id: id3 } });
             }
           };
         }
@@ -203385,35 +203385,35 @@ ${options.prefix}` : "\n" : options.prefix
           if (isArray(args)) args.forEach(onWatchChangeRequestArgs);
           else onWatchChangeRequestArgs(args);
         }
-        function onWatchChangeRequestArgs({ id: id2, created, deleted, updated }) {
+        function onWatchChangeRequestArgs({ id: id3, created, deleted, updated }) {
           onWatchEventType(
-            id2,
+            id3,
             created,
             0
             /* Created */
           );
           onWatchEventType(
-            id2,
+            id3,
             deleted,
             2
             /* Deleted */
           );
           onWatchEventType(
-            id2,
+            id3,
             updated,
             1
             /* Changed */
           );
         }
-        function onWatchEventType(id2, paths, eventKind) {
+        function onWatchEventType(id3, paths, eventKind) {
           if (!(paths == null ? void 0 : paths.length)) return;
-          forEachCallback(watchedFiles, id2, paths, (callback, eventPath) => callback(eventPath, eventKind));
-          forEachCallback(watchedDirectories, id2, paths, (callback, eventPath) => callback(eventPath));
-          forEachCallback(watchedDirectoriesRecursive, id2, paths, (callback, eventPath) => callback(eventPath));
+          forEachCallback(watchedFiles, id3, paths, (callback, eventPath) => callback(eventPath, eventKind));
+          forEachCallback(watchedDirectories, id3, paths, (callback, eventPath) => callback(eventPath));
+          forEachCallback(watchedDirectoriesRecursive, id3, paths, (callback, eventPath) => callback(eventPath));
         }
-        function forEachCallback(hostWatcherMap, id2, eventPaths, cb2) {
+        function forEachCallback(hostWatcherMap, id3, eventPaths, cb2) {
           var _a3;
-          (_a3 = hostWatcherMap.idToCallbacks.get(id2)) == null ? void 0 : _a3.forEach((callback) => {
+          (_a3 = hostWatcherMap.idToCallbacks.get(id3)) == null ? void 0 : _a3.forEach((callback) => {
             eventPaths.forEach((eventPath) => cb2(callback, normalizeSlashes(eventPath)));
           });
         }
@@ -211952,13 +211952,13 @@ Additional information: BADCLIENT: Bad error code, ${badCode} not found in range
 
 // src/compiler/neuralese.ts
 function nativeLiteralUse(args) {
-  const [id2, constant, source2] = args;
-  if (!id2 || !import_typescript.default.isStringLiteralLike(id2) || args.length < 1 || args.length > 3) return;
+  const [id3, constant, source2] = args;
+  if (!id3 || !import_typescript.default.isStringLiteralLike(id3) || args.length < 1 || args.length > 3) return;
   if (constant && constant.kind !== import_typescript.default.SyntaxKind.TrueKeyword && !(import_typescript.default.isIdentifier(constant) && constant.text === "undefined")) return;
   if (args.length === 2 && constant?.kind !== import_typescript.default.SyntaxKind.TrueKeyword) return;
   if (args.length === 3 && (!source2 || !import_typescript.default.isStringLiteralLike(source2) || !source2.text)) return;
   return {
-    id: id2.text,
+    id: id3.text,
     ...constant?.kind === import_typescript.default.SyntaxKind.TrueKeyword ? { stopGradient: true } : {},
     ...source2 && import_typescript.default.isStringLiteralLike(source2) ? { sourceOccurrence: source2.text } : {}
   };
@@ -213279,20 +213279,20 @@ function runInFrame(frame, fn) {
   if (stores.length > 1) entered.set(frame, ++sequence);
   return frame.task.runtime.platform.contextStore.run(frame, fn);
 }
-function guard(id2, fn, args = [], label) {
+function guard(id3, fn, args = [], label) {
   const frame = currentFrame();
   if (!frame) return fn();
   let same = frame.active;
-  while (same && same.id !== id2) same = same.parent;
+  while (same && same.id !== id3) same = same.parent;
   let descent;
   if (same) {
     descent = descend(same, args);
     if (!descent.length) {
-      const name = label ?? guardName(id2);
-      throw new NatlangRecursionError(id2, frame.chain, name, `\`${name}\` called itself without a smaller argument. Recurse only on a part of the input, a shorter array or string, or a smaller non-negative integer; otherwise use a bounded loop or iterateOn.`);
+      const name = label ?? guardName(id3);
+      throw new NatlangRecursionError(id3, frame.chain, name, `\`${name}\` called itself without a smaller argument. Recurse only on a part of the input, a shorter array or string, or a smaller non-negative integer; otherwise use a bounded loop or iterateOn.`);
     }
   }
-  return runInFrame({ ...frame, active: { id: id2, args, parent: frame.active, same, descent } }, fn);
+  return runInFrame({ ...frame, active: { id: id3, args, parent: frame.active, same, descent } }, fn);
 }
 function descend(previous, args) {
   const candidates = previous.descent ?? Array.from(
@@ -213397,7 +213397,7 @@ var init_context = __esm({
       definitionId;
       chain;
     };
-    guardName = (id2) => /#([^#@]+)@\d+$/.exec(id2)?.[1] ?? id2;
+    guardName = (id3) => /#([^#@]+)@\d+$/.exec(id3)?.[1] ?? id3;
     isObject = (value) => !!value && (typeof value === "object" || typeof value === "function");
   }
 });
@@ -213534,6 +213534,23 @@ var init_native_protocol = __esm({
       "max_tokens",
       "stop_token_ids"
     ].sort();
+  }
+});
+
+// src/native/tool-markup.ts
+function secondThinkClose(content, reasoning) {
+  if (typeof reasoning === "string" && reasoning.includes(THINK_CLOSE)) return true;
+  const opened = /^\s*<think>/.test(content) ? content.indexOf(THINK_CLOSE) : -1;
+  return content.includes(THINK_CLOSE, opened < 0 ? 0 : opened + THINK_CLOSE.length);
+}
+var TOOL_MARKUP, THINK_CLOSE, SECOND_THINK_CLOSE;
+var init_tool_markup = __esm({
+  "src/native/tool-markup.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    TOOL_MARKUP = /<tool_call>|<\/tool_call>|<function=|<\/function>|<parameter=|<\/parameter>|<\|tool_call_start\|>|<\|tool_call_end\|>/;
+    THINK_CLOSE = "</think>";
+    SECOND_THINK_CLOSE = "Your last reply closed its reasoning a second time, so nothing ran; close the reasoning once, then make your tool call and end the reply.";
   }
 });
 
@@ -213834,30 +213851,30 @@ var init_pages = __esm({
        */
       show(text3, holder, budget = this.budget) {
         if (text3.length <= budget) return text3;
-        const { id: id2 } = this.add(text3, budget);
-        return cutText(text3, { holder, next: `read_page("${id2}", 2)` }, budget);
+        const { id: id3 } = this.add(text3, budget);
+        return cutText(text3, { holder, next: `read_page("${id3}", 2)` }, budget);
       }
       /** Keep a text in pages and return its ID. The first page is the head a cut-off shows (cutPoints). */
       add(text3, budget = this.budget) {
         const index = this.pages.size;
-        const id2 = WORDS[index % WORDS.length] + (index < WORDS.length ? "" : String(Math.floor(index / WORDS.length) + 1));
+        const id3 = WORDS[index % WORDS.length] + (index < WORDS.length ? "" : String(Math.floor(index / WORDS.length) + 1));
         const { head } = cutPoints(text3, budget);
         const pages = [text3.slice(0, head)];
         for (let start = head; start < text3.length; start += budget) pages.push(text3.slice(start, start + budget));
-        this.pages.set(id2, pages);
-        return { id: id2, count: pages.length };
+        this.pages.set(id3, pages);
+        return { id: id3, count: pages.length };
       }
-      has(id2) {
-        return this.pages.has(id2);
+      has(id3) {
+        return this.pages.has(id3);
       }
-      read(id2, page) {
-        const pages = this.pages.get(id2);
+      read(id3, page) {
+        const pages = this.pages.get(id3);
         if (!pages && this.pages.size === 0)
           throw new Error("No tool output was cut off in this call; use eval to inspect the value in scope.");
-        if (!pages) throw new Error(`no cut-off output is named ${JSON.stringify(id2)}; use an ID from a cut-off message`);
+        if (!pages) throw new Error(`no cut-off output is named ${JSON.stringify(id3)}; use an ID from a cut-off message`);
         if (!Number.isInteger(page) || page < 1 || page > pages.length)
-          throw new Error(`${id2} has pages 1 to ${pages.length}`);
-        return pages[page - 1] + "\n" + (page < pages.length ? note(`page ${page} of ${pages.length} shown`, { next: `read_page("${id2}", ${page + 1})` }) : note(`page ${page} of ${pages.length}, the last`));
+          throw new Error(`${id3} has pages 1 to ${pages.length}`);
+        return pages[page - 1] + "\n" + (page < pages.length ? note(`page ${page} of ${pages.length} shown`, { next: `read_page("${id3}", ${page + 1})` }) : note(`page ${page} of ${pages.length}, the last`));
       }
     };
   }
@@ -214416,10 +214433,10 @@ function solveHoles(program, sites) {
       }
       return position - shifted;
     };
-    const require2 = (node, type, strong, why, id2) => {
+    const require2 = (node, type, strong, why, id3) => {
       const statement = import_typescript5.default.findAncestor(node, (candidate) => import_typescript5.default.isStatement(candidate) && !import_typescript5.default.isBlock(candidate)) ?? node;
       const quoted = statement.getText().split("\n")[0].replace(/\s+/g, " ").trim();
-      uses.set(id2, [...uses.get(id2) ?? [], {
+      uses.set(id3, [...uses.get(id3) ?? [], {
         type,
         typeText: checker.typeToString(type),
         strong,
@@ -214437,7 +214454,7 @@ function solveHoles(program, sites) {
     };
     const collect = (node, type) => {
       const expected = checker.getContextualType(node);
-      if (expected) unify(checker, type, expected, (id2, target) => require2(node, target, true, "expected here", id2));
+      if (expected) unify(checker, type, expected, (id3, target) => require2(node, target, true, "expected here", id3));
       const hole = holeId(type);
       if (hole === void 0) return;
       const outer = skipParentheses(node);
@@ -214538,9 +214555,9 @@ function holeId(type) {
 }
 function holesIn(checker, type, depth2 = 0, found = /* @__PURE__ */ new Set()) {
   if (depth2 > 4) return found;
-  const id2 = holeId(type);
-  if (id2 !== void 0) {
-    found.add(id2);
+  const id3 = holeId(type);
+  if (id3 !== void 0) {
+    found.add(id3);
     return found;
   }
   if (type.isUnionOrIntersection()) for (const member of type.types) holesIn(checker, member, depth2 + 1, found);
@@ -214559,10 +214576,10 @@ function holesIn(checker, type, depth2 = 0, found = /* @__PURE__ */ new Set()) {
 }
 function unify(checker, source2, target, require2, depth2 = 0) {
   if (depth2 > 6 || !usable(target) || holesIn(checker, target).size) return;
-  const id2 = holeId(source2);
-  if (id2 !== void 0) {
+  const id3 = holeId(source2);
+  if (id3 !== void 0) {
     const awaited = awaitedType(checker, target).type;
-    if (usable(awaited)) require2(id2, withoutPromises(checker, awaited));
+    if (usable(awaited)) require2(id3, withoutPromises(checker, awaited));
     return;
   }
   if (isPromiseLike(checker, source2)) {
@@ -215427,9 +215444,9 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     visit(file);
   }
   if (deferred.length) {
-    const solutions = solveHoles(program, deferred.map((entry, id2) => ({ id: id2, node: entry.node })));
-    deferred.forEach((entry, id2) => {
-      const solution = solutions?.get(id2);
+    const solutions = solveHoles(program, deferred.map((entry, id3) => ({ id: id3, node: entry.node })));
+    deferred.forEach((entry, id3) => {
+      const solution = solutions?.get(id3);
       if (solution?.kind === "solved") {
         finish(entry.node, entry.call, { ...entry.signature, returns: solution.type, origin: "use" }, solution, void 0, entry.withCall);
       } else if (solution?.kind === "ambiguous") {
@@ -216949,18 +216966,18 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     if ((import_typescript8.default.isFunctionDeclaration(node) || import_typescript8.default.isFunctionExpression(node) || import_typescript8.default.isArrowFunction(node) || import_typescript8.default.isMethodDeclaration(node) || import_typescript8.default.isGetAccessorDeclaration(node) || import_typescript8.default.isSetAccessorDeclaration(node)) && node.body && node !== fn && makesCalls(node)) {
       const callable = authored.find((item) => item.node === node);
       if (callable) {
-        const id2 = JSON.stringify(callable.id);
+        const id3 = JSON.stringify(callable.id);
         const isAsync = !!node.modifiers?.some((modifier) => modifier.kind === import_typescript8.default.SyntaxKind.AsyncKeyword) || asyncMapCallbacks.has(`${rel(node).start}:${rel(node).end}`);
         const body2 = rel(node.body), args = `[${guardArguments(node).join(", ")}]`;
         if (import_typescript8.default.isBlock(node.body)) {
           primitive.push(
-            { start: body2.start, end: body2.start + 1, text: `{ return __natlang_guard(${id2}, ${isAsync ? "async " : ""}() => {` },
+            { start: body2.start, end: body2.start + 1, text: `{ return __natlang_guard(${id3}, ${isAsync ? "async " : ""}() => {` },
             { start: body2.end - 1, end: body2.end, text: `}, ${args}); }` }
           );
         } else {
           const arrow = rel(node.equalsGreaterThanToken);
           primitive.push(
-            { start: arrow.start, end: arrow.end, text: `=> __natlang_guard(${id2}, ${isAsync ? "async " : ""}() => (` },
+            { start: arrow.start, end: arrow.end, text: `=> __natlang_guard(${id3}, ${isAsync ? "async " : ""}() => (` },
             { start: body2.end, end: body2.end, text: `), ${args})` }
           );
         }
@@ -217424,14 +217441,14 @@ var init_nl_call = __esm({
 });
 
 // src/native/neuralese.ts
-function nativeAdapterRef(id2) {
-  if (!/^nnt1_[a-z2-7]{52}$/.test(id2)) throw new RangeError("native adapter references require a named nnt1 artifact ID");
-  return Object.freeze({ $nativeAdapter: Object.freeze({ id: id2 }) });
+function nativeAdapterRef(id3) {
+  if (!/^nnt1_[a-z2-7]{52}$/.test(id3)) throw new RangeError("native adapter references require a named nnt1 artifact ID");
+  return Object.freeze({ $nativeAdapter: Object.freeze({ id: id3 }) });
 }
-function nativeTensorRef(id2, kind) {
-  if (!/^nnt1_[a-z2-7]{52}$/.test(id2) || !NATIVE_TENSOR_REF_KINDS.has(kind))
+function nativeTensorRef(id3, kind) {
+  if (!/^nnt1_[a-z2-7]{52}$/.test(id3) || !NATIVE_TENSOR_REF_KINDS.has(kind))
     throw new RangeError("native tensor references require an nnt1 artifact ID and a non-coefficient tensor kind");
-  return Object.freeze({ $nativeTensor: Object.freeze({ id: id2, kind }) });
+  return Object.freeze({ $nativeTensor: Object.freeze({ id: id3, kind }) });
 }
 function isNativeTensorArtifactId(value) {
   return typeof value === "string" && NATIVE_TENSOR_ID.test(value);
@@ -217442,10 +217459,10 @@ function isTeacherTextNeuraleseId(value) {
 function isNativeStateId(value) {
   return typeof value === "string" && NATIVE_STATE_ID.test(value);
 }
-function nativeStateSentinel(id2, stopGradient = false, sourceOccurrence) {
-  if (!isNativeStateId(id2)) throw new TypeError(`not a native-state block ID: ${JSON.stringify(id2)}`);
+function nativeStateSentinel(id3, stopGradient = false, sourceOccurrence) {
+  if (!isNativeStateId(id3)) throw new TypeError(`not a native-state block ID: ${JSON.stringify(id3)}`);
   if (sourceOccurrence !== void 0 && (typeof sourceOccurrence !== "string" || !sourceOccurrence)) throw new TypeError("native source occurrence must be a nonempty string");
-  return `${NATIVE_SENTINEL_OPEN}${id2}${stopGradient ? "!" : ""}${sourceOccurrence ? "@" + encodeURIComponent(sourceOccurrence) : ""}${NATIVE_SENTINEL_CLOSE}`;
+  return `${NATIVE_SENTINEL_OPEN}${id3}${stopGradient ? "!" : ""}${sourceOccurrence ? "@" + encodeURIComponent(sourceOccurrence) : ""}${NATIVE_SENTINEL_CLOSE}`;
 }
 function nativeStateSentinelIds(text3) {
   return [...text3.matchAll(NATIVE_SENTINEL)].map((match2) => match2[1]);
@@ -217480,10 +217497,10 @@ function runtimeTextToParts(text3) {
   if (last < text3.length || !parts.length) parts.push({ type: "text", text: text3.slice(last) });
   return parts;
 }
-function neuraleseRef(type, id2, stopGradient = false, sourceOccurrence, teacherText = false) {
-  if (!(isNativeStateId(id2) || teacherText && isTeacherTextNeuraleseId(id2))) throw new TypeError(`not a Neuralese block ID: ${JSON.stringify(id2)}`);
+function neuraleseRef(type, id3, stopGradient = false, sourceOccurrence, teacherText = false) {
+  if (!(isNativeStateId(id3) || teacherText && isTeacherTextNeuraleseId(id3))) throw new TypeError(`not a Neuralese block ID: ${JSON.stringify(id3)}`);
   if (sourceOccurrence !== void 0 && (typeof sourceOccurrence !== "string" || !sourceOccurrence)) throw new TypeError("native source occurrence must be a nonempty string");
-  return Object.freeze({ $neuralese: Object.freeze({ type, id: id2, ...stopGradient ? { stop_gradient: true } : {}, ...sourceOccurrence ? { source_occurrence: sourceOccurrence } : {}, ...teacherText ? { teacher_text: true } : {} }) });
+  return Object.freeze({ $neuralese: Object.freeze({ type, id: id3, ...stopGradient ? { stop_gradient: true } : {}, ...sourceOccurrence ? { source_occurrence: sourceOccurrence } : {}, ...teacherText ? { teacher_text: true } : {} }) });
 }
 function isNeuraleseRef(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
@@ -217492,10 +217509,10 @@ function isNeuraleseRef(value) {
   const body = value.$neuralese;
   return !!body && typeof body === "object" && typeof body.type === "string" && (isNativeStateId(body.id) && body.teacher_text === void 0 || isTeacherTextNeuraleseId(body.id) && body.teacher_text === true) && (body.stop_gradient === void 0 || body.stop_gradient === true) && (body.source_occurrence === void 0 || typeof body.source_occurrence === "string" && !!body.source_occurrence) && Object.keys(body).every((key) => key === "type" || key === "id" || key === "stop_gradient" || key === "source_occurrence" || key === "teacher_text");
 }
-function neuraleseSentinel(id2, stopGradient = false, sourceOccurrence) {
-  if (isTeacherTextNeuraleseId(id2)) return `\uE000${id2}${sourceOccurrence ? "@" + encodeURIComponent(sourceOccurrence) : ""}\uE001`;
-  if (isNativeTensorArtifactId(id2)) throw new Error("neuralese-native-tensor-as-state: named tensor artifacts are not communication state; use NativeTensor for portable tensor references and NativeAdapter only for coefficient actors");
-  return nativeStateSentinel(id2, stopGradient, sourceOccurrence);
+function neuraleseSentinel(id3, stopGradient = false, sourceOccurrence) {
+  if (isTeacherTextNeuraleseId(id3)) return `\uE000${id3}${sourceOccurrence ? "@" + encodeURIComponent(sourceOccurrence) : ""}\uE001`;
+  if (isNativeTensorArtifactId(id3)) throw new Error("neuralese-native-tensor-as-state: named tensor artifacts are not communication state; use NativeTensor for portable tensor references and NativeAdapter only for coefficient actors");
+  return nativeStateSentinel(id3, stopGradient, sourceOccurrence);
 }
 function neuraleseRefSentinel(ref) {
   return neuraleseSentinel(ref.$neuralese.id, ref.$neuralese.stop_gradient, ref.$neuralese.source_occurrence);
@@ -217515,8 +217532,8 @@ function textToParts(text3) {
 function partsToText(parts) {
   return runtimePartsToText(parts);
 }
-function nativeLiteralArguments(id2, constant = false, source2) {
-  return JSON.stringify(id2) + (source2 ? `, ${constant ? "true" : "undefined"}, ${JSON.stringify(source2)}` : constant ? ", true" : "");
+function nativeLiteralArguments(id3, constant = false, source2) {
+  return JSON.stringify(id3) + (source2 ? `, ${constant ? "true" : "undefined"}, ${JSON.stringify(source2)}` : constant ? ", true" : "");
 }
 function sourceWithLiteralCalls(code) {
   const pattern2 = /(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?/g;
@@ -217579,10 +217596,10 @@ function dialectBinding(options) {
   const dialect = readerDialect(options), store = options.store;
   return {
     dialect,
-    blockDialect: (id2) => store.peek?.(id2)?.dialect,
-    nativeDefaultCompatible: (id2, source2, target) => {
+    blockDialect: (id3) => store.peek?.(id3)?.dialect,
+    nativeDefaultCompatible: (id3, source2, target) => {
       const consumer = options.nativeStateConsumer;
-      if (!isNativeStateId(id2) || !consumer || !source2.startsWith("native-state/")) return false;
+      if (!isNativeStateId(id3) || !consumer || !source2.startsWith("native-state/")) return false;
       if (target !== `native-state/${consumer.architecture}`) return false;
       return consumer.consumption_modes.includes("best-effort-text-retokenization");
     }
@@ -217744,6 +217761,9 @@ function activeRecorder() {
 function setLexicalSoftStateSource(next2) {
   lexicalSoftStateSource = next2;
 }
+function activeSoftStates() {
+  return lexicalSoftStateSource() ?? [];
+}
 function setLexicalNativeAdapterSource(next2) {
   lexicalAdapterSource = next2;
 }
@@ -217862,10 +217882,10 @@ function valueInputs(value, port, scope) {
   visit(value, port, 0);
   return found;
 }
-function graphNode(trace, kind, data, inputs = [], id2) {
+function graphNode(trace, kind, data, inputs = [], id3) {
   if (!trace) return;
   const callId = String(trace.events[0]?.run_id ?? "run");
-  const node = id2 ?? `${callId}#${trace.events.length}`;
+  const node = id3 ?? `${callId}#${trace.events.length}`;
   const producerScope = producerScopeForTrace(trace);
   if (kind === "block_write" && typeof data.block === "string")
     assertProducerOccurrenceAvailable(data.block, node, producerScope);
@@ -218168,7 +218188,7 @@ function nativeStateDerivationDependencies(value) {
     value.parent_state_id,
     value.gradient_id,
     value.update_artifact_id,
-    ...[value.program_id, value.optimizer_state_parent_id].filter((id2) => id2 !== null)
+    ...[value.program_id, value.optimizer_state_parent_id].filter((id3) => id3 !== null)
   ])].sort() : [];
 }
 function finiteProgramDependencies(value) {
@@ -218217,15 +218237,15 @@ function finiteProgramDependencies(value) {
     } else {
       const graph = request.graph;
       if (request.schema !== "natlang.native-gradient-request/1" || ["target", "order", "derived", "create_graph"].some((key) => Object.hasOwn(request, key)) || !object2(graph) || object2(request.objective) && request.objective.kind !== "native-query") return fail3();
-      for (const id2 of nativeQueryReadoutDependencies(request.objective)) deps.add(id2);
+      for (const id3 of nativeQueryReadoutDependencies(request.objective)) deps.add(id3);
       const invocation = request.invocation_adapters;
       if (invocation !== void 0 && !object2(invocation)) return fail3();
       for (const entries of [request.adapters ?? [], ...Object.values(invocation ?? {})]) {
         if (!Array.isArray(entries)) return fail3();
         for (const entry of entries) {
-          const id2 = typeof entry === "string" ? entry : object2(entry) ? entry.id : void 0;
-          if (typeof id2 !== "string" || !TENSOR.test(id2)) return fail3();
-          deps.add(id2);
+          const id3 = typeof entry === "string" ? entry : object2(entry) ? entry.id : void 0;
+          if (typeof id3 !== "string" || !TENSOR.test(id3)) return fail3();
+          deps.add(id3);
         }
       }
       if (graph.external_states !== void 0 && !object2(graph.external_states)) return fail3();
@@ -218345,10 +218365,10 @@ function nativeQueryReadoutDependencies(value) {
   const deps = /* @__PURE__ */ new Set();
   for (const term of value.terms) {
     if (!object2(term) || term.readouts !== void 0 && !Array.isArray(term.readouts) || term.teacher_readouts !== void 0 && !Array.isArray(term.teacher_readouts)) return fail3();
-    for (const id2 of [term.readout, term.teacher_readout, ...term.readouts ?? [], ...term.teacher_readouts ?? []]) {
-      if (id2 === void 0 || id2 === null) continue;
-      if (typeof id2 !== "string" || !TENSOR.test(id2)) return fail3();
-      deps.add(id2);
+    for (const id3 of [term.readout, term.teacher_readout, ...term.readouts ?? [], ...term.teacher_readouts ?? []]) {
+      if (id3 === void 0 || id3 === null) continue;
+      if (typeof id3 !== "string" || !TENSOR.test(id3)) return fail3();
+      deps.add(id3);
     }
   }
   return [...deps].sort();
@@ -218550,22 +218570,22 @@ function nativeTensorArtifactDependencies(artifact) {
     dependencies.push(...meta.provenance.dependencies);
   }
   for (const key of ["derivative_program_id", "derivative_execution_id"]) if (meta.provenance[key] !== void 0 && meta.provenance[key] !== null) {
-    const id2 = meta.provenance[key];
-    if (typeof id2 !== "string" || !/^nnt1_[a-z2-7]{52}$/.test(id2)) throw new RangeError("native derivative artifact dependency needs its exact ID");
-    dependencies.push(id2);
+    const id3 = meta.provenance[key];
+    if (typeof id3 !== "string" || !/^nnt1_[a-z2-7]{52}$/.test(id3)) throw new RangeError("native derivative artifact dependency needs its exact ID");
+    dependencies.push(id3);
   }
   if (meta.kind === "state-gradient" && meta.source_artifact_id) dependencies.push(meta.source_artifact_id);
   if (meta.provenance.scope === "natlang.native-state-derivation/1" || meta.provenance.schema === "natlang.native-state-derivation/1" || meta.provenance.scope === "natlang.native-derivative-program/1") {
     for (const key of ["gradient_id", "parent_state_id", "optimizer_state_parent_id", "parent_value_id", "parameter_value_id"]) {
-      const id2 = meta.provenance[key];
-      if (typeof id2 === "string") dependencies.push(id2);
+      const id3 = meta.provenance[key];
+      if (typeof id3 === "string") dependencies.push(id3);
     }
     if (meta.source_artifact_id) dependencies.push(meta.source_artifact_id);
   }
   if (meta.provenance.derivative_program_id) {
     for (const key of ["parent_value_id", "parameter_value_id", "gradient_id", "optimizer_state_parent_id"]) {
-      const id2 = meta.provenance[key];
-      if (typeof id2 === "string") dependencies.push(id2);
+      const id3 = meta.provenance[key];
+      if (typeof id3 === "string") dependencies.push(id3);
     }
     if (meta.source_artifact_id) dependencies.push(meta.source_artifact_id);
   }
@@ -218607,79 +218627,79 @@ function nativeStateArtifactDependencies(artifact) {
     ...nativeStateDerivationDependencies(artifact.metadata.derivation)
   ])];
 }
-async function archiveNativeArtifactFrom(remote, archive, id2, active2 = /* @__PURE__ */ new Set()) {
-  if (active2.has(id2)) throw new Error("neuralese-native-artifact-cycle: exact native dependencies must form a DAG");
+async function archiveNativeArtifactFrom(remote, archive, id3, active2 = /* @__PURE__ */ new Set()) {
+  if (active2.has(id3)) throw new Error("neuralese-native-artifact-cycle: exact native dependencies must form a DAG");
   const nested = new Set(active2);
-  nested.add(id2);
-  if (id2.startsWith("nzs1_")) {
+  nested.add(id3);
+  if (id3.startsWith("nzs1_")) {
     if (!archive.getNativeState || !archive.putNativeState) throw new Error("neuralese-native-archive-unavailable: configure a native state archive");
-    const found2 = await archive.getNativeState(id2);
-    const wire = found2 || !remote.getNativeStateWire || !archive.putNativeStateWire ? void 0 : await remote.getNativeStateWire(id2);
-    const artifact2 = found2 ?? (wire ? decodeNativeState(wire, id2) : await remote.getNativeState?.(id2));
-    if (!artifact2) throw new Error(`neuralese-unknown-native-state: restore native state ${id2}`);
+    const found2 = await archive.getNativeState(id3);
+    const wire = found2 || !remote.getNativeStateWire || !archive.putNativeStateWire ? void 0 : await remote.getNativeStateWire(id3);
+    const artifact2 = found2 ?? (wire ? decodeNativeState(wire, id3) : await remote.getNativeState?.(id3));
+    if (!artifact2) throw new Error(`neuralese-unknown-native-state: restore native state ${id3}`);
     for (const dependency of nativeStateArtifactDependencies(artifact2)) await archiveNativeArtifactFrom(remote, archive, dependency, nested);
     if (found2) return found2;
     if (wire) {
-      const saved3 = await archive.putNativeStateWire(wire, id2);
-      if (saved3.id !== id2) throw new Error("neuralese-block-integrity: native state changed during archival");
+      const saved3 = await archive.putNativeStateWire(wire, id3);
+      if (saved3.id !== id3) throw new Error("neuralese-block-integrity: native state changed during archival");
       return saved3;
     }
     const { id: _11, ...input2 } = artifact2, saved2 = await archive.putNativeState(input2);
-    if (saved2.id !== id2) throw new Error("neuralese-block-integrity: native state changed during archival");
+    if (saved2.id !== id3) throw new Error("neuralese-block-integrity: native state changed during archival");
     return saved2;
   }
-  if (!id2.startsWith("nnt1_") || !archive.getNativeTensorArtifact || !archive.putNativeTensorArtifact)
+  if (!id3.startsWith("nnt1_") || !archive.getNativeTensorArtifact || !archive.putNativeTensorArtifact)
     throw new Error("neuralese-native-archive-unavailable: configure a named tensor archive");
-  const found = await archive.getNativeTensorArtifact(id2), artifact = found ?? await remote.getNativeTensorArtifact?.(id2);
-  if (!artifact) throw new Error(`neuralese-unknown-native-artifact: restore native tensor ${id2}`);
+  const found = await archive.getNativeTensorArtifact(id3), artifact = found ?? await remote.getNativeTensorArtifact?.(id3);
+  if (!artifact) throw new Error(`neuralese-unknown-native-artifact: restore native tensor ${id3}`);
   for (const dependency of nativeTensorArtifactDependencies(artifact)) await archiveNativeArtifactFrom(remote, archive, dependency, nested);
   if (found) return found;
   const { id: _10, ...input } = artifact, saved = await archive.putNativeTensorArtifact(input);
-  if (saved.id !== id2) throw new Error("neuralese-block-integrity: native artifact changed during archival");
+  if (saved.id !== id3) throw new Error("neuralese-block-integrity: native artifact changed during archival");
   return saved;
 }
-async function archiveNativeTensorFrom(remote, archive, id2) {
-  if (!id2.startsWith("nnt1_")) throw new RangeError("native tensor archive requires a named tensor ID");
-  return await archiveNativeArtifactFrom(remote, archive, id2);
+async function archiveNativeTensorFrom(remote, archive, id3) {
+  if (!id3.startsWith("nnt1_")) throw new RangeError("native tensor archive requires a named tensor ID");
+  return await archiveNativeArtifactFrom(remote, archive, id3);
 }
 async function importNativeArtifactBundle(store, states, tensors) {
   const done = /* @__PURE__ */ new Set(), active2 = /* @__PURE__ */ new Set();
-  const restore = async (id2) => {
-    if (done.has(id2)) return;
-    if (active2.has(id2)) throw new RangeError("native artifact dependencies must form a finite DAG");
-    active2.add(id2);
-    const state = states.get(id2), tensor = tensors.get(id2);
+  const restore = async (id3) => {
+    if (done.has(id3)) return;
+    if (active2.has(id3)) throw new RangeError("native artifact dependencies must form a finite DAG");
+    active2.add(id3);
+    const state = states.get(id3), tensor = tensors.get(id3);
     if (!state && !tensor) {
-      if (await store.has(id2)) {
-        active2.delete(id2);
-        done.add(id2);
+      if (await store.has(id3)) {
+        active2.delete(id3);
+        done.add(id3);
         return;
       }
-      throw new RangeError(`native bundle lacks dependency ${id2}`);
+      throw new RangeError(`native bundle lacks dependency ${id3}`);
     }
     for (const dependency of state ? nativeStateArtifactDependencies(state) : nativeTensorArtifactDependencies(tensor)) await restore(dependency);
-    if (!await store.has(id2)) {
+    if (!await store.has(id3)) {
       if (state) {
         if (!store.putNativeState) throw new RangeError("native bundle needs a state-capable archive");
         const { id: _10, ...input } = state;
-        if ((await store.putNativeState(input)).id !== id2) throw new RangeError("native bundle state identity changed");
+        if ((await store.putNativeState(input)).id !== id3) throw new RangeError("native bundle state identity changed");
       } else {
         if (!store.putNativeTensorArtifact) throw new RangeError("native bundle needs a named tensor archive");
         const { id: _10, ...input } = tensor;
-        if ((await store.putNativeTensorArtifact(input)).id !== id2) throw new RangeError("native bundle tensor identity changed");
+        if ((await store.putNativeTensorArtifact(input)).id !== id3) throw new RangeError("native bundle tensor identity changed");
       }
     }
-    active2.delete(id2);
-    done.add(id2);
+    active2.delete(id3);
+    done.add(id3);
   };
-  for (const id2 of [...states.keys(), ...tensors.keys()]) await restore(id2);
+  for (const id3 of [...states.keys(), ...tensors.keys()]) await restore(id3);
 }
 async function nativeArtifactDependencyClosure(store, roots) {
   const keep = new Set(roots), pending = [...keep];
   for (let index = 0; index < pending.length; index++) {
-    const id2 = pending[index];
-    const artifact = id2.startsWith("nnt1_") ? await store.getNativeTensorArtifact?.(id2) : void 0;
-    const state = id2.startsWith("nzs1_") ? await store.getNativeState?.(id2) : void 0;
+    const id3 = pending[index];
+    const artifact = id3.startsWith("nnt1_") ? await store.getNativeTensorArtifact?.(id3) : void 0;
+    const state = id3.startsWith("nzs1_") ? await store.getNativeState?.(id3) : void 0;
     const dependencies = artifact ? nativeTensorArtifactDependencies(artifact) : state ? nativeStateArtifactDependencies(state) : [];
     for (const dependency of dependencies) if (!keep.has(dependency)) {
       keep.add(dependency);
@@ -218946,7 +218966,7 @@ function nativeTensorArtifactContentId(metadata, tensors, canonicalMetadata) {
   return `nnt1_${base32(digest(joinBytes(parts)))}`;
 }
 function encodeNativeTensorArtifact(artifact) {
-  const id2 = nativeTensorArtifactContentId(artifact.metadata, artifact.tensors, artifact.canonicalMetadata);
+  const id3 = nativeTensorArtifactContentId(artifact.metadata, artifact.tensors, artifact.canonicalMetadata);
   const entries = {}, payloads = [];
   let offset = 0;
   for (const name of Object.keys(artifact.tensors).sort()) {
@@ -218956,7 +218976,7 @@ function encodeNativeTensorArtifact(artifact) {
     offset += tensor.data.length;
   }
   const exact = artifact.canonicalMetadata ?? nativeCanonicalJson(artifact.metadata);
-  entries.__metadata__ = { "natlang.native_tensor_artifact": `{"id":${JSON.stringify(id2)},${exact.slice(1)}` };
+  entries.__metadata__ = { "natlang.native_tensor_artifact": `{"id":${JSON.stringify(id3)},${exact.slice(1)}` };
   const raw = new TextEncoder().encode(nativeCanonicalJson(entries));
   const header = new Uint8Array(Math.ceil(raw.length / 8) * 8).fill(32);
   header.set(raw);
@@ -218970,7 +218990,7 @@ function decodeNativeTensorArtifact(bytes2) {
   const metadataText = header.__metadata__?.["natlang.native_tensor_artifact"];
   if (typeof metadataText !== "string") throw new RangeError("missing canonical native tensor artifact metadata");
   const stored = JSON.parse(metadataText);
-  const { id: id2, ...metadata } = stored;
+  const { id: id3, ...metadata } = stored;
   const payload = bytes2.subarray(8 + headerSize), tensors = {}, spans = [];
   for (const [name, raw] of Object.entries(header)) {
     if (name === "__metadata__") continue;
@@ -218986,10 +219006,10 @@ function decodeNativeTensorArtifact(bytes2) {
   spans.sort((a, b) => a[0] - b[0]);
   if (!spans.length ? metadata.kind !== "derivative-program" || payload.length !== 0 : spans[0][0] !== 0 || spans.at(-1)[1] !== payload.length || spans.some((span, index) => index > 0 && spans[index - 1][1] !== span[0]))
     throw new RangeError("native tensor artifact payload has gaps or overlaps");
-  const prefix = `{"id":${JSON.stringify(id2)},`;
+  const prefix = `{"id":${JSON.stringify(id3)},`;
   const canonicalMetadata = metadataText.startsWith(prefix) ? "{" + metadataText.slice(prefix.length) : void 0;
   const actual = nativeTensorArtifactContentId(metadata, tensors, canonicalMetadata);
-  if (actual !== id2) throw new RangeError(`native tensor artifact ID mismatch: ${actual}`);
+  if (actual !== id3) throw new RangeError(`native tensor artifact ID mismatch: ${actual}`);
   return { id: actual, metadata, tensors, canonicalMetadata };
 }
 function nativeStateContentId(metadata, tensors) {
@@ -219012,7 +219032,7 @@ function encodeNativeState(artifact) {
   return encodeNativeStateWire(artifact).wire;
 }
 function encodeNativeStateWire(artifact) {
-  const id2 = nativeStateContentId(artifact.metadata, artifact.tensors);
+  const id3 = nativeStateContentId(artifact.metadata, artifact.tensors);
   const entries = {};
   const payloads = [];
   let offset = 0;
@@ -219022,13 +219042,13 @@ function encodeNativeStateWire(artifact) {
     payloads.push(tensor.data);
     offset += tensor.data.length;
   }
-  entries.__metadata__ = { "natlang.native_state": nativeCanonicalJson({ id: id2, ...artifact.metadata }) };
+  entries.__metadata__ = { "natlang.native_state": nativeCanonicalJson({ id: id3, ...artifact.metadata }) };
   let header = new TextEncoder().encode(nativeCanonicalJson(entries));
   const aligned = new Uint8Array(Math.ceil(header.length / 8) * 8).fill(32);
   aligned.set(header);
   header = aligned;
   const body = joinBytes([u64(header.length), header, ...payloads]);
-  return { id: id2, wire: body };
+  return { id: id3, wire: body };
 }
 function checkNativeStateFinite(tensors) {
   for (const [name, tensor] of Object.entries(tensors)) {
@@ -219052,7 +219072,7 @@ function decodeNativeState(bytes2, verifiedId) {
   const metadataText = header.__metadata__?.["natlang.native_state"];
   if (typeof metadataText !== "string" || metaField !== void 0) throw new RangeError("missing canonical native-state metadata");
   const stored = JSON.parse(metadataText);
-  const { id: id2, ...metadata } = stored;
+  const { id: id3, ...metadata } = stored;
   if (metadata.schema !== "neuralese.native-state/1" || typeof metadata.text !== "string" || typeof metadata.architecture !== "string" || !Array.isArray(metadata.layer_kinds))
     throw new RangeError("unsupported native state metadata");
   const payload = bytes2.subarray(8 + headerSize);
@@ -219074,13 +219094,13 @@ function decodeNativeState(bytes2, verifiedId) {
   if (!spans.length || spans[0][0] !== 0 || spans.at(-1)[1] !== payload.length || spans.some((span, index) => index > 0 && spans[index - 1][1] !== span[0]))
     throw new RangeError("native state tensor payload has gaps or overlaps");
   if (verifiedId !== void 0) {
-    if (id2 !== verifiedId) throw new RangeError(`native state content ID mismatch: ${String(id2)}`);
+    if (id3 !== verifiedId) throw new RangeError(`native state content ID mismatch: ${String(id3)}`);
     validateNativeState(metadata, tensors);
     return { id: verifiedId, metadata, tensors };
   }
   checkNativeStateFinite(tensors);
   const actual = nativeStateContentId(metadata, tensors);
-  if (actual !== id2) throw new RangeError(`native state content ID mismatch: ${actual}`);
+  if (actual !== id3) throw new RangeError(`native state content ID mismatch: ${actual}`);
   return { id: actual, metadata, tensors };
 }
 function nativeStateView(artifact) {
@@ -219109,16 +219129,16 @@ var init_neuralese_store = __esm({
       /** Metadata of blocks held elsewhere (`note`). */
       noted = /* @__PURE__ */ new Map();
       pins = /* @__PURE__ */ new Map();
-      async meta(id2) {
-        const found = this.peek(id2);
+      async meta(id3) {
+        const found = this.peek(id3);
         return found && { ...found };
       }
-      async has(id2) {
-        return this.nativeStates.has(id2) || this.nativeTensorArtifacts.has(id2);
+      async has(id3) {
+        return this.nativeStates.has(id3) || this.nativeTensorArtifacts.has(id3);
       }
       async putNativeState(artifact) {
-        const { id: id2, wire } = encodeNativeStateWire(artifact);
-        return this.putNativeStateWire(wire, id2);
+        const { id: id3, wire } = encodeNativeStateWire(artifact);
+        return this.putNativeStateWire(wire, id3);
       }
       async putNativeStateWire(wire, verifiedId) {
         const found = verifiedId !== void 0 ? this.nativeStates.get(verifiedId) : void 0;
@@ -219132,15 +219152,15 @@ var init_neuralese_store = __esm({
         }
         return nativeStateView(this.nativeStates.get(stored.id));
       }
-      async getNativeState(id2) {
-        const found = this.nativeStates.get(id2);
+      async getNativeState(id3) {
+        const found = this.nativeStates.get(id3);
         return found && nativeStateView(found);
       }
-      async getNativeStateWire(id2) {
-        return this.nativeWires.get(id2);
+      async getNativeStateWire(id3) {
+        return this.nativeWires.get(id3);
       }
-      async hasNativeState(id2) {
-        return this.nativeStates.has(id2);
+      async hasNativeState(id3) {
+        return this.nativeStates.has(id3);
       }
       async putNativeTensorArtifact(artifact) {
         await verifyNativeDerivativeGradientOrigin(this, artifact);
@@ -219151,42 +219171,42 @@ var init_neuralese_store = __esm({
         this.noted.delete(stored.id);
         return structuredClone(stored);
       }
-      async getNativeTensorArtifact(id2) {
-        const found = this.nativeTensorArtifacts.get(id2);
+      async getNativeTensorArtifact(id3) {
+        const found = this.nativeTensorArtifacts.get(id3);
         return found && structuredClone(found);
       }
-      async hasNativeTensorArtifact(id2) {
-        return this.nativeTensorArtifacts.has(id2);
+      async hasNativeTensorArtifact(id3) {
+        return this.nativeTensorArtifacts.has(id3);
       }
-      peek(id2) {
-        const native = this.nativeStates.get(id2);
-        const tensor = this.nativeTensorArtifacts.get(id2);
-        const found = (native && nativeStateBlockMeta(native)) ?? (tensor && nativeTensorArtifactBlockMeta(tensor)) ?? this.noted.get(id2);
+      peek(id3) {
+        const native = this.nativeStates.get(id3);
+        const tensor = this.nativeTensorArtifacts.get(id3);
+        const found = (native && nativeStateBlockMeta(native)) ?? (tensor && nativeTensorArtifactBlockMeta(tensor)) ?? this.noted.get(id3);
         return found && { ...found };
       }
       note(meta) {
         if (!this.nativeStates.has(meta.id) && !this.nativeTensorArtifacts.has(meta.id)) this.noted.set(meta.id, { ...meta });
       }
-      async pin(id2) {
-        if (!this.nativeStates.has(id2) && !this.nativeTensorArtifacts.has(id2)) throw new Error(`neuralese-unknown-native-artifact: ${id2}`);
-        this.pins.set(id2, (this.pins.get(id2) ?? 0) + 1);
+      async pin(id3) {
+        if (!this.nativeStates.has(id3) && !this.nativeTensorArtifacts.has(id3)) throw new Error(`neuralese-unknown-native-artifact: ${id3}`);
+        this.pins.set(id3, (this.pins.get(id3) ?? 0) + 1);
       }
-      async unpin(id2) {
-        const count = (this.pins.get(id2) ?? 0) - 1;
-        if (count > 0) this.pins.set(id2, count);
-        else this.pins.delete(id2);
+      async unpin(id3) {
+        const count = (this.pins.get(id3) ?? 0) - 1;
+        if (count > 0) this.pins.set(id3, count);
+        else this.pins.delete(id3);
       }
       async collect(referenced) {
         referenced = await nativeArtifactDependencyClosure(this, [...referenced, ...this.pins.keys()]);
         const removed = [];
-        for (const id2 of [...this.nativeStates.keys(), ...this.nativeTensorArtifacts.keys()])
-          if (!referenced.has(id2) && !this.pins.has(id2)) {
-            this.nativeStates.delete(id2);
-            this.nativeWires.delete(id2);
-            this.nativeTensorArtifacts.delete(id2);
-            removed.push(id2);
+        for (const id3 of [...this.nativeStates.keys(), ...this.nativeTensorArtifacts.keys()])
+          if (!referenced.has(id3) && !this.pins.has(id3)) {
+            this.nativeStates.delete(id3);
+            this.nativeWires.delete(id3);
+            this.nativeTensorArtifacts.delete(id3);
+            removed.push(id3);
           }
-        for (const id2 of [...this.noted.keys()]) if (!referenced.has(id2)) this.noted.delete(id2);
+        for (const id3 of [...this.noted.keys()]) if (!referenced.has(id3)) this.noted.delete(id3);
         return removed;
       }
       get size() {
@@ -219315,38 +219335,38 @@ function decodeNz(bytes2) {
   checkHeaderShape(header);
   const data = bytes2.subarray(8 + size);
   const nativeStates = /* @__PURE__ */ new Map();
-  for (const [id2, meta] of Object.entries(header.native_states ?? {})) {
-    const tensor = outer[id2];
+  for (const [id3, meta] of Object.entries(header.native_states ?? {})) {
+    const tensor = outer[id3];
     const offsets = tensor?.data_offsets;
-    if (!/^nzs1_[a-z2-7]{52}$/.test(id2) || !Number.isSafeInteger(meta.bytes) || meta.bytes < 1 || tensor?.dtype !== "U8" || tensor.shape?.length !== 1 || tensor.shape[0] !== meta.bytes || !offsets || offsets.some((value) => !Number.isSafeInteger(value) || value < 0) || offsets[1] > data.length || offsets[1] - offsets[0] !== meta.bytes)
-      throw new NzFileError("neuralese-file-format", `native state ${id2}: tensor and inventory disagree`);
+    if (!/^nzs1_[a-z2-7]{52}$/.test(id3) || !Number.isSafeInteger(meta.bytes) || meta.bytes < 1 || tensor?.dtype !== "U8" || tensor.shape?.length !== 1 || tensor.shape[0] !== meta.bytes || !offsets || offsets.some((value) => !Number.isSafeInteger(value) || value < 0) || offsets[1] > data.length || offsets[1] - offsets[0] !== meta.bytes)
+      throw new NzFileError("neuralese-file-format", `native state ${id3}: tensor and inventory disagree`);
     let artifact;
     try {
       artifact = decodeNativeState(data.slice(offsets[0], offsets[1]));
     } catch (error) {
-      throw new NzFileError("neuralese-block-integrity", `native state ${id2}: ${String(error)}`);
+      throw new NzFileError("neuralese-block-integrity", `native state ${id3}: ${String(error)}`);
     }
-    if (artifact.id !== id2) throw new NzFileError("neuralese-block-integrity", `native state ${id2} hashes to ${artifact.id}`);
-    nativeStates.set(id2, artifact);
+    if (artifact.id !== id3) throw new NzFileError("neuralese-block-integrity", `native state ${id3} hashes to ${artifact.id}`);
+    nativeStates.set(id3, artifact);
   }
   const nativeTensors = /* @__PURE__ */ new Map();
-  for (const [id2, meta] of Object.entries(header.native_tensors ?? {})) {
-    const tensor = outer[id2];
+  for (const [id3, meta] of Object.entries(header.native_tensors ?? {})) {
+    const tensor = outer[id3];
     const offsets = tensor?.data_offsets;
-    if (nativeStates.has(id2) || !/^nnt1_[a-z2-7]{52}$/.test(id2) || !Number.isSafeInteger(meta.bytes) || meta.bytes < 1 || tensor?.dtype !== "U8" || tensor.shape?.length !== 1 || tensor.shape[0] !== meta.bytes || !offsets || offsets.some((value) => !Number.isSafeInteger(value) || value < 0) || offsets[1] > data.length || offsets[1] - offsets[0] !== meta.bytes)
-      throw new NzFileError("neuralese-file-format", `native tensor ${id2}: tensor and inventory disagree`);
+    if (nativeStates.has(id3) || !/^nnt1_[a-z2-7]{52}$/.test(id3) || !Number.isSafeInteger(meta.bytes) || meta.bytes < 1 || tensor?.dtype !== "U8" || tensor.shape?.length !== 1 || tensor.shape[0] !== meta.bytes || !offsets || offsets.some((value) => !Number.isSafeInteger(value) || value < 0) || offsets[1] > data.length || offsets[1] - offsets[0] !== meta.bytes)
+      throw new NzFileError("neuralese-file-format", `native tensor ${id3}: tensor and inventory disagree`);
     const artifact = decodeNativeTensorArtifact(data.slice(offsets[0], offsets[1]));
-    if (artifact.id !== id2) throw new NzFileError("neuralese-block-integrity", `native tensor ${id2} changed`);
-    nativeTensors.set(id2, artifact);
+    if (artifact.id !== id3) throw new NzFileError("neuralese-block-integrity", `native tensor ${id3} changed`);
+    nativeTensors.set(id3, artifact);
   }
   for (const artifact of [...nativeTensors.values(), ...nativeStates.values()]) for (const dependency of artifact.id.startsWith("nnt1_") ? nativeTensorArtifactDependencies(artifact) : nativeStateArtifactDependencies(artifact))
     if (!nativeTensors.has(dependency) && !nativeStates.has(dependency)) throw new NzFileError("neuralese-unknown-block", `native artifact lacks dependency ${dependency}`);
   const verified = /* @__PURE__ */ new Set(), active2 = /* @__PURE__ */ new Set();
-  const verify = (id2) => {
-    if (verified.has(id2)) return;
-    if (active2.has(id2)) throw new NzFileError("neuralese-file-format", "native derivations must form a DAG");
-    active2.add(id2);
-    const state = nativeStates.get(id2), value = state?.metadata.derivation;
+  const verify = (id3) => {
+    if (verified.has(id3)) return;
+    if (active2.has(id3)) throw new NzFileError("neuralese-file-format", "native derivations must form a DAG");
+    active2.add(id3);
+    const state = nativeStates.get(id3), value = state?.metadata.derivation;
     if (state && value) {
       verify(value.parent_state_id);
       const parent = nativeStates.get(value.parent_state_id);
@@ -219361,10 +219381,10 @@ function decodeNz(bytes2) {
       );
       else verifyNativeStateDerivationRecords(state, parent, void 0, void 0);
     }
-    active2.delete(id2);
-    verified.add(id2);
+    active2.delete(id3);
+    verified.add(id3);
   };
-  for (const id2 of nativeStates.keys()) verify(id2);
+  for (const id3 of nativeStates.keys()) verify(id3);
   return { header, nativeStates, nativeTensors };
 }
 function checkHeaderShape(header) {
@@ -219400,7 +219420,7 @@ async function adoptImportedNativeArtifacts(store) {
   const done = ADOPTED.get(store) ?? /* @__PURE__ */ new Set();
   ADOPTED.set(store, done);
   await importNativeArtifactBundle(store, IMPORTED_NATIVE_STATES, IMPORTED_NATIVE_TENSORS);
-  for (const id2 of [...IMPORTED_NATIVE_STATES.keys(), ...IMPORTED_NATIVE_TENSORS.keys()]) done.add(id2);
+  for (const id3 of [...IMPORTED_NATIVE_STATES.keys(), ...IMPORTED_NATIVE_TENSORS.keys()]) done.add(id3);
 }
 function loadNzSync(bytes2, resolve2) {
   const { header, nativeStates, nativeTensors } = decodeNz(bytes2);
@@ -219427,12 +219447,12 @@ function loadNzSync(bytes2, resolve2) {
     resolving.delete(name);
     return values[name] = value;
   };
-  const artifactMeta = (id2, where) => {
-    const named2 = nativeTensors.get(id2);
+  const artifactMeta = (id3, where) => {
+    const named2 = nativeTensors.get(id3);
     if (named2) return { meta: nativeTensorArtifactBlockMeta(named2), data: encodeNativeTensorArtifact(named2) };
-    const native = nativeStates.get(id2);
+    const native = nativeStates.get(id3);
     if (native) return { meta: nativeStateBlockMeta(native), data: encodeNativeState(native) };
-    throw new NzFileError("neuralese-unknown-block", `${where} uses native artifact ${id2}, which the file does not hold`);
+    throw new NzFileError("neuralese-unknown-block", `${where} uses native artifact ${id3}, which the file does not hold`);
   };
   const decodeValue = (raw, where) => {
     if (Array.isArray(raw)) return raw.map((item, index) => decodeValue(item, `${where}[${index}]`));
@@ -219452,24 +219472,24 @@ function loadNzSync(bytes2, resolve2) {
       const body = record3.$neuralese;
       if (body.stop_gradient !== void 0 && body.stop_gradient !== true) throw new NzFileError("neuralese-file-format", `${where}: invalid constant-use metadata`);
       if (body.source_occurrence !== void 0 && (typeof body.source_occurrence !== "string" || !body.source_occurrence)) throw new NzFileError("neuralese-file-format", `${where}: invalid source occurrence`);
-      const id2 = String(body?.id);
-      artifactMeta(id2, where);
-      return neuraleseRef(String(body.type), id2, body.stop_gradient === true, body.source_occurrence);
+      const id3 = String(body?.id);
+      artifactMeta(id3, where);
+      return neuraleseRef(String(body.type), id3, body.stop_gradient === true, body.source_occurrence);
     }
     if ("$nativeAdapter" in record3 && Object.keys(record3).length === 1) {
       const body = record3.$nativeAdapter;
-      const id2 = String(body?.id);
-      if (!/^nnt1_[a-z2-7]{52}$/.test(id2) || nativeTensors.get(id2)?.metadata.kind !== "adapter-coefficients")
+      const id3 = String(body?.id);
+      if (!/^nnt1_[a-z2-7]{52}$/.test(id3) || nativeTensors.get(id3)?.metadata.kind !== "adapter-coefficients")
         throw new NzFileError("neuralese-file-format", `${where}: native adapter reference needs an archived coefficient artifact`);
-      return nativeAdapterRef(id2);
+      return nativeAdapterRef(id3);
     }
     if ("$nativeTensor" in record3 && Object.keys(record3).length === 1) {
       if (!isNativeTensorRef(record3)) throw new NzFileError("neuralese-file-format", `${where}: malformed native tensor reference`);
-      const { id: id2, kind } = record3.$nativeTensor;
-      const artifact = nativeTensors.get(id2);
+      const { id: id3, kind } = record3.$nativeTensor;
+      const artifact = nativeTensors.get(id3);
       if (!artifact || artifact.metadata.kind !== kind)
         throw new NzFileError("neuralese-file-format", `${where}: native tensor reference kind does not match its archived artifact`);
-      return nativeTensorRef(id2, kind);
+      return nativeTensorRef(id3, kind);
     }
     if ("$neuralese-fn" in record3 && Object.keys(record3).length === 1) {
       const body = record3["$neuralese-fn"];
@@ -219486,7 +219506,7 @@ function loadNzSync(bytes2, resolve2) {
   return { header, exports: values, types: types3, nativeStates, nativeTensors };
 }
 function checkExport(name, type, value, env, header, nativeStates, nativeTensors) {
-  const dialectOf = (id2) => nativeStates.has(id2) ? nativeStateBlockMeta(nativeStates.get(id2)).dialect : nativeTensors.has(id2) ? nativeTensorArtifactBlockMeta(nativeTensors.get(id2)).dialect : header.dialect;
+  const dialectOf = (id3) => nativeStates.has(id3) ? nativeStateBlockMeta(nativeStates.get(id3)).dialect : nativeTensors.has(id3) ? nativeTensorArtifactBlockMeta(nativeTensors.get(id3)).dialect : header.dialect;
   const softValues = (type2, value2, path2) => {
     let resolved = type2;
     if (type2.kind === "name") try {
@@ -219495,10 +219515,10 @@ function checkExport(name, type, value, env, header, nativeStates, nativeTensors
       resolved = type2;
     }
     if (resolved.kind === "neuralese") {
-      const id2 = isNeuraleseRef(value2) ? value2.$neuralese.id : isSoftFunctionSpec(value2) ? value2.body : void 0;
-      if (!id2) throw new NzFileError("neuralese-file-type", `${path2} must be a ${formatType(resolved)}`);
-      if (resolved.dialect !== "DefaultDialect" && resolved.dialect !== dialectOf(id2))
-        throw new NzFileError("neuralese-dialect-mismatch", `${path2} is ${dialectOf(id2)}, its type says ${resolved.dialect}`);
+      const id3 = isNeuraleseRef(value2) ? value2.$neuralese.id : isSoftFunctionSpec(value2) ? value2.body : void 0;
+      if (!id3) throw new NzFileError("neuralese-file-type", `${path2} must be a ${formatType(resolved)}`);
+      if (resolved.dialect !== "DefaultDialect" && resolved.dialect !== dialectOf(id3))
+        throw new NzFileError("neuralese-dialect-mismatch", `${path2} is ${dialectOf(id3)}, its type says ${resolved.dialect}`);
       if (isSoftFunctionSpec(value2) && resolved.element.kind !== "lambda")
         throw new NzFileError("neuralese-file-type", `${path2} is a soft function, but its type is not a function type`);
       return;
@@ -219523,28 +219543,28 @@ async function saveNz(exports, options) {
   const nativeHeaders = {};
   const nativeTensorHeaders = {};
   const archivedTensors = /* @__PURE__ */ new Map();
-  const use = async (id2, where) => {
-    if (nativeHeaders[id2] || nativeTensorHeaders[id2]) return;
-    if (id2.startsWith("nnt1_")) {
-      const artifact = await options.store.getNativeTensorArtifact(id2);
-      if (!artifact) throw new NzFileError("neuralese-unknown-block", `${where} uses named native tensor ${id2} not held by the store`);
-      archivedTensors.set(id2, artifact);
+  const use = async (id3, where) => {
+    if (nativeHeaders[id3] || nativeTensorHeaders[id3]) return;
+    if (id3.startsWith("nnt1_")) {
+      const artifact = await options.store.getNativeTensorArtifact(id3);
+      if (!artifact) throw new NzFileError("neuralese-unknown-block", `${where} uses named native tensor ${id3} not held by the store`);
+      archivedTensors.set(id3, artifact);
       const wire = encodeNativeTensorArtifact(artifact);
-      nativeTensorHeaders[id2] = { bytes: wire.length };
-      blocks.set(id2, wire);
+      nativeTensorHeaders[id3] = { bytes: wire.length };
+      blocks.set(id3, wire);
       for (const dependency of nativeTensorArtifactDependencies(artifact)) await use(dependency, "native adapter dependency");
       return;
     }
-    if (id2.startsWith("nzs1_")) {
-      const artifact = await options.store.getNativeState(id2);
-      if (!artifact) throw new NzFileError("neuralese-unknown-block", `${where} uses native state ${id2} not held by the store`);
+    if (id3.startsWith("nzs1_")) {
+      const artifact = await options.store.getNativeState(id3);
+      if (!artifact) throw new NzFileError("neuralese-unknown-block", `${where} uses native state ${id3} not held by the store`);
       const wire = encodeNativeState(artifact);
-      nativeHeaders[id2] = { bytes: wire.length };
-      blocks.set(id2, wire);
+      nativeHeaders[id3] = { bytes: wire.length };
+      blocks.set(id3, wire);
       for (const dependency of nativeStateArtifactDependencies(artifact)) await use(dependency, "native state derivation dependency");
       return;
     }
-    throw new NzFileError("neuralese-unknown-block", `${where} references non-native artifact ${id2}`);
+    throw new NzFileError("neuralese-unknown-block", `${where} references non-native artifact ${id3}`);
   };
   const encodeValue = async (value, where) => {
     if (isNeuraleseRef(value)) {
@@ -219586,8 +219606,8 @@ async function saveNz(exports, options) {
         for (const segment of capture.segments)
           if (segment.kind === "native_state" && typeof segment.id === "string") await use(segment.id, "native source capture");
       }
-      for (const imported of capture?.imports ?? []) for (const id2 of [imported.id, imported.observed_native_state_id])
-        if (typeof id2 === "string") await use(id2, "native source import");
+      for (const imported of capture?.imports ?? []) for (const id3 of [imported.id, imported.observed_native_state_id])
+        if (typeof id3 === "string") await use(id3, "native source import");
     }
     for (const nested of Object.values(object2)) await sourceDependencies(nested);
   };
@@ -221644,9 +221664,9 @@ var init_program_view = __esm({
         if (expectedRevision !== this.revision) throw new Error("runtime source edit conflict; reread current source");
         if (inline2) {
           const match2 = (plan, index, count) => plan.adaptation?.label ? inline2.current.find((item) => item.adaptation?.label === plan.adaptation.label) ?? null : count === inline2.current.length ? inline2.current[index] ?? null : null;
-          for (const [id2, previous] of this.inlineRevisions) {
+          for (const [id3, previous] of this.inlineRevisions) {
             if (previous?.sourceSpan.file === record3.source)
-              this.inlineRevisions.set(id2, match2(previous, inline2.previous.findIndex((item) => item.definitionId === previous.definitionId), inline2.previous.length));
+              this.inlineRevisions.set(id3, match2(previous, inline2.previous.findIndex((item) => item.definitionId === previous.definitionId), inline2.previous.length));
           }
           for (const plans of [inline2.original, inline2.previous]) plans.forEach((plan, index) => this.inlineRevisions.set(plan.definitionId, match2(plan, index, plans.length)));
         }
@@ -221924,16 +221944,16 @@ function caseServices(text3) {
 function caseHashes(text3) {
   return caseSources(text3).map((source2) => hexDigest(source2.replace(/\s+/g, " ").trim()).slice(0, 24));
 }
-function loadCases(platform, id2, text3, codebase, types3) {
-  const record3 = { ...parseModule(`/__natlang__/compilations/${id2}/cases.ts`, text3, types3, PATH_ONLY), id: `compilation:${id2}` };
+function loadCases(platform, id3, text3, codebase, types3) {
+  const record3 = { ...parseModule(`/__natlang__/compilations/${id3}/cases.ts`, text3, types3, PATH_ONLY), id: `compilation:${id3}` };
   const exports = moduleInstance(platform, record3, codebase);
   const cases = exports.cases;
-  if (!Array.isArray(cases)) throw new Error(`compilation ${id2}: cases.ts does not export an array named cases`);
+  if (!Array.isArray(cases)) throw new Error(`compilation ${id3}: cases.ts does not export an array named cases`);
   const hashes = caseHashes(text3), services = caseServices(text3);
-  if (hashes.length !== cases.length) throw new Error(`compilation ${id2}: cases array has ${cases.length} entries, source has ${hashes.length}`);
+  if (hashes.length !== cases.length) throw new Error(`compilation ${id3}: cases array has ${cases.length} entries, source has ${hashes.length}`);
   return cases.map((item, position) => {
     if (!item || typeof item.when !== "function" || typeof item.run !== "function")
-      throw new Error(`compilation ${id2}: case ${position} needs a when(args) guard and a run(args) body`);
+      throw new Error(`compilation ${id3}: case ${position} needs a when(args) guard and a run(args) body`);
     return { hash: hashes[position], position, tier: "shadow", when: item.when, run: item.run, services: services[position] ?? [] };
   });
 }
@@ -222134,8 +222154,8 @@ Does the value satisfy the property? Reply with exactly one of these JSON values
     }
   };
 }
-function callJudge(holds, id2) {
-  return { id: id2, kind: "call", async probability(value, predicate, signal) {
+function callJudge(holds, id3) {
+  return { id: id3, kind: "call", async probability(value, predicate, signal) {
     return await holds(value, normalizePredicate2(predicate), signal) ? 1 : 0;
   } };
 }
@@ -222590,7 +222610,7 @@ var init_runtime = __esm({
       const stack = liveFrame()?.weights;
       if (!stack?.effective.length) return void 0;
       let adapters = lexicalAdapters.get(stack);
-      if (!adapters) lexicalAdapters.set(stack, adapters = Object.freeze(stack.effective.map(({ id: id2, scale }) => Object.freeze({ id: id2, scale }))));
+      if (!adapters) lexicalAdapters.set(stack, adapters = Object.freeze(stack.effective.map(({ id: id3, scale }) => Object.freeze({ id: id3, scale }))));
       return adapters;
     });
     setLexicalSoftStateSource(() => {
@@ -222756,7 +222776,7 @@ var init_runtime = __esm({
       discardGraphCall(callId, parentId) {
         if (!parentId) return;
         const children2 = this.graphChildrenByParent.get(parentId);
-        if (children2) this.graphChildrenByParent.set(parentId, children2.filter((id2) => id2 !== callId));
+        if (children2) this.graphChildrenByParent.set(parentId, children2.filter((id3) => id3 !== callId));
       }
       graphChildren(callId) {
         return [...this.graphChildrenByParent.get(callId) ?? []];
@@ -222838,9 +222858,9 @@ var init_runtime = __esm({
         const settings = this.runtime.options.refinements;
         const judgeOf = (name, config) => {
           if (!config) return void 0;
-          const id2 = config.id ?? config.driver.model ?? (config.driver.name || "model");
+          const id3 = config.id ?? config.driver.model ?? (config.driver.name || "model");
           const scorer = this.modelBudget.maxRequests === void 0 && this.modelBudget.maxTokens === void 0 ? decisionScorer(config.driver) : void 0;
-          if (scorer) return decisionJudge(scorer, { id: id2 });
+          if (scorer) return decisionJudge(scorer, { id: id3 });
           return frame ? callJudge(async (value, predicate, signal) => {
             const { invokeDefinition: invokeDefinition2 } = await Promise.resolve().then(() => (init_kernel(), kernel_exports));
             const result = await invokeDefinition2({ ...frame, ...signal ? { signal } : {} }, {
@@ -222855,7 +222875,7 @@ var init_runtime = __esm({
               ...name ? { model: name } : {}
             }, [value, predicate], { manifest: { internal: true } });
             return result === true;
-          }, `call:${id2}`) : void 0;
+          }, `call:${id3}`) : void 0;
         };
         const judge = judgeOf(settings?.judge, settings?.judge ? this.model(settings.judge) : model);
         const escalation = settings?.escalate ? judgeOf(settings.escalate, this.model(settings.escalate)) : void 0;
@@ -223732,16 +223752,6 @@ var init_modules = __esm({
   }
 });
 
-// src/native/tool-markup.ts
-var TOOL_MARKUP;
-var init_tool_markup = __esm({
-  "src/native/tool-markup.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    TOOL_MARKUP = /<tool_call>|<\/tool_call>|<function=|<\/function>|<parameter=|<\/parameter>|<\|tool_call_start\|>|<\|tool_call_end\|>/;
-  }
-});
-
 // src/model/native-xml-calls.ts
 function resolveRef(ref, root2) {
   if (typeof ref !== "string" || !ref.startsWith("#/")) throw new Error("unsupported schema reference");
@@ -223919,6 +223929,27 @@ var init_native_xml_calls = __esm({
 });
 
 // src/model/decision-scoring.ts
+function batchScoreItem(item, extra) {
+  return {
+    ...extra,
+    messages: item.messages,
+    continuations: item.options,
+    ...item.cache_messages ? { cache_messages: item.cache_messages } : {},
+    ...item.adapters?.length ? { adapters: item.adapters } : {},
+    ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
+    ...item.native_recording ? { native_recording: true } : {}
+  };
+}
+function scoresFromBatchResult(result, replyCount) {
+  if (!result || typeof result.error === "string" || !Array.isArray(result.log_probs) || result.log_probs.length !== replyCount)
+    throw new Error(result?.error ?? "batched scoring returned no scores for an item");
+  return {
+    log_probs: result.log_probs,
+    ...result.tokens ? { tokens: result.tokens } : {},
+    ...Number.isSafeInteger(result.prompt_tokens) ? { prompt_tokens: result.prompt_tokens } : {},
+    ...result.native_decision_capture ? { native_decision_capture: result.native_decision_capture } : {}
+  };
+}
 var init_decision_scoring = __esm({
   "src/model/decision-scoring.ts"() {
     "use strict";
@@ -223951,6 +223982,17 @@ var init_undici = __esm({
 });
 
 // src/model/chat-completion.ts
+function providerErrorBody(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return void 0;
+  const root2 = body, nested = root2.error;
+  return nested && typeof nested === "object" && !Array.isArray(nested) ? nested : root2;
+}
+function secondThinkCloseSetting(options) {
+  const configured = options.secondThinkClose ?? globalThis.process?.env?.NATLANG_SECOND_THINK_CLOSE;
+  if (configured === void 0 || configured === "" || configured === "error") return "error";
+  if (configured === "content") return "content";
+  throw new RangeError(`NATLANG_SECOND_THINK_CLOSE must be error or content, not ${JSON.stringify(configured)}`);
+}
 function callWrittenAsText(text3, tools) {
   const body = text3.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n?```$/, "$1").trim();
   if (!body.startsWith("{")) return void 0;
@@ -224002,10 +224044,10 @@ async function assembleChatCompletion(chunks, onDelta) {
     else parts.push({ type: "text", text: text3 });
     if (text3) emit3({ type: "text", text: text3 });
   };
-  const blockFor = (chunk, id2) => {
+  const blockFor = (chunk, id3) => {
     for (const key of ["native_state"]) {
       const block = chunk[key]?.block;
-      if (block?.id === id2) return block;
+      if (block?.id === id3) return block;
     }
     return void 0;
   };
@@ -224097,6 +224139,7 @@ function decodeArguments(value) {
 function chatCompletionModelTurn(transport, options = {}) {
   const forward = options.toolAliases ?? {};
   const reverse = Object.fromEntries(Object.entries(forward).map(([source2, target]) => [target, source2]));
+  const rejectSecondClose = secondThinkCloseSetting(options) === "error";
   return async (request, signal, turnOptions = {}) => {
     const observer = turnOptions.onDelta;
     let emitted = false;
@@ -224263,6 +224306,19 @@ function chatCompletionModelTurn(transport, options = {}) {
         ...counts(),
         raw_response: body
       });
+      if (rejectSecondClose && !truncated) {
+        const reasoning = message2?.reasoning_content ?? message2?.reasoning;
+        if (secondThinkClose(contentText(message2?.content), reasoning))
+          return finish({
+            calls: [],
+            text: contentText(message2?.content),
+            malformed_call: SECOND_THINK_CLOSE,
+            ...rawCalls?.length ? { raw_calls: rawCalls } : {},
+            ...typeof reasoning === "string" && reasoning.trim() ? { reasoning } : {},
+            ...counts(),
+            raw_response: body
+          });
+      }
       try {
         const calls = (rawCalls ?? []).map((raw, index) => {
           const fn = raw.function;
@@ -224340,8 +224396,85 @@ async function fetchModel(url, init = {}) {
   }
   return fetch(url, init);
 }
+async function* serverSentChunks(body) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const reader = body.getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      let newline;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).replace(/\r$/, "");
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        const chunk = JSON.parse(data);
+        if (chunk.error) throw new Error(`model stream error: ${JSON.stringify(chunk.error).slice(0, 2e3)}`);
+        yield chunk;
+      }
+      if (done) return;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 function openAIEndpointRoot(endpoint) {
   return endpoint.replace(/\/+$/, "").replace(/\/v1$/, "");
+}
+function httpChatTransport(options) {
+  if (!options.endpoint || !options.model) throw new Error("model endpoint and ID are required");
+  const url = options.chatCompletionsUrl ?? openAIEndpointRoot(options.endpoint) + "/v1/chat/completions";
+  const streams = options.stream ?? true;
+  return async (body, signal) => {
+    const stream = streams && body.stream !== false;
+    let response;
+    try {
+      response = await fetchModel(url, {
+        method: "POST",
+        signal,
+        headers: {
+          "content-type": "application/json",
+          ...options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {},
+          ...options.headers
+        },
+        body: JSON.stringify({
+          ...body,
+          model: options.model,
+          ...stream ? { stream: true, stream_options: { include_usage: true } } : {}
+        })
+      });
+    } catch (error) {
+      const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
+      throw new Error(
+        `model request to ${url} failed: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}`,
+        { cause: error }
+      );
+    }
+    if (!response.ok) {
+      const text3 = await response.text();
+      let body2;
+      try {
+        body2 = JSON.parse(text3);
+      } catch {
+        body2 = void 0;
+      }
+      const errorBody = providerErrorBody(body2) ?? {};
+      throw Object.assign(new Error(`model HTTP ${response.status}: ${text3.slice(0, 2e3)}`), {
+        status: response.status,
+        headers: response.headers,
+        ...typeof errorBody?.code === "string" ? { providerCode: errorBody.code } : {},
+        ...typeof errorBody?.provider_retryable === "boolean" ? { providerRetryable: errorBody.provider_retryable } : typeof errorBody?.providerRetryable === "boolean" ? { providerRetryable: errorBody.providerRetryable } : {},
+        ...Number.isFinite(errorBody?.retry_after_ms) ? { retry_after_ms: errorBody.retry_after_ms } : {},
+        ...Number.isFinite(errorBody?.retry_after) ? { retry_after: errorBody.retry_after } : {}
+      });
+    }
+    if (stream && response.body && /text\/event-stream/.test(response.headers.get("content-type") ?? ""))
+      return serverSentChunks(response.body);
+    return await response.json();
+  };
 }
 var LeakedCall, MALFORMED_RETRY, TOOL_CALL_FIELDS, longDispatcher, localEndpoints;
 var init_chat_completion = __esm({
@@ -224364,12 +224497,105 @@ var init_chat_completion = __esm({
 });
 
 // src/model/scoring.ts
+function concurrentScoreMany(score) {
+  return (items, signal) => Promise.allSettled(items.map((item) => score(item, signal)));
+}
+function coalescingScorer(base, options = {}) {
+  const windowMs = options.windowMs ?? 0, maxItems = options.maxItems ?? 256;
+  const many = base.scoreMany ?? concurrentScoreMany(base);
+  let batchCounter = 0;
+  let pending = [], timer;
+  const flush = () => {
+    if (timer !== void 0) {
+      clearTimeout(timer);
+      timer = void 0;
+    }
+    const batch = pending.filter((entry) => !entry.signal?.aborted);
+    pending = [];
+    if (!batch.length) return;
+    const batchId = `d${++batchCounter}`;
+    many(batch.map((entry) => entry.item)).then((results) => {
+      batch.forEach((entry, index) => {
+        const result = results[index];
+        if (!result) entry.reject(new Error("scoreMany returned too few results"));
+        else if (result.status === "fulfilled") entry.resolve({ ...result.value, batch: { batch_id: batchId, batch_size: batch.length } });
+        else entry.reject(result.reason);
+      });
+    }, (failure2) => batch.forEach((entry) => entry.reject(failure2)));
+  };
+  const scorer = (request, signal) => {
+    try {
+      signal?.throwIfAborted();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return new Promise((resolve2, reject2) => {
+      signal?.addEventListener("abort", () => reject2(signal.reason), { once: true });
+      pending.push({ item: request, signal, resolve: resolve2, reject: reject2 });
+      if (pending.length >= maxItems) flush();
+      else if (timer === void 0) timer = setTimeout(flush, windowMs);
+    });
+  };
+  return Object.assign(scorer, { scoreMany: many });
+}
+async function postExplicitBatch(options, items, signal) {
+  const release = options.scheduler ? await options.scheduler.acquire({}, signal) : () => {
+  };
+  try {
+    const response = await fetchModel(options.url, {
+      method: "POST",
+      signal,
+      headers: { "content-type": "application/json", ...options.headers },
+      body: JSON.stringify({ ...options.extra, items: items.map((item) => batchScoreItem(item, options.itemExtra?.(item))) })
+    });
+    if ([404, 405, 501].includes(response.status)) throw new ScoreEndpointMissing(`no scoring endpoint at ${options.url}`);
+    if (!response.ok) throw new Error(`batched scoring HTTP ${response.status}: ${(await response.text()).slice(0, 2e3)}`);
+    const body = await response.json();
+    if (!Array.isArray(body.results) || body.results.length !== items.length)
+      throw new Error("batched scoring returned a different number of results than items");
+    return body.results.map((result, index) => {
+      try {
+        return { status: "fulfilled", value: scoresFromBatchResult(result, items[index].options.length) };
+      } catch (reason) {
+        return { status: "rejected", reason };
+      }
+    });
+  } finally {
+    release();
+  }
+}
+function explicitBatchScoreMany(options, fallback) {
+  let missing = false;
+  const maxItems = options.maxItems ?? 64, minItems = options.minItems ?? 2;
+  return async (items, signal) => {
+    if (missing || items.length < minItems) return fallback(items, signal);
+    const out = [];
+    for (let start = 0; start < items.length; start += maxItems) {
+      const chunk = items.slice(start, start + maxItems);
+      try {
+        out.push(...await postExplicitBatch(options, chunk, signal));
+      } catch (error) {
+        if (error instanceof ScoreEndpointMissing) {
+          missing = true;
+          out.push(...await fallback(items.slice(start), signal));
+          return out;
+        }
+        if (signal?.aborted) throw error;
+        out.push(...chunk.map(() => ({ status: "rejected", reason: error })));
+      }
+    }
+    return out;
+  };
+}
+var ScoreEndpointMissing;
 var init_scoring = __esm({
   "src/model/scoring.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_chat_completion();
     init_decision_scoring();
+    ScoreEndpointMissing = class extends Error {
+    };
   }
 });
 
@@ -224408,55 +224634,113 @@ var init_neuralese_info = __esm({
 });
 
 // src/model/native-coefficient-policy.ts
+function validateCoefficientRuntime(value) {
+  const policy = value;
+  if (!policy || Object.keys(policy).sort().join(",") !== "base_native_identity,defaults,policy_sha256,replacements,schema,state_transport" || policy.schema !== "natlang.native-coefficient-runtime/1" || !/^[0-9a-f]{64}$/.test(policy.policy_sha256) || !["strict", "same-base-adapter-state"].includes(policy.state_transport) || !policy.replacements || typeof policy.replacements !== "object" || Array.isArray(policy.replacements) || !Object.keys(policy.replacements).length || Object.entries(policy.replacements).some(([before, after]) => !id.test(before) || typeof after !== "string" || !id.test(after)) || !Array.isArray(policy.defaults) || policy.defaults.some((entry) => !entry || Object.keys(entry).sort().join(",") !== "id,scale" || !(entry.id in policy.replacements) || typeof entry.scale !== "number" || !Number.isFinite(entry.scale))) return invalid();
+  const base = policy.base_native_identity;
+  if (!base || Object.keys(base).sort().join(",") !== "architecture,checkpoint_sha256,embedding_weight_sha256,tokenizer_fingerprint" || ![base.checkpoint_sha256, base.tokenizer_fingerprint, base.embedding_weight_sha256].every((value2) => typeof value2 === "string" && /^[0-9a-f]{64}$/.test(value2)) || typeof base.architecture !== "string" || !base.architecture) return invalid();
+  return policy;
+}
+function requireCoefficientAttestation(policy, info) {
+  const receipt = info?.rl_policy_binding;
+  if (!receipt?.native_identity || !nativeModelIdentityEqual(receipt.native_identity, policy.base_native_identity) || receipt.coefficient_policy_sha256 !== policy.policy_sha256 || nativeCanonicalJson(receipt.coefficient_policy) !== nativeCanonicalJson(policy)) invalid();
+}
+function coefficientBindings(policy, active2, bound) {
+  return [...policy?.defaults ?? [], ...active2, ...bound].map((entry) => ({ ...entry, id: policy?.replacements[entry.id] ?? entry.id }));
+}
+function coefficientStateModes(policy, ids, explicit) {
+  if (policy?.state_transport !== "same-base-adapter-state") return explicit;
+  return { ...Object.fromEntries(ids.map((id3) => [id3, "same-base-adapter-state"])), ...explicit };
+}
+var id, invalid;
 var init_native_coefficient_policy = __esm({
   "src/model/native-coefficient-policy.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_neuralese_store();
+    id = /^nnt1_[a-z2-7]{52}$/;
+    invalid = () => {
+      throw new Error("neuralese-native-coefficient-policy: restore the exact declared actor policy and its coefficient bundle");
+    };
   }
 });
 
 // src/model/neuralese-server.ts
+var neuralese_server_exports = {};
+__export(neuralese_server_exports, {
+  HttpNeuraleseStore: () => HttpNeuraleseStore,
+  OWNER_HEADER: () => OWNER_HEADER,
+  archiveNeuraleseReplyArtifacts: () => archiveNeuraleseReplyArtifacts,
+  isUnknownNativeArtifactError: () => isUnknownNativeArtifactError,
+  materializeNativeStateSentinels: () => materializeNativeStateSentinels,
+  neuraleseServerModelTurn: () => neuraleseServerModelTurn,
+  requestNativeStateBindings: () => requestNativeStateBindings,
+  requestNativeStateIds: () => requestNativeStateIds,
+  restoreNativeArtifacts: () => restoreNativeArtifacts,
+  restoreNativeStates: () => restoreNativeStates,
+  withRestoredNativeArtifacts: () => withRestoredNativeArtifacts
+});
+function isUnknownNativeArtifactError(error) {
+  const found = error;
+  return found?.providerCode === "neuralese-unknown-native-state" || found?.code === "neuralese-unknown-native-state" || found?.providerCode === "neuralese-unknown-native-artifact" || found?.code === "neuralese-unknown-native-artifact" || typeof found?.message === "string" && /neuralese-unknown-native-(?:state|artifact)/.test(found.message);
+}
 async function restoreNativeArtifacts(remote, archive, ids) {
   const missing = [], visited = /* @__PURE__ */ new Set();
-  const restore = async (id2) => {
-    if (visited.has(id2)) return;
-    visited.add(id2);
-    if (id2.startsWith("nzs1_")) {
-      const artifact = await archive?.getNativeState?.(id2) ?? await remote.getNativeState?.(id2);
+  const restore = async (id3) => {
+    if (visited.has(id3)) return;
+    visited.add(id3);
+    if (id3.startsWith("nzs1_")) {
+      const artifact = await archive?.getNativeState?.(id3) ?? await remote.getNativeState?.(id3);
       if (!artifact || !remote.putNativeState) {
-        missing.push(id2);
+        missing.push(id3);
         return;
       }
       const before = missing.length;
       for (const dependency of nativeStateArtifactDependencies(artifact)) await restore(dependency);
       if (missing.length !== before) return;
-      if (!await remote.has(id2)) {
+      if (!await remote.has(id3)) {
         const { id: _10, ...input } = artifact;
-        if ((await remote.putNativeState(input)).id !== id2) throw new Error(`native state changed while restoring ${id2}`);
+        if ((await remote.putNativeState(input)).id !== id3) throw new Error(`native state changed while restoring ${id3}`);
       }
       return;
     }
-    if (id2.startsWith("nnt1_")) {
-      const artifact = await archive?.getNativeTensorArtifact?.(id2) ?? await remote.getNativeTensorArtifact?.(id2);
+    if (id3.startsWith("nnt1_")) {
+      const artifact = await archive?.getNativeTensorArtifact?.(id3) ?? await remote.getNativeTensorArtifact?.(id3);
       if (!artifact || !remote.putNativeTensorArtifact) {
-        missing.push(id2);
+        missing.push(id3);
         return;
       }
       for (const dependency of nativeTensorArtifactDependencies(artifact)) await restore(dependency);
-      if (!await remote.has(id2)) {
+      if (!await remote.has(id3)) {
         const { id: _10, ...input } = artifact;
-        if ((await remote.putNativeTensorArtifact(input)).id !== id2) throw new Error(`native artifact changed while restoring ${id2}`);
+        if ((await remote.putNativeTensorArtifact(input)).id !== id3) throw new Error(`native artifact changed while restoring ${id3}`);
       }
       return;
     }
     throw Object.assign(
-      new TypeError(`native artifact restore requires an nzs1 state or nnt1 tensor ID, got ${JSON.stringify(id2)}`),
+      new TypeError(`native artifact restore requires an nzs1 state or nnt1 tensor ID, got ${JSON.stringify(id3)}`),
       { code: "neuralese-native-artifact-id" }
     );
   };
-  for (const id2 of new Set(ids)) await restore(id2);
+  for (const id3 of new Set(ids)) await restore(id3);
   return missing;
+}
+async function withRestoredNativeArtifacts(remote, archive, ids, run, known) {
+  const restore = async (all) => {
+    if (all) for (const id3 of ids) known?.delete(id3);
+    const pending = known ? ids.filter((id3) => !known.has(id3)) : ids;
+    const missing = await restoreNativeArtifacts(remote, archive, pending);
+    if (missing.length) throw new Error(`neuralese-unknown-native-artifact: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} neither on the server nor in the runtime's store`);
+    for (const id3 of pending) known?.add(id3);
+  };
+  await restore(false);
+  try {
+    return await run();
+  } catch (error) {
+    if (!isUnknownNativeArtifactError(error)) throw error;
+    await restore(true);
+    return await run();
+  }
 }
 function malformedNativePartList(value) {
   return Array.isArray(value) && value.length > 0 && value.every((part) => part && typeof part === "object" && ["text", "native_state"].includes(part.type)) && value.some((part) => part.type === "native_state" && !isNativeStateId(part.id));
@@ -224477,7 +224761,7 @@ function requestNativeStateIds(messages) {
       return;
     }
     if (typeof value === "string") {
-      nativeStateSentinelIds(value).forEach((id2) => ids.add(id2));
+      nativeStateSentinelIds(value).forEach((id3) => ids.add(id3));
       return;
     }
     if (Array.isArray(value)) value.forEach((item) => visit(item));
@@ -224493,37 +224777,586 @@ function requestNativeStateIds(messages) {
   visit(messages);
   return [...ids];
 }
+function requestNativeStateBindings(messages) {
+  const bindings2 = [];
+  const add = (id3, source2, path2) => {
+    if (!isNativeStateId(id3)) return;
+    if (source2 !== void 0 && (typeof source2 !== "string" || !source2))
+      throw Object.assign(
+        new Error(`neuralese-native-grad-invalid: malformed native source occurrence at ${path2}`),
+        { code: "neuralese-native-grad-invalid" }
+      );
+    bindings2.push({ id: id3, ...typeof source2 === "string" ? { source_occurrence: source2 } : {}, path: path2 });
+  };
+  const visit = (value, key, path2) => {
+    if (key === "arguments" && typeof value === "string") {
+      try {
+        visit(JSON.parse(value), void 0, path2);
+      } catch (error) {
+        if (error instanceof SyntaxError) return;
+        throw error;
+      }
+      return;
+    }
+    if (malformedNativePartList(value)) return;
+    if (Array.isArray(value) && value.length > 0 && value.every((part) => part && typeof part === "object" && (part.type === "text" && typeof part.text === "string" || part.type === "native_state" && isNativeStateId(part.id)))) {
+      value.forEach((part, index) => {
+        if (part.type === "native_state") add(part.id, part.source_occurrence, `${path2}[${index}]`);
+      });
+      return;
+    }
+    if (typeof value === "string") {
+      let occurrence = 0;
+      for (const part of runtimeTextToParts(value)) if (part.type === "native_state")
+        add(part.id, part.source_occurrence, `${path2}.sentinel[${occurrence++}]`);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, void 0, `${path2}[${index}]`));
+    } else if (value && typeof value === "object") {
+      const part = value;
+      if (part.type === "native_state" && isNativeStateId(part.id)) {
+        add(part.id, part.source_occurrence, path2);
+        return;
+      }
+      for (const [name, item] of Object.entries(value)) visit(item, name, `${path2}.${name}`);
+    }
+  };
+  visit(messages, void 0, "messages");
+  return bindings2;
+}
+function materializeNativeStateSentinels(value, key) {
+  if (Array.isArray(value)) {
+    if (value.some((part) => part && typeof part === "object" && part.type === "neuralese"))
+      throw new TypeError("native chat content does not accept flat vector blocks");
+    if (value.some((part) => part && typeof part === "object" && part.type === "native_state" && !isNativeStateId(part.id)))
+      throw new TypeError("native chat content requires an archived nzs1 state ID");
+  }
+  if (key === "arguments" && typeof value === "string") {
+    try {
+      return JSON.stringify(materializeNativeStateSentinels(JSON.parse(value)));
+    } catch {
+      return value;
+    }
+  }
+  if (malformedNativePartList(value)) return value;
+  if (typeof value === "string") {
+    return nativeStateSentinelIds(value).length ? runtimeTextToParts(value) : value;
+  }
+  if (Array.isArray(value) && value.length && value.every((part) => part && typeof part === "object" && (part.type === "text" && typeof part.text === "string" || part.type === "native_state" && isNativeStateId(part.id))))
+    return value.flatMap((part) => {
+      return part.type === "text" ? runtimeTextToParts(part.text) : [part];
+    });
+  if (Array.isArray(value)) return value.map((item) => materializeNativeStateSentinels(item));
+  if (value && typeof value === "object") {
+    const part = value;
+    if (part.type === "native_state" && part.source_occurrence !== void 0 && (typeof part.source_occurrence !== "string" || !part.source_occurrence)) throw new TypeError("native source occurrence must be a nonempty actual writer reference");
+    if (part.type === "native_state" && part.stop_gradient !== void 0 && part.stop_gradient !== true) throw new TypeError("native state constant-use metadata must be true or absent");
+    if (part.type === "native_state" && isNativeStateId(part.id)) return [{
+      type: "native_state",
+      id: part.id,
+      ...part.stop_gradient === true ? { stop_gradient: true } : {},
+      ...typeof part.source_occurrence === "string" ? { source_occurrence: part.source_occurrence } : {}
+    }];
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, materializeNativeStateSentinels(item, name)]));
+  }
+  return value;
+}
 async function restoreNativeStates(remote, archive, ids, known, all = false) {
-  if (all) for (const id2 of ids) known?.delete(id2);
+  if (all) for (const id3 of ids) known?.delete(id3);
   const missing = [];
-  for (const id2 of ids) {
-    const local = await archive?.getNativeState?.(id2);
+  for (const id3 of ids) {
+    const local = await archive?.getNativeState?.(id3);
     const dependencies = local ? nativeStateArtifactDependencies(local) : [];
     if (dependencies.length) {
       if (!remote.putNativeTensorArtifact || !remote.meta)
-        throw new Error(`neuralese-native-archive-unavailable: native state ${id2} depends on adapter artifacts this engine cannot hold`);
+        throw new Error(`neuralese-native-archive-unavailable: native state ${id3} depends on adapter artifacts this engine cannot hold`);
       const absent = await restoreNativeArtifacts(remote, archive, dependencies);
       if (absent.length) throw new Error(`neuralese-unknown-native-artifact: restore source adapter coefficients and bases ${absent.join(", ")}`);
     }
-    if (known?.has(id2)) continue;
-    if (await remote.hasNativeState(id2)) {
-      known?.add(id2);
+    if (known?.has(id3)) continue;
+    if (await remote.hasNativeState(id3)) {
+      known?.add(id3);
       continue;
     }
     const artifact = local;
     if (!artifact) {
-      missing.push(id2);
+      missing.push(id3);
       continue;
     }
-    const wire = await archive?.getNativeStateWire?.(id2);
+    const wire = await archive?.getNativeStateWire?.(id3);
     const { id: _10, ...input } = artifact;
-    const restored = wire ? await remote.putNativeStateWire(wire, id2) : await remote.putNativeState(input);
-    if (restored.id !== id2) throw new Error(`native-state identity mismatch while restoring ${id2}`);
-    known?.add(id2);
+    const restored = wire ? await remote.putNativeStateWire(wire, id3) : await remote.putNativeState(input);
+    if (restored.id !== id3) throw new Error(`native-state identity mismatch while restoring ${id3}`);
+    known?.add(id3);
   }
   if (missing.length) throw new Error(`neuralese-unknown-native-state: ${missing.join(", ")} neither on the server nor in the runtime store`);
 }
-var HttpNeuraleseStore;
+async function withRestoredNativeStates(remote, archive, ids, run, known) {
+  await restoreNativeStates(remote, archive, ids, known);
+  try {
+    return await run();
+  } catch (error) {
+    if (!(error instanceof Error) || !/neuralese-unknown-native-state/.test(error.message)) throw error;
+    await restoreNativeStates(remote, archive, ids, known, true);
+    return await run();
+  }
+}
+function normalizeReply(body) {
+  const choice = body.choices?.[0];
+  const message2 = choice?.message;
+  if (!message2) return body;
+  for (const call of message2.tool_calls ?? []) {
+    const fn = call.function;
+    if (!fn) continue;
+    const parsed = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : fn.arguments;
+    fn.arguments = JSON.stringify(parsed);
+  }
+  return body;
+}
+async function archiveNeuraleseReplyArtifacts(reply, remote, store, references = []) {
+  const projectedBlocks = reply.neuralese?.blocks;
+  if (Array.isArray(projectedBlocks) && projectedBlocks.length)
+    throw new Error("neuralese-projected-api-retired: server returned flat neuralese blocks");
+  const nativeBlocks = reply.native_state?.blocks ?? [];
+  const sampling = reply.x_natlang_rl_capture;
+  const native = /* @__PURE__ */ new Set([...nativeBlocks.map((meta) => meta.id), ...requestNativeStateIds([reply, ...references])]);
+  for (const observation of sampling?.prompt ?? [])
+    if (observation.kind === "native_state") {
+      for (const id3 of [observation.id, observation.source_state_id]) if (id3) native.add(id3);
+    }
+  for (const write of sampling?.writes ?? [])
+    for (const id3 of [write.state_id, write.raw_state_id]) if (id3) native.add(id3);
+  for (const id3 of native) {
+    if (!isNativeStateId(id3)) throw new Error("neuralese-block-integrity: sampling receipt names an invalid native artifact");
+    if (!store) continue;
+    if (!store.putNativeState || !store.getNativeState)
+      throw new Error("neuralese-native-archive-unavailable: configure a store that preserves native-state artifacts");
+    await archiveNativeArtifactFrom(remote, store, id3);
+  }
+  return { native };
+}
+function neuraleseServerModelTurn(options) {
+  const {
+    store,
+    request: extra,
+    onExchange,
+    onTurn,
+    owner,
+    nativeStateModes,
+    ...connection
+  } = options;
+  const http = { ...connection, headers: {
+    ...connection.headers,
+    ...connection.apiKey ? { authorization: "Bearer " + connection.apiKey } : {},
+    ...owner === void 0 ? {} : { [OWNER_HEADER]: owner }
+  } };
+  const remote = new HttpNeuraleseStore(http.endpoint, http.headers);
+  const coefficientPolicy = extra?.x_natlang_native_coefficient_policy === void 0 ? void 0 : validateCoefficientRuntime(extra.x_natlang_native_coefficient_policy);
+  const uploaded = /* @__PURE__ */ new Set();
+  const nativeUploaded = /* @__PURE__ */ new Set();
+  let info;
+  const serverInfo = (refresh = false) => {
+    if (refresh) info = void 0;
+    return info ??= fetchModel(http.endpoint.replace(/\/$/, "") + "/v1/neuralese/info", { headers: http.headers }).then(async (response) => response.ok ? await response.json() : null).catch(() => null);
+  };
+  const whole = httpChatTransport({ ...http, stream: false });
+  const streamed = httpChatTransport({ ...http, stream: true });
+  const adapterParts = async (bound = [], active2 = activeNativeAdapters()) => {
+    if (coefficientPolicy) requireCoefficientAttestation(coefficientPolicy, await serverInfo());
+    const adapters = coefficientBindings(coefficientPolicy, active2, bound);
+    return adapters;
+  };
+  const adapterArtifactIds = (adapters) => adapters.map((item) => item.id);
+  const bindNativeStateContext = async (messages, states, capabilities) => {
+    if (!states.length) return messages;
+    const consumer = capabilities ? nativeStateConsumerFromInfo(capabilities) : void 0;
+    if (!consumer || !store?.getNativeState)
+      throw Object.assign(
+        new Error("neuralese-native-state-unavailable: withNativeStates requires a declared native reader and an archived state store"),
+        { code: "neuralese-native-state-unavailable" }
+      );
+    const parts = [];
+    const alreadyPresent = new Set(requestNativeStateIds(messages));
+    for (const binding of states) {
+      const { id: id3 } = binding;
+      if (alreadyPresent.has(id3)) continue;
+      const artifact = await store.getNativeState(id3);
+      if (!artifact)
+        throw Object.assign(
+          new Error(`neuralese-unknown-native-state: withNativeStates cannot resolve ${id3} from its archive`),
+          { code: "neuralese-unknown-native-state" }
+        );
+      const identity = {
+        architecture: artifact.metadata.architecture,
+        checkpoint_sha256: artifact.metadata.checkpoint_sha256,
+        tokenizer_fingerprint: artifact.metadata.tokenizer_fingerprint,
+        embedding_weight_sha256: artifact.metadata.embedding_weight_sha256
+      };
+      const readerIdentity = {
+        architecture: consumer.architecture,
+        checkpoint_sha256: consumer.checkpoint_sha256,
+        tokenizer_fingerprint: consumer.tokenizer_fingerprint,
+        embedding_weight_sha256: consumer.embedding_weight_sha256
+      };
+      const sourceBaseIdentity = artifact.metadata.adapter_binding?.base_native_identity;
+      if (!nativeModelIdentityEqual(identity, readerIdentity) && (!sourceBaseIdentity || !nativeModelIdentityEqual(sourceBaseIdentity, readerIdentity)))
+        throw Object.assign(
+          new Error(`neuralese-native-state-identity: ${id3} was written by another actor; write or semantically adapt it for the current exact reader`),
+          { code: "neuralese-native-state-identity" }
+        );
+      const sourceOccurrence = binding.source_occurrence ?? activeRecorder()?.nativeStateWriter?.(id3);
+      parts.push({
+        type: "native_state",
+        id: id3,
+        ...sourceOccurrence ? { source_occurrence: sourceOccurrence } : {},
+        ...binding.stop_gradient ? { stop_gradient: true } : {}
+      });
+    }
+    if (!parts.length) return messages;
+    if (!Array.isArray(messages))
+      throw Object.assign(
+        new Error("neuralese-native-state-prompt: model call has no message list for stored state context"),
+        { code: "neuralese-native-state-prompt" }
+      );
+    return [{ role: "system", content: parts }, ...messages];
+  };
+  const nativeStateModesFor = async (messages, scope) => {
+    const ids = requestNativeStateIds(messages);
+    const actualIds = new Set(ids);
+    const modes = Object.fromEntries(
+      Object.entries(nativeStateModes ?? {}).filter(([id3]) => actualIds.has(id3))
+    );
+    if (store?.getNativeState) for (const id3 of ids) {
+      const artifact = await store.getNativeState(id3);
+      if (artifact?.metadata.adapter_binding) modes[id3] = "same-base-adapter-state";
+    }
+    if ((scope?.adapters ?? activeNativeAdapters()).length) {
+      for (const id3 of scope?.softStates ?? activeSoftStates()) if (actualIds.has(id3)) modes[id3] = "same-base-adapter-state";
+    }
+    return coefficientStateModes(coefficientPolicy, ids, Object.keys(modes).length ? modes : void 0);
+  };
+  const requireExactNativeImports = (capture, ids, modes) => {
+    const imports = capture?.native_state_imports;
+    if (!Array.isArray(imports))
+      throw Object.assign(
+        new Error(`neuralese-native-state-import: server returned no actual native-state import receipt (capture=${capture?.schema ?? "missing"})`),
+        { code: "neuralese-native-state-import" }
+      );
+    const prompt = capture?.prompt;
+    if (!Array.isArray(prompt))
+      throw Object.assign(
+        new Error("neuralese-native-state-import: server returned no exact native prompt occurrence list"),
+        { code: "neuralese-native-state-import" }
+      );
+    for (const id3 of new Set(ids)) {
+      const expectedCount = prompt.filter((value) => value && typeof value === "object" && value.kind === "native_state" && value.id === id3).length;
+      const receipts = imports.filter((value) => value && typeof value === "object" && value.id === id3);
+      const expectedMode = modes?.[id3] ?? "exact-native-state";
+      if (!expectedCount || receipts.length !== expectedCount || receipts.some((receipt) => receipt.mode !== expectedMode || receipt.observed_native_state_id !== id3))
+        throw Object.assign(
+          new Error(`neuralese-native-state-import: server did not consume ${id3} with declared mode ${expectedMode} (imports=${JSON.stringify(imports).slice(0, 1200)})`),
+          { code: "neuralese-native-state-import" }
+        );
+    }
+  };
+  const transport = async (body, signal, meta) => {
+    const scopedNativeStates = activeNativeStates();
+    let implicitNativeReadOccurrences = [];
+    const capabilities = await serverInfo(scopedNativeStates.length > 0);
+    const preexistingStateIds = requestNativeStateIds(materializeNativeStateSentinels(body.messages));
+    const implicitStateBindings = scopedNativeStates.filter((state) => !preexistingStateIds.includes(state.id));
+    if (scopedNativeStates.length) body = {
+      ...body,
+      messages: await bindNativeStateContext(body.messages, scopedNativeStates, capabilities)
+    };
+    const recorder = activeRecorder();
+    const nativeRecording = (!!recorder || scopedNativeStates.length > 0) && capabilities?.native_state?.enabled === true;
+    if (nativeRecording) body = { ...body, x_natlang_native_recording: true };
+    if (Array.isArray(capabilities?.capabilities) && capabilities.capabilities.includes("native.protocol-recovery")) body = { ...body, x_natlang_native_protocol_recovery: true };
+    if ((body.x_natlang_privileged_context || body.x_natlang_guidance_policy) && !(capabilities && serves(capabilities, "training-guidance")))
+      throw Object.assign(new Error("training-guidance-unavailable: this model server does not render training guidance; collect this run through the Python native engine or the SGLang actor"), { code: "training-guidance-unavailable" });
+    if (body.guidance && capabilities && !serves(capabilities, "guidance"))
+      throw Object.assign(new Error("neuralese-guidance-unavailable: this model server does not implement the requested guidance; use a server with guidance support"), { code: "neuralese-guidance-unavailable" });
+    if (body.neuralese_template && body.neuralese_template.optional) {
+      const { optional: _optional, ...template } = body.neuralese_template;
+      body = { ...body };
+      if (capabilities && !serves(capabilities, "template")) delete body.neuralese_template;
+      else body.neuralese_template = template;
+    }
+    if (body.neuralese_template && capabilities) {
+      const template = body.neuralese_template;
+      const required = [
+        "template",
+        ...template.value_type ? ["template.value-type"] : [],
+        ...template.argument_path ? ["template.argument-path"] : []
+      ];
+      for (const capability of required) if (!serves(capabilities, capability))
+        throw Object.assign(
+          new Error(`neuralese-${capability.replaceAll(".", "-")}-unavailable: use a server that implements this typed readout`),
+          { code: `neuralese-${capability.replaceAll(".", "-")}-unavailable` }
+        );
+    }
+    const consumptionModes = await nativeStateModesFor(materializeNativeStateSentinels(body.messages));
+    if (consumptionModes) body = { ...body, x_natlang_native_state_modes: consumptionModes };
+    if (coefficientPolicy) {
+      body = { ...body };
+      delete body.x_natlang_native_coefficient_policy;
+    }
+    if (body.x_natlang_adapters?.length && (!capabilities || !serves(capabilities, "native.adapters")))
+      throw Object.assign(new Error("neuralese-native-adapters-unavailable: this model server does not apply weight adapters; use a native-state server that lists native.adapters"), { code: "neuralese-native-adapters-unavailable" });
+    const adapters = await adapterParts(body.x_natlang_adapters ?? []);
+    const inner = (await serverInfo())?.stream === true ? streamed : whole;
+    let emitted = false;
+    const onDelta = meta?.onDelta && ((delta) => {
+      emitted = true;
+      meta.onDelta(delta);
+    });
+    const preparedMessages = materializeNativeStateSentinels(body.messages);
+    if (implicitStateBindings.length) {
+      const first = preparedMessages[0];
+      const parts = Array.isArray(first?.content) ? first.content : [];
+      const usedPartIndices = /* @__PURE__ */ new Set();
+      const occurrences = implicitStateBindings.flatMap((binding) => {
+        const index = parts.findIndex((part2, partIndex) => partIndex >= 0 && !usedPartIndices.has(partIndex) && part2.type === "native_state" && part2.id === binding.id);
+        if (index < 0) return [];
+        usedPartIndices.add(index);
+        const part = parts[index];
+        return [{
+          id: binding.id,
+          positions: [[0, index]],
+          ...part.source_occurrence ? { source_occurrence: part.source_occurrence } : {},
+          ...part.stop_gradient ? { stop_gradient: true } : {}
+        }];
+      });
+      if (occurrences.length !== implicitStateBindings.length)
+        throw Object.assign(
+          new Error("neuralese-native-state-import: scoped state was not present at its prepared prompt position"),
+          { code: "neuralese-native-state-import" }
+        );
+      implicitNativeReadOccurrences = occurrences;
+    }
+    const nativeIds = requestNativeStateIds(preparedMessages);
+    const reply = await withRestoredNativeArtifacts(remote, store, adapterArtifactIds(adapters), async () => await withRestoredNativeStates(remote, store, nativeIds, async () => {
+      if (onDelta && emitted) {
+        onDelta({ type: "reset" });
+        emitted = false;
+      }
+      const requestBody = adapters.length ? { ...body, messages: preparedMessages, x_natlang_adapters: adapters } : { ...body, messages: preparedMessages };
+      const answer = await inner(requestBody, signal);
+      return isStream(answer) ? await assembleChatCompletion(answer, onDelta) : answer;
+    }, nativeUploaded), uploaded);
+    if (implicitNativeReadOccurrences.length)
+      reply.__natlang_native_read_occurrences = implicitNativeReadOccurrences;
+    const rawCapture = reply.x_natlang_rl_capture;
+    const nativeStateImports = reply.native_state?.imports;
+    if (scopedNativeStates.length && !Array.isArray(nativeStateImports))
+      throw Object.assign(
+        new Error("neuralese-native-state-import: response lacks the authoritative native_state.imports receipt list"),
+        { code: "neuralese-native-state-import" }
+      );
+    if (Array.isArray(nativeStateImports) && Array.isArray(rawCapture?.native_state_imports) && JSON.stringify(nativeStateImports) !== JSON.stringify(rawCapture.native_state_imports))
+      throw Object.assign(
+        new Error("neuralese-native-state-import: capture and response native-state receipts disagree"),
+        { code: "neuralese-native-state-import" }
+      );
+    const capture = rawCapture && Array.isArray(nativeStateImports) ? { ...rawCapture, native_state_imports: structuredClone(nativeStateImports) } : rawCapture;
+    if (scopedNativeStates.length)
+      requireExactNativeImports(capture, scopedNativeStates.map((state) => state.id), consumptionModes);
+    const implicitById = /* @__PURE__ */ new Map();
+    for (const expected of implicitNativeReadOccurrences) {
+      const id3 = expected.id;
+      implicitById.set(id3, [...implicitById.get(id3) ?? [], expected]);
+    }
+    for (const [id3, expected] of implicitById) {
+      const promptOccurrences = (capture?.prompt ?? []).filter((segment) => segment.kind === "native_state" && segment.id === id3);
+      const importReceipts = (capture?.native_state_imports ?? []).filter((receipt) => receipt.id === id3);
+      const sourcesMatch = (actual) => actual.length === expected.length && actual.every((item, index) => item.source_occurrence === expected[index].source_occurrence);
+      if (!sourcesMatch(promptOccurrences) || !sourcesMatch(importReceipts))
+        throw Object.assign(
+          new Error(`neuralese-native-state-import: ${expected.length} prepared occurrence(s) for ${id3} differ from the server prompt and import receipts`),
+          { code: "neuralese-native-state-import" }
+        );
+    }
+    const archived = await archiveNeuraleseReplyArtifacts(reply, remote, store, [preparedMessages]);
+    const archiveIds = archived.native;
+    for (const id3 of archiveIds) nativeUploaded.add(id3);
+    if (recorder) {
+      const message2 = reply.choices?.[0]?.message;
+      if (nativeRecording && (!capture || !["natlang.native-rl-sampling/1", "natlang.native-rl-sampling/2", "natlang.native-rl-sampling/3", "natlang.native-rl-sampling/4", "natlang.native-structural-capture/1", "natlang.native-structural-capture/2", "natlang.native-teacher-forced-capture/1"].includes(String(capture.schema)) || !Array.isArray(capture.prompt) || !Array.isArray(capture.samples)))
+        throw Object.assign(new Error("neuralese-native-grad-invalid: native learning needs the actual server sampling receipt"), { code: "neuralese-native-grad-invalid" });
+      if (nativeRecording && archiveIds.size && !store)
+        throw Object.assign(new Error("neuralese-native-archive-unavailable: configure a durable native store before recording state communication"), { code: "neuralese-native-archive-unavailable" });
+      const native = nativeRecording ? {
+        schema: "natlang.native-recorded-turn/1",
+        kind: "generation",
+        id: `native-turn:${globalThis.crypto.randomUUID()}`,
+        sampling: structuredClone(capture),
+        retry: meta?.retry ?? 0,
+        ...meta?.invocation_id ? { invocation_id: meta.invocation_id } : {}
+      } : void 0;
+      if (native) reply.x_natlang_native_recorded_turn = native.id;
+      const recordingId = native?.id ?? `model-turn:${globalThis.crypto.randomUUID()}`;
+      if (message2) reply.x_natlang_recorded_turn = recordingId;
+      if (message2) recorder.record({
+        recording_id: recordingId,
+        messages: structuredClone(nativeRecording ? preparedMessages : body.messages),
+        tools: body.tools ? structuredClone(body.tools) : void 0,
+        reply: structuredClone(message2),
+        blocks: structuredClone(reply.native_state?.blocks ?? []),
+        ...adapters.length ? { adapters: [...adapters] } : {},
+        ...consumptionModes ? { native_state_modes: { ...consumptionModes } } : {},
+        ...native ? { native } : {}
+      });
+    }
+    return normalizeReply(reply);
+  };
+  const request = { ...extra };
+  const driver = chatCompletionModelTurn(transport, { request, onExchange, onTurn, adapters: true });
+  const scopes = /* @__PURE__ */ new WeakMap();
+  const here = () => ({
+    recorder: activeRecorder(),
+    adapters: activeNativeAdapters(),
+    nativeStates: activeNativeStates(),
+    softStates: [...activeSoftStates()]
+  });
+  const scopeOf = (item) => scopes.get(item) ?? here();
+  const prepare = async (messages, replies, bound, scope = here(), record3 = false) => {
+    const adapters = await adapterParts(bound ?? [], scope.adapters);
+    const info2 = await serverInfo(scope.nativeStates.length > 0);
+    const native = info2?.native_state;
+    const preparedMessages = materializeNativeStateSentinels(await bindNativeStateContext(messages, scope.nativeStates, info2));
+    const modes = await nativeStateModesFor(preparedMessages, { adapters: scope.adapters, softStates: scope.softStates });
+    if (!native?.enabled) scope.recorder?.record({
+      messages: structuredClone(messages),
+      reply: { role: "assistant", content: null },
+      blocks: [],
+      decision: { options: [...replies] },
+      ...adapters.length ? { adapters: [...adapters] } : {},
+      ...modes ? { native_state_modes: modes } : {}
+    });
+    return {
+      messages: preparedMessages,
+      options: [...replies],
+      ...adapters.length ? { adapters: [...adapters] } : {},
+      ...modes ? { native_state_modes: modes } : {},
+      ...native?.enabled && (record3 || scope.recorder || scope.nativeStates.length) ? { native_recording: true } : {}
+    };
+  };
+  const privileged = (item, request2) => {
+    const context = request2.x_natlang_privileged_context ?? extra?.x_natlang_privileged_context;
+    if (!context) return item;
+    if (!request2.invocation_id || !request2.invocation_role)
+      throw new Error("privileged-context-invocation: a JOLT+ teacher attempt needs each decision readout's invocation and its root/child role");
+    return { ...item, native_recording: true, x_natlang_privileged_context: {
+      ...context,
+      invocation: { name: request2.invocation_id, role: request2.invocation_role }
+    } };
+  };
+  const finish = async (item, scope, scores) => {
+    if (!item.native_recording) return scores;
+    const capture = scores.native_decision_capture;
+    if (capture?.schema !== "natlang.native-decision-capture/1" || !Array.isArray(capture.prompt) || !Array.isArray(capture.continuations) || capture.continuations.length !== item.options.length)
+      throw Object.assign(new Error("neuralese-native-grad-invalid: native decision learning needs its actual rendered continuation receipt"), { code: "neuralese-native-grad-invalid" });
+    if (scope.nativeStates.length) requireExactNativeImports(capture, scope.nativeStates.map((state) => state.id), item.native_state_modes);
+    if (!scope.recorder) return scores;
+    const ids = new Set(requestNativeStateIds(item.messages));
+    for (const segment of capture.prompt) if (segment.kind === "native_state") {
+      for (const id3 of [segment.id, segment.source_state_id]) if (id3) ids.add(id3);
+    }
+    for (const receipt of capture.native_state_imports ?? [])
+      for (const id3 of [receipt.id, receipt.observed_native_state_id]) if (id3) ids.add(id3);
+    if (ids.size && !store) throw Object.assign(new Error("neuralese-native-archive-unavailable: configure a durable native store before recording decision inputs"), { code: "neuralese-native-archive-unavailable" });
+    for (const id3 of ids) {
+      await archiveNativeArtifactFrom(remote, store, id3);
+      nativeUploaded.add(id3);
+    }
+    const native = {
+      schema: "natlang.native-recorded-turn/1",
+      kind: "decision",
+      id: `native-turn:${globalThis.crypto.randomUUID()}`,
+      decision: structuredClone(capture),
+      retry: 0
+    };
+    scope.recorder.record({
+      messages: structuredClone(item.messages),
+      reply: { role: "assistant", content: null },
+      blocks: [],
+      decision: { options: [...item.options] },
+      ...item.adapters?.length ? { adapters: [...item.adapters] } : {},
+      ...item.native_state_modes ? { native_state_modes: { ...item.native_state_modes } } : {},
+      native
+    });
+    return { ...scores, x_natlang_native_recorded_turn: native.id };
+  };
+  const restore = async (item, run) => withRestoredNativeArtifacts(remote, store, adapterArtifactIds(item.adapters ?? []), () => withRestoredNativeStates(remote, store, requestNativeStateIds(item.messages), run, nativeUploaded), uploaded);
+  const issue = async (item, signal) => restore(item, async () => {
+    const response = await fetchModel(http.endpoint.replace(/\/$/, "") + "/v1/neuralese/decide", {
+      method: "POST",
+      signal,
+      headers: { "content-type": "application/json", ...http.headers },
+      body: JSON.stringify(item)
+    });
+    if (response.status === 404 || response.status === 501) throw new Error("decision-unsupported: the server does not serve /v1/neuralese/decide");
+    if (!response.ok) throw new Error(`neuralese decide HTTP ${response.status}: ${(await response.text()).slice(0, 2e3)}`);
+    return await response.json();
+  });
+  const guidanceServed = async (item) => {
+    if (item.x_natlang_privileged_context && !serves(await serverInfo(false) ?? {}, "training-guidance"))
+      throw Object.assign(new Error("training-guidance-unavailable: this model server does not render training guidance; collect this run through the Python native engine or the SGLang actor"), { code: "training-guidance-unavailable" });
+    return item;
+  };
+  const decide = async (request2, signal) => {
+    const scope = scopeOf(request2), item = await guidanceServed(privileged(await prepare(request2.messages, request2.options, request2.adapters, scope, request2.native_recording === true), request2));
+    return finish(item, scope, await issue(item, signal));
+  };
+  const perItem = (items, signal) => Promise.allSettled(items.map((item) => issue(item, signal)));
+  const batched = explicitBatchScoreMany({ url: http.endpoint.replace(/\/$/, "") + "/v1/natlang/score", headers: http.headers }, perItem);
+  const scoreMany = async (items, signal) => {
+    const prepared = [], results = new Array(items.length);
+    await Promise.all(items.map(async (original, index) => {
+      try {
+        const scope = scopeOf(original), item = await guidanceServed(privileged(await prepare(original.messages, original.options, original.adapters, scope, original.native_recording === true), original));
+        await restore(item, async () => ({ log_probs: [] }));
+        prepared[index] = { index, item, scope, key: JSON.stringify([item.messages, item.adapters]) };
+      } catch (error) {
+        results[index] = { status: "rejected", reason: error };
+      }
+    }));
+    const order = prepared.filter((entry) => entry !== void 0).sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : a.index - b.index);
+    const info2 = await serverInfo();
+    const batch = Array.isArray(info2?.capabilities) ? serves(info2, "score") : true;
+    const scored = await (batch ? batched : perItem)(order.map((entry) => entry.item), signal);
+    await Promise.all(order.map(async (entry, position) => {
+      const result = scored[position];
+      if (result.status === "rejected") {
+        results[entry.index] = result;
+        return;
+      }
+      try {
+        results[entry.index] = { status: "fulfilled", value: await finish(entry.item, entry.scope, result.value) };
+      } catch (error) {
+        results[entry.index] = { status: "rejected", reason: error };
+      }
+    }));
+    return results;
+  };
+  const coalesced = coalescingScorer(Object.assign((...args) => decide(...args), { scoreMany }));
+  const scoped2 = Object.assign((request2, signal) => {
+    scopes.set(request2, here());
+    return coalesced(request2, signal);
+  }, { scoreMany: coalesced.scoreMany });
+  return Object.assign(driver, {
+    neuralese: true,
+    artifacts: remote,
+    decide: scoped2,
+    neuraleseRuntime: async () => (await Promise.resolve().then(() => (init_native_state_client(), native_state_client_exports))).nativeStateRuntimeOptions(
+      { endpoint: http.endpoint, headers: http.headers, store: remote },
+      { write: "available" }
+    )
+  });
+}
+var OWNER_HEADER, HttpNeuraleseStore;
 var init_neuralese_server = __esm({
   "src/model/neuralese-server.ts"() {
     "use strict";
@@ -224536,6 +225369,7 @@ var init_neuralese_server = __esm({
     init_neuralese2();
     init_neuralese2();
     init_neuralese_store();
+    OWNER_HEADER = "x-natlang-owner";
     HttpNeuraleseStore = class {
       constructor(endpoint, headers = {}) {
         this.headers = headers;
@@ -224547,27 +225381,27 @@ var init_neuralese_server = __esm({
         return fetchModel(this.base + path2, { ...init, headers: { ...this.headers, ...init.headers ?? {} } });
       }
       async putNativeState(artifact) {
-        const id2 = nativeStateContentId(artifact.metadata, artifact.tensors);
-        const response = await this.request(`/native-states/${id2}`, {
+        const id3 = nativeStateContentId(artifact.metadata, artifact.tensors);
+        const response = await this.request(`/native-states/${id3}`, {
           method: "PUT",
           body: encodeNativeState(artifact),
           headers: { "content-type": "application/octet-stream" }
         });
         if (!response.ok) throw new Error(`native-state upload failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
-        return { ...structuredClone(artifact), id: id2 };
+        return { ...structuredClone(artifact), id: id3 };
       }
-      async getNativeState(id2) {
-        const wire = await this.getNativeStateWire(id2);
-        return wire && decodeNativeState(wire, id2);
+      async getNativeState(id3) {
+        const wire = await this.getNativeStateWire(id3);
+        return wire && decodeNativeState(wire, id3);
       }
       /** The server's stored bytes, verified once here (header, finite values, content ID); kept as received. */
-      async getNativeStateWire(id2) {
-        const response = await this.request(`/native-states/${id2}`);
+      async getNativeStateWire(id3) {
+        const response = await this.request(`/native-states/${id3}`);
         if (response.status === 404) return void 0;
         if (!response.ok) throw new Error(`native-state fetch failed (${response.status})`);
         const wire = new Uint8Array(await response.arrayBuffer());
         const artifact = decodeNativeState(wire);
-        if (artifact.id !== id2) throw new Error(`native-state identity mismatch: requested ${id2}, received ${artifact.id}`);
+        if (artifact.id !== id3) throw new Error(`native-state identity mismatch: requested ${id3}, received ${artifact.id}`);
         return wire;
       }
       /** Upload stored bytes as they are. */
@@ -224581,15 +225415,15 @@ var init_neuralese_server = __esm({
         if (!response.ok) throw new Error(`native-state upload failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
         return artifact;
       }
-      async hasNativeState(id2) {
-        const response = await this.request(`/native-states/${id2}/meta`);
+      async hasNativeState(id3) {
+        const response = await this.request(`/native-states/${id3}/meta`);
         if (response.status === 404) return false;
         if (!response.ok) throw new Error(`native-state metadata failed (${response.status})`);
         return true;
       }
       async putNativeTensorArtifact(artifact) {
-        const id2 = nativeTensorArtifactContentId(artifact.metadata, artifact.tensors, artifact.canonicalMetadata);
-        const response = await this.request(`/native-tensor-artifacts/${id2}`, {
+        const id3 = nativeTensorArtifactContentId(artifact.metadata, artifact.tensors, artifact.canonicalMetadata);
+        const response = await this.request(`/native-tensor-artifacts/${id3}`, {
           method: "PUT",
           body: encodeNativeTensorArtifact(artifact),
           headers: { "content-type": "application/octet-stream" }
@@ -224597,27 +225431,27 @@ var init_neuralese_server = __esm({
         if (!response.ok) throw new Error(`native tensor artifact upload failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
         return decodeNativeTensorArtifact(encodeNativeTensorArtifact(artifact));
       }
-      async getNativeTensorArtifact(id2) {
-        const response = await this.request(`/native-tensor-artifacts/${id2}`);
+      async getNativeTensorArtifact(id3) {
+        const response = await this.request(`/native-tensor-artifacts/${id3}`);
         if (response.status === 404) return void 0;
         if (!response.ok) throw new Error(`native tensor artifact fetch failed (${response.status})`);
         const artifact = decodeNativeTensorArtifact(new Uint8Array(await response.arrayBuffer()));
-        if (artifact.id !== id2) throw new Error(`native tensor artifact identity mismatch: requested ${id2}, received ${artifact.id}`);
+        if (artifact.id !== id3) throw new Error(`native tensor artifact identity mismatch: requested ${id3}, received ${artifact.id}`);
         return artifact;
       }
-      async hasNativeTensorArtifact(id2) {
-        const response = await this.request(`/native-tensor-artifacts/${id2}/meta`);
+      async hasNativeTensorArtifact(id3) {
+        const response = await this.request(`/native-tensor-artifacts/${id3}/meta`);
         if (response.status === 404) return false;
         if (!response.ok) throw new Error(`native tensor artifact metadata failed (${response.status})`);
         return true;
       }
-      async meta(id2) {
-        if (isNativeStateId(id2)) {
-          const artifact = await this.getNativeState(id2);
+      async meta(id3) {
+        if (isNativeStateId(id3)) {
+          const artifact = await this.getNativeState(id3);
           return artifact && nativeStateBlockMeta(artifact);
         }
-        if (/^nnt1_[a-z2-7]{52}$/.test(id2)) {
-          const response = await this.request(`/native-tensor-artifacts/${id2}/meta`);
+        if (/^nnt1_[a-z2-7]{52}$/.test(id3)) {
+          const response = await this.request(`/native-tensor-artifacts/${id3}/meta`);
           if (response.status === 404) return void 0;
           if (!response.ok) throw new Error(`native tensor artifact metadata failed (${response.status})`);
           const record3 = await response.json();
@@ -224632,19 +225466,19 @@ var init_neuralese_server = __esm({
         }
         return void 0;
       }
-      async has(id2) {
-        return await this.meta(id2) !== void 0;
+      async has(id3) {
+        return await this.meta(id3) !== void 0;
       }
-      async pin(id2) {
-        const family = id2.startsWith("nzs1_") ? "native-states" : id2.startsWith("nnt1_") ? "native-tensor-artifacts" : void 0;
-        if (!family) throw new Error(`neuralese-native-archive-api: only native states and tensor artifacts can be pinned (${id2})`);
-        const response = await this.request(`/${family}/${id2}/pin`, { method: "POST" });
-        if (!response.ok) throw new Error(`neuralese-unknown-native-artifact: ${id2}`);
+      async pin(id3) {
+        const family = id3.startsWith("nzs1_") ? "native-states" : id3.startsWith("nnt1_") ? "native-tensor-artifacts" : void 0;
+        if (!family) throw new Error(`neuralese-native-archive-api: only native states and tensor artifacts can be pinned (${id3})`);
+        const response = await this.request(`/${family}/${id3}/pin`, { method: "POST" });
+        if (!response.ok) throw new Error(`neuralese-unknown-native-artifact: ${id3}`);
       }
-      async unpin(id2) {
-        const family = id2.startsWith("nzs1_") ? "native-states" : id2.startsWith("nnt1_") ? "native-tensor-artifacts" : void 0;
-        if (!family) throw new Error(`neuralese-native-archive-api: only native states and tensor artifacts can be unpinned (${id2})`);
-        await this.request(`/${family}/${id2}/unpin`, { method: "POST" });
+      async unpin(id3) {
+        const family = id3.startsWith("nzs1_") ? "native-states" : id3.startsWith("nnt1_") ? "native-tensor-artifacts" : void 0;
+        if (!family) throw new Error(`neuralese-native-archive-api: only native states and tensor artifacts can be unpinned (${id3})`);
+        await this.request(`/${family}/${id3}/unpin`, { method: "POST" });
       }
       async collect(referenced) {
         const response = await this.request("/collect", {
@@ -224738,17 +225572,48 @@ function grammarCapture(options) {
     }) });
     if (!response.ok) throw new Error(`neuralese-native-capture: forced span failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
     const result = await response.json();
-    const id2 = result.native_state?.blocks?.[0]?.id;
-    if (typeof id2 !== "string" || result.native_state.blocks.length !== 1)
+    const id3 = result.native_state?.blocks?.[0]?.id;
+    if (typeof id3 !== "string" || result.native_state.blocks.length !== 1)
       throw new Error("neuralese-native-capture: the forced reply did not produce exactly one state");
-    const prompt = call.prompt?.length ? call.prompt : await tokenize3(await applyTemplate(call), true);
-    const artifact = await archiveNativeState({ endpoint: options.endpoint, headers: options.headers, store: options.store }, id2);
+    const client = { endpoint: options.endpoint, headers: options.headers, store: options.store };
+    const imported = [];
+    let prompt = [];
+    if (call.promptSegments?.length) {
+      for (const segment of call.promptSegments) {
+        if (segment.kind === "tokens") {
+          prompt.push(...segment.token_ids);
+          continue;
+        }
+        const state = await archiveNativeState(client, segment.id);
+        imported.push({ at: prompt.length, segment: {
+          kind: "native_state",
+          id: segment.id,
+          token_count: state.tensors.token_ids.shape[0],
+          native_identity: {
+            checkpoint_sha256: state.metadata.checkpoint_sha256,
+            tokenizer_fingerprint: state.metadata.tokenizer_fingerprint,
+            embedding_weight_sha256: state.metadata.embedding_weight_sha256,
+            architecture: state.metadata.architecture
+          }
+        } });
+      }
+    } else prompt = call.prompt?.length ? call.prompt : await tokenize3(await applyTemplate(call), true);
+    const artifact = await archiveNativeState(client, id3);
     const ids = artifact.tensors.token_ids, view = new DataView(ids.data.buffer, ids.data.byteOffset, ids.data.byteLength);
     if (ids.shape[0] !== span.length || span.some((token, index) => BigInt(token) !== view.getBigInt64(index * 8, true)))
       throw new Error("neuralese-native-capture: the produced state does not hold the forced span");
-    const prefix = [...prompt, ...reply.slice(0, start)];
+    const prefix = [...prompt, ...reply.slice(0, start), open];
     const text3 = typeof artifact.metadata.text === "string" ? artifact.metadata.text : "";
     const meta = nativeStateBlockMeta(artifact);
+    const segments = [];
+    let last = 0, rows = 0;
+    for (const { at, segment } of imported) {
+      if (at > last) segments.push({ kind: "tokens", token_ids: prefix.slice(last, at), producing: prefix.slice(last, at).map(() => false) });
+      segments.push(segment);
+      rows += segment.token_count;
+      last = at;
+    }
+    segments.push({ kind: "tokens", token_ids: prefix.slice(last), producing: prefix.slice(last).map(() => false) });
     return { ...meta, ...extra.type ? { type: extra.type } : {}, producer: {
       source_text_sha256: hexDigest(text3),
       native_source_capture: {
@@ -224759,12 +225624,12 @@ function grammarCapture(options) {
           architecture: artifact.metadata.architecture
         },
         segments: [
-          { kind: "tokens", token_ids: [...prefix, open], producing: [...prefix.map(() => false), false] },
+          ...segments,
           { kind: "tokens", token_ids: span, producing: span.map(() => true) },
           { kind: "tokens", token_ids: [close], producing: [false] }
         ],
-        payload_start: prefix.length + 1,
-        payload_stop: prefix.length + 1 + span.length
+        payload_start: prefix.length + rows,
+        payload_stop: prefix.length + rows + span.length
       }
     } };
   };
@@ -224781,6 +225646,15 @@ var init_native_operator = __esm({
 });
 
 // src/model/native-state-client.ts
+var native_state_client_exports = {};
+__export(native_state_client_exports, {
+  archiveNativeState: () => archiveNativeState,
+  nativeStateRuntimeOptions: () => nativeStateRuntimeOptions,
+  nativeStateWritePort: () => nativeStateWritePort,
+  nativeTextOperation: () => nativeTextOperation,
+  restoreNativeInputs: () => restoreNativeInputs,
+  serverCapture: () => serverCapture
+});
 async function nativeStateRuntimeOptions(options, settings = {}) {
   const info = options.info ?? await neuraleseServerInfo(options.endpoint, { headers: options.headers });
   const native = info.native_state;
@@ -224798,18 +225672,28 @@ async function nativeStateRuntimeOptions(options, settings = {}) {
     return failure("neuralese-native-state-unavailable", "the server must declare native identity and consumption modes");
   const { grammarCapture: grammarCapture2 } = await Promise.resolve().then(() => (init_native_operator(), native_operator_exports));
   const capture = serves(info, "native.capture") ? serverCapture({ ...options, info }) : native.production ? grammarCapture2({ ...options, info }) : void 0;
+  const { materializeNativeStateSentinels: materializeNativeStateSentinels2 } = await Promise.resolve().then(() => (init_neuralese_server(), neuralese_server_exports));
+  const prime = serves(info, "native.init-body") ? async (call, placeholder, text3, type) => (await nativeTextOperation({ ...options, info }, "init-body", {
+    messages: materializeNativeStateSentinels2(call.messages),
+    tools: call.tools,
+    placeholder,
+    text: text3,
+    type,
+    gate: false
+  })).meta : void 0;
   return {
     store: options.store,
     dialect,
     nativeStateConsumer,
+    ...prime ? { prime } : {},
     nativeStateConsumerForCall: async () => nativeStateConsumerFromInfo(await neuraleseServerInfo(options.endpoint, { headers: options.headers })),
     ...port ? { port } : {},
     ...capture ? { capture } : {}
   };
 }
-async function archiveNativeState(options, id2) {
-  if (!id2.startsWith("nzs1_")) return failure("neuralese-native-source-integrity", "native state archival requires an exact state ID");
-  return await archiveNativeArtifactFrom(new HttpNeuraleseStore(options.endpoint, options.headers), options.store, id2);
+async function archiveNativeState(options, id3) {
+  if (!id3.startsWith("nzs1_")) return failure("neuralese-native-source-integrity", "native state archival requires an exact state ID");
+  return await archiveNativeArtifactFrom(new HttpNeuraleseStore(options.endpoint, options.headers), options.store, id3);
 }
 async function restoreNativeInputs(options, value) {
   const remote = new HttpNeuraleseStore(options.endpoint, options.headers);
@@ -224852,7 +225736,7 @@ async function nativeTextOperation(options, operation, body) {
   await restoreNativeInputs(options, body);
   if (Array.isArray(body.adapters)) {
     const ids = body.adapters.map((entry) => typeof entry === "string" ? entry : entry.id);
-    if (ids.some((id2) => typeof id2 !== "string")) return failure("neuralese-native-adapter-invalid", "native adapters require exact coefficient artifact IDs");
+    if (ids.some((id3) => typeof id3 !== "string")) return failure("neuralese-native-adapter-invalid", "native adapters require exact coefficient artifact IDs");
     const missing = await restoreNativeArtifacts(new HttpNeuraleseStore(options.endpoint, options.headers), options.store, ids);
     if (missing.length) return failure("neuralese-unknown-native-artifact", `restore native adapter coefficients and bases ${missing.join(", ")}`);
   }
@@ -224937,10 +225821,10 @@ async function nativeTextOperation(options, operation, body) {
 }
 function serverCapture(options) {
   return async (call, extra = {}) => {
-    if (!call.prompt?.length || !call.reply?.length)
+    if (!(call.prompt?.length || call.promptSegments?.length) || !call.reply?.length)
       return failure("neuralese-native-capture", "native.capture needs the call's exact prompt and sampled reply ids");
     return (await nativeTextOperation(options, "capture", {
-      prompt_token_ids: call.prompt,
+      ...call.promptSegments?.length ? { prompt_segments: call.promptSegments } : { prompt_token_ids: call.prompt },
       reply_token_ids: call.reply,
       ...call.select !== void 0 ? { select: call.select } : {},
       ...extra
@@ -225615,14 +226499,14 @@ async function buildStandardLibrary(options) {
   );
   const nativeRuntime = native ? await nativeStateRuntimeOptions({ endpoint: options.endpoint, headers, store: local, info }) : void 0;
   const nativePort = nativeRuntime?.port;
-  const fetchState = async (id2) => {
-    if (!await local.has(id2)) {
-      const artifact = await remote.getNativeState(id2);
-      if (!artifact) throw new Error(`neuralese standard library: the server lost native state ${id2}`);
+  const fetchState = async (id3) => {
+    if (!await local.has(id3)) {
+      const artifact = await remote.getNativeState(id3);
+      if (!artifact) throw new Error(`neuralese standard library: the server lost native state ${id3}`);
       const { id: _10, ...input } = artifact;
       await local.putNativeState(input);
     }
-    return id2;
+    return id3;
   };
   if (!nativePort || !nativeRuntime) throw Object.assign(
     new Error("neuralese-native-text-write-unavailable: library authoring needs the server native writer"),
@@ -226391,18 +227275,18 @@ function typedTextPreflightType(value, type, env, path2, plans) {
   return resolved;
 }
 function stableBinding(value) {
-  const normalize3 = (item) => {
-    if (Array.isArray(item)) return item.map(normalize3);
+  const normalize2 = (item) => {
+    if (Array.isArray(item)) return item.map(normalize2);
     if (!item || typeof item !== "object") return item;
     const record3 = item;
     if (record3.$live && typeof record3.$live === "object") {
       const live2 = record3.$live;
       return { $live: { type: live2.type } };
     }
-    if (record3.$host && typeof record3.$host === "object") return { $host: normalize3(record3.$host) };
-    return Object.fromEntries(Object.keys(record3).sort().map((key) => [key, normalize3(record3[key])]));
+    if (record3.$host && typeof record3.$host === "object") return { $host: normalize2(record3.$host) };
+    return Object.fromEntries(Object.keys(record3).sort().map((key) => [key, normalize2(record3[key])]));
   };
-  return JSON.stringify(normalize3(value));
+  return JSON.stringify(normalize2(value));
 }
 function applyTypedTextRefs(value, plans, refs) {
   const root2 = { children: /* @__PURE__ */ new Map() };
@@ -227395,6 +228279,8 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
       runtime;
       lam;
       env;
+      /** Program guidance written from its text, to be primed in this call once its opening exists (agent.ts). */
+      guidancePrime;
       completed = false;
       /**
        * Judges the refined slots (`Is<T, P>`) of a value before the session accepts it as the result or as a local. Set by
@@ -227608,9 +228494,9 @@ Repair subsequent work without repeating an already completed write.` : "") + //
         if (!portableSizeAtMost(value, TRANSCRIPT_VALUE_CHARS) || containsLive(value)) return shown;
         const full = renderValue(value, { root: root2, budget: Infinity, liveIdentity: this.runtime.displayLiveId, untrusted: this.runtime.untrusted });
         if (shown === full) return shown;
-        const { id: id2, count } = this.pages.add(full);
+        const { id: id3, count } = this.pages.add(full);
         const paged = shown + `
-<<full value: ${count} pages; read_page("${id2}", 1) shows the first page>>`;
+<<full value: ${count} pages; read_page("${id3}", 1) shows the first page>>`;
         this.cuts.push({ shown: paged, full });
         return paged;
       }
@@ -227965,11 +228851,11 @@ Repair subsequent work without repeating an already completed write.` : "") + //
       }
       scopeTool(name, args) {
         if (name === "read_page") {
-          const id2 = String(args.id ?? ""), root2 = id2.split(".")[0];
+          const id3 = String(args.id ?? ""), root2 = id3.split(".")[0];
           const inScope = Object.hasOwn(this.runtime.services, root2) || Object.hasOwn(this.lam.let, root2) || Object.hasOwn(this.lam.args, root2) || !!findCodebaseItem(this.lam.codebase, root2);
-          if (root2 === "transcript" && !this.pages.has(id2)) throw new Reject([{ path: id2, code: "no-such-page", expected: `an ID from a cut-off message; transcript is in eval's scope: search it in eval with transcript.search("\u2026"), then transcript.entry(n) for a match` }]);
-          if (inScope && !this.pages.has(id2)) throw new Reject([{ path: id2, code: "no-such-page", expected: `an ID from a cut-off message; ${root2} is a name in eval's scope, so use it in eval (for example ${root2}.page(${Number(args.page ?? 1)}) if it has pages)` }]);
-          return { kind: "ok", text: this.pages.read(id2, Number(args.page ?? 1)) };
+          if (root2 === "transcript" && !this.pages.has(id3)) throw new Reject([{ path: id3, code: "no-such-page", expected: `an ID from a cut-off message; transcript is in eval's scope: search it in eval with transcript.search("\u2026"), then transcript.entry(n) for a match` }]);
+          if (inScope && !this.pages.has(id3)) throw new Reject([{ path: id3, code: "no-such-page", expected: `an ID from a cut-off message; ${root2} is a name in eval's scope, so use it in eval (for example ${root2}.page(${Number(args.page ?? 1)}) if it has pages)` }]);
+          return { kind: "ok", text: this.pages.read(id3, Number(args.page ?? 1)) };
         }
         if (name === "compact_history") {
           const note2 = typeof args.note === "string" ? args.note.trim() : "";
@@ -229125,6 +230011,15 @@ function promptPieces() {
   const seen = /* @__PURE__ */ new Set();
   return pieces.filter((piece) => piece.text.trim() && !seen.has(piece.text) && seen.add(piece.text));
 }
+function scopedBank(bank, scope) {
+  if (!bank?.size || ![...bank.keys()].some((id3) => id3.includes(PIECE_SCOPE))) return bank;
+  const out = new Map([...bank].filter(([id3]) => !id3.includes(PIECE_SCOPE)));
+  if (scope !== void 0) for (const [id3, entry] of bank) {
+    const at = id3.lastIndexOf(PIECE_SCOPE);
+    if (at > 0 && id3.slice(at + 1) === scope) out.set(id3.slice(0, at), entry);
+  }
+  return out;
+}
 function findPieces(text3, pieces) {
   const found = [];
   const taken = (start, end) => found.some(([s, e10]) => start < e10 && s < end);
@@ -229136,8 +230031,9 @@ function findPieces(text3, pieces) {
   return found.sort((a, b) => a[0] - b[0]);
 }
 function softenText(text3, bank) {
+  bank = scopedBank(bank);
   if (!bank.size) return text3;
-  const pieces = [...bank].map(([id2, entry]) => ({ id: id2, text: entry.text }));
+  const pieces = [...bank].map(([id3, entry]) => ({ id: id3, text: entry.text }));
   let out = "", last = 0;
   for (const [start, end, piece] of findPieces(text3, pieces)) {
     out += text3.slice(last, start) + neuraleseSentinel(bank.get(piece.id).value.$neuralese.id);
@@ -229175,7 +230071,7 @@ function renderPromptMessages(messages, mode = "full") {
     return content ? [{ ...message2, content }] : [];
   });
 }
-var scopedSource;
+var PIECE_SCOPE, scopedSource;
 var init_system_prompts = __esm({
   "src/native/system-prompts.ts"() {
     "use strict";
@@ -229185,20 +230081,21 @@ var init_system_prompts = __esm({
     init_prompt();
     init_builtin();
     init_iterate();
+    PIECE_SCOPE = "@";
     scopedSource = () => void 0;
   }
 });
 
 // src/native/agent.ts
-async function pinNativeProgramGuidance(store, id2) {
+async function pinNativeProgramGuidance(store, id3) {
   let pins = nativeProgramGuidancePins.get(store);
   if (!pins) nativeProgramGuidancePins.set(store, pins = /* @__PURE__ */ new Map());
-  let pending = pins.get(id2);
+  let pending = pins.get(id3);
   if (!pending) {
-    pending = store.pin(id2);
-    pins.set(id2, pending);
+    pending = store.pin(id3);
+    pins.set(id3, pending);
     void pending.catch(() => {
-      if (pins.get(id2) === pending) pins.delete(id2);
+      if (pins.get(id3) === pending) pins.delete(id3);
     });
   }
   await pending;
@@ -229366,7 +230263,7 @@ function previewValue(value, holder, identity) {
   return String(value);
 }
 function livePreview(value, identity = liveId) {
-  const label = liveLabel(value), id2 = identity(value);
+  const label = liveLabel(value), id3 = identity(value);
   let detail = "";
   try {
     const tag = Object.prototype.toString.call(value);
@@ -229380,7 +230277,7 @@ function livePreview(value, identity = liveId) {
     }
   } catch {
   }
-  return `[${label} #${id2}${detail}; live value, use it in eval]`;
+  return `[${label} #${id3}${detail}; live value, use it in eval]`;
 }
 function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { nodes: 0, depth: 0 }) {
   if (++state.nodes > 8192 || state.depth >= 64)
@@ -229513,6 +230410,7 @@ var init_agent = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_native_protocol();
+    init_tool_markup();
     init_program();
     init_identity();
     init_program();
@@ -229703,12 +230601,14 @@ ${notes}` : opening;
       async capturedRef(session, operator, invocationId, capture, request, response, select) {
         const callId = session.runtime.currentCallId ?? session.runtime.options.runId;
         const sampled = response.raw_response?.x_natlang_rl_capture;
-        const exact = !!sampled?.prompt?.length && !!sampled.generated_inputs?.length && sampled.prompt.every((segment) => segment.kind === "tokens" && Array.isArray(segment.token_ids));
+        const tokens2 = (segment) => segment.kind === "tokens" && Array.isArray(segment.token_ids);
+        const exact = !!sampled?.prompt?.length && !!sampled.generated_inputs?.length && sampled.prompt.every((segment) => tokens2(segment) || segment.kind === "native_state" && typeof segment.id === "string");
+        const plain3 = exact && sampled.prompt.every(tokens2);
         const meta = await capture({
           messages: request.messages,
           tools: request.tools,
           ...exact ? {
-            prompt: sampled.prompt.flatMap((segment) => segment.token_ids),
+            ...plain3 ? { prompt: sampled.prompt.flatMap((segment) => segment.token_ids) } : { promptSegments: sampled.prompt.map((segment) => tokens2(segment) ? { kind: "tokens", token_ids: segment.token_ids } : { kind: "native_state", id: segment.id }) },
             reply: sampled.generated_inputs.map((input) => input.token_id)
           } : {},
           text: response.text ?? "",
@@ -229756,7 +230656,7 @@ ${notes}` : opening;
         this.operatorCalls.set(callId, index);
         const request = {
           invocation_id: `${callId}#operator-${index}`,
-          messages: viewSiteMessages(site2.value, site2.instructions),
+          messages: this.softened(viewSiteMessages(site2.value, site2.instructions), site2.operator),
           tools: [],
           seed: session.runtime.seedPolicy.mode === "backend" ? null : deriveSeed(session.runtime.seedPolicy.root, runSeedKey(session.runtime.options), session.lam.attempts, `operator-${index}`, 0),
           // Reasoning and reply share the actual request allowance; the shared graph reservation below may lower it.
@@ -229891,8 +230791,8 @@ ${notes}` : opening;
         return out;
       }
       /** Messages with the runtime's prompt pieces in their soft forms, when a bank is configured and the driver is Neuralese. */
-      softened(messages) {
-        const bank = activeSystemPrompts(this.options.neuralese?.systemPrompts);
+      softened(messages, scope) {
+        const bank = scopedBank(activeSystemPrompts(this.options.neuralese?.systemPrompts), scope);
         return bank?.size && supportsNeuralese(this.driver) ? softenMessages(messages, bank) : [...messages];
       }
       /** Re-encode foreign soft values from their authenticated source text, never their tensors or adapters. */
@@ -229907,19 +230807,19 @@ ${notes}` : opening;
               pieces.push(part.text ?? "");
               continue;
             }
-            const id2 = part.id;
-            const artifact = part.type === "native_state" ? await this.options.neuralese?.store.getNativeState?.(id2) : void 0;
-            const teacher = this.options.neuralese?.teacherText?.get(id2);
+            const id3 = part.id;
+            const artifact = part.type === "native_state" ? await this.options.neuralese?.store.getNativeState?.(id3) : void 0;
+            const teacher = this.options.neuralese?.teacherText?.get(id3);
             const source2 = artifact?.metadata.text ?? teacher?.body;
             if (typeof source2 !== "string" || !source2.length)
-              throw new NeuraleseUnsupportedError(`handoff cannot re-encode ${id2}: exact source text is unavailable`);
+              throw new NeuraleseUnsupportedError(`handoff cannot re-encode ${id3}: exact source text is unavailable`);
             const node = graphNode(
               session.runtime.trace,
               "literal",
               {
                 call_id: session.runtime.options.runId,
                 source_kind: "cross-model-source-text",
-                block: id2,
+                block: id3,
                 text_sha256: hexDigest(source2),
                 target_actor: actor,
                 ...artifact ? { source_identity: {
@@ -229931,7 +230831,7 @@ ${notes}` : opening;
                 ...teacher ? { source_call_id: teacher.producer_call_id, source_text_sha256: teacher.body_sha256 } : {},
                 ...part.source_occurrence ? { source_occurrence: part.source_occurrence } : {}
               },
-              [blockInput(id2, "source", part.source_occurrence, producerScopeForTrace(session.runtime.trace))]
+              [blockInput(id3, "source", part.source_occurrence, producerScopeForTrace(session.runtime.trace))]
             );
             if (node) inputs.push({ node, port: "source_text" });
             pieces.push(argument ? JSON.stringify(source2).slice(1, -1) : source2);
@@ -229956,19 +230856,19 @@ ${notes}` : opening;
         const producer = { call_id: session.runtime.currentCallId ?? null, turn };
         const nativeOrigins = /* @__PURE__ */ new Map();
         for (const block of nativeBlocks.filter((block2) => typeof block2.id === "string")) {
-          const id2 = block.id;
-          const artifact = await neuralese?.store.getNativeState?.(id2);
-          if (!artifact) throw new Error(`native-state producer artifact ${id2} was not archived before the agent turn`);
+          const id3 = block.id;
+          const artifact = await neuralese?.store.getNativeState?.(id3);
+          if (!artifact) throw new Error(`native-state producer artifact ${id3} was not archived before the agent turn`);
           const tokenIds = artifact?.tensors.token_ids;
           const embeddings = artifact?.tensors.embeddings;
-          if (!tokenIds || !embeddings) throw new Error(`native-state producer artifact ${id2} lacks token/embedding tensors`);
+          if (!tokenIds || !embeddings) throw new Error(`native-state producer artifact ${id3} lacks token/embedding tensors`);
           const node = graphNode(
             session.runtime.trace,
             "block_write",
             {
               call_id: producer.call_id,
               turn: turnNode ?? "",
-              block: id2,
+              block: id3,
               format: "native-state",
               producer: "native-state-producer",
               source_kind: "native-state-producer",
@@ -229990,7 +230890,7 @@ ${notes}` : opening;
             },
             turnNode ? [{ node: turnNode, port: "turn" }] : []
           );
-          if (node) nativeOrigins.set(id2, [...nativeOrigins.get(id2) ?? [], node]);
+          if (node) nativeOrigins.set(id3, [...nativeOrigins.get(id3) ?? [], node]);
         }
         return nativeOrigins;
       }
@@ -230000,13 +230900,13 @@ ${notes}` : opening;
         if (!neuralese) throw new NeuraleseUnsupportedError("fallback native output has no accessible source store");
         const origins = await this.nativeWriteOrigins(response, session, turn, turnNode, neuralese);
         const rendered = /* @__PURE__ */ new Map();
-        const sourceText = async (id2, occurrence) => {
-          const cached = rendered.get(`${id2}\0${occurrence ?? ""}`);
+        const sourceText = async (id3, occurrence) => {
+          const cached = rendered.get(`${id3}\0${occurrence ?? ""}`);
           if (cached !== void 0) return cached;
-          const artifact = await neuralese.store.getNativeState?.(id2) ?? await this.options.neuralese?.store.getNativeState?.(id2);
-          if (!artifact || !artifact.metadata.text) throw new NeuraleseUnsupportedError(`fallback native output ${id2} has no exact source text`);
-          const writers = origins.get(id2) ?? [];
-          if (!occurrence && writers.length > 1) throw new NeuraleseUnsupportedError(`fallback native output ${id2} has ambiguous producer occurrences`);
+          const artifact = await neuralese.store.getNativeState?.(id3) ?? await this.options.neuralese?.store.getNativeState?.(id3);
+          if (!artifact || !artifact.metadata.text) throw new NeuraleseUnsupportedError(`fallback native output ${id3} has no exact source text`);
+          const writers = origins.get(id3) ?? [];
+          if (!occurrence && writers.length > 1) throw new NeuraleseUnsupportedError(`fallback native output ${id3} has ambiguous producer occurrences`);
           const source2 = occurrence ?? writers[0];
           graphNode(
             session.runtime.trace,
@@ -230014,7 +230914,7 @@ ${notes}` : opening;
             {
               call_id: session.runtime.options.runId,
               source_kind: "cross-model-output-source-text",
-              block: id2,
+              block: id3,
               turn: turnNode,
               text_sha256: hexDigest(artifact.metadata.text),
               source_actor: actor,
@@ -230026,9 +230926,9 @@ ${notes}` : opening;
                 embedding_weight_sha256: artifact.metadata.embedding_weight_sha256
               }
             },
-            [blockInput(id2, "source", source2, producerScopeForTrace(session.runtime.trace))]
+            [blockInput(id3, "source", source2, producerScopeForTrace(session.runtime.trace))]
           );
-          rendered.set(`${id2}\0${occurrence ?? ""}`, artifact.metadata.text);
+          rendered.set(`${id3}\0${occurrence ?? ""}`, artifact.metadata.text);
           return artifact.metadata.text;
         };
         const replace = async (value) => {
@@ -230080,8 +230980,8 @@ ${notes}` : opening;
         };
         const port = this.options.neuralese?.port;
         const expectedReturn = session.lam.type.kind === "lambda" ? session.env.resolve(session.lam.type.returns) : void 0;
-        const nativeStateText = async (id2) => {
-          const artifact = await this.options.neuralese?.store.getNativeState?.(id2);
+        const nativeStateText = async (id3) => {
+          const artifact = await this.options.neuralese?.store.getNativeState?.(id3);
           return artifact?.metadata.text;
         };
         const nativeOrigins = await this.nativeWriteOrigins(response, session, turn, turnNode);
@@ -230188,9 +231088,9 @@ ${notes}` : opening;
           }
         }
         const bindTeacherOccurrences = (value) => {
-          if (typeof value === "string") return value.replace(/(nzt1_[a-z2-7]{52})/g, (marker, id2) => {
-            const writer = this.options.neuralese?.teacherText?.get(id2)?.writer_node;
-            return writer ? neuraleseSentinel(id2, false, writer) : marker;
+          if (typeof value === "string") return value.replace(/(nzt1_[a-z2-7]{52})/g, (marker, id3) => {
+            const writer = this.options.neuralese?.teacherText?.get(id3)?.writer_node;
+            return writer ? neuraleseSentinel(id3, false, writer) : marker;
           });
           if (Array.isArray(value)) return value.map(bindTeacherOccurrences);
           if (value && typeof value === "object") {
@@ -231016,6 +231916,7 @@ ${notes}` : opening;
         if (turnNode && typeof recorded2 === "string") activeRecorder()?.linkNativeTurn?.(recorded2, turnNode);
         session.runtime.checkInterruption();
         if (reservation?.limit != null && response.completion_tokens !== void 0 && response.completion_tokens > reservation.limit) return budgetStop();
+        if (response.malformed_call) return fail3(response.malformed_call === SECOND_THINK_CLOSE ? "the generated choice closed its reasoning a second time." : "the generated choice held tool-call markup.");
         if (response.truncated || response.protocol_failure || response.calls?.length || response.raw_calls?.length || typeof response.text !== "string")
           return fail3("the generated choice must be complete JSON text");
         let value;
@@ -231038,8 +231939,46 @@ ${notes}` : opening;
         session.lam.note = JSON.stringify({ readout: "decision", source: "generated", scored: false });
         if (!session.finish()) return fail3("the generated choice does not satisfy the declared return type");
       }
+      /** How program guidance states are primed: `call` (default: at their real position in the call that uses them) or
+       * `text` (written from the text alone, from position 0): the agent option, else NATLANG_GUIDANCE_PRIMING. */
+      guidancePriming() {
+        const value = this.options.guidancePriming ?? globalThis.process?.env?.NATLANG_GUIDANCE_PRIMING;
+        return value === "text" ? "text" : "call";
+      }
+      /** Prime this call's program guidance in its opening (`runtimeProgramGuidance` left a text-written placeholder):
+       * the state the call and every later call of the same guidance read. A failed priming keeps the text write, traced. */
+      async primeGuidance(session, messages) {
+        const job = session.guidancePrime;
+        if (!job) return;
+        session.guidancePrime = void 0;
+        const neuralese = this.options.neuralese;
+        let id3 = job.placeholder;
+        try {
+          const meta = await neuralese.prime(
+            { messages: structuredClone(this.softened(messages)), tools: this.toolsScope(session) },
+            job.placeholder,
+            job.text,
+            "Neuralese<ProgramGuidance>"
+          );
+          const stored = await neuralese.store.getNativeState?.(meta.id);
+          if (!stored || stored.metadata.text !== job.text) throw new Error("the primed guidance state differs from its text");
+          await pinNativeProgramGuidance(neuralese.store, meta.id);
+          id3 = meta.id;
+          const from = nativeStateSentinel(job.placeholder), to2 = nativeStateSentinel(id3);
+          for (const message2 of messages) if (typeof message2.content === "string" && message2.content.includes(from))
+            message2.content = message2.content.split(from).join(to2);
+        } catch (error) {
+          session.runtime.trace.emit("program_guidance", {
+            call_id: session.runtime.currentCallId ?? null,
+            priming: "text",
+            error: String(error?.message ?? error).slice(0, 300)
+          });
+        } finally {
+          job.settle(id3);
+        }
+      }
       /** Encode stored policy against this runtime's exact native reader before any model call. */
-      async runtimeProgramGuidance(guidance) {
+      async runtimeProgramGuidance(guidance, session) {
         if (!guidance) return "";
         if (guidance.kind !== "native-program-guidance") throw new TypeError("unknown program guidance binding");
         const neuralese = this.options.neuralese;
@@ -231050,15 +231989,15 @@ ${notes}` : opening;
         const programId = binding?.program_id ?? guidance.program_id;
         if (!programId) throw new NeuraleseUnsupportedError("native program guidance requires its exact program identity");
         const matches2 = (state, identity) => state.architecture === identity.architecture && state.checkpoint_sha256 === identity.checkpoint_sha256 && state.tokenizer_fingerprint === identity.tokenizer_fingerprint && state.embedding_weight_sha256 === identity.embedding_weight_sha256;
-        const verifyStored = (artifact, id3) => {
+        const verifyStored = (artifact, id4) => {
           if (!artifact) throw new NeuraleseUnsupportedError("native program guidance state was not persisted in the runtime store");
-          if (artifact.id !== id3 || artifact.metadata.schema !== "neuralese.native-state/1" || artifact.metadata.text !== guidance.text || !matches2(artifact.metadata, consumer))
+          if (artifact.id !== id4 || artifact.metadata.schema !== "neuralese.native-state/1" || artifact.metadata.text !== guidance.text || !matches2(artifact.metadata, consumer))
             throw new NeuraleseUnsupportedError("native program guidance artifact does not match its text or exact current student checkpoint");
           return artifact;
         };
-        const putInPrompt = async (id3) => {
-          const artifact = verifyStored(await neuralese.store.getNativeState?.(id3), id3);
-          await pinNativeProgramGuidance(neuralese.store, id3);
+        const putInPrompt = async (id4) => {
+          const artifact = verifyStored(await neuralese.store.getNativeState?.(id4), id4);
+          await pinNativeProgramGuidance(neuralese.store, id4);
           return "\n\n<natlang_program_guidance>\n" + nativeStateSentinel(artifact.id) + "\n</natlang_program_guidance>\n";
         };
         if (binding && matches2(consumer, binding.student)) {
@@ -231066,8 +232005,10 @@ ${notes}` : opening;
           if (stored) {
             if (stored.id !== binding.native_state_id || stored.metadata.schema !== "neuralese.native-state/1" || stored.metadata.text !== guidance.text || !matches2(stored.metadata, binding.student) || !matches2(stored.metadata, consumer))
               throw new NeuraleseUnsupportedError("memetic guidance artifact does not match its declared student or text");
-            await pinNativeProgramGuidance(neuralese.store, binding.native_state_id);
-            return "\n\n<natlang_program_guidance>\n" + nativeStateSentinel(stored.id) + "\n</natlang_program_guidance>\n";
+            if (stored.metadata.derivation || this.guidancePriming() === "text" || !neuralese.prime) {
+              await pinNativeProgramGuidance(neuralese.store, binding.native_state_id);
+              return "\n\n<natlang_program_guidance>\n" + nativeStateSentinel(stored.id) + "\n</natlang_program_guidance>\n";
+            }
           }
         }
         const port = neuralese.port;
@@ -231083,6 +232024,12 @@ ${notes}` : opening;
         let cache = nativeProgramGuidanceWrites.get(neuralese.store);
         if (!cache) nativeProgramGuidanceWrites.set(neuralese.store, cache = /* @__PURE__ */ new Map());
         let pending = cache.get(key);
+        const inCall = !pending && this.guidancePriming() === "call" && !!neuralese.prime;
+        let settle;
+        const primed = inCall ? new Promise((resolve2) => {
+          settle = resolve2;
+        }) : void 0;
+        if (primed) cache.set(key, primed);
         if (!pending) {
           pending = (async () => {
             const block = await port.write(guidance.text);
@@ -231095,6 +232042,18 @@ ${notes}` : opening;
             await pinNativeProgramGuidance(neuralese.store, block.id);
             return block.id;
           })();
+          if (primed) {
+            let placeholder;
+            try {
+              placeholder = await pending;
+            } catch (error) {
+              cache.delete(key);
+              settle(Promise.reject(error));
+              throw error;
+            }
+            session.guidancePrime = { placeholder, text: guidance.text, settle };
+            return putInPrompt(placeholder);
+          }
           cache.set(key, pending);
           void pending.catch(() => {
             if (cache.get(key) === pending) cache.delete(key);
@@ -231104,8 +232063,8 @@ ${notes}` : opening;
             if (oldest !== void 0 && oldest !== key) cache.delete(oldest);
           }
         }
-        const id2 = await pending;
-        return putInPrompt(id2);
+        const id3 = await pending;
+        return putInPrompt(id3);
       }
       async run(session) {
         if (this.options.programGuidance && this.options.authoredTextGuidance)
@@ -231116,7 +232075,7 @@ ${notes}` : opening;
         let budget = this.options.contextTokens === void 0 ? await defaultContextBudget(this.driver) : this.options.contextTokens;
         session.pages.budget = this.pageChars(budget);
         const guidance = [
-          renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName)),
+          renderAuthoredTextGuidance(this.options.authoredTextGuidance) + await this.runtimeProgramGuidance(guidanceForCall(this.options.programGuidance, session.lam.functionName), session),
           this.options.callAddendum ?? ""
         ].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
         const systemPrompt = () => typeof this.options.systemPrompt === "function" ? this.options.systemPrompt() : this.options.systemPrompt ?? SYSTEM_PROMPT;
@@ -231195,6 +232154,7 @@ ${notes}` : opening;
           return failures.length ? { code: failures[0].code, message: failures.map((failure2) => failure2.message).join(" ") } : void 0;
         };
         const messages = openingMessages();
+        await this.primeGuidance(session, messages);
         const trainingGuidance = this.options.trainingGuidance;
         const guidancePolicy = trainingGuidance?.policyOf(session.lam, session.runtime.currentCallId ?? null);
         const guidanceConsumer = !!trainingGuidance && !guidancePolicy && !trainingGuidance.insidePolicy(session);
@@ -231667,7 +232627,15 @@ ${notes}` : opening;
             continue;
           }
           if (response.malformed_call) {
-            messages.push(
+            const unrun = (response.raw_calls ?? []).map((original, i) => {
+              const call = original;
+              return { ...call, id: typeof call.id === "string" && call.id ? call.id : `call_${turns}_${i}` };
+            });
+            if (unrun.length) messages.push(
+              { role: "assistant", content: response.text ?? "", tool_calls: unrun, ...thought(response.reasoning) },
+              ...unrun.map((call) => ({ role: "tool", tool_call_id: String(call.id), content: response.malformed_call }))
+            );
+            else messages.push(
               { role: "assistant", content: response.text ?? "", ...thought(response.reasoning) },
               { role: "user", content: response.malformed_call }
             );
@@ -231845,7 +232813,7 @@ ${failure2}`);
 [${left} turns left in this call. If the task cannot be finished, call return_result with status "blocked" and what is missing, or status "failed" and why.]` : "";
           let note2;
           for (const [index, result] of results.entries()) {
-            const [name, args] = calls[index], id2 = String(raw[index].id);
+            const [name, args] = calls[index], id3 = String(raw[index].id);
             let content = result.text;
             for (const full of result.cutOff ?? []) {
               const ref = await this.compactRef(session, {
@@ -231855,7 +232823,7 @@ ${failure2}`);
               });
               if (ref) content += "\n\n" + framedState("compact-value", ref).trimEnd();
             }
-            messages.push({ role: "tool", tool_call_id: id2, content: content + (index === results.length - 1 ? notice : "") });
+            messages.push({ role: "tool", tool_call_id: id3, content: content + (index === results.length - 1 ? notice : "") });
             if (name === "compact_history" && result.kind === "ok") note2 = String(args.note).trim();
           }
           if (note2 !== void 0) {
@@ -232010,7 +232978,7 @@ var init_hooks = __esm({
       finite: (source2, label) => finite(source2, label),
       finiteArrayIterator: (source2, method, label) => finiteArrayIterator(source2, method, label),
       finiteAsync: (source2, label) => finiteAsync(source2, label),
-      guard: (id2, fn, args) => guard(id2, fn, args),
+      guard: (id3, fn, args) => guard(id3, fn, args),
       analyze: (session, source2) => analyzeEvalSnippet(source2, evalDeclarations(session)),
       checkFields: (session, source2) => checkEvalFields(source2, evalDeclarations(session))
     };
@@ -232021,10 +232989,10 @@ var init_hooks = __esm({
 function setCurrentTaskResolver(resolver) {
   currentTask = resolver;
 }
-function markFusedBlock(task, id2) {
+function markFusedBlock(task, id3) {
   let blocks = FUSED.get(task);
   if (!blocks) FUSED.set(task, blocks = /* @__PURE__ */ new Set());
-  blocks.add(id2);
+  blocks.add(id3);
 }
 function isFusedRef(raw) {
   if (!isNeuraleseRef(raw)) return false;
@@ -232793,8 +233761,8 @@ function foldEvent(row, event) {
     e10.recent_worse = row.window.filter(Boolean).length;
   }
 }
-function summaryOfTier(id2, row, rule) {
-  return { subject: "tier", id: id2, state: row.state === "demoted" ? "shadow" : row.state, evidence: row.evidence, rule };
+function summaryOfTier(id3, row, rule) {
+  return { subject: "tier", id: id3, state: row.state === "demoted" ? "shadow" : row.state, evidence: row.evidence, rule };
 }
 function moveTier(row, decision) {
   const base = row.state === "demoted" ? "shadow" : row.state;
@@ -233592,10 +234560,6 @@ var init_scopes = __esm({
 });
 
 // src/adaptation/weights/binding.ts
-function untunedStack(stack, reason) {
-  const { soft: _soft, ...rest } = stack;
-  return { ...rest, effective: [], status: "degraded", reason, identity: stack.baseIdentity };
-}
 function weightBindingFor(bindings2, programId) {
   return programId ? bindings2?.find((binding) => binding.programId === programId) : void 0;
 }
@@ -234037,9 +235001,9 @@ function tieredCall(frame, definition, positional, options) {
     hasModel: (name) => !!task.runtime.options.models?.[name],
     run: attempt,
     emit: (events) => {
-      const id2 = `${task.id}/tiers-${definition.name}-${++recorded2}`;
+      const id3 = `${task.id}/tiers-${definition.name}-${++recorded2}`;
       task.record({
-        callId: id2,
+        callId: id3,
         parentCallId: frame.parentCallId ?? null,
         taskId: task.id,
         definitionId: `tiers:${definition.name}`,
@@ -234460,7 +235424,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
         binding: weights.binding,
         identity: weights.identity,
         status: weights.status,
-        effective: weights.effective.map(({ id: id2, scale }) => ({ id: id2, scale }))
+        effective: weights.effective.map(({ id: id3, scale }) => ({ id: id3, scale }))
       } } : {},
       ...options.manifest ?? {},
       ...options.manifest?.inline_instruction_site ? { inline_instruction_site: {
@@ -234488,29 +235452,23 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       normalizedInputs,
       { ...options, dialects: dialectBinding(task.runtime.options.neuralese) }
     );
-    Object.assign(childFrame.invocationTexts, { instructions: node.body, ...node.skills ? { skills: { ...node.skills.documents } } : {} });
+    const instructions = node.body.replace(/^\n+|\n+$/g, "");
+    Object.assign(childFrame.invocationTexts, { instructions, ...node.skills ? { skills: { ...node.skills.documents } } : {} });
     if (weights?.soft) {
-      const soft = weights.soft, changed = [];
-      if (soft.instructions && hexDigest(node.body) !== soft.instructions.textSha256) changed.push("instructions");
-      for (const [target, use] of Object.entries(soft.skills))
-        if (node.skills?.documents[target] === void 0 || hexDigest(node.skills.documents[target]) !== use.textSha256) changed.push(target);
-      if (changed.length) {
-        const fallback = untunedStack(weights, `soft state texts changed since tuning (${changed.join(", ")}); this call runs untuned`);
-        childFrame.weights = fallback;
-        if (adaptationProvenance) adaptationProvenance.weights = { ...fallback };
-        runtime.trace.emit("weight_stack", {
-          call_id: callId,
-          release: fallback.release,
-          binding: fallback.binding,
-          identity: fallback.identity,
-          status: fallback.status,
-          reason: fallback.reason,
-          effective: []
-        });
-      } else {
-        if (soft.instructions) node.body = nativeStateSentinel(soft.instructions.state);
-        for (const [target, use] of Object.entries(soft.skills)) node.skills.documents[target] = nativeStateSentinel(use.state);
+      const soft = weights.soft, kept = [];
+      if (soft.instructions && hexDigest(instructions) === soft.instructions.textSha256) node.body = nativeStateSentinel(soft.instructions.state);
+      else if (soft.instructions) kept.push("instructions");
+      for (const [target, use] of Object.entries(soft.skills)) {
+        if (node.skills?.documents[target] !== void 0 && hexDigest(node.skills.documents[target]) === use.textSha256)
+          node.skills.documents[target] = nativeStateSentinel(use.state);
+        else kept.push(target);
       }
+      if (kept.length) runtime.trace.emit("soft_state_text", {
+        call_id: callId,
+        binding: weights.binding,
+        text: kept,
+        reason: "the text differs from the one its soft state was primed from; it stays text"
+      });
     }
     if (handoff) node.handoff = handoff;
     if (folder2) {
@@ -235128,6 +236086,27 @@ var init_callable = __esm({
   }
 });
 
+// src/runtime/source-path.ts
+function normalizeSourcePath(path2) {
+  const absolute = path2.startsWith("/");
+  const segments = [];
+  for (const segment of path2.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return (absolute ? "/" : "") + segments.join("/");
+}
+function joinSourcePath(...parts) {
+  return normalizeSourcePath(parts.filter(Boolean).join("/"));
+}
+var init_source_path = __esm({
+  "src/runtime/source-path.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+  }
+});
+
 // src/runtime/builtin.ts
 function builtinRecords() {
   return records2 ??= loadCallableFolder(ROOT, files);
@@ -235166,11 +236145,12 @@ var init_builtin2 = __esm({
     init_define_NATLANG_TS_LIBS();
     init_builtin();
     init_loader();
+    init_source_path();
     init_callable();
     init_recorder();
     ROOT = "/natlang-builtin";
     files = {
-      join: (...parts) => parts.join("/").replace(/\/+/g, "/"),
+      join: joinSourcePath,
       dirname: (path2) => path2.slice(0, path2.lastIndexOf("/")) || "/",
       basename: (path2, extension) => {
         const base = path2.slice(path2.lastIndexOf("/") + 1);
@@ -235366,9 +236346,9 @@ Stop when: ${context.predicateInstructions}` : "");
         this.measure = remaining;
         return this;
       }
-      withSiteId(id2) {
-        if (!id2.trim()) throw new TypeError("withSiteId requires a non-empty identifier");
-        this.siteId = id2;
+      withSiteId(id3) {
+        if (!id3.trim()) throw new TypeError("withSiteId requires a non-empty identifier");
+        this.siteId = id3;
         return this;
       }
       withLimit(limit) {
@@ -235384,8 +236364,8 @@ Stop when: ${context.predicateInstructions}` : "");
         return this;
       }
       /** Set by compiled code with the call site's stable identity. */
-      withCompilerSite(id2) {
-        this.compilerSite ??= id2;
+      withCompilerSite(id3) {
+        this.compilerSite ??= id3;
         return this;
       }
       until(done) {
@@ -235711,12 +236691,12 @@ var init_folder_iteration = __esm({
         this.iteration.withLimit(limit);
         return this;
       }
-      withSiteId(id2) {
-        this.iteration.withSiteId(id2);
+      withSiteId(id3) {
+        this.iteration.withSiteId(id3);
         return this;
       }
-      withCompilerSite(id2) {
-        this.iteration.withCompilerSite(id2);
+      withCompilerSite(id3) {
+        this.iteration.withCompilerSite(id3);
         return this;
       }
       inFrame(frame) {
@@ -235758,15 +236738,15 @@ function pathFields(path2, layout) {
   return Object.fromEntries(names.map((name, index) => [name, match2[index + 1]]));
 }
 function stableId(row, layout) {
-  const id2 = safePart(row[layout.id]);
-  return layout.disambiguation ? `${id2}~${safePart(row[layout.disambiguation])}` : id2;
+  const id3 = safePart(row[layout.id]);
+  return layout.disambiguation ? `${id3}~${safePart(row[layout.disambiguation])}` : id3;
 }
-function encode(row, layout, id2) {
+function encode(row, layout, id3) {
   const format2 = layout.format ?? "frontmatter", bodyField = layout.body ?? "body";
-  if (format2 === "json") return `${JSON.stringify({ ...row, [layout.id]: id2 }, null, 2)}
+  if (format2 === "json") return `${JSON.stringify({ ...row, [layout.id]: id3 }, null, 2)}
 `;
   if (format2 === "text") return String(row[bodyField] ?? "");
-  const fields = { ...row, [layout.id]: id2 };
+  const fields = { ...row, [layout.id]: id3 };
   delete fields[bodyField];
   return `---
 ${YAML3.stringify(fields).trimEnd()}
@@ -235806,15 +236786,15 @@ function folderFromData(records3, layout, access = "write") {
   const tableRows = [];
   for (const row of records3) {
     const snapshot3 = structuredClone(row);
-    const id2 = stableId(snapshot3, layout), path2 = tablePrimary ? "" : pathFor(snapshot3, layout);
-    if (ids.has(id2)) throw new Error(`duplicate record id: ${id2}`);
+    const id3 = stableId(snapshot3, layout), path2 = tablePrimary ? "" : pathFor(snapshot3, layout);
+    if (ids.has(id3)) throw new Error(`duplicate record id: ${id3}`);
     if (!tablePrimary && paths.has(path2)) throw new Error(`duplicate record path: ${path2}`);
-    ids.set(id2, path2);
+    ids.set(id3, path2);
     paths.add(path2);
-    original.set(id2, snapshot3);
-    tableRows.push({ ...snapshot3, [layout.id]: id2 });
+    original.set(id3, snapshot3);
+    tableRows.push({ ...snapshot3, [layout.id]: id3 });
     if (!tablePrimary)
-      rows.set(path2, { row: snapshot3, id: id2, size: new TextEncoder().encode(encode(snapshot3, layout, id2)).length });
+      rows.set(path2, { row: snapshot3, id: id3, size: new TextEncoder().encode(encode(snapshot3, layout, id3)).length });
   }
   const columns = [.../* @__PURE__ */ new Set([layout.id, ...records3.flatMap((row) => Object.keys(row))])];
   if (layout.table) {
@@ -235840,10 +236820,10 @@ function folderFromData(records3, layout, access = "write") {
         } catch {
           continue;
         }
-        const id2 = row[layout.id];
-        if (typeof id2 !== "string" || !ids.has(id2)) continue;
+        const id3 = row[layout.id];
+        if (typeof id3 !== "string" || !ids.has(id3)) continue;
         const location = pathFields(path2, layout);
-        if (location) rows2.push({ ...row, ...location, [layout.id]: id2 });
+        if (location) rows2.push({ ...row, ...location, [layout.id]: id3 });
       }
       return new TextEncoder().encode(csvText(rows2, columns));
     });
@@ -236742,23 +237722,23 @@ var init_scoped_fs = __esm({
 
 // src/native/values.ts
 function liveId(value) {
-  let id2 = liveIds.get(value);
-  if (id2 === void 0) {
-    id2 = nextLiveId++;
-    liveIds.set(value, id2);
+  let id3 = liveIds.get(value);
+  if (id3 === void 0) {
+    id3 = nextLiveId++;
+    liveIds.set(value, id3);
   }
-  return id2;
+  return id3;
 }
 function createLiveIdentity() {
   const ids = /* @__PURE__ */ new WeakMap();
   let next2 = 1;
   return (value) => {
-    let id2 = ids.get(value);
-    if (id2 === void 0) {
-      id2 = next2++;
-      ids.set(value, id2);
+    let id3 = ids.get(value);
+    if (id3 === void 0) {
+      id3 = next2++;
+      ids.set(value, id3);
     }
-    return id2;
+    return id3;
   };
 }
 function scopedLiveIdentity(scope) {
@@ -236815,13 +237795,13 @@ function closestMiss(misses, path2) {
   }
   return best;
 }
-function checkBlockDialect(id2, wanted, env, path2) {
+function checkBlockDialect(id3, wanted, env, path2) {
   const expected = env.dialect(wanted.dialect);
   if (expected === DEFAULT_DIALECT2) return;
-  const stored = env.dialects?.blockDialect?.(id2);
+  const stored = env.dialects?.blockDialect?.(id3);
   if (stored === void 0 || stored === expected) return;
-  if (wanted.dialect === DEFAULT_DIALECT2 && id2.startsWith("nzs1_") && stored.startsWith("native-state/") && expected.startsWith("native-state/")) {
-    if (env.dialects?.nativeDefaultCompatible?.(id2, stored, expected)) return;
+  if (wanted.dialect === DEFAULT_DIALECT2 && id3.startsWith("nzs1_") && stored.startsWith("native-state/") && expected.startsWith("native-state/")) {
+    if (env.dialects?.nativeDefaultCompatible?.(id3, stored, expected)) return;
     return reject(
       path2,
       "neuralese-native-consumer-unavailable",
@@ -236833,7 +237813,7 @@ function checkBlockDialect(id2, wanted, env, path2) {
     path2,
     "neuralese-dialect-mismatch",
     `${formatType(wanted)} in dialect ${JSON.stringify(expected)}`,
-    `block ${id2}, written in dialect ${JSON.stringify(stored)}; a value is read only in the dialect it was written in, so write it again in ${JSON.stringify(expected)} (\`convert(value, ${JSON.stringify(expected)})\` from natlang:neuralese, or a model of that dialect), or declare the slot as Neuralese<T, ${JSON.stringify(stored)}>`
+    `block ${id3}, written in dialect ${JSON.stringify(stored)}; a value is read only in the dialect it was written in, so write it again in ${JSON.stringify(expected)} (\`convert(value, ${JSON.stringify(expected)})\` from natlang:neuralese, or a model of that dialect), or declare the slot as Neuralese<T, ${JSON.stringify(stored)}>`
   );
 }
 function coerce(raw, type, env, path2 = "value", options = {}) {
@@ -237259,10 +238239,10 @@ async function joinNeuralese(receiver, method, args, read) {
 async function arrayToStringNeuralese(receiver, method, args, read) {
   if (method !== ARRAY_TO_STRING)
     return { value: Reflect.apply(method, receiver, args) };
-  const join3 = receiver.join;
-  if (typeof join3 !== "function") return { value: Reflect.apply(OBJECT_TO_STRING, receiver, []) };
-  if (join3 !== ARRAY_JOIN) return { value: Reflect.apply(join3, receiver, []) };
-  return joinNeuralese(receiver, join3, [], read);
+  const join2 = receiver.join;
+  if (typeof join2 !== "function") return { value: Reflect.apply(OBJECT_TO_STRING, receiver, []) };
+  if (join2 !== ARRAY_JOIN) return { value: Reflect.apply(join2, receiver, []) };
+  return joinNeuralese(receiver, join2, [], read);
 }
 function targetType(target) {
   if (target.natlang) return target.natlang;
@@ -237631,8 +238611,8 @@ function notIterable(source2, label) {
     return `${lead}, but got a plain object; iterate Object.keys, Object.values or Object.entries of it.`;
   return `${lead}, but got a ${typeof source2}.`;
 }
-function site(id2, iteration) {
-  if (iteration instanceof Iteration2) iteration.withCompilerSite(id2);
+function site(id3, iteration) {
+  if (iteration instanceof Iteration2) iteration.withCompilerSite(id3);
   return iteration;
 }
 function service(name) {
@@ -240664,13 +241644,13 @@ var require_select = __commonJS({
       return results;
     };
     module.exports = exports = function(sel, context) {
-      var id2, r;
+      var id3, r;
       if (context.nodeType !== 11 && sel.indexOf(" ") === -1) {
         if (sel[0] === "#" && context.rooted && /^#[A-Z_][-A-Z0-9_]*$/i.test(sel)) {
           if (context.doc._hasMultipleElementsWithId) {
-            id2 = sel.substring(1);
-            if (!context.doc._hasMultipleElementsWithId(id2)) {
-              r = context.doc.getElementById(id2);
+            id3 = sel.substring(1);
+            if (!context.doc._hasMultipleElementsWithId(id3)) {
+              r = context.doc.getElementById(id3);
               return r ? [r] : [];
             }
           }
@@ -241856,12 +242836,12 @@ var require_Element = __commonJS({
             if (c.nodeType === Node2.ELEMENT_NODE) {
               this[this.childrenByNumber.length] = c;
               this.childrenByNumber.push(c);
-              var id2 = c.getAttribute("id");
-              if (id2 && !this.childrenByName[id2])
-                this.childrenByName[id2] = c;
+              var id3 = c.getAttribute("id");
+              if (id3 && !this.childrenByName[id3])
+                this.childrenByName[id3] = c;
               var name = c.getAttribute("name");
               if (name && this.element.namespaceURI === NAMESPACE.HTML && namedElts.test(this.element.localName) && !this.childrenByName[name])
-                this.childrenByName[id2] = c;
+                this.childrenByName[id3] = c;
             }
           }
         }
@@ -245612,16 +246592,16 @@ var require_Document = __commonJS({
         this._updateDocTypeElement();
         return child;
       } },
-      getElementById: { value: function(id2) {
-        var n = this.byId[id2];
+      getElementById: { value: function(id3) {
+        var n = this.byId[id3];
         if (!n) return null;
         if (n instanceof MultiId) {
           return n.getFirst();
         }
         return n;
       } },
-      _hasMultipleElementsWithId: { value: function(id2) {
-        return this.byId[id2] instanceof MultiId;
+      _hasMultipleElementsWithId: { value: function(id3) {
+        return this.byId[id3] instanceof MultiId;
       } },
       // Just copy this method from the Element prototype
       getElementsByName: { value: Element.prototype.getElementsByName },
@@ -245873,29 +246853,29 @@ var require_Document = __commonJS({
         }
       } },
       // Add a mapping from  id to n for n.ownerDocument
-      addId: { value: function addId(id2, n) {
-        var val = this.byId[id2];
+      addId: { value: function addId(id3, n) {
+        var val = this.byId[id3];
         if (!val) {
-          this.byId[id2] = n;
+          this.byId[id3] = n;
         } else {
           if (!(val instanceof MultiId)) {
             val = new MultiId(val);
-            this.byId[id2] = val;
+            this.byId[id3] = val;
           }
           val.add(n);
         }
       } },
       // Delete the mapping from id to n for n.ownerDocument
-      delId: { value: function delId(id2, n) {
-        var val = this.byId[id2];
+      delId: { value: function delId(id3, n) {
+        var val = this.byId[id3];
         utils.assert(val);
         if (val instanceof MultiId) {
           val.del(n);
           if (val.length === 1) {
-            this.byId[id2] = val.downgrade();
+            this.byId[id3] = val.downgrade();
           }
         } else {
-          this.byId[id2] = void 0;
+          this.byId[id3] = void 0;
         }
       } },
       _resolve: { value: function(href) {
@@ -246005,15 +246985,15 @@ var require_Document = __commonJS({
       n._nid = n.ownerDocument._nextnid++;
       n.ownerDocument._nodes[n._nid] = n;
       if (n.nodeType === Node2.ELEMENT_NODE) {
-        var id2 = n.getAttribute("id");
-        if (id2) n.ownerDocument.addId(id2, n);
+        var id3 = n.getAttribute("id");
+        if (id3) n.ownerDocument.addId(id3, n);
         if (n._roothook) n._roothook();
       }
     }
     function uproot(n) {
       if (n.nodeType === Node2.ELEMENT_NODE) {
-        var id2 = n.getAttribute("id");
-        if (id2) n.ownerDocument.delId(id2, n);
+        var id3 = n.getAttribute("id");
+        if (id3) n.ownerDocument.delId(id3, n);
       }
       n.ownerDocument._nodes[n._nid] = void 0;
       n._nid = void 0;
@@ -255172,52 +256152,52 @@ var SelectedEventQueue = class _SelectedEventQueue {
     if (this.state !== "open") throw this.failure ?? new Error(`Event source is ${this.state}`);
   }
   /** A pausable source awaits admission. Concurrent producers remain bounded. */
-  async push(id2, value) {
-    if (typeof id2 !== "string" || !id2) throw new TypeError("Event delivery requires a stable identity");
+  async push(id3, value) {
+    if (typeof id3 !== "string" || !id3) throw new TypeError("Event delivery requires a stable identity");
     const text3 = canonical(eventData(value)), digest2 = fingerprint(text3, "natlang.event/1");
-    const known = this.seen.get(id2);
+    const known = this.seen.get(id3);
     if (known) {
       if (known.digest !== digest2) throw new Error("Event identity was reused with another payload");
-      const receipt2 = { source: this.source, id: id2, position: known.position, disposition: "duplicate" };
+      const receipt2 = { source: this.source, id: id3, position: known.position, disposition: "duplicate" };
       this.emit(receipt2);
       return receipt2;
     }
     this.open();
-    while (this.buffered.length >= this.capacity && !this.seen.has(id2)) {
+    while (this.buffered.length >= this.capacity && !this.seen.has(id3)) {
       this.open();
       if (this.space.length >= this.capacity) {
-        this.emit({ source: this.source, id: id2, disposition: "overflow" });
+        this.emit({ source: this.source, id: id3, disposition: "overflow" });
         throw new RangeError("Event ingress waiting producers exceed its bound");
       }
       await new Promise((resolve2, reject2) => this.space.push({ resolve: resolve2, reject: reject2 }));
     }
-    const receipt = this.post(id2, JSON.parse(text3));
+    const receipt = this.post(id3, JSON.parse(text3));
     if (this.buffered.length < this.capacity) this.space.shift()?.resolve();
     return receipt;
   }
   /** A source that cannot pause gets an explicit overflow disposition. */
-  post(id2, value) {
-    if (typeof id2 !== "string" || !id2) throw new TypeError("Event delivery requires a stable identity");
+  post(id3, value) {
+    if (typeof id3 !== "string" || !id3) throw new TypeError("Event delivery requires a stable identity");
     const text3 = canonical(eventData(value)), digest2 = fingerprint(text3, "natlang.event/1");
-    const known = this.seen.get(id2);
+    const known = this.seen.get(id3);
     if (known) {
       if (known.digest !== digest2) throw new Error("Event identity was reused with another payload");
-      const receipt2 = { source: this.source, id: id2, position: known.position, disposition: "duplicate" };
+      const receipt2 = { source: this.source, id: id3, position: known.position, disposition: "duplicate" };
       this.emit(receipt2);
       return receipt2;
     }
     this.open();
     if (this.seen.size >= this.historyCapacity) {
-      this.emit({ source: this.source, id: id2, disposition: "overflow" });
+      this.emit({ source: this.source, id: id3, disposition: "overflow" });
       throw new RangeError("Event delivery history is full; checkpoint and rotate the declared source epoch");
     }
     if (this.buffered.length >= this.capacity) {
-      this.emit({ source: this.source, id: id2, disposition: "overflow" });
+      this.emit({ source: this.source, id: id3, disposition: "overflow" });
       throw new RangeError("Event queue overflow; pause the producer or increase its declared capacity");
     }
-    const event = Object.freeze({ source: this.source, id: id2, position: this.position++, value: JSON.parse(text3) });
-    this.seen.set(id2, { position: event.position, digest: digest2 });
-    const receipt = { source: this.source, id: id2, position: event.position, disposition: "buffered" };
+    const event = Object.freeze({ source: this.source, id: id3, position: this.position++, value: JSON.parse(text3) });
+    this.seen.set(id3, { position: event.position, digest: digest2 });
+    const receipt = { source: this.source, id: id3, position: event.position, disposition: "buffered" };
     const waiting = this.waiting;
     this.waiting = void 0;
     if (waiting) waiting.resolve({ value: event, done: false });
@@ -255290,11 +256270,11 @@ var SelectedEventQueue = class _SelectedEventQueue {
     if (snapshot3.seen.length > queue.historyCapacity) throw new RangeError("Event checkpoint exceeds history capacity");
     if (snapshot3.buffered.length > snapshot3.capacity) throw new RangeError("Event checkpoint exceeds queue capacity");
     const positions = /* @__PURE__ */ new Set();
-    for (const [id2, record3] of snapshot3.seen) {
-      if (typeof id2 !== "string" || !id2 || queue.seen.has(id2) || !Number.isSafeInteger(record3.position) || record3.position < 0 || record3.position >= snapshot3.nextPosition || positions.has(record3.position) || !/^[0-9a-f]{64}$/.test(record3.digest))
+    for (const [id3, record3] of snapshot3.seen) {
+      if (typeof id3 !== "string" || !id3 || queue.seen.has(id3) || !Number.isSafeInteger(record3.position) || record3.position < 0 || record3.position >= snapshot3.nextPosition || positions.has(record3.position) || !/^[0-9a-f]{64}$/.test(record3.digest))
         throw new TypeError("Invalid event delivery ledger");
       positions.add(record3.position);
-      queue.seen.set(id2, { ...record3 });
+      queue.seen.set(id3, { ...record3 });
     }
     if (positions.size !== snapshot3.nextPosition) throw new TypeError("Event checkpoint is missing delivery history");
     let prior = -1;
@@ -256005,17 +256985,8 @@ init_host();
 init_nz_file();
 init_modules();
 init_loader();
+init_source_path();
 init_runtime_specifier();
-var join = (...parts) => normalize2(parts.filter(Boolean).join("/"));
-var normalize2 = (path2) => {
-  const absolute = path2.startsWith("/"), out = [];
-  for (const part of path2.split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") out.pop();
-    else out.push(part);
-  }
-  return (absolute ? "/" : "") + out.join("/");
-};
 var dirname2 = (path2) => {
   const at = path2.lastIndexOf("/");
   return at <= 0 ? "/" : path2.slice(0, at);
@@ -256023,10 +256994,10 @@ var dirname2 = (path2) => {
 var resolve = (...parts) => {
   let path2 = "";
   for (const part of parts) path2 = part.startsWith("/") ? part : `${path2}/${part}`;
-  return normalize2(path2);
+  return normalizeSourcePath(path2);
 };
 var relative = (from, to2) => {
-  const a = normalize2(from).split("/").filter(Boolean), b = normalize2(to2).split("/").filter(Boolean);
+  const a = normalizeSourcePath(from).split("/").filter(Boolean), b = normalizeSourcePath(to2).split("/").filter(Boolean);
   let index = 0;
   while (index < a.length && a[index] === b[index]) index++;
   return [...a.slice(index).map(() => ".."), ...b.slice(index)].join("/");
@@ -256043,7 +257014,7 @@ var extname = (path2) => {
 };
 function sourceFiles(files2, root2) {
   return {
-    join,
+    join: joinSourcePath,
     dirname: dirname2,
     basename,
     extname,
@@ -256060,17 +257031,17 @@ function callableFolders(files2, root2) {
   const mark = (dir) => {
     folders.add(dir);
     for (const entry of files2.list(dir)) {
-      const path2 = join(dir, entry);
+      const path2 = joinSourcePath(dir, entry);
       if (files2.isDirectory(path2)) mark(path2);
     }
   };
   const walk = (dir, inPackage) => {
     for (const entry of files2.list(dir).sort()) {
       if (SKIPPED_DIRS.has(entry) || entry.startsWith(".")) continue;
-      const path2 = join(dir, entry);
+      const path2 = joinSourcePath(dir, entry);
       if (files2.isDirectory(path2)) {
         if (folders.has(path2)) continue;
-        const isPackage = files2.isFile(join(path2, "natlang.json"));
+        const isPackage = files2.isFile(joinSourcePath(path2, "natlang.json"));
         if (isPackage && inPackage) continue;
         if (entry === "natlang.d") {
           contexts.push(path2);
@@ -256085,7 +257056,7 @@ function callableFolders(files2, root2) {
       } else if (entry.endsWith(".nl")) named2.push(path2);
     }
   };
-  walk(root2, files2.isFile(join(root2, "natlang.json")));
+  walk(root2, files2.isFile(joinSourcePath(root2, "natlang.json")));
   return { named: named2, contexts, folders };
 }
 var aliasBlock = (types3) => {
@@ -256252,9 +257223,9 @@ declare module 'natlang:gepa' {
 }
 `;
 function findTsconfig(files2, project) {
-  const absolute = normalize2(project);
+  const absolute = normalizeSourcePath(project);
   if (files2.isFile(absolute)) return { configPath: absolute, root: dirname2(absolute) };
-  const candidate = join(absolute, "tsconfig.json");
+  const candidate = joinSourcePath(absolute, "tsconfig.json");
   return files2.isFile(candidate) ? { configPath: candidate, root: absolute } : { root: absolute };
 }
 function compileProject(options) {
@@ -256336,7 +257307,7 @@ function compileProject(options) {
     declaration: false,
     ...options.module === "commonjs" ? { module: import_typescript25.default.ModuleKind.CommonJS, moduleResolution: import_typescript25.default.ModuleResolutionKind.Node10 } : {}
   };
-  const outDir = resolve(options.outDir ?? compilerOptions.outDir ?? join(root2, "dist"));
+  const outDir = resolve(options.outDir ?? compilerOptions.outDir ?? joinSourcePath(root2, "dist"));
   compilerOptions.outDir = outDir;
   compilerOptions.rootDir ??= root2;
   const inFolder = (path2) => [...layout.folders].some((folder2) => path2.startsWith(folder2 + sep) || path2 === folder2);
@@ -256345,11 +257316,11 @@ function compileProject(options) {
   const bound = options.runtimeModule && { ...options.runtimeModule, specifiers: withNeutral(options.runtimeModule.specifiers) };
   if (options.runtimeTypeRoots?.length) {
     const resolutionHost = import_typescript25.default.sys ?? { fileExists: (path2) => fs2.isFile(path2), readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0 };
-    const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript25.default.resolveTypeReferenceDirective(name, join(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
+    const missing = (compilerOptions.types ?? ["node"]).some((name) => !import_typescript25.default.resolveTypeReferenceDirective(name, joinSourcePath(root2, "index.ts"), compilerOptions, resolutionHost).resolvedTypeReferenceDirective);
     if (missing) compilerOptions.typeRoots = [...compilerOptions.typeRoots ?? [], ...options.runtimeTypeRoots];
   }
   if (options.runtimeTypes) for (const specifier of options.runtimeTypes.specifiers) {
-    const resolved = import_typescript25.default.resolveModuleName(specifier, join(root2, "index.ts"), compilerOptions, import_typescript25.default.sys ?? {
+    const resolved = import_typescript25.default.resolveModuleName(specifier, joinSourcePath(root2, "index.ts"), compilerOptions, import_typescript25.default.sys ?? {
       fileExists: (path2) => fs2.isFile(path2),
       readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0
     });
@@ -256404,7 +257375,7 @@ function compileProject(options) {
       readFile: (path2) => fs2.isFile(path2) ? fs2.read(path2) : void 0,
       fileExists: (path2) => fs2.isFile(path2),
       directoryExists: (path2) => fs2.isDirectory(path2),
-      getDirectories: (path2) => fs2.isDirectory(path2) ? fs2.list(path2).filter((entry) => fs2.isDirectory(join(path2, entry))) : []
+      getDirectories: (path2) => fs2.isDirectory(path2) ? fs2.list(path2).filter((entry) => fs2.isDirectory(joinSourcePath(path2, entry))) : []
     }
   });
   const hasServicesDeclaration = rootNames.some((path2) => /declare\s+module\s+['"]natlang:services['"]/.test(fs2.read(path2)));
@@ -256445,9 +257416,9 @@ function compileProject(options) {
   const collectSources = (dir) => {
     for (const name of fs2.list(dir).sort()) {
       if (SKIPPED_DIRS.has(name) || name.startsWith(".") || name === "adaptations" || name.endsWith(".d.nl.ts")) continue;
-      const path2 = join(dir, name);
+      const path2 = joinSourcePath(dir, name);
       if (fs2.isDirectory(path2)) {
-        const runManifest = join(path2, "manifest.json");
+        const runManifest = joinSourcePath(path2, "manifest.json");
         if (fs2.isFile(runManifest)) {
           try {
             if (JSON.parse(fs2.read(runManifest))?.schema === "natlang.adaptation-run/v1") continue;
@@ -256480,7 +257451,7 @@ function compileProject(options) {
   let dependencyRoot = root2;
   while (true) {
     for (const lock of ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"]) {
-      const path2 = join(dependencyRoot, lock);
+      const path2 = joinSourcePath(dependencyRoot, lock);
       if (fs2.isFile(path2)) optimizationSources["@dependency-lock/" + lock] = fs2.read(path2);
     }
     const parent = dirname2(dependencyRoot);
@@ -256554,7 +257525,7 @@ function compileProject(options) {
           }
           found.add(specifier);
           generatedNz.set(
-            join(outDir, relative(compilerOptions.rootDir, target2)) + ".js",
+            joinSourcePath(outDir, relative(compilerOptions.rootDir, target2)) + ".js",
             { bytes: bytes2, commonjs: file.impliedNodeFormat === import_typescript25.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript25.default.ModuleKind.CommonJS }
           );
           continue;
@@ -256568,7 +257539,7 @@ function compileProject(options) {
         }
         found.add(specifier);
         generated.set(
-          join(outDir, relative(compilerOptions.rootDir, target)) + ".js",
+          joinSourcePath(outDir, relative(compilerOptions.rootDir, target)) + ".js",
           { record: record3, target, commonjs: file.impliedNodeFormat === import_typescript25.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript25.default.ModuleKind.CommonJS }
         );
       }
@@ -256629,7 +257600,7 @@ function compileProject(options) {
     const refinementsFor = (target) => {
       const top = resolve(compilerOptions.rootDir);
       for (let dir = dirname2(resolve(target)); dir === top || dir.startsWith(top + sep); dir = dirname2(dir)) {
-        const candidate = join(dir, "refinements.ts");
+        const candidate = joinSourcePath(dir, "refinements.ts");
         if (sourceNames.has(candidate)) return candidate;
         if (dir === top) break;
       }
@@ -256640,7 +257611,7 @@ function compileProject(options) {
       const crisp = refinementsFor(target);
       let local = "";
       if (crisp) {
-        const emitted2 = join(outDir, relative(compilerOptions.rootDir, crisp)).replace(/\.ts$/, ".js");
+        const emitted2 = joinSourcePath(outDir, relative(compilerOptions.rootDir, crisp)).replace(/\.ts$/, ".js");
         const from = relative(dirname2(path2), emitted2).split(sep).join("/");
         local = JSON.stringify(from.startsWith(".") ? from : `./${from}`);
       }
@@ -256669,7 +257640,7 @@ const __nz = ${load};
     }
     for (const diagnostic of emitted.diagnostics) if (diagnostic.category === import_typescript25.default.DiagnosticCategory.Error)
       diagnostics.push(fromTypeScript(diagnostic, diagnostic.file ? rel(diagnostic.file.fileName) : ""));
-    if (options.write !== false) fs2.write?.(join(outDir, "natlang-manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    if (options.write !== false) fs2.write?.(joinSourcePath(outDir, "natlang-manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
   diagnostics.sort((a, b) => a.file.localeCompare(b.file) || a.start - b.start);
   return {
@@ -256688,7 +257659,7 @@ function walkNz(fs2, root2) {
   const walk = (dir) => {
     for (const entry of fs2.list(dir)) {
       if (SKIPPED_DIRS.has(entry) || entry.startsWith(".")) continue;
-      const path2 = join(dir, entry);
+      const path2 = joinSourcePath(dir, entry);
       if (fs2.isDirectory(path2)) walk(path2);
       else if (entry.endsWith(".nz")) out.push(path2);
     }
@@ -256701,7 +257672,7 @@ function walkTs(fs2, root2) {
   const walk = (dir) => {
     for (const entry of fs2.list(dir)) {
       if (SKIPPED_DIRS.has(entry) || entry.startsWith(".")) continue;
-      const path2 = join(dir, entry);
+      const path2 = joinSourcePath(dir, entry);
       if (fs2.isDirectory(path2)) walk(path2);
       else if (/\.(ts|tsx|mts)$/.test(entry) && !entry.endsWith(".d.ts")) out.push(path2);
     }
@@ -256726,6 +257697,7 @@ ${item.detail.split("\n").map((line) => `  ${line}`).join("\n")}` : "") + (item.
 init_define_NATLANG_TS_LIBS();
 init_runtime_specifier();
 init_loader();
+init_source_path();
 init_callable();
 init_modules();
 function virtualProjectFiles(files2, root2 = "/project") {
@@ -256763,7 +257735,7 @@ function virtualProjectFiles(files2, root2 = "/project") {
 function virtualSourceFiles(files2, root2 = "/project") {
   const virtual = virtualProjectFiles(files2, root2);
   return {
-    join: (...parts) => parts.join("/").replace(/\/+/g, "/"),
+    join: joinSourcePath,
     dirname: (path2) => path2.slice(0, path2.lastIndexOf("/")) || "/",
     basename: (path2, extension) => {
       const base = path2.slice(path2.lastIndexOf("/") + 1);
@@ -256822,8 +257794,8 @@ function compileVirtualProject(project, runtime, options) {
       if (hasBuiltinModule(platform, specifier)) return builtinModule(platform, specifier);
       if (!specifier.startsWith(".")) throw new Error(`module ${specifier} is not available in this virtual project`);
       const base = path2.slice(0, path2.lastIndexOf("/"));
-      const joined = `${base}/${specifier}`.split("/").reduce((parts, part) => part === ".." ? parts.slice(0, -1) : part === "." || !part ? parts : [...parts, part], []).join("/");
-      const candidate = ["", ".js", "/index.js"].map((suffix) => `/${joined.replace(/\.ts$/, ".js")}${suffix}`).find((item) => item in result.outputs);
+      const joined = joinSourcePath(base || "/", specifier);
+      const candidate = ["", ".js", "/index.js"].map((suffix) => `${joined.replace(/\.ts$/, ".js")}${suffix}`).find((item) => item in result.outputs);
       if (!candidate) throw new Error(`cannot resolve ${specifier} from ${path2}`);
       return load(candidate);
     };
@@ -259755,9 +260727,9 @@ rules.referenceLink = {
         reference = "[" + content + "]: " + href + title;
         break;
       default:
-        var id2 = this.references.length + 1;
-        replacement = "[" + content + "][" + id2 + "]";
-        reference = "[" + id2 + "]: " + href + title;
+        var id3 = this.references.length + 1;
+        replacement = "[" + content + "][" + id3 + "]";
+        reference = "[" + id3 + "]: " + href + title;
     }
     this.references.push(reference);
     return replacement;
@@ -260183,14 +261155,14 @@ function process2(parentNode) {
     } else if (node.nodeType === 1) {
       replacement = replacementForNode.call(self, node);
     }
-    return join2(output, replacement);
+    return join(output, replacement);
   }, "");
 }
 function postProcess(output) {
   var self = this;
   this.rules.forEach(function(rule) {
     if (typeof rule.append === "function") {
-      output = join2(output, rule.append(self.options));
+      output = join(output, rule.append(self.options));
     }
   });
   return output.replace(/^[\t\r\n]+/, "").replace(/[\t\r\n\s]+$/, "");
@@ -260202,7 +261174,7 @@ function replacementForNode(node) {
   if (whitespace.leading || whitespace.trailing) content = content.trim();
   return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
 }
-function join2(output, replacement) {
+function join(output, replacement) {
   var s12 = trimTrailingNewlines(output);
   var s22 = trimLeadingNewlines(replacement);
   var nls = Math.max(output.length - s12.length, replacement.length - s22.length);
@@ -285551,7 +286523,7 @@ function sd(e10, t, n, r, s = false) {
   }
   return o === "@" && /[QPaAEKkuUL]/.test(a) ? { operation: { type: "Transform", operator: a }, endIndex: i + 2 } : { operation: null, endIndex: i };
 }
-function id(e10, t, n, r = false) {
+function id2(e10, t, n, r = false) {
   let s = n + 1;
   if (s >= t.length) return { part: Y.literal("$"), endIndex: s };
   let i = t[s];
@@ -285583,7 +286555,7 @@ function m7(e10, t) {
     }
     if (o === "$") {
       i();
-      let { part: a, endIndex: l } = id(e10, t, r, true);
+      let { part: a, endIndex: l } = id2(e10, t, r, true);
       a && n.push(a), r = l;
       continue;
     }
@@ -285614,7 +286586,7 @@ function Dk(e10, t, n) {
     }
     if (a === "$") {
       o();
-      let { part: l, endIndex: c } = id(e10, t, s, true);
+      let { part: l, endIndex: c } = id2(e10, t, s, true);
       l && r.push(l), s = c;
       continue;
     }
@@ -285695,7 +286667,7 @@ function Yr(e10, t, n = false, r = false, s = false, i = false, o = false, a = f
     }
     if (m === "$") {
       h();
-      let { part: g, endIndex: b } = id(e10, t, d);
+      let { part: g, endIndex: b } = id2(e10, t, d);
       g && f.push(g), d = b;
       continue;
     }

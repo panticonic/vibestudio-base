@@ -191,6 +191,15 @@ export type NeuraleseRuntimeOptions = {
      * produce span with a grammar (model/native-operator.ts `grammarCapture`).
      */
     capture?: import('./operator-frames.js').NativeCapture;
+    /**
+     * Prime a static state from its text at its real position in a call (`native.init-body`): `call` is the call's
+     * request with `placeholder` (a state written from the same text) where the text stands. Program guidance is primed
+     * this way in the first call that uses it (agent.ts `runtimeProgramGuidance`), like every soft state (tune/soft.py).
+     */
+    prime?: (call: {
+        messages: unknown[];
+        tools: unknown[];
+    }, placeholder: string, text: string, type: string) => Promise<import('./neuralese-store.js').NeuraleseBlockMeta>;
     /** The agent's `compaction` setting for hosts that configure the runtime through these options (agent.ts). */
     compaction?: import('../runtime/pluggable.js').PluggableSetting;
 };

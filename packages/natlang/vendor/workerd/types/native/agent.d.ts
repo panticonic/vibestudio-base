@@ -189,6 +189,8 @@ export declare class NativeToolAgent {
          * whatever the context budget (default OPERATOR_COMPACT_CHARS, 8,000; env NATLANG_NEURALESE_COMPACTION_CHARS).
          */
         compactionChars?: number;
+        /** Program guidance states: `call` (default) primes them at their real position, `text` writes them from text alone. */
+        guidancePriming?: 'call' | 'text';
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -291,6 +293,8 @@ export declare class NativeToolAgent {
          * whatever the context budget (default OPERATOR_COMPACT_CHARS, 8,000; env NATLANG_NEURALESE_COMPACTION_CHARS).
          */
         compactionChars?: number;
+        /** Program guidance states: `call` (default) primes them at their real position, `text` writes them from text alone. */
+        guidancePriming?: 'call' | 'text';
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -392,6 +396,12 @@ export declare class NativeToolAgent {
     private recordGeneratedTurn;
     /** Generate on the very same short JSON decision surface used by the scored student. No probabilities are inferred. */
     private generatedDecision;
+    /** How program guidance states are primed: `call` (default: at their real position in the call that uses them) or
+     * `text` (written from the text alone, from position 0): the agent option, else NATLANG_GUIDANCE_PRIMING. */
+    private guidancePriming;
+    /** Prime this call's program guidance in its opening (`runtimeProgramGuidance` left a text-written placeholder):
+     * the state the call and every later call of the same guidance read. A failed priming keeps the text write, traced. */
+    private primeGuidance;
     /** Encode stored policy against this runtime's exact native reader before any model call. */
     private runtimeProgramGuidance;
     run(session: NativeSession): Promise<string | void>;

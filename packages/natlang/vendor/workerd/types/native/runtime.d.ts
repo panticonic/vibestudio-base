@@ -286,6 +286,12 @@ export declare class NativeSession {
     readonly runtime: NativeRuntime;
     readonly lam: LambdaNode;
     readonly env: TypeEnv;
+    /** Program guidance written from its text, to be primed in this call once its opening exists (agent.ts). */
+    guidancePrime?: {
+        placeholder: string;
+        text: string;
+        settle: (id: string) => void;
+    };
     completed: boolean;
     /**
      * Judges the refined slots (`Is<T, P>`) of a value before the session accepts it as the result or as a local. Set by
