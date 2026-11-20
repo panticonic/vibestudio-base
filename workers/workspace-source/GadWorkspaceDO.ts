@@ -771,8 +771,6 @@ interface ProjectionKey {
 }
 
 const historyCommitMemoryIndexKey = "native-commit-memory-index-v1";
-const commitMemoryProjectionVersionKey = "memory:commit-projection-version";
-const nativeCommitMemoryProjectionVersion = "native-v1";
 
 export class GadWorkspaceDO extends DurableObjectBase {
   static override rpcMethods = {
@@ -4061,96 +4059,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return this.memoryIndexMode;
   }
 
-  /** Reconcile searchable commit documents from the semantic event DAG. The
-   * recall index is disposable; workspace events and their authored work-unit
-   * intents remain the authority. */
-  private ensureCommitMemoryIndex(): void {
-    this.ensureMemoryIndex();
-    const projectionVersion = this.getStateValue(commitMemoryProjectionVersionKey);
-    if (projectionVersion === nativeCommitMemoryProjectionVersion) return;
-    const rawMarker = this.getStateValue(historyCommitMemoryIndexKey);
-    if (rawMarker !== null && HistoryCommitMemoryMarkerSchema.parse(JSON.parse(rawMarker)).completedEventId) {
-      // A previous release can have finished backfill before it knew how to retire
-      // the old projection. Its completed marker proves the same coverage.
-      this.transaction(() => this.retireLegacyCommitMemory());
-      return;
-    }
-
-    // Rebuild old recall indexes once to retain authored intent and remove
-    // commits outside protected main. Subsequent calls add missing entries
-    // from protected legacy history without replacing native documents.
-    const legacyProjectionVersion = "3";
-    if (projectionVersion !== legacyProjectionVersion) {
-      this.sql.exec(
-        `DELETE FROM gad_memory_fts
-          WHERE kind = 'commit'
-            AND json_extract(anchor_json, '$.revision') IS NULL
-            AND event_id IN (SELECT event_id FROM gad_workspace_events)`,
-      );
-    }
-
-    const missing = this.sql
-      .exec(
-        `WITH RECURSIVE published(event_id) AS (
-            SELECT event_id FROM vcs_workspace_heads WHERE head = 'main'
-            UNION
-            SELECT parent.parent_event_id
-              FROM gad_workspace_event_parents parent JOIN published USING (event_id)
-          )
-          SELECT e.event_id,
-                e.result_workspace_fact_root_id,
-                e.message,
-                (
-                  SELECT GROUP_CONCAT(intent_summary, CHAR(10))
-                    FROM (
-                      SELECT DISTINCT TRIM(w.intent_summary) AS intent_summary
-                        FROM gad_workspace_event_applications ea
-                        JOIN gad_work_unit_applications a
-                          ON a.application_id = ea.application_id
-                        JOIN gad_work_units w
-                          ON w.work_unit_id = a.work_unit_id
-                       WHERE ea.event_id = e.event_id
-                         AND TRIM(COALESCE(w.intent_summary, '')) <> ''
-                       ORDER BY ea.ordinal
-                    )
-                ) AS intent_summaries
-           FROM gad_workspace_events e JOIN published USING (event_id)
-          WHERE e.kind <> 'genesis'
-            AND NOT EXISTS (
-              SELECT 1 FROM gad_memory_fts m
-               WHERE m.kind = 'commit'
-                 AND m.event_id = e.event_id
-            )`,
-      )
-      .toArray() as JsonRecord[];
-    for (const row of missing) {
-      const message = asString(row["message"])?.trim();
-      const intentSummaries = asString(row["intent_summaries"])?.trim();
-      const summary = [message, intentSummaries]
-        .filter((part): part is string => Boolean(part))
-        .filter((part, index, parts) => parts.indexOf(part) === index)
-        .join("\n");
-      const eventId = asString(row["event_id"]);
-      const workspaceFactRootId = asString(
-        row["result_workspace_fact_root_id"],
-      );
-      if (!summary || !eventId || !workspaceFactRootId) continue;
-      this.indexMemoryRow({
-        text: summary,
-        kind: "commit",
-        eventId,
-        anchor: { workspaceEventId: eventId, workspaceFactRootId },
-      });
-    }
-    this.setStateValue(commitMemoryProjectionVersionKey, legacyProjectionVersion);
-  }
-
-  private retireLegacyCommitMemory(): void {
-    this.sql.exec(`DELETE FROM gad_memory_fts
-      WHERE kind = 'commit' AND json_extract(anchor_json, '$.revision') IS NULL`);
-    this.setStateValue(commitMemoryProjectionVersionKey, nativeCommitMemoryProjectionVersion);
-  }
-
   private indexMemoryRow(row: {
     text: string;
     kind: "message" | "file" | "commit";
@@ -4247,15 +4155,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (typeof input.marker !== "string" || !input.marker || input.marker.length > 4096 ||
         !Array.isArray(input.documents) || input.documents.length > 16)
       throw new Error("Invalid native commit memory page");
-    const marker = HistoryCommitMemoryMarkerSchema.parse(JSON.parse(input.marker));
+    HistoryCommitMemoryMarkerSchema.parse(JSON.parse(input.marker));
     this.transaction(() => {
       if (this.getStateValue(historyCommitMemoryIndexKey) !== input.previousMarker)
         throw new Error("Native commit memory index advanced concurrently");
       for (const document of input.documents) this.indexHistoryCommitMemory(document);
-      if (marker.completedEventId !== null &&
-          this.getStateValue(commitMemoryProjectionVersionKey) !== nativeCommitMemoryProjectionVersion) {
-        this.retireLegacyCommitMemory();
-      }
       this.setStateValue(historyCommitMemoryIndexKey, input.marker);
     });
     return true;
@@ -4418,14 +4322,13 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const visibility = kinds === null || kinds.includes("message")
       ? this.materializeRecallVisibility()
       : { clause: "", bindings: [] };
-    const visibilityFilter = visibility.clause;
+    const visibilityFilter =
+      ` AND (kind <> 'commit' OR json_extract(anchor_json, '$.revision') IS NOT NULL)${visibility.clause}`;
     const limit = Math.min(input.limit ?? 10, 50);
     // Over-fetch so published/fork copies (the same logical item indexed under
     // several (log,head) pairs) can be collapsed BEFORE the page is sliced —
     // otherwise duplicates eat slots and the caller's page under-fills (§8.1/C6).
     const fetchLimit = Math.min(limit * 3, 150);
-    if (kinds === null || kinds.includes("commit"))
-      this.ensureCommitMemoryIndex();
     const pathPrefixes =
       input.pathPrefixes && input.pathPrefixes.length > 0
         ? input.pathPrefixes
@@ -4842,9 +4745,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   private clearProjections(): void {
-    // Memory rows are projections too and are rebuilt from canonical events.
+    // Commit documents come from protected Dolt history and share its index marker.
     this.ensureMemoryIndex();
-    this.sql.exec(`DELETE FROM gad_memory_fts`);
+    this.sql.exec(`DELETE FROM gad_memory_fts WHERE kind <> 'commit'`);
     this.sql.exec(`DELETE FROM state WHERE key LIKE 'memidx:%'`);
     for (const table of [
       "trajectory_turns",

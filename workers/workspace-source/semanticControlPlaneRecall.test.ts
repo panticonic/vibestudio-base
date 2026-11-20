@@ -67,57 +67,21 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       .toMatchObject([{ eventId: document.eventId }]);
   });
 
-  it("keeps legacy published recall during backfill and retires it on completion", () => {
-    gad.sql.exec(`
-      INSERT INTO gad_workspace_events
-        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
-      VALUES ('event:legacy', 'command:legacy', 'commit', 'root:legacy', 'Northstar saved', '2026-01-02');
-      INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
-      VALUES ('main', 'event:legacy', '2026-01-02');
-    `);
-    const pending = JSON.stringify({
-      completedEventId: null, pending: { eventId: "event:main", after: "event:first" },
-    });
-    const nativeDocument = {
-      eventId: "event:first", revision: "a".repeat(40), text: "Northstar first",
-      createdAt: "2026-01-02T00:00:00Z",
-    };
-    const recalled = () => doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results;
-    doi.recordHistoryCommitMemoryPage({ previousMarker: null, marker: pending, documents: [nativeDocument] });
-    expect(recalled().map(({ eventId }) => eventId).sort()).toEqual(["event:first", "event:legacy"]);
-
-    const migrated = { ...nativeDocument, eventId: "event:legacy", revision: "b".repeat(40) };
-    const completed = JSON.stringify({ completedEventId: "event:main", pending: null });
-    reach(doi).indexMemoryRow({ kind: "commit", eventId: "obsolete", text: "Northstar old projection" });
-    const finalPage = { previousMarker: pending, marker: completed, documents: [migrated] };
-    expect(() => doi.recordHistoryCommitMemoryPage({
-      ...finalPage, documents: [migrated, { ...migrated, text: "" }],
-    })).toThrow("Invalid native commit memory");
-    expect(doi.readHistoryCommitMemoryIndex()).toBe(pending);
-    expect(recalled().find(({ eventId }) => eventId === "event:legacy")?.anchor?.["revision"]).toBeUndefined();
-    expect(recalled().some(({ eventId }) => eventId === "obsolete")).toBe(true);
-
-    doi.recordHistoryCommitMemoryPage(finalPage);
-    gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
-    expect(recalled().map(({ eventId, anchor }) => [eventId, anchor?.["revision"]]).sort()).toEqual([
-      ["event:first", nativeDocument.revision],
-      ["event:legacy", migrated.revision],
-    ]);
-  });
-
-  it("retires old rows when opening an index completed by the previous release", () => {
+  it("keeps protected Dolt documents when rebuilding conversation projections", async () => {
     const document = {
-      eventId: "event:native", revision: "a".repeat(40), text: "Northstar saved",
-      createdAt: "2026-01-02T00:00:00Z",
+      eventId: "event:published", revision: "a".repeat(40),
+      text: "Northstar protected revision", createdAt: "2026-08-14T00:00:00.000Z",
     };
     const marker = JSON.stringify({ completedEventId: document.eventId, pending: null });
-    doi.recordHistoryCommitMemory(document);
-    reach(doi).indexMemoryRow({ kind: "commit", eventId: "obsolete", text: "Northstar old projection" });
-    gad.sql.exec("INSERT INTO state (key, value) VALUES ('native-commit-memory-index-v1', ?)", marker);
-    gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
-    expect(doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results)
-      .toMatchObject([{ eventId: document.eventId }]);
+    doi.recordHistoryCommitMemoryPage({ previousMarker: null, marker, documents: [document] });
+    reach(doi).indexMemoryRow({
+      kind: "commit", eventId: "event:unverified", text: "Northstar unverified revision",
+    });
+
+    await doi.rebuildTrajectoryProjections();
     expect(doi.readHistoryCommitMemoryIndex()).toBe(marker);
+    expect(doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results)
+      .toMatchObject([{ eventId: document.eventId, anchor: { revision: document.revision } }]);
   });
 
   it("dedup keeps the page full: a duplicate copy is collapsed without stealing a slot", () => {
@@ -180,18 +144,19 @@ describe("GadWorkspaceDO — recall deduplication", () => {
   it("retrieves older evidence even when the current question matches every query term", () => {
     reach(doi).indexMemoryRow({ text: "rollout codename retired why recorded evidence", kind: "message",
       eventId: "current-question", anchor: { kind: "message", messageId: "current-question" } });
-    reach(doi).indexMemoryRow({ text: "Retired the Harbor Lantern rollout codename because production routing required a distinct name.", kind: "commit",
-      eventId: "historical-commit", anchor: { kind: "commit", eventId: "historical-commit" } });
+    doi.recordHistoryCommitMemory({
+      text: "Retired the Harbor Lantern rollout codename because production routing required a distinct name.",
+      eventId: "historical-commit", revision: "b".repeat(40), createdAt: "2026-08-14T00:00:00.000Z",
+    });
     const results = doi.recallMemory({ query: "rollout codename retired why recorded evidence", limit: 10 }).results;
     expect(results.some((entry) => entry.eventId === "historical-commit")).toBe(true);
     expect(results.some((entry) => entry.eventId === "current-question")).toBe(true);
   });
 
   it("ranks multi-term recall so a scope hint cannot mask distinctive memory", () => {
-    reach(doi).indexMemoryRow({
+    doi.recordHistoryCommitMemory({
       text: "Retire Harbor Lantern after launch; use Retention Service in support records",
-      kind: "commit",
-      eventId: "event:retire-codename",
+      eventId: "event:retire-codename", revision: "a".repeat(40), createdAt: "2026-08-14T00:00:00.000Z",
     });
 
     const results = doi.recallMemory({
@@ -205,68 +170,6 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       eventId: "event:retire-codename",
       snippet: expect.stringContaining("Retire Harbor Lantern"),
     });
-  });
-
-  it("recalls a commit from the authored intent when its title uses different words", () => {
-    gad.sql.exec(
-      `INSERT INTO gad_workspace_events
-         (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
-       VALUES ('event:retention-launch', 'command:commit', 'commit',
-               'root:retention-launch', 'Finish the post-launch documentation pass',
-               '2026-01-02T00:00:00.000Z');
-       INSERT INTO gad_work_units
-         (work_unit_id, command_id, kind, intent_summary, author_context_id,
-          content_class, external_lineage_json, normalization_protocol, created_at)
-       VALUES ('work:retention-launch', 'command:edit', 'edit',
-               'Retire the Harbor Lantern rollout codename so support and audit records use Retention Service',
-               'context:author', 'internal', '[]', 'semantic-v1',
-               '2026-01-01T00:00:00.000Z');
-       INSERT INTO gad_work_unit_applications
-         (application_id, work_unit_id, basis_kind, basis_id,
-          result_workspace_fact_root_id, semantic_protocol)
-       VALUES ('application:retention-launch', 'work:retention-launch', 'event',
-               'event:parent', 'root:retention-launch', 'semantic-v1');
-       INSERT INTO gad_workspace_event_applications (event_id, ordinal, application_id)
-       VALUES ('event:retention-launch', 0, 'application:retention-launch');
-       INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
-       VALUES ('main', 'event:retention-launch', '2026-01-02T00:00:00.000Z')`,
-    );
-    reach(doi).indexMemoryRow({
-      text: "Finish the post-launch documentation pass",
-      kind: "commit",
-      eventId: "event:retention-launch",
-      anchor: {
-        workspaceEventId: "event:retention-launch",
-        workspaceFactRootId: "root:retention-launch",
-      },
-    });
-
-    const results = doi.recallMemory({
-      query: "Harbor Lantern rollout codename",
-      kinds: ["commit"],
-    }).results;
-
-    expect(results).toHaveLength(1);
-    expect(results[0]).toMatchObject({
-      kind: "commit",
-      eventId: "event:retention-launch",
-      snippet: expect.stringContaining("Harbor Lantern rollout codename"),
-    });
-  });
-
-  it("removes previously indexed private legacy commits and indexes only protected ancestry", () => {
-    gad.sql.exec(`
-      INSERT INTO gad_workspace_events
-        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
-      VALUES
-        ('event:private', 'command:private', 'commit', 'root:private', 'Northstar private revision', '2026-01-02'),
-        ('event:published', 'command:published', 'commit', 'root:published', 'Northstar published revision', '2026-01-02');
-      INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
-      VALUES ('main', 'event:published', '2026-01-02')
-    `);
-    reach(doi).indexMemoryRow({ kind: "commit", eventId: "event:private", text: "Northstar private revision" });
-    const results = doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results;
-    expect(results.map(({ eventId }) => eventId)).toEqual(["event:published"]);
   });
 });
 
@@ -317,10 +220,9 @@ describe("GadWorkspaceDO — recall visibility", () => {
         anchor: { messageId: `m-${channelId}`, turnId: null },
       });
     }
-    reach(doi).indexMemoryRow({
+    doi.recordHistoryCommitMemory({
       text: "Northstar ingress limits recorded in a commit",
-      kind: "commit",
-      eventId: "e-commit",
+      eventId: "e-commit", revision: "a".repeat(40), createdAt: "2026-08-14T00:00:00.000Z",
     });
   });
 
