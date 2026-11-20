@@ -131,3 +131,11 @@ declare module "natlang:services" {
       Promise<import("./types.js").NotificationAcknowledgment>;
   };
 }
+
+declare module "natlang:services" {
+  export const desktopReadiness: {
+    discover(): Promise<import("./types.js").DesktopDesk[]>;
+    readWindow(id: string): Promise<import("./types.js").DesktopWindowObservation>;
+    readUpdates(id: string): Promise<import("./types.js").DesktopUpdateObservation>;
+  };
+}

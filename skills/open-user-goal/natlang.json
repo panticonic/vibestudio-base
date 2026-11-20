@@ -8,6 +8,7 @@
     "runUserGoal/workOnRegencyBriefing/realm": "skills/open-regency-briefing",
     "runUserGoal/workOnRegencyBriefing/reviewer": "skills/examples-review",
     "runUserGoal/workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
+    "runUserGoal/reviewDesktopReadiness/clientDevelopment": "skills/clientdev/natlang",
     "runUserGoal/workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
     "runUserGoal/workOnApiReadinessGoal/installed": "skills/api-integrations/natlang",
     "runUserGoal/workOnNewsEvidenceGoal/workspace": "skills/open-news-evidence",
@@ -76,6 +77,11 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "desktopReadiness": [
+      "runUserGoal/reviewDesktopReadiness/locateDesktopDesk.nl",
+      "runUserGoal/reviewDesktopReadiness/inspectDesktopWindow/readDesktopWindow.nl",
+      "runUserGoal/reviewDesktopReadiness/inspectDesktopUpdates/readDesktopOffers.nl"
+    ],
     "notificationState": [
       "runUserGoal/reviewNotificationState/locateNotificationLane.nl",
       "runUserGoal/reviewNotificationState/readNotificationLifecycle.nl",

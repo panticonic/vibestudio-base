@@ -2065,6 +2065,43 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  desktopReadiness: `/** Read retained desktop offers and responsive window placement for one assigned client. */
+
+type DesktopDesk = { id: string; name: string; operationId: string };
+
+type DesktopPane = { id: string; panelId: string; heightFr: number; minWidthOverride?: number };
+
+type DesktopWindowView = {
+  width: number; focused: string | null; resident: string[]; parkedLeft: string[]; parkedRight: string[];
+  columns: { id: string; widthFr: number; panes: DesktopPane[] }[];
+};
+
+type DesktopWindowObservation = {
+  deskId: string; status: "restored" | "wrong-scope" | "invalid";
+  before: DesktopWindowView | null; current: DesktopWindowView | null;
+  queuedFocus: string | null; pendingPlacementEdit: boolean;
+};
+
+type DesktopUpdateOffer = {
+  clientId: string; source: string; runtime: string; buildKey: string | null;
+  toVersion: string | null; fromVersion: string | null; canRollback: boolean;
+};
+
+type DesktopUpdateObservation = {
+  deskId: string; runningBuild: string; currentBuild: string;
+  before: DesktopUpdateOffer[]; current: DesktopUpdateOffer[];
+  notices: { id: string; tone: string; title: string; message: string }[];
+  events: string[]; admissionPending: boolean; previousBuilds: string[]; portCalls: number;
+};
+
+/** Read retained desktop offers and responsive window placement for one assigned client. */
+export function discover(): Promise<DesktopDesk[]>;
+
+/** Read retained desktop offers and responsive window placement for one assigned client. */
+export function readWindow(id: string): Promise<DesktopWindowObservation>;
+
+/** Read retained desktop offers and responsive window placement for one assigned client. */
+export function readUpdates(id: string): Promise<DesktopUpdateObservation>;`,
   notificationState: `/** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
 
 type NotificationLane = { id: string; label: string; generation: number };

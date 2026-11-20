@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "desktopReadiness"; outcome: DesktopReadinessOutcome }
   | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "workspaceShare"; outcome: unknown }
@@ -302,4 +303,39 @@ export type NotificationStateOutcome = {
   decision: NotificationDecision;
   acknowledgement: NotificationAcknowledgment | null;
   final: NotificationSnapshot | null;
+};
+
+export type DesktopDesk = { id: string; name: string; operationId: string };
+export type DesktopPane = { id: string; panelId: string; heightFr: number; minWidthOverride?: number };
+export type DesktopWindowView = {
+  width: number; focused: string | null; resident: string[]; parkedLeft: string[]; parkedRight: string[];
+  columns: { id: string; widthFr: number; panes: DesktopPane[] }[];
+};
+export type DesktopWindowObservation = {
+  deskId: string; status: "restored" | "wrong-scope" | "invalid";
+  before: DesktopWindowView | null; current: DesktopWindowView | null;
+  queuedFocus: string | null; pendingPlacementEdit: boolean;
+};
+export type DesktopUpdateOffer = {
+  clientId: string; source: string; runtime: string; buildKey: string | null;
+  toVersion: string | null; fromVersion: string | null; canRollback: boolean;
+};
+export type DesktopUpdateObservation = {
+  deskId: string; runningBuild: string; currentBuild: string;
+  before: DesktopUpdateOffer[]; current: DesktopUpdateOffer[];
+  notices: { id: string; tone: string; title: string; message: string }[];
+  events: string[]; admissionPending: boolean; previousBuilds: string[]; portCalls: number;
+};
+export type DesktopReadinessEvidence = {
+  desk: DesktopDesk; admission: unknown; window: DesktopWindowObservation;
+  updates: DesktopUpdateObservation;
+};
+export type DesktopReadinessDecision = {
+  action: "keep-open" | "review-ready-update" | "defer-update" | "inspect-offer" |
+    "review-rollback" | "restore-layout" | "hold-scope" | "wait-for-admission";
+  reason: string;
+};
+export type DesktopReadinessOutcome = {
+  scope: "owned-desktop-readiness-fixture";
+  evidence: DesktopReadinessEvidence; decision: DesktopReadinessDecision;
 };
