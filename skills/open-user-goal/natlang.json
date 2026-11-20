@@ -6,6 +6,10 @@
   "serviceBinding": "explicit",
   "workspaceModules": {
     "runUserGoal/reviewLocalPresentation/visualize": "skills/visualize",
+    "runUserGoal/workOnPersonalWelcomeGoal/workspace": "skills/open-personal-welcome",
+    "runUserGoal/workOnPersonalWelcomeGoal/onboarding": "skills/onboarding/prepareSetup",
+    "runUserGoal/workOnPersonalWelcomeGoal/tour": "skills/tour-rehearsal",
+    "runUserGoal/workOnPersonalWelcomeGoal/explorer": "skills/explorer-probe",
     "runUserGoal/workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
     "runUserGoal/workOnDictationHandoffGoal/dictation": "skills/offline-dictation",
     "runUserGoal/workOnSpecialistHandoffGoal/workspace": "skills/open-specialist-handoff",

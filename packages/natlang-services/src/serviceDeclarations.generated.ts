@@ -1236,6 +1236,129 @@ type IntegrationArtifact = { path: string; bytes: number; sha256: string };
 
 /** Stage the verified user-authorized local integration brief. */
 export function stage(plan: SpecialistPlan, history: HistoryReview): Promise<IntegrationArtifact | null>;`,
+  welcomeResourceIndex: `/** List the current owned Personal resources and their owning roles. */
+
+type WelcomeIntent = "welcome" | "refresh" | "selection" | "workspace-creation";
+
+type WelcomeScope = {
+  contextId: string;
+  channelId: string;
+  revision: string;
+  intent: WelcomeIntent;
+  mayRetry: boolean;
+  mayStage: boolean;
+};
+
+type WelcomeResource = {
+  id: string;
+  title: string;
+  kind: "setup" | "tour" | "explorer" | "chooser";
+  sender: string;
+  scope: string;
+};
+
+type WelcomeIndex = { scope: WelcomeScope; resources: WelcomeResource[] };
+
+/** List the current owned Personal resources and their owning roles. */
+export function list(): Promise<WelcomeIndex>;`,
+  welcomeReceiptStore: `/** Read one owned first-run conversation frontier. */
+
+type RecordHeader = { resourceId: string; sender: string; contextId: string; revision: string };
+
+type OwnerState = "connected" | "connected-unverified" | "configured" | "using-defaults" |
+  "not-configured" | "in-progress" | "needs-attention" | "unavailable" | "unknown";
+
+type TourFrame = { storedScene: string; storedNotes: boolean; eyebrow: string; heading: string; progress: string; notesVisible: boolean };
+
+type WelcomeRecord = RecordHeader & (
+  | { kind: "owner"; state: OwnerState; observed: boolean }
+  | { kind: "selection"; action: string }
+  | { kind: "welcome"; state: "retained" }
+  | { kind: "tour"; frame: TourFrame; expectedNotes: boolean }
+  | { kind: "probe"; state: "interrupted" | "completed"; digest: string }
+  | { kind: "decision"; state: "paused" | "deferred" | "retained" }
+);
+
+type WelcomeRow = { messageId: string; envelopeId: string; seq: number; record: WelcomeRecord };
+
+type WelcomeSnapshot = { channelId: string; through: number; rows: WelcomeRow[] };
+
+/** Read one owned first-run conversation frontier. */
+export function read(channelId: string): Promise<WelcomeSnapshot | null>;`,
+  welcomeResourceResolution: `/** Resolve an observed Personal resource through the installed owner, deck or authorized local probe. */
+
+type SetupRoute = { capabilityId: string; action: string; via: "owner-skill" | "about-page" |
+  "model-settings" | "panel" | "shell-navigation" | "conversation"; destination: string | null };
+
+type TourScene = { id: string; title: string; position: number; eyebrow: string };
+
+type ExplorerRequest = { operationId: string; goal: string };
+
+type WelcomeResolution = { resourceId: string; route: SetupRoute | null; scene: TourScene | null; sceneCount: number; guidance: string[];
+  probe: ExplorerRequest | null };
+
+/** Resolve an observed Personal resource through the installed owner, deck or authorized local probe. */
+export function resolve(resourceId: string): Promise<WelcomeResolution | null>;`,
+  welcomeLocalHandoff: `/** Stage the exact authorized Personal next-step note. */
+
+type WelcomeReason = "verified-current" | "owner-unknown" | "needs-verification" | "stale-receipt" | "foreign-sender" |
+  "wrong-context" | "invalid-route" | "welcome-retained" | "separate-workspace" | "tour-frame-mismatch" | "missing-evidence" |
+  "already-complete" | "retry-ready" | "local-retry-complete" | "retry-unauthorized" | "no-resource" | "ambiguous-resource" | "preference-preserved";
+
+type WelcomeEvidence = { message: string | null; sender: string | null; reason: WelcomeReason };
+
+type WelcomePlan = WelcomeEvidence & { resourceId: string | null; channelId: string; through: number;
+  action: "hold" | "report" | "stage"; explanation: string };
+
+type WelcomeIntent = "welcome" | "refresh" | "selection" | "workspace-creation";
+
+type OwnerState = "connected" | "connected-unverified" | "configured" | "using-defaults" |
+  "not-configured" | "in-progress" | "needs-attention" | "unavailable" | "unknown";
+
+type SetupRoute = { capabilityId: string; action: string; via: "owner-skill" | "about-page" |
+  "model-settings" | "panel" | "shell-navigation" | "conversation"; destination: string | null };
+
+type OwnerObservation = { receipt: string; rows: { id: string; state: OwnerState; observed: boolean }[]; route: SetupRoute | null };
+
+type SetupReview = OwnerObservation & { status: string; unknown: string[]; needsVerification: string[] };
+
+type SetupWitness = { request: { goal: string; intent: WelcomeIntent }; result: SetupReview };
+
+type TourScene = { id: string; title: string; position: number; eyebrow: string };
+
+type TourStop = { topic: string; scene: TourScene; notes: boolean };
+
+type TourFrame = { storedScene: string; storedNotes: boolean; eyebrow: string; heading: string; progress: string; notesVisible: boolean };
+
+type TourWitness = { stop: TourStop; frame: TourFrame; sceneCount: number; result: { frame: TourFrame; stage: "verified" | "mismatch" } };
+
+type ExplorerRequest = { operationId: string; goal: string };
+
+type ExplorerInput = { bytes: number; characters: number; digest: string; lineEnding: "lf" | "crlf" | "mixed" | "none";
+  claim: "reports-bytes" | "reports-characters" | "normalizes-line-endings" | null; repeat: boolean };
+
+type ExplorerPlan = { expectedBytes: number; expectedDigest: string; comparison: "round-trip" | "repeat-store";
+  check: "utf8-size" | "line-endings" | "exact-content" };
+
+type ExplorerReceipt = {
+  blob: { digest: string; writtenBytes: number; exists: boolean; statBytes: number | null; readDigest: string | null; repeatDigest: string | null };
+  file: { digest: string; bytes: number; removed: boolean };
+};
+
+type ExplorerReport = {
+  input: ExplorerInput; plan: ExplorerPlan; receipt: ExplorerReceipt;
+  assessment: { classification: "ok" | "bug" | "doc-mismatch"; issue: "content" | "byte-count" | "repeat" | "cleanup" | "claim" | null };
+  next: string;
+};
+
+type ExplorerWitness = { request: ExplorerRequest; result: ExplorerReport };
+
+type WelcomeReviews = { setup: SetupWitness | null; tour: TourWitness | null; probe: ExplorerWitness | null };
+
+type WelcomeHandoff = { path: string; bytes: number; sha256: string };
+
+/** Stage the exact authorized Personal next-step note. */
+export function stage(plan: WelcomePlan, reviews: WelcomeReviews): Promise<WelcomeHandoff | null>;`,
   dictationCaptureRead: `/** Read the assigned recording measurements and live speech worker status. */
 
 type DictationCapture = {

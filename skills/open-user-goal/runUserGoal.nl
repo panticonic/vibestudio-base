@@ -39,6 +39,8 @@ For recovering acknowledged offline dictation, checking its original source and 
 
 For selecting a workspace specialist and verifying the originating work before an authorized local integration handoff, call workOnSpecialistHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "specialistHandoff", and its actual outcome.
 
+For the retained Personal first-run welcome, current device, remote, local inference, default-agent or update preferences, a separate workspace chooser, an owned tour cue, or a permitted retry of the current local Explorer text sample, call workOnPersonalWelcomeGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "personalWelcome", and its actual outcome.
+
 For checking a retained provider approval and its original conversation result together, including a scoped local handoff of that evidence, call workOnProviderHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "providerHandoff", and its actual outcome.
 
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
