@@ -1,0 +1,7 @@
+{
+  "name": "@workspace-skills/open-eval-handoff",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./types": "./types.ts" }
+}

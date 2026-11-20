@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-authoring-goal",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "discoverAuthoring.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "authoringDiscovery": ["discoverAuthoring.nl"],
+    "authoringReviewControl": ["confirmAuthoringReview.nl", "writeAuthoringHandoff.nl"]
+  }
+}

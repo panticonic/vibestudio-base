@@ -12,10 +12,19 @@ information it discovers there. For a browser goal, it observes the authorized
 panel, chooses visible controls only for requested changes, and reads back the
 result after each operation.
 
+The same entry point exposes the workspace's installed News, Spectrolite, Drive, Gmail,
+Mission Control, System operations, and session recovery subtrees when available. Each subtree takes the original user goal,
+discovers its current state through the caller's services, and returns its
+verified outcome.
+
 For a workspace verification goal, the program discovers declared suites and
 chooses the route and requested filter. It reports the declared runtime and
 approval for a planning request. When the user requests execution, it binds the
 run to the discovered source revision and reports the actual receipt.
+
+For website readiness, prior review decisions, and recovery of an existing
+operation, the installed publishing tree checks the exact destination against
+the current package, renderer, and available local receipt.
 
 Web actions use the current invocation's authorized public search and page cache.
 Workspace revisions are scoped to the authorized documents and use an observed

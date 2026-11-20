@@ -6,6 +6,8 @@
   "targets": { "main": { "entry": "preflightPublication.nl" } },
   "serviceBinding": "explicit",
   "serviceScopes": {
+    "ownedPreviewPublication": ["publishOwnedPreviewGoal.nl", "publishOwnedPreviewGoal/deliverPreview.nl"],
+    "publicationGoal": ["workTowardPublicationGoal.nl"],
     "websiteReadback": ["preflightPublication.nl"],
     "publicationRevision": ["reviewPublicationRevision.nl"]
   }

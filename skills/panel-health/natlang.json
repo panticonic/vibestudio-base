@@ -5,6 +5,7 @@
   "targets": { "main": { "entry": "reviewPanelHealth.nl" } },
   "serviceBinding": "explicit",
   "serviceScopes": {
+    "panelRecovery": ["recoverPanelGoal.nl", "recoverPanelGoal/recoverSurface.nl"],
     "panelHealth": ["reviewPanelHealth.nl", "reviewPanelHealth/checkHealthChange.nl"]
   }
 }

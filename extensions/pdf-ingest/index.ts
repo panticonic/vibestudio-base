@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@vibestudio/extension";
 import { assertPdfBytes } from "./pdf/binary.js";
 import { createArtifactStoreFromStorage, type ArtifactStore } from "./pdf/artifacts.js";
 import { normalizePageImageMode, selectPages } from "./pdf/pages.js";
+import { inspectPdfRaster } from "./pdf/raster.js";
 import {
   extractWithPdfjs,
   pdfDigest,
@@ -58,17 +59,17 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
   const engineStatus = deps.engineStatus ?? defaultEngineStatus;
 
   const api = {
-    async engines(options?: { ocrLanguages?: string[] }) {
+    async engines(options?: { ocrLanguages?: string[] } | null) {
       return engineStatus(options?.ocrLanguages);
     },
 
-    async probe(rawData: Uint8Array, options: PdfProbeOptions = {}): Promise<PdfProbeResult> {
+    async probe(rawData: Uint8Array, options?: PdfProbeOptions | null): Promise<PdfProbeResult> {
       const data = normalizePdfInput(rawData);
       const digest = pdfDigest(data);
       const warnings: string[] = [];
       try {
         const document = await probeWithPdfjs(data);
-        const selectedPages = selectPages(options.pages, document.pageCount);
+        const selectedPages = selectPages(options?.pages, document.pageCount);
         return {
           document: {
             digest,
@@ -99,8 +100,9 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
       }
     },
 
-    async ingest(rawData: Uint8Array, options: PdfIngestOptions = {}): Promise<PdfIngestResult> {
+    async ingest(rawData: Uint8Array, input?: PdfIngestOptions | null): Promise<PdfIngestResult> {
       const data = normalizePdfInput(rawData);
+      const options = input ?? {};
       const digest = pdfDigest(data);
       const preserveLayout = options.preserveLayout ?? true;
       const extractText = options.extractText ?? true;
@@ -226,22 +228,30 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
 
     async renderPage(
       rawData: Uint8Array,
-      options: PdfRenderPageOptions = {}
+      options?: PdfRenderPageOptions | null
     ): Promise<PdfRenderedPage> {
       const data = normalizePdfInput(rawData);
-      if (options.mimeType && options.mimeType !== "image/png") {
+      if (options?.mimeType && options.mimeType !== "image/png") {
         throw new Error(`pdf-ingest.renderPage only supports image/png, got ${options.mimeType}`);
       }
       return renderPageWithPdfjs(
         data,
-        Math.max(1, Math.trunc(options.pageNumber ?? 1)),
-        positiveNumber(options.scale, DEFAULT_RENDER_SCALE),
+        Math.max(1, Math.trunc(options?.pageNumber ?? 1)),
+        positiveNumber(options?.scale, DEFAULT_RENDER_SCALE),
         artifactStore
       );
     },
 
     async readArtifact(artifactId: string): Promise<PdfArtifact> {
       return artifactStore.get(artifactId);
+    },
+
+    async inspectRasterArtifact(artifactId: string) {
+      const artifact = await artifactStore.get(artifactId);
+      if (artifact.mimeType !== "image/png") throw new Error("The retained PDF artifact must be a PNG page.");
+      const raster = inspectPdfRaster(artifact.data);
+      if (raster.imageDigest !== artifact.digest) throw new Error("The retained PDF raster digest changed.");
+      return { ...raster, artifactId: artifact.artifactId, digest: artifact.digest, mimeType: artifact.mimeType };
     },
   };
 

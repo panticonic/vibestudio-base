@@ -43,6 +43,10 @@ export interface WebsitePackage {
   };
 }
 
+/** The credential and journal operations required by an authorized provider transport. */
+export type WebsitePublicationClient = Pick<CredentialClient,
+  "resolveCredential" | "beginWebsitePublication" | "recordWebsitePublication" | "publishFetch">;
+
 /** The host journal's record of one reviewed publication operation. */
 export type PublicationReceipt = WebsitePublicationReceipt;
 
@@ -334,7 +338,7 @@ export async function connectCloudflarePagesForPublishing(
 }
 
 async function publishingCredential(
-  credentials: CredentialClient,
+  credentials: Pick<WebsitePublicationClient, "resolveCredential">,
   url: string,
   credentialId?: string,
 ): Promise<StoredCredentialSummary> {
@@ -357,7 +361,7 @@ async function publishingCredential(
  * changed artifact or destination is refused before any provider request.
  */
 async function publishFromJournal(
-  credentials: CredentialClient,
+  credentials: Pick<WebsitePublicationClient, "beginWebsitePublication" | "recordWebsitePublication">,
   publication: WebsitePublicationIntent,
   steps: {
     prepareDestination?: () => Promise<void>;
@@ -389,7 +393,7 @@ async function publishFromJournal(
 }
 
 export async function deployToVercel(input: {
-  credentials: CredentialClient;
+  credentials: WebsitePublicationClient;
   site: WebsitePackage;
   operationId: string;
   project: string;

@@ -5,7 +5,7 @@ args:
   initial: PanelHealthAssessment
   expectation: PanelHealthExpectation
 returns: PanelHealthReport
-uses: [reviewPanelHealth/assessObservation]
+uses: [assessObservation]
 ---
 1. Call panelHealth.observeAfter(first.id). Call checkObservationIdentity with both observations.
 2. If identity fails, return initial and a later inconclusive assessment citing the later observation with blocker observation-mismatch, and outcome inconclusive.

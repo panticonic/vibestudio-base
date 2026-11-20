@@ -439,12 +439,65 @@ it("compiles the open goal program with its installed research skill and scoped 
   });
   const result = await loader.describe("skills/open-user-goal/runUserGoal.nl");
   expect(result.serviceScopes).toEqual({
+    panelRecovery: ["runUserGoal/visualRecovery/recoverPanelGoal.nl", "runUserGoal/visualRecovery/recoverPanelGoal/recoverSurface.nl"],
+    panelHealth: ["runUserGoal/visualRecovery/reviewPanelHealth.nl", "runUserGoal/visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
     goalBrowser: ["runUserGoal/workInBrowser.nl"],
     goalDiscovery: ["runUserGoal/investigatePublicQuestion.nl"],
     goalWorkspace: ["runUserGoal/reviseWorkspaceDocument.nl"],
     goalSuite: ["runUserGoal/verifyWorkspaceSuite.nl"],
+    recoverySessions: ["runUserGoal/recovery/recoverSessionGoal.nl"],
+    recoveryReplay: ["runUserGoal/recovery/recoverSessionGoal/readRecoveryWindows.nl"],
+    recoveryHandoff: ["runUserGoal/recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
     testSuitePlanRead: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     testSuiteVerificationRun: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    pdfVaultBridge: ["runUserGoal/authorizePdfVaultHandoff.nl"],
+    pdfGoalDocuments: ["runUserGoal/pdf/workOnPdfGoal.nl"],
+    pdfGoalVisual: ["runUserGoal/pdf/workOnPdfGoal/readRenderedPages.nl"],
+    pdfIntakeProbe: ["runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],
+    pdfIntakeRead: ["runUserGoal/pdf/extractPdfEvidence/readBatch.nl"],
+    pdfLayoutRead: ["runUserGoal/pdf/reviewPdfLayout.nl"],
+    ownedPreviewPublication: ["runUserGoal/publication/publishOwnedPreviewGoal.nl", "runUserGoal/publication/publishOwnedPreviewGoal/deliverPreview.nl"],
+    publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
+    publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],
+    websiteReadback: ["runUserGoal/publication/preflightPublication.nl"],
     web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
   });
+  expect(result.functions.some(fn => fn.source === "runUserGoal/publication/workTowardPublicationGoal.nl")).toBe(true);
+  expect(result.functions.some(fn => fn.source === "runUserGoal/pdf/workOnPdfGoal.nl")).toBe(true);
+});
+
+it.each([
+  ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal"],
+  ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
+  ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
+  ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal"],
+  ["google-workspace", "open-google-handoff-goal", "googleHandoffMail", "googleHandoff", "reconcileGoogleHandoff", "reconcileGoogleHandoff/resolveMailDecision/readMailThreads"],
+  ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
+  ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal", "workOnPersonalArtifactsGoal/maintainLibrary"],
+  ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory"],
+  ["personal", "open-personal-automation", "operatorQueue", "personalAutomation", "coordinatePersonalAutomation"],
+  ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal"],
+  ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
+])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable, owner = callable) => {
+  const base = new URL("../../../", import.meta.url);
+  const installed = new URL(`../${template}/`, base);
+  const skillPath = `skills/${skill}`;
+  const source = (path: string) => new URL(path, path === skillPath || path.startsWith(skillPath + "/") ? installed : base);
+  const fs: WorkspaceFs = {
+    async readdir(path) {
+      const entries = await readdir(source(path + "/"), { withFileTypes: true });
+      if (path !== "skills") return entries;
+      const extras = await readdir(new URL("skills/", installed), { withFileTypes: true });
+      return [...entries, ...extras.filter(entry => entry.name === skill)];
+    },
+    readFile: path => readFile(source(path), "utf8"),
+    async stat(path) { return { isDirectory: () => !/\.[a-z]+$/u.test(path) }; },
+  };
+  const loader = new ProgramLoader({ platform: platform(), fs, bindings: {}, runTask: run => run() });
+  const program = await loader.describe("skills/open-user-goal/runUserGoal.nl");
+  const path = `runUserGoal/${namespace}/${callable}.nl`;
+  expect(program.functions.map(fn => fn.source)).toContain(path);
+  const scopes = program.serviceScopes[service] ?? [];
+  expect(scopes).toContain(`runUserGoal/${namespace}/${owner}.nl`);
+  expect(scopes.every(scope => scope.startsWith(`runUserGoal/${namespace}/`))).toBe(true);
 });

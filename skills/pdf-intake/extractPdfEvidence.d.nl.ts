@@ -84,5 +84,52 @@ type PdfLayoutReport = {
   layout: PdfLayoutDecision;
   reading: PdfLayoutReading;
 };
+type PdfGoalFile = {
+  name: string;
+  digest: string;
+  pageCount: number;
+  encrypted: boolean;
+};
+type PdfGoalObservation = { revision: string; documents: PdfGoalFile[] };
+type PdfGoalSelection = {
+  document: string;
+  pages: number[];
+  textQuery: string | null;
+  layoutPages: number[];
+  renderPages: number[];
+};
+type PdfGoalBinding = {
+  document: PdfGoalFile;
+  missingPages: number[];
+  text: PdfIntakeRequest | null;
+  layouts: PdfLayoutRequest[];
+  visual: { operationId: string; pages: number[] } | null;
+};
+type PdfGoalRender = {
+  documentDigest: string;
+  pageNumber: number;
+  artifactId: string;
+  imageDigest: string;
+  width: number;
+  height: number;
+  inkPixels: number;
+  inkBounds: number[] | null;
+};
+type PdfGoalRecommendation = {
+  action: "preserve-text" | "preserve-table-rows" | "read-columns-in-order" |
+    "provide-text-equivalent" | "recover-missing-pages" | "keep-page-specific-structure" | "needs-review";
+  rationale: string;
+};
+type PdfGoalReport = | {
+    status: "inspected";
+    document: PdfGoalFile;
+    selection: PdfGoalSelection;
+    missingPages: number[];
+    text: PdfIntakeReport | null;
+    layouts: PdfLayoutReport[];
+    rendered: PdfGoalRender[];
+    recommendation: PdfGoalRecommendation;
+  }
+  | { status: "blocked"; reason: string };
 declare const fn: NatlangFunction<[request: PdfIntakeRequest], PdfIntakeReport> & { readonly choosePlan: NatlangFunction<[request: PdfIntakeRequest, probe: ProbeReceipt], IntakePlan> & { readonly intakeChecks: { readonly completeSelection: (pages: number[], probe: ProbeReceipt) => boolean; readonly batches: (pages: number[], size: number) => number[][]; readonly matchesBatch: (digest: string, assigned: number[], receipt: BatchReceipt) => boolean; readonly citations: (pages: ExtractedPage[], locations: Locator[]) => Citation[] } }; readonly findEvidence: NatlangFunction<[request: PdfIntakeRequest, pages: ExtractedPage[]], EvidenceSelection>; readonly probeDocument: NatlangFunction<[document: string], ProbeReceipt>; readonly readBatch: NatlangFunction<[document: string, pages: number[], mode: ExtractionMode], BatchReceipt>; readonly intakeChecks: { readonly completeSelection: (pages: number[], probe: ProbeReceipt) => boolean; readonly batches: (pages: number[], size: number) => number[][]; readonly matchesBatch: (digest: string, assigned: number[], receipt: BatchReceipt) => boolean; readonly citations: (pages: ExtractedPage[], locations: Locator[]) => Citation[] } };
 export default fn;

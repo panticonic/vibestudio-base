@@ -90,6 +90,15 @@ describe("@workspace-extensions/pdf-ingest", () => {
     expect(artifact.digest).toBe(rendered.digest);
     expect(artifact.mimeType).toBe("image/png");
     expect(artifact.data.length).toBe(rendered.data.length);
+    const inspected = await api.inspectRasterArtifact(rendered.artifactId);
+    expect(inspected).toMatchObject({
+      artifactId: rendered.artifactId,
+      imageDigest: rendered.digest,
+      width: rendered.width,
+      height: rendered.height,
+    });
+    expect(inspected.inkPixels).toBeGreaterThan(0);
+    expect(inspected.inkBounds).toHaveLength(4);
   });
 
   it("runs OCR fallback through the engine boundary for sparse embedded text", async () => {
@@ -152,6 +161,15 @@ describe("@workspace-extensions/pdf-ingest", () => {
     await expect(
       api.probe({ __bin: true, data: Buffer.from(pdf).toString("base64") } as never)
     ).rejects.toThrow("expected PDF bytes as a Uint8Array");
+  });
+
+  it("uses the default options when the extension RPC sends null", async () => {
+    const api = await testApi();
+    const pdf = makePdf(["BT", "/F1 12 Tf", "36 120 Td (Default page) Tj", "ET"]);
+
+    expect((await api.probe(pdf, null)).selectedPages).toEqual([1]);
+    expect((await api.ingest(pdf, null)).pages[0]?.text).toContain("Default page");
+    expect((await api.renderPage(pdf, null)).pageNumber).toBe(1);
   });
 
   it("reports bundled and optional engines separately", async () => {

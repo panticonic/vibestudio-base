@@ -9,8 +9,22 @@ export interface TestRunRequest {
   contextId?: string;
   fileFilter?: string;
   testName?: string;
+  stateHash: string;
   artifactKey: string;
   executionDigest: string;
+}
+
+export function nativeTestExecutionSource(
+  request: Pick<TestRunRequest, "stateHash" | "target" | "suite" | "fileFilter" | "testName">,
+): string {
+  return JSON.stringify({
+    protocol: "native-test-execution.v2",
+    stateHash: request.stateHash,
+    target: request.target,
+    suite: request.suite,
+    file: request.fileFilter ?? null,
+    testName: request.testName ?? null,
+  });
 }
 
 export interface TestRunResult {
@@ -19,6 +33,7 @@ export interface TestRunResult {
   artifactKey: string;
   executionDigest: string;
   summary: string;
+  dependencyKey?: string | null;
   passed: number;
   failed: number;
   total: number;

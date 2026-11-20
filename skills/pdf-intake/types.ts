@@ -82,3 +82,52 @@ export type PdfLayoutReport = {
   layout: PdfLayoutDecision;
   reading: PdfLayoutReading;
 };
+
+export type PdfGoalFile = {
+  name: string;
+  digest: string;
+  pageCount: number;
+  encrypted: boolean;
+};
+export type PdfGoalObservation = { revision: string; documents: PdfGoalFile[] };
+export type PdfGoalSelection = {
+  document: string;
+  pages: number[];
+  textQuery: string | null;
+  layoutPages: number[];
+  renderPages: number[];
+};
+export type PdfGoalBinding = {
+  document: PdfGoalFile;
+  missingPages: number[];
+  text: PdfIntakeRequest | null;
+  layouts: PdfLayoutRequest[];
+  visual: { operationId: string; pages: number[] } | null;
+};
+export type PdfGoalRender = {
+  documentDigest: string;
+  pageNumber: number;
+  artifactId: string;
+  imageDigest: string;
+  width: number;
+  height: number;
+  inkPixels: number;
+  inkBounds: number[] | null;
+};
+export type PdfGoalRecommendation = {
+  action: "preserve-text" | "preserve-table-rows" | "read-columns-in-order" |
+    "provide-text-equivalent" | "recover-missing-pages" | "keep-page-specific-structure" | "needs-review";
+  rationale: string;
+};
+export type PdfGoalReport =
+  | {
+    status: "inspected";
+    document: PdfGoalFile;
+    selection: PdfGoalSelection;
+    missingPages: number[];
+    text: PdfIntakeReport | null;
+    layouts: PdfLayoutReport[];
+    rendered: PdfGoalRender[];
+    recommendation: PdfGoalRecommendation;
+  }
+  | { status: "blocked"; reason: string };

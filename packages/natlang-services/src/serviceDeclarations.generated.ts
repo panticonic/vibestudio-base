@@ -636,6 +636,55 @@ type ServerLogCursorWindow = {
 
 /** Observe the assigned saved cursor and a bounded live host-log window. */
 export function observe(operationId: string): Promise<ServerLogCursorWindow>;`,
+  diagnosticCatalog: `/** Discover owned incident checkpoints and the current handoff authority. */
+
+type DiagnosticSource = {
+  id: string;
+  label: string;
+  component: string;
+  description: string;
+};
+
+type DiagnosticSources = { checkpoints: DiagnosticSource[]; mayStage: boolean };
+
+/** Discover owned incident checkpoints and the current handoff authority. */
+export function discover(): Promise<DiagnosticSources>;`,
+  diagnosticLog: `/** Read a bounded native log window from an observed incident checkpoint. */
+
+type DiagnosticSource = {
+  id: string;
+  label: string;
+  component: string;
+  description: string;
+};
+
+type WindowStatus = "observed" | "other-boot" | "future" | "expired" | "overflow" | "changed";
+
+type DiagnosticRecord = { seq: number; text: string };
+
+type DiagnosticWindow = {
+  source: DiagnosticSource;
+  status: WindowStatus;
+  saved: { boot: string; sequence: number };
+  liveBoot: string;
+  through: number | null;
+  records: DiagnosticRecord[];
+};
+
+/** Read a bounded native log window from an observed incident checkpoint. */
+export function read(sourceId: string): Promise<DiagnosticWindow>;`,
+  diagnosticHandoff: `/** Stage the authorized incident finding with verified native citations. */
+
+type Disposition = "ongoing" | "recovered" | "attention" | "clear" | "unconfirmed";
+
+type ExactDiagnosticCitation = { sourceId: string; boot: string; seq: number; text: string };
+
+type DiagnosticFinding = { status: Disposition; reason: string; citations: ExactDiagnosticCitation[] };
+
+type DiagnosticArtifact = { path: string; sha256: string };
+
+/** Stage the authorized incident finding with verified native citations. */
+export function stage(finding: DiagnosticFinding): Promise<DiagnosticArtifact>;`,
   evalRecoveryJournal: `/** Observe the assigned completed EvalDO attempt and native receipts. */
 
 type EvalRecoveryStore = { digest: string; contentDigest: string; size: number };
@@ -663,6 +712,77 @@ type EvalRecoveryReadback = {
 
 /** Read back an exact assigned digest after its complete native store receipt. */
 export function read(operationId: string, digest: string): Promise<EvalRecoveryReadback>;`,
+  pdfVaultBridge: `/** Attest live PDF evidence and carry exact citations into the authorized working-vault correction. */
+
+type PdfVaultHandoff =
+  | { status: "hold"; reason: string }
+  | {
+    status: "bound";
+    source: { document: string; digest: string; citations: { page: number; line: number; quote: string }[] };
+    directive: string;
+  };
+
+/** Attest live PDF evidence and carry exact citations into the authorized working-vault correction. */
+export function bind(pdf: unknown, citationIndices: number[]): Promise<PdfVaultHandoff>;`,
+  pdfGoalDocuments: `/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
+
+type PdfGoalFile = {
+  name: string;
+  digest: string;
+  pageCount: number;
+  encrypted: boolean;
+};
+
+type PdfGoalObservation = { revision: string; documents: PdfGoalFile[] };
+
+type PdfGoalSelection = {
+  document: string;
+  pages: number[];
+  textQuery: string | null;
+  layoutPages: number[];
+  renderPages: number[];
+};
+
+type PdfIntakeRequest = {
+  goal: string;
+  document: string;
+  pages: number[];
+  batchSize: number;
+  purpose: "text" | "layout" | "ocr";
+  allowOcr: boolean;
+  query: string;
+};
+
+type PdfLayoutRequest = { operationId: string; goal: string };
+
+type PdfGoalBinding = {
+  document: PdfGoalFile;
+  missingPages: number[];
+  text: PdfIntakeRequest | null;
+  layouts: PdfLayoutRequest[];
+  visual: { operationId: string; pages: number[] } | null;
+};
+
+/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
+export function discover(): Promise<PdfGoalObservation>;
+
+/** Discover local PDFs in the owned workspace and bind the chosen document and pages. */
+export function bind(revision: string, selection: PdfGoalSelection): Promise<PdfGoalBinding | null>;`,
+  pdfGoalVisual: `/** Render one bound PDF page and retain original PNG and ink evidence. */
+
+type PdfGoalRender = {
+  documentDigest: string;
+  pageNumber: number;
+  artifactId: string;
+  imageDigest: string;
+  width: number;
+  height: number;
+  inkPixels: number;
+  inkBounds: number[] | null;
+};
+
+/** Render one bound PDF page and retain original PNG and ink evidence. */
+export function render(operationId: string, pageNumber: number): Promise<PdfGoalRender>;`,
   pdfLayoutRead: `/** Read the original embedded fragment geometry of one assigned local PDF page. */
 
 type PdfLayoutFragment = { text: string; bounds: number[] };
@@ -839,6 +959,64 @@ type VcsDeliverySnapshot = {
 
 /** Read one assigned semantic VCS file across working, committed, and protected-main states. */
 export function observe(operationId: string): Promise<VcsDeliverySnapshot>;`,
+  panelRecovery: `/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+
+type RecoverySurface = { id: string; title: string; audience: string; authorized: boolean };
+
+type RecoveryCatalog = { revision: string; surfaces: RecoverySurface[] };
+
+type PanelHealthExpectation = {
+  markers: { id: string; exact: string[] }[];
+  allowedErrors: string[];
+};
+
+type RecoveryBinding = {
+  surface: RecoverySurface;
+  expectation: PanelHealthExpectation;
+  reloadAllowed: boolean;
+};
+
+type PanelHealthSignal = {
+  sequence: number;
+  level: "error" | "warning" | "info";
+  message: string;
+};
+
+type PanelHealthObservation = {
+  id: string;
+  panelId: string;
+  attemptId: string;
+  buildKey: string;
+  phase: "ready" | "pending" | "failed" | "unavailable";
+  markers: { id: string; values: string[] }[];
+  diagnostics: PanelHealthSignal[];
+  consoleThrough: number;
+  dropped: number;
+};
+
+type RecoveryView = {
+  revision: string;
+  title: string;
+  rendererInstance: string;
+  controls: { id: string; label: string }[];
+  health: PanelHealthObservation;
+};
+
+type RecoveryAction = { kind: "click"; control: string } | { kind: "reload" };
+
+type RecoveryEffect = { revision: string; action: RecoveryAction; result: "applied" | "changed" | "denied" };
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function discover(): Promise<RecoveryCatalog>;
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function bind(revision: string, surfaceId: string): Promise<RecoveryBinding | null>;
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function inspect(): Promise<RecoveryView>;
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function apply(revision: string, action: RecoveryAction): Promise<RecoveryEffect>;`,
   panelHealth: `/** Read observations from the assigned panel. */
 
 type PanelHealthSignal = {
@@ -864,6 +1042,49 @@ export function observe(): Promise<PanelHealthObservation>;
 
 /** Read observations from the assigned panel. */
 export function observeAfter(snapshotId: string): Promise<PanelHealthObservation>;`,
+  localDeliveryCatalog: `/** Discover owned local conversations and their send grants. */
+
+type LocalConversation = { id: string; title: string; maySend: boolean };
+
+/** Discover owned local conversations and their send grants. */
+export function discover(): Promise<LocalConversation[]>;`,
+  localDeliveryHistory: `/** Read the current roster and original receipt of an owned conversation. */
+
+type LocalConversation = { id: string; title: string; maySend: boolean };
+
+type LocalRecipient = { ref: string; kind: string; note: string };
+
+type LocalResolution =
+  | { kind: "ref"; ref: string; note: string }
+  | { kind: "ambiguous"; reason: "none" | "several"; candidates: LocalRecipient[] };
+
+type LocalDeliveryEvidence = {
+  roomId: string; channelId: string; messageId: string; senderId: string; recipientRef: string;
+  content: string; sequence: number; acknowledged: boolean;
+};
+
+type LocalObservation = {
+  room: LocalConversation; basis: string; phrase: string | null; roster: LocalRecipient[];
+  resolution: LocalResolution | null; prior: LocalDeliveryEvidence | null;
+};
+
+/** Read the current roster and original receipt of an owned conversation. */
+export function inspect(roomId: string, recipientPhrase: string | null): Promise<LocalObservation>;`,
+  localDeliverySend: `/** Submit one local note against its exact current roster basis. */
+
+type LocalAttempt = { attemptId: string; response: "submitted" | "interrupted" };
+
+/** Submit one local note against its exact current roster basis. */
+export function submit(basis: string, content: string): Promise<LocalAttempt>;`,
+  localDeliveryReadback: `/** Recover the original owned delivery after submission or interruption. */
+
+type LocalDeliveryEvidence = {
+  roomId: string; channelId: string; messageId: string; senderId: string; recipientRef: string;
+  content: string; sequence: number; acknowledged: boolean;
+};
+
+/** Recover the original owned delivery after submission or interruption. */
+export function read(attemptId: string): Promise<LocalDeliveryEvidence | null>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };
@@ -890,6 +1111,121 @@ export function inspect(): Promise<BrowserView>;
 
 /** Inspect a live workspace panel and activate a visible control against its observed revision. */
 export function activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;`,
+  ownedPreviewPublication: `/** Discover, bind, advance and independently read back an exact owned preview publication. */
+
+type PublishEnvironment = "preview" | "production";
+
+type PublishIntent = {
+  provider: string;
+  destination: string;
+  environment: PublishEnvironment;
+};
+
+type OwnedPreviewObservation = {
+  site: string;
+  artifactDigest: string;
+  revision: string;
+  targets: {
+    id: string;
+    name: string;
+    audience: string;
+    intent: PublishIntent;
+    owned: boolean;
+    reviewed: boolean;
+  }[];
+};
+
+type PublishPreflightRequest = {
+  goal: string;
+  action: "prepare" | "check-existing";
+  audience: string;
+  intendedDestination: PublishIntent;
+};
+
+type OwnedPreviewBinding = {
+  targetId: string;
+  operationId: string | null;
+  hold: "outside-owned-preview" | "missing-approval" | null;
+  preflight: PublishPreflightRequest | null;
+};
+
+type OwnedPreviewReceipt = PublishIntent & {
+  operationId: string;
+  artifactDigest: string;
+  phase: "prepared" | "destination-ready" | "uploaded" | "submitted";
+  deploymentId?: string;
+  url?: string;
+  updatedAt: string;
+};
+
+type OwnedPreviewProgress =
+  | { status: "submitted"; receipt: OwnedPreviewReceipt }
+  | { status: "retryable"; receipt: OwnedPreviewReceipt; reason: string };
+
+type OwnedPreviewReadback =
+  | { status: "pending"; reason: string }
+  | { status: "verified"; receipt: OwnedPreviewReceipt; fileCount: number; publicUrl: string };
+
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
+export function discover(): Promise<OwnedPreviewObservation>;
+
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
+export function bind(revision: string, targetId: string): Promise<OwnedPreviewBinding | null>;
+
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
+export function advance(operationId: string): Promise<OwnedPreviewProgress>;
+
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
+export function readback(operationId: string): Promise<OwnedPreviewReadback>;`,
+  publicationGoal: `/** Discover the current website review destinations and bind review work to an observed source revision. */
+
+type PublishEnvironment = "preview" | "production";
+
+type PublishIntent = {
+  provider: string;
+  destination: string;
+  environment: PublishEnvironment;
+};
+
+type PublicationGoalTarget = {
+  id: string;
+  name: string;
+  intent: PublishIntent;
+  audience: string;
+  hasRetainedReview: boolean;
+};
+
+type PublicationGoalObservation = {
+  site: string;
+  revision: string;
+  targets: PublicationGoalTarget[];
+};
+
+type PublicationGoalChoice = {
+  targetId: string;
+  preflight: "prepare" | "check-existing" | null;
+  compareRevision: boolean;
+};
+
+type PublishPreflightRequest = {
+  goal: string;
+  action: "prepare" | "check-existing";
+  audience: string;
+  intendedDestination: PublishIntent;
+};
+
+type PublicationRevisionRequest = { goal: string; operationId: string };
+
+type PublicationGoalBinding = {
+  preflight: PublishPreflightRequest | null;
+  revision: PublicationRevisionRequest | null;
+};
+
+/** Discover the current website review destinations and bind review work to an observed source revision. */
+export function discover(): Promise<PublicationGoalObservation>;
+
+/** Discover the current website review destinations and bind review work to an observed source revision. */
+export function bind(revision: string, choice: PublicationGoalChoice): Promise<PublicationGoalBinding | null>;`,
   goalSuite: `/** Discover declared test routes and bind a requested suite operation to the current workspace. */
 
 type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
@@ -1216,6 +1552,359 @@ type GoogleSetupReceipt = {
 
 /** Read the assigned Google setup journey. */
 export function observe(): Promise<GoogleSetupReceipt[]>;`,
+  googleGoalDiscovery: `/** Discover the authorized Drive folders and change sources for the current goal. */
+
+type DriveGoalScope = {
+  folders: { id: string; name: string; description: string }[];
+  changeSources: { cursor: string; name: string }[];
+};
+
+/** Discover the authorized Drive folders and change sources for the current goal. */
+export function discover(): Promise<DriveGoalScope>;`,
+  gmailGoalCatalog: `/** Discover authorized retained Gmail compose records. */
+
+type ComposeSelection = { id: string; title: string; room: string };
+
+/** Discover authorized retained Gmail compose records. */
+export function discover(): Promise<ComposeSelection[]>;`,
+  googleHandoffMail: `/** Discover and read the authorized Gmail decision threads. */
+
+type MailMessage = {
+  id: string; from: string; subject: string; receivedAt: string; body: string; fileIds: string[];
+};
+
+type MailThread = { id: string; messages: MailMessage[] };
+
+/** Discover and read the authorized Gmail decision threads. */
+export function discover(): Promise<{ ids: string[]; complete: boolean }>;
+
+/** Discover and read the authorized Gmail decision threads. */
+export function read(id: string): Promise<MailThread | null>;`,
+  googleHandoffDrive: `/** Inspect a Drive asset bound to a retained decision. */
+
+type ReviewMode = "metadata" | "content" | "audience" | "content-and-audience";
+
+type AssetIntent = { messageId: string; fileId: string; mode: ReviewMode };
+
+type PermissionEvidence = {
+  id: string; type: string; role: string; address: string | null; deleted: boolean; pendingOwner: boolean;
+  directRoles: string[];
+};
+
+type AssetEvidence = {
+  id: string; status: "current" | "missing" | "inaccessible" | "unavailable" | "trashed" | "shortcut";
+  name: string | null; mimeType: string | null; version: string | null;
+  content: { text: string; sha256: string } | null;
+  permissions: PermissionEvidence[] | null;
+  missingChecks: ("content" | "audience")[];
+};
+
+/** Inspect a Drive asset bound to a retained decision. */
+export function inspect(asset: AssetIntent): Promise<AssetEvidence>;`,
+  googleHandoffFreshness: `/** Confirm that the decision and its evidence are still current. */
+
+type HandoffDecision = {
+  status: "ready" | "held" | "incomplete" | "stale";
+  reason: "approved" | "withdrawn" | "unresolved" | "missing" | "inaccessible" | "trashed" |
+    "shortcut" | "audience" | "content" | "provider" | "changed";
+  mailIds: string[];
+  assetIds: string[];
+  facts?: { fileId: string; quote: string }[];
+};
+
+/** Confirm that the decision and its evidence are still current. */
+export function verify(decision: HandoffDecision): Promise<"current" | "changed" | "unavailable">;`,
+  googleHandoffScratch: `/** Stage an authorized handoff backed by current mail and Drive evidence. */
+
+type HandoffDecision = {
+  status: "ready" | "held" | "incomplete" | "stale";
+  reason: "approved" | "withdrawn" | "unresolved" | "missing" | "inaccessible" | "trashed" |
+    "shortcut" | "audience" | "content" | "provider" | "changed";
+  mailIds: string[];
+  assetIds: string[];
+  facts?: { fileId: string; quote: string }[];
+};
+
+type HandoffReceipt = { path: string; sha256: string };
+
+/** Stage an authorized handoff backed by current mail and Drive evidence. */
+export function stage(decision: HandoffDecision): Promise<HandoffReceipt>;`,
+  calendarGoalCatalog: `/** Discover authorized calendars and their current roles. */
+
+type CalendarSource = { id: string; name: string; description: string; timeZone: string };
+
+/** Discover authorized calendars and their current roles. */
+export function discover(): Promise<CalendarSource[]>;`,
+  calendarGoalWindows: `/** Read and refresh a bounded calendar window. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarWindow = {
+  id: string;
+  calendarId: string;
+  status: "complete" | "unavailable";
+  records: CalendarRecord[];
+};
+
+/** Read and refresh a bounded calendar window. */
+export function open(id: string, start: string, end: string): Promise<CalendarWindow>;
+
+/** Read and refresh a bounded calendar window. */
+export function refresh(windowId: string): Promise<CalendarWindow>;`,
+  calendarGoalReadback: `/** Verify a calendar record freshly before using it. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarReadback = {
+  status: "current" | "changed" | "missing" | "unavailable";
+  record: CalendarRecord | null;
+};
+
+/** Verify a calendar record freshly before using it. */
+export function verify(record: CalendarRecord): Promise<CalendarReadback>;`,
+  calendarGoalHandoff: `/** Stage a verified scheduling decision in workspace scratch. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarDecision = {
+  status: "selected" | "held" | "incomplete" | "stale";
+  selection: CalendarRecord | null;
+  evidence: CalendarRecord[];
+};
+
+type CalendarHandoff = { path: string; sha256: string };
+
+/** Stage a verified scheduling decision in workspace scratch. */
+export function stage(decision: CalendarDecision): Promise<CalendarHandoff>;`,
+  artifactLibrary: `/** Observe authorized references and apply a change against the current library basis. */
+
+type ArtifactBookmark = {
+  id: number;
+  folder: string;
+  title: string;
+  url: string;
+};
+
+type ArtifactVisit = {
+  url: string;
+  title: string;
+  lastVisitTime: number;
+};
+
+type ArtifactLibrary = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: ArtifactBookmark[];
+  visits: ArtifactVisit[];
+};
+
+type ArtifactLibraryMutation =
+  | { kind: "save"; folder: string; url: string; title: string }
+  | { kind: "rename"; id: number; title: string }
+  | { kind: "file"; id: number; folder: string }
+  | { kind: "retire"; id: number; keepId: number };
+
+type ArtifactMutationStatus = "applied" | "changed" | "held";
+
+type ArtifactLibraryEffect = {
+  status: ArtifactMutationStatus;
+  state: ArtifactLibrary;
+};
+
+/** Observe authorized references and apply a change against the current library basis. */
+export function observe(): Promise<ArtifactLibrary>;
+
+/** Observe authorized references and apply a change against the current library basis. */
+export function apply(
+      basis: string,
+      mutation: ArtifactLibraryMutation,
+    ): Promise<ArtifactLibraryEffect>;`,
+  operatorQueue: `/** Observe owned monitor scheduling and apply changes to the current authorized revision. */
+
+type State = "active" | "paused";
+
+type Action = "pause" | "resume";
+
+type Monitor = {
+  id: string;
+  name: string;
+  team: string;
+  state: State;
+  revision: string;
+  reviewedRevision: string | null;
+  needs: string[];
+  permitted: Action[];
+};
+
+type Queue = { id: string; monitors: Monitor[] };
+
+type Receipt = "applied" | "already" | "blocked" | "interrupted";
+
+/** Observe owned monitor scheduling and apply changes to the current authorized revision. */
+export function observe(): Promise<Queue>;
+
+/** Observe owned monitor scheduling and apply changes to the current authorized revision. */
+export function apply(basis: string, id: string, action: Action): Promise<Receipt>;`,
+  archiveTimeline: `/** Discover milestones and read committed documents from the authorized archive. */
+
+type Milestone = { label: string; eventId: string };
+
+type Lead = { eventId: string; snippet: string };
+
+type Scope = { milestones: Milestone[]; leads: Lead[] };
+
+type Source = {
+  eventId: string;
+  path: string;
+  contentHash: string;
+  text: string;
+};
+
+/** Discover milestones and read committed documents from the authorized archive. */
+export function discover(): Promise<Scope>;
+
+/** Discover milestones and read committed documents from the authorized archive. */
+export function list(eventId: string): Promise<string[]>;
+
+/** Discover milestones and read committed documents from the authorized archive. */
+export function read(eventId: string, path: string): Promise<Source | null>;`,
+  artifactCollection: `/** Observe an owned collection and place or link its authorized artifacts. */
+
+type ArtifactNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type ArtifactCollection = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: ArtifactNode[];
+};
+
+type ArtifactCollectionMutation =
+  | { kind: "note"; panelId: string; text: string | null }
+  | { kind: "group"; parentId: string; title: string }
+  | { kind: "move"; panelId: string; parentId: string; afterId: string | null };
+
+type ArtifactMutationStatus = "applied" | "changed" | "held";
+
+type ArtifactCollectionEffect = {
+  status: ArtifactMutationStatus;
+  state: ArtifactCollection;
+};
+
+/** Observe an owned collection and place or link its authorized artifacts. */
+export function observe(): Promise<ArtifactCollection>;
+
+/** Observe an owned collection and place or link its authorized artifacts. */
+export function apply(
+      basis: string,
+      mutation: ArtifactCollectionMutation,
+    ): Promise<ArtifactCollectionEffect>;
+
+/** Observe an owned collection and place or link its authorized artifacts. */
+export function link(
+      basis: string,
+      panelId: string,
+      libraryBasis: string,
+      bookmarkId: number,
+      heading: string,
+    ): Promise<ArtifactCollectionEffect>;`,
+  gmailGoalCompose: `/** Read the retained lineage of a discovered Gmail compose. */
+
+type RetainedCompose = {
+  id: string;
+  channelId: string;
+  state: "review" | "saving" | "saved" | "sent" | "delivery-unknown";
+  draftId: string | null;
+  sentId: string | null;
+  mimeId: string;
+  threadId: string;
+  evidence: string[];
+};
+
+/** Read the retained lineage of a discovered Gmail compose. */
+export function read(id: string): Promise<RetainedCompose>;`,
+  gmailGoalProvider: `/** Read provider evidence bound to the observed draft or retained delivery. */
+
+type ProviderRecord = {
+  id: string;
+  messageId: string;
+  threadId: string;
+  mimeId: string;
+  subject: string;
+  sender: string;
+  recipient: string;
+  preview: string;
+  sent: boolean;
+  digest: string;
+};
+
+type ReadResult =
+  | { status: "found"; record: ProviderRecord }
+  | { status: "missing" | "unavailable"; record: null };
+
+type SearchResult = {
+  status: "complete" | "unavailable";
+  ids: string[];
+  next: string | null;
+};
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function getDraft(composeId: string, draftId: string): Promise<ReadResult>;
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function findDrafts(composeId: string, cursor: string | null): Promise<SearchResult>;
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function verifyDraft(composeId: string, draftId: string, digest: string): Promise<ReadResult>;
+
+/** Read provider evidence bound to the observed draft or retained delivery. */
+export function readSent(composeId: string): Promise<ReadResult>;`,
   newsRead: `/** Read assigned News readers and schedules and complete the assigned cadence change. */
 
 type NewsReaderPage = {
@@ -1280,6 +1969,593 @@ export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]
 export function finishCadence(
       change: NewsCadenceChange,
     ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  missionGoalBoard: `/** Observe current mission cards, dependencies and revisions. */
+
+type BoardStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type BoardCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: BoardStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type BoardSnapshot = {
+  id: string;
+  projects: { id: string; name: string; archived: boolean }[];
+  cards: BoardCard[];
+  complete: boolean;
+};
+
+/** Observe current mission cards, dependencies and revisions. */
+export function observe(): Promise<BoardSnapshot>;`,
+  missionGoalChange: `/** Apply an authorized mission change against a current board snapshot. */
+
+type BoardChange =
+  | { kind: "ready"; cardId: string; revision: number }
+  | { kind: "relocate"; cardId: string; revision: number; projectId: string }
+  | { kind: "prerequisites"; cardId: string; revision: number; dependencies: string[] };
+
+type BoardStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type BoardCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: BoardStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type BoardSnapshot = {
+  id: string;
+  projects: { id: string; name: string; archived: boolean }[];
+  cards: BoardCard[];
+  complete: boolean;
+};
+
+type ChangeResult = { status: "applied" | "changed"; snapshot: BoardSnapshot };
+
+/** Apply an authorized mission change against a current board snapshot. */
+export function apply(snapshotId: string, change: BoardChange): Promise<ChangeResult>;`,
+  missionGoalHandoff: `/** Stage a handoff from the verified current mission board. */
+
+type HandoffReceipt = { path: string; sha256: string; snapshotId: string; cardIds: string[] };
+
+/** Stage a handoff from the verified current mission board. */
+export function stage(snapshotId: string, cardIds: string[]): Promise<HandoffReceipt>;`,
+  operatorDiscovery: `/** Discover the authorized operations target and observe its current identity. */
+
+type OperatorGrant = "start" | "restart" | "pair";
+
+type OperatorTarget = {
+  id: string;
+  label: string;
+  surface: "deployment" | "terminal-profile";
+  grant: OperatorGrant | null;
+};
+
+type OperatorIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type OperatorBaseline = {
+  target: OperatorTarget;
+  state: "ready" | "inactive" | "unverified";
+  identity: OperatorIdentity | null;
+  receipt: string;
+};
+
+/** Discover the authorized operations target and observe its current identity. */
+export function list(): Promise<OperatorTarget[]>;
+
+/** Discover the authorized operations target and observe its current identity. */
+export function observe(targetId: string): Promise<OperatorBaseline>;`,
+  operatorDeployment: `/** Apply an authorized installation operation and verify the resulting hub. */
+
+type OperatorAttempt = {
+  state: "applied" | "failed" | "baseline-changed";
+  receipt: string;
+};
+
+type OperatorIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type OperatorReadback = {
+  state: "verified" | "unready" | "unchanged-boot" | "identity-changed";
+  identity: OperatorIdentity | null;
+  receipt: string;
+};
+
+/** Apply an authorized installation operation and verify the resulting hub. */
+export function apply(
+      observationReceipt: string,
+      operation: "start" | "restart",
+    ): Promise<OperatorAttempt>;
+
+/** Apply an authorized installation operation and verify the resulting hub. */
+export function verify(installationReceipt: string): Promise<OperatorReadback>;`,
+  operatorProfile: `/** Inspect, pair and verify a private terminal profile against the observed hub. */
+
+type OperatorProfile = {
+  state: "unpaired" | "account" | "workspace" | "foreign" | "unusable";
+  inviteAssigned: boolean;
+  receipt: string;
+};
+
+type OperatorPair = { state: "paired" | "failed"; receipt: string };
+
+type OperatorRoute = { state: "routed" | "failed"; receipt: string };
+
+type OperatorChild = {
+  state: "verified" | "unreachable" | "identity-mismatch";
+  workspaceId: string | null;
+  receipt: string;
+};
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function inspect(observationReceipt: string): Promise<OperatorProfile>;
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function pair(profileReceipt: string): Promise<OperatorPair>;
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function open(pairReceipt: string): Promise<OperatorRoute>;
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function verify(routeReceipt: string): Promise<OperatorChild>;`,
+  openEvalCatalog: `/** Discover owned eval jobs and inspect one exact original retained attempt. */
+
+type EvalAttemptCard = {
+  runId: string;
+  role: "prior" | "latest" | "retry";
+  label: string;
+  authority: "approved" | "withdrawn";
+};
+
+type EvalJobCard = {
+  id: string;
+  title: string;
+  summary: string;
+  state: "active" | "archived";
+  attempts: EvalAttemptCard[];
+};
+
+type OpenEvalObservation = {
+  jobId: string;
+  attempt: EvalAttemptCard;
+  terminal: "returned" | "failed" | "cancelled";
+  runDigest: string;
+  resultDigest: string | null;
+  exactRetryAuthorized: boolean;
+  request: { goal: string; operationId: string };
+};
+
+/** Discover owned eval jobs and inspect one exact original retained attempt. */
+export function discover(): Promise<EvalJobCard[]>;
+
+/** Discover owned eval jobs and inspect one exact original retained attempt. */
+export function open(jobId: string, runId: string): Promise<OpenEvalObservation | null>;`,
+  openEvalReentry: `/** Start one authorized exact recovery attempt after confirming no original effect. */
+
+type EvalAttemptCard = {
+  runId: string;
+  role: "prior" | "latest" | "retry";
+  label: string;
+  authority: "approved" | "withdrawn";
+};
+
+type OpenEvalObservation = {
+  jobId: string;
+  attempt: EvalAttemptCard;
+  terminal: "returned" | "failed" | "cancelled";
+  runDigest: string;
+  resultDigest: string | null;
+  exactRetryAuthorized: boolean;
+  request: { goal: string; operationId: string };
+};
+
+/** Start one authorized exact recovery attempt after confirming no original effect. */
+export function retry(jobId: string, runId: string): Promise<OpenEvalObservation | null>;`,
+  openEvalHandoff: `/** Stage an independently verified committed eval result in an authorized scratch handoff. */
+
+type EvalHandoffArtifact = { path: string; bytes: number; sha256: string; runId: string };
+
+/** Stage an independently verified committed eval result in an authorized scratch handoff. */
+export function stage(jobId: string, runId: string): Promise<EvalHandoffArtifact | null>;`,
+  programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
+
+type RunSample = {
+  id: string;
+  label: string;
+  purpose: string;
+  authorization: "initial" | "after-rejection" | "after-interruption";
+};
+
+type RunProgram = {
+  id: string;
+  label: string;
+  purpose: string;
+  state: "active" | "archived";
+  permission: "inspect" | "trial" | "verify-and-sign";
+  samples: RunSample[];
+};
+
+type RunInspection = {
+  programId: string;
+  revision: string;
+  callable: string | null;
+  evidence: unknown;
+};
+
+/** Discover and compile the owned current workspace program and its authorized sample scope. */
+export function list(): Promise<RunProgram[]>;
+
+/** Discover and compile the owned current workspace program and its authorized sample scope. */
+export function inspect(programId: string): Promise<RunInspection | null>;`,
+  programExecution: `/** Run an authorized typed sample and independently read its retained native output. */
+
+type RunOutcome = "returned" | "rejected" | "interrupted";
+
+type StartedRun = { id: string; status: RunOutcome };
+
+type ProgramOutputReceipt = {
+  id: string;
+  sampleId: string;
+  revision: string;
+  status: RunOutcome;
+  signatureAuthorized: boolean;
+  verification: "verified" | "unchecked" | "mismatch" | "stale" | "failed";
+  output: unknown;
+  error: string | null;
+  evidence: unknown;
+};
+
+/** Run an authorized typed sample and independently read its retained native output. */
+export function run(programId: string, revision: string, sampleId: string): Promise<StartedRun | null>;
+
+/** Run an authorized typed sample and independently read its retained native output. */
+export function read(receiptId: string): Promise<ProgramOutputReceipt | null>;`,
+  programReceiptSigner: `/** Stage the signed receipt for an authorized independently verified current output. */
+
+type SignedOutputReceipt = { path: string; sha256: string; receiptId: string; publicKey: string };
+
+/** Stage the signed receipt for an authorized independently verified current output. */
+export function stage(receiptId: string): Promise<SignedOutputReceipt | null>;`,
+  authoringDiscovery: `/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
+
+type AuthoringSource = {
+  id: string;
+  label: string;
+  product: string;
+  state: "candidate" | "released" | "withdrawn";
+  note: string;
+};
+
+type AuthoringSelection = { candidateId: string; baselineId: string | null };
+
+type SelectedAuthoring = {
+  selection: AuthoringSelection;
+  request: { goal: string; compare: boolean; contract: unknown };
+};
+
+/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
+export function list(): Promise<AuthoringSource[]>;
+
+/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
+export function open(goal: string, selection: AuthoringSelection): Promise<SelectedAuthoring | null>;`,
+  authoringReviewControl: `/** Check current compiler receipt identity or stage an authorized scratch review handoff. */
+
+type AuthoringSelection = { candidateId: string; baselineId: string | null };
+
+type ObservedAuthoringReview = {
+  status: "ready" | "changes-required" | "candidate-rejected" | "baseline-rejected";
+  candidateRevision: string;
+  baselineRevision: string | null;
+  findings: { code: string; subject: string; observed: string; recovery: string }[];
+};
+
+type AuthoringReceipt = {
+  selection: AuthoringSelection;
+  review: ObservedAuthoringReview;
+};
+
+type AuthoringHandoff = { path: string; revision: string };
+
+/** Check current compiler receipt identity or stage an authorized scratch review handoff. */
+export function confirm(receipt: AuthoringReceipt): Promise<"current" | "changed">;
+
+/** Check current compiler receipt identity or stage an authorized scratch review handoff. */
+export function stage(receipt: AuthoringReceipt): Promise<AuthoringHandoff | null>;`,
+  recoverySessions: `/** Discover authorized retained conversation sources and their saved cursor state. */
+
+type RecoverySource = { id: string; title: string; description: string };
+
+/** Discover authorized retained conversation sources and their saved cursor state. */
+export function discover(): Promise<RecoverySource[]>;`,
+  recoveryReplay: `/** Read one discovered conversation from its bound cursor. */
+
+type RecoverySource = { id: string; title: string; description: string };
+
+type RecoveryCursor = { channelId: string; seq: number };
+
+type RecoveryNote = { channelId: string; messageId: string; seq: number; text: string };
+
+type RecoveryWindow = {
+  source: RecoverySource;
+  saved: RecoveryCursor;
+  status: "complete" | "partial" | "foreign" | "caught-up" | "future";
+  frontier: number | null;
+  next: RecoveryCursor | null;
+  notes: RecoveryNote[];
+};
+
+/** Read one discovered conversation from its bound cursor. */
+export function resume(id: string): Promise<RecoveryWindow>;`,
+  recoveryHandoff: `/** Stage an approved handoff backed by observed retained transcript citations. */
+
+type Disposition = "continue" | "hold" | "incomplete" | "caught-up";
+
+type RecoveryNote = { channelId: string; messageId: string; seq: number; text: string };
+
+type RecoveryFinding = {
+  disposition: Disposition;
+  reason: string;
+  citations: RecoveryNote[];
+};
+
+type RecoveryArtifact = { path: string; sha256: string; citationIds: string[] };
+
+/** Stage an approved handoff backed by observed retained transcript citations. */
+export function stage(review: RecoveryFinding): Promise<RecoveryArtifact>;`,
+  newsGoal: `/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+
+type NewsScheduleEvidence = {
+  kind: "schedule";
+  goal: string;
+  owner: { id: string; mode: "curator" | "analyst"; paused: boolean };
+  poll: { id: string; intervalMs: number } | null;
+  briefing: {
+    id: string;
+    kind: "interval" | "daily";
+    intervalMs: number | null;
+    at: string | null;
+    timezone: string | null;
+  } | null;
+  intent:
+    | { kind: "poll"; intervalMs: number }
+    | { kind: "interval"; intervalMs: number }
+    | { kind: "daily"; at: string; timezone: string }
+    | { kind: "pause" }
+    | { kind: "resume" }
+    | { kind: "manual" };
+};
+
+type NewsCadenceSnapshot = {
+  owner: NewsScheduleEvidence["owner"];
+  poll: NewsScheduleEvidence["poll"];
+  briefing: NewsScheduleEvidence["briefing"];
+};
+
+type NewsReaderSelection =
+  | { kind: "inbox" | "saved" | "backlog" }
+  | { kind: "archive"; query: string };
+
+type NewsReaderPage = {
+  id: string;
+  requestedCursor: string | null;
+  nextCursor: string | null;
+  hasMore: boolean;
+  articleIds: string[];
+  briefingIds?: string[];
+};
+
+type NewsReaderEvidence = {
+  kind: "reader";
+  goal: string;
+  view: "inbox" | "saved" | "archive" | "backlog";
+  overview: {
+    id: string;
+    setup: "needs-user-preferences" | "configured";
+    articleCount: number;
+    untriagedCount: number;
+    enabledFeeds: number;
+    failedFeeds: number;
+  };
+  activity: "idle" | "loading" | "retryable-error";
+  pages: NewsReaderPage[];
+};
+
+type NewsGoalChange =
+  | { kind: "poll"; intervalMs: number }
+  | { kind: "interval"; intervalMs: number }
+  | { kind: "daily"; at: string; timezone: string }
+  | { kind: "pause" }
+  | { kind: "resume" };
+
+type NewsGoalApply = {
+  status: "applied" | "state-changed" | "unchanged" | "denied";
+  cadence: NewsCadenceSnapshot;
+};
+
+/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+export function observeCadence(): Promise<NewsCadenceSnapshot>;
+
+/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+export function readReader(
+      selection: NewsReaderSelection,
+    ): Promise<NewsReaderEvidence>;
+
+/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
+export function apply(
+      observationId: string,
+      change: NewsGoalChange,
+    ): Promise<NewsGoalApply>;`,
+  openBrowserMigration: `/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+
+type PublicImportCategory =
+  | "bookmarks"
+  | "history"
+  | "searchEngines"
+  | "favicons";
+
+type ImportProgress = {
+  category: PublicImportCategory;
+  stored: number;
+  skipped: number;
+  errors: number;
+};
+
+type RetainedImportObservation = {
+  phase:
+    | "queued"
+    | "discovering"
+    | "copying"
+    | "reading"
+    | "decrypting"
+    | "normalizing"
+    | "storing"
+    | "reconciling"
+    | "complete"
+    | "cancelled"
+    | "failed"
+    | "partial";
+  resumable: boolean;
+  progress: ImportProgress[];
+};
+
+type MigrationProfile = {
+  id: string;
+  label: string;
+  device: string;
+  categories: PublicImportCategory[];
+  approved: PublicImportCategory[];
+  retained: RetainedImportObservation["phase"] | null;
+};
+
+type MigrationCatalog = {
+  revision: string;
+  profiles: MigrationProfile[];
+  collection: string | null;
+};
+
+type MigrationChoice = {
+  sourceId: string;
+  operation: "preview" | "execute" | "recover";
+  categories: PublicImportCategory[];
+};
+
+type ImportTotal = { category: PublicImportCategory; total: number };
+
+type ImportPreviewObservation = {
+  totals: ImportTotal[];
+  status: "previewed" | "source-changed";
+  warningCount: number;
+};
+
+type BrowserImportReviewRequest =
+  | {
+      goal: string;
+      kind: "preview" | "recover";
+      categories: PublicImportCategory[];
+    }
+  | {
+      goal: string;
+      kind: "execute";
+      categories: PublicImportCategory[];
+      approvedPreview: ImportPreviewObservation;
+    };
+
+type MigrationBookmark = { title: string; url: string };
+
+type MigrationOutcomeEvidence = {
+  preview: ImportPreviewObservation | null;
+  approvedPreview: ImportPreviewObservation | null;
+  receiptId: string | null;
+  phase: RetainedImportObservation["phase"] | null;
+  retainedBookmarks: MigrationBookmark[];
+};
+
+type BrowserImportNext =
+  | "review-preview"
+  | "use-inspector"
+  | "observe-existing"
+  | "keep-results"
+  | "review-retry";
+
+type ImportSourceObservation = {
+  state: "available" | "host-unavailable" | "source-unavailable" | "blocked";
+  categories: PublicImportCategory[];
+};
+
+type BrowserImportReviewReport = {
+  next: BrowserImportNext;
+  source: ImportSourceObservation | null;
+  totals: ImportTotal[];
+  progress: ImportProgress[];
+  findings: string[];
+};
+
+type MigrationTarget = {
+  id: string;
+  title: string;
+  parent: string | null;
+};
+
+type MigrationHandoffView = {
+  revision: string;
+  receiptId: string;
+  bookmarks: MigrationBookmark[];
+  targets: MigrationTarget[];
+};
+
+type MigrationHandoffChoice = {
+  bookmark: MigrationBookmark;
+  targetId: string;
+};
+
+type MigrationDelivery = {
+  receiptId: string;
+  targetId: string;
+  bookmark: MigrationBookmark;
+  note: string;
+};
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function discover(): Promise<MigrationCatalog>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function bind(
+      revision: string,
+      choice: MigrationChoice,
+    ): Promise<BrowserImportReviewRequest | null>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function readOutcome(): Promise<MigrationOutcomeEvidence>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function inspectHandoff(
+      review: BrowserImportReviewReport,
+    ): Promise<MigrationHandoffView | null>;
+
+/** Find the owned browser migration, bind exact public approval, and deliver a verified retained bookmark. */
+export function stageHandoff(
+      revision: string,
+      choice: MigrationHandoffChoice,
+    ): Promise<MigrationDelivery | null>;`,
   browserImportStart: `/** Start the caller-approved public import after fresh preview verification. */
 
 type PublicImportCategory =
@@ -1644,6 +2920,112 @@ type VaultHandoffEvidence = {
 
 /** Read the verified document and preview from the assigned vault review. */
 export function evidence(): Promise<VaultHandoffEvidence>;`,
+  spectroliteGoal: `/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+
+type OpenVaultView = {
+  path: string;
+  revision: string;
+  source: string;
+  visible: string;
+  links: { target: string; path: string | null }[];
+};
+
+type ReviewCheck =
+  | "document"
+  | "preview"
+  | "navigation"
+  | "revision"
+  | "handoff"
+  | "publication";
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultReviewState = {
+  id: string;
+  repositoryId: string;
+  working: VaultReference;
+  committed: VaultReference;
+  mainEventId: string;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+};
+
+type DocumentReviewReceipt = {
+  id: string;
+  repositoryId: string;
+  path: string;
+  ref: VaultReference;
+  fileId: string;
+  contentHash: string;
+  format: "text" | "other";
+  contentClass: "internal" | "external";
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  externalKeys: string[];
+  title: string | null;
+  dependencies: { name: string; reference: string }[];
+  links: { target: string; resolvedPath: string | null }[];
+};
+
+type PreviewReviewReceipt = {
+  id: string;
+  documentPath: string;
+  contentHash: string;
+  phase: "pending" | "rendered" | "compile-error" | "render-error";
+  detail: string | null;
+};
+
+type NavigationHop = { from: string; target: string; to: string };
+
+type NavigationReceipt = {
+  id: string;
+  hops: NavigationHop[];
+};
+
+type ScribeReviewReceipt = {
+  id: string;
+  documentPath: string;
+  recipientId: string;
+  eventId: string | null;
+  phase: "unsent" | "sent" | "failed";
+  selection: string | null;
+};
+
+type PublishReviewReceipt = {
+  id: string;
+  targetEventId: string;
+  observedMainEventId: string | null;
+  outcome: "published" | "up-to-date" | "error" | null;
+  publishing: boolean;
+  conflicts: { kind: "file" | "repository"; id: string; summary: string }[];
+  lastError: string | null;
+};
+
+type SpectroliteReviewRequest = {
+  goal: string;
+  checks: ReviewCheck[];
+  path: string;
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt | null;
+  committedDocument?: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+  navigation?: NavigationReceipt | null;
+  scribeTarget: { recipientId: string; selection: string | null } | null;
+  handoff: ScribeReviewReceipt | null;
+  publication: PublishReviewReceipt | null;
+};
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function inspect(): Promise<OpenVaultView>;
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function follow(target: string, revision: string): Promise<"followed" | "changed" | "unavailable">;
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function revise(revision: string, source: string): Promise<"written" | "changed" | "unavailable">;
+
+/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
+export function evidence(checks: ReviewCheck[]): Promise<SpectroliteReviewRequest>;`,
   architectureProviderRead: `/** Read the assigned installed service and its exact authored declaration. */
 
 type ArchitectureRoute = {

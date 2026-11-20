@@ -24,11 +24,12 @@ The unit manifest must declare the named suite with `runtime: "native"`. Only
 that declaration routes a suite here and requests
 `native.code.execute-tests`.
 
-The adapter checks the declaration again against the materialized context, then
-launches Vitest in a fresh Node child process with an allow-listed environment,
-the installed test-engine dependencies, and a fresh writable scratch directory.
-Selected workspace modules are imported in that child, not in the long-lived
-extension process.
+The adapter checks the declaration against the materialized context. It uses
+the host's prepared dependency environment for the selected unit, including its
+declared development dependencies. An isolated Node child runs Vitest with
+those read-only dependencies and scratch-owned test caches. The execution
+identity includes the selected file and test-name filters. If the context
+changes during verification, resolve the suite again and retry.
 
 The child runs in the workspace's native execution domain: MXC resource
 admission on Unix and the host user's normal permissions on Windows. Choosing a

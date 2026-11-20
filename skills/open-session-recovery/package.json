@@ -1,0 +1,7 @@
+{
+  "name": "@workspace-skills/open-session-recovery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./types": "./program/types.ts" }
+}

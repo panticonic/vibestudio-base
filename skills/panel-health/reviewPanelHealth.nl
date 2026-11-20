@@ -3,6 +3,7 @@ description: Review the assigned live panel and verify whether a later observati
 args:
   request: PanelHealthRequest
 returns: PanelHealthReport
+uses: [assessObservation]
 ---
 1. Call panelHealth.observe, then assessObservation with the expectation and that exact observation.
 2. If the caller requested a later read, call checkHealthChange with the original observation, assessment and expectation. Return its result unchanged.
