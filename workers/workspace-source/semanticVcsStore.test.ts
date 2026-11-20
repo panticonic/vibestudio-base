@@ -1,6 +1,7 @@
 // Builtin semantic-authority tests.
 import { describe, expect, it, vi } from "vitest";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
+import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
 import { contextMaterializationCommand } from "@vibestudio/shared/vcs/workspaceProjection";
 import {
   NORMALIZATION_PROTOCOL,
@@ -8,6 +9,8 @@ import {
   type StateNodeRef,
 } from "@workspace/vcs-engine";
 import { createSemanticVcsSchema } from "./semanticVcsSchema.js";
+import { createDoltWorkspaceState } from "./doltWorkspaceState.js";
+import { installReplayedMain, replayLegacyWorkspace } from "./legacyDoltReplay.js";
 import {
   SemanticVcsError,
   SemanticVcsStore,
@@ -396,6 +399,45 @@ describe("SemanticVcsStore reduced spine", () => {
       )
       .toArray()[0];
     expect(JSON.parse(String(row?.["external_snapshot_json"]))).toEqual(externalSnapshot);
+    expect(store.legacyProvenance({ kind: "application", record: plan.application })).toMatchObject({
+      kind: "application",
+      workUnit: { work_unit_id: plan.workUnit.workUnitId, external_snapshot_json: row?.["external_snapshot_json"] },
+      changes: [],
+      contentEdges: [],
+    });
+    const candidate = await FakeDoltStorage.create();
+    createDoltWorkspaceState(candidate.sql);
+    const schema = candidate.dolt.commit("workspace history schema");
+    const imported = replayLegacyWorkspace(store, { ...candidate.storage, sql: candidate.sql }, schema);
+    const working = imported.commits.get(`application:${plan.application.applicationId}`)!;
+    expect(imported.contexts).toEqual([{
+      id: initial.contextId,
+      committed: imported.main,
+      working: working.hash,
+    }]);
+    candidate.dolt.checkout(working.branch);
+    expect(candidate.sql.exec(
+      "SELECT application_id, work_unit_id, semantic_protocol FROM applications",
+    ).toArray()).toEqual([{
+      application_id: plan.application.applicationId,
+      work_unit_id: plan.workUnit.workUnitId,
+      semantic_protocol: plan.application.semanticProtocol,
+    }]);
+    expect(candidate.sql.exec(
+      "SELECT work_unit_id, external_snapshot_json FROM gad_work_units",
+    ).toArray()).toEqual([{
+      work_unit_id: plan.workUnit.workUnitId,
+      external_snapshot_json: row?.["external_snapshot_json"],
+    }]);
+    expect(candidate.dolt.hashOf("main")).toBe(schema);
+    expect(installReplayedMain(candidate.storage, schema, imported)).toBe(imported.main);
+    expect(installReplayedMain(candidate.storage, schema, imported)).toBe(imported.main);
+    candidate.dolt.commit({ message: "Later workspace history", allowEmpty: true });
+    const laterHead = candidate.dolt.hashOf("main");
+    expect(() => installReplayedMain(candidate.storage, schema, imported)).toThrow(
+      "Workspace main already has a different history",
+    );
+    expect(candidate.dolt.hashOf("main")).toBe(laterHead);
     expect(() =>
       sql.exec(
         `INSERT INTO gad_work_units

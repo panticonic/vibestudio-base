@@ -34,6 +34,92 @@ describe("GadWorkspaceDO — recall deduplication", () => {
     doi = gad.instance;
   });
 
+  it("recalls a native published commit without a row in the legacy event table", () => {
+    const document = {
+      eventId: "event:native-config", revision: "c".repeat(40),
+      text: "Keep the Northstar configuration after rollout",
+      createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    expect(doi.recordHistoryCommitMemory(document)).toBe(true);
+    expect(doi.recordHistoryCommitMemory(document)).toBe(true);
+    expect(doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results).toMatchObject([{
+      kind: "commit", eventId: document.eventId, appendedAt: document.createdAt,
+      anchor: { workspaceEventId: document.eventId, revision: document.revision },
+    }]);
+  });
+
+  it("commits native recall documents and the page marker atomically", () => {
+    const document = {
+      eventId: "event:batch", revision: "d".repeat(40), text: "Private fixture batch summary",
+      createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    const marker = JSON.stringify({ completedEventId: document.eventId, pending: null });
+    const page = { previousMarker: null, marker, documents: [document] };
+    expect(() => doi.recordHistoryCommitMemoryPage({
+      ...page, documents: [document, { ...document, createdAt: "invalid" }],
+    })).toThrow("Invalid native commit memory");
+    expect(doi.readHistoryCommitMemoryIndex()).toBeNull();
+    expect(doi.recallMemory({ query: "batch summary", kinds: ["commit"] }).results).toEqual([]);
+    expect(doi.recordHistoryCommitMemoryPage(page)).toBe(true);
+    expect(doi.readHistoryCommitMemoryIndex()).toBe(marker);
+    expect(() => doi.recordHistoryCommitMemoryPage(page)).toThrow("index advanced concurrently");
+    expect(doi.recallMemory({ query: "batch summary", kinds: ["commit"] }).results)
+      .toMatchObject([{ eventId: document.eventId }]);
+  });
+
+  it("keeps legacy published recall during backfill and retires it on completion", () => {
+    gad.sql.exec(`
+      INSERT INTO gad_workspace_events
+        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
+      VALUES ('event:legacy', 'command:legacy', 'commit', 'root:legacy', 'Northstar saved', '2026-01-02');
+      INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
+      VALUES ('main', 'event:legacy', '2026-01-02');
+    `);
+    const pending = JSON.stringify({
+      completedEventId: null, pending: { eventId: "event:main", after: "event:first" },
+    });
+    const nativeDocument = {
+      eventId: "event:first", revision: "a".repeat(40), text: "Northstar first",
+      createdAt: "2026-01-02T00:00:00Z",
+    };
+    const recalled = () => doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results;
+    doi.recordHistoryCommitMemoryPage({ previousMarker: null, marker: pending, documents: [nativeDocument] });
+    expect(recalled().map(({ eventId }) => eventId).sort()).toEqual(["event:first", "event:legacy"]);
+
+    const migrated = { ...nativeDocument, eventId: "event:legacy", revision: "b".repeat(40) };
+    const completed = JSON.stringify({ completedEventId: "event:main", pending: null });
+    reach(doi).indexMemoryRow({ kind: "commit", eventId: "obsolete", text: "Northstar old projection" });
+    const finalPage = { previousMarker: pending, marker: completed, documents: [migrated] };
+    expect(() => doi.recordHistoryCommitMemoryPage({
+      ...finalPage, documents: [migrated, { ...migrated, text: "" }],
+    })).toThrow("Invalid native commit memory");
+    expect(doi.readHistoryCommitMemoryIndex()).toBe(pending);
+    expect(recalled().find(({ eventId }) => eventId === "event:legacy")?.anchor?.revision).toBeUndefined();
+    expect(recalled().some(({ eventId }) => eventId === "obsolete")).toBe(true);
+
+    doi.recordHistoryCommitMemoryPage(finalPage);
+    gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
+    expect(recalled().map(({ eventId, anchor }) => [eventId, anchor?.revision]).sort()).toEqual([
+      ["event:first", nativeDocument.revision],
+      ["event:legacy", migrated.revision],
+    ]);
+  });
+
+  it("retires old rows when opening an index completed by the previous release", () => {
+    const document = {
+      eventId: "event:native", revision: "a".repeat(40), text: "Northstar saved",
+      createdAt: "2026-01-02T00:00:00Z",
+    };
+    const marker = JSON.stringify({ completedEventId: document.eventId, pending: null });
+    doi.recordHistoryCommitMemory(document);
+    reach(doi).indexMemoryRow({ kind: "commit", eventId: "obsolete", text: "Northstar old projection" });
+    gad.sql.exec("INSERT INTO state (key, value) VALUES ('native-commit-memory-index-v1', ?)", marker);
+    gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
+    expect(doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results)
+      .toMatchObject([{ eventId: document.eventId }]);
+    expect(doi.readHistoryCommitMemoryIndex()).toBe(marker);
+  });
+
   it("dedup keeps the page full: a duplicate copy is collapsed without stealing a slot", () => {
     // Six distinct items sharing the term "widget", each a distinct event id.
     for (let i = 1; i <= 6; i += 1) {
@@ -141,7 +227,9 @@ describe("GadWorkspaceDO — recall deduplication", () => {
        VALUES ('application:retention-launch', 'work:retention-launch', 'event',
                'event:parent', 'root:retention-launch', 'semantic-v1');
        INSERT INTO gad_workspace_event_applications (event_id, ordinal, application_id)
-       VALUES ('event:retention-launch', 0, 'application:retention-launch')`,
+       VALUES ('event:retention-launch', 0, 'application:retention-launch');
+       INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
+       VALUES ('main', 'event:retention-launch', '2026-01-02T00:00:00.000Z')`,
     );
     reach(doi).indexMemoryRow({
       text: "Finish the post-launch documentation pass",
@@ -165,6 +253,21 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       snippet: expect.stringContaining("Harbor Lantern rollout codename"),
     });
   });
+
+  it("removes previously indexed private legacy commits and indexes only protected ancestry", () => {
+    gad.sql.exec(`
+      INSERT INTO gad_workspace_events
+        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
+      VALUES
+        ('event:private', 'command:private', 'commit', 'root:private', 'Northstar private revision', '2026-01-02'),
+        ('event:published', 'command:published', 'commit', 'root:published', 'Northstar published revision', '2026-01-02');
+      INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
+      VALUES ('main', 'event:published', '2026-01-02')
+    `);
+    reach(doi).indexMemoryRow({ kind: "commit", eventId: "event:private", text: "Northstar private revision" });
+    const results = doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results;
+    expect(results.map(({ eventId }) => eventId)).toEqual(["event:published"]);
+  });
 });
 
 describe("GadWorkspaceDO — recall visibility", () => {
@@ -178,11 +281,15 @@ describe("GadWorkspaceDO — recall visibility", () => {
    * The host attests the caller's agent binding; the DO never takes it from
    * the request. A test stands in for the host by shadowing the same getter.
    */
-  const asAgent = (channelId: string | null): void => {
+  const asAgent = (
+    channelId: string | null,
+    workspaceRecallCauses?: [string, string, string][],
+  ): void => {
     Object.defineProperty(doi, "authorization", {
       configurable: true,
       get: () => ({
         authorizingOrigin: { kind: "code", principal: "code:test" },
+        workspaceRecallCauses,
         agentBinding: channelId
           ? {
               entity: null,
@@ -237,6 +344,55 @@ describe("GadWorkspaceDO — recall visibility", () => {
       .results.map((result) => result.snippet);
     expect(texts.some((text) => text.includes("channel:"))).toBe(false);
     expect(texts.some((text) => text.includes("in a commit"))).toBe(true);
+  });
+
+  it("recalls only the caller's own messages and exact native invocation evidence", () => {
+    const originatingInput = {
+      nativeSource: {},
+      originatingInput: { channelRef: { objectKey: "origin" }, messageId: "request" },
+    };
+    gad.sql.exec(
+      `INSERT INTO log_events
+         (log_id, head, seq, envelope_id, payload_kind, actor_json, payload_ref_json, appended_at, hash, prev_hash)
+       VALUES ('agent-log', 'branch', 1, 'started', 'invocation.started', '{}', ?, '2026-01-02', 'hash', '')`,
+      JSON.stringify(originatingInput),
+    );
+    gad.sql.exec(`
+      INSERT INTO trajectory_turns (log_id, head, turn_id)
+      VALUES ('agent-log', 'branch', 'turn'), ('agent-log', 'other-branch', 'turn');
+      INSERT INTO trajectory_invocations (log_id, head, invocation_id, turn_id, status, started_event_id, updated_at)
+      VALUES ('agent-log', 'branch', 'run', 'turn', 'completed', 'started', '2026-01-02'),
+             ('agent-log', 'other-branch', 'run', 'turn', 'completed', 'started', '2026-01-02');
+      INSERT INTO trajectory_messages (log_id, head, message_id, turn_id, role, status, updated_at)
+      VALUES ('agent-log', 'branch', 'answer', 'turn', 'assistant', 'completed', '2026-01-02'),
+             ('agent-log', 'other-branch', 'answer', 'turn', 'assistant', 'completed', '2026-01-02'),
+             ('origin', 'main', 'request', NULL, 'user', 'completed', '2026-01-02'),
+             ('imposter', 'main', 'request', NULL, 'user', 'completed', '2026-01-02');
+      DROP TABLE prov_vis_commands;
+    `);
+    for (const [logId, head, messageId] of [
+      ["agent-log", "branch", "answer"],
+      ["agent-log", "other-branch", "answer"],
+      ["origin", "main", "request"],
+      ["imposter", "main", "request"],
+    ] as const) {
+      reach(doi).indexMemoryRow({
+        text: `Northstar ingress evidence in ${logId} / ${head}`,
+        kind: "message", logId, head, anchor: { messageId },
+      });
+    }
+    asAgent(OWN_CHANNEL, [["agent-log", "branch", "run"]]);
+    const readMessages = () => doi
+      .recallMemory({ query: "Northstar ingress", kinds: ["message"] })
+      .results.map(({ logId, head }) => [logId, head]);
+    expect(readMessages()).toHaveLength(3);
+    expect(readMessages()).toEqual(expect.arrayContaining([
+      [logIdForChannel(OWN_CHANNEL), headForChannel(OWN_CHANNEL)],
+      ["agent-log", "branch"],
+      ["origin", "main"],
+    ]));
+    asAgent(null, []);
+    expect(readMessages()).toEqual([]);
   });
 
   it("leaves an unattributed in-process call unscoped", () => {

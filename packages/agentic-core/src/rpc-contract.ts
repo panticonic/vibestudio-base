@@ -1,6 +1,6 @@
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import type { AgentSubscriptionResult } from "./agent-launch.js";
-import type { ImportChannelKnowledgeInput } from "./native-channel-knowledge.js";
+import type { AdoptChannelKnowledgeInput } from "./native-channel-knowledge.js";
 
 /** The agent RPC methods used by agentic-core's launch and knowledge clients. */
 export interface AgentRpcClientMethods {
@@ -13,13 +13,13 @@ export interface AgentRpcClientMethods {
     delivery?: "all" | "addressed";
   }): Promise<AgentSubscriptionResult>;
   unsubscribeChannel(channelId: string): Promise<{ ok: boolean }>;
-  importChannelKnowledge(
-    input: ImportChannelKnowledgeInput,
+  adoptChannelKnowledge(
+    input: AdoptChannelKnowledgeInput,
   ): Promise<AgentSubscriptionResult>;
 }
 
 export const agentRpcMethods = createReceiverRpcMethods<AgentRpcClientMethods>([
   "subscribeChannel",
   "unsubscribeChannel",
-  "importChannelKnowledge",
+  "adoptChannelKnowledge",
 ]);

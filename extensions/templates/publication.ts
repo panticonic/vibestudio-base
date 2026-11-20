@@ -236,6 +236,7 @@ export function createTemplatePublisher(
               await vcs.status({ contextId: operation.contextId })
             ).workingHead,
             message: `Publish template ${request.version}`,
+            templateInstallation: operation.nextInstallation,
           },
         ]);
       else await step("commit", "vcs.commit", []);

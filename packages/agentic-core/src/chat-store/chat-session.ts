@@ -1404,7 +1404,7 @@ export class ChatSession implements ReadableStore<ChatSessionSnapshot> {
         ),
         false
       );
-    // An `eval` runs server-side in the owning agent's EvalDO: route the
+    // An `eval` runs server-side in the owning agent's eval kernel: route the
     // invocation coordinate through the agent that emitted it, which derives
     // the namespaced eval coordinate itself.
     if (invocation.name === "eval") {

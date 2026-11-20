@@ -15,7 +15,7 @@ reconnects, or build/reload events), read the server logs with
 
 In agent eval, `chat.channelId` is the channel the agent is responding in,
 not a parent or sibling panel's chat. Server-side eval runs in the agent's
-EvalDO: `panelTree.self()` is that EvalDO, and `getParent()` is the
+eval kernel: `panelTree.self()` is that eval kernel, and `getParent()` is the
 owner agent's nearest visible panel ancestor, if any.
 
 When the user asks about a visible panel:

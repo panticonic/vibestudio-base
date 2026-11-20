@@ -3701,7 +3701,7 @@ export const BrowserImpl = {
     wsEndpoint: string,
     options: {
       transportOptions?: { authToken?: string };
-      /** Hosted EvalDO runtimes must use the egress-aware fetch upgrade. */
+      /** Hosted eval kernel runtimes must use the egress-aware fetch upgrade. */
       preferFetchUpgrade?: boolean;
       /** Cancels connection acquisition; the connected browser owns its lifetime. */
       signal?: AbortSignal;

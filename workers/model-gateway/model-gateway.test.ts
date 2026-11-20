@@ -272,7 +272,7 @@ async function gateway(env: Record<string, unknown> = {}) {
 }
 
 const evalCaller = {
-  callerId: "do:vibestudio/internal:EvalDO:abc",
+  callerId: "do:workers/session:SessionDO:abc",
   callerKind: "agent" as const,
   userId: "user:test",
 };
@@ -597,7 +597,9 @@ describe("retention", () => {
       (
         sql
           .exec(
-            "SELECT COUNT(*) AS n FROM payload_chunks WHERE instr(CAST(data AS TEXT), ?) > 0",
+            // A task's input is in the local set, a document's content may be in either.
+            "SELECT (SELECT COUNT(*) FROM payload_chunks WHERE instr(CAST(data AS TEXT), ?) > 0) + (SELECT COUNT(*) FROM vsl_payload_chunks WHERE instr(CAST(data AS TEXT), ?) > 0) AS n",
+            marker,
             marker,
           )
           .toArray()[0] as { n: number }
@@ -633,7 +635,7 @@ describe("retention", () => {
       (
         gate.sql
           .exec(
-            "SELECT COUNT(*) AS n FROM payload_chunks WHERE instr(CAST(data AS TEXT), 'TRANSCRIPT-MARKER-cancel-55d0') > 0",
+            "SELECT (SELECT COUNT(*) FROM payload_chunks WHERE instr(CAST(data AS TEXT), 'TRANSCRIPT-MARKER-cancel-55d0') > 0) + (SELECT COUNT(*) FROM vsl_payload_chunks WHERE instr(CAST(data AS TEXT), 'TRANSCRIPT-MARKER-cancel-55d0') > 0) AS n",
           )
           .toArray()[0] as { n: number }
       ).n;

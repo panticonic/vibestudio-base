@@ -1,0 +1,125 @@
+{
+  "name": "@workspace-workers/eval-kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "vibestudio": {
+    "title": "Eval kernel",
+    "icon": "\ud83e\uddea",
+    "kind": "worker",
+    "entry": "index.ts",
+    "durable": {
+      "classes": [
+        {
+          "className": "EvalKernel",
+          "hosted": {
+            "storage": "dolt",
+            "codegen": true,
+            "residency": true,
+            "limits": {
+              "cpuMs": 600000
+            }
+          }
+        }
+      ]
+    },
+    "tests": [
+      {
+        "name": "native",
+        "runtime": "native",
+        "include": [
+          "**/*.test.ts"
+        ]
+      }
+    ],
+    "authority": {
+      "provides": [],
+      "requests": [
+        {
+          "capability": "context.boundary",
+          "resource": {
+            "kind": "prefix",
+            "prefix": "context"
+          },
+          "tier": "critical",
+          "evidence": "bounded-dynamic"
+        },
+        {
+          "capability": "credential.use",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "external.open",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "panel.inspect",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "permissions.read",
+          "resource": {
+            "kind": "exact",
+            "key": "permissions.read"
+          },
+          "tier": "gated",
+          "evidence": "exact"
+        },
+        {
+          "capability": "server-logs.read",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "webhooks.manage",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        },
+        {
+          "capability": "workspace.storage.materialize",
+          "resource": {
+            "kind": "prefix",
+            "prefix": ""
+          },
+          "tier": "gated",
+          "evidence": "intentional-broad"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "@vibestudio/durable": "workspace:*",
+    "@vibestudio/rpc": "workspace:*",
+    "@vibestudio/service-schemas": "workspace:*",
+    "@vibestudio/shared": "workspace:*",
+    "@vibestudio/content-addressing": "workspace:*",
+    "@workspace/eval": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

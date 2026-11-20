@@ -606,7 +606,10 @@ const next = await handle.stateArgs.get();
 ```
 
 `handle.state()` is empty unless the application registers state providers with
-`useAgentState` or `agentApi.registerStateProvider`.
+`useAgentState` or `agentApi.registerStateProvider`. A browser panel is an external
+page with no panel runtime, so the host answers for it: `state()` is `{}`, `routes()`
+is the page's URL parts, `tree()` is the structure `snapshot()` captures over CDP, and
+`setMode()` returns `undefined`.
 
 ## CDP
 

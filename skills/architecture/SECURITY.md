@@ -65,7 +65,7 @@ alongside the shared evaluator.
 
 ## Eval admission and reachability
 
-An agent's EvalDO is a conduit with a fixed code identity and a live
+An agent's eval kernel is a conduit with a fixed code identity and a live
 host-created execution session. Interactive eval is admitted only for an
 attested task, unattended eval only for an approved mission. After admission,
 receiver policy, locks, task/agent/mission grants, and fresh approvals govern

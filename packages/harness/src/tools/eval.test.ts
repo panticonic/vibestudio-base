@@ -109,7 +109,7 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(tool.description).toContain(
       "retained throughout admitted execution and cancellation",
     );
-    expect(tool.description).toContain("30 minutes of notebook inactivity");
+    expect(tool.description).toContain("until the notebook is explicitly ended");
     expect(tool.description).toContain("objects with methods");
     expect(tool.description).toContain("[kernel] Restarted");
 
@@ -121,7 +121,6 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
         kernel: {
           incarnationId: "kernel-2",
           startedAt: 2,
-          idleExpiresAt: 3,
           event: {
             kind: "restarted",
             recovery: {
@@ -138,6 +137,27 @@ describe("formatEvalResult (shared by the eval tool's execute + the agent's defe
     expect(text).toContain("Durable scope restored: panelId");
     expect(text).toContain("Live-only scope lost: panelHandle");
     expect(text).toContain("Reacquire lost handles from stable IDs");
+  });
+
+  it("tells the user once that a notebook of the previous version was dropped in the upgrade (D5)", async () => {
+    const text = textOf(
+      await formatEvalResult({
+        success: true,
+        console: "",
+        kernel: {
+          incarnationId: "kernel-1",
+          startedAt: 1,
+          event: {
+            kind: "restarted",
+            recovery: { status: "complete", restored: [], lost: [] },
+            legacyNotebookDropped: true,
+          },
+        },
+      }),
+    );
+    expect(text).toContain("[kernel] Restarted");
+    expect(text).toContain("[kernel] This notebook was upgraded");
+    expect(text).toContain("were not carried over and are gone");
   });
 
   it("reports restart recovery as unavailable when hydration itself fails", async () => {

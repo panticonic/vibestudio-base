@@ -361,7 +361,7 @@ const sqlText = (value: string): string => `'${value.replaceAll("'", "''")}'`;
  * form crossed workerd's SQLite deployment limit as the contract grew and
  * stopped an otherwise healthy workspace from starting.
  */
-function catalogView(): string {
+export function provenanceCatalogSelect(): string {
   const rows = PROV_CATALOG.map((relation) => {
     const columns = relation.columns
       .map((column) => `${column.column} — ${column.meaning}`)
@@ -372,7 +372,6 @@ function catalogView(): string {
     );
   });
   return (
-    "CREATE VIEW IF NOT EXISTS prov_schema AS\n" +
     "SELECT column1 AS relation, column2 AS meaning, column3 AS column_count, " +
     "column4 AS columns\n" +
     `FROM (VALUES\n${rows.join(",\n")}\n)`
@@ -637,7 +636,7 @@ export function createProvenanceViews(sql: SqlStorage): void {
 
     CREATE VIEW IF NOT EXISTS prov_schema_version AS SELECT ${PROV_SCHEMA_VERSION} AS version;
   `);
-  sql.exec(catalogView());
+  sql.exec(`CREATE VIEW IF NOT EXISTS prov_schema AS ${provenanceCatalogSelect()}`);
 }
 
 /**

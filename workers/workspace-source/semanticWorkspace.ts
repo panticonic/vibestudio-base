@@ -8,8 +8,6 @@ import {
 import {
   parseVcsSemanticRequest,
   vcsProvenanceEdgeSchema,
-  vcsTrajectoryRequestRefSchema,
-  vcsTrajectorySenderRefSchema,
   type VcsBlameInput,
   type VcsCompareInput,
   type VcsCopyInput,
@@ -46,7 +44,6 @@ import {
   SEMANTIC_PROTOCOL,
   compactId,
   composeFileManifest,
-  contentMappingDigest,
   emptyFileManifest,
   fileManifestEntryAt,
   planWorkspaceFactChangeSet,
@@ -77,7 +74,6 @@ import {
   nativeInvocationSourceSchema,
   nativeOriginatingInputSchema,
 } from "@vibestudio/service-schemas/nativeInvocation";
-import { channelTrajectoryFor } from "@vibestudio/trajectory-identity";
 import {
   SemanticVcsError,
   appliedChangeIdentity,
@@ -103,7 +99,7 @@ import {
   type WorkUnitRecord,
   type ExternalDeltaRecord,
 } from "./semanticVcsStore.js";
-import { contentMappingFromRow } from "./semanticVcsContentMappingCodec.js";
+import { contentMapping, readAppliedBlameChange, readInvertedCounteractionMappings, traceContentBlame } from "./contentBlame.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 import { executeProvenanceQuery } from "./provenanceQuery.js";
 import {
@@ -111,19 +107,80 @@ import {
   provenanceSearchIndexMode,
 } from "./provenanceViews.js";
 
+import {
+  boundedMemoryText,
+  readRecordedMemoryCause,
+  readTrajectoryMessage,
+  readTrajectoryMessageExcerpt,
+  trajectoryRequestRef,
+  trajectorySenderRef,
+  walkTrajectoryInvocation,
+} from "./trajectoryEvidence.js";
+
 type Row = Record<string, unknown>;
 type PlacedFileState = Extract<WorkspaceFileState, { presence: "placed" }>;
 type PresentRepositoryState = Extract<
   WorkspaceRepositoryMember,
   { presence: "present" }
 >;
+type RepositoryPlacement = Pick<PresentRepositoryState, "repositoryId" | "repoPath">;
+/** Placement reads pinned to the edit's exact expected working revision. */
+export interface WorkspaceEditBasis {
+  file(fileId: string): PlacedFileState | null;
+  repository(repositoryId: string): RepositoryPlacement | null;
+  repositoryAtPath(path: string): { repositoryId: string } | null;
+  emptyRepository(repository: RepositoryPlacement): PresentRepositoryState | null;
+  hasFileAtPath(repositoryId: string, path: string): boolean;
+}
+export interface WorkspaceRevertBasis {
+  change(changeId: string): ChangeRecord;
+  repository(repositoryId: string): WorkspaceRepositoryMember | null;
+  priorRepository(repository: Extract<WorkspaceRepositoryMember, { presence: "deleted" }>): WorkspaceRepositoryMember | null;
+  manifest(repository: PresentRepositoryState, manifestId: string): {
+    values: readonly { fileId: string }[];
+    next: unknown | null;
+  };
+  file(fileId: string): { state: WorkspaceFileState } | null;
+  blockingChanges(change: ChangeRecord): readonly string[];
+  latestFileChange(fileId: string): { changeId: string } | null;
+}
+export interface WorkspaceSnapshotImportBasis {
+  repository(repositoryId: string): WorkspaceRepositoryMember | null;
+  files(repository: PresentRepositoryState): ReadonlyMap<string, PlacedFileState>;
+}
+function snapshotImportTarget(
+  repository: WorkspaceRepositoryMember | null,
+  repositoryId: string,
+  repoPath: string,
+): PresentRepositoryState {
+  if (!repository || repository.presence !== "present") {
+    throw new SemanticVcsError(
+      "InvalidReference",
+      `Snapshot replacement requires a present repository ${repositoryId}`,
+    );
+  }
+  if (repository.repoPath !== repoPath) {
+    throw new SemanticVcsError(
+      "InvalidReference",
+      `Snapshot import cannot move repository ${repositoryId}; use vcs.move first`,
+    );
+  }
+  return repository;
+}
+export interface WorkspaceTransferBasis {
+  placedFile(repositoryId: string, fileId: string): { state: PlacedFileState; repository: RepositoryPlacement };
+  repositoryPlacement(repositoryId: string): RepositoryPlacement;
+  presentRepository(repositoryId: string): PresentRepositoryState;
+  fileAtPath(repositoryId: string, path: string): PlacedFileState | null;
+  repositoryAtPath(path: string): { repositoryId: string } | null;
+}
 type ContentEndpoint = {
   fileId: string;
   contentHash: string;
   coordinateKind: "utf16" | "byte";
   coordinateExtent: number;
 };
-type FileContentOrigin = {
+export type FileContentOrigin = {
   ref: ContentOriginRef;
   content: ContentEndpoint | null;
   authoredChangeId: string | null;
@@ -143,10 +200,9 @@ type LatestAppliedFileChange = {
   content: ContentEndpoint | null;
 };
 
-const MAX_WORKING_APPLICATIONS = 10_000;
-const MAX_ANCESTRY_EDGES = 100_000;
+export const MAX_WORKING_APPLICATIONS = 10_000;
+export const MAX_ANCESTRY_EDGES = 100_000;
 /** Walk bounds are query shapes, not policies: they are fixed server-side. */
-const MAX_CAUSE_MESSAGE_HOPS = 8;
 const MAX_REJECTION_ROWS = 200;
 const MAX_INDEXED_MESSAGES = 5_000;
 
@@ -178,39 +234,6 @@ const ftsMatchExpression = (text: string): string =>
     .join(" OR ") || '""';
 const stateFileKey = (state: StateNodeRef, fileId: string): string =>
   `${stateNodeKey(state)}\0${fileId}`;
-
-const boundedMemoryText = (value: string, maximum: number): string | null => {
-  const normalized = value.trim();
-  if (!normalized) return null;
-  return normalized.length <= maximum
-    ? normalized
-    : `${normalized.slice(0, Math.max(0, maximum - 1)).trimEnd()}…`;
-};
-
-const trajectorySenderRef = (value: unknown) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const candidate = value as Row;
-  const parsed = vcsTrajectorySenderRefSchema.safeParse({
-    kind: candidate["kind"],
-    id: candidate["id"],
-    participantId:
-      typeof candidate["participantId"] === "string"
-        ? candidate["participantId"]
-        : null,
-  });
-  return parsed.success ? parsed.data : null;
-};
-
-const trajectoryRequestRef = (value: unknown) => {
-  const parsed = vcsTrajectoryRequestRefSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new SemanticVcsError(
-      "IntegrityFailure",
-      "Invalid canonical invocation request reference",
-    );
-  }
-  return parsed.data;
-};
 
 export interface SemanticDispatchRequest {
   input?: unknown;
@@ -254,7 +277,7 @@ interface SemanticWorkspaceDeps {
   transaction<T>(fn: () => T): T;
 }
 
-interface FileTransition {
+export interface FileTransition {
   fileId: string;
   expected: WorkspaceFileState | null;
   result: WorkspaceFileState;
@@ -263,7 +286,7 @@ interface FileTransition {
   newFile: boolean;
 }
 
-interface RepositoryTransition {
+export interface RepositoryTransition {
   repositoryId: string;
   expected: WorkspaceRepositoryMember | null;
   /** `undefined` preserves the member while files change; `null` deletes it. */
@@ -274,11 +297,36 @@ interface RepositoryTransition {
   newRepository: boolean;
 }
 
+interface MutationPreparation<Placement> {
+  now(): string;
+  workUnitEvidence(
+    contextId: string,
+    commandId: string,
+  ): Pick<WorkUnitRecord, "authorContextId" | "triggerEvidence">;
+  contentIntegrity(basis: StateNodeRef, draft: MutationDraft): MutationContentIntegrity;
+  contentOrigins(state: StateNodeRef, fileIds: readonly string[]): Map<string, FileContentOrigin>;
+  invertedCounteractions(
+    changeIds: readonly string[],
+    child: ContentEndpoint,
+    parent: ContentEndpoint,
+  ): ContentMapping[];
+  preparePlacement(
+    files: readonly FileTransition[],
+    repositories: readonly RepositoryTransition[],
+  ): { placement: Placement; resultRoot: string; workspacePlanCompletedAt: number };
+}
+
+type MutationContentIntegrity = {
+  class: "internal" | "external";
+  externalKeys: string[];
+  contentOrigins: Map<string, FileContentOrigin>;
+};
+
 type DraftChangeRef =
   | { kind: "authored"; ordinal: number }
   | { kind: "existing"; changeId: string };
 
-interface MutationDraft {
+export interface MutationDraft {
   kind: WorkUnitRecord["kind"];
   intentSummary: string | null;
   externalSnapshot?: {
@@ -417,7 +465,7 @@ const bytesFromBase64 = (value: string): Uint8Array => {
   return bytes;
 };
 
-const base64FromBytes = (value: Uint8Array): string => {
+export const base64FromBytes = (value: Uint8Array): string => {
   let binary = "";
   const chunk = 0x8000;
   for (let index = 0; index < value.length; index += chunk) {
@@ -480,7 +528,7 @@ const contentDescriptorFromEndpoint = (
 
 const endpointForFile = (
   state: PlacedFileState,
-  repository: Extract<WorkspaceRepositoryMember, { presence: "present" }>,
+  repository: Pick<RepositoryPlacement, "repoPath">,
 ): Row => ({
   kind: "file",
   fileId: state.fileId,
@@ -503,13 +551,6 @@ const missingEndpoint = (
   repositoryId: state.repositoryId,
   repoPath,
   path: state.path,
-});
-
-const contentMapping = (
-  value: Omit<ContentMapping, "digest">,
-): ContentMapping => ({
-  ...value,
-  digest: contentMappingDigest(value),
 });
 
 const mappingForWholeFile = (input: {
@@ -654,7 +695,7 @@ const inverseChangeKind = (
   }
 };
 
-const publicChangeKind = (kind: string): string => {
+export const publicChangeKind = (kind: string): string => {
   switch (kind) {
     case "text":
       return "text-edit";
@@ -670,6 +711,31 @@ const publicChangeKind = (kind: string): string => {
       return kind;
   }
 };
+
+function semanticCoordinatePath(endpoint: Row): string | undefined {
+  if (endpoint["kind"] === "repository" && typeof endpoint["repoPath"] === "string")
+    return endpoint["repoPath"];
+  if (endpoint["kind"] === "file" && typeof endpoint["repoPath"] === "string" &&
+      typeof endpoint["path"] === "string") return `${endpoint["repoPath"]}/${endpoint["path"]}`;
+  return undefined;
+}
+
+export function describeSemanticEffects(
+  workKind: string,
+  changes: readonly Pick<ChangeRecord, "kind" | "result" | "base">[],
+): string {
+  if (changes.length === 0) return `${workKind} decision with no fact transition`;
+  const descriptions = changes.map((change) => {
+    const endpoint = change.result ?? change.base ?? {};
+    const subject = semanticCoordinatePath(endpoint) ??
+      (typeof endpoint["fileId"] === "string" ? endpoint["fileId"]
+        : typeof endpoint["repositoryId"] === "string" ? endpoint["repositoryId"] : "workspace coordinate");
+    return `${publicChangeKind(change.kind)} ${subject}`;
+  });
+  const unique = [...new Set(descriptions)];
+  const visible = unique.slice(0, 12).join("; ");
+  return unique.length > 12 ? `${visible}; and ${unique.length - 12} more effects` : visible;
+}
 
 type ObservedContentDescriptor = {
   contentKind: "text" | "bytes";
@@ -713,7 +779,7 @@ const importedSnapshotDigest = (
       ),
   );
 
-const importedRepositories = (input: VcsImportSnapshotInput) =>
+export const importedRepositories = (input: VcsImportSnapshotInput) =>
   input.repositories.map((repository, ordinal) => ({
     input: repository,
     repositoryId:
@@ -725,7 +791,7 @@ const importedRepositories = (input: VcsImportSnapshotInput) =>
       }),
   }));
 
-const changeEffects = (
+export const changeEffects = (
   change: Pick<ChangeRecord, "kind" | "base" | "result" | "payload">,
 ) => {
   const base = change.base;
@@ -824,7 +890,7 @@ const bytesFromBase64Url = (value: string): Uint8Array => {
   );
 };
 
-const semanticCursor = (kind: string, basis: Row, position: Row): string => {
+export const semanticCursor = (kind: string, basis: Row, position: Row): string => {
   // The resumable position must cross the tool boundary, but the often-large
   // typed basis need not. Bind that exact basis into the digest so a compact
   // cursor still fails closed when either the request or token changes.
@@ -836,7 +902,7 @@ const semanticCursor = (kind: string, basis: Row, position: Row): string => {
   return `semantic-page-v2.${digest}.${base64UrlFromBytes(payloadBytes)}`;
 };
 
-const parseSemanticCursor = (
+export const parseSemanticCursor = (
   cursor: string | undefined,
   kind: string,
   basis: Row,
@@ -992,6 +1058,83 @@ const parseBlameCursor = (
 
 const blameCursor = (basis: Row, nextStart: number): string =>
   semanticCursor("blame", basis, { nextStart });
+
+/** Render exact byte or text lineage through either committed Dolt facts or the legacy replay source. */
+export function projectContentBlame(options: {
+  sql: SqlStorage;
+  revision?: string;
+  input: VcsBlameInput;
+  file: { contentKind: "text" | "bytes"; coordinateExtent: number };
+  readOrigin: () => ContentOriginRef | undefined;
+  intentTier: (workUnitId: string) => unknown;
+}): Row {
+  const { sql, revision, input, file, readOrigin, intentTier } = options;
+  if (input.range.end > file.coordinateExtent) {
+    throw new SemanticVcsError(
+      "InvalidReference",
+      "Blame range exceeds the exact file extent",
+    );
+  }
+  if (input.range.start === input.range.end) {
+    return {
+      state: input.state,
+      fileId: input.fileId,
+      coordinateKind: coordinateKindForFile(file),
+      spans: [],
+      nextCursor: null,
+    };
+  }
+  const coordinateKind = coordinateKindForFile(file);
+  const terminal = readOrigin();
+  if (!terminal)
+    throw new SemanticVcsError(
+      "IntegrityFailure",
+      `Placed file ${input.fileId} has no content origin`
+    );
+  const cursorBasis = {
+    ...(revision === undefined ? {} : { revision }),
+    state: input.state,
+    repositoryId: input.repositoryId,
+    fileId: input.fileId,
+    range: input.range,
+  };
+  const traceStart = parseBlameCursor(input.cursor, input.range, cursorBasis);
+  const spans = traceContentBlame(
+    sql, revision, terminal,
+    {
+      rootStart: traceStart,
+      rootEnd: input.range.end,
+      currentStart: traceStart,
+      currentEnd: input.range.end,
+      coordinateKind,
+      path: [],
+      visited: new Set(),
+    },
+    input.limit + 1,
+  );
+  const ordered = spans.sort(
+    (left, right) =>
+      Number(left["start"]) - Number(right["start"]) ||
+      Number(left["end"]) - Number(right["end"]),
+  );
+  const page = ordered.slice(0, input.limit).map((span) => {
+    if (span["stop"] === "snapshot-boundary") return span;
+    const workUnitId = String((span["workUnit"] as Row)["workUnitId"]);
+    return {
+      ...span,
+      workUnitId,
+      tier: intentTier(workUnitId),
+    };
+  });
+  const next = ordered[input.limit];
+  return {
+    state: input.state,
+    fileId: input.fileId,
+    coordinateKind,
+    spans: page,
+    nextCursor: next ? blameCursor(cursorBasis, Number(next["start"])) : null,
+  };
+}
 
 const causalCommandRef = (
   ingress: SemanticDispatchRequest["ingress"],
@@ -1590,7 +1733,11 @@ export class SemanticWorkspace {
             commandInput,
           ).input as VcsImportSnapshotInput;
           const parseCompletedAt = Date.now();
-          const planned = this.planImportSnapshot(importInput, input.receipt);
+          const root = this.deps.store.stateRoot(asState(importInput.expectedWorkingHead));
+          const planned = SemanticWorkspace.planImportSnapshot(importInput, input.receipt, {
+            repository: (id) => this.deps.store.facts.member(root, id),
+            files: (repository) => this.importExistingFiles(root, repository),
+          });
           const planCompletedAt = Date.now();
           const working = this.persistWorkingMutation(
             importInput,
@@ -2233,44 +2380,44 @@ export class SemanticWorkspace {
         input.contextId,
         asState(input.expectedWorkingHead),
       );
-      const textFiles = input.changes.filter(
-        (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
-          change.kind === "text-edit"
-      );
-      if (textFiles.length > 0 && !observed) {
-        const root = this.deps.store.stateRoot(
-          asState(input.expectedWorkingHead),
-        );
-        const contentHashes = new Set<string>();
-        for (const change of textFiles) {
-          const point = this.deps.store.facts.file(root, change.fileId);
-          if (!point || point.state.presence !== "placed") {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Unknown file ${change.fileId}`,
-            );
-          }
-          if (point.state.contentKind !== "text") {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Text edit requires text content for ${change.fileId}`,
-              { referenceKind: "text-file", reference: change.fileId },
-            );
-          }
-          contentHashes.add(point.state.contentHash);
+      const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+      const facts = this.deps.store.facts;
+      const basis: WorkspaceEditBasis = {
+        file: (fileId) => {
+          const state = facts.file(root, fileId)?.state;
+          return state?.presence === "placed" ? state : null;
+        },
+        repository: (repositoryId) => {
+          const state = facts.member(root, repositoryId);
+          return state?.presence === "present" ? state : null;
+        },
+        repositoryAtPath: (path) => facts.repositoryAtPath(root, path),
+        emptyRepository: ({ repositoryId }) => {
+          const state = facts.member(root, repositoryId);
+          if (state?.presence !== "present") return null;
+          return facts.pageManifest(state.fileManifestId, { limit: 1 }).values.length
+            ? null
+            : state;
+        },
+        hasFileAtPath: (repositoryId, path) =>
+          facts.fileAtPath(root, repositoryId, path) !== null,
+      };
+      if (!observed) {
+        const contentHashes = SemanticWorkspace.editContentHashes(input, basis);
+        if (contentHashes.length > 0) {
+          return {
+            kind: "host-read",
+            request: {
+              kind: "read-merge-content",
+              operation: "edit",
+              input: input as unknown as Row,
+              ingress: request.ingress as unknown as Row,
+              contentHashes,
+            },
+          };
         }
-        return {
-          kind: "host-read",
-          request: {
-            kind: "read-merge-content",
-            operation: "edit",
-            input: input as unknown as Row,
-            ingress: request.ingress as unknown as Row,
-            contentHashes: [...contentHashes].sort(compareUtf16CodeUnits),
-          },
-        };
       }
-      const draft = this.planEdit(
+      const draft = SemanticWorkspace.planEdit(
         input,
         observed
           ? {
@@ -2280,6 +2427,7 @@ export class SemanticWorkspace {
               })),
             }
           : null,
+        basis,
       );
       const preparation = this.prepareContent(
         "edit",
@@ -2311,27 +2459,35 @@ export class SemanticWorkspace {
     });
   }
 
-  private planEdit(input: VcsEditInput, receipt: Row | null): MutationDraft {
-    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+  /** Resolve the content a text edit needs from its pinned placement, before accepting bytes. */
+  static editContentHashes(input: VcsEditInput, basis: WorkspaceEditBasis): string[] {
+    const hashes = new Set<string>();
+    for (const change of input.changes) {
+      if (change.kind !== "text-edit") continue;
+      const file = basis.file(change.fileId);
+      if (!file || file.repositoryId !== change.repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `Unknown file ${change.fileId}`);
+      }
+      if (file.contentKind !== "text") {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Text edit requires text content for ${change.fileId}`,
+          { referenceKind: "text-file", reference: change.fileId },
+        );
+      }
+      hashes.add(file.contentHash);
+    }
+    return [...hashes].sort(compareUtf16CodeUnits);
+  }
+
+  static planEdit(
+    input: VcsEditInput,
+    receipt: Row | null,
+    basis: WorkspaceEditBasis,
+  ): MutationDraft {
     const observed = new Map<string, Uint8Array>();
     if (receipt) {
-      const expectedContentHashes = new Set(
-        input.changes
-          .filter(
-            (change): change is Extract<VcsEditInput["changes"][number], { kind: "text-edit" }> =>
-              change.kind === "text-edit"
-          )
-          .map((change) => {
-            const point = this.deps.store.facts.file(root, change.fileId);
-            if (!point || point.state.presence !== "placed") {
-              throw new SemanticVcsError(
-                "InvalidReference",
-                `Unknown file ${change.fileId}`,
-              );
-            }
-            return point.state.contentHash;
-          }),
-      );
+      const expectedContentHashes = new Set(SemanticWorkspace.editContentHashes(input, basis));
       const rows = receipt["files"];
       if (!Array.isArray(rows)) {
         throw internalSemanticIntegrityFailure(
@@ -2387,10 +2543,7 @@ export class SemanticWorkspace {
     const touched = new Set<string>();
     input.changes.forEach((change, operation) => {
       if (change.kind === "repository-create") {
-        const occupied = this.deps.store.facts.repositoryAtPath(
-          root,
-          change.repoPath,
-        );
+        const occupied = basis.repositoryAtPath(change.repoPath);
         if (occupied) {
           throw new SemanticVcsError(
             "DestinationOccupied",
@@ -2469,18 +2622,21 @@ export class SemanticWorkspace {
         );
       }
       if ("fileId" in change) touched.add(change.fileId);
-      const repository = this.presentRepository(root, change.repositoryId);
+      const repository = basis.repository(change.repositoryId);
+      if (!repository) {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Unknown repository ${change.repositoryId}`,
+        );
+      }
       if (change.kind === "repository-delete") {
         if (repository.repoPath === "meta")
           throw new SemanticVcsError(
             "InvalidReference",
             "The workspace metadata repository cannot be removed",
           );
-        if (
-          this.deps.store.facts.pageManifest(repository.fileManifestId, {
-            limit: 1,
-          }).values.length
-        )
+        const empty = basis.emptyRepository(repository);
+        if (!empty)
           throw new SemanticVcsError(
             "InvalidReference",
             "Resolve contained file changes before removing a repository",
@@ -2494,7 +2650,7 @@ export class SemanticWorkspace {
             kind: "repository",
             repositoryId: change.repositoryId,
             repoPath: repository.repoPath,
-            fileManifestId: repository.fileManifestId,
+            fileManifestId: empty.fileManifestId,
           },
           result: {
             kind: "repository",
@@ -2505,7 +2661,7 @@ export class SemanticWorkspace {
         });
         repositoryResults.push({
           repositoryId: change.repositoryId,
-          expected: repository,
+          expected: empty,
           resultPath: null,
           newRepository: false,
           changeRef: { kind: "authored", ordinal },
@@ -2514,13 +2670,7 @@ export class SemanticWorkspace {
       }
       if (change.kind === "file-create") {
         assertSemanticVcsPathAdmissible(change.path);
-        if (
-          this.deps.store.facts.fileAtPath(
-            root,
-            change.repositoryId,
-            change.path,
-          )
-        ) {
+        if (basis.hasFileAtPath(change.repositoryId, change.path)) {
           throw new SemanticVcsError(
             "DestinationOccupied",
             `Destination ${change.path} is occupied`,
@@ -2567,7 +2717,11 @@ export class SemanticWorkspace {
         blobs.push({ contentHash, base64: base64FromBytes(bytes) });
         return;
       }
-      const point = this.placedFile(root, change.repositoryId, change.fileId);
+      const file = basis.file(change.fileId);
+      if (!file || file.repositoryId !== change.repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `Unknown file ${change.fileId}`);
+      }
+      const point = { state: file, repository };
       const base = endpointForFile(point.state, point.repository);
       if (change.kind === "file-delete") {
         changes.push({
@@ -2707,6 +2861,177 @@ export class SemanticWorkspace {
     };
   }
 
+  private transferBasis(root: string): WorkspaceTransferBasis {
+    return {
+      placedFile: (repositoryId, fileId) => this.placedFile(root, repositoryId, fileId),
+      repositoryPlacement: (id) => this.presentRepository(root, id),
+      presentRepository: (id) => this.presentRepository(root, id),
+      fileAtPath: (repositoryId, path) => {
+        const state = this.deps.store.facts.fileAtPath(root, repositoryId, path)?.state;
+        return state?.presence === "placed" ? state : null;
+      },
+      repositoryAtPath: (path) => this.deps.store.facts.repositoryAtPath(root, path),
+    };
+  }
+
+  static planMove(input: VcsMoveInput, basis: WorkspaceTransferBasis): MutationDraft {
+    const changes: MutationDraft["changes"] = [];
+    const fileResults: MutationDraft["fileResults"] = [];
+    const repositoryResults: MutationDraft["repositoryResults"] = [];
+    const movingFileIds = new Set<string>();
+    const movingRepositoryIds = new Set<string>();
+    const fileDestinations = new Set<string>();
+    const repositoryDestinations = new Set<string>();
+    const plannedRepositoryPaths = new Map<string, string>();
+    for (const move of input.moves) {
+      if (move.kind === "file") {
+        if (movingFileIds.has(move.fileId)) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `File ${move.fileId} is moved more than once`,
+          );
+        }
+        movingFileIds.add(move.fileId);
+        const destination = `${move.destinationRepositoryId}:${move.destinationPath}`;
+        if (fileDestinations.has(destination)) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Multiple files target ${move.destinationPath}`,
+            {
+              repositoryId: move.destinationRepositoryId,
+              path: move.destinationPath,
+            },
+          );
+        }
+        fileDestinations.add(destination);
+      } else {
+        if (movingRepositoryIds.has(move.repositoryId)) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository ${move.repositoryId} is moved more than once`,
+          );
+        }
+        movingRepositoryIds.add(move.repositoryId);
+        if (repositoryDestinations.has(move.destinationPath)) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Multiple repositories target ${move.destinationPath}`,
+            { path: move.destinationPath },
+          );
+        }
+        repositoryDestinations.add(move.destinationPath);
+        plannedRepositoryPaths.set(move.repositoryId, move.destinationPath);
+      }
+    }
+    input.moves.forEach((move, operation) => {
+      if (move.kind === "file") {
+        const point = basis.placedFile(move.repositoryId, move.fileId);
+        const destination = basis.repositoryPlacement(move.destinationRepositoryId);
+        if (
+          point.state.repositoryId === move.destinationRepositoryId &&
+          point.state.path === move.destinationPath
+        ) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `File ${move.fileId} is already at ${move.destinationPath}`,
+          );
+        }
+        const occupied = basis.fileAtPath(move.destinationRepositoryId, move.destinationPath);
+        if (
+          occupied && !movingFileIds.has(occupied.fileId)
+        ) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Destination ${move.destinationPath} is occupied`,
+            {
+              repositoryId: move.destinationRepositoryId,
+              path: move.destinationPath,
+            },
+          );
+        }
+        const { fileStateId: _priorFileStateId, ...prior } = point.state;
+        const result = {
+          ...prior,
+          repositoryId: move.destinationRepositoryId,
+          path: move.destinationPath,
+        };
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: "file-move",
+          base: endpointForFile(point.state, point.repository),
+          result: endpointForFile(
+            { ...result, fileStateId: "planned" },
+            {
+              ...destination,
+              repoPath:
+                plannedRepositoryPaths.get(move.destinationRepositoryId) ??
+                destination.repoPath,
+            },
+          ),
+          payload: move as unknown as Row,
+        });
+        fileResults.push({
+          fileId: move.fileId,
+          expected: point.state,
+          result,
+          newFile: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      } else {
+        const repository = basis.presentRepository(move.repositoryId);
+        const occupied = basis.repositoryAtPath(move.destinationPath);
+        if (repository.repoPath === move.destinationPath) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository ${move.repositoryId} is already at ${move.destinationPath}`,
+          );
+        }
+        if (occupied && !movingRepositoryIds.has(occupied.repositoryId)) {
+          throw new SemanticVcsError(
+            "DestinationOccupied",
+            `Repository path ${move.destinationPath} is occupied`,
+            {
+              repositoryId: occupied.repositoryId,
+              path: move.destinationPath,
+            },
+          );
+        }
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: "repo-move",
+          base: {
+            kind: "repository",
+            repositoryId: move.repositoryId,
+            repoPath: repository.repoPath,
+          },
+          result: {
+            kind: "repository",
+            repositoryId: move.repositoryId,
+            repoPath: move.destinationPath,
+          },
+          payload: move as unknown as Row,
+        });
+        repositoryResults.push({
+          repositoryId: move.repositoryId,
+          expected: repository,
+          resultPath: move.destinationPath,
+          newRepository: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      }
+    });
+    return {
+      kind: "file-transfer",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds: [],
+      changes,
+      fileResults,
+      repositoryResults,
+    };
+  }
+
   private move(
     input: VcsMoveInput,
     request: SemanticDispatchRequest,
@@ -2715,172 +3040,7 @@ export class SemanticWorkspace {
       const root = this.deps.store.stateRoot(
         asState(input.expectedWorkingHead),
       );
-      const changes: MutationDraft["changes"] = [];
-      const fileResults: MutationDraft["fileResults"] = [];
-      const repositoryResults: MutationDraft["repositoryResults"] = [];
-      const movingFileIds = new Set<string>();
-      const movingRepositoryIds = new Set<string>();
-      const fileDestinations = new Set<string>();
-      const repositoryDestinations = new Set<string>();
-      const plannedRepositoryPaths = new Map<string, string>();
-      for (const move of input.moves) {
-        if (move.kind === "file") {
-          if (movingFileIds.has(move.fileId)) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `File ${move.fileId} is moved more than once`,
-            );
-          }
-          movingFileIds.add(move.fileId);
-          const destination = `${move.destinationRepositoryId}:${move.destinationPath}`;
-          if (fileDestinations.has(destination)) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Multiple files target ${move.destinationPath}`,
-              {
-                repositoryId: move.destinationRepositoryId,
-                path: move.destinationPath,
-              },
-            );
-          }
-          fileDestinations.add(destination);
-        } else {
-          if (movingRepositoryIds.has(move.repositoryId)) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository ${move.repositoryId} is moved more than once`,
-            );
-          }
-          movingRepositoryIds.add(move.repositoryId);
-          if (repositoryDestinations.has(move.destinationPath)) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Multiple repositories target ${move.destinationPath}`,
-              { path: move.destinationPath },
-            );
-          }
-          repositoryDestinations.add(move.destinationPath);
-          plannedRepositoryPaths.set(move.repositoryId, move.destinationPath);
-        }
-      }
-      input.moves.forEach((move, operation) => {
-        if (move.kind === "file") {
-          const point = this.placedFile(root, move.repositoryId, move.fileId);
-          const destination = this.presentRepository(
-            root,
-            move.destinationRepositoryId,
-          );
-          if (
-            point.state.repositoryId === move.destinationRepositoryId &&
-            point.state.path === move.destinationPath
-          ) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `File ${move.fileId} is already at ${move.destinationPath}`,
-            );
-          }
-          const occupied = this.deps.store.facts.fileAtPath(
-            root,
-            move.destinationRepositoryId,
-            move.destinationPath,
-          );
-          if (
-            occupied?.state.presence === "placed" &&
-            !movingFileIds.has(occupied.state.fileId)
-          ) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Destination ${move.destinationPath} is occupied`,
-              {
-                repositoryId: move.destinationRepositoryId,
-                path: move.destinationPath,
-              },
-            );
-          }
-          const { fileStateId: _priorFileStateId, ...prior } = point.state;
-          const result = {
-            ...prior,
-            repositoryId: move.destinationRepositoryId,
-            path: move.destinationPath,
-          };
-          changes.push({
-            operation,
-            ordinal: 0,
-            kind: "file-move",
-            base: endpointForFile(point.state, point.repository),
-            result: endpointForFile(
-              { ...result, fileStateId: "planned" },
-              {
-                ...destination,
-                repoPath:
-                  plannedRepositoryPaths.get(move.destinationRepositoryId) ??
-                  destination.repoPath,
-              },
-            ),
-            payload: move as unknown as Row,
-          });
-          fileResults.push({
-            fileId: move.fileId,
-            expected: point.state,
-            result,
-            newFile: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        } else {
-          const repository = this.presentRepository(root, move.repositoryId);
-          const occupied = this.deps.store.facts.repositoryAtPath(
-            root,
-            move.destinationPath,
-          );
-          if (repository.repoPath === move.destinationPath) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository ${move.repositoryId} is already at ${move.destinationPath}`,
-            );
-          }
-          if (occupied && !movingRepositoryIds.has(occupied.repositoryId)) {
-            throw new SemanticVcsError(
-              "DestinationOccupied",
-              `Repository path ${move.destinationPath} is occupied`,
-              {
-                repositoryId: occupied.repositoryId,
-                path: move.destinationPath,
-              },
-            );
-          }
-          changes.push({
-            operation,
-            ordinal: 0,
-            kind: "repo-move",
-            base: {
-              kind: "repository",
-              repositoryId: move.repositoryId,
-              repoPath: repository.repoPath,
-            },
-            result: {
-              kind: "repository",
-              repositoryId: move.repositoryId,
-              repoPath: move.destinationPath,
-            },
-            payload: move as unknown as Row,
-          });
-          repositoryResults.push({
-            repositoryId: move.repositoryId,
-            expected: repository,
-            resultPath: move.destinationPath,
-            newRepository: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        }
-      });
-      const draft: MutationDraft = {
-        kind: "file-transfer",
-        intentSummary: input.intentSummary ?? null,
-        incorporatedChangeIds: [],
-        changes,
-        fileResults,
-        repositoryResults,
-      };
+      const draft = SemanticWorkspace.planMove(input, this.transferBasis(root));
       const result = this.persistWorkingMutation(input, draft, input.commandId);
       const effect = this.queueRealization(
         input.contextId,
@@ -2902,6 +3062,88 @@ export class SemanticWorkspace {
     });
   }
 
+  static planCopy(
+    input: VcsCopyInput,
+    target: WorkspaceTransferBasis,
+    sourceBasis: (state: StateNodeRef) => WorkspaceTransferBasis,
+  ): MutationDraft {
+    const changes: MutationDraft["changes"] = [];
+    const fileResults: MutationDraft["fileResults"] = [];
+    input.copies.forEach((copy, operation) => {
+      const sourceState = asState(copy.source.state);
+      const source = sourceBasis(sourceState).placedFile(copy.source.repositoryId, copy.source.fileId);
+      const destination = target.repositoryPlacement(copy.destination.repositoryId);
+      if (
+        target.fileAtPath(copy.destination.repositoryId, copy.destination.path)
+      ) {
+        throw new SemanticVcsError(
+          "DestinationOccupied",
+          `Destination ${copy.destination.path} is occupied`,
+          {
+            repositoryId: copy.destination.repositoryId,
+            path: copy.destination.path,
+          },
+        );
+      }
+      const fileId = compactId("file", {
+        commandId: input.commandId,
+        operation,
+        sourceFileId: copy.source.fileId,
+        destination: copy.destination,
+      });
+      const result = {
+        fileId,
+        presence: "placed" as const,
+        repositoryId: copy.destination.repositoryId,
+        path: copy.destination.path,
+        contentHash: source.state.contentHash,
+        mode: source.state.mode,
+        contentKind: source.state.contentKind,
+        byteLength: source.state.byteLength,
+        coordinateExtent: source.state.coordinateExtent,
+      };
+      changes.push({
+        operation,
+        ordinal: 0,
+        kind: "file-copy",
+        source: {
+          kind: "file",
+          state: sourceState,
+          repositoryId: copy.source.repositoryId,
+          repoPath: source.repository.repoPath,
+          fileId: copy.source.fileId,
+          path: source.state.path,
+          contentHash: source.state.contentHash,
+          mode: source.state.mode,
+          contentKind: source.state.contentKind,
+          byteLength: source.state.byteLength,
+          coordinateExtent: source.state.coordinateExtent,
+        },
+        base: missingEndpoint(result, destination.repoPath),
+        result: endpointForFile(
+          { ...result, fileStateId: "planned" },
+          destination,
+        ),
+        payload: { destination: copy.destination },
+      });
+      fileResults.push({
+        fileId,
+        expected: null,
+        result,
+        newFile: true,
+        changeRef: { kind: "authored", ordinal: operation },
+      });
+    });
+    return {
+      kind: "file-transfer",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds: [],
+      changes,
+      fileResults,
+      repositoryResults: [],
+    };
+  }
+
   private copy(
     input: VcsCopyInput,
     request: SemanticDispatchRequest,
@@ -2910,93 +3152,11 @@ export class SemanticWorkspace {
       const targetRoot = this.deps.store.stateRoot(
         asState(input.expectedWorkingHead),
       );
-      const changes: MutationDraft["changes"] = [];
-      const fileResults: MutationDraft["fileResults"] = [];
-      input.copies.forEach((copy, operation) => {
-        const sourceState = asState(copy.source.state);
-        const sourceRoot = this.deps.store.stateRoot(sourceState);
-        const source = this.placedFile(
-          sourceRoot,
-          copy.source.repositoryId,
-          copy.source.fileId,
-        );
-        const destination = this.presentRepository(
-          targetRoot,
-          copy.destination.repositoryId,
-        );
-        if (
-          this.deps.store.facts.fileAtPath(
-            targetRoot,
-            copy.destination.repositoryId,
-            copy.destination.path,
-          )
-        ) {
-          throw new SemanticVcsError(
-            "DestinationOccupied",
-            `Destination ${copy.destination.path} is occupied`,
-            {
-              repositoryId: copy.destination.repositoryId,
-              path: copy.destination.path,
-            },
-          );
-        }
-        const fileId = compactId("file", {
-          commandId: input.commandId,
-          operation,
-          sourceFileId: copy.source.fileId,
-          destination: copy.destination,
-        });
-        const result = {
-          fileId,
-          presence: "placed" as const,
-          repositoryId: copy.destination.repositoryId,
-          path: copy.destination.path,
-          contentHash: source.state.contentHash,
-          mode: source.state.mode,
-          contentKind: source.state.contentKind,
-          byteLength: source.state.byteLength,
-          coordinateExtent: source.state.coordinateExtent,
-        };
-        changes.push({
-          operation,
-          ordinal: 0,
-          kind: "file-copy",
-          source: {
-            kind: "file",
-            state: sourceState,
-            repositoryId: copy.source.repositoryId,
-            repoPath: source.repository.repoPath,
-            fileId: copy.source.fileId,
-            path: source.state.path,
-            contentHash: source.state.contentHash,
-            mode: source.state.mode,
-            contentKind: source.state.contentKind,
-            byteLength: source.state.byteLength,
-            coordinateExtent: source.state.coordinateExtent,
-          },
-          base: missingEndpoint(result, destination.repoPath),
-          result: endpointForFile(
-            { ...result, fileStateId: "planned" },
-            destination,
-          ),
-          payload: { destination: copy.destination },
-        });
-        fileResults.push({
-          fileId,
-          expected: null,
-          result,
-          newFile: true,
-          changeRef: { kind: "authored", ordinal: operation },
-        });
-      });
-      const draft: MutationDraft = {
-        kind: "file-transfer",
-        intentSummary: input.intentSummary ?? null,
-        incorporatedChangeIds: [],
-        changes,
-        fileResults,
-        repositoryResults: [],
-      };
+      const draft = SemanticWorkspace.planCopy(
+        input,
+        this.transferBasis(targetRoot),
+        (state) => this.transferBasis(this.deps.store.stateRoot(state)),
+      );
       const result = this.persistWorkingMutation(input, draft, input.commandId);
       const effect = this.queueRealization(
         input.contextId,
@@ -3567,8 +3727,8 @@ export class SemanticWorkspace {
             },
           });
           changeRef = { kind: "authored", ordinal };
-          const resultContent = this.contentEndpoint(resultEndpoint);
-          const sourceContent = this.contentEndpoint(theirsEndpoint);
+          const resultContent = SemanticWorkspace.contentEndpoint(resultEndpoint);
+          const sourceContent = SemanticWorkspace.contentEndpoint(theirsEndpoint);
           if (
             contentDerivations.length === 0 &&
             resultContent &&
@@ -3781,368 +3941,17 @@ export class SemanticWorkspace {
       const root = this.deps.store.stateRoot(
         asState(input.expectedWorkingHead),
       );
-      const changes: MutationDraft["changes"] = [];
-      const fileResults: MutationDraft["fileResults"] = [];
-      const repositoryResults: MutationDraft["repositoryResults"] = [];
-      const originals = [...new Set(input.changeIds)].map((changeId) =>
-        this.changeRequired(changeId),
-      );
-      const repositoryDeletes = new Map<
-        string,
-        { causes: Set<string>; requiresSelectedFileRemoval: boolean }
-      >();
-      const addRepositoryDelete = (
-        repositoryId: string,
-        changeId: string,
-        requiresSelectedFileRemoval: boolean,
-      ) => {
-        const planned = repositoryDeletes.get(repositoryId) ?? {
-          causes: new Set<string>(),
-          requiresSelectedFileRemoval: false,
-        };
-        planned.causes.add(changeId);
-        planned.requiresSelectedFileRemoval ||= requiresSelectedFileRemoval;
-        repositoryDeletes.set(repositoryId, planned);
-      };
-      for (const original of originals) {
-        if (original.kind === "repo-add" || original.kind === "repo-restore") {
-          const repositoryId = original.result?.["repositoryId"];
-          if (typeof repositoryId !== "string") {
-            throw new SemanticVcsError(
-              "IntegrityFailure",
-              `Repository change ${original.changeId} has no repository identity`,
-            );
-          }
-          addRepositoryDelete(
-            repositoryId,
-            original.changeId,
-            original.kind === "repo-add",
-          );
-        }
-      }
-
-      for (const original of originals) {
-        const changeId = original.changeId;
-        if (original.kind === "repo-add" || original.kind === "repo-restore") {
-          continue;
-        }
-        const currentResult = original.result;
-        const inverseResult = original.base;
-        if (
-          currentResult &&
-          !this.endpointHolds(asState(input.expectedWorkingHead), currentResult)
-        ) {
-          const blockers = this.revertBlockingChangeIds(
-            asState(input.expectedWorkingHead),
-            original,
-          );
-          if (blockers.length > 0) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Change ${changeId} is not a live counteraction frontier`,
-              { referenceKind: "change", reference: changeId },
-            );
-          }
-        }
-        const inverseKind = inverseChangeKind(original.kind, currentResult);
-        if (!inverseKind) {
-          throw new SemanticVcsError(
-            "InvalidReference",
-            `Change ${changeId} has no mechanical counteraction`,
-          );
-        }
-        if (currentResult?.["kind"] === "repository") {
-          const repositoryId = String(currentResult["repositoryId"] ?? "");
-          const current = this.deps.store.facts.member(root, repositoryId);
-          if (!repositoryId || !current) {
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository change ${changeId} is not present at the target state`,
-            );
-          }
-          const operation = changes.length;
-          if (inverseKind === "repo-restore") {
-            if (current.presence !== "deleted") {
-              throw new SemanticVcsError(
-                "RevisionChanged",
-                `Change ${changeId} no longer holds`,
-              );
-            }
-            const prior = this.deps.store.facts.memberByStateId(
-              current.priorRepositoryStateId,
-            );
-            if (!prior || prior.presence !== "present") {
-              throw new SemanticVcsError(
-                "IntegrityFailure",
-                `Repository tombstone ${current.repositoryStateId} has no prior state`,
-              );
-            }
-            const priorManifestId = inverseResult?.["fileManifestId"];
-            if (typeof priorManifestId !== "string") {
-              throw new SemanticVcsError(
-                "IntegrityFailure",
-                `Repository deletion ${changeId} has no prior manifest coordinate`,
-              );
-            }
-            const priorFiles = this.deps.store.facts.pageManifest(
-              priorManifestId,
-              {
-                limit: 100_000,
-              },
-            );
-            if (priorFiles.next !== null) {
-              throw new SemanticVcsError(
-                "ScopeTooLarge",
-                `Repository ${repositoryId} exceeds the exact revert dependency bound`,
-              );
-            }
-            const selectedRestores = new Set(
-              fileResults
-                .filter(
-                  (result) =>
-                    result.result.presence === "placed" &&
-                    result.result.repositoryId === repositoryId,
-                )
-                .map((result) => result.fileId),
-            );
-            const blockers = priorFiles.values
-              .filter((entry) => !selectedRestores.has(entry.fileId))
-              .flatMap((entry) => {
-                const blocking = this.latestAppliedChangeForFile(
-                  asState(input.expectedWorkingHead),
-                  entry.fileId,
-                );
-                return blocking ? [blocking.changeId] : [];
-              });
-            if (blockers.length > 0) {
-              throw new SemanticVcsError(
-                "InvalidReference",
-                `Repository change ${changeId} is not a live counteraction frontier`,
-                { referenceKind: "change", reference: changeId },
-              );
-            }
-            if (selectedRestores.size < priorFiles.values.length) {
-              throw new SemanticVcsError(
-                "IntegrityFailure",
-                `Repository ${repositoryId} has a contained file without a provenance dependency`,
-              );
-            }
-            const restoredPath = String(
-              inverseResult?.["repoPath"] ?? prior.repoPath,
-            );
-            repositoryResults.push({
-              repositoryId,
-              expected: current,
-              resultPath: restoredPath,
-              newRepository: false,
-              changeRef: { kind: "authored", ordinal: operation },
-            });
-          } else if (inverseKind === "repo-move") {
-            if (
-              current.presence !== "present" ||
-              current.repoPath !== currentResult["repoPath"] ||
-              typeof inverseResult?.["repoPath"] !== "string"
-            ) {
-              throw new SemanticVcsError(
-                "RevisionChanged",
-                `Change ${changeId} no longer holds`,
-              );
-            }
-            repositoryResults.push({
-              repositoryId,
-              expected: current,
-              resultPath: inverseResult["repoPath"],
-              newRepository: false,
-              changeRef: { kind: "authored", ordinal: operation },
-            });
-          } else {
-            throw new SemanticVcsError(
-              "IntegrityFailure",
-              `Repository counteraction ${inverseKind} was not normalized`,
-            );
-          }
-          changes.push({
-            operation,
-            ordinal: 0,
-            kind: inverseKind,
-            base: currentResult,
-            result: inverseResult,
-            payload: { counteractsChangeIds: [changeId] },
-          });
-          continue;
-        }
-
-        if (!currentResult || typeof currentResult["fileId"] !== "string") {
-          throw new SemanticVcsError(
-            "InvalidReference",
-            `Change ${changeId} has no counteractable state coordinate`,
-          );
-        }
-        const current = this.deps.store.facts.file(
-          root,
-          String(currentResult["fileId"]),
-        );
-        if (!current) {
-          throw new SemanticVcsError(
-            "InvalidReference",
-            `File change ${changeId} is not present at the target state`,
-          );
-        }
-        if (currentResult["kind"] === "file") {
-          if (
-            current.state.presence !== "placed" ||
-            current.state.contentHash !== currentResult["contentHash"] ||
-            current.state.path !== currentResult["path"]
-          ) {
-            throw new SemanticVcsError(
-              "RevisionChanged",
-              `Change ${changeId} no longer holds`,
-            );
-          }
-        } else if (
-          currentResult["kind"] === "missing" &&
-          current.state.presence !== "deleted"
-        ) {
-          throw new SemanticVcsError(
-            "RevisionChanged",
-            `Change ${changeId} no longer holds`,
-          );
-        }
-        const operation = changes.length;
-        changes.push({
-          operation,
-          ordinal: 0,
-          kind: inverseKind,
-          base: currentResult,
-          result: inverseResult,
-          payload: { counteractsChangeIds: [changeId] },
-        });
-        if (!inverseResult || inverseResult["kind"] === "missing") {
-          if (current.state.presence !== "placed") {
-            throw new SemanticVcsError(
-              "RevisionChanged",
-              `Change ${changeId} no longer holds`,
-            );
-          }
-          fileResults.push({
-            fileId: current.state.fileId,
-            expected: current.state,
-            result: {
-              fileId: current.state.fileId,
-              presence: "deleted",
-              priorFileStateId: current.state.fileStateId,
-            },
-            newFile: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        } else if (inverseResult["kind"] === "file") {
-          fileResults.push({
-            fileId: String(inverseResult["fileId"]),
-            expected: current?.state ?? null,
-            result: {
-              fileId: String(inverseResult["fileId"]),
-              presence: "placed",
-              repositoryId: String(inverseResult["repositoryId"]),
-              path: String(inverseResult["path"]),
-              contentHash: String(inverseResult["contentHash"]),
-              mode: Number(inverseResult["mode"]),
-              ...contentDescriptorFromEndpoint(inverseResult),
-            },
-            newFile: false,
-            changeRef: { kind: "authored", ordinal: operation },
-          });
-        }
-      }
-
-      for (const [repositoryId, planned] of [...repositoryDeletes].sort(
-        ([left], [right]) => compareUtf16CodeUnits(left, right),
-      )) {
-        const repository = this.deps.store.facts.member(root, repositoryId);
-        if (!repository || repository.presence !== "present") {
-          throw new SemanticVcsError(
-            "RevisionChanged",
-            `Repository ${repositoryId} no longer has the imported result`,
-          );
-        }
-        if (planned.requiresSelectedFileRemoval) {
-          const page = this.deps.store.facts.pageManifest(
-            repository.fileManifestId,
-            {
-              limit: 100_000,
-            },
-          );
-          if (page.next !== null) {
-            throw new SemanticVcsError(
-              "ScopeTooLarge",
-              `Repository ${repositoryId} exceeds the exact revert dependency bound`,
-            );
-          }
-          const selectedRemovals = new Set(
-            fileResults
-              .filter(
-                (result) =>
-                  result.expected?.presence === "placed" &&
-                  result.expected.repositoryId === repositoryId &&
-                  result.result.presence === "deleted",
-              )
-              .map((result) => result.fileId),
-          );
-          const blockers = page.values
-            .filter((entry) => !selectedRemovals.has(entry.fileId))
-            .flatMap((entry) => {
-              const change = this.latestAppliedChangeForFile(
-                asState(input.expectedWorkingHead),
-                entry.fileId,
-              );
-              return change ? [change.changeId] : [];
-            });
-          if (blockers.length > 0) {
-            const causeId = [...planned.causes].sort(compareUtf16CodeUnits)[0]!;
-            throw new SemanticVcsError(
-              "InvalidReference",
-              `Repository change ${causeId} is not a live counteraction frontier`,
-              { referenceKind: "change", reference: causeId },
-            );
-          }
-          if (selectedRemovals.size !== page.values.length) {
-            throw new SemanticVcsError(
-              "IntegrityFailure",
-              `Repository ${repositoryId} has a contained file without a provenance dependency`,
-            );
-          }
-        }
-        const operation = changes.length;
-        changes.push({
-          operation,
-          ordinal: 0,
-          kind: "repo-delete",
-          base: {
-            kind: "repository",
-            repositoryId,
-            repoPath: repository.repoPath,
-            fileManifestId: repository.fileManifestId,
-          },
-          result: { kind: "repository", repositoryId, presence: "deleted" },
-          payload: {
-            counteractsChangeIds: [...planned.causes].sort(),
-          },
-        });
-        repositoryResults.push({
-          repositoryId,
-          expected: repository,
-          resultPath: null,
-          newRepository: false,
-          changeRef: { kind: "authored", ordinal: operation },
-        });
-      }
-      const draft: MutationDraft = {
-        kind: "revert",
-        intentSummary: input.intentSummary ?? null,
-        incorporatedChangeIds: [],
-        changes,
-        fileResults,
-        repositoryResults,
-      };
+      const state = asState(input.expectedWorkingHead);
+      const facts = this.deps.store.facts;
+      const draft = SemanticWorkspace.planRevert(input, {
+        change: (id) => this.changeRequired(id),
+        repository: (id) => facts.member(root, id),
+        priorRepository: (member) => facts.memberByStateId(member.priorRepositoryStateId),
+        manifest: (_repository, manifestId) => facts.pageManifest(manifestId, { limit: 100_000 }),
+        file: (id) => facts.file(root, id),
+        blockingChanges: (change) => this.revertBlockingChangeIds(state, change),
+        latestFileChange: (id) => this.latestAppliedChangeForFile(state, id),
+      });
       const result = this.persistWorkingMutation(input, draft, input.commandId);
       const effect = this.queueRealization(
         input.contextId,
@@ -4162,6 +3971,347 @@ export class SemanticWorkspace {
         ? { kind: "effects-pending", result, effects: [effect] }
         : { kind: "complete", result };
     });
+  }
+
+  static planRevert(input: VcsRevertInput, basis: WorkspaceRevertBasis): MutationDraft {
+    const changes: MutationDraft["changes"] = [];
+    const fileResults: MutationDraft["fileResults"] = [];
+    const repositoryResults: MutationDraft["repositoryResults"] = [];
+    const originals = [...new Set(input.changeIds)].map((changeId) =>
+      basis.change(changeId),
+    );
+    const repositoryDeletes = new Map<
+      string,
+      { causes: Set<string>; requiresSelectedFileRemoval: boolean }
+    >();
+    const addRepositoryDelete = (
+      repositoryId: string,
+      changeId: string,
+      requiresSelectedFileRemoval: boolean,
+    ) => {
+      const planned = repositoryDeletes.get(repositoryId) ?? {
+        causes: new Set<string>(),
+        requiresSelectedFileRemoval: false,
+      };
+      planned.causes.add(changeId);
+      planned.requiresSelectedFileRemoval ||= requiresSelectedFileRemoval;
+      repositoryDeletes.set(repositoryId, planned);
+    };
+    for (const original of originals) {
+      if (original.kind === "repo-add" || original.kind === "repo-restore") {
+        const repositoryId = original.result?.["repositoryId"];
+        if (typeof repositoryId !== "string") {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Repository change ${original.changeId} has no repository identity`,
+          );
+        }
+        addRepositoryDelete(
+          repositoryId,
+          original.changeId,
+          original.kind === "repo-add",
+        );
+      }
+    }
+
+    for (const original of originals) {
+      const changeId = original.changeId;
+      if (original.kind === "repo-add" || original.kind === "repo-restore") {
+        continue;
+      }
+      const currentResult = original.result;
+      const inverseResult = original.base;
+      if (
+        currentResult &&
+        !SemanticWorkspace.revertEndpointHolds(basis, currentResult)
+      ) {
+        const blockers = basis.blockingChanges(original);
+        if (blockers.length > 0) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Change ${changeId} is not a live counteraction frontier`,
+            { referenceKind: "change", reference: changeId },
+          );
+        }
+      }
+      const inverseKind = inverseChangeKind(original.kind, currentResult);
+      if (!inverseKind) {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Change ${changeId} has no mechanical counteraction`,
+        );
+      }
+      if (currentResult?.["kind"] === "repository") {
+        const repositoryId = String(currentResult["repositoryId"] ?? "");
+        const current = basis.repository(repositoryId);
+        if (!repositoryId || !current) {
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository change ${changeId} is not present at the target state`,
+          );
+        }
+        const operation = changes.length;
+        if (inverseKind === "repo-restore") {
+          if (current.presence !== "deleted") {
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              `Change ${changeId} no longer holds`,
+            );
+          }
+          const prior = basis.priorRepository(current);
+          if (!prior || prior.presence !== "present") {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Repository tombstone ${current.repositoryStateId} has no prior state`,
+            );
+          }
+          const priorManifestId = inverseResult?.["fileManifestId"];
+          if (typeof priorManifestId !== "string") {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Repository deletion ${changeId} has no prior manifest coordinate`,
+            );
+          }
+          const priorFiles = basis.manifest(prior, priorManifestId);
+          if (priorFiles.next !== null) {
+            throw new SemanticVcsError(
+              "ScopeTooLarge",
+              `Repository ${repositoryId} exceeds the exact revert dependency bound`,
+            );
+          }
+          const selectedRestores = new Set(
+            fileResults
+              .filter(
+                (result) =>
+                  result.result.presence === "placed" &&
+                  result.result.repositoryId === repositoryId,
+              )
+              .map((result) => result.fileId),
+          );
+          const blockers = priorFiles.values
+            .filter((entry) => !selectedRestores.has(entry.fileId))
+            .flatMap((entry) => {
+              const blocking = basis.latestFileChange(entry.fileId);
+              return blocking ? [blocking.changeId] : [];
+            });
+          if (blockers.length > 0) {
+            throw new SemanticVcsError(
+              "InvalidReference",
+              `Repository change ${changeId} is not a live counteraction frontier`,
+              { referenceKind: "change", reference: changeId },
+            );
+          }
+          if (selectedRestores.size < priorFiles.values.length) {
+            throw new SemanticVcsError(
+              "IntegrityFailure",
+              `Repository ${repositoryId} has a contained file without a provenance dependency`,
+            );
+          }
+          const restoredPath = String(
+            inverseResult?.["repoPath"] ?? prior.repoPath,
+          );
+          repositoryResults.push({
+            repositoryId,
+            expected: current,
+            resultPath: restoredPath,
+            newRepository: false,
+            changeRef: { kind: "authored", ordinal: operation },
+          });
+        } else if (inverseKind === "repo-move") {
+          if (
+            current.presence !== "present" ||
+            current.repoPath !== currentResult["repoPath"] ||
+            typeof inverseResult?.["repoPath"] !== "string"
+          ) {
+            throw new SemanticVcsError(
+              "RevisionChanged",
+              `Change ${changeId} no longer holds`,
+            );
+          }
+          repositoryResults.push({
+            repositoryId,
+            expected: current,
+            resultPath: inverseResult["repoPath"],
+            newRepository: false,
+            changeRef: { kind: "authored", ordinal: operation },
+          });
+        } else {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Repository counteraction ${inverseKind} was not normalized`,
+          );
+        }
+        changes.push({
+          operation,
+          ordinal: 0,
+          kind: inverseKind,
+          base: currentResult,
+          result: inverseResult,
+          payload: { counteractsChangeIds: [changeId] },
+        });
+        continue;
+      }
+
+      if (!currentResult || typeof currentResult["fileId"] !== "string") {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `Change ${changeId} has no counteractable state coordinate`,
+        );
+      }
+      const current = basis.file(String(currentResult["fileId"]));
+      if (!current) {
+        throw new SemanticVcsError(
+          "InvalidReference",
+          `File change ${changeId} is not present at the target state`,
+        );
+      }
+      if (currentResult["kind"] === "file") {
+        if (
+          current.state.presence !== "placed" ||
+          current.state.contentHash !== currentResult["contentHash"] ||
+          current.state.path !== currentResult["path"]
+        ) {
+          throw new SemanticVcsError(
+            "RevisionChanged",
+            `Change ${changeId} no longer holds`,
+          );
+        }
+      } else if (
+        currentResult["kind"] === "missing" &&
+        current.state.presence !== "deleted"
+      ) {
+        throw new SemanticVcsError(
+          "RevisionChanged",
+          `Change ${changeId} no longer holds`,
+        );
+      }
+      const operation = changes.length;
+      changes.push({
+        operation,
+        ordinal: 0,
+        kind: inverseKind,
+        base: currentResult,
+        result: inverseResult,
+        payload: { counteractsChangeIds: [changeId] },
+      });
+      if (!inverseResult || inverseResult["kind"] === "missing") {
+        if (current.state.presence !== "placed") {
+          throw new SemanticVcsError(
+            "RevisionChanged",
+            `Change ${changeId} no longer holds`,
+          );
+        }
+        fileResults.push({
+          fileId: current.state.fileId,
+          expected: current.state,
+          result: {
+            fileId: current.state.fileId,
+            presence: "deleted",
+            priorFileStateId: current.state.fileStateId,
+          },
+          newFile: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      } else if (inverseResult["kind"] === "file") {
+        fileResults.push({
+          fileId: String(inverseResult["fileId"]),
+          expected: current?.state ?? null,
+          result: {
+            fileId: String(inverseResult["fileId"]),
+            presence: "placed",
+            repositoryId: String(inverseResult["repositoryId"]),
+            path: String(inverseResult["path"]),
+            contentHash: String(inverseResult["contentHash"]),
+            mode: Number(inverseResult["mode"]),
+            ...contentDescriptorFromEndpoint(inverseResult),
+          },
+          newFile: false,
+          changeRef: { kind: "authored", ordinal: operation },
+        });
+      }
+    }
+
+    for (const [repositoryId, planned] of [...repositoryDeletes].sort(
+      ([left], [right]) => compareUtf16CodeUnits(left, right),
+    )) {
+      const repository = basis.repository(repositoryId);
+      if (!repository || repository.presence !== "present") {
+        throw new SemanticVcsError(
+          "RevisionChanged",
+          `Repository ${repositoryId} no longer has the imported result`,
+        );
+      }
+      if (planned.requiresSelectedFileRemoval) {
+        const page = basis.manifest(repository, repository.fileManifestId);
+        if (page.next !== null) {
+          throw new SemanticVcsError(
+            "ScopeTooLarge",
+            `Repository ${repositoryId} exceeds the exact revert dependency bound`,
+          );
+        }
+        const selectedRemovals = new Set(
+          fileResults
+            .filter(
+              (result) =>
+                result.expected?.presence === "placed" &&
+                result.expected.repositoryId === repositoryId &&
+                result.result.presence === "deleted",
+            )
+            .map((result) => result.fileId),
+        );
+        const blockers = page.values
+          .filter((entry) => !selectedRemovals.has(entry.fileId))
+          .flatMap((entry) => {
+            const change = basis.latestFileChange(entry.fileId);
+            return change ? [change.changeId] : [];
+          });
+        if (blockers.length > 0) {
+          const causeId = [...planned.causes].sort(compareUtf16CodeUnits)[0]!;
+          throw new SemanticVcsError(
+            "InvalidReference",
+            `Repository change ${causeId} is not a live counteraction frontier`,
+            { referenceKind: "change", reference: causeId },
+          );
+        }
+        if (selectedRemovals.size !== page.values.length) {
+          throw new SemanticVcsError(
+            "IntegrityFailure",
+            `Repository ${repositoryId} has a contained file without a provenance dependency`,
+          );
+        }
+      }
+      const operation = changes.length;
+      changes.push({
+        operation,
+        ordinal: 0,
+        kind: "repo-delete",
+        base: {
+          kind: "repository",
+          repositoryId,
+          repoPath: repository.repoPath,
+          fileManifestId: repository.fileManifestId,
+        },
+        result: { kind: "repository", repositoryId, presence: "deleted" },
+        payload: {
+          counteractsChangeIds: [...planned.causes].sort(),
+        },
+      });
+      repositoryResults.push({
+        repositoryId,
+        expected: repository,
+        resultPath: null,
+        newRepository: false,
+        changeRef: { kind: "authored", ordinal: operation },
+      });
+    }
+    return {
+      kind: "revert",
+      intentSummary: input.intentSummary ?? null,
+      incorporatedChangeIds: [],
+      changes,
+      fileResults,
+      repositoryResults,
+    };
   }
 
   private commit(
@@ -4254,6 +4404,7 @@ export class SemanticWorkspace {
         message: input.message ?? null,
         integratesEventIds: integrationSourceEventIds,
         integratesDeltaIds: derivedDeltaSources,
+        ...(input.templateInstallation ? { templateInstallation: input.templateInstallation } : {}),
         maxApplications: MAX_WORKING_APPLICATIONS,
       });
       this.indexEventMessage(committed.event.eventId, input.message ?? null);
@@ -4629,14 +4780,18 @@ export class SemanticWorkspace {
     });
   }
 
-  private planImportSnapshot(
+  static planImportSnapshot(
     input: VcsImportSnapshotInput,
     receipt: Row,
+    basis: WorkspaceSnapshotImportBasis,
   ): {
     draft: MutationDraft;
     importedRepositoryIds: string[];
     externalSnapshot: VcsExternalSnapshot;
   } {
+    for (const repository of input.repositories) {
+      for (const file of repository.files) assertSemanticVcsPathAdmissible(file.path);
+    }
     const rows = receipt["files"];
     if (!Array.isArray(rows)) {
       throw internalSemanticIntegrityFailure(
@@ -4743,19 +4898,17 @@ export class SemanticWorkspace {
         );
       }
     }
-    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
     const changes: MutationDraft["changes"] = [];
     const fileResults: MutationDraft["fileResults"] = [];
     const repositoryResults: MutationDraft["repositoryResults"] = [];
     const repositories = importedRepositories(input);
-    const existingFiles = this.importExistingFiles(input, root);
     const importedRepositoryIds = repositories.map(
       ({ repositoryId }) => repositoryId,
     );
     const snapshotDigest = importedSnapshotDigest(input.repositories, observed);
     for (const { input: repositoryInput, repositoryId } of repositories) {
       const existing = repositoryInput.repositoryId
-        ? this.deps.store.facts.member(root, repositoryId)
+        ? snapshotImportTarget(basis.repository(repositoryId), repositoryId, repositoryInput.repoPath)
         : null;
       if (existing == null) {
         const changeIndex = changes.length;
@@ -4779,8 +4932,7 @@ export class SemanticWorkspace {
           changeRef: { kind: "authored", ordinal: changeIndex },
         });
       }
-      const expectedByPath =
-        existingFiles.get(repositoryId) ?? new Map<string, PlacedFileState>();
+      const expectedByPath = existing ? basis.files(existing) : new Map<string, PlacedFileState>();
       const importedPaths = new Set(
         repositoryInput.files.map((file) => file.path),
       );
@@ -4927,10 +5079,16 @@ export class SemanticWorkspace {
     return { draft, importedRepositoryIds, externalSnapshot };
   }
 
-  private persistExternalDelta(
+  /** Normalize sealed snapshot evidence independently of the working-state representation. */
+  static planExternalDeltaDraft(
     input: VcsRegisterExternalDeltaInput,
     receipt: Row,
-  ): Row {
+    basis: {
+      fileIdAtPath(path: string): string | null;
+      evidence(): Pick<WorkUnitRecord, "authorContextId" | "triggerEvidence">;
+      now(): string;
+    },
+  ): { record: ExternalDeltaRecord; workUnit: WorkUnitRecord; changes: ChangeRecord[]; newFileIds: Set<string> } {
     const rows = receipt["files"];
     if (!Array.isArray(rows)) {
       throw internalSemanticIntegrityFailure(
@@ -4984,10 +5142,10 @@ export class SemanticWorkspace {
       newSnapshot,
     });
     const externalKeys = [
-      `repo:${this.externalSourceIdentity(input.oldSource)}`,
-      `repo:${this.externalSourceIdentity(input.newSource)}`,
+      `repo:${SemanticWorkspace.externalSourceIdentity(input.oldSource)}`,
+      `repo:${SemanticWorkspace.externalSourceIdentity(input.newSource)}`,
     ].sort(compareUtf16CodeUnits);
-    const evidence = this.workUnitEvidence(input.contextId, input.commandId);
+    const evidence = basis.evidence();
     const workUnitIdValue = workUnitIdentity({
       commandId: input.commandId,
       kind: "external-unapplied",
@@ -5002,7 +5160,6 @@ export class SemanticWorkspace {
     const paths = [...new Set([...oldByPath.keys(), ...newByPath.keys()])].sort(
       compareUtf16CodeUnits,
     );
-    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
     const changes: ChangeRecord[] = [];
     const newFileIds = new Set<string>();
     for (const [operation, path] of paths.entries()) {
@@ -5016,19 +5173,15 @@ export class SemanticWorkspace {
       ) {
         continue;
       }
-      const point = this.deps.store.facts.fileAtPath(
-        root,
-        input.repositoryId,
-        path,
-      );
+      const placed = basis.fileIdAtPath(path);
       const fileId =
-        point?.state.fileId ??
+        placed ??
         compactId("external-file", {
           deltaId,
           repositoryId: input.repositoryId,
           path,
         });
-      if (!point) newFileIds.add(fileId);
+      if (placed === null) newFileIds.add(fileId);
       const endpoint = (file: typeof oldFile): Row | null => {
         if (!file) return null;
         const descriptor = observed.get(file.contentHash)!;
@@ -5090,7 +5243,7 @@ export class SemanticWorkspace {
         }),
       });
     }
-    const createdAt = this.deps.now();
+    const createdAt = basis.now();
     const workUnit: WorkUnitRecord = {
       workUnitId: workUnitIdValue,
       commandId: input.commandId,
@@ -5104,6 +5257,45 @@ export class SemanticWorkspace {
       normalizationProtocol: NORMALIZATION_PROTOCOL,
       createdAt,
     };
+    const record: ExternalDeltaRecord = {
+      deltaId,
+      workUnitId: workUnitIdValue,
+      ownerContextId: input.contextId,
+      repositoryId: input.repositoryId,
+      repoPath: input.repoPath,
+      targetState: asState(input.expectedWorkingHead),
+      oldSource: input.oldSource as unknown as Row,
+      newSource: input.newSource as unknown as Row,
+      oldSnapshot,
+      newSnapshot,
+      inputDigest: compactId("external-delta-input", {
+        repositoryId: input.repositoryId,
+        repoPath: input.repoPath,
+        oldSource: input.oldSource,
+        newSource: input.newSource,
+        oldFiles: input.oldFiles,
+        newFiles: input.newFiles,
+        supersedesDeltaId: input.supersedesDeltaId ?? null,
+      }),
+      status: "active",
+      supersededByDeltaId: null,
+      createdAt,
+    };
+    return { record, workUnit, changes, newFileIds };
+  }
+
+  private persistExternalDelta(
+    input: VcsRegisterExternalDeltaInput,
+    receipt: Row,
+  ): Row {
+    const root = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+    const { record, workUnit, changes, newFileIds } = SemanticWorkspace.planExternalDeltaDraft(input, receipt, {
+      fileIdAtPath: (path) => this.deps.store.facts.fileAtPath(root, input.repositoryId, path)?.state.fileId ?? null,
+      evidence: () => this.workUnitEvidence(input.contextId, input.commandId),
+      now: () => this.deps.now(),
+    });
+    const { deltaId } = record;
+    const workUnitIdValue = workUnit.workUnitId;
     const fileTransitions: FileTransition[] = changes.flatMap((change) => {
       const endpoint = change.result;
       const fileId = String(
@@ -5224,30 +5416,6 @@ export class SemanticWorkspace {
         };
       }),
     };
-    const record: ExternalDeltaRecord = {
-      deltaId,
-      workUnitId: workUnitIdValue,
-      ownerContextId: input.contextId,
-      repositoryId: input.repositoryId,
-      repoPath: input.repoPath,
-      targetState: asState(input.expectedWorkingHead),
-      oldSource: input.oldSource as unknown as Row,
-      newSource: input.newSource as unknown as Row,
-      oldSnapshot,
-      newSnapshot,
-      inputDigest: compactId("external-delta-input", {
-        repositoryId: input.repositoryId,
-        repoPath: input.repoPath,
-        oldSource: input.oldSource,
-        newSource: input.newSource,
-        oldFiles: input.oldFiles,
-        newFiles: input.newFiles,
-        supersedesDeltaId: input.supersedesDeltaId ?? null,
-      }),
-      status: "active",
-      supersededByDeltaId: null,
-      createdAt,
-    };
     const existing = this.deps.store.externalDelta(deltaId);
     if (existing) {
       return this.publicExternalDelta(
@@ -5274,7 +5442,7 @@ export class SemanticWorkspace {
     return this.publicExternalDelta(registered);
   }
 
-  private externalSourceIdentity(
+  private static externalSourceIdentity(
     source: VcsRegisterExternalDeltaInput["oldSource"],
   ): string {
     return source.kind === "git"
@@ -5311,81 +5479,54 @@ export class SemanticWorkspace {
       input,
     )) {
       if (!repositoryInput.repositoryId) continue;
-      const existing = this.deps.store.facts.member(root, repositoryId);
-      if (!existing || existing.presence !== "present") {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot replacement requires a present repository ${repositoryId}`,
-        );
-      }
-      if (existing.repoPath !== repositoryInput.repoPath) {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot import cannot move repository ${repositoryId}; use vcs.move first`,
-        );
-      }
+      snapshotImportTarget(
+        this.deps.store.facts.member(root, repositoryId),
+        repositoryId,
+        repositoryInput.repoPath,
+      );
     }
   }
 
   /** Collect the exact replacement basis through the manifest's bounded paging API. */
   private importExistingFiles(
-    input: VcsImportSnapshotInput,
     root: string,
-  ): Map<string, Map<string, PlacedFileState>> {
-    const byRepository = new Map<string, Map<string, PlacedFileState>>();
-    for (const { input: repositoryInput, repositoryId } of importedRepositories(
-      input,
-    )) {
-      if (!repositoryInput.repositoryId) continue;
-      const existing = this.deps.store.facts.member(root, repositoryId);
-      if (!existing || existing.presence !== "present") {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot replacement requires a present repository ${repositoryId}`,
-        );
-      }
-      if (existing.repoPath !== repositoryInput.repoPath) {
-        throw new SemanticVcsError(
-          "InvalidReference",
-          `Snapshot import cannot move repository ${repositoryId}; use vcs.move first`,
-        );
-      }
-      const files = new Map<string, PlacedFileState>();
-      const entries: Array<{ path: string; fileId: string }> = [];
-      let afterPath: string | undefined;
-      do {
-        const page = this.deps.store.facts.pageManifest(
-          existing.fileManifestId,
-          {
-            ...(afterPath ? { afterPath } : {}),
-            limit: 500,
-          },
-        );
-        entries.push(...page.values);
-        afterPath = page.next ?? undefined;
-      } while (afterPath !== undefined);
-      const states = this.deps.store.facts.fileStatesAt(
-        root,
-        entries.map((entry) => entry.fileId),
+    existing: PresentRepositoryState,
+  ): ReadonlyMap<string, PlacedFileState> {
+    const { repositoryId } = existing;
+    const files = new Map<string, PlacedFileState>();
+    const entries: Array<{ path: string; fileId: string }> = [];
+    let afterPath: string | undefined;
+    do {
+      const page = this.deps.store.facts.pageManifest(
+        existing.fileManifestId,
+        {
+          ...(afterPath ? { afterPath } : {}),
+          limit: 500,
+        },
       );
-      for (const entry of entries) {
-        const state = states.get(entry.fileId);
-        if (
-          !state ||
-          state.presence !== "placed" ||
-          state.repositoryId !== repositoryId ||
-          state.path !== entry.path
-        ) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Repository ${repositoryId} manifest references an absent file ${entry.fileId}`,
-          );
-        }
-        files.set(entry.path, state);
+      entries.push(...page.values);
+      afterPath = page.next ?? undefined;
+    } while (afterPath !== undefined);
+    const states = this.deps.store.facts.fileStatesAt(
+      root,
+      entries.map((entry) => entry.fileId),
+    );
+    for (const entry of entries) {
+      const state = states.get(entry.fileId);
+      if (
+        !state ||
+        state.presence !== "placed" ||
+        state.repositoryId !== repositoryId ||
+        state.path !== entry.path
+      ) {
+        throw new SemanticVcsError(
+          "IntegrityFailure",
+          `Repository ${repositoryId} manifest references an absent file ${entry.fileId}`,
+        );
       }
-      byRepository.set(repositoryId, files);
+      files.set(entry.path, state);
     }
-    return byRepository;
+    return files;
   }
 
   private push(
@@ -5674,24 +5815,7 @@ export class SemanticWorkspace {
         )
         .toArray() as Row[]
     ).map((entry) => this.changeRequired(String(entry["change_id"])));
-    if (changes.length === 0)
-      return `${workKind} decision with no fact transition`;
-    const summaries = changes.map((change) => {
-      const endpoint = change.result ?? change.base ?? {};
-      const subject =
-        this.coordinatePath(endpoint) ??
-        (typeof endpoint["fileId"] === "string"
-          ? String(endpoint["fileId"])
-          : typeof endpoint["repositoryId"] === "string"
-            ? String(endpoint["repositoryId"])
-            : "workspace coordinate");
-      return `${publicChangeKind(change.kind)} ${subject}`;
-    });
-    const unique = [...new Set(summaries)];
-    const visible = unique.slice(0, 12).join("; ");
-    return unique.length > 12
-      ? `${visible}; and ${unique.length - 12} more effects`
-      : visible;
+    return describeSemanticEffects(workKind, changes);
   }
 
   private intentProjection(comparison: NetMergeComparison): {
@@ -6116,72 +6240,11 @@ export class SemanticWorkspace {
         `Unknown file ${input.fileId}`,
       );
     }
-    if (input.range.end > point.state.coordinateExtent) {
-      throw new SemanticVcsError(
-        "InvalidReference",
-        "Blame range exceeds the exact file extent",
-      );
-    }
-    if (input.range.start === input.range.end) {
-      return {
-        state: input.state,
-        fileId: input.fileId,
-        coordinateKind: coordinateKindForFile(point.state),
-        spans: [],
-        nextCursor: null,
-      };
-    }
-    const coordinateKind = coordinateKindForFile(point.state);
-    const terminal = this.contentOriginsForFiles(asState(input.state), [input.fileId]).get(
-      input.fileId,
-    );
-    if (!terminal)
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Placed file ${input.fileId} has no content origin`
-      );
-    const cursorBasis = {
-      state: input.state,
-      repositoryId: input.repositoryId,
-      fileId: input.fileId,
-      range: input.range,
-    };
-    const traceStart = parseBlameCursor(input.cursor, input.range, cursorBasis);
-    const spans = this.traceBlameRange(
-      terminal.ref,
-      {
-        rootStart: traceStart,
-        rootEnd: input.range.end,
-        currentStart: traceStart,
-        currentEnd: input.range.end,
-        coordinateKind,
-        path: [],
-        visited: new Set(),
-      },
-      input.limit + 1,
-    );
-    const ordered = spans.sort(
-      (left, right) =>
-        Number(left["start"]) - Number(right["start"]) ||
-        Number(left["end"]) - Number(right["end"]),
-    );
-    const page = ordered.slice(0, input.limit).map((span) => {
-      if (span["stop"] === "snapshot-boundary") return span;
-      const workUnitId = String((span["workUnit"] as Row)["workUnitId"]);
-      return {
-        ...span,
-        workUnitId,
-        tier: this.intentForWorkUnit(workUnitId).tier,
-      };
+    return projectContentBlame({
+      sql: this.deps.sql, input, file: point.state,
+      readOrigin: () => this.contentOriginsForFiles(asState(input.state), [input.fileId]).get(input.fileId)?.ref,
+      intentTier: (workUnitId) => this.intentForWorkUnit(workUnitId).tier,
     });
-    const next = ordered[input.limit];
-    return {
-      state: input.state,
-      fileId: input.fileId,
-      coordinateKind,
-      spans: page,
-      nextCursor: next ? blameCursor(cursorBasis, Number(next["start"])) : null,
-    };
   }
 
   // -------------------------------------------------------------------------
@@ -6439,23 +6502,6 @@ export class SemanticWorkspace {
     return `${publicChangeKind(String(row["kind"]))}${path ? ` ${path}` : ""}`;
   }
 
-  private messageExcerpt(
-    logId: string,
-    head: string,
-    messageId: string,
-  ): Row | null {
-    try {
-      return this.inspectNode({
-        kind: "trajectory-message",
-        logId,
-        head,
-        messageId,
-      })["value"] as Row;
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * Q2 — what was actually being attempted. One indented causal narrative from
    * any subject up to the originating human statement, stopping at whatever
@@ -6568,93 +6614,8 @@ export class SemanticWorkspace {
       notes.push("This command records no causing tool invocation.");
       return { entries, omitted: [], notes };
     }
-    const invocation = cause["invocation"] as Row;
-    entries.push({
-      node: invocation,
-      label: `tool invocation · ${cause["toolName"] == null ? "unnamed" : String(cause["toolName"])}`,
-      depth,
-      ...(cause["terminalOutcome"] == null
-        ? {}
-        : { detail: `outcome ${String(cause["terminalOutcome"])}` }),
-    });
-    depth += 1;
-    const turn = cause["turn"] as Row | null;
-    if (turn) {
-      entries.push({
-        node: turn,
-        label: "turn",
-        depth,
-        ...(cause["turnSummary"] == null
-          ? {}
-          : {
-              detail:
-                boundedMemoryText(String(cause["turnSummary"]), 300) ?? "",
-            }),
-      });
-      depth += 1;
-    }
-    let message = cause["message"] as Row | null;
-    const seen = new Set<string>();
-    for (let hop = 0; message && hop < MAX_CAUSE_MESSAGE_HOPS; hop += 1) {
-      const logId = String(message["logId"]);
-      const head = String(message["head"]);
-      const messageId = String(message["messageId"]);
-      if (seen.has(messageId)) break;
-      seen.add(messageId);
-      const value = this.messageExcerpt(logId, head, messageId);
-      if (!value) break;
-      const sender = value["senderRef"] as Row | null;
-      const senderKind = sender ? String(sender["kind"]) : null;
-      const role = String(value["role"] ?? "");
-      const text = (
-        Array.isArray(value["textBlocks"]) ? (value["textBlocks"] as Row[]) : []
-      )
-        .map((block) => String(block["content"] ?? ""))
-        .join("\n");
-      const human =
-        senderKind === "user" || (senderKind === null && role === "user");
-      const statementText = boundedMemoryText(text, 2_000);
-      entries.push({
-        node: message,
-        label: `message · ${role}${senderKind ? ` from ${senderKind}` : ""}`,
-        depth,
-        // Causal message prose is evidence regardless of sender kind. An
-        // external client can carry the originating request without proving
-        // that the sender is human; preserve its text and the actual boundary
-        // independently.
-        ...(statementText
-          ? {
-              statement: {
-                text: statementText,
-                sender: senderKind ?? role ?? "requester",
-              },
-            }
-          : {}),
-        ...(human
-          ? { boundary: "human-statement" as const }
-          : senderKind === "agent"
-            ? { boundary: "subagent-brief" as const }
-            : {}),
-      });
-      depth += 1;
-      if (human || senderKind === "agent") break;
-      const sourceMessageId =
-        typeof value["sourceMessageId"] === "string"
-          ? value["sourceMessageId"]
-          : null;
-      message = sourceMessageId
-        ? {
-            kind: "trajectory-message",
-            logId,
-            head,
-            messageId: sourceMessageId,
-          }
-        : null;
-      if (!message) {
-        notes.push("The chain ends at a message with no recorded source.");
-      }
-    }
-    return { entries, omitted: [], notes };
+    const trail = walkTrajectoryInvocation(this.deps.sql, cause, depth);
+    return { entries: [...entries, ...trail.entries], omitted: [], notes: [...notes, ...trail.notes] };
   }
 
   /**
@@ -7390,7 +7351,7 @@ export class SemanticWorkspace {
       const logId = String(row["log_id"]);
       const head = String(row["head"]);
       const messageId = String(row["message_id"]);
-      const value = this.messageExcerpt(logId, head, messageId);
+      const value = readTrajectoryMessageExcerpt(this.deps.sql, logId, head, messageId);
       if (!value) continue;
       const text = (
         Array.isArray(value["textBlocks"]) ? (value["textBlocks"] as Row[]) : []
@@ -7700,7 +7661,7 @@ export class SemanticWorkspace {
     const anchorAppliedChangeId = incorporation
       ? String((incorporation["from"] as Row)["appliedChangeId"] ?? "")
       : appliedChangeId;
-    const authored = this.appliedChangeMetadata(appliedChangeId);
+    const authored = readAppliedBlameChange(this.deps.sql, appliedChangeId);
     const row = this.deps.sql
       .exec(
         `SELECT decision.decision_id, entry.coordinate_id, entry.resolution, entry.rationale
@@ -7791,110 +7752,11 @@ export class SemanticWorkspace {
     ) {
       return null;
     }
-    const row = this.deps.sql
-      .exec(
-        `SELECT command.cause_log_id, command.cause_head, command.cause_invocation_id,
-                invocation.turn_id, invocation.kind AS tool_name,
-                invocation.terminal_outcome, invocation.request_ref_json,
-                turn.summary AS turn_summary, turn.trigger_message_id,
-                started.payload_ref_json AS started_payload_json
-           FROM vcs_command_journal command
-           LEFT JOIN trajectory_invocations invocation
-             ON invocation.log_id = command.cause_log_id
-            AND invocation.head = command.cause_head
-            AND invocation.invocation_id = command.cause_invocation_id
-           LEFT JOIN trajectory_turns turn
-             ON turn.log_id = invocation.log_id
-            AND turn.head = invocation.head
-            AND turn.turn_id = invocation.turn_id
-           LEFT JOIN log_events started
-             ON started.log_id = invocation.log_id
-            AND started.head = invocation.head
-            AND started.envelope_id = invocation.started_event_id
-          WHERE command.command_id = ?
-          LIMIT 1`,
-        commandId,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      return null;
-    }
-    const logId = String(row["cause_log_id"]);
-    const head = String(row["cause_head"]);
-    const invocationId = String(row["cause_invocation_id"]);
-    const turnId = row["turn_id"] == null ? null : String(row["turn_id"]);
-    const startedPayload =
-      row["started_payload_json"] == null
-        ? null
-        : (JSON.parse(String(row["started_payload_json"])) as Row);
-    const nativeSource =
-      startedPayload?.["nativeSource"] === undefined
-        ? null
-        : nativeInvocationSourceSchema.parse(startedPayload["nativeSource"]);
-    const originatingInput =
-      nativeSource === null
-        ? null
-        : nativeOriginatingInputSchema
-            .nullable()
-            .parse(startedPayload!["originatingInput"]);
-    const messageLogId = originatingInput?.channelRef.objectKey ?? logId;
-    const messageHead = originatingInput
-      ? channelTrajectoryFor(messageLogId).head
-      : head;
-    const messageId =
-      nativeSource !== null
-        ? (originatingInput?.messageId ?? null)
-        : row["trigger_message_id"] == null
-          ? null
-          : String(row["trigger_message_id"]);
-    let triggerText: string | null = null;
-    let sender: unknown = null;
-    if (messageId) {
-      const message = this.inspectNode({
-        kind: "trajectory-message",
-        logId: messageLogId,
-        head: messageHead,
-        messageId,
-      })["value"] as Row;
-      const blocks = Array.isArray(message["textBlocks"])
-        ? (message["textBlocks"] as Row[])
-        : [];
-      triggerText = boundedMemoryText(
-        blocks.map((block) => String(block["content"] ?? "")).join("\n"),
-        1_200,
-      );
-      sender = message["senderRef"] ?? null;
-    }
-    return {
-      invocation: { kind: "trajectory-invocation", logId, head, invocationId },
-      nativeInvocation:
-        nativeSource === null ? null : nativeInvocationIdentity(nativeSource),
-      originatingInput,
-      turn: turnId ? { kind: "trajectory-turn", logId, head, turnId } : null,
-      message: messageId
-        ? {
-            kind: "trajectory-message",
-            logId: messageLogId,
-            head: messageHead,
-            messageId,
-          }
-        : null,
-      toolName: row["tool_name"] == null ? null : String(row["tool_name"]),
-      terminalOutcome:
-        row["terminal_outcome"] == null
-          ? null
-          : String(row["terminal_outcome"]),
-      requestRef:
-        row["request_ref_json"] == null
-          ? null
-          : trajectoryRequestRef(JSON.parse(String(row["request_ref_json"]))),
-      turnSummary: boundedMemoryText(
-        row["turn_summary"] == null ? "" : String(row["turn_summary"]),
-        600,
-      ),
-      triggerText,
-      sender,
-    };
+    return readRecordedMemoryCause(this.deps.sql, {
+      logId: String(command["cause_log_id"]),
+      head: String(command["cause_head"]),
+      invocationId: String(command["cause_invocation_id"]),
+    }, (node) => this.inspectNode(node)["value"] as Row);
   }
 
   private resolveRepository(
@@ -8334,7 +8196,7 @@ export class SemanticWorkspace {
             repositoryId: file.repositoryId,
             fileId,
           },
-          content: this.contentEndpoint({ kind: "file", ...file }),
+          content: SemanticWorkspace.contentEndpoint({ kind: "file", ...file }),
           authoredChangeId: null,
           authoredByWorkUnitId: null,
           contentClass: "external",
@@ -8412,11 +8274,7 @@ export class SemanticWorkspace {
   private contentIntegrityForMutation(
     basis: StateNodeRef,
     draft: MutationDraft,
-  ): {
-    class: "internal" | "external";
-    externalKeys: string[];
-    contentOrigins: Map<string, FileContentOrigin>;
-  } {
+  ): MutationContentIntegrity {
     const externalKeys = new Set<string>();
     const workUnitIds = new Set<string>();
     const contentOrigins = new Map<string, FileContentOrigin>();
@@ -8530,12 +8388,75 @@ export class SemanticWorkspace {
     workingHead: StateNodeRef;
     decisionIds: string[];
   } {
+    const prepared = this.prepareWorkingMutation(input, draft, commandId);
+    const applicationPersistenceStartedAt = Date.now();
+    const context = this.deps.store.applyApplication(prepared.plan);
+    // Derived-but-frozen intent and the search index share the transaction
+    // with the provenance rows they describe.
+    this.recordDerivedWorkUnitIndex(prepared.plan.workUnit.workUnitId);
+    const profileCompletedAt = Date.now();
+    const totalMs = profileCompletedAt - prepared.profileStartedAt;
+    if (totalMs >= 100) {
+      console.info("[VcsProfile] working mutation persistence", {
+        ...prepared.timings,
+        prepareMs: applicationPersistenceStartedAt - prepared.profileStartedAt,
+        applicationPersistenceMs: profileCompletedAt - applicationPersistenceStartedAt,
+        totalMs,
+      });
+    }
+    return { ...prepared.result, workingHead: context.working.ref };
+  }
+
+  /** Prepare the semantic application before an owner decides how to commit it. */
+  private prepareWorkingMutation(
+    input: {
+      contextId: string;
+      expectedWorkingHead: VcsStateNodeRef;
+      commandId: string;
+    },
+    draft: MutationDraft,
+    commandId: string,
+  ) {
     const profileStartedAt = Date.now();
+    const basisRoot = this.deps.store.stateRoot(asState(input.expectedWorkingHead));
+    const prepared = SemanticWorkspace.prepareApplication(input, draft, commandId, {
+      now: () => this.deps.now(),
+      workUnitEvidence: (contextId, id) => this.workUnitEvidence(contextId, id),
+      contentIntegrity: (basis, mutation) => this.contentIntegrityForMutation(basis, mutation),
+      contentOrigins: (state, fileIds) => this.contentOriginsForFiles(state, fileIds),
+      invertedCounteractions: (changeIds, child, parent) =>
+        readInvertedCounteractionMappings(this.deps.sql, changeIds, child, parent),
+      preparePlacement: (files, repositories) => {
+        const changeSet = files.length || repositories.length
+          ? this.planWorkspaceFacts(basisRoot, files, repositories)
+          : null;
+        const workspacePlanCompletedAt = Date.now();
+        const placement = changeSet ? this.deps.store.facts.prepare(changeSet) : null;
+        return {
+          placement,
+          resultRoot: placement?.persistence.resultRoot.workspaceFactRootId ?? basisRoot,
+          workspacePlanCompletedAt,
+        };
+      },
+    }, profileStartedAt);
+    return {
+      ...prepared,
+      plan: { ...prepared.plan, workspaceFacts: prepared.placement } satisfies ApplicationPersistencePlan,
+    };
+  }
+
+  /** Build provenance once, using the exact placement and lineage reads of its owner. */
+  static prepareApplication<Placement>(
+    input: { contextId: string; expectedWorkingHead: VcsStateNodeRef },
+    draft: MutationDraft,
+    commandId: string,
+    preparation: MutationPreparation<Placement>,
+    profileStartedAt = Date.now(),
+  ) {
     const basis = asState(input.expectedWorkingHead);
-    const basisRoot = this.deps.store.stateRoot(basis);
-    const createdAt = this.deps.now();
-    const contentIntegrity = this.contentIntegrityForMutation(basis, draft);
-    const evidence = this.workUnitEvidence(input.contextId, commandId);
+    const createdAt = preparation.now();
+    const contentIntegrity = preparation.contentIntegrity(basis, draft);
+    const evidence = preparation.workUnitEvidence(input.contextId, commandId);
     const workUnitIdValue = workUnitIdentity({
       commandId,
       kind: draft.kind,
@@ -8612,22 +8533,9 @@ export class SemanticWorkspace {
     const workspaceFileTransitions = fileTransitions.filter(
       ({ expected, result }) => expected?.fileStateId !== result.fileStateId,
     );
-    const workspaceChangeSet =
-      workspaceFileTransitions.length || repoTransitions.length
-        ? this.planWorkspaceFacts(
-            basisRoot,
-            workspaceFileTransitions,
-            repoTransitions,
-          )
-        : null;
-    const workspacePlanCompletedAt = Date.now();
-    const workspaceFacts = workspaceChangeSet
-      ? this.deps.store.facts.prepare(workspaceChangeSet)
-      : null;
+    const { placement, resultRoot, workspacePlanCompletedAt } =
+      preparation.preparePlacement(workspaceFileTransitions, repoTransitions);
     const workspaceProofCompletedAt = Date.now();
-    const resultRoot = workspaceFacts
-      ? workspaceFacts.persistence.resultRoot.workspaceFactRootId
-      : basisRoot;
     const appliedChangeSources = [
       ...changes,
       ...(draft.appliedSourceChanges ?? []),
@@ -8711,8 +8619,8 @@ export class SemanticWorkspace {
     };
     for (const change of appliedChangeSources) {
       const child =
-        this.contentEndpoint(change.result) ??
-        this.contentEndpoint(change.base);
+        SemanticWorkspace.contentEndpoint(change.result) ??
+        SemanticWorkspace.contentEndpoint(change.base);
       if (!child) continue;
       if (change.kind === "file-copy") {
         if (change.source) {
@@ -8730,14 +8638,14 @@ export class SemanticWorkspace {
       const missingFileIds = [...selection.fileIds].filter(
         (fileId) => !contentParents.has(stateFileKey(selection.state, fileId)),
       );
-      for (const [fileId, parent] of this.contentOriginsForFiles(selection.state, missingFileIds)) {
+      for (const [fileId, parent] of preparation.contentOrigins(selection.state, missingFileIds)) {
         contentParents.set(stateFileKey(selection.state, fileId), parent);
       }
     }
     const derivedContentEdges = appliedChanges.flatMap((appliedChange, ordinal) => {
         const change = appliedChangeSources[ordinal];
         if (!change) return [];
-      const child = this.contentEndpoint(change.result) ?? this.contentEndpoint(change.base);
+      const child = SemanticWorkspace.contentEndpoint(change.result) ?? SemanticWorkspace.contentEndpoint(change.base);
         if (!child) {
           if (change.kind === "file-copy") {
             throw new SemanticVcsError(
@@ -8816,7 +8724,7 @@ export class SemanticWorkspace {
             }),
           ];
         } else if (change.kind === "text") {
-          const base = this.contentEndpoint(change.base);
+          const base = SemanticWorkspace.contentEndpoint(change.base);
           if (
             !base ||
             base.coordinateKind !== "utf16" ||
@@ -8828,10 +8736,10 @@ export class SemanticWorkspace {
             return [];
           }
           relation = "incorporates";
-          const counteractedChangeIds = this.counteractedChangeIds(change);
+          const counteractedChangeIds = SemanticWorkspace.counteractedChangeIds(change);
           mappings =
             counteractedChangeIds.length > 0
-            ? this.invertedCounteractionMappings(counteractedChangeIds, child, parentEndpoint)
+            ? preparation.invertedCounteractions(counteractedChangeIds, child, parentEndpoint)
               : mappingsForTextEdits({
                   childContentHash: child.contentHash,
                   childExtent: child.coordinateExtent,
@@ -8929,7 +8837,7 @@ export class SemanticWorkspace {
       normalizationProtocol: NORMALIZATION_PROTOCOL,
       createdAt,
     };
-    const plan: ApplicationPersistencePlan = {
+    const plan: Omit<ApplicationPersistencePlan, "workspaceFacts"> = {
       contextId: input.contextId,
       expectedWorkingHead: basis,
       workUnit,
@@ -8938,7 +8846,6 @@ export class SemanticWorkspace {
       appliedChanges,
       contentEdges,
       decisions,
-      workspaceFacts,
       newRepositories: repoTransitions
         .filter((value) => value.newRepository)
         .map(({ repositoryId }) => ({ repositoryId })),
@@ -8951,15 +8858,12 @@ export class SemanticWorkspace {
           changeId: value.changeId,
         })),
     };
-    const applicationPersistenceStartedAt = Date.now();
-    const context = this.deps.store.applyApplication(plan);
-    // Derived-but-frozen intent and the search index are written in the same
-    // transaction as the rows they describe, by the one loader.
-    this.recordDerivedWorkUnitIndex(workUnitIdValue);
-    const profileCompletedAt = Date.now();
-    const totalMs = profileCompletedAt - profileStartedAt;
-    if (totalMs >= 100) {
-      console.info("[VcsProfile] working mutation persistence", {
+    const planCompletedAt = Date.now();
+    return {
+      plan,
+      placement,
+      profileStartedAt,
+      timings: {
         changes: changes.length,
         repositories: repoTransitions.length,
         files: fileTransitions.length,
@@ -8968,29 +8872,21 @@ export class SemanticWorkspace {
         transitionsMs: transitionsCompletedAt - changesCompletedAt,
         workspacePlanMs: workspacePlanCompletedAt - transitionsCompletedAt,
         workspaceProofMs: workspaceProofCompletedAt - workspacePlanCompletedAt,
-        applicationIdentitiesMs:
-          applicationIdentityCompletedAt - workspaceProofCompletedAt,
-        contentEdgesMs:
-          contentEdgesCompletedAt - applicationIdentityCompletedAt,
-        planAssemblyMs:
-          applicationPersistenceStartedAt - contentEdgesCompletedAt,
-        prepareMs: applicationPersistenceStartedAt - profileStartedAt,
-        applicationPersistenceMs:
-          profileCompletedAt - applicationPersistenceStartedAt,
-        totalMs,
-      });
-    }
-    return {
-      commandId,
-      contextId: input.contextId,
-      workUnitId: workUnitIdValue,
-      applicationId: applicationIdValue,
-      changeCount: changes.length,
-      changeIds: changes.slice(0, 200).map((value) => value.changeId),
-      incorporatedChangeCount: draft.incorporatedChangeIds.length,
-      incorporatedChangeIds: draft.incorporatedChangeIds.slice(0, 200),
-      workingHead: context.working.ref,
-      decisionIds: decisions.map((value) => value.decisionId),
+        applicationIdentitiesMs: applicationIdentityCompletedAt - workspaceProofCompletedAt,
+        contentEdgesMs: contentEdgesCompletedAt - applicationIdentityCompletedAt,
+        planAssemblyMs: planCompletedAt - contentEdgesCompletedAt,
+      },
+      result: {
+        commandId,
+        contextId: input.contextId,
+        workUnitId: workUnitIdValue,
+        applicationId: applicationIdValue,
+        changeCount: changes.length,
+        changeIds: changes.slice(0, 200).map((value) => value.changeId),
+        incorporatedChangeCount: draft.incorporatedChangeIds.length,
+        incorporatedChangeIds: draft.incorporatedChangeIds.slice(0, 200),
+        decisionIds: decisions.map((value) => value.decisionId),
+      },
     };
   }
 
@@ -9564,8 +9460,12 @@ export class SemanticWorkspace {
 
   private changeRequired(changeId: string): ChangeRecord {
     const row = this.deps.sql
-      .exec(`SELECT * FROM gad_changes WHERE change_id = ?`, changeId)
-      .toArray()[0] as Row | undefined;
+      .exec("SELECT * FROM gad_changes WHERE change_id = ?", changeId)
+      .toArray()[0];
+    return SemanticWorkspace.changeRecord(changeId, row);
+  }
+
+  static changeRecord(changeId: string, row: Row | undefined): ChangeRecord {
     if (!row)
       throw new SemanticVcsError(
         "InvalidReference",
@@ -10051,20 +9951,7 @@ export class SemanticWorkspace {
   }
 
   private coordinatePath(endpoint: Row): string | undefined {
-    if (
-      endpoint["kind"] === "repository" &&
-      typeof endpoint["repoPath"] === "string"
-    ) {
-      return endpoint["repoPath"];
-    }
-    if (
-      endpoint["kind"] === "file" &&
-      typeof endpoint["repoPath"] === "string" &&
-      typeof endpoint["path"] === "string"
-    ) {
-      return `${endpoint["repoPath"]}/${endpoint["path"]}`;
-    }
-    return undefined;
+    return semanticCoordinatePath(endpoint);
   }
 
   private mergeChangeCoordinate(change: ChangeRecord): MergeCoordinate | null {
@@ -11626,7 +11513,7 @@ export class SemanticWorkspace {
     ).map((row) => String(row["source_delta_id"]));
   }
 
-  private counteractedChangeIds(change: ChangeRecord): string[] {
+  private static counteractedChangeIds(change: ChangeRecord): string[] {
     const values = change.payload["counteractsChangeIds"];
     return Array.isArray(values)
       ? values.filter((value): value is string => typeof value === "string")
@@ -11646,7 +11533,7 @@ export class SemanticWorkspace {
       const change = changes[index]!;
       if (suppressed.has(change.changeId)) continue;
       active.add(change.changeId);
-      for (const counteractedId of this.counteractedChangeIds(change)) {
+      for (const counteractedId of SemanticWorkspace.counteractedChangeIds(change)) {
         suppressed.add(counteractedId);
       }
     }
@@ -11769,7 +11656,7 @@ export class SemanticWorkspace {
     );
   }
 
-  private changeCoordinate(change: ChangeRecord): string | null {
+  static changeCoordinate(change: ChangeRecord): string | null {
     const endpoint = change.result ?? change.base;
     if (typeof endpoint?.["fileId"] === "string")
       return `file:${endpoint["fileId"]}`;
@@ -11796,13 +11683,13 @@ export class SemanticWorkspace {
     const originalIndex = changes.findIndex(
       (change) => change.changeId === original.changeId,
     );
-    const coordinate = this.changeCoordinate(original);
+    const coordinate = SemanticWorkspace.changeCoordinate(original);
     if (originalIndex < 0 || !coordinate) return [];
     return changes
       .slice(originalIndex + 1)
       .filter(
         (change) =>
-          this.changeCoordinate(change) === coordinate &&
+          SemanticWorkspace.changeCoordinate(change) === coordinate &&
           this.changeResultHolds(state, change),
       )
       .map((change) => change.changeId)
@@ -11811,14 +11698,22 @@ export class SemanticWorkspace {
 
   private endpointHolds(state: StateNodeRef, endpoint: Row): boolean {
     const root = this.deps.store.stateRoot(state);
+    const facts = this.deps.store.facts;
+    return SemanticWorkspace.revertEndpointHolds({
+      file: (id) => facts.file(root, id),
+      repository: (id) => facts.member(root, id),
+    }, endpoint);
+  }
+
+  static revertEndpointHolds(
+    basis: Pick<WorkspaceRevertBasis, "file" | "repository">,
+    endpoint: Row,
+  ): boolean {
     if (endpoint["kind"] === "file" && typeof endpoint["fileId"] === "string") {
-      const point = this.deps.store.facts.file(root, endpoint["fileId"]);
+      const point = basis.file(endpoint["fileId"]);
       if (!point || point.state.presence !== "placed") return false;
       const expected = endpoint;
-      const repository = this.deps.store.facts.member(
-        root,
-        point.state.repositoryId,
-      );
+      const repository = basis.repository(point.state.repositoryId);
       return (
         repository?.presence === "present" &&
         point.state.repositoryId === expected["repositoryId"] &&
@@ -11834,17 +11729,14 @@ export class SemanticWorkspace {
       endpoint["kind"] === "missing" &&
       typeof endpoint["fileId"] === "string"
     ) {
-      const point = this.deps.store.facts.file(root, endpoint["fileId"]);
+      const point = basis.file(endpoint["fileId"]);
       return !point || point.state.presence === "deleted";
     }
     if (
       endpoint["kind"] === "repository" &&
       typeof endpoint["repositoryId"] === "string"
     ) {
-      const member = this.deps.store.facts.member(
-        root,
-        endpoint["repositoryId"],
-      );
+      const member = basis.repository(endpoint["repositoryId"]);
       if (endpoint["presence"] === "deleted")
         return !member || member.presence === "deleted";
       return (
@@ -12321,81 +12213,11 @@ export class SemanticWorkspace {
         };
       }
       case "trajectory-message": {
-        const row = this.deps.sql
-          .exec(
-            `SELECT turn_id, role, status, started_event_id, completed_event_id
-               FROM trajectory_messages
-              WHERE log_id = ? AND head = ? AND message_id = ? LIMIT 1`,
-            String(node["logId"]),
-            String(node["head"]),
-            String(node["messageId"]),
-          )
-          .toArray()[0];
-        if (!row)
-          throw new SemanticVcsError(
-            "InvalidReference",
-            "Unknown trajectory message",
-          );
-        const payloadEventId =
-          row["completed_event_id"] ?? row["started_event_id"];
-        const payloadRow =
-          payloadEventId == null
-            ? undefined
-            : this.deps.sql
-                .exec(
-                  `SELECT actor_json, payload_ref_json FROM log_events
-                    WHERE log_id = ? AND head = ? AND envelope_id = ? LIMIT 1`,
-                  String(node["logId"]),
-                  String(node["head"]),
-                  String(payloadEventId),
-                )
-                .toArray()[0];
-        const payload = payloadRow
-          ? (JSON.parse(String(payloadRow["payload_ref_json"])) as Row)
-          : {};
-        const eventActor = payloadRow ? JSON.parse(String(payloadRow["actor_json"])) : null;
-        const senderRef = trajectorySenderRef(payload["senderRef"] ?? eventActor);
-        const textBlocks = (Array.isArray(payload["blocks"]) ? payload["blocks"] : []).flatMap(
-          (value, index) => {
-            if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-          const block = value as Row;
-            if (block["type"] !== "text" || typeof block["content"] !== "string") return [];
-          return [
-            {
-              blockId:
-                typeof block["blockId"] === "string"
-                  ? block["blockId"]
-                  : `${String(node["messageId"])}:block:${index}`,
-              content: block["content"],
-            },
-          ];
-          }
+        const value = readTrajectoryMessage(
+          this.deps.sql, String(node["logId"]), String(node["head"]), String(node["messageId"]),
         );
-        return {
-          kind: "trajectory-message",
-          value: {
-            logId: String(node["logId"]),
-            head: String(node["head"]),
-            messageId: String(node["messageId"]),
-            turnId: row["turn_id"] == null ? null : String(row["turn_id"]),
-            role: String(row["role"]),
-            status: String(row["status"]),
-            startedEventId:
-              row["started_event_id"] == null
-                ? null
-                : String(row["started_event_id"]),
-            completedEventId:
-              row["completed_event_id"] == null
-                ? null
-                : String(row["completed_event_id"]),
-            sourceMessageId:
-              typeof payload["sourceMessageId"] === "string"
-                ? payload["sourceMessageId"]
-                : null,
-            senderRef,
-            textBlocks,
-          },
-        };
+        if (!value) throw new SemanticVcsError("InvalidReference", "Unknown trajectory message");
+        return { kind: "trajectory-message", value };
       }
       default:
         throw new SemanticVcsError(
@@ -13998,219 +13820,7 @@ export class SemanticWorkspace {
     }));
   }
 
-  private traceBlameRange(
-    origin: ContentOriginRef,
-    segment: {
-      rootStart: number;
-      rootEnd: number;
-      currentStart: number;
-      currentEnd: number;
-      coordinateKind: "utf16" | "byte";
-      path: Row[];
-      visited: Set<string>;
-    },
-    maximumSpans: number
-  ): Row[] {
-    if (maximumSpans <= 0) return [];
-    if (segment.path.length >= 200) {
-      throw new SemanticVcsError("ScopeTooLarge", "Blame lineage exceeds its edge bound", {
-        maximum: 200,
-      });
-    }
-    if (origin.kind === "file") {
-      const event = this.deps.sql
-        .exec(
-          `SELECT command_id, snapshot_json, created_at FROM gad_workspace_events WHERE event_id = ? AND kind = 'genesis'`,
-          origin.state.eventId
-        )
-        .toArray()[0] as Row | undefined;
-      if (!event || event["snapshot_json"] == null)
-        throw new SemanticVcsError("IntegrityFailure", "Content origin is not an initial snapshot");
-      return [
-        {
-          start: segment.rootStart,
-          end: segment.rootEnd,
-          origin,
-          source: JSON.parse(String(event["snapshot_json"])),
-          command: { kind: "command", commandId: String(event["command_id"]) },
-          createdAt: String(event["created_at"]),
-          path: segment.path,
-          stop: "snapshot-boundary",
-        },
-      ];
-    }
-    const appliedChangeId = origin.appliedChangeId;
-    const visit = `${appliedChangeId}:${segment.currentStart}:${segment.currentEnd}`;
-    if (segment.visited.has(visit)) {
-      throw new SemanticVcsError("IntegrityFailure", "Content lineage contains a cycle");
-    }
-    const visited = new Set(segment.visited).add(visit);
-    const current = this.appliedChangeMetadata(appliedChangeId);
-    const routes: Array<{
-      relation: "preserves-content" | "copies-content" | "incorporates-content";
-      parent: ContentOriginRef;
-      mappings: ContentMapping[];
-    }> = [];
-    const contentEdges = this.deps.sql
-      .exec(
-        `SELECT content_edge_id, parent_ref_json, relation
-           FROM gad_content_edges
-          WHERE child_applied_change_id = ?
-          ORDER BY content_edge_id`,
-        appliedChangeId
-      )
-      .toArray() as Row[];
-    for (const edge of contentEdges) {
-      routes.push({
-        relation:
-          edge["relation"] === "incorporates"
-            ? "incorporates-content"
-            : edge["relation"] === "copies"
-              ? "copies-content"
-              : "preserves-content",
-        parent: JSON.parse(String(edge["parent_ref_json"])) as ContentOriginRef,
-        mappings: this.contentMappings(String(edge["content_edge_id"])),
-      });
-    }
-
-    const routed: Array<{
-      childStart: number;
-      childEnd: number;
-      parentStart: number;
-      parentEnd: number;
-      route: (typeof routes)[number];
-    }> = [];
-    for (const route of routes) {
-      for (const mapping of route.mappings) {
-        if (mapping.coordinateKind !== segment.coordinateKind) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Content mapping ${mapping.digest} uses the wrong coordinate space`
-          );
-        }
-        const childStart = Math.max(segment.currentStart, mapping.childStart);
-        const childEnd = Math.min(segment.currentEnd, mapping.childEnd);
-        if (childStart >= childEnd) continue;
-        if (mapping.childEnd - mapping.childStart !== mapping.parentEnd - mapping.parentStart) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Content mapping ${mapping.digest} changes coordinate length`
-          );
-        }
-        const parentStart = mapping.parentStart + childStart - mapping.childStart;
-        routed.push({
-          childStart,
-          childEnd,
-          parentStart,
-          parentEnd: parentStart + childEnd - childStart,
-          route,
-        });
-      }
-    }
-    routed.sort(
-      (left, right) => left.childStart - right.childStart || left.childEnd - right.childEnd
-    );
-    for (let index = 1; index < routed.length; index += 1) {
-      if (routed[index]!.childStart < routed[index - 1]!.childEnd) {
-        throw new SemanticVcsError(
-          "IntegrityFailure",
-          `Applied change ${appliedChangeId} has overlapping blame routes`
-        );
-      }
-    }
-    const importTerminal = current.workKind === "import";
-    const terminal = (start: number, end: number): Row => ({
-      start: segment.rootStart + (start - segment.currentStart),
-      end: segment.rootStart + (end - segment.currentStart),
-      change: { kind: "change", changeId: current.changeId },
-      appliedChange: {
-        kind: "applied-change",
-        appliedChangeId: current.appliedChangeId,
-      },
-      workUnit: { kind: "work-unit", workUnitId: current.workUnitId },
-      command: { kind: "command", commandId: current.commandId },
-      path: segment.path,
-      stop: importTerminal ? "import-boundary" : "authored",
-    });
-    if (routed.length === 0) return [terminal(segment.currentStart, segment.currentEnd)];
-    const result: Row[] = [];
-    let cursor = segment.currentStart;
-    for (const route of routed) {
-      if (cursor < route.childStart) {
-        result.push(terminal(cursor, route.childStart));
-        if (result.length >= maximumSpans) return result;
-      }
-      const rootStart = segment.rootStart + route.childStart - segment.currentStart;
-      result.push(
-        ...this.traceBlameRange(
-          route.route.parent,
-          {
-            rootStart,
-            rootEnd: rootStart + route.childEnd - route.childStart,
-            currentStart: route.parentStart,
-            currentEnd: route.parentEnd,
-            coordinateKind: segment.coordinateKind,
-            path: [
-              ...segment.path,
-              {
-                kind: route.route.relation,
-                from: {
-                  kind: "applied-change",
-                  appliedChangeId: current.appliedChangeId,
-                },
-                to: route.route.parent,
-              },
-            ],
-            visited,
-          },
-          maximumSpans - result.length
-        )
-      );
-      if (result.length >= maximumSpans) return result;
-      cursor = route.childEnd;
-    }
-    if (cursor < segment.currentEnd && result.length < maximumSpans) {
-      result.push(terminal(cursor, segment.currentEnd));
-    }
-    return result;
-  }
-
-  private appliedChangeMetadata(appliedChangeId: string): {
-    appliedChangeId: string;
-    changeId: string;
-    workUnitId: string;
-    commandId: string;
-    kind: string;
-    workKind: string;
-  } {
-    const row = this.deps.sql
-      .exec(
-        `SELECT applied.applied_change_id, change.change_id, change.kind,
-                change.work_unit_id, work.command_id, work.kind AS work_kind
-           FROM gad_applied_changes applied
-           JOIN gad_changes change ON change.change_id = applied.change_id
-           JOIN gad_work_units work ON work.work_unit_id = change.work_unit_id
-          WHERE applied.applied_change_id = ?`,
-        appliedChangeId,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Content lineage reaches missing applied change ${appliedChangeId}`,
-      );
-    }
-    return {
-      appliedChangeId,
-      changeId: String(row["change_id"]),
-      workUnitId: String(row["work_unit_id"]),
-      commandId: String(row["command_id"]),
-      kind: String(row["kind"]),
-      workKind: String(row["work_kind"]),
-    };
-  }
-
-  private contentEndpoint(endpoint: Row | null): ContentEndpoint | null {
+  private static contentEndpoint(endpoint: Row | null): ContentEndpoint | null {
     if (
       endpoint?.["kind"] !== "file" ||
       typeof endpoint["fileId"] !== "string" ||
@@ -14229,91 +13839,6 @@ export class SemanticWorkspace {
     };
   }
 
-  private contentMappings(contentEdgeId: string): ContentMapping[] {
-    return (
-      this.deps.sql
-        .exec(
-          `SELECT coordinate_kind, child_content_hash, child_start, child_end,
-                  parent_content_hash, parent_start, parent_end, digest
-             FROM gad_content_edge_mappings WHERE content_edge_id = ? ORDER BY ordinal`,
-          contentEdgeId,
-        )
-        .toArray() as Row[]
-    ).map(contentMappingFromRow);
-  }
-
-  /** A text counteraction restores the original base bytes, so its exact
-   * unchanged-coordinate lineage is the original text edge in reverse. The
-   * original edge is durable semantic evidence; reconstructing edit text or
-   * diffing blobs here would create a second, weaker source of truth. */
-  private invertedCounteractionMappings(
-    counteractedChangeIds: readonly string[],
-    child: {
-      contentHash: string;
-      coordinateKind: "utf16" | "byte";
-      coordinateExtent: number;
-    },
-    parent: {
-      contentHash: string;
-      coordinateKind: "utf16" | "byte";
-      coordinateExtent: number;
-    },
-  ): ContentMapping[] {
-    if (counteractedChangeIds.length !== 1) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        "A text counteraction must name exactly one original change",
-      );
-    }
-    const row = this.deps.sql
-      .exec(
-        `SELECT edge.content_edge_id
-           FROM gad_content_edges edge
-           JOIN gad_applied_changes applied
-             ON applied.applied_change_id = edge.child_applied_change_id
-          WHERE applied.change_id = ?
-            AND edge.relation = 'incorporates'
-            AND json_extract(applied.applied_result_json, '$.contentHash') = ?
-            AND json_extract(applied.applied_base_json, '$.contentHash') = ?
-          ORDER BY edge.content_edge_id
-          LIMIT 1`,
-        counteractedChangeIds[0],
-        parent.contentHash,
-        child.contentHash,
-      )
-      .toArray()[0] as Row | undefined;
-    if (!row) {
-      throw new SemanticVcsError(
-        "IntegrityFailure",
-        `Counteracted text change ${counteractedChangeIds[0]} has no exact content lineage`,
-      );
-    }
-    return this.contentMappings(String(row["content_edge_id"])).map(
-      (mapping) => {
-        if (
-          mapping.coordinateKind !== child.coordinateKind ||
-          mapping.coordinateKind !== parent.coordinateKind ||
-          mapping.childContentHash !== parent.contentHash ||
-          mapping.parentContentHash !== child.contentHash
-        ) {
-          throw new SemanticVcsError(
-            "IntegrityFailure",
-            `Counteracted text change ${counteractedChangeIds[0]} has mismatched content lineage`,
-          );
-        }
-        return contentMapping({
-          coordinateKind: mapping.coordinateKind,
-          childContentHash: mapping.parentContentHash,
-          childStart: mapping.parentStart,
-          childEnd: mapping.parentEnd,
-          parentContentHash: mapping.childContentHash,
-          parentStart: mapping.childStart,
-          parentEnd: mapping.childEnd,
-        });
-      },
-    );
-  }
-
   /**
    * Resolve the latest exact applied change for a file set in one ancestry
    * query. Semantic mutations use the same result for integrity classification
@@ -14326,16 +13851,31 @@ export class SemanticWorkspace {
     fileIds: readonly string[],
   ): Map<string, LatestAppliedFileChange> {
     if (fileIds.length === 0) return new Map();
-    const applications = this.firstParentLineage(state).applicationIds;
-    const rows = this.deps.sql
+    return SemanticWorkspace.readAppliedFileChanges(
+      this.deps.sql,
+      this.firstParentLineage(state).applicationIds,
+      fileIds,
+    );
+  }
+
+  /** Interpret candidate lineage rows in chronological application order at one immutable state. */
+  static readAppliedFileChanges(
+    sql: SqlStorage,
+    applications: readonly string[],
+    fileIds: readonly string[],
+    revision?: string,
+  ): Map<string, LatestAppliedFileChange> {
+    if (applications.length === 0 || fileIds.length === 0) return new Map();
+    const table = (name: string) => revision === undefined ? name : `dolt_at_${name}(?3)`;
+    const rows = sql
       .exec(
         `WITH selected_applications AS (
            SELECT CAST(key AS INTEGER) AS application_ordinal,
                   CAST(value AS TEXT) AS application_id
-             FROM json_each(?)
+             FROM json_each(?1)
          ),
          selected_files AS (
-           SELECT CAST(value AS TEXT) AS file_id FROM json_each(?)
+           SELECT CAST(value AS TEXT) AS file_id FROM json_each(?2)
          ),
          candidates AS (
            SELECT coordinate.file_id, applied.applied_change_id,
@@ -14344,12 +13884,17 @@ export class SemanticWorkspace {
                   change.work_unit_id, work.command_id, work.content_class,
                   work.external_lineage_json
              FROM selected_applications selected
-             JOIN gad_applied_changes applied
+             JOIN ${table("gad_applied_changes")} applied
                ON applied.application_id = selected.application_id
-             JOIN gad_changes change ON change.change_id = applied.change_id
-             JOIN gad_work_units work ON work.work_unit_id = change.work_unit_id
-             JOIN gad_change_coordinates coordinate ON coordinate.change_id = change.change_id
+             JOIN ${table("gad_changes")} change ON change.change_id = applied.change_id
+             JOIN ${table("gad_work_units")} work ON work.work_unit_id = change.work_unit_id
+             JOIN ${table("gad_change_coordinates")} coordinate ON coordinate.change_id = change.change_id
              JOIN selected_files file ON file.file_id = coordinate.file_id
+            WHERE work.kind <> 'external-unapplied' OR EXISTS (
+              SELECT 1 FROM ${table("gad_applied_change_predicates")} placement
+               WHERE placement.applied_change_id = applied.applied_change_id
+                 AND json_extract(placement.predicate_json, '$.fileId') = file.file_id
+            )
            UNION
            SELECT CAST(json_extract(predicate.predicate_json, '$.fileId') AS TEXT),
                   applied.applied_change_id, applied.applied_base_json,
@@ -14358,11 +13903,11 @@ export class SemanticWorkspace {
                   change.work_unit_id, work.command_id, work.content_class,
                   work.external_lineage_json
              FROM selected_applications selected
-             JOIN gad_applied_changes applied
+             JOIN ${table("gad_applied_changes")} applied
                ON applied.application_id = selected.application_id
-             JOIN gad_changes change ON change.change_id = applied.change_id
-             JOIN gad_work_units work ON work.work_unit_id = change.work_unit_id
-             JOIN gad_applied_change_predicates predicate
+             JOIN ${table("gad_changes")} change ON change.change_id = applied.change_id
+             JOIN ${table("gad_work_units")} work ON work.work_unit_id = change.work_unit_id
+             JOIN ${table("gad_applied_change_predicates")} predicate
                ON predicate.applied_change_id = applied.applied_change_id
              JOIN selected_files file
                ON file.file_id =
@@ -14383,6 +13928,7 @@ export class SemanticWorkspace {
           WHERE lineage_rank = 1`,
         canonicalJson(applications),
         canonicalJson([...new Set(fileIds)]),
+        ...(revision === undefined ? [] : [revision]),
       )
       .toArray() as Row[];
     const result = new Map<string, LatestAppliedFileChange>();
@@ -14423,8 +13969,8 @@ export class SemanticWorkspace {
         contentClass,
         externalKeys,
         content:
-          this.contentEndpoint(appliedResult) ??
-          this.contentEndpoint(appliedBase),
+          SemanticWorkspace.contentEndpoint(appliedResult) ??
+          SemanticWorkspace.contentEndpoint(appliedBase),
       });
     }
     return result;

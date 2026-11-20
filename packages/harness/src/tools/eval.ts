@@ -1,10 +1,10 @@
 import { canonicalBase64Bytes } from "./portable-bytes.js";
 /**
- * Eval tool — runs code in the agent's own server-side EvalDO via the `eval` service
+ * Eval tool — runs code in the agent's own server-side eval kernel via the `eval` service
  * (owner = the agent's verified identity). Replaces the former panel-advertised `eval`
  * channel method: the native task owns the admission and waits on its receipt.
- * EvalDO runs the code. REPL scope + a synchronous SQLite `db` persist
- * in the EvalDO across calls.
+ * eval kernel runs the code. REPL scope + a synchronous SQLite `db` persist
+ * in the eval kernel across calls.
  */
 import { Type, type Static } from "@panticonic/pi-ai";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
@@ -189,12 +189,12 @@ export interface EvalRunResult {
   kernel?: {
     incarnationId: string;
     startedAt: number;
-    idleExpiresAt?: number;
     event?: {
       kind: "started" | "restarted";
       recovery:
         | { status: "complete"; restored: string[]; lost: string[] }
         | { status: "unavailable" };
+      legacyNotebookDropped?: true;
     };
   };
 }
@@ -345,6 +345,15 @@ export async function formatEvalResult(
           "Durable scope recovery could not be assessed because this run failed before hydration.",
       );
     }
+  }
+  if (kernelEvent?.legacyNotebookDropped) {
+    // D5 (docs/dolt-redesign.md §7.10): the previous version kept this notebook in a
+    // different kind of object, which the upgrade did not carry over. Said once.
+    parts.push(
+      "[kernel] This notebook was upgraded: scope values and `db` tables from the previous " +
+        "version (its eval kernel) were not carried over and are gone. Rebuild what you need from " +
+        "stable IDs, files, or durable records before relying on earlier state.",
+    );
   }
   if (!result.success)
     parts.push(
@@ -552,7 +561,7 @@ async function imageContentFromEvalReturn(
   };
 }
 
-/** A refused admission is a tool failure, not an EvalDO execution receipt. */
+/** A refused admission is a tool failure, not an eval kernel execution receipt. */
 export type EvalToolDetails = EvalRunResult | { failure: AgentToolFailure };
 
 export type NativeEvalExecution = Required<
@@ -579,7 +588,7 @@ export function createEvalTool(
   return {
     name: "eval",
     description:
-      'Execute TypeScript/JS in your persistent notebook sandbox (a per-agent EvalDO, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, then for 30 minutes of notebook inactivity. Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; imports and local declarations are cell-local, so reimport helpers in a later cell or retain their handles explicitly in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
+      'Execute TypeScript/JS in your persistent notebook sandbox (your own kernel, not the visible panel). The live heap—including objects with methods, module singletons, and client handles—is retained throughout admitted execution and cancellation, and afterwards until the notebook is explicitly ended or the node must reclaim its memory (a restart is reported, below). Calls have no implicit wall deadline. Omit timeoutMs for ordinary work and lifecycle calls; never add a generic 120000/300000 safety timeout. A whole-cell deadline cancels the notebook operation and hides which nested wait stalled. Bound a specific wait with that API’s AbortSignal/timeout instead, and reserve eval timeoutMs for deliberately non-settling code or an explicit end-to-end deadline. Split intentionally bounded workflows when useful and keep live working objects in `scope`; imports and local declarations are cell-local, so reimport helpers in a later cell or retain their handles explicitly in `scope`; store stable IDs and exact serializable data there for recovery, or durable records in `db`. Database calls are synchronous: `db.run(sql, ...bindings)` writes and `db.exec(sql, ...bindings)` returns an array of rows; pass each SQL binding as a separate argument. An unavoidable process restart is reported explicitly as `[kernel] Restarted` with exact restored/lost scope keys—reacquire lost handles from stable IDs before continuing. Set reset:true to clear scope/db atomically before this call; never call eval.reset from inside the running eval. The live runtime is self-describing: call `await help()` to list bindings or `await help("workers")` (and the analogous binding name) before guessing an API or return shape. Call workspace services via `rpc`/`services`; `chat.channelId` is only the channel where this agent is responding; for visible panel perspective use `parent`/`getParent()` and `panelTree` plus target panel stateArgs. `return` sends a bounded value back; console output is captured. Screenshots from `await handle.cdp.screenshot()` attach native image content whether returned directly or nested alongside checks, for example `return { screenshot: await handle.cdp.screenshot(), checks }`; no temp-file write is needed. `page.consoleEvents()` returns the live event array; `await handle.cdp.consoleHistory()` returns `{ entries, errors, dropped, capacity }`. Very large console, error-data, and other return payloads are windowed with stable recovery pointers to `scope.$lastLargeConsole`, `scope.$lastLargeErrorData`, and `scope.$lastLargeReturn`, so prefer compact summaries and store large artifacts in scope/blobstore.',
     parameters: evalToolParameters,
     execute: options.execution.execute,
     replay: "safe",
@@ -616,7 +625,7 @@ const MAX_EVIDENCE_CHARS = 16_000;
 /**
  * Window to `max` chars (head+tail) with an actionable notice of how much was
  * elided and where to recover the full value: `scopeKey` is the persistent-scope
- * key the EvalDO stashed a bounded full copy under, page/grep it in a follow-up eval.
+ * key the eval kernel stashed a bounded full copy under, page/grep it in a follow-up eval.
  */
 function clampText(text: string, max: number, scopeKey: string): string {
   if (text.length <= max) return text;

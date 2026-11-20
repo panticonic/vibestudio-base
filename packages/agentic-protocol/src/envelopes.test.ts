@@ -14,7 +14,7 @@ describe("canonical participant roles in wire envelopes", () => {
   it.each(["headless", "agent", "panel", "external"])(
     "keeps %s attribution consistent with the canonical subscription",
     (type) => {
-      const id = "do:vibestudio/internal:EvalDO:programmatic-client";
+      const id = "do:workers/session:SessionDO:programmatic-client";
       const metadata = { type, name: "Participant", handle: "participant" };
       const expected = participantRefFromMetadata(id, metadata);
       const wire = {

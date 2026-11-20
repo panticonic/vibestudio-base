@@ -329,7 +329,6 @@ export type {
 
 export { jsonSchemaToZod, jsonSchemaToZodRawShape, isRecord } from "./json-schema-to-zod.js";
 
-export { checkTrajectoryIntegrity, computeEventHash, verifyEventHash } from "./hash.js";
 
 export * from "./log-envelope.js";
 export * from "./append-errors.js";

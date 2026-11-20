@@ -10,13 +10,14 @@ import {
 } from "@panticonic/pi-durable";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import {
-  evalMethods,
   evalRunResultSchema,
   evalStartInputSchema,
-  evalStartResultSchema,
   evalResultReceiptSchema,
-  type EvalCall,
 } from "@vibestudio/service-schemas/eval";
+import {
+  createDynamicCodeRunObserver,
+  startDynamicCodeRun,
+} from "@vibestudio/service-schemas/dynamicCode";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
 import {
   normalizeEvalToolSource,
@@ -27,17 +28,24 @@ import {
 import type { NativeInvocationExecution } from "./native-invocation-boundary.js";
 import {
   bindEvalRun,
+  ensureEvalAwaitTask,
+  evalHostId,
   recordEvalAdmission,
   recordEvalReceiptAdmission,
   retainedEvalAdmission,
   retainObservedEvalReceipt,
   type NativeEvalAcknowledgements,
+  type NativeEvalAwait,
 } from "./native-eval-receipts.js";
 
 export interface NativeEvalHost {
   /** Already admitted owner Session; never opens/reenters from a tool invocation. */
   readonly harness: () => Harness;
   readonly acknowledgements: NativeEvalAcknowledgements;
+  /** The background pull that settles a started run; a restart of this owner resumes it. */
+  readonly awaiting: NativeEvalAwait;
+  /** This owner's runtime id: the entity that hosts its kernel (docs/dolt-redesign.md §6.11.6). */
+  readonly ownerId: () => string;
   /** Resolve the actual owned channel binding; caller input cannot select a notebook. */
   readonly scopeForConversation: (
     conversationId: ConversationId,
@@ -49,7 +57,10 @@ export interface NativeEvalHost {
   ) => Promise<NativeInvocationExecution>;
 }
 
-/** Short admission/control calls; the EvalDO owns execution and its cancellation cleanup. */
+/**
+ * Short admission/control calls. The kernel (hosted by this owner itself) owns
+ * execution and its cancellation cleanup; the result is pulled, by the await task.
+ */
 export function createNativeEvalExecution(
   host: NativeEvalHost,
 ): NativeEvalExecution {
@@ -79,7 +90,6 @@ export function createNativeEvalExecution(
           ...(args.authority === undefined
             ? {}
             : { authority: args.authority }),
-          resultReceiver: { kind: "caller" },
         }),
       ),
     );
@@ -92,7 +102,8 @@ export function createNativeEvalExecution(
       }),
     );
     const route = { runId: input.runId, scopeKey };
-    const call: EvalCall = (method, params) => createMainRpcCaller(execution.rpc)(method, params, { signal: context.abortSignal });
+    const hostId = evalHostId(host.ownerId());
+    const call = createMainRpcCaller(execution.rpc);
     if (
       api.continuation !== undefined &&
       canonicalJson(api.continuation) !==
@@ -101,7 +112,15 @@ export function createNativeEvalExecution(
       throw new Error(
         "Eval continuation conflicts with its original native invocation",
       );
-    return { input, binding, route, call, harness: host.harness() };
+    return {
+      input,
+      binding,
+      route,
+      hostId,
+      call,
+      rpc: execution.rpc,
+      harness: host.harness(),
+    };
   }
   const waiting = (runId: string, binding: string): ToolExecutionWait => ({
     wait: { kind: "receipt", key: runId, binding },
@@ -111,7 +130,7 @@ export function createNativeEvalExecution(
     execute: async (args, api, context) => {
       const resuming = api.continuation !== undefined;
       const original = await invocation(args, api, context);
-      const { harness, input, binding, route, call } = original;
+      const { harness, input, binding, route, hostId, call, rpc } = original;
       await api.retainContinuation(
         { kind: "eval", runId: route.runId, binding },
         (tx) =>
@@ -124,11 +143,14 @@ export function createNativeEvalExecution(
           evalRunResultSchema.parse(consumed.result),
           (digest) => call("blobstore.getBase64", [digest]),
         );
-      let response: unknown;
+      let started: Awaited<ReturnType<typeof startDynamicCodeRun>>;
       try {
-        response = await call("eval.start", [input]);
+        // The admission outlives a lost start response: the same run is started again with it.
+        started = await startDynamicCodeRun(rpc, input, {
+          keepAdmissionOnFailure: true,
+        });
       } catch (error) {
-        // A host refusal before the first admission owns no EvalDO run. A
+        // A host refusal before the first admission owns no kernel run. A
         // restored continuation may already own one, even without an ack.
         const refusal = !resuming
           ? nativeToolAdmissionRefusal(error, "eval", context)
@@ -136,13 +158,24 @@ export function createNativeEvalExecution(
         if (refusal) return refusal;
         throw error;
       }
-      const accepted = evalStartResultSchema.parse(response);
+      if (started.admission.hostId !== hostId)
+        throw new Error(
+          "Eval admission named an entity other than this owner (its class must declare that it hosts the eval kernel)",
+        );
       await api.commit(
-        (tx) => recordEvalAdmission(tx, route.runId, accepted),
+        (tx) => recordEvalAdmission(tx, route.runId, started.started),
         context,
       );
-      const observed = await call("eval.receipt", [route]);
-      if (observed === null) return waiting(route.runId, binding);
+      const { observer } = started;
+      const observed = await observer.receipt();
+      if (observed === null) {
+        // Not terminal yet: a background task pulls the committed row and settles the parked call.
+        await api.commit(
+          (tx) => ensureEvalAwaitTask(tx, route.runId, host.awaiting),
+          context,
+        );
+        return waiting(route.runId, binding);
+      }
       const receipt = await retainObservedEvalReceipt(
         harness,
         api,
@@ -151,10 +184,11 @@ export function createNativeEvalExecution(
         host.acknowledgements,
         context,
       );
+      await observer.release().catch(() => undefined);
       return formatEvalResult(receipt.result, (digest) => call("blobstore.getBase64", [digest]));
     },
     cancel: async (args, api, context) => {
-      const { harness, binding, route, call } = await invocation(
+      const { harness, binding, route, hostId, call, rpc } = await invocation(
         args,
         api,
         context,
@@ -172,10 +206,12 @@ export function createNativeEvalExecution(
           bindEvalRun(tx, route.runId, binding, route, api.conversationId),
         context,
       );
-      evalMethods.cancel.returns.parse(
-        await call("eval.cancel", [route]),
-      );
-      const observed = await call("eval.receipt", [route]);
+      const observer = createDynamicCodeRunObserver(rpc, {
+        hostId,
+        runId: route.runId,
+      });
+      await observer.cancel();
+      const observed = await observer.receipt();
       if (observed === null)
         throw new Error("Eval cancellation has no canonical terminal receipt");
       const receipt = evalResultReceiptSchema.parse(observed);
@@ -191,6 +227,7 @@ export function createNativeEvalExecution(
         host.acknowledgements,
         context,
       );
+      await observer.release().catch(() => undefined);
       return formatEvalResult(receipt.result, (digest) => call("blobstore.getBase64", [digest]));
     },
   };

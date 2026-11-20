@@ -5,7 +5,7 @@ import type { NewFunction } from "./realm.js";
 
 /**
  * A `newFunction` for tests: functions compiled into their own vm context whose
- * code generation is disabled, the arrangement workerd's `UNSAFE_EVAL` gives the
+ * code generation is disabled, the arrangement the kernel's `codegen` isolate gives the
  * eval engine (the confinement refuses a realm that can still compile code).
  */
 export function testNewFunction(): NewFunction {

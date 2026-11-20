@@ -102,7 +102,7 @@ export interface SandboxOptions {
   /**
    * Per-execution module registry. When provided, loaded imports/requires are stored
    * here instead of the per-isolate global `__vibestudioModuleMap__`. This isolates module
-   * state between callers that share one isolate (e.g. multi-tenant EvalDO owners). When
+   * state between callers that share one isolate (e.g. multi-tenant eval kernel owners). When
    * absent, falls back to the global map for byte-identical panel behavior.
    */
   moduleMap?: Record<string, unknown>;
@@ -119,7 +119,7 @@ export interface SandboxOptions {
   /** Freeze a loaded module's direct export namespace before it becomes guest-reachable. */
   freezeModuleNamespace?: <T>(value: T) => T;
   /**
-   * Panel runtimes still expose a realm-local lazy loader. A confined EvalDO
+   * Panel runtimes still expose a realm-local lazy loader. A confined eval kernel
    * passes false and routes module loading through closure-held runtime options,
    * so no per-owner loader is ever published on the shared isolate global.
    */
@@ -364,7 +364,7 @@ async function loadLibraryBundle(
   // synchronous CommonJS imports. The compiler's artifact contract owns this
   // list; generated require helpers cannot be recovered from source scanning.
   // Only the owning realm's declared host loaders qualify;
-  // private EvalDO registries never borrow a panel's modules.
+  // private eval kernel registries never borrow a panel's modules.
   await runInfrastructurePhase("package_load_failed", () =>
     Promise.all(
       artifact.requiredModules.map(async (dependency) => {
@@ -548,7 +548,7 @@ async function requiredModulesInPreparedSource(
  * a real exposed-chunk failure must remain an infrastructure error, while an
  * absent loader must fall through to the build service.
  *
- * Explicit per-execution module maps (EvalDO confinement) never consult panel
+ * Explicit per-execution module maps (eval kernel confinement) never consult panel
  * globals; their host modules are injected directly into that private map.
  */
 async function loadLazyHostModule(
@@ -1101,7 +1101,7 @@ const PORTABLE_FS_SYNC_METHODS: Record<string, string> = {
  * Eval runs in an async workerd and cannot perform synchronous host I/O. For a
  * direct default/namespace `node:fs` import, lift supported `*Sync(...)` calls
  * to the equivalent awaited context-fs operation. This preserves the familiar
- * Node snippet while keeping all paths owner-scoped by the EvalDO facade.
+ * Node snippet while keeping all paths owner-scoped by the eval kernel facade.
  */
 function liftPortableNodeFsSyncCalls(code: string): string {
   const aliases = new Set<string>();
@@ -1497,7 +1497,7 @@ export async function executeSandbox(
   let runtimeJournal: any | null = null;
 
   // Per-execution module registry + require. When the caller passes a `moduleMap`/`require`
-  // (e.g. multi-tenant EvalDO, one map per owner), module state is isolated to that map.
+  // (e.g. multi-tenant eval kernel, one map per owner), module state is isolated to that map.
   // Otherwise fall back to the per-isolate globals for byte-identical panel behavior.
   const moduleMap = options.moduleMap ?? getModuleMap();
   const requireFn = options.require ?? getDefaultRequire();

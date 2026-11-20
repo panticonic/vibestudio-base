@@ -514,7 +514,7 @@ describe("ChannelDeliveryProjection", () => {
       CHANNEL_ID,
       () => 2,
     );
-    forked.resetForFork(2);
+    forked.seedForFork("{}", 2);
     forked.fold(relationship(1, 1));
     forked.fold(message(2));
     forked.fold(relationship(3, 1));

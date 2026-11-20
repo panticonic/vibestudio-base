@@ -84,7 +84,7 @@ function harness(services: FakeServices, fs: unknown = {}) {
     bindings: { rpc, fs },
     owner: { kind: "agent", objectKey: "agent:test", agentRef: "agent-1", channelId: "chan-1" },
   });
-  /** One cell, as the EvalDO runs it; `seen` is the text the agent reads. */
+  /** One cell, as the eval kernel runs it; `seen` is the text the agent reads. */
   async function cell(code: string, signal = new AbortController().signal) {
     const lowered = natlang.lowerCell(code, { fileName: "cell.ts", jsx: false, ambientNames: ["scope", "rpc", "fs"], scopeValues: {} });
     expect(lowered.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);

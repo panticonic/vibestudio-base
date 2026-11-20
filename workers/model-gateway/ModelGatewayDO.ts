@@ -393,7 +393,26 @@ export class ModelGatewayDO
   async inspectTurns() {
     const harness = await this.agentSession();
     const root = await harness.root(BACKGROUND_CONTEXT);
-    return readNativeModelExecutionEvidence(harness, root.id, BACKGROUND_CONTEXT);
+    const evidence = await readNativeModelExecutionEvidence(
+      harness,
+      root.id,
+      BACKGROUND_CONTEXT,
+    );
+    const pending = await harness.inspect(BACKGROUND_CONTEXT);
+    return {
+      ...evidence,
+      openModelConnections: this.retainedModelConnections().length,
+      pendingTasks: pending.tasks.map(({ record }) => ({
+        taskId: record.id,
+        conversationId: record.conversationId,
+        kind: record.kind,
+        abortRequested: record.abortRequested,
+        status: record.state.status,
+        ...(record.state.status === "waiting"
+          ? { condition: record.state.condition }
+          : {}),
+      })),
+    };
   }
 
   protected async releaseAgentResources(

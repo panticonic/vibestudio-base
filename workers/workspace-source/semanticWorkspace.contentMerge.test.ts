@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sha256Hex } from "@vibestudio/content-addressing";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
+import { vcsBlameResultSchema } from "@vibestudio/service-schemas/vcs";
 import { createSemanticVcsSchema } from "./semanticVcsSchema.js";
 import {
   SemanticWorkspace,
@@ -331,6 +332,28 @@ describe("SemanticWorkspace hunk composition", () => {
     });
 
     acknowledgeMaterialization(mergedDispatch);
+    const blame = await semantic.dispatch("blame", {
+      ingress,
+      input: {
+        state: merged.workingHead,
+        repositoryId: repository.repositoryId,
+        fileId: file.state.fileId,
+        range: { start: 0, end: composedText.length },
+        limit: 100,
+      },
+    });
+    if (blame.kind !== "complete") throw new Error("Composed content blame did not complete");
+    const { spans } = vcsBlameResultSchema.parse(blame.result);
+    const authoredAt = (position: number) => {
+      const span = spans.find(({ start, end }) => start <= position && position < end);
+      return span && "change" in span ? span.change.changeId : undefined;
+    };
+    expect(spans[0]?.start).toBe(0);
+    expect(spans.at(-1)?.end).toBe(composedText.length);
+    expect(spans.slice(1).every(({ start }, index) => start === spans[index]?.end)).toBe(true);
+    expect(authoredAt(0)).toBe(targetEdit.changeIds[0]);
+    expect(authoredAt(composedText.lastIndexOf("theirs"))).toBe(sourceEdit.changeIds[0]);
+
     const commitDispatch = await semantic.dispatch("commit", {
       ingress,
       input: {

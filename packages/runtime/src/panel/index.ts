@@ -118,6 +118,7 @@ export const credentials = defaultMember("credentials");
 export const browserData = defaultMember("browserData");
 export const git = defaultMember("git");
 export const vcs = defaultMember("vcs");
+export const chronolog = defaultMember("chronolog");
 export const webhooks = defaultMember("webhooks");
 export const extensions = defaultMember("extensions");
 export const templates = defaultMember("templates");

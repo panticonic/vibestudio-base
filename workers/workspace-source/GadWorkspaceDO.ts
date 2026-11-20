@@ -1,11 +1,25 @@
 import { registryMutationFromLogEnvelope, isAgenticLogKind } from "@workspace/agentic-protocol";
+export { GadHistoryDO } from "./GadHistoryDO.js";
+import { prepareReplayStep, type PreparedReplayStep } from "./legacyDoltReplay.js";
+import { legacyHistoryReplay } from "./legacyHistoryReplay.js";
+import type { StateNodeRef } from "@workspace/vcs-engine";
 import { prepareLogEvent, agenticLogCausality as agenticCausality, type PreparedLogEvent, type LogAppendEventInput } from "@workspace/agentic-protocol";
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
+  HistoryCommitMemoryMarkerSchema,
+  HistoryTrajectorySearchInputSchema,
+  HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
+  HistoryQueryCausesSchema,
+  HistoryQueryTrajectorySchema,
+  HistoryWalkCohortSchema,
+  type HistoryWalkCohort,
   PrivateLineageForPublishedEnvelopeSchema,
   type GadJsonValue,
+  type HistoryTrajectorySearchInput,
 } from "@vibestudio/service-schemas/workspaceSource";
+import { vcsTrajectoryInvocationRefSchema } from "@vibestudio/service-schemas/vcs";
+import { searchTrajectoryProse } from "./doltWorkspaceSearch.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWorkOwner";
 /**
@@ -32,6 +46,7 @@ import {
   logIdForChannel,
   headForChannel,
 } from "@vibestudio/trajectory-identity";
+import { readHistoryMemoryCause, readHistoryWalkInvocation } from "./trajectoryEvidence.js";
 import { DurableObjectBase } from "@vibestudio/durable";
 import type {
   ChannelInvite,
@@ -131,8 +146,12 @@ import {
   type TrajectoryEvent,
 } from "@workspace/agentic-protocol";
 import {
+  type ChainedLogEnvelope,
+  logChainPreimage,
+  wireLogEnvelope,
+} from "./logChain.js";
+import {
   gadAppendErrorMessage,
-  logEnvelopeHashPreimage,
   logEnvelopeSemantic,
   type AppendIdempotency,
   type LogEnvelopeSemanticInput,
@@ -754,6 +773,10 @@ interface ProjectionKey {
   head: string;
 }
 
+const historyCommitMemoryIndexKey = "native-commit-memory-index-v1";
+const commitMemoryProjectionVersionKey = "memory:commit-projection-version";
+const nativeCommitMemoryProjectionVersion = "native-v1";
+
 export class GadWorkspaceDO extends DurableObjectBase {
   static override rpcMethods = {
     ...gadWireMethods,
@@ -1321,6 +1344,140 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return new SemanticVcsStore(this.sql, nowIso);
   }
 
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  exportHistoryReplayPlan() {
+    this.ensureReady();
+    const store = this.semanticVcsStore();
+    const { main, history, contexts } = store.legacyReplayPlan();
+    return {
+      main,
+      contexts,
+      steps: Array.from(legacyHistoryReplay(store, history), (step): StateNodeRef =>
+        step.kind === "event" ? { kind: "event", eventId: step.record.eventId }
+          : { kind: "application", applicationId: step.record.applicationId }),
+    };
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  beginHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }) {
+    this.ensureReady();
+    if (typeof input.operationId !== "string" || !input.operationId.trim())
+      throw new Error("Workspace history replay requires an operation identity");
+    const marker = canonicalJson(input);
+    const prior = this.getStateValue("legacy-history-replay-freeze");
+    if (prior === null && this.getStateValue("legacy-history-replay-seal") !== null)
+      throw new Error("Retired legacy workspace history is missing its original freeze");
+    if (prior !== null && prior !== marker) throw new Error("Workspace history has a different frozen replay");
+    const plan = this.exportHistoryReplayPlan();
+    if (plan.main?.kind !== "event" || plan.main.eventId !== input.expectedMainEventId)
+      throw new Error("Workspace main changed before replay was frozen");
+    if (prior === null) {
+      const unfinished = this.sql.exec(
+        "SELECT 1 FROM vcs_command_journal WHERE status <> 'complete' LIMIT 1",
+      ).toArray();
+      if (unfinished.length > 0 || this.semanticWorkspace().pendingEffects().length > 0)
+        throw new Error("Workspace history still has unfinished commands");
+    }
+    const priorGeneration = prior === null ? null : this.getStateValue("legacy-history-replay-generation");
+    const generation = priorGeneration ?? crypto.randomUUID();
+    if (priorGeneration === null) {
+      this.transaction(() => {
+        this.setStateValue("legacy-history-replay-freeze", marker);
+        this.setStateValue("legacy-history-replay-generation", generation);
+      });
+    }
+    return { ...plan, generation };
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  releaseHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }): void {
+    this.ensureReady();
+    if (this.getStateValue("legacy-history-replay-seal") !== null)
+      throw new Error("Legacy workspace history has been retired");
+    const frozen = this.getStateValue("legacy-history-replay-freeze");
+    if (frozen === null) return;
+    if (frozen !== canonicalJson(input)) throw new Error("Workspace history has a different frozen replay");
+    this.transaction(() => {
+      this.deleteStateValue("legacy-history-replay-freeze");
+      this.deleteStateValue("legacy-history-replay-generation");
+    });
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  readHistoryReplayFreeze(verify?: { receiptDigest: string }): (
+    { operationId: string; expectedMainEventId: string; verification?: { generation: string; sealed: boolean } }
+  ) | null {
+    this.ensureReady();
+    const stored = this.getStateValue("legacy-history-replay-freeze");
+    const sealed = this.getStateValue("legacy-history-replay-seal");
+    if (stored === null) {
+      if (sealed !== null) throw new Error("Retired legacy workspace history is missing its original freeze");
+      return null;
+    }
+    const freeze = JSON.parse(stored) as { operationId: string; expectedMainEventId: string };
+    if (!verify) return freeze;
+    const generation = this.getStateValue("legacy-history-replay-generation");
+    if (!generation) throw new Error("Legacy workspace history freeze has no generation");
+    if (sealed !== null && sealed !== canonicalJson({ generation, receiptDigest: verify.receiptDigest }))
+      throw new Error("Installed history does not match the retired legacy source");
+    return { ...freeze, verification: { generation, sealed: sealed !== null } };
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  sealHistoryReplayFreeze(input: {
+    freeze: { operationId: string; expectedMainEventId: string };
+    generation: string;
+    receiptDigest: string;
+  }): void {
+    this.ensureReady();
+    if (!/^[0-9a-f]{64}$/u.test(input.receiptDigest) ||
+        this.getStateValue("legacy-history-replay-freeze") !== canonicalJson(input.freeze) ||
+        this.getStateValue("legacy-history-replay-generation") !== input.generation)
+      throw new Error("Cannot retire a different legacy history freeze");
+    const seal = canonicalJson({ generation: input.generation, receiptDigest: input.receiptDigest });
+    const previous = this.getStateValue("legacy-history-replay-seal");
+    if (previous !== null && previous !== seal)
+      throw new Error("Legacy workspace history was retired for a different receipt");
+    if (previous === null) this.setStateValue("legacy-history-replay-seal", seal);
+  }
+
+  #requireLegacyHistoryAvailable(): void {
+    if (this.getStateValue("legacy-history-replay-seal") !== null)
+      throw new Error("Legacy workspace history has been retired");
+    if (this.getStateValue("legacy-history-replay-freeze") !== null)
+      throw new Error("Legacy workspace history is frozen for migration");
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  exportHistoryReplayStep(ref: StateNodeRef): PreparedReplayStep {
+    this.ensureReady();
+    return prepareReplayStep(this.semanticVcsStore(), ref);
+  }
+
   private semanticWorkspace(): SemanticWorkspace {
     return new SemanticWorkspace({
       workspaceId: this.semanticWorkspaceId(),
@@ -1372,6 +1529,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     input: InitializeExactWorkspaceSnapshotInput,
   ): Promise<WorkspaceSourceInitializationInspection> {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     const requestDigest = sha256HexSyncText(
       canonicalJson({
         pin: input.pin,
@@ -1666,6 +1824,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     request: SemanticDispatchRequest,
   ): Promise<unknown> {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().dispatch(method, request);
   }
 
@@ -1781,6 +1940,141 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return this.vcsSemantic("search", request);
   }
 
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native workspace history for trajectory search." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  searchHistoryTrajectory(input: HistoryTrajectorySearchInput) {
+    const { causes, ...search } = HistoryTrajectorySearchInputSchema.parse(input);
+    return searchTrajectoryProse(this.sql, search, causes);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host admits exact invocation coordinates from native workspace history." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryMemoryCause(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
+    this.ensureReady();
+    return readHistoryMemoryCause(this.sql, vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Trajectory query evidence is limited to native command coordinates selected by the host." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryQueryTrajectory(input: ReturnType<typeof HistoryQueryCausesSchema.parse>) {
+    const causes = HistoryQueryCausesSchema.parse(input);
+    const rows = this.sql.exec(
+      `WITH causes AS MATERIALIZED (
+         SELECT json_extract(value, '$[0]') AS log_id, json_extract(value, '$[1]') AS head,
+                json_extract(value, '$[2]') AS invocation_id FROM json_each(?1)
+       ), invocations AS MATERIALIZED (
+         SELECT invocation.log_id, invocation.head, invocation.invocation_id, invocation.turn_id,
+                invocation.status, invocation.terminal_outcome, input.input_log_id, input.input_head, input.input_message_id
+           FROM causes JOIN trajectory_invocations invocation USING (log_id, head, invocation_id)
+           LEFT JOIN trajectory_invocation_inputs input
+             ON input.log_id = invocation.log_id AND input.head = invocation.head
+            AND input.invocation_id = invocation.invocation_id
+       ), turns AS MATERIALIZED (
+         SELECT DISTINCT turn.log_id, turn.head, turn.turn_id, turn.ordinal,
+                         turn.trigger_message_id, substr(turn.summary, 1, 2000) AS summary
+           FROM invocations JOIN trajectory_turns turn USING (log_id, head, turn_id)
+       ), message_keys AS (
+         SELECT message.log_id, message.head, message.message_id FROM turns
+           JOIN trajectory_messages message USING (log_id, head, turn_id)
+         UNION
+         SELECT input_log_id, input_head, input_message_id FROM invocations WHERE input_message_id IS NOT NULL
+       )
+       SELECT 'invocations' AS relation,
+              json_array(log_id, head, invocation_id, turn_id, status, terminal_outcome,
+                         input_log_id, input_head, input_message_id) AS row_json
+         FROM invocations
+       UNION ALL
+       SELECT 'turns', json_array(log_id, head, turn_id, ordinal, trigger_message_id, summary) FROM turns
+       UNION ALL
+       SELECT 'messages', json_array(message.log_id, message.head, message.message_id,
+               message.turn_id, message.role,
+               coalesce(json_extract(event.payload_ref_json, '$.senderRef.kind'), json_extract(event.actor_json, '$.kind')),
+               coalesce(json_extract(event.payload_ref_json, '$.senderRef.id'), json_extract(event.actor_json, '$.id')),
+               json_extract(event.payload_ref_json, '$.sourceMessageId'),
+               substr(coalesce(json_extract(event.payload_ref_json, '$.blocks[0].content'), ''), 1, 400),
+               length(coalesce(json_extract(event.payload_ref_json, '$.blocks[0].content'), '')))
+         FROM message_keys JOIN trajectory_messages message USING (log_id, head, message_id)
+         LEFT JOIN log_events event ON event.log_id = message.log_id AND event.head = message.head
+           AND event.envelope_id = coalesce(message.completed_event_id, message.started_event_id)
+       LIMIT ?2`,
+      JSON.stringify(causes), HISTORY_QUERY_TRAJECTORY_ROW_LIMIT + 1,
+    ).toArray();
+    const result: ReturnType<typeof HistoryQueryTrajectorySchema.parse> = {
+      invocations: [], turns: [], messages: [], truncated: rows.length > HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
+    };
+    if (!result.truncated) {
+      for (const { relation, row_json } of rows) {
+        if ((relation !== "invocations" && relation !== "turns" && relation !== "messages") || typeof row_json !== "string")
+          throw new Error("Workspace trajectory query has an invalid projection");
+        result[relation].push(JSON.parse(row_json));
+      }
+    }
+    return HistoryQueryTrajectorySchema.parse(result);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native history for walk invocation trails." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryWalkInvocation(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
+    this.ensureReady();
+    return readHistoryWalkInvocation(this.sql, vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native history before expanding trajectory cohorts." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryWalkCohortInvocations(input: HistoryWalkCohort) {
+    const seed = HistoryWalkCohortSchema.parse(input);
+    const rows = seed.kind === "turn"
+      ? this.sql.exec(
+          `SELECT log_id, head, invocation_id FROM trajectory_invocations
+            WHERE log_id = ? AND head = ? AND turn_id = ?
+            ORDER BY invocation_id LIMIT 2001`,
+          seed.turn.logId, seed.turn.head, seed.turn.turnId,
+        ).toArray()
+      : this.sql.exec(
+          `SELECT sibling.log_id, sibling.head, sibling.invocation_id
+             FROM trajectory_invocations AS origin JOIN trajectory_invocations AS sibling
+               ON sibling.log_id = origin.log_id AND sibling.head = origin.head AND sibling.turn_id = origin.turn_id
+            WHERE origin.log_id = ?1 AND origin.head = ?2 AND origin.invocation_id = ?3
+           UNION
+           SELECT sibling.log_id, sibling.head, sibling.invocation_id
+             FROM trajectory_invocation_inputs AS origin JOIN trajectory_invocation_inputs AS sibling
+               ON sibling.input_log_id = origin.input_log_id AND sibling.input_head = origin.input_head
+              AND sibling.input_message_id = origin.input_message_id
+            WHERE origin.log_id = ?1 AND origin.head = ?2 AND origin.invocation_id = ?3
+           ORDER BY log_id, head, invocation_id LIMIT 2001`,
+          seed.invocation.logId, seed.invocation.head, seed.invocation.invocationId,
+        ).toArray();
+    if (rows.length > 2000) throw new Error("Workspace trajectory cohort contains too many invocations");
+    return rows.map(({ log_id, head, invocation_id }) => vcsTrajectoryInvocationRefSchema.parse({
+      kind: "trajectory-invocation", logId: log_id, head, invocationId: invocation_id,
+    }));
+  }
+
   @schemaRpc()
   vcsReadMemory(request: SemanticDispatchRequest): Promise<unknown> {
     return this.vcsSemantic("readMemory", request);
@@ -1814,6 +2108,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   @schemaRpc()
   vcsSemanticEffectAck(input: { acknowledgement: SemanticEffectAcknowledgement }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeEffect(input.acknowledgement);
   }
 
@@ -1825,6 +2120,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     };
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeHostRead(input.acknowledgement);
   }
 
@@ -1833,6 +2129,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     acknowledgement: { request: GadJsonRecord; contentHashes: string[] };
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().acknowledgeContent(input.acknowledgement);
   }
 
@@ -1888,6 +2185,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     ingress: SemanticDispatchRequest["ingress"];
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return input.projection === "deferred"
       ? this.semanticWorkspace().ensureContextCoordinate(input, input.ingress)
       : this.semanticWorkspace().ensureContext(input, input.ingress);
@@ -1915,12 +2213,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
     ingress: SemanticDispatchRequest["ingress"];
   }): unknown {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return this.semanticWorkspace().forkContext(input, input.ingress);
   }
 
   @schemaRpc()
   vcsDropContext(input: { contextId: string }): { dropped: boolean } {
     this.ensureReady();
+    this.#requireLegacyHistoryAvailable();
     return {
       dropped: this.transaction(() =>
         this.semanticVcsStore().dropContext(input.contextId),
@@ -2200,7 +2500,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     semantic: Record<string, unknown>,
   ): string {
     return sha256HexSyncText(
-      logEnvelopeHashPreimage({ prevHash, logId, head, seq, semantic }),
+      logChainPreimage({ prevHash, logId, head, seq, semantic }),
     );
   }
 
@@ -2255,7 +2555,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       : "(no field-level diff — likely appendedAt handling or stored-value encoding)";
   }
 
-  private mapLogEnvelope(row: JsonRecord): LogEnvelope {
+  private mapLogEnvelope(row: JsonRecord): ChainedLogEnvelope {
     return {
       logId: String(row["log_id"]),
       head: String(row["head"]),
@@ -2349,16 +2649,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   readLog(input: ReadLogInput): LogEnvelope[] {
-    return this.readLogQuery(input);
+    return this.readLogQuery(input).map(wireLogEnvelope);
   }
 
-  private readLogQuery(input: LogReadQuery): LogEnvelope[] {
+  private readLogQuery(input: LogReadQuery): ChainedLogEnvelope[] {
     this.ensureReady();
     const limit =
       input.limit == null ? null : Math.max(Math.trunc(input.limit), 0);
     if (limit === 0) return [];
     const segments = this.logLineage(input.logId, input.head);
-    const collected: LogEnvelope[] = [];
+    const collected: ChainedLogEnvelope[] = [];
     // Ancestors hold the lowest seqs: walk root-first.
     for (const segment of [...segments].reverse()) {
       const remaining = limit != null ? limit - collected.length : null;
@@ -2379,7 +2679,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return collected;
   }
 
-  private readLogTail(input: LogReadQuery): LogEnvelope[] {
+  private readLogTail(input: LogReadQuery): ChainedLogEnvelope[] {
     this.ensureReady();
     const limit =
       input.limit == null ? null : Math.max(Math.trunc(input.limit), 0);
@@ -2404,6 +2704,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   getLogEvent(input: { logId: string; head: string; envelopeId: string }): LogEnvelope | null {
+    const stored = this.getChainedLogEvent(input);
+    return stored ? wireLogEnvelope(stored) : null;
+  }
+
+  private getChainedLogEvent(input: {
+    logId: string;
+    head: string;
+    envelopeId: string;
+  }): ChainedLogEnvelope | null {
     this.ensureReady();
     const row = this.lineageEventRow(input.logId, input.head, input.envelopeId);
     return row ? this.mapLogEnvelope(row) : null;
@@ -2544,12 +2853,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!publicationWasReady && this.hasReadyPublicationDelivery()) {
       this.markWorkReady("workspace-publication");
     }
-    return result;
+    return { ...result, envelopes: result.envelopes.map(wireLogEnvelope) };
   }
 
   private appendLogEventInTxn(
     input: AppendLogEventInput,
-  ): AppendLogEventResult {
+  ): Omit<AppendLogEventResult, "envelopes"> & {
+    envelopes: ChainedLogEnvelope[];
+  } {
     if (!input.logId) throw new Error("appendLogEvent requires logId");
     if (!input.head) throw new Error("appendLogEvent requires head");
     if (!input.events.length)
@@ -2579,7 +2890,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     );
 
     // Lineage-scoped idempotent replay: skip the longest already-applied prefix.
-    const replayed: LogEnvelope[] = [];
+    const replayed: ChainedLogEnvelope[] = [];
     for (const event of prepared) {
       const existing = existingHead
         ? this.lineageEventRow(input.logId, input.head, event.envelopeId)
@@ -2621,7 +2932,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     // and the duplicate is skipped (loudly, via warn). Same id with DIFFERENT
     // content remains a hard replay-mismatch failure — that is a genuine
     // causality/ordering bug, never benign redelivery.
-    const midBatchReplayed: LogEnvelope[] = [];
+    const midBatchReplayed: ChainedLogEnvelope[] = [];
     const remaining: typeof prepared = [];
     for (const [suffixIndex, event] of prepared
       .slice(replayed.length)
@@ -2718,7 +3029,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       }
     }
 
-    const appended: LogEnvelope[] = [];
+    const appended: ChainedLogEnvelope[] = [];
     let seq = pointer.seq;
     let prevHash = pointer.hash;
     for (const event of remaining) {
@@ -2743,7 +3054,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         prevHash,
         semantic,
       );
-      const envelope: LogEnvelope = {
+      const envelope: ChainedLogEnvelope = {
         logId: input.logId,
         head: input.head,
         seq,
@@ -2911,7 +3222,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return prepareLogEvent(logKind, input, { envelopeId: input.envelopeId ?? crypto.randomUUID(), appendedAt: input.appendedAt ?? nowIso() });
   }
 
-  private insertLogEvent(envelope: LogEnvelope): void {
+  private insertLogEvent(envelope: ChainedLogEnvelope): void {
     this.sql.exec(
       `INSERT INTO log_events (
          log_id, head, seq, envelope_id, payload_kind, actor_json, to_json,
@@ -3054,7 +3365,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
       // Seed the child's projection caches (P1: caches, rebuildable) by folding
       // the inherited lineage view under the child key. No log rows are copied.
-      const inherited = this.readLog({
+      const inherited = this.readLogQuery({
         logId: input.toLogId,
         head: input.toHead,
       });
@@ -3885,25 +4196,38 @@ export class GadWorkspaceDO extends DurableObjectBase {
    * intents remain the authority. */
   private ensureCommitMemoryIndex(): void {
     this.ensureMemoryIndex();
+    const projectionVersion = this.getStateValue(commitMemoryProjectionVersionKey);
+    if (projectionVersion === nativeCommitMemoryProjectionVersion) return;
+    const rawMarker = this.getStateValue(historyCommitMemoryIndexKey);
+    if (rawMarker !== null && HistoryCommitMemoryMarkerSchema.parse(JSON.parse(rawMarker)).completedEventId) {
+      // A previous release can have finished backfill before it knew how to retire
+      // the old projection. Its completed marker proves the same coverage.
+      this.transaction(() => this.retireLegacyCommitMemory());
+      return;
+    }
 
-    // Commit memory originally indexed only the event message. Rebuild that
-    // disposable projection once so existing workspaces gain the authored
-    // intent terms as well; subsequent calls only project newly committed
-    // events. This marker is deliberately internal rather than part of the
-    // public file-index marker namespace.
-    const projectionVersionKey = "memory:commit-projection-version";
-    const projectionVersion = "2";
-    if (this.getStateValue(projectionVersionKey) !== projectionVersion) {
+    // Rebuild old recall indexes once to retain authored intent and remove
+    // commits outside protected main. Subsequent calls add missing entries
+    // from protected legacy history without replacing native documents.
+    const legacyProjectionVersion = "3";
+    if (projectionVersion !== legacyProjectionVersion) {
       this.sql.exec(
         `DELETE FROM gad_memory_fts
           WHERE kind = 'commit'
+            AND json_extract(anchor_json, '$.revision') IS NULL
             AND event_id IN (SELECT event_id FROM gad_workspace_events)`,
       );
     }
 
     const missing = this.sql
       .exec(
-        `SELECT e.event_id,
+        `WITH RECURSIVE published(event_id) AS (
+            SELECT event_id FROM vcs_workspace_heads WHERE head = 'main'
+            UNION
+            SELECT parent.parent_event_id
+              FROM gad_workspace_event_parents parent JOIN published USING (event_id)
+          )
+          SELECT e.event_id,
                 e.result_workspace_fact_root_id,
                 e.message,
                 (
@@ -3920,7 +4244,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
                        ORDER BY ea.ordinal
                     )
                 ) AS intent_summaries
-           FROM gad_workspace_events e
+           FROM gad_workspace_events e JOIN published USING (event_id)
           WHERE e.kind <> 'genesis'
             AND NOT EXISTS (
               SELECT 1 FROM gad_memory_fts m
@@ -3948,7 +4272,13 @@ export class GadWorkspaceDO extends DurableObjectBase {
         anchor: { workspaceEventId: eventId, workspaceFactRootId },
       });
     }
-    this.setStateValue(projectionVersionKey, projectionVersion);
+    this.setStateValue(commitMemoryProjectionVersionKey, legacyProjectionVersion);
+  }
+
+  private retireLegacyCommitMemory(): void {
+    this.sql.exec(`DELETE FROM gad_memory_fts
+      WHERE kind = 'commit' AND json_extract(anchor_json, '$.revision') IS NULL`);
+    this.setStateValue(commitMemoryProjectionVersionKey, nativeCommitMemoryProjectionVersion);
   }
 
   private indexMemoryRow(row: {
@@ -3994,6 +4324,71 @@ export class GadWorkspaceDO extends DurableObjectBase {
       row.contentHash ?? null,
       row.anchor ? JSON.stringify(row.anchor) : null,
     );
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Only the host can index protected native publications." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  recordHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): true {
+    this.ensureReady();
+    this.transaction(() => this.indexHistoryCommitMemory(input));
+    return true;
+  }
+
+  private indexHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): void {
+    const { eventId, revision, text, createdAt } = input;
+    if (typeof eventId !== "string" || !eventId ||
+        typeof revision !== "string" || !/^[a-f0-9]{40}$/u.test(revision) ||
+        typeof text !== "string" || !text.trim() || typeof createdAt !== "string" ||
+        !Number.isFinite(Date.parse(createdAt))) {
+      throw new Error("Invalid native commit memory");
+    }
+    this.indexMemoryRow({
+      text, kind: "commit", eventId,
+      anchor: { workspaceEventId: eventId, revision, createdAt },
+    });
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Protected commit recall indexing is managed by the host." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  readHistoryCommitMemoryIndex(): string | null {
+    this.ensureReady();
+    return this.getStateValue(historyCommitMemoryIndexKey);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Protected commit recall indexing is managed by the host." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  recordHistoryCommitMemoryPage(input: {
+    previousMarker: string | null;
+    marker: string;
+    documents: { eventId: string; revision: string; text: string; createdAt: string }[];
+  }): true {
+    this.ensureReady();
+    if (typeof input.marker !== "string" || !input.marker || input.marker.length > 4096 ||
+        !Array.isArray(input.documents) || input.documents.length > 16)
+      throw new Error("Invalid native commit memory page");
+    const marker = HistoryCommitMemoryMarkerSchema.parse(JSON.parse(input.marker));
+    this.transaction(() => {
+      if (this.getStateValue(historyCommitMemoryIndexKey) !== input.previousMarker)
+        throw new Error("Native commit memory index advanced concurrently");
+      for (const document of input.documents) this.indexHistoryCommitMemory(document);
+      if (marker.completedEventId !== null &&
+          this.getStateValue(commitMemoryProjectionVersionKey) !== nativeCommitMemoryProjectionVersion) {
+        this.retireLegacyCommitMemory();
+      }
+      this.setStateValue(historyCommitMemoryIndexKey, input.marker);
+    });
+    return true;
   }
 
   /** Batch file-text indexing (the server pushes changed file text — bytes
@@ -4062,6 +4457,40 @@ export class GadWorkspaceDO extends DurableObjectBase {
       return { clause: "", bindings: [] };
     }
     const binding = authorization.agentBinding;
+    const ownLogId = binding ? logIdForChannel(binding.channelId) : null;
+    const causes = authorization.workspaceRecallCauses;
+    if (causes) {
+      if (!binding || causes.length === 0) {
+        return {
+          clause: " AND (kind <> 'message' OR log_id = ?)",
+          bindings: [ownLogId],
+        };
+      }
+      return {
+        clause: ` AND (kind <> 'message' OR log_id = ?
+          OR (log_id, head, json_extract(anchor_json, '$.messageId')) IN (
+            WITH invocations AS MATERIALIZED (
+              SELECT invocation.log_id, invocation.head, invocation.turn_id,
+                     input.input_log_id, input.input_head, input.input_message_id
+                FROM json_each(?) AS cause
+                JOIN trajectory_invocations invocation
+                  ON invocation.log_id = cause.value ->> 0 AND invocation.head = cause.value ->> 1
+                 AND invocation.invocation_id = cause.value ->> 2
+                LEFT JOIN trajectory_invocation_inputs input
+                  USING (log_id, head, invocation_id)
+            )
+            SELECT message.log_id, message.head, message.message_id
+              FROM invocations JOIN trajectory_turns USING (log_id, head, turn_id)
+              JOIN trajectory_messages message USING (log_id, head, turn_id)
+            UNION
+            SELECT message.log_id, message.head, message.message_id
+              FROM invocations invocation JOIN trajectory_messages message
+                ON message.log_id = invocation.input_log_id AND message.head = invocation.input_head
+               AND message.message_id = invocation.input_message_id
+          ))`,
+        bindings: [ownLogId, JSON.stringify(causes)],
+      };
+    }
     this.semanticWorkspace().materializeVisibilityBasis(
       binding ? [binding.contextId] : [],
     );
@@ -4074,7 +4503,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
                       AND visible.head = gad_memory_fts.head
                       AND visible.message_id =
                             json_extract(gad_memory_fts.anchor_json, '$.messageId')))`,
-      bindings: [binding ? logIdForChannel(binding.channelId) : null],
+      bindings: [ownLogId],
     };
   }
 
@@ -4115,14 +4544,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
   } {
     this.ensureReady();
     const mode = this.ensureMemoryIndex();
-    const visibility = this.materializeRecallVisibility();
+    const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
+    const visibility = kinds === null || kinds.includes("message")
+      ? this.materializeRecallVisibility()
+      : { clause: "", bindings: [] };
     const visibilityFilter = visibility.clause;
     const limit = Math.min(input.limit ?? 10, 50);
     // Over-fetch so published/fork copies (the same logical item indexed under
     // several (log,head) pairs) can be collapsed BEFORE the page is sliced —
     // otherwise duplicates eat slots and the caller's page under-fills (§8.1/C6).
     const fetchLimit = Math.min(limit * 3, 150);
-    const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
     if (kinds === null || kinds.includes("commit"))
       this.ensureCommitMemoryIndex();
     const pathPrefixes =
@@ -4226,9 +4657,10 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const logId = asString(row["log_id"]);
       const head = asString(row["head"]);
       let actor: unknown = null;
-      let appendedAt: string | null = null;
+      const anchor = parseJson(asString(row["anchor_json"])) as Record<string, unknown> | null;
+      let appendedAt = row["kind"] === "commit" ? asString(anchor?.["createdAt"]) : null;
       if (eventId && logId && head) {
-        const event = this.getLogEvent({ logId, head, envelopeId: eventId });
+        const event = this.getChainedLogEvent({ logId, head, envelopeId: eventId });
         if (event) {
           actor = event.actor;
           appendedAt = event.appendedAt;
@@ -4244,10 +4676,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         eventId,
         path: asString(row["path"]),
         contentHash: asString(row["content_hash"]),
-        anchor: parseJson(asString(row["anchor_json"])) as Record<
-          string,
-          unknown
-        > | null,
+        anchor,
         actor,
         appendedAt,
       };
@@ -4569,7 +4998,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   // -------------------------------------------------------------------------
 
   private trajectoryEventView(
-    envelope: LogEnvelope,
+    envelope: ChainedLogEnvelope,
     override?: { trajectoryId: string; branchId: string },
   ): TrajectoryEvent {
     const causality = agenticCausality(envelope.causality);
@@ -4688,7 +5117,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const logId = input.trajectoryId ?? this.findLogIdForHead(input.branchId);
     if (!logId) return [];
     const limit = input.limit ?? 500;
-    const envelopes = this.readLog({
+    const envelopes = this.readLogQuery({
       logId,
       head: input.branchId,
       afterSeq: input.cursor ?? 0,
@@ -5370,7 +5799,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!lineage) return null;
     const trajectoryId = lineage.publication.trajectoryId;
     const branchId = lineage.publication.branchId;
-    const events = this.readLog({ logId: trajectoryId, head: branchId }).filter(
+    const events = this.readLogQuery({ logId: trajectoryId, head: branchId }).filter(
       (envelope) => envelope.seq <= lineage.trajectoryEvent.seq,
     );
     return PrivateLineageForPublishedEnvelopeSchema.parse({

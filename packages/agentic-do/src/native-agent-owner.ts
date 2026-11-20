@@ -16,7 +16,8 @@ import {
   type TaskId,
 } from "@panticonic/pi-durable";
 import {
-  applySqliteMigrationsInTransaction,
+  applyCompositeSqliteMigrationsInTransaction,
+  CompositeSqliteStorage,
   nativeSqliteExecutor,
   NativeDatabase,
   type NativeStorage,
@@ -32,8 +33,7 @@ import {
   type RpcCaller,
 } from "@vibestudio/rpc";
 import { mergeRpcOptions } from "@vibestudio/rpc/internal";
-import { evalRuntimeId } from "@vibestudio/shared/evalRuntimeIdentity";
-import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
+import type { EvalRunEvent } from "@vibestudio/service-schemas/eval";
 import { authorityMethods } from "@vibestudio/service-schemas/authority";
 import { nativeInvocationInspectionInputSchema, nativeInvocationSourceSchema, nativeInvocationId } from "@vibestudio/service-schemas/nativeInvocation";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
@@ -58,10 +58,17 @@ import {
   retireBoundAgentSession,
 } from "./native-agent-session.js";
 import {
-  consumeEvalReceipt,
   createNativeEvalAcknowledgements,
-  retainedEvalRunRoute,
+  createNativeEvalAwait,
+  type EvalAwaitInput,
 } from "./native-eval-receipts.js";
+import { nativeAgentCommitPolicy } from "./native-agent-commits.js";
+import {
+  hasLegacyPiLayout,
+  PI_STORE_LAYOUT_KEY,
+  PI_STORE_LAYOUT_VERSION,
+  splitLegacyPiStore,
+} from "./pi-store-split.js";
 import {
   bindAuthorityAcquisition,
   consumeAuthorityReceipt,
@@ -85,6 +92,8 @@ interface RetainedModelConnection {
   readonly request: ModelRequestTarget;
 }
 
+/** The owner's `state` key that marks a forked cell whose adoption is under way. */
+export const FORK_ADOPTION_KEY = "vibestudio.fork-adoption";
 const NATIVE_SOURCE_LAYOUT_KEY = "vibestudio.native-invocation-source.layout";
 const NATIVE_SOURCE_LAYOUT_VERSION = 2;
 
@@ -122,6 +131,17 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   }
 
   protected abstract agentOptions(): NativeAgentOptions;
+
+  /**
+   * Whether this cell is a fork of another agent's, taken at one of its commits, whose adoption has not finished: it
+   * holds the conversation and has no owner yet. The adoption sets the marker before it opens the session and clears
+   * it when it is done, so a crash between the two resumes as a fork.
+   */
+  protected forkAdoptionPending(): boolean {
+    return this.native.sql
+      .exec("SELECT 1 AS found FROM state WHERE key = ?", FORK_ADOPTION_KEY)
+      .toArray().length > 0;
+  }
 
   /** Owners without a channel name their own invocation trajectory; channel
    * agents keep the default, their conversation's channel. */
@@ -334,11 +354,73 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     ];
   }
 
+  /**
+   * The local table set exists, with its schema-version row: created for an object that predates the split, and
+   * again for a fork, whose local tables came with their definitions and none of their rows. A read when there is
+   * nothing to do.
+   */
+  /** Whether a versioned table has changes no commit holds: the engine's own status, readable inside a transaction. */
+  private versionedChangesPending(): boolean {
+    return (
+      Number(
+        this.native.sql.exec("SELECT count(*) AS n FROM dolt_status").toArray()[0]?.["n"] ?? 0,
+      ) > 0
+    );
+  }
+
+  private async ensureLocalPiTables(): Promise<void> {
+    try {
+      const row = this.native.sql
+        .exec("SELECT version FROM vsl_durable_schema WHERE singleton = 1")
+        .toArray()[0];
+      if (row && Number(row["version"]) >= 2) return;
+    } catch {
+      // The table is missing: the object predates the split.
+    }
+    await new NativeDatabase(this.native).transaction(async (transaction) => {
+      await applyCompositeSqliteMigrationsInTransaction(transaction);
+    });
+  }
+
+  /**
+   * Both table sets of the composite store: conversations, entries and conversation knowledge in the default-named
+   * tables (versioned on a Dolt cell), everything else in the `vsl_` set (local).
+   */
   protected override async createTables(): Promise<void> {
-    await applySqliteMigrationsInTransaction(
+    await applyCompositeSqliteMigrationsInTransaction(
       nativeSqliteExecutor(this.native.sql, () => {}),
     );
     await this.createAgentTables();
+  }
+
+  /**
+   * A store made with Pi's single table set (a legacy object, copied by the engine's one-time import, or a SQLite
+   * object upgraded in place) moves its tasks, submissions and operational documents to the local set. A store that
+   * has no such rows, which is every new one, only records its layout. One committed transaction, so a crash leaves
+   * the old layout or the new one.
+   */
+  private async migratePiStoreLayout(): Promise<void> {
+    await this.ensureLocalPiTables();
+    const recorded = this.native.sql
+      .exec("SELECT value FROM state WHERE key = ?", PI_STORE_LAYOUT_KEY)
+      .toArray()[0];
+    if (recorded && JSON.parse(String(recorded["value"])) === PI_STORE_LAYOUT_VERSION) return;
+    this.committedTransaction(
+      () =>
+        this.versionedChangesPending()
+          ? "migrate: the Pi store's tasks, submissions and operational documents move to the local set"
+          : null,
+      () => {
+        if (hasLegacyPiLayout(this.native.sql)) splitLegacyPiStore(this.native.sql);
+        this.native.sql
+          .exec(
+            "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
+            PI_STORE_LAYOUT_KEY,
+            JSON.stringify(PI_STORE_LAYOUT_VERSION),
+          )
+          .toArray();
+      },
+    );
   }
 
   /** Every framework route, including alarms and hibernation, crosses this gate. */
@@ -489,7 +571,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       }
     }
     const startedAt = Date.now();
-    const initialization = super.initializeSchema().then(() => this.migrateNativeSourceLayout());
+    const initialization = super
+      .initializeSchema()
+      .then(() => this.migrateNativeSourceLayout())
+      .then(() => this.migratePiStoreLayout());
     if (!this.tracedSchemaInitialization) {
       this.tracedSchemaInitialization = initialization;
       void initialization.then(() => this.traceOwnerStartup("schema", startedAt), () => {
@@ -502,10 +587,25 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
   protected callAgentHost: AgentHostCall = (method, args, options) =>
     createMainRpcCaller(this.agentRpc)(method, args, options);
 
-  protected readonly agentEvalAcknowledgements =
-    createNativeEvalAcknowledgements((method, args, context) =>
-      createMainRpcCaller(this.agentRpc)(method, args, { signal: context.abortSignal }),
-    );
+  protected readonly agentEvalAcknowledgements = createNativeEvalAcknowledgements({
+    rpc: this.agentRpc,
+    ownerId: () => this.rpcSelfId,
+  });
+
+  /** The pull that settles every started eval run of this owner (docs/dolt-redesign.md §7.5). */
+  protected readonly agentEvalAwait = createNativeEvalAwait({
+    rpc: this.agentRpc,
+    ownerId: () => this.rpcSelfId,
+    acknowledgements: this.agentEvalAcknowledgements,
+    onEvents: (input, events, context) => this.publishEvalEvents(input, events, context),
+  });
+
+  /** The run's console and authority events as they are pulled; a product composition shows them. */
+  protected async publishEvalEvents(
+    _input: EvalAwaitInput,
+    _events: readonly EvalRunEvent[],
+    _context: Context,
+  ): Promise<void> {}
 
   protected loadedImage(): LoadedAgentImage {
     const source = this.env["WORKER_SOURCE"];
@@ -571,6 +671,21 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     return harness;
   }
 
+  /**
+   * The commit of a closed turn (`nativeAgentCommitPolicy`), and the compaction check that follows it: a commit
+   * appends to the file and frees nothing, so a cell that is never collected grows by about 635 KB a turn
+   * (docs/dolt-redesign.md §6.11.8). The check runs later, between turns, in a block of the object, and only
+   * when no turn holds uncommitted work.
+   */
+  private agentCommitPolicy() {
+    const policy = nativeAgentCommitPolicy(() => this.versionedChangesPending());
+    return (...args: Parameters<typeof policy>) => {
+      const message = policy(...args);
+      if (message !== null) this.scheduleDoltGc();
+      return message;
+    };
+  }
+
   private async openAgent(): Promise<Harness> {
     try {
       let phaseStartedAt = Date.now();
@@ -580,7 +695,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       options.registry.install(
         defineExtension({
           name: "vibestudio.eval-acknowledgement",
-          tasks: [this.agentEvalAcknowledgements.task],
+          tasks: [this.agentEvalAcknowledgements.task, this.agentEvalAwait.task],
         }),
       );
       if (typeof options.modelRequests !== "function") {
@@ -597,7 +712,12 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             // The owning schema gate already committed and validated the whole
             // store. SqliteStorage consumes that gate, never a second installer.
             const sqliteStartedAt = Date.now();
-            const storage = await SqliteStorage.open(database);
+            await this.ensureLocalPiTables();
+            const storage = await CompositeSqliteStorage.open(
+              database,
+              // A Dolt cell commits at a closed turn; a SQLite cell (a test double) has no commit to make.
+              this.dolt ? { commit: this.agentCommitPolicy() } : {},
+            );
             this.traceOwnerStartup("sqlite-open", sqliteStartedAt);
             return storage;
           } catch (error) {
@@ -626,6 +746,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
           modelRequests: this.ownedModelRequests(options.modelRequests),
         },
         BACKGROUND_CONTEXT,
+        { adoptFork: this.forkAdoptionPending() },
       );
       this.traceOwnerStartup("session-open", phaseStartedAt);
       const trajectory = this.nativeTrajectory();
@@ -764,56 +885,6 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     });
   }
 
-  /**
-   * Domain hints address the retained operation by its run/receipt identity.
-   * Caller identity comes from host mediation; payload result/channel fields
-   * grant no authority and never supply a result to the Session.
-   */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason: "Internal EvalDO completion delivery to its owning agent.",
-    },
-    principals: ["code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async onEvalComplete(payload: {
-    runId: string;
-  }): Promise<{ accepted: boolean }> {
-    return this.ownSettlement(async () => {
-      const [{ runId }] = evalOwnerCallbackMethods.onEvalComplete.args.parse([
-        payload,
-      ]);
-      // Existing-domain settlement remains serviceable while new admission is
-      // sealed and the resource owner awaits its cleanup receipt.
-      const harness = await this.restoreAgentSession();
-      const route = await retainedEvalRunRoute(
-        harness,
-        runId,
-        BACKGROUND_CONTEXT,
-      );
-      if (
-        route.runId !== runId ||
-        this.rpcCallerId !==
-          evalRuntimeId(this.rpcSelfId, route.scopeKey ?? "default")
-      ) {
-        throw new Error(
-          "Eval completion does not belong to this owner's retained operation",
-        );
-      }
-      return consumeEvalReceipt(
-        harness,
-        harness,
-        runId,
-        this.callAgentHost,
-        this.agentEvalAcknowledgements,
-        BACKGROUND_CONTEXT,
-      );
-    });
-  }
-
   override releaseForLifecycle(
     input: LifecyclePrepareInput,
   ): Promise<LifecyclePrepareResult> {
@@ -916,7 +987,13 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
 
   private async drainEvalAcknowledgements(harness: Harness): Promise<void> {
     const live = await harness.inspect(BACKGROUND_CONTEXT);
+    // A retiring owner stops pulling its runs and discharges the acknowledgements it owes.
     for (const { record: task } of live.tasks) {
+      if (task.kind === this.agentEvalAwait.task.definition.name) {
+        await harness.abortTask(task.id, BACKGROUND_CONTEXT);
+        await harness.waitForTask(task.id, BACKGROUND_CONTEXT);
+        continue;
+      }
       if (task.kind !== this.agentEvalAcknowledgements.task.definition.name)
         continue;
       if (

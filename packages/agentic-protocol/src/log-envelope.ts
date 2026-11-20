@@ -1,9 +1,4 @@
 import { z } from "zod";
-import {
-  canonicalJson,
-  sha256HexSyncText,
-} from "@vibestudio/content-addressing";
-import { GENESIS_EVENT_HASH } from "./constants.js";
 import type { EnvelopeId } from "./ids.js";
 import type {
   ActorRef,
@@ -42,8 +37,6 @@ export interface LogEnvelope<Payload = unknown> {
   annotations?: Record<string, unknown>; // policy-fold annotations (agentHops...), channel metadata/attachments
   causality?: LogEventCausality;
   appendedAt: string; // ISO timestamp
-  prevHash: string; // GENESIS_EVENT_HASH or parent fork hash for the first event
-  hash: string;
 }
 
 /** Agentic events have the same canonical representation in every log. */
@@ -72,10 +65,8 @@ export function agenticEventFromLogEnvelope(
   };
 }
 
-export const LOG_GENESIS_HASH = GENESIS_EVENT_HASH;
-
-/** Structural input for the hash-covered slice — accepts both full
- *  LogEnvelopes and the semantic control plane's pre-append event shape. */
+/** Structural input for the canonical content of an event: accepts both full
+ *  LogEnvelopes and the pre-append event shape. */
 export interface LogEnvelopeSemanticInput {
   envelopeId: string;
   actor: unknown;
@@ -87,8 +78,8 @@ export interface LogEnvelopeSemanticInput {
   appendedAt: string;
 }
 
-/** The hash-covered slice: everything except logId/head/seq/prevHash/hash,
- *  which are mixed into the hash separately. */
+/** The canonical content of an event: everything except where it sits (logId, head, seq).
+ *  Two events of one id are the same event when this is equal (an "exact" re-append). */
 export function logEnvelopeSemantic(
   envelope: LogEnvelopeSemanticInput,
 ): Record<string, unknown> {
@@ -106,115 +97,6 @@ export function logEnvelopeSemantic(
       : {}),
     appendedAt: envelope.appendedAt,
   };
-}
-
-/** Hash preimage format version. v2 length-prefixes the variable-width
- *  fields so distinct (logId, head, seq) tuples can never produce the same
- *  preimage (v1 concatenated them raw, which was ambiguous at the
- *  logId/head and head/seq boundaries). Bump on any preimage change. */
-export const LOG_ENVELOPE_HASH_FORMAT = 2;
-
-export interface LogEnvelopeHashInput {
-  prevHash: string;
-  logId: string;
-  head: string;
-  seq: number;
-  semantic: Record<string, unknown>;
-}
-
-/** The ONE preimage construction for envelope hashes. Both the async
- *  protocol path (computeLogEnvelopeHash) and the semantic control plane's sync path
- *  hash exactly this string — never assemble the preimage anywhere else.
- *  Length prefixes (UTF-16 code units, matching String.length in both
- *  implementations) make every field boundary unambiguous; the semantic
- *  JSON is last and needs no terminator. */
-export function logEnvelopeHashPreimage(input: LogEnvelopeHashInput): string {
-  return [
-    `gadlog:${LOG_ENVELOPE_HASH_FORMAT}`,
-    input.prevHash,
-    `${input.logId.length}:${input.logId}`,
-    `${input.head.length}:${input.head}`,
-    String(input.seq),
-    canonicalJson(input.semantic),
-  ].join("\n");
-}
-
-export async function computeLogEnvelopeHash(
-  input: LogEnvelopeHashInput,
-): Promise<string> {
-  return sha256HexSyncText(logEnvelopeHashPreimage(input));
-}
-
-export async function verifyLogEnvelopeHash(
-  envelope: LogEnvelope,
-): Promise<boolean> {
-  const expected = await computeLogEnvelopeHash({
-    prevHash: envelope.prevHash,
-    logId: envelope.logId,
-    head: envelope.head,
-    seq: envelope.seq,
-    semantic: logEnvelopeSemantic(envelope),
-  });
-  return expected === envelope.hash;
-}
-
-export interface LogIntegrityOptions {
-  /** prevHash expected for the first (lowest-seq) envelope of a (logId, head)
-   *  group — GENESIS for root logs, the parent fork hash for forked logs.
-   *  Key format: `${logId} ${head}`. Missing key ⇒ accept any start. */
-  startPrevHashByLog?: Record<string, string>;
-}
-
-export async function checkLogIntegrity(
-  envelopes: LogEnvelope[],
-  options?: LogIntegrityOptions,
-): Promise<{ ok: boolean; errors: string[] }> {
-  const errors: string[] = [];
-  const byLog = new Map<string, LogEnvelope[]>();
-  for (const envelope of envelopes) {
-    const key = `${envelope.logId} ${envelope.head}`;
-    const group = byLog.get(key) ?? [];
-    group.push(envelope);
-    byLog.set(key, group);
-  }
-
-  for (const [logKey, group] of byLog) {
-    const ordered = [...group].sort((a, b) => a.seq - b.seq);
-    const expectedStart = options?.startPrevHashByLog?.[logKey];
-    for (let index = 0; index < ordered.length; index += 1) {
-      const envelope = ordered[index];
-      if (!envelope) continue;
-      if (index === 0) {
-        if (
-          expectedStart !== undefined &&
-          envelope.prevHash !== expectedStart
-        ) {
-          errors.push(
-            `log ${logKey} seq ${envelope.seq} prevHash does not match expected start`,
-          );
-        }
-      } else {
-        const previous = ordered[index - 1];
-        if (previous) {
-          if (envelope.seq !== previous.seq + 1) {
-            errors.push(
-              `log ${logKey} seq gap between ${previous.seq} and ${envelope.seq}`,
-            );
-          }
-          if (envelope.prevHash !== previous.hash) {
-            errors.push(
-              `log ${logKey} seq ${envelope.seq} prevHash does not match seq ${previous.seq}`,
-            );
-          }
-        }
-      }
-      if (!(await verifyLogEnvelopeHash(envelope))) {
-        errors.push(`log ${logKey} seq ${envelope.seq} hash mismatch`);
-      }
-    }
-  }
-
-  return { ok: errors.length === 0, errors };
 }
 
 const logEventCausalitySchema = causalitySchema
@@ -241,7 +123,5 @@ export const logEnvelopeSchema = z
     annotations: z.record(z.unknown()).optional(),
     causality: logEventCausalitySchema.optional(),
     appendedAt: z.string().datetime({ offset: true }),
-    prevHash: z.string().min(1),
-    hash: z.string().min(1),
   })
   .strict();

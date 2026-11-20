@@ -12,7 +12,7 @@ live docs for current method schemas and result shapes.
 ## Model
 
 - An agent's private trajectory and the channel history it transmits are
-  separate hash-chained logs.
+  separate logs. The channel's is the ledger of its own versioned cell.
 - Agent context is projected into typed message, block, invocation, approval,
   turn, usage, and checkpoint records.
 - A channel row that publishes a trajectory event carries its origin log,

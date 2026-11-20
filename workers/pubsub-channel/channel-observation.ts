@@ -13,8 +13,8 @@ export interface ChannelObservationInput {
 }
 export interface ChannelObservationOutcome {
   observedSequence: number;
+  /** The event that ends the observed prefix. */
   envelopeId: string;
-  hash: string;
 }
 
 /** The owner/host durable-work claim owns cancellation, settlement and joining.
@@ -34,7 +34,6 @@ export async function observeChannelEvent(
       !Number.isSafeInteger(sequence) ||
       sequence <= 0 ||
       envelope.seq !== sequence + index ||
-      (index > 0 && envelope.prevHash !== envelopes[index - 1]!.hash) ||
       envelope.logId !== channelId ||
       envelope.head !== "main" ||
       !envelope.envelopeId
@@ -72,14 +71,12 @@ export async function observeChannelEvent(
   for (const [index, envelope] of envelopes.entries()) {
     const observed = result.envelopes[index];
     if (!observed || observed.envelopeId !== envelope.envelopeId ||
-        observed.seq !== envelope.seq || observed.hash !== envelope.hash ||
-        observed.prevHash !== envelope.prevHash)
+        observed.seq !== envelope.seq)
       throw new Error("Channel observation acknowledgement differs from its canonical local envelope");
   }
   const observed = result.envelopes.at(-1)!;
   return {
     observedSequence: observed.seq,
     envelopeId: observed.envelopeId,
-    hash: observed.hash,
   };
 }

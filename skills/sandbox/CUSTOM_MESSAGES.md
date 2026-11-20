@@ -250,7 +250,7 @@ Rules:
 ### State, not scope
 
 Custom-message components do **not** receive `scope`, `scopes`, or `help`.
-Those are eval bindings in the agent's server-side `EvalDO`. Therefore:
+Those are eval bindings in the agent's server-side eval kernel. Therefore:
 
 - **Data the card needs must live in the message `state`.** Put it in
   `initialState` and updates, and keep it small, because the channel stores

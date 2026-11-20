@@ -19,7 +19,7 @@ export interface ScopeBlobBackend {
 
 /**
  * Shared ScopePersistence composition: ScopeManager persists rows through one backend and spills
- * large serialized values through a blobstore-shaped backend. Browser UI and EvalDO differ only in
+ * large serialized values through a blobstore-shaped backend. Browser UI and eval kernel differ only in
  * their row backend; spill semantics stay here.
  */
 export class ScopePersistenceAdapter implements ScopePersistence {
