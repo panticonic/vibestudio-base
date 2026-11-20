@@ -42,6 +42,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "problemReport"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "compoundRecovery"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "buildIncident"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "deployedInterface"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "localWidth"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "evalHandoff"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "programRun"; outcome: unknown }

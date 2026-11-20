@@ -32,6 +32,15 @@ declare module "natlang:services" {
     stage(finding: import("./runUserGoal/reviewLocalExecutionWidth/contract.js").WidthFinding):
       Promise<import("./runUserGoal/reviewLocalExecutionWidth/contract.js").WidthHandoff | null>;
   };
+  export const interfaceEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceSurvey>;
+    inspect(id: string): Promise<import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceObservation>;
+  };
+  export const interfaceReviewHandoff: {
+    stage(observation: import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceObservation,
+      decision: import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceDecision):
+      Promise<import("./runUserGoal/reviewDeployedInterface/contract.js").InterfaceHandoff | null>;
+  };
   export const goalDiscovery: {
     search(queries: string[]): Promise<import("./types.js").GoalSearchResult[]>;
     snapshotTime(): number;

@@ -1907,6 +1907,86 @@ type WidthHandoff = { path: string; bytes: number; sha256: string };
 /** Stage one supported local model readiness handoff in scratch. */
 export function stage(finding: WidthFinding):
       Promise<WidthHandoff | null>;`,
+  interfaceEvidence: `/** Read assigned installed unit and live interface evidence. */
+
+type InterfaceKind = "agent" | "worker" | "extension";
+
+type InterfaceSubject = { id: string; title: string; source: string; kind: InterfaceKind };
+
+type ReviewScope = {
+  source: string; definition: string; revision: string;
+  grant: "inspect-only" | "local-review" | "widen-access" | "withdrawn";
+  needsDeployedMethod: boolean;
+  expectedKind: InterfaceKind;
+  method: string | null;
+};
+
+type InterfaceSurvey = { subjects: InterfaceSubject[]; review: ReviewScope };
+
+type MethodEvidence = {
+  basis: "sealed-worker-contract" | "active-extension-registration"; name: string; className: string | null; signature: string | null; inputDigest: string | null;
+  crossWorkspace: boolean | null; websiteEligible: boolean | null;
+};
+
+type DeployedDefinition = {
+  state: "bound" | "not-attested" | "ambiguous";
+  effectiveVersion: string | null; buildKey: string | null;
+  diagnosticMethod: MethodEvidence | null;
+};
+
+type InterfaceObservation = {
+  subject: InterfaceSubject; head: string; authoredDigest: string;
+  entry: string; classes: string[]; declaredServices: string[];
+  declaredMethods: string[]; observedInterface: string[];
+  deployed: DeployedDefinition;
+  architecture: {
+    goal: string; operationId: string; concern: "workspace-history" | "conversation-history" | "mission-record";
+    proposedOwner: "semantic-vcs" | "durable-channel" | "durable-provider" | "panel-state" | "build-projection" | "rpc-adapter";
+  } | null;
+};
+
+/** Read assigned installed unit and live interface evidence. */
+export function discover(): Promise<InterfaceSurvey>;
+
+/** Read assigned installed unit and live interface evidence. */
+export function inspect(id: string): Promise<InterfaceObservation>;`,
+  interfaceReviewHandoff: `/** Stage one supported local interface review in scratch. */
+
+type InterfaceKind = "agent" | "worker" | "extension";
+
+type InterfaceSubject = { id: string; title: string; source: string; kind: InterfaceKind };
+
+type MethodEvidence = {
+  basis: "sealed-worker-contract" | "active-extension-registration"; name: string; className: string | null; signature: string | null; inputDigest: string | null;
+  crossWorkspace: boolean | null; websiteEligible: boolean | null;
+};
+
+type DeployedDefinition = {
+  state: "bound" | "not-attested" | "ambiguous";
+  effectiveVersion: string | null; buildKey: string | null;
+  diagnosticMethod: MethodEvidence | null;
+};
+
+type InterfaceObservation = {
+  subject: InterfaceSubject; head: string; authoredDigest: string;
+  entry: string; classes: string[]; declaredServices: string[];
+  declaredMethods: string[]; observedInterface: string[];
+  deployed: DeployedDefinition;
+  architecture: {
+    goal: string; operationId: string; concern: "workspace-history" | "conversation-history" | "mission-record";
+    proposedOwner: "semantic-vcs" | "durable-channel" | "durable-provider" | "panel-state" | "build-projection" | "rpc-adapter";
+  } | null;
+};
+
+type InterfaceDecision = "reviewable" | "deployed-method-confirmed" | "held-kind" | "held-assignment" |
+  "held-stale" | "held-authority" | "held-ownership" | "held-deployed";
+
+type InterfaceHandoff = { path: string; bytes: number; sha256: string };
+
+/** Stage one supported local interface review in scratch. */
+export function stage(observation: InterfaceObservation,
+      decision: InterfaceDecision):
+      Promise<InterfaceHandoff | null>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };
