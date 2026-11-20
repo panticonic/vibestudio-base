@@ -4192,24 +4192,29 @@ export class GadWorkspaceDO extends DurableObjectBase {
   private ensureCommitMemoryIndex(): void {
     this.ensureMemoryIndex();
 
-    // Commit memory originally indexed only the event message. Rebuild that
-    // disposable projection once so existing workspaces gain the authored
-    // intent terms as well; subsequent calls only project newly committed
-    // events. This marker is deliberately internal rather than part of the
-    // public file-index marker namespace.
+    // Rebuild old recall indexes once to retain authored intent and remove
+    // commits outside protected main. Subsequent calls add missing entries
+    // from protected legacy history without replacing native documents.
     const projectionVersionKey = "memory:commit-projection-version";
-    const projectionVersion = "2";
+    const projectionVersion = "3";
     if (this.getStateValue(projectionVersionKey) !== projectionVersion) {
       this.sql.exec(
         `DELETE FROM gad_memory_fts
           WHERE kind = 'commit'
+            AND json_extract(anchor_json, '$.revision') IS NULL
             AND event_id IN (SELECT event_id FROM gad_workspace_events)`,
       );
     }
 
     const missing = this.sql
       .exec(
-        `SELECT e.event_id,
+        `WITH RECURSIVE published(event_id) AS (
+            SELECT event_id FROM vcs_workspace_heads WHERE head = 'main'
+            UNION
+            SELECT parent.parent_event_id
+              FROM gad_workspace_event_parents parent JOIN published USING (event_id)
+          )
+          SELECT e.event_id,
                 e.result_workspace_fact_root_id,
                 e.message,
                 (
@@ -4226,7 +4231,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
                        ORDER BY ea.ordinal
                     )
                 ) AS intent_summaries
-           FROM gad_workspace_events e
+           FROM gad_workspace_events e JOIN published USING (event_id)
           WHERE e.kind <> 'genesis'
             AND NOT EXISTS (
               SELECT 1 FROM gad_memory_fts m
@@ -4300,6 +4305,31 @@ export class GadWorkspaceDO extends DurableObjectBase {
       row.contentHash ?? null,
       row.anchor ? JSON.stringify(row.anchor) : null,
     );
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Only the host can index protected native publications." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  recordHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): true {
+    this.ensureReady();
+    const { eventId, revision, text, createdAt } = input;
+    if (typeof eventId !== "string" || !eventId ||
+        typeof revision !== "string" || !/^[a-f0-9]{40}$/u.test(revision) ||
+        typeof text !== "string" || !text.trim() || typeof createdAt !== "string" ||
+        !Number.isFinite(Date.parse(createdAt))) {
+      throw new Error("Invalid native commit memory");
+    }
+    this.transaction(() => {
+      this.indexMemoryRow({
+        text, kind: "commit", eventId,
+        anchor: { workspaceEventId: eventId, revision, createdAt },
+      });
+    });
+    return true;
   }
 
   /** Batch file-text indexing (the server pushes changed file text — bytes
@@ -4532,7 +4562,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const logId = asString(row["log_id"]);
       const head = asString(row["head"]);
       let actor: unknown = null;
-      let appendedAt: string | null = null;
+      const anchor = parseJson(asString(row["anchor_json"])) as Record<string, unknown> | null;
+      let appendedAt = row["kind"] === "commit" ? asString(anchor?.["createdAt"]) : null;
       if (eventId && logId && head) {
         const event = this.getChainedLogEvent({ logId, head, envelopeId: eventId });
         if (event) {
@@ -4550,10 +4581,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         eventId,
         path: asString(row["path"]),
         contentHash: asString(row["content_hash"]),
-        anchor: parseJson(asString(row["anchor_json"])) as Record<
-          string,
-          unknown
-        > | null,
+        anchor,
         actor,
         appendedAt,
       };

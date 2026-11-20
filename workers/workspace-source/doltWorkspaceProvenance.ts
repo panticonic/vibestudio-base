@@ -75,6 +75,30 @@ export function eventLineageAt(sql: SqlStorage, revision: string) {
   return { parents, applicationIds };
 }
 
+export function readPublishedCommitMemory(sql: SqlStorage, revision: string, eventId: string) {
+  const event = sql.exec(
+    "SELECT kind, message, created_at FROM dolt_at_events(?) WHERE event_id = ?", revision, eventId,
+  ).toArray()[0];
+  if (!event || typeof event["created_at"] !== "string")
+    throw new SemanticVcsError("IntegrityFailure", "Published workspace event has no commit memory source");
+  if (event["kind"] === "genesis") return null;
+  const { applicationIds } = eventLineageAt(sql, revision);
+  const summaries = sql.exec(
+    `SELECT substr(trim(work.intent_summary), 1, 8000) AS summary
+       FROM json_each(?2) AS selected
+       JOIN dolt_at_applications(?1) AS app ON app.application_id = selected.value
+       JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+      WHERE trim(work.intent_summary) <> ''
+      ORDER BY CAST(selected.key AS INTEGER)
+      LIMIT 64`,
+    revision, JSON.stringify(applicationIds),
+  ).toArray();
+  const text = [...new Set([event["message"], ...summaries.map((row) => row["summary"])]
+    .flatMap((value) => typeof value === "string" && value.trim() ? [value.trim()] : []))]
+    .join("\n").slice(0, 64_000);
+  return text ? { eventId, revision, text, createdAt: event["created_at"] } : null;
+}
+
 function inspectEvent(sql: SqlStorage, revision: string, workspaceId: string, eventId: string) {
   const row = sql.exec(
     "SELECT * FROM dolt_at_events(?) WHERE event_id = ?", revision, eventId,

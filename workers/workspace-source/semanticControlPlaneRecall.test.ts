@@ -34,6 +34,20 @@ describe("GadWorkspaceDO — recall deduplication", () => {
     doi = gad.instance;
   });
 
+  it("recalls a native published commit without a row in the legacy event table", () => {
+    const document = {
+      eventId: "event:native-config", revision: "c".repeat(40),
+      text: "Keep the Northstar configuration after rollout",
+      createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    expect(doi.recordHistoryCommitMemory(document)).toBe(true);
+    expect(doi.recordHistoryCommitMemory(document)).toBe(true);
+    expect(doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results).toMatchObject([{
+      kind: "commit", eventId: document.eventId, appendedAt: document.createdAt,
+      anchor: { workspaceEventId: document.eventId, revision: document.revision },
+    }]);
+  });
+
   it("dedup keeps the page full: a duplicate copy is collapsed without stealing a slot", () => {
     // Six distinct items sharing the term "widget", each a distinct event id.
     for (let i = 1; i <= 6; i += 1) {
@@ -141,7 +155,9 @@ describe("GadWorkspaceDO — recall deduplication", () => {
        VALUES ('application:retention-launch', 'work:retention-launch', 'event',
                'event:parent', 'root:retention-launch', 'semantic-v1');
        INSERT INTO gad_workspace_event_applications (event_id, ordinal, application_id)
-       VALUES ('event:retention-launch', 0, 'application:retention-launch')`,
+       VALUES ('event:retention-launch', 0, 'application:retention-launch');
+       INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
+       VALUES ('main', 'event:retention-launch', '2026-01-02T00:00:00.000Z')`,
     );
     reach(doi).indexMemoryRow({
       text: "Finish the post-launch documentation pass",
@@ -164,6 +180,21 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       eventId: "event:retention-launch",
       snippet: expect.stringContaining("Harbor Lantern rollout codename"),
     });
+  });
+
+  it("removes previously indexed private legacy commits and indexes only protected ancestry", () => {
+    gad.sql.exec(`
+      INSERT INTO gad_workspace_events
+        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)
+      VALUES
+        ('event:private', 'command:private', 'commit', 'root:private', 'Northstar private revision', '2026-01-02'),
+        ('event:published', 'command:published', 'commit', 'root:published', 'Northstar published revision', '2026-01-02');
+      INSERT INTO vcs_workspace_heads (head, event_id, updated_at)
+      VALUES ('main', 'event:published', '2026-01-02')
+    `);
+    reach(doi).indexMemoryRow({ kind: "commit", eventId: "event:private", text: "Northstar private revision" });
+    const results = doi.recallMemory({ query: "Northstar", kinds: ["commit"] }).results;
+    expect(results.map(({ eventId }) => eventId)).toEqual(["event:published"]);
   });
 });
 

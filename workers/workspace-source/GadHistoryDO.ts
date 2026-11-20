@@ -1,4 +1,5 @@
 import { canonicalJson, compareUtf16CodeUnits, sha256HexSyncText } from "@vibestudio/content-addressing";
+import { readPublishedCommitMemory } from "./doltWorkspaceProvenance.js";
 import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
@@ -999,12 +1000,16 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  readHistoryMain() {
+  readHistoryMain(input?: { commitMemoryEventId: string }) {
     this.#assertCanonical();
     const head = this.#remotes().hashOf("main");
     const main = committedWorkspaceEvent(this.sql, head);
     if (main?.head !== head) throw new Error("Workspace main is missing its committed event");
-    return main;
+    if (!input) return main;
+    const event = vcsStateNodeRefSchema.parse({ kind: "event", eventId: input.commitMemoryEventId });
+    const revision = workspaceCommitForRef(this.sql, head, event);
+    if (!revision) throw new Error("Commit memory event is outside canonical history");
+    return { ...main, commitMemory: readPublishedCommitMemory(this.sql, revision, input.commitMemoryEventId) };
   }
 
   @rpc(hostRead)
