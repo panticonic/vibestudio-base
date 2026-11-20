@@ -21,3 +21,5 @@ export * from "./workOnAssemblyGoal/workspace/types.js";
 export * from "./workOnRecoveryHandoff/types.js";
 
 export * from "./workOnProblemReportGoal/types.js";
+
+export * from "./workOnProviderHandoffGoal/types.js";

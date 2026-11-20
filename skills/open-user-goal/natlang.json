@@ -5,6 +5,9 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
+    "runUserGoal/workOnProviderHandoffGoal/authority": "skills/capabilities/natlang",
+    "runUserGoal/workOnProviderHandoffGoal/conversation": "skills/conversation-evidence-review",
     "runUserGoal/workOnProblemReportGoal/reporter": "skills/problem-reporting/natlang",
     "runUserGoal/workOnRecoveryHandoff/scratch": "skills/scratch-handoff",
     "runUserGoal/workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",

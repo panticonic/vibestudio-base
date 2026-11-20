@@ -33,6 +33,8 @@ If the goal asks about a declared workspace test or asks you to verify something
 
 When the user asks to publish, resume, or conditionally run an authorized publication to a disposable owned preview, use publication.publishOwnedPreviewGoal. It checks the exact authorization and can make the requested preview change. Return status "workspace-skill-reviewed", skill "ownedPreview", and the actual result as outcome.
 
+For checking a retained provider approval and its original conversation result together, including a scoped local handoff of that evidence, call workOnProviderHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "providerHandoff", and its actual outcome.
+
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
 - For recovering a cancelled, failed, or incomplete native eval and handing off verified retained output, call workOnEvalHandoffGoal with the user's goal. Return status "workspace-skill-reviewed", skill "evalHandoff", and its actual outcome.

@@ -35,6 +35,7 @@ export type UserGoalReport =
   | WorkspaceSuiteReport
   | { status: "workspace-skill-reviewed"; skill: "news" | "spectrolite" | "google" | "gmail" | "googleHandoff" | "calendar" | "personal" | "personalArtifacts" | "personalHistory" | "scheduledRecovery" | "personalAutomation" | "operator" | "localReconciliation" | "diagnostics" | "ownedTaskRecovery" | "unitRollout" | "localDelivery" | "recovery" | "publication" | "ownedPreview" | "visualRecovery" | "pdf"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "terminalHandoff"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "providerHandoff"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "problemReport"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "compoundRecovery"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "evalHandoff"; outcome: unknown }
