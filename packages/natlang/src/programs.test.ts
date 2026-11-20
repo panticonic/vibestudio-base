@@ -468,6 +468,7 @@ it.each([
   ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
   ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal"],
+  ["google-workspace", "open-google-handoff-goal", "googleHandoffMail", "googleHandoff", "reconcileGoogleHandoff", "reconcileGoogleHandoff/resolveMailDecision/readMailThreads"],
   ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
   ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal", "workOnPersonalArtifactsGoal/maintainLibrary"],
   ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory"],

@@ -1351,6 +1351,68 @@ type ComposeSelection = { id: string; title: string; room: string };
 
 /** Discover authorized retained Gmail compose records. */
 export function discover(): Promise<ComposeSelection[]>;`,
+  googleHandoffMail: `/** Discover and read the authorized Gmail decision threads. */
+
+type MailMessage = {
+  id: string; from: string; subject: string; receivedAt: string; body: string; fileIds: string[];
+};
+
+type MailThread = { id: string; messages: MailMessage[] };
+
+/** Discover and read the authorized Gmail decision threads. */
+export function discover(): Promise<{ ids: string[]; complete: boolean }>;
+
+/** Discover and read the authorized Gmail decision threads. */
+export function read(id: string): Promise<MailThread | null>;`,
+  googleHandoffDrive: `/** Inspect a Drive asset bound to a retained decision. */
+
+type ReviewMode = "metadata" | "content" | "audience" | "content-and-audience";
+
+type AssetIntent = { messageId: string; fileId: string; mode: ReviewMode };
+
+type PermissionEvidence = {
+  id: string; type: string; role: string; address: string | null; deleted: boolean; pendingOwner: boolean;
+  directRoles: string[];
+};
+
+type AssetEvidence = {
+  id: string; status: "current" | "missing" | "inaccessible" | "unavailable" | "trashed" | "shortcut";
+  name: string | null; mimeType: string | null; version: string | null;
+  content: { text: string; sha256: string } | null;
+  permissions: PermissionEvidence[] | null;
+  missingChecks: ("content" | "audience")[];
+};
+
+/** Inspect a Drive asset bound to a retained decision. */
+export function inspect(asset: AssetIntent): Promise<AssetEvidence>;`,
+  googleHandoffFreshness: `/** Confirm that the decision and its evidence are still current. */
+
+type HandoffDecision = {
+  status: "ready" | "held" | "incomplete" | "stale";
+  reason: "approved" | "withdrawn" | "unresolved" | "missing" | "inaccessible" | "trashed" |
+    "shortcut" | "audience" | "content" | "provider" | "changed";
+  mailIds: string[];
+  assetIds: string[];
+  facts?: { fileId: string; quote: string }[];
+};
+
+/** Confirm that the decision and its evidence are still current. */
+export function verify(decision: HandoffDecision): Promise<"current" | "changed" | "unavailable">;`,
+  googleHandoffScratch: `/** Stage an authorized handoff backed by current mail and Drive evidence. */
+
+type HandoffDecision = {
+  status: "ready" | "held" | "incomplete" | "stale";
+  reason: "approved" | "withdrawn" | "unresolved" | "missing" | "inaccessible" | "trashed" |
+    "shortcut" | "audience" | "content" | "provider" | "changed";
+  mailIds: string[];
+  assetIds: string[];
+  facts?: { fileId: string; quote: string }[];
+};
+
+type HandoffReceipt = { path: string; sha256: string };
+
+/** Stage an authorized handoff backed by current mail and Drive evidence. */
+export function stage(decision: HandoffDecision): Promise<HandoffReceipt>;`,
   calendarGoalCatalog: `/** Discover authorized calendars and their current roles. */
 
 type CalendarSource = { id: string; name: string; description: string; timeZone: string };

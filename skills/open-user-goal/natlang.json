@@ -11,6 +11,7 @@
     "runUserGoal/spectrolite": "skills/spectrolite-review",
     "runUserGoal/google": "skills/google-drive/driveWorkflow",
     "runUserGoal/gmail": "skills/open-gmail-goal/program",
+    "runUserGoal/googleHandoff": "skills/open-google-handoff-goal/program",
     "runUserGoal/calendar": "skills/open-calendar-goal/program",
     "runUserGoal/personalArtifacts": "skills/open-personal-artifacts",
     "runUserGoal/personalHistory": "skills/open-personal-history",

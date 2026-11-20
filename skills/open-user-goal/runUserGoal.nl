@@ -19,6 +19,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 
 - `news.reviewUserNewsGoal` for News readers and schedules.
 - `spectrolite.workTowardVaultGoal` for Spectrolite vaults.
+- `googleHandoff.reconcileGoogleHandoff` when a retained Gmail decision determines which linked Drive evidence or handoff is authorized.
 - `google.workOnDriveGoal` for Drive, and `gmail.recoverGmailGoal` for Gmail drafts and delivery evidence.
 - `calendar.workOnCalendarGoal` for reconciling current calendar proposals and staging a scheduling handoff.
 - `personalArtifacts.workOnPersonalArtifactsGoal` for saved browser references and their use in a collection.
