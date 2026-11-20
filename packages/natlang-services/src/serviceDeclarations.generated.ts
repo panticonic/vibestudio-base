@@ -1461,6 +1461,21 @@ export function submit(task: string, revision: number, basis: string, content: s
 
 /** Submit one exact-revision owned local handoff and read back its original attempt. */
 export function read(attemptId: string): Promise<MessageReceipt | null>;`,
+  problemIncident: `/** Discover current local incidents and open the chosen incident’s scoped draft operation. */
+
+type IncidentCard = {
+  id: string;
+  title: string;
+  surface: string;
+  state: "current" | "archived" | "recovered";
+  observation: string;
+};
+
+/** Discover current local incidents and open the chosen incident’s scoped draft operation. */
+export function discover(): Promise<IncidentCard[]>;
+
+/** Discover current local incidents and open the chosen incident’s scoped draft operation. */
+export function open(incident: string): Promise<{ operationId: string } | null>;`,
   recoveryHandoffLink: `/** Read the current local release directive and bind exact native recovery to its scratch assignment. */
 
 type RecoveryHandoffDirective = {
