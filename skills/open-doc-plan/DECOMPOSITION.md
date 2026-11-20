@@ -26,3 +26,22 @@ excerpts, reconciles a stale memo, and identifies genuinely unavailable
 dependencies with role-limited evidence. TypeScript bounds retrieval and
 joins exact IDs, bytes, hashes and schema fields. It does not decide what the
 user meant or which legal combination should be proposed.
+
+## Published-baseline extension
+
+Main RPC and caller-specific runtime members share a verifier but keep their
+own catalog identity, visibility, argument names, source signature, and schema
+digest. Main RPC is appropriate when the goal asks for the receiver contract.
+A Worker-runtime capability is appropriate when the specified API is the
+portable client bound to that worker's runtime. The search must resolve to
+the same exact entry before a plan can select it.
+
+Installed skill receipts bind the semantic VCS working head read around the
+raw SKILL.md bytes. The final result keeps that source revision and the exact
+document digest. The verifier freshly reads each cited skill and its head.
+The original docs-discovery tests and separate terminal corpus stay intact.
+
+Qualification uses the existing HeadlessRunner open-goal path in the
+published Examples composition, with the actual prepared fixture worker's
+role. It reads the live catalog and installed skills, and can write the
+explicitly authorized scratch handoff, with no model generation.

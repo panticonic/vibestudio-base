@@ -2478,6 +2478,88 @@ type TerminalHandoff = { path: string; bytes: number; sha256: string };
 
 /** Commit the owned terminal receipts to local scratch. */
 export function stage(): Promise<TerminalHandoff | null>;`,
+  docPlanContext: `/** Read the exact owned memo and current installed skill inventory for planning. */
+
+type CurrentMemo = { title: string; text: string; sha256: string };
+
+type SkillRow = { name: string; description: string; dirPath: string; skillPath: string };
+
+type WorkspaceRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type PlanningState = { memo: CurrentMemo | null; skillIndex: SkillRow[]; skillIndexComplete: boolean; sourceRevision: WorkspaceRevision; stageAuthorized: boolean };
+
+/** Read the exact owned memo and current installed skill inventory for planning. */
+export function observe(): Promise<PlanningState>;`,
+  docPlanCatalog: `/** Read the current role-filtered documentation and concrete call schemas. */
+
+type CatalogQuery = { query: string; surface: "service" | "runtime" | "workspace" };
+
+type DocHit = { id: string; surface: string; qualifiedName: string; title: string; description?: string };
+
+type DetailedCapability = DocHit & {
+  sha256: string;
+  argumentNames: string[];
+  signature: string | null;
+  argsSchema: unknown;
+  returnsSchema: unknown;
+  omittedSchemas: ("args" | "returns")[];
+  access: unknown;
+};
+
+type ServiceOverview = { serviceCount: number; serviceNames: string[]; surfaces: { surface: string; count: number }[] };
+
+/** Read the current role-filtered documentation and concrete call schemas. */
+export function search(query: CatalogQuery): Promise<DocHit[]>;
+
+/** Read the current role-filtered documentation and concrete call schemas. */
+export function describe(id: string): Promise<DetailedCapability | null>;
+
+/** Read the current role-filtered documentation and concrete call schemas. */
+export function overview(): Promise<ServiceOverview>;
+
+/** Read the current role-filtered documentation and concrete call schemas. */
+export function availableMethod(name: string): Promise<boolean>;`,
+  docPlanSkills: `/** Load bounded passages from an installed skill in the current planning context. */
+
+type WorkspaceRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type SkillSourceRevision = { state: WorkspaceRevision; repositoryId: string; fileId: string; contentHash: string };
+
+type KnowledgeExcerpt = { heading: string; text: string };
+
+type InstalledKnowledge = { skillPath: string; sha256: string; revision: SkillSourceRevision; excerpts: KnowledgeExcerpt[] };
+
+/** Load bounded passages from an installed skill in the current planning context. */
+export function load(dirPath: string, focus: string[]): Promise<InstalledKnowledge | null>;`,
+  docPlanHandoff: `/** Commit an authorized ready plan into the owned scratch workspace. */
+
+type WorkspaceRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type PlanStep = { id: string; sha256: string; argumentNames: string[]; signature: string | null; purpose: string };
+
+type SkillSourceRevision = { state: WorkspaceRevision; repositoryId: string; fileId: string; contentHash: string };
+
+type KnowledgeCitation = { skillPath: string; sha256: string; revision: SkillSourceRevision; quote: string };
+
+type MissingCapability = { kind: "method" | "skill"; name: string };
+
+type ServiceOverview = { serviceCount: number; serviceNames: string[]; surfaces: { surface: string; count: number }[] };
+
+type CapabilityPlan = {
+  status: "ready" | "hold";
+  sourceRevision: WorkspaceRevision;
+  steps: PlanStep[];
+  rationale: string;
+  knowledge: KnowledgeCitation[];
+  missing: MissingCapability[];
+  memoDisposition: "none" | "current" | "stale" | "conflicting";
+  overview: ServiceOverview | null;
+};
+
+type CapabilityHandoff = { path: string; bytes: number; sha256: string };
+
+/** Commit an authorized ready plan into the owned scratch workspace. */
+export function stage(plan: CapabilityPlan): Promise<CapabilityHandoff | null>;`,
   programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
 
 type RunSample = {
