@@ -1506,6 +1506,93 @@ export function submit(task: string, revision: number, basis: string, content: s
 
 /** Submit one exact-revision owned local handoff and read back its original attempt. */
 export function read(attemptId: string): Promise<MessageReceipt | null>;`,
+  templateMigration: `/** Read owned template deployment and candidate evidence, then authorize scoped preparation or a private handoff. */
+
+type CandidateOffer = {
+  installedCommit: string;
+  incomingCommit: string | null;
+  checkedAt: number;
+  workspaceAppVersion: string;
+  currentAppVersion: string;
+  targetAppVersion: string | null;
+  minimumAppVersion: string | null;
+  hostUnavailable: boolean;
+  status:
+    | "current"
+    | "available"
+    | "different-epoch"
+    | "requires-app-update"
+    | "error";
+};
+
+type MigrationTemplate = {
+  source: string;
+  installed: string;
+  incoming: string | null;
+  status: CandidateOffer["status"];
+  minimumAppVersion: string | null;
+};
+
+type MigrationObservation = {
+  mainEvent: string;
+  revision: string;
+  appVersion: string;
+  templates: MigrationTemplate[];
+  records: { id: string; title: string; kind: string }[];
+};
+
+type MigrationRead = {
+  id: string;
+  text: string;
+  sha256: string;
+};
+
+type CandidateRequest = {
+  goal: string;
+  intent: "inspect" | "stage";
+  sourceUrl: string;
+  installedCommit: string;
+  incomingCommit: string;
+  checkedAfterMs: number;
+  commandId: string;
+};
+
+type MigrationStatus =
+  | "current"
+  | "draft-only"
+  | "obsolete-dependency"
+  | "foreign-candidate"
+  | "stale-review"
+  | "awaiting-approval"
+  | "already-deployed"
+  | "insufficient-evidence"
+  | "ready-for-review"
+  | "candidate-staged";
+
+type MigrationHandoff = { path: string; sha256: string; bytes: number };
+
+/** Read owned template deployment and candidate evidence, then authorize scoped preparation or a private handoff. */
+export function discover(): Promise<MigrationObservation>;
+
+/** Read owned template deployment and candidate evidence, then authorize scoped preparation or a private handoff. */
+export function read(
+      revision: string,
+      ids: string[],
+    ): Promise<MigrationRead[] | null>;
+
+/** Read owned template deployment and candidate evidence, then authorize scoped preparation or a private handoff. */
+export function authorizeStage(
+      revision: string,
+      candidateId: string,
+    ): Promise<CandidateRequest | null>;
+
+/** Read owned template deployment and candidate evidence, then authorize scoped preparation or a private handoff. */
+export function stageHandoff(
+      revision: string,
+      candidateId: string | null,
+      status: MigrationStatus,
+      recipient: string,
+    ): Promise<MigrationHandoff | null>;`,
   problemIncident: `/** Discover current local incidents and open the chosen incident’s scoped draft operation. */
 
 type IncidentCard = {
