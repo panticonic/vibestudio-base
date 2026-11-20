@@ -17,11 +17,22 @@ export type ObservedAuthoringReview = {
   baselineRevision: string | null;
   findings: { code: string; subject: string; observed: string; recovery: string }[];
 };
+export type MissingAuthoringRecord = "cannot-identify-candidate" | "cannot-identify-approved-release";
+export type AuthoringChoice =
+  | { kind: "select"; selection: AuthoringSelection }
+  | { kind: "hold"; reason: MissingAuthoringRecord };
+export type UnresolvedAuthoring = {
+  status: "unresolved";
+  reason: MissingAuthoringRecord | "cannot-bind-scope" | "source-kept-changing";
+};
+export type AuthoringDiscoveryOutcome =
+  | { status: "selected"; value: SelectedAuthoring }
+  | UnresolvedAuthoring;
 export type AuthoringReceipt = {
   selection: AuthoringSelection;
   review: ObservedAuthoringReview;
 };
 export type AuthoringHandoff = { path: string; revision: string };
 export type AuthoringOpenOutcome =
-  | { status: "unresolved" }
+  | UnresolvedAuthoring
   | { status: "reviewed"; receipt: AuthoringReceipt; artifact: AuthoringHandoff | null };
