@@ -1,4 +1,4 @@
-import { testRunnerRpcMethods } from "@workspace/test-runtime/native";
+import { nativeTestExecutionSource, testRunnerRpcMethods } from "@workspace/test-runtime/native";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { JsonRepresentation } from "@panticonic/pi-chord";
 import { toolDetails } from "./native-tool-json.js";
@@ -338,34 +338,30 @@ export async function executeUnitVerification(
   let artifactKey: string;
   let executionDigest: string;
   if (plan.runtime === "native") {
-    executionDigest = sha256Hex(
-      encodeUtf8(
-        JSON.stringify({
-          protocol: "native-test-execution.v1",
-          stateHash: plan.stateHash,
-          target: command.target,
-          suite: plan.suite,
-          file: command.file ?? null,
-        }),
-      ),
-    );
+    const nativeTest = {
+      target: plan.target,
+      suite: plan.suite,
+      contextId: exactContextId,
+      stateHash: plan.stateHash,
+      ...(command.file ? { fileFilter: command.file } : {}),
+      ...(command.testName ? { testName: command.testName } : {}),
+    };
+    executionDigest = sha256Hex(encodeUtf8(nativeTestExecutionSource(nativeTest)));
     artifactKey = `native:${executionDigest}`;
     report = await rpc.call(
       "main",
       testRunnerRpcMethods.runNative,
       [
-        {
-          target: command.target,
-          suite: plan.suite,
-          contextId: exactContextId,
-          artifactKey,
-          executionDigest,
-          ...(command.file ? { fileFilter: command.file } : {}),
-          ...(command.testName ? { testName: command.testName } : {}),
-        },
+        { ...nativeTest, artifactKey, executionDigest },
       ],
       { signal },
     );
+    if (report.contextId !== exactContextId || report.target !== plan.target || report.runtime !== "native")
+      throw new Error("Native test adapter returned a result outside the resolved suite context.");
+    const current = await rpc.call("main", mainRpcMethods["build.resolveTestSuite"],
+      [plan.target, ref, plan.suite], { signal });
+    if (current.stateHash !== plan.stateHash || current.runtime !== plan.runtime)
+      throw new Error("Native test source changed during verification. Resolve the current suite and retry.");
   } else {
     if (!executeSandboxTest) {
       throw new Error(
