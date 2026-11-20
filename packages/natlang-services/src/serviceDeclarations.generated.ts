@@ -4843,6 +4843,64 @@ type ClientAdmissionObservation = {
 
 /** Read the assigned System client, published trust and selected host contract. */
 export function observe(operationId: string): Promise<ClientAdmissionObservation>;`,
+  installedPackageRead: `/** Read the exact installed worker package and approved package baseline. */
+
+type PackageField = "runtime-dependency" | "contract-export" | "native-suite";
+
+type ReviewScope = {
+  source: string; field: PackageField; key: string;
+  workingRevision: string; workingDigest: string; baselineDigest: string;
+  grant: "restore" | "inspect" | "suspended";
+};
+
+type PackageAssignment = { operationId: string; goal: string; target: string; source: string; field: PackageField; key: string; scope: ReviewScope };
+
+type PackageValue = {
+  dependency: string | null; devDependency: string | null; peerDependency: string | null;
+  contractExport: unknown; suite: { name: string; runtime: "native" | "workerd" | "browser"; include: string[] } | null;
+};
+
+type SuiteRequest = { operationId: string; goal: string; target: string; suite: string; file: null; testName: null; mode: "inspect" };
+
+type PackageObservation = {
+  operationId: string; target: string; source: string; mainRevision: string; workingRevision: string;
+  name: string; baselineName: string; workingDigest: string; baselineDigest: string;
+  receiver: { protocol: string; source: string; name: string; className: string | null; targetId: string | null } | null;
+  catalog: { source: string; name: string; kind: string } | null;
+  baselineValue: PackageValue; workingValue: PackageValue;
+  declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
+  suiteRequest: SuiteRequest | null;
+};
+
+/** Read the exact installed worker package and approved package baseline. */
+export function discover(): Promise<PackageAssignment>;
+
+/** Read the exact installed worker package and approved package baseline. */
+export function inspect(operationId: string): Promise<PackageObservation>;`,
+  installedPackageChange: `/** Restore one approved installed package declaration at its exact working revision. */
+
+type PackageValue = {
+  dependency: string | null; devDependency: string | null; peerDependency: string | null;
+  contractExport: unknown; suite: { name: string; runtime: "native" | "workerd" | "browser"; include: string[] } | null;
+};
+
+type SuiteRequest = { operationId: string; goal: string; target: string; suite: string; file: null; testName: null; mode: "inspect" };
+
+type PackageObservation = {
+  operationId: string; target: string; source: string; mainRevision: string; workingRevision: string;
+  name: string; baselineName: string; workingDigest: string; baselineDigest: string;
+  receiver: { protocol: string; source: string; name: string; className: string | null; targetId: string | null } | null;
+  catalog: { source: string; name: string; kind: string } | null;
+  baselineValue: PackageValue; workingValue: PackageValue;
+  declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
+  suiteRequest: SuiteRequest | null;
+};
+
+type PackageRestore = { status: "restored" | "state-changed" | "not-authorized"; observation: PackageObservation };
+
+/** Restore one approved installed package declaration at its exact working revision. */
+export function restore(operationId: string, workingRevision: string, workingDigest: string):
+      Promise<PackageRestore>;`,
   extensionDossierRead: `/** Read exact owned approval, candidate manifest and release history. */
 
 type ReviewOwner = {

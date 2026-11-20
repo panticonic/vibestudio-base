@@ -31,6 +31,8 @@ If the goal asks to reconcile the installed template and a local migration candi
 
 If the user wants to choose workspace or template assembly parts, resolve package dependencies for a rollout plan, compare the exact authorized revision before planning, or prepare a local assembly draft, call workOnAssemblyGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "workspaceAssembly", and its actual outcome.
 
+If the user asks to inspect or restore an installed worker package declaration, its exact approved baseline, or its resulting verification route, call reviewInstalledPackage with the unchanged goal. Return status "workspace-skill-reviewed", skill "installedPackage", and the actual outcome.
+
 If the goal asks about a declared workspace test or asks you to verify something by running such a test, call verifyWorkspaceSuite with the goal. Return the chosen route and the actual result. A request about a declaration can be answered without execution.
 
 When the user asks to publish, resume, or conditionally run an authorized publication to a disposable owned preview, use publication.publishOwnedPreviewGoal. It checks the exact authorization and can make the requested preview change. Return status "workspace-skill-reviewed", skill "ownedPreview", and the actual result as outcome.

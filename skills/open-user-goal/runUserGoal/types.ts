@@ -1,6 +1,7 @@
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { NewsEvidenceReport } from "./workOnNewsEvidenceGoal/types.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
+export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
 export type { BuildIncidentOutcome } from "./reviewRetainedBuildIncident/types.js";
 export type { DeployedInterfaceOutcome } from "./reviewDeployedInterface/types.js";
 export type { LocalWidthOutcome } from "./reviewLocalExecutionWidth/types.js";

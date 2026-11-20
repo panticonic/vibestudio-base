@@ -251,6 +251,8 @@ const authoredServices = [
   ]),
   authoredService("architectureProviderRead", "Read the assigned installed service and its exact authored declaration.", "base", "architecture/natlang", [{ name: "resolve", params: ["operationId"] }, { name: "declaration", params: ["routeReceipt"] }]),
   authoredService("clientAdmissionRead", "Read the assigned System client, published trust and selected host contract.", "system", "clientdev/natlang", [{ name: "observe", params: ["operationId"] }]),
+  authoredService("installedPackageRead", "Read the exact installed worker package and approved package baseline.", "base", "open-user-goal", [{ name: "discover", params: [] }, { name: "inspect", params: ["operationId"] }]),
+  authoredService("installedPackageChange", "Restore one approved installed package declaration at its exact working revision.", "base", "open-user-goal", [{ name: "restore", params: ["operationId", "workingRevision", "workingDigest"] }]),
   authoredService("extensionDossierRead", "Read exact owned approval, candidate manifest and release history.", "base", "open-user-goal", [{ name: "discover", params: [] }, { name: "candidate", params: ["operationId"] }, { name: "history", params: ["operationId"] }]),
   authoredService("extensionDossierWrite", "Stage one authorized private extension release dossier.", "base", "open-user-goal", [{ name: "stage", params: ["decision"] }]),
   authoredService("extensionReleaseRead", "Read assigned extension source and live approved runtime state.", "base", "extensiondev/natlang", [{ name: "source", params: ["operationId"] }, { name: "runtime", params: ["operationId"] }]),
