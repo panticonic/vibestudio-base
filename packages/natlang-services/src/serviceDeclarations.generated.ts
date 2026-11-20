@@ -17,6 +17,10 @@ export function observeApplication(operationId: string): Promise<AndroidRuntimeO
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  templateAuthoringRead: `/** Inspect the caller-assigned protected-main template authoring plan. */
+
+/** Inspect the caller-assigned protected-main template authoring plan. */
+export function inspect(operationId: string): Promise<TemplateAuthoringPlan>;`,
   automationPlanning: `/** Read the assigned roster of automation definitions and latest run records. */
 
 /** Read the assigned roster of automation definitions and latest run records. */

@@ -30,3 +30,18 @@ judgment stages. Exact composition, scheduling, acquisition and changes to
 workspace state remain owned by the existing Vibestudio extension and host
 controls. Caller-supplied observations carry the actual identity and freshness
 needed by the workflow.
+
+## Review a live template publication plan
+
+The caller assigns the source selection, authoring intent, acknowledged
+companions, and an earlier fingerprint if one was already reviewed. The
+workflow obtains a fresh receipt from Templates and delegates the next step
+to the existing publication review. The receiver describes the exact
+protected-main snapshot and dependency closure. A new name or source
+selection needs a new review even when the protected main event is unchanged.
+
+| Responsibility | Implementation |
+| --- | --- |
+| Acquire the assigned protected-main receipt | `readAuthoringPlan` calls one scoped read-only port. |
+| Preserve the requested source and derive unacknowledged companions | `publicationReviewInput` compares exact repository names and projects the native receipt into the existing input. |
+| Interpret the result and return its basis | `reviewTemplateRelease` calls the existing publication decision tree and returns the actual receipt with the assessment. |

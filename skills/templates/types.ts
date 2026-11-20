@@ -181,3 +181,27 @@ export type TemplateLifecycleReport =
   | { kind: "inspect"; summary: TemplateSummary }
   | { kind: "recover"; remedy: TemplateRemedy }
   | TemplateDecision;
+
+export type TemplateAuthoringRequest = {
+  goal: string;
+  operationId: string;
+  reviewedFingerprint: string | null;
+  acknowledgedParts: string[];
+  destination: string | null;
+  version: string | null;
+};
+
+export type TemplateAuthoringPlan = {
+  mainEventId: string;
+  name: string;
+  requestedParts: string[];
+  includedParts: string[];
+  requiredParts: string[];
+  manifestDigest: string;
+  fingerprint: string;
+};
+
+export type TemplateAuthoringReport = {
+  plan: TemplateAuthoringPlan;
+  review: TemplateLifecycleReport;
+};

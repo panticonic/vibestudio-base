@@ -1673,3 +1673,124 @@ it("reuses the mounted automation planner and rejects a stale handoff", async ()
   await expect(run(request)).resolves.toMatchObject(report("held"));
   expect(reads).toBe(1);
 }, 60_000);
+
+it("reviews the native template plan through the mounted publication tree", async () => {
+  const root = fileURLToPath(new URL("../../..", import.meta.url));
+  const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
+  const calls: string[] = [];
+  const runtime = createNatlangRuntime({
+    platform,
+    agent: async (session) => {
+      const name = session.lam.functionName!;
+      calls.push(name);
+      expect(Object.keys(session.availableServices())).toEqual(
+        name === "readAuthoringPlan" ? ["templateAuthoringRead"] : [],
+      );
+      const actions: Record<string, string> = {
+        runWorkflow: `
+          const item=request.work[0];
+          const report=await domains.templates.reviewTemplateRelease(item.input);
+          return {results:[{kind:"domain",domain:item.domain,operation:item.operation,report}],remaining:[]};
+        `,
+        reviewTemplateRelease: `
+          const plan=await readAuthoringPlan(request.operationId);
+          const input=await publicationReviewInput(request,plan);
+          return {plan,review:await reviewTemplate(input)};
+        `,
+        readAuthoringPlan:
+          "return await templateAuthoringRead.inspect(operationId);",
+        reviewTemplate: "return await reviewPublication(request);",
+        reviewPublication: `
+          if(request.receipt!==null) throw new Error("Authoring inspection cannot assert publication");
+          return {kind:"publication",next:await confirmInspection(request),basis:request.currentFingerprint};
+        `,
+        confirmInspection: `
+          if(request.inspectedFingerprint!==request.currentFingerprint) return "reinspect";
+          if(request.missingParts.length) return "include-required-parts";
+          return request.destination&&request.version ? "ready-to-publish" : "request-target";
+        `,
+      };
+      const result = await session.applyAsync("eval", { code: actions[name]! });
+      if (result.kind === "rejected") throw new Error(result.text);
+    },
+  });
+  const loader = new ProgramLoader({
+    platform,
+    fs: {
+      readFile: (path) => readFile(join(root, path), "utf8"),
+      readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
+      stat: (path) => stat(join(root, path)),
+    },
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const plan = {
+    mainEventId: "main",
+    name: "Review package",
+    requestedParts: ["packages/planner"],
+    includedParts: ["packages/planner", "workers/report"],
+    requiredParts: ["workers/report"],
+    manifestDigest: "manifest",
+    fingerprint: "current",
+  };
+  let reads = 0;
+  const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+    services: {
+      templateAuthoringRead: {
+        inspect: async (id: string) => {
+          expect(id).toBe("assignment");
+          reads++;
+          return structuredClone(plan);
+        },
+      },
+    },
+  })) as (request: unknown) => Promise<unknown>;
+  const goal = "Check whether our proposed template release can proceed";
+  const input = {
+    goal,
+    operationId: "assignment",
+    reviewedFingerprint: "current",
+    acknowledgedParts: ["workers/report"],
+    destination: "review/package",
+    version: "1.0.0",
+  };
+  const invoke = () =>
+    run({
+      goal,
+      work: [
+        {
+          kind: "domain",
+          domain: "templates",
+          operation: "reviewTemplateRelease",
+          input,
+        },
+      ],
+    });
+  const result = (next: string) => ({
+    remaining: [],
+    results: [
+      {
+        report: {
+          plan,
+          review: { kind: "publication", next, basis: plan.fingerprint },
+        },
+      },
+    ],
+  });
+
+  await expect(invoke()).resolves.toMatchObject(result("ready-to-publish"));
+  expect(calls).toEqual([
+    "runWorkflow",
+    "reviewTemplateRelease",
+    "readAuthoringPlan",
+    "reviewTemplate",
+    "reviewPublication",
+    "confirmInspection",
+  ]);
+  input.acknowledgedParts = [];
+  await expect(invoke()).resolves.toMatchObject(
+    result("include-required-parts"),
+  );
+  input.reviewedFingerprint = "different";
+  await expect(invoke()).resolves.toMatchObject(result("reinspect"));
+  expect(reads).toBe(3);
+}, 60_000);

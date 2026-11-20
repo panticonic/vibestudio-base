@@ -58,6 +58,7 @@ function authoredService<const Name extends string>(
 const authoredServices = [
   authoredService("androidRuntimeAudit", "Read an assigned Android device and its current internal application.", "system", "mobile-runtime-audit", [{ name: "observeTarget", params: ["operationId"] }, { name: "observeApplication", params: ["operationId"] }]),
   authoredService("deliveryHistory", "Inspect durable and consumer views of one assigned conversation receipt.", "base", "conversation-evidence-review", [{ name: "inspect", params: ["operationId"] }]),
+  authoredService("templateAuthoringRead", "Inspect the caller-assigned protected-main template authoring plan.", "base", "templates", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("automationPlanning", "Read the assigned roster of automation definitions and latest run records.", "base", "automations", [{ name: "inspect", params: ["operationId"] }]),
   authoredService("chatDeliveryPanel", "Read the exact assigned chat panel and its visible delivery evidence.", "base", "conversation-evidence-review", [{ name: "inspect", params: ["panelId"] }]),
   authoredService("publicationRevision", "Compare caller-assigned immutable website packages and targets.", "base", "publish-preflight", [{ name: "compare", params: ["operationId"] }]),

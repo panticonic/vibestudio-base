@@ -132,6 +132,11 @@ execution.
 
 ## Author and publish
 
+The [Natlang template release review](reviewTemplateRelease.nl) uses the
+current protected-main authoring receipt to check the dependency selection,
+previously reviewed fingerprint, and release target. Use its receipt and
+next prerequisite in the authoring handoff.
+
 Call `authoringParts`, then `inspectAuthoring` with
 `{ name, description, parts }`. Dependencies come from the current workspace's
 `meta/vibestudio.yml`, not the request. In `requiredParts`, repositories

@@ -169,5 +169,26 @@ type TemplateDecision = | {
 type TemplateLifecycleReport = | { kind: "inspect"; summary: TemplateSummary }
   | { kind: "recover"; remedy: TemplateRemedy }
   | TemplateDecision;
+type TemplateAuthoringRequest = {
+  goal: string;
+  operationId: string;
+  reviewedFingerprint: string | null;
+  acknowledgedParts: string[];
+  destination: string | null;
+  version: string | null;
+};
+type TemplateAuthoringPlan = {
+  mainEventId: string;
+  name: string;
+  requestedParts: string[];
+  includedParts: string[];
+  requiredParts: string[];
+  manifestDigest: string;
+  fingerprint: string;
+};
+type TemplateAuthoringReport = {
+  plan: TemplateAuthoringPlan;
+  review: TemplateLifecycleReport;
+};
 declare const fn: NatlangFunction<[error: string], TemplateRemedy>;
 export default fn;

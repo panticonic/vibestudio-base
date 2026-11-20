@@ -5,10 +5,17 @@
   "include": [
     "reviewTemplate.nl",
     "reviewTemplate",
+    "reviewTemplateRelease.nl",
+    "reviewTemplateRelease",
+    "services.d.ts",
     "types.ts",
     "templateRole.nl",
     "templateRemedy.nl",
     "summarize.ts"
   ],
-  "targets": { "main": { "entry": "reviewTemplate.nl" } }
+  "targets": { "main": { "entry": "reviewTemplate.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "templateAuthoringRead": ["reviewTemplateRelease/readAuthoringPlan.nl"]
+  }
 }

@@ -169,5 +169,26 @@ type TemplateDecision = | {
 type TemplateLifecycleReport = | { kind: "inspect"; summary: TemplateSummary }
   | { kind: "recover"; remedy: TemplateRemedy }
   | TemplateDecision;
+type TemplateAuthoringRequest = {
+  goal: string;
+  operationId: string;
+  reviewedFingerprint: string | null;
+  acknowledgedParts: string[];
+  destination: string | null;
+  version: string | null;
+};
+type TemplateAuthoringPlan = {
+  mainEventId: string;
+  name: string;
+  requestedParts: string[];
+  includedParts: string[];
+  requiredParts: string[];
+  manifestDigest: string;
+  fingerprint: string;
+};
+type TemplateAuthoringReport = {
+  plan: TemplateAuthoringPlan;
+  review: TemplateLifecycleReport;
+};
 declare const fn: NatlangFunction<[request: TemplateLifecycleRequest], TemplateLifecycleReport> & { readonly planWorkspace: NatlangFunction<[request: TemplateWorkspaceInput], TemplateDecision> & { readonly assessSource: NatlangFunction<[request: TemplateWorkspaceInput], "review-link" | "capture-snapshot" | "inspect-pin" | "ready">; readonly reviewHost: NatlangFunction<[host: TemplateHostReceipt], Compatibility> }; readonly reviewHost: NatlangFunction<[host: TemplateHostReceipt], Compatibility>; readonly reviewPublication: NatlangFunction<[request: TemplatePublicationInput], TemplateDecision> & { readonly confirmInspection: NatlangFunction<[request: TemplatePublicationInput], "reinspect" | "include-required-parts" | "request-target" | "ready-to-publish">; readonly confirmRelease: NatlangFunction<[receipt: { operationId:string; url:string; commit:string; snapshot:string; matches:boolean }], "published" | "reconcile-receipt"> }; readonly reviewTransfer: NatlangFunction<[request: TemplateTransferInput], TemplateDecision> & { readonly checkDestination: NatlangFunction<[request: TemplateTransferInput], "review-audience" | "refresh-head" | "ready-to-copy">; readonly checkSelection: NatlangFunction<[request: TemplateTransferInput], "refine-selection" | "ready"> }; readonly reviewUpdate: NatlangFunction<[request: TemplateUpdateInput], TemplateDecision> & { readonly monitorState: NatlangFunction<[state: "active" | "paused" | "retired" | "missing"], "use-installed-watch" | "resume-installed-watch" | "watch-retired" | "check-provisioning">; readonly reviewCandidate: NatlangFunction<[request: TemplateUpdateInput], {next: "prepare-review" | "resume-review" | "resolve-conflicts" | "validate-candidate" | "await-approval" | "ready-to-publish"; basis:string}>; readonly reviewHost: NatlangFunction<[host: TemplateHostReceipt], Compatibility> }; readonly templateRole: NatlangFunction<[inspection: TemplateInspection], TemplateRole>; readonly templateRemedy: NatlangFunction<[error: string], TemplateRemedy>; readonly summarize: { readonly summarize: (inspection: TemplateInspection, role: TemplateRole) => TemplateSummary } };
 export default fn;
