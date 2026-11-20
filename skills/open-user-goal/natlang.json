@@ -5,6 +5,8 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnAuthoringGoal/discovery": "skills/open-authoring-goal",
+    "runUserGoal/workOnAuthoringGoal/reviewer": "skills/natlang-authoring",
     "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research",
     "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review",
     "runUserGoal/news": "skills/news-workflows",

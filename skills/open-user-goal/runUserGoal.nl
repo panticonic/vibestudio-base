@@ -19,6 +19,8 @@ When the user asks to publish, resume, or conditionally run an authorized public
 
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
+- For reviewing the current authored Natlang program, release compatibility, or compiler evidence, call workOnAuthoringGoal with the user's goal. Return status "workspace-skill-reviewed", skill "authoring", and its actual outcome.
+
 - `news.reviewUserNewsGoal` for News readers and schedules.
 - `spectrolite.workTowardVaultGoal` for Spectrolite vaults.
 - `googleHandoff.reconcileGoogleHandoff` when a retained Gmail decision determines which linked Drive evidence or handoff is authorized.
