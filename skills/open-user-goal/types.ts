@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }
   | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
@@ -201,3 +202,57 @@ export type AssetIntegrityOutcome = {
 };
 export type AssetRecoveryPlan = { status: "copy"; selection: AssetSelection[] }
   | { status: "verified" | "held"; reason: string };
+
+export type MobileContinuityCard = { id: string; title: string; workspace: string; device: string; edition: "current" | "archive" };
+export type MobileContinuityProfile = MobileContinuityCard & { server: string; packageName: string; adbState: string; expectedBuild: string };
+export type MobileBuildEvidence = {
+  id: string;
+  clientSource: string;
+  declaredAbi: string;
+  providerSource: string;
+  clientManifestDigest: string;
+  providerManifestDigest: string;
+  artifactIntegrity: string | null;
+  expectedBuild: string;
+  observedBuild: string | null;
+  granted: string[];
+  failed: string[];
+};
+export type MobileCacheEvidence = {
+  id: string;
+  status: "loaded" | "absent" | "rejected";
+  preferredSlot: string | null;
+  treeRevision: number | null;
+  removedBadRecord: boolean;
+};
+export type MobileTransportEvidence = {
+  id: string;
+  state: "connected" | "closed" | "revoked";
+  opens: number;
+  recovered: string[];
+  caller: string | null;
+  server: string | null;
+  error: string | null;
+  transient: boolean | null;
+  failureKind: string | null;
+};
+export type MobileRouteEvidence = {
+  id: string;
+  owned: string[];
+  lost: string[];
+  unleased: string[];
+  invalidated: string[];
+};
+export type MobileContinuityEvidence = {
+  build: MobileBuildEvidence;
+  cache: MobileCacheEvidence;
+  transport: MobileTransportEvidence;
+  routes: MobileRouteEvidence;
+};
+export type MobileContinuityOutcome = {
+  profile: string;
+  action: "resume" | "rebuild-shell" | "reacquire-route" | "hold";
+  scope: "owned-fixture";
+  evidence: MobileContinuityEvidence;
+  reason: string;
+};

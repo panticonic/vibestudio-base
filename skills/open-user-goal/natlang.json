@@ -71,6 +71,14 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "mobileContinuity": [
+      "runUserGoal/reviewMobileContinuity/selectProfile/listProfiles.nl",
+      "runUserGoal/reviewMobileContinuity/selectProfile/readProfile.nl",
+      "runUserGoal/reviewMobileContinuity/auditContinuity/readBuild.nl",
+      "runUserGoal/reviewMobileContinuity/auditContinuity/readCache.nl",
+      "runUserGoal/reviewMobileContinuity/auditContinuity/readTransport.nl",
+      "runUserGoal/reviewMobileContinuity/auditContinuity/readRoutes.nl"
+    ],
     "assetHistory": [
       "runUserGoal/reviewAssetIntegrity/discoverVersions.nl",
       "runUserGoal/reviewAssetIntegrity/readVersion/listFiles.nl",

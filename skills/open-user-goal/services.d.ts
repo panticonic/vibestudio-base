@@ -19,6 +19,14 @@ declare module "natlang:services" {
     stage(checkpoints: string[], focus: import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentFocus):
       Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentReceipt | null>;
   };
+  export const mobileContinuity: {
+    discover(): Promise<import("./types.js").MobileContinuityCard[]>;
+    profile(id: string): Promise<import("./types.js").MobileContinuityProfile>;
+    build(id: string): Promise<import("./types.js").MobileBuildEvidence>;
+    cache(id: string): Promise<import("./types.js").MobileCacheEvidence>;
+    transport(id: string): Promise<import("./types.js").MobileTransportEvidence>;
+    routes(id: string): Promise<import("./types.js").MobileRouteEvidence>;
+  };
   export const assetHistory: {
     discover(): Promise<import("./types.js").AssetVersion[]>;
     listFiles(version: string): Promise<import("./types.js").AssetFile[]>;

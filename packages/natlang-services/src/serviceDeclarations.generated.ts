@@ -2065,6 +2065,71 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  mobileContinuity: `/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+
+type MobileContinuityCard = { id: string; title: string; workspace: string; device: string; edition: "current" | "archive" };
+
+type MobileContinuityProfile = MobileContinuityCard & { server: string; packageName: string; adbState: string; expectedBuild: string };
+
+type MobileBuildEvidence = {
+  id: string;
+  clientSource: string;
+  declaredAbi: string;
+  providerSource: string;
+  clientManifestDigest: string;
+  providerManifestDigest: string;
+  artifactIntegrity: string | null;
+  expectedBuild: string;
+  observedBuild: string | null;
+  granted: string[];
+  failed: string[];
+};
+
+type MobileCacheEvidence = {
+  id: string;
+  status: "loaded" | "absent" | "rejected";
+  preferredSlot: string | null;
+  treeRevision: number | null;
+  removedBadRecord: boolean;
+};
+
+type MobileTransportEvidence = {
+  id: string;
+  state: "connected" | "closed" | "revoked";
+  opens: number;
+  recovered: string[];
+  caller: string | null;
+  server: string | null;
+  error: string | null;
+  transient: boolean | null;
+  failureKind: string | null;
+};
+
+type MobileRouteEvidence = {
+  id: string;
+  owned: string[];
+  lost: string[];
+  unleased: string[];
+  invalidated: string[];
+};
+
+/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+export function discover(): Promise<MobileContinuityCard[]>;
+
+/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+export function profile(id: string): Promise<MobileContinuityProfile>;
+
+/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+export function build(id: string): Promise<MobileBuildEvidence>;
+
+/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+export function cache(id: string): Promise<MobileCacheEvidence>;
+
+/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+export function transport(id: string): Promise<MobileTransportEvidence>;
+
+/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
+export function routes(id: string): Promise<MobileRouteEvidence>;`,
   assetHistory: `/** Read exact owned asset manifests and binary file evidence at historical and working VCS states. */
 
 type AssetVersion = { id: string; edition: "archive" | "approved" | "working"; bundle: string; dossier: string };
