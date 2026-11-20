@@ -221,6 +221,7 @@ const vitest = await startVitest("test", [${JSON.stringify(input.pattern)}], {
   root,
   run: true,
   pool: "threads",
+  poolOptions: { threads: { execArgv: ["--import=" + new URL("./dependencies.mjs", import.meta.url).href] } },
   config: false,
   include: ${JSON.stringify(input.include)},
   exclude: ["**/node_modules/**", "**/dist/**"],
