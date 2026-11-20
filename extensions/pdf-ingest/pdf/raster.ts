@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { inflateSync } from "node:zlib";
-import { sha256Hex } from "@vibestudio/content-addressing";
+import { createHash } from "node:crypto";
 
 const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -87,7 +87,7 @@ export function inspectPdfRaster(data: Uint8Array) {
     above.set(current);
   }
   return {
-    imageDigest: sha256Hex(data),
+    imageDigest: createHash("sha256").update(data).digest("hex"),
     width,
     height,
     inkPixels,

@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@vibestudio/extension";
 import { assertPdfBytes } from "./pdf/binary.js";
 import { createArtifactStoreFromStorage, type ArtifactStore } from "./pdf/artifacts.js";
 import { normalizePageImageMode, selectPages } from "./pdf/pages.js";
+import { inspectPdfRaster } from "./pdf/raster.js";
 import {
   extractWithPdfjs,
   pdfDigest,
@@ -243,6 +244,14 @@ export async function activate(ctx: ExtensionContextLike, deps: PdfIngestDeps = 
 
     async readArtifact(artifactId: string): Promise<PdfArtifact> {
       return artifactStore.get(artifactId);
+    },
+
+    async inspectRasterArtifact(artifactId: string) {
+      const artifact = await artifactStore.get(artifactId);
+      if (artifact.mimeType !== "image/png") throw new Error("The retained PDF artifact must be a PNG page.");
+      const raster = inspectPdfRaster(artifact.data);
+      if (raster.imageDigest !== artifact.digest) throw new Error("The retained PDF raster digest changed.");
+      return { ...raster, artifactId: artifact.artifactId, digest: artifact.digest, mimeType: artifact.mimeType };
     },
   };
 

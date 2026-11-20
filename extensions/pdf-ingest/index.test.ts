@@ -90,6 +90,15 @@ describe("@workspace-extensions/pdf-ingest", () => {
     expect(artifact.digest).toBe(rendered.digest);
     expect(artifact.mimeType).toBe("image/png");
     expect(artifact.data.length).toBe(rendered.data.length);
+    const inspected = await api.inspectRasterArtifact(rendered.artifactId);
+    expect(inspected).toMatchObject({
+      artifactId: rendered.artifactId,
+      imageDigest: rendered.digest,
+      width: rendered.width,
+      height: rendered.height,
+    });
+    expect(inspected.inkPixels).toBeGreaterThan(0);
+    expect(inspected.inkBounds).toHaveLength(4);
   });
 
   it("runs OCR fallback through the engine boundary for sparse embedded text", async () => {

@@ -50,6 +50,15 @@
             "reason": "Reads filesystem-backed documents and retained extraction artifacts."
           }
         },
+        "inspectRasterArtifact": {
+          "effect": {
+            "kind": "open"
+          },
+          "website": {
+            "kind": "closed",
+            "reason": "Reads retained extraction artifacts."
+          }
+        },
         "readArtifact": {
           "effect": {
             "kind": "open"
