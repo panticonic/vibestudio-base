@@ -1,0 +1,13 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-local-delivery",
+  "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "targets": { "main": { "entry": "workTowardLocalDelivery.nl" } },
+  "serviceScopes": {
+    "localDeliveryCatalog": ["workTowardLocalDelivery.nl"],
+    "localDeliveryHistory": ["workTowardLocalDelivery/inspectConversation.nl"],
+    "localDeliverySend": ["workTowardLocalDelivery/completeDelivery/commitNote.ts"],
+    "localDeliveryReadback": ["workTowardLocalDelivery/completeDelivery/readAttempt.ts"]
+  }
+}
