@@ -4532,6 +4532,7 @@ export class SemanticWorkspace {
         message: input.message ?? null,
         integratesEventIds: integrationSourceEventIds,
         integratesDeltaIds: derivedDeltaSources,
+        ...(input.templateInstallation ? { templateInstallation: input.templateInstallation } : {}),
         maxApplications: MAX_WORKING_APPLICATIONS,
       });
       this.indexEventMessage(committed.event.eventId, input.message ?? null);

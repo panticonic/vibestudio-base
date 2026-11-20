@@ -463,6 +463,31 @@ export function workspaceTemplateInstallationAt(sql: SqlStorage, revision: strin
   return WorkspaceTemplateInstallationSchema.parse(JSON.parse(row["installation"]));
 }
 
+/** A publication may introduce only the installation saved by its exact event. */
+export function verifyWorkspaceTemplatePublication(
+  sql: SqlStorage,
+  transition: {
+    previousHead: string;
+    proposedHead: string;
+    eventId: string;
+    installation?: import("@vibestudio/service-schemas/vcs").VcsPushInput["templateInstallation"];
+  },
+): void {
+  const changes = sql.exec(
+    `SELECT diff_type, to_event_id, to_installation_json
+       FROM dolt_diff_workspace_template_installations(?, ?) LIMIT 2`,
+    transition.previousHead,
+    transition.proposedHead,
+  ).toArray();
+  if (!transition.installation && changes.length === 0) return;
+  const [change] = changes;
+  if (transition.installation && changes.length === 1 &&
+      change?.["diff_type"] === "added" &&
+      change["to_event_id"] === transition.eventId &&
+      change["to_installation_json"] === canonicalJson(transition.installation)) return;
+  throw new SemanticVcsError("RevisionChanged", "Publication must match the saved template installation");
+}
+
 /** List applications introduced on the first-parent lineage, oldest first. */
 export function workspaceApplicationsAt(
   sql: SqlStorage,

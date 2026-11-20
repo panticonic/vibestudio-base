@@ -1651,13 +1651,15 @@ export class ParticipantHistory {
       if (input.concludes?.kind === "event") {
         throw new SemanticVcsError("IntegrationIncomplete", "Workspace integration needs a completed decision");
       }
-      if (applicationIds.length === 0) {
+      const installation = input.templateInstallation;
+      if (applicationIds.length === 0 && !installation) {
         throw new SemanticVcsError("RevisionChanged", "Nothing is working");
       }
       const expected = input.expectedWorkingHead;
-      if (expected.kind !== "application" ||
-          applicationIds.at(-1) !== expected.applicationId ||
-          workspaceCommitForRef(sql, current, expected) !== current) {
+      const expectedTip = applicationIds.length
+        ? expected.kind === "application" && applicationIds.at(-1) === expected.applicationId
+        : expected.kind === "event" && parent.eventId === expected.eventId;
+      if (!expectedTip || workspaceCommitForRef(sql, current, expected) !== current) {
         throw new SemanticVcsError("RevisionChanged", "Workspace save names a different working revision");
       }
       const sources = workspaceMergeSourcesAt(sql, current, parent.head, applicationIds);
@@ -1684,13 +1686,19 @@ export class ParticipantHistory {
       };
       const event: WorkspaceEventRecord = {
         ...fields,
-        eventId: compactId("workspace-event", fields),
+        eventId: compactId("workspace-event", installation ? { ...fields, installation } : fields),
         snapshotSource: null,
       };
       const result = this.#saveResult(contextId, event.eventId, applicationIds, sources);
       const { head } = this.#commit(contextId, expectedHead, input.message ?? "Save workspace revision", () => {
         this.#recordCommand(contextId, command, event.createdAt);
         recordDoltWorkspaceEvent(sql, event);
+        if (installation) {
+          sql.exec(
+            "INSERT INTO workspace_template_installations (event_id, installation_json) VALUES (?, ?)",
+            event.eventId, canonicalJson(installation),
+          );
+        }
         sources.deltaIds.forEach((deltaId, ordinal) => sql.exec(
           "INSERT INTO gad_workspace_event_external_sources (event_id, ordinal, delta_id) VALUES (?, ?, ?)",
           event.eventId, ordinal, deltaId,

@@ -958,11 +958,12 @@ export class SemanticVcsStore {
     message: string | null;
     integratesEventIds: readonly string[];
     integratesDeltaIds?: readonly string[];
+    templateInstallation?: import("@vibestudio/service-schemas/vcs").VcsCommitInput["templateInstallation"];
     maxApplications: number;
   }): { context: ContextRecord; event: WorkspaceEventRecord } {
     const context = this.assertExpectedWorking(input.contextId, input.expectedWorkingHead);
     const chain = this.workingChain(input.contextId, input.maxApplications);
-    if (chain.applicationIds.length === 0 && input.integratesEventIds.length === 0) {
+    if (chain.applicationIds.length === 0 && input.integratesEventIds.length === 0 && !input.templateInstallation) {
       throw new SemanticVcsError("RevisionChanged", "Nothing is working");
     }
     for (const sourceEventId of input.integratesEventIds) {
@@ -984,7 +985,9 @@ export class SemanticVcsStore {
       message: input.message,
       createdAt,
     };
-    const eventId = compactId("workspace-event", eventInput);
+    const eventId = compactId("workspace-event", input.templateInstallation
+      ? { ...eventInput, templateInstallation: input.templateInstallation }
+      : eventInput);
     this.sql.exec(
       `INSERT INTO gad_workspace_events
        (event_id, command_id, kind, result_workspace_fact_root_id, message, created_at)

@@ -45,6 +45,7 @@ import {
   type VcsListFilesInput,
   type VcsMergeInput,
   type VcsMoveInput,
+  type VcsPushInput,
   type VcsNeighborsInput,
   type VcsReadFilesInput,
   type VcsRegisterExternalDeltaInput,
@@ -67,6 +68,7 @@ import {
   workspacePrivateReplayContent,
   workspaceRepositoriesAt,
   workspaceTemplateInstallationAt,
+  verifyWorkspaceTemplatePublication,
 } from "./doltWorkspaceState.js";
 import {
   installPreparedReplayStep,
@@ -1520,18 +1522,39 @@ export class GadHistoryDO extends DurableObjectBase {
     });
   }
 
+  @rpc(hostRead)
+  async verifyHistoryTemplatePublication(input: {
+    contextId: string;
+    previousHead: string;
+    proposedHead: string;
+    eventId: string;
+    installation?: VcsPushInput["templateInstallation"];
+  }): Promise<void> {
+    const saved = await this.#assertSaved(this.#history(), input.contextId, input.proposedHead);
+    if (saved.eventId !== input.eventId) {
+      throw new Error("Workspace publication names a different saved event");
+    }
+    verifyWorkspaceTemplatePublication(this.sql, input);
+  }
+
   @rpc(hostWrite)
   async publishApprovedHistory(input: {
     contextId: string;
     publication: MainPublication;
     proposedEventId: string;
     origin: DoltRemoteTarget;
+    installation?: VcsPushInput["templateInstallation"];
   }) {
     const history = this.#history();
     const saved = await this.#assertSaved(history, input.contextId, input.publication.proposedHead);
     if (saved.eventId !== input.proposedEventId) {
       throw new Error("Workspace publication names a different saved event");
     }
+    verifyWorkspaceTemplatePublication(this.sql, {
+      ...input.publication,
+      eventId: saved.eventId,
+      ...(input.installation ? { installation: input.installation } : {}),
+    });
     this.#assertWritable();
     return history.publishApprovedMain(input.contextId, input.publication, input.origin);
   }
