@@ -122,6 +122,12 @@ function incomingBranch(input: IncomingHistoryPublication): string {
 }
 type ReplayContextTip = { id: string; committed: string; working: string };
 type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[]; frozenPlanDigest?: string };
+type LegacyReplaySeal = { receiptDigest: string; generation: string };
+type ReplayReceiptDetails = ReplayReceipt & {
+  sourceInitialization?: WorkspaceSourceInitializationReceipt | null;
+  legacySeal?: LegacyReplaySeal | null;
+};
+const legacyReplaySealKey = "history-legacy-replay-seal";
 const sourceInitializationKey = "history-source-initialization";
 type SharedHistorySeed = { sourceNodeId: string; head: string; eventId: string };
 type SharedHistorySeedReceipt = { seed: SharedHistorySeed; originalHead: string; installed: boolean };
@@ -424,8 +430,8 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  readHistoryReplayReceipt(input?: { includeSourceInitialization: true }):
-    (ReplayReceipt & { sourceInitialization?: WorkspaceSourceInitializationReceipt | null }) | null {
+  readHistoryReplayReceipt(input?: { includeSourceInitialization?: true; includeLegacySeal?: true }):
+    ReplayReceiptDetails | null {
     this.#assertCanonical();
     const stored = this.getStateValue("history-replay-receipt");
     if (!stored) return null;
@@ -433,14 +439,41 @@ export class GadHistoryDO extends DurableObjectBase {
     if (receipt.head !== this.getStateValue("history-installed")) {
       throw new Error("Workspace replay receipt has a different installed head");
     }
-    if (!input?.includeSourceInitialization) return receipt;
-    const initialization = this.getStateValue(sourceInitializationKey);
-    return {
-      ...receipt,
-      sourceInitialization: initialization
-        ? this.#sourceInitializationReceipt(JSON.parse(initialization))
-        : null,
-    };
+    if (!input) return receipt;
+    const result: ReplayReceiptDetails = { ...receipt };
+    if (input?.includeSourceInitialization) {
+      const initialization = this.getStateValue(sourceInitializationKey);
+      result.sourceInitialization = initialization ? this.#sourceInitializationReceipt(JSON.parse(initialization)) : null;
+    }
+    if (input?.includeLegacySeal) {
+      const seal = this.getStateValue(legacyReplaySealKey);
+      result.legacySeal = seal ? this.#validateLegacyReplaySeal(JSON.parse(seal), receipt) : null;
+    }
+    return result;
+  }
+
+  /** Record the old store's irreversible seal under this exact canonical receipt. */
+  @rpc(hostWrite)
+  recordHistoryReplaySeal(input: LegacyReplaySeal): LegacyReplaySeal {
+    const seal = this.#validateLegacyReplaySeal(input, this.readHistoryReplayReceipt());
+    const next = canonicalJson(seal);
+    const prior = this.getStateValue(legacyReplaySealKey);
+    if (prior !== null && prior !== next)
+      throw new Error("A different legacy history seal is already recorded");
+    if (prior === null) this.setStateValue(legacyReplaySealKey, next);
+    return seal;
+  }
+
+  #validateLegacyReplaySeal(input: LegacyReplaySeal, receipt: ReplayReceipt | null): LegacyReplaySeal {
+    if (!receipt?.frozenPlanDigest ||
+        input?.receiptDigest !== sha256HexSyncText(canonicalJson(receipt))) {
+      throw new Error("Legacy history seal requires the exact history replay receipt");
+    }
+    if (typeof input.generation !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(input.generation)) {
+      throw new Error("Invalid legacy history seal generation");
+    }
+    return { receiptDigest: input.receiptDigest, generation: input.generation };
   }
 
   @rpc(hostWrite)

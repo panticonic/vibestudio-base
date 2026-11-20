@@ -11,6 +11,33 @@ class ReplayHistoryFixture extends GadHistoryDO {
   }
 }
 
+it("records the sealed legacy generation only for the exact installed replay", async () => {
+  const replay = {
+    head: "a".repeat(40), eventId: "shared-tip", contexts: [], frozenPlanDigest: "b".repeat(64),
+  };
+  const seal = {
+    receiptDigest: sha256HexSyncText(canonicalJson(replay)),
+    generation: "b882b7f0-0e3a-4ec3-9f6d-30ea541b14e1",
+  };
+  const env = { __objectKey: "canonical" };
+  const { instance, db } = await createTestDO(ReplayHistoryFixture, env);
+  expect(() => instance.recordHistoryReplaySeal(seal)).toThrow("exact history replay receipt");
+  instance.installReplay(replay);
+  expect(instance.readHistoryReplayReceipt({ includeLegacySeal: true })).toEqual({ ...replay, legacySeal: null });
+  expect(() => instance.recordHistoryReplaySeal({ ...seal, receiptDigest: "0".repeat(64) }))
+    .toThrow("exact history replay receipt");
+  expect(() => instance.recordHistoryReplaySeal({ ...seal, generation: "invalid" }))
+    .toThrow("Invalid legacy history seal generation");
+  expect(instance.recordHistoryReplaySeal(seal)).toEqual(seal);
+  const { instance: reopened } = await createTestDO(ReplayHistoryFixture, env, { db });
+  expect(reopened.readHistoryReplayReceipt()).toEqual(replay);
+  expect(reopened.readHistoryReplayReceipt({ includeLegacySeal: true })).toEqual({ ...replay, legacySeal: seal });
+  expect(reopened.recordHistoryReplaySeal(seal)).toEqual(seal);
+  expect(() => reopened.recordHistoryReplaySeal({
+    ...seal, generation: "c5cedebf-ee43-4473-b6e4-ca3375df8972",
+  })).toThrow("different legacy history seal");
+});
+
 it("binds the original template initialization to the verified replay and persists it once", async () => {
   const replay = {
     head: "a".repeat(40),
