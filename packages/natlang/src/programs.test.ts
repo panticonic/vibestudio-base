@@ -469,6 +469,8 @@ it.each([
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
   ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal"],
   ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
+  ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal"],
+  ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal"],
   ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
 ])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable) => {
   const base = new URL("../../../", import.meta.url);

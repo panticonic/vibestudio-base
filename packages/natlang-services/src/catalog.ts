@@ -113,6 +113,12 @@ const authoredServices = [
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("googleGoalDiscovery", "Discover the authorized Drive folders and change sources for the current goal.", "google-workspace", "google-drive/driveWorkflow", [{ name: "discover", params: [] }]),
   authoredService("gmailGoalCatalog", "Discover authorized retained Gmail compose records.", "google-workspace", "open-gmail-goal/program", [{ name: "discover", params: [] }]),
+  authoredService("calendarGoalCatalog", "Discover authorized calendars and their current roles.", "google-workspace", "open-calendar-goal/program", [{ name: "discover", params: [] }]),
+  authoredService("calendarGoalWindows", "Read and refresh a bounded calendar window.", "google-workspace", "open-calendar-goal/program", [{ name: "open", params: ["id", "start", "end"] }, { name: "refresh", params: ["windowId"] }]),
+  authoredService("calendarGoalReadback", "Verify a calendar record freshly before using it.", "google-workspace", "open-calendar-goal/program", [{ name: "verify", params: ["record"] }]),
+  authoredService("calendarGoalHandoff", "Stage a verified scheduling decision in workspace scratch.", "google-workspace", "open-calendar-goal/program", [{ name: "stage", params: ["decision"] }]),
+  authoredService("artifactLibrary", "Observe authorized references and apply a change against the current library basis.", "personal", "open-personal-artifacts", [{ name: "observe", params: [] }, { name: "apply", params: ["basis", "mutation"] }]),
+  authoredService("artifactCollection", "Observe an owned collection and place or link its authorized artifacts.", "personal", "open-personal-artifacts", [{ name: "observe", params: [] }, { name: "apply", params: ["basis", "mutation"] }, { name: "link", params: ["basis", "panelId", "libraryBasis", "bookmarkId", "heading"] }]),
   authoredService("gmailGoalCompose", "Read the retained lineage of a discovered Gmail compose.", "google-workspace", "open-gmail-goal/program", [{ name: "read", params: ["id"] }]),
   authoredService("gmailGoalProvider", "Read provider evidence bound to the observed draft or retained delivery.", "google-workspace", "open-gmail-goal/program", [
     { name: "getDraft", params: ["composeId", "draftId"] }, { name: "findDrafts", params: ["composeId", "cursor"] },

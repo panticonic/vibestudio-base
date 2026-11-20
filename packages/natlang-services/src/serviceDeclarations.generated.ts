@@ -1351,6 +1351,182 @@ type ComposeSelection = { id: string; title: string; room: string };
 
 /** Discover authorized retained Gmail compose records. */
 export function discover(): Promise<ComposeSelection[]>;`,
+  calendarGoalCatalog: `/** Discover authorized calendars and their current roles. */
+
+type CalendarSource = { id: string; name: string; description: string; timeZone: string };
+
+/** Discover authorized calendars and their current roles. */
+export function discover(): Promise<CalendarSource[]>;`,
+  calendarGoalWindows: `/** Read and refresh a bounded calendar window. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarWindow = {
+  id: string;
+  calendarId: string;
+  status: "complete" | "unavailable";
+  records: CalendarRecord[];
+};
+
+/** Read and refresh a bounded calendar window. */
+export function open(id: string, start: string, end: string): Promise<CalendarWindow>;
+
+/** Read and refresh a bounded calendar window. */
+export function refresh(windowId: string): Promise<CalendarWindow>;`,
+  calendarGoalReadback: `/** Verify a calendar record freshly before using it. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarReadback = {
+  status: "current" | "changed" | "missing" | "unavailable";
+  record: CalendarRecord | null;
+};
+
+/** Verify a calendar record freshly before using it. */
+export function verify(record: CalendarRecord): Promise<CalendarReadback>;`,
+  calendarGoalHandoff: `/** Stage a verified scheduling decision in workspace scratch. */
+
+type CalendarRecord = {
+  calendarId: string;
+  eventId: string;
+  title: string;
+  description: string;
+  status: string;
+  updated: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeZone: string;
+  revision: string;
+};
+
+type CalendarDecision = {
+  status: "selected" | "held" | "incomplete" | "stale";
+  selection: CalendarRecord | null;
+  evidence: CalendarRecord[];
+};
+
+type CalendarHandoff = { path: string; sha256: string };
+
+/** Stage a verified scheduling decision in workspace scratch. */
+export function stage(decision: CalendarDecision): Promise<CalendarHandoff>;`,
+  artifactLibrary: `/** Observe authorized references and apply a change against the current library basis. */
+
+type ArtifactBookmark = {
+  id: number;
+  folder: string;
+  title: string;
+  url: string;
+};
+
+type ArtifactVisit = {
+  url: string;
+  title: string;
+  lastVisitTime: number;
+};
+
+type ArtifactLibrary = {
+  id: string;
+  availableFolders: string[];
+  bookmarks: ArtifactBookmark[];
+  visits: ArtifactVisit[];
+};
+
+type ArtifactLibraryMutation =
+  | { kind: "save"; folder: string; url: string; title: string }
+  | { kind: "rename"; id: number; title: string }
+  | { kind: "file"; id: number; folder: string }
+  | { kind: "retire"; id: number; keepId: number };
+
+type ArtifactMutationStatus = "applied" | "changed" | "held";
+
+type ArtifactLibraryEffect = {
+  status: ArtifactMutationStatus;
+  state: ArtifactLibrary;
+};
+
+/** Observe authorized references and apply a change against the current library basis. */
+export function observe(): Promise<ArtifactLibrary>;
+
+/** Observe authorized references and apply a change against the current library basis. */
+export function apply(
+      basis: string,
+      mutation: ArtifactLibraryMutation,
+    ): Promise<ArtifactLibraryEffect>;`,
+  artifactCollection: `/** Observe an owned collection and place or link its authorized artifacts. */
+
+type ArtifactNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  source: string | null;
+  contextId: string | null;
+  note: string | null;
+};
+
+type ArtifactCollection = {
+  id: string;
+  rootId: string;
+  complete: boolean;
+  nodes: ArtifactNode[];
+};
+
+type ArtifactCollectionMutation =
+  | { kind: "note"; panelId: string; text: string | null }
+  | { kind: "group"; parentId: string; title: string }
+  | { kind: "move"; panelId: string; parentId: string; afterId: string | null };
+
+type ArtifactMutationStatus = "applied" | "changed" | "held";
+
+type ArtifactCollectionEffect = {
+  status: ArtifactMutationStatus;
+  state: ArtifactCollection;
+};
+
+/** Observe an owned collection and place or link its authorized artifacts. */
+export function observe(): Promise<ArtifactCollection>;
+
+/** Observe an owned collection and place or link its authorized artifacts. */
+export function apply(
+      basis: string,
+      mutation: ArtifactCollectionMutation,
+    ): Promise<ArtifactCollectionEffect>;
+
+/** Observe an owned collection and place or link its authorized artifacts. */
+export function link(
+      basis: string,
+      panelId: string,
+      libraryBasis: string,
+      bookmarkId: number,
+      heading: string,
+    ): Promise<ArtifactCollectionEffect>;`,
   gmailGoalCompose: `/** Read the retained lineage of a discovered Gmail compose. */
 
 type RetainedCompose = {
