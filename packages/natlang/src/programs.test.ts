@@ -469,10 +469,11 @@ it.each([
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
   ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal"],
   ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
-  ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal"],
+  ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal", "workOnPersonalArtifactsGoal/maintainLibrary"],
+  ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory"],
   ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal"],
   ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
-])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable) => {
+])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable, owner = callable) => {
   const base = new URL("../../../", import.meta.url);
   const installed = new URL(`../${template}/`, base);
   const skillPath = `skills/${skill}`;
@@ -492,6 +493,6 @@ it.each([
   const path = `runUserGoal/${namespace}/${callable}.nl`;
   expect(program.functions.map(fn => fn.source)).toContain(path);
   const scopes = program.serviceScopes[service] ?? [];
-  expect(scopes).toContain(path);
+  expect(scopes).toContain(`runUserGoal/${namespace}/${owner}.nl`);
   expect(scopes.every(scope => scope.startsWith(`runUserGoal/${namespace}/`))).toBe(true);
 });

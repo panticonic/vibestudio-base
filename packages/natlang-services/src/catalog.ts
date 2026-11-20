@@ -118,6 +118,9 @@ const authoredServices = [
   authoredService("calendarGoalReadback", "Verify a calendar record freshly before using it.", "google-workspace", "open-calendar-goal/program", [{ name: "verify", params: ["record"] }]),
   authoredService("calendarGoalHandoff", "Stage a verified scheduling decision in workspace scratch.", "google-workspace", "open-calendar-goal/program", [{ name: "stage", params: ["decision"] }]),
   authoredService("artifactLibrary", "Observe authorized references and apply a change against the current library basis.", "personal", "open-personal-artifacts", [{ name: "observe", params: [] }, { name: "apply", params: ["basis", "mutation"] }]),
+  authoredService("archiveTimeline", "Discover milestones and read committed documents from the authorized archive.", "personal", "open-personal-history", [
+    { name: "discover", params: [] }, { name: "list", params: ["eventId"] }, { name: "read", params: ["eventId", "path"] },
+  ]),
   authoredService("artifactCollection", "Observe an owned collection and place or link its authorized artifacts.", "personal", "open-personal-artifacts", [{ name: "observe", params: [] }, { name: "apply", params: ["basis", "mutation"] }, { name: "link", params: ["basis", "panelId", "libraryBasis", "bookmarkId", "heading"] }]),
   authoredService("gmailGoalCompose", "Read the retained lineage of a discovered Gmail compose.", "google-workspace", "open-gmail-goal/program", [{ name: "read", params: ["id"] }]),
   authoredService("gmailGoalProvider", "Read provider evidence bound to the observed draft or retained delivery.", "google-workspace", "open-gmail-goal/program", [

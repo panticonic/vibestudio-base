@@ -1480,6 +1480,29 @@ export function apply(
       basis: string,
       mutation: ArtifactLibraryMutation,
     ): Promise<ArtifactLibraryEffect>;`,
+  archiveTimeline: `/** Discover milestones and read committed documents from the authorized archive. */
+
+type Milestone = { label: string; eventId: string };
+
+type Lead = { eventId: string; snippet: string };
+
+type Scope = { milestones: Milestone[]; leads: Lead[] };
+
+type Source = {
+  eventId: string;
+  path: string;
+  contentHash: string;
+  text: string;
+};
+
+/** Discover milestones and read committed documents from the authorized archive. */
+export function discover(): Promise<Scope>;
+
+/** Discover milestones and read committed documents from the authorized archive. */
+export function list(eventId: string): Promise<string[]>;
+
+/** Discover milestones and read committed documents from the authorized archive. */
+export function read(eventId: string, path: string): Promise<Source | null>;`,
   artifactCollection: `/** Observe an owned collection and place or link its authorized artifacts. */
 
 type ArtifactNode = {
