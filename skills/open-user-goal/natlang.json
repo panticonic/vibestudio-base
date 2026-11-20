@@ -5,6 +5,7 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnRecoveryHandoff/scratch": "skills/scratch-handoff",
     "runUserGoal/workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",
     "runUserGoal/workOnCapabilityGoal/workspace": "skills/open-doc-plan",
     "runUserGoal/workOnCapabilityGoal/help": "skills/sandbox/help",
@@ -47,6 +48,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "recoveryHandoffLink": ["runUserGoal/workOnRecoveryHandoff/readDirective.nl", "runUserGoal/workOnRecoveryHandoff/acquireSources.nl"],
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
     "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"],
     "goalBrowser": ["runUserGoal/workInBrowser.nl"],

@@ -1461,6 +1461,26 @@ export function submit(task: string, revision: number, basis: string, content: s
 
 /** Submit one exact-revision owned local handoff and read back its original attempt. */
 export function read(attemptId: string): Promise<MessageReceipt | null>;`,
+  recoveryHandoffLink: `/** Read the current local release directive and bind exact native recovery to its scratch assignment. */
+
+type RecoveryHandoffDirective = {
+  revision: number;
+  recipient: string;
+  disposition: "requested" | "cancelled" | "review-only";
+  questions: string[];
+};
+
+type RecoveryHandoffRequest = { goal: string; questions: string[]; sources: { id: string; path: string }[] };
+
+type RecoveryHandoffInput = { directive: RecoveryHandoffDirective; request: RecoveryHandoffRequest | null };
+
+/** Read the current local release directive and bind exact native recovery to its scratch assignment. */
+export function discover(): Promise<RecoveryHandoffDirective>;
+
+/** Read the current local release directive and bind exact native recovery to its scratch assignment. */
+export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
+      directive: RecoveryHandoffDirective
+    ): Promise<RecoveryHandoffInput>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };

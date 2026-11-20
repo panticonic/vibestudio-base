@@ -1,4 +1,10 @@
 declare module "natlang:services" {
+  export const recoveryHandoffLink: {
+    discover(): Promise<import("./runUserGoal/workOnRecoveryHandoff/contract.js").RecoveryHandoffDirective>;
+    prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
+      directive: import("./runUserGoal/workOnRecoveryHandoff/contract.js").RecoveryHandoffDirective
+    ): Promise<import("./runUserGoal/workOnRecoveryHandoff/contract.js").RecoveryHandoffInput>;
+  };
   export const goalDiscovery: {
     search(queries: string[]): Promise<import("./types.js").GoalSearchResult[]>;
     snapshotTime(): number;
