@@ -2059,6 +2059,65 @@ export function open(pairReceipt: string): Promise<OperatorRoute>;
 
 /** Inspect, pair and verify a private terminal profile against the observed hub. */
 export function verify(routeReceipt: string): Promise<OperatorChild>;`,
+  programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
+
+type RunSample = {
+  id: string;
+  label: string;
+  purpose: string;
+  authorization: "initial" | "after-rejection" | "after-interruption";
+};
+
+type RunProgram = {
+  id: string;
+  label: string;
+  purpose: string;
+  state: "active" | "archived";
+  permission: "inspect" | "trial" | "verify-and-sign";
+  samples: RunSample[];
+};
+
+type RunInspection = {
+  programId: string;
+  revision: string;
+  callable: string | null;
+  evidence: unknown;
+};
+
+/** Discover and compile the owned current workspace program and its authorized sample scope. */
+export function list(): Promise<RunProgram[]>;
+
+/** Discover and compile the owned current workspace program and its authorized sample scope. */
+export function inspect(programId: string): Promise<RunInspection | null>;`,
+  programExecution: `/** Run an authorized typed sample and independently read its retained native output. */
+
+type RunOutcome = "returned" | "rejected" | "interrupted";
+
+type StartedRun = { id: string; status: RunOutcome };
+
+type ProgramOutputReceipt = {
+  id: string;
+  sampleId: string;
+  revision: string;
+  status: RunOutcome;
+  signatureAuthorized: boolean;
+  verification: "verified" | "unchecked" | "mismatch" | "stale" | "failed";
+  output: unknown;
+  error: string | null;
+  evidence: unknown;
+};
+
+/** Run an authorized typed sample and independently read its retained native output. */
+export function run(programId: string, revision: string, sampleId: string): Promise<StartedRun | null>;
+
+/** Run an authorized typed sample and independently read its retained native output. */
+export function read(receiptId: string): Promise<ProgramOutputReceipt | null>;`,
+  programReceiptSigner: `/** Stage the signed receipt for an authorized independently verified current output. */
+
+type SignedOutputReceipt = { path: string; sha256: string; receiptId: string; publicKey: string };
+
+/** Stage the signed receipt for an authorized independently verified current output. */
+export function stage(receiptId: string): Promise<SignedOutputReceipt | null>;`,
   authoringDiscovery: `/** Discover authoring records and bind a candidate to its released evidence and authorized review brief. */
 
 type AuthoringSource = {
