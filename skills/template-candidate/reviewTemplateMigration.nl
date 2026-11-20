@@ -1,5 +1,6 @@
 ---
 description: Work through an open workspace template migration review using deployed and local evidence.
+uses: [stageTemplateCandidate]
 args:
   goal: string
 returns: MigrationReport

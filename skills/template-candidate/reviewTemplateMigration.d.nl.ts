@@ -117,5 +117,9 @@ type MigrationReport = {
   handoff: MigrationHandoff | null;
   answer: string;
 };
-declare const fn: NatlangFunction<[goal: string], MigrationReport> & { readonly chooseMigrationEvidence: NatlangFunction<[goal: string, current: MigrationObservation], string[]>; readonly decideMigration: NatlangFunction<[goal: string, current: MigrationObservation, readings: MigrationRead[]], MigrationDecision>; readonly finishMigration: NatlangFunction<[decision: MigrationDecision, candidate: CandidateReport | null], MigrationDecision> };
+declare const fn: NatlangFunction<[goal: string], MigrationReport> & { readonly chooseMigrationEvidence: NatlangFunction<[goal: string, current: MigrationObservation], string[]>; readonly decideMigration: NatlangFunction<[goal: string, current: MigrationObservation, readings: MigrationRead[]], MigrationDecision>; readonly finishMigration: NatlangFunction<[decision: MigrationDecision, candidate: CandidateReport | null], MigrationDecision>; readonly stageTemplateCandidate: NatlangFunction<[request: CandidateRequest], CandidateReport> & { readonly inspectOffer: NatlangFunction<[request: CandidateRequest], { decision: OfferDecision; offer: CandidateOffer | null }> & { readonly assessOffer: NatlangFunction<[request: CandidateRequest, offer: CandidateOffer | null], OfferDecision>; readonly readOffer: NatlangFunction<[], CandidateOffer | null> }; readonly prepareCandidate: NatlangFunction<[], StageReceipt> & { readonly requestPreparation: NatlangFunction<[], StageReceipt> }; readonly reconcileCandidate: NatlangFunction<[request: CandidateRequest, receipt: StageReceipt], { status: ReportStatus; candidate: CandidateReview | null }> & { readonly chooseReview: NatlangFunction<[candidate: CandidateReview], "already-published" | "resolve-conflicts" | "validate-candidate">; readonly readCandidate: NatlangFunction<[], CandidateState | null>; readonly candidateIdentity: { readonly verify: (request: CandidateRequest, receipt: StageReceipt, observed: CandidateState | null) => | { state: "verified"; candidate: CandidateReview }
+  | {
+      state: "unconfirmed" | "stale-base";
+      candidate: null;
+    } } } } };
 export default fn;
