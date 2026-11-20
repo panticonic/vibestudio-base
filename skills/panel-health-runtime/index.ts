@@ -8,6 +8,7 @@ type PanelScope = {
   contextId: string;
   source: string;
   markerIds: readonly string[];
+  session?: Awaited<ReturnType<PanelHandle["cdp"]["session"]>>;
 };
 type ReadablePanel = Pick<PanelHandle, "id" | "diagnose" | "observe" | "cdp">;
 
@@ -20,11 +21,12 @@ export function bindPanelHealth(
   let previous: PanelHealthObservation | undefined;
   let reading = false;
 
-  async function readMarkers() {
-    const session = await handle.cdp.session();
+  async function readMarkers(observation: Awaited<ReturnType<ReadablePanel["observe"]>>) {
+    const borrowed = scope.session;
+    const session = borrowed ?? await handle.cdp.session();
     try {
       const ids = JSON.stringify(markerIds);
-      return await session.page.evaluate<PanelHealthObservation["markers"]>(
+      const markers = await session.page.evaluate<PanelHealthObservation["markers"]>(
         `(() => {
           const ids = ${ids};
           const marked = Array.from(document.querySelectorAll("[data-panel-health]"));
@@ -35,8 +37,16 @@ export function bindPanelHealth(
           });
         })()`,
       );
+      if (borrowed) {
+        const bound = session.receipt?.generation;
+        if (observation.kind !== "workspace" || !bound || bound.panelId !== observation.panelId ||
+            bound.attemptId !== observation.attemptId || bound.buildKey !== observation.buildKey ||
+            bound.runtimeEntityId !== observation.runtimeEntityId)
+          throw new Error("The retained CDP session does not match the observed renderer");
+      }
+      return markers;
     } finally {
-      await session.close();
+      if (!borrowed) await session.close();
     }
   }
 
@@ -52,7 +62,7 @@ export function bindPanelHealth(
         "The inspected renderer is outside the assigned panel scope",
       );
     }
-    const markers = observation.phase === "ready" ? await readMarkers() : [];
+    const markers = observation.phase === "ready" ? await readMarkers(observation) : [];
     const verified = await handle.observe();
     if (
       verified.panelId !== observation.panelId ||
