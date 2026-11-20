@@ -2117,6 +2117,65 @@ export function open(pairReceipt: string): Promise<OperatorRoute>;
 
 /** Inspect, pair and verify a private terminal profile against the observed hub. */
 export function verify(routeReceipt: string): Promise<OperatorChild>;`,
+  openEvalCatalog: `/** Discover owned eval jobs and inspect one exact original retained attempt. */
+
+type EvalAttemptCard = {
+  runId: string;
+  role: "prior" | "latest" | "retry";
+  label: string;
+  authority: "approved" | "withdrawn";
+};
+
+type EvalJobCard = {
+  id: string;
+  title: string;
+  summary: string;
+  state: "active" | "archived";
+  attempts: EvalAttemptCard[];
+};
+
+type OpenEvalObservation = {
+  jobId: string;
+  attempt: EvalAttemptCard;
+  terminal: "returned" | "failed" | "cancelled";
+  runDigest: string;
+  resultDigest: string | null;
+  exactRetryAuthorized: boolean;
+  request: { goal: string; operationId: string };
+};
+
+/** Discover owned eval jobs and inspect one exact original retained attempt. */
+export function discover(): Promise<EvalJobCard[]>;
+
+/** Discover owned eval jobs and inspect one exact original retained attempt. */
+export function open(jobId: string, runId: string): Promise<OpenEvalObservation | null>;`,
+  openEvalReentry: `/** Start one authorized exact recovery attempt after confirming no original effect. */
+
+type EvalAttemptCard = {
+  runId: string;
+  role: "prior" | "latest" | "retry";
+  label: string;
+  authority: "approved" | "withdrawn";
+};
+
+type OpenEvalObservation = {
+  jobId: string;
+  attempt: EvalAttemptCard;
+  terminal: "returned" | "failed" | "cancelled";
+  runDigest: string;
+  resultDigest: string | null;
+  exactRetryAuthorized: boolean;
+  request: { goal: string; operationId: string };
+};
+
+/** Start one authorized exact recovery attempt after confirming no original effect. */
+export function retry(jobId: string, runId: string): Promise<OpenEvalObservation | null>;`,
+  openEvalHandoff: `/** Stage an independently verified committed eval result in an authorized scratch handoff. */
+
+type EvalHandoffArtifact = { path: string; bytes: number; sha256: string; runId: string };
+
+/** Stage an independently verified committed eval result in an authorized scratch handoff. */
+export function stage(jobId: string, runId: string): Promise<EvalHandoffArtifact | null>;`,
   programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
 
 type RunSample = {

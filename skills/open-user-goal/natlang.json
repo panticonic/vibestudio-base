@@ -5,6 +5,8 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnEvalHandoffGoal/journal": "skills/open-eval-handoff",
+    "runUserGoal/workOnEvalHandoffGoal/reviewer": "skills/sandbox/recovery",
     "runUserGoal/workOnProgramRunGoal/runtime": "skills/open-program-run",
     "runUserGoal/workOnProgramRunGoal/reviewer": "skills/runtime-evidence-review",
     "runUserGoal/visualRecovery": "skills/panel-health",

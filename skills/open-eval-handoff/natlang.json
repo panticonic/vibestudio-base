@@ -1,0 +1,12 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-eval-handoff",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "discoverEvalJobs.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "openEvalCatalog": ["discoverEvalJobs.nl", "openEvalAttempt.nl"],
+    "openEvalReentry": ["retryOpenEval.nl"],
+    "openEvalHandoff": ["stageEvalHandoff.nl"]
+  }
+}
