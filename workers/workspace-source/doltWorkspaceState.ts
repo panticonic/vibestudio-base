@@ -719,6 +719,8 @@ export function workspaceContentOriginsAt(
 }
 
 function nearestPlacementMerge(sql: SqlStorage, commit: string) {
+  // Bind each commit before scanning its parents. An unconstrained Dolt
+  // ancestry scan starts from local refs and can miss a fetched revision.
   const rows = sql.exec(
     `WITH RECURSIVE lineage(hash, ours) AS (
        SELECT commit_hash, parent_hash FROM dolt_commit_ancestors
@@ -733,8 +735,8 @@ function nearestPlacementMerge(sql: SqlStorage, commit: string) {
           )
      )
      SELECT lineage.hash, lineage.ours, extra.parent_hash AS theirs
-       FROM lineage JOIN dolt_commit_ancestors AS extra ON extra.commit_hash = lineage.hash
-      WHERE extra.parent_index > 0 LIMIT 2`,
+       FROM lineage CROSS JOIN dolt_commit_ancestors AS extra
+      WHERE extra.commit_hash = lineage.hash AND extra.parent_index > 0 LIMIT 2`,
     commit,
   ).toArray();
   if (rows.length === 0) return null;
