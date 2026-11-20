@@ -605,6 +605,10 @@ export class ParticipantHistory {
     });
   }
 
+  recallBasis(contextId: string, protectedEventId: string) {
+    return this.#run(() => this.#admittedHistoryRevisions({ contextId }, protectedEventId));
+  }
+
   query(input: VcsQueryInput, basis: HistoryQueryBasis, trajectory: HistoryQueryTrajectory) {
     return this.#run(() => queryWorkspaceHistory(
       this.#storage.sql, this.#dolt, input, basis.state, basis.revisions, trajectory,

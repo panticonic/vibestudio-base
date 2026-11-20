@@ -227,11 +227,15 @@ describe("GadWorkspaceDO — recall visibility", () => {
    * The host attests the caller's agent binding; the DO never takes it from
    * the request. A test stands in for the host by shadowing the same getter.
    */
-  const asAgent = (channelId: string | null): void => {
+  const asAgent = (
+    channelId: string | null,
+    workspaceRecallCauses?: [string, string, string][],
+  ): void => {
     Object.defineProperty(doi, "authorization", {
       configurable: true,
       get: () => ({
         authorizingOrigin: { kind: "code", principal: "code:test" },
+        workspaceRecallCauses,
         agentBinding: channelId
           ? {
               entity: null,
@@ -286,6 +290,55 @@ describe("GadWorkspaceDO — recall visibility", () => {
       .results.map((result) => result.snippet);
     expect(texts.some((text) => text.includes("channel:"))).toBe(false);
     expect(texts.some((text) => text.includes("in a commit"))).toBe(true);
+  });
+
+  it("recalls only the caller's own messages and exact native invocation evidence", () => {
+    const originatingInput = {
+      nativeSource: {},
+      originatingInput: { channelRef: { objectKey: "origin" }, messageId: "request" },
+    };
+    gad.sql.exec(
+      `INSERT INTO log_events
+         (log_id, head, seq, envelope_id, payload_kind, actor_json, payload_ref_json, appended_at, hash, prev_hash)
+       VALUES ('agent-log', 'branch', 1, 'started', 'invocation.started', '{}', ?, '2026-01-02', 'hash', '')`,
+      JSON.stringify(originatingInput),
+    );
+    gad.sql.exec(`
+      INSERT INTO trajectory_turns (log_id, head, turn_id)
+      VALUES ('agent-log', 'branch', 'turn'), ('agent-log', 'other-branch', 'turn');
+      INSERT INTO trajectory_invocations (log_id, head, invocation_id, turn_id, status, started_event_id, updated_at)
+      VALUES ('agent-log', 'branch', 'run', 'turn', 'completed', 'started', '2026-01-02'),
+             ('agent-log', 'other-branch', 'run', 'turn', 'completed', 'started', '2026-01-02');
+      INSERT INTO trajectory_messages (log_id, head, message_id, turn_id, role, status, updated_at)
+      VALUES ('agent-log', 'branch', 'answer', 'turn', 'assistant', 'completed', '2026-01-02'),
+             ('agent-log', 'other-branch', 'answer', 'turn', 'assistant', 'completed', '2026-01-02'),
+             ('origin', 'main', 'request', NULL, 'user', 'completed', '2026-01-02'),
+             ('imposter', 'main', 'request', NULL, 'user', 'completed', '2026-01-02');
+      DROP TABLE prov_vis_commands;
+    `);
+    for (const [logId, head, messageId] of [
+      ["agent-log", "branch", "answer"],
+      ["agent-log", "other-branch", "answer"],
+      ["origin", "main", "request"],
+      ["imposter", "main", "request"],
+    ] as const) {
+      reach(doi).indexMemoryRow({
+        text: `Northstar ingress evidence in ${logId} / ${head}`,
+        kind: "message", logId, head, anchor: { messageId },
+      });
+    }
+    asAgent(OWN_CHANNEL, [["agent-log", "branch", "run"]]);
+    const readMessages = () => doi
+      .recallMemory({ query: "Northstar ingress", kinds: ["message"] })
+      .results.map(({ logId, head }) => [logId, head]);
+    expect(readMessages()).toHaveLength(3);
+    expect(readMessages()).toEqual(expect.arrayContaining([
+      [logIdForChannel(OWN_CHANNEL), headForChannel(OWN_CHANNEL)],
+      ["agent-log", "branch"],
+      ["origin", "main"],
+    ]));
+    asAgent(null, []);
+    expect(readMessages()).toEqual([]);
   });
 
   it("leaves an unattributed in-process call unscoped", () => {

@@ -96,7 +96,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticVcsStore.js";
-import { gadWireMethods, HistoryQueryRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
+import { gadWireMethods, HistoryQueryRequestSchema, HistoryRecallBasisRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
 const className = "GadHistoryDO";
@@ -915,6 +915,12 @@ export class GadHistoryDO extends DurableObjectBase {
   @rpc(hostRead)
   readHistoryQueryBasis(input: { query: VcsQueryInput; protectedEventId: string }) {
     return this.#history().queryBasis(vcsQueryInputSchema.parse(input.query), input.protectedEventId);
+  }
+
+  @rpc(hostRead)
+  readHistoryRecallBasis(input: ReturnType<typeof HistoryRecallBasisRequestSchema.parse>) {
+    const { contextId, protectedEventId } = HistoryRecallBasisRequestSchema.parse(input);
+    return this.#history().recallBasis(contextId, protectedEventId);
   }
 
   @rpc(hostRead)

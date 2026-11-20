@@ -4435,6 +4435,40 @@ export class GadWorkspaceDO extends DurableObjectBase {
       return { clause: "", bindings: [] };
     }
     const binding = authorization.agentBinding;
+    const ownLogId = binding ? logIdForChannel(binding.channelId) : null;
+    const causes = authorization.workspaceRecallCauses;
+    if (causes) {
+      if (!binding || causes.length === 0) {
+        return {
+          clause: " AND (kind <> 'message' OR log_id = ?)",
+          bindings: [ownLogId],
+        };
+      }
+      return {
+        clause: ` AND (kind <> 'message' OR log_id = ?
+          OR (log_id, head, json_extract(anchor_json, '$.messageId')) IN (
+            WITH invocations AS MATERIALIZED (
+              SELECT invocation.log_id, invocation.head, invocation.turn_id,
+                     input.input_log_id, input.input_head, input.input_message_id
+                FROM json_each(?) AS cause
+                JOIN trajectory_invocations invocation
+                  ON invocation.log_id = cause.value ->> 0 AND invocation.head = cause.value ->> 1
+                 AND invocation.invocation_id = cause.value ->> 2
+                LEFT JOIN trajectory_invocation_inputs input
+                  USING (log_id, head, invocation_id)
+            )
+            SELECT message.log_id, message.head, message.message_id
+              FROM invocations JOIN trajectory_turns USING (log_id, head, turn_id)
+              JOIN trajectory_messages message USING (log_id, head, turn_id)
+            UNION
+            SELECT message.log_id, message.head, message.message_id
+              FROM invocations invocation JOIN trajectory_messages message
+                ON message.log_id = invocation.input_log_id AND message.head = invocation.input_head
+               AND message.message_id = invocation.input_message_id
+          ))`,
+        bindings: [ownLogId, JSON.stringify(causes)],
+      };
+    }
     this.semanticWorkspace().materializeVisibilityBasis(
       binding ? [binding.contextId] : [],
     );
@@ -4447,7 +4481,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
                       AND visible.head = gad_memory_fts.head
                       AND visible.message_id =
                             json_extract(gad_memory_fts.anchor_json, '$.messageId')))`,
-      bindings: [binding ? logIdForChannel(binding.channelId) : null],
+      bindings: [ownLogId],
     };
   }
 
@@ -4488,14 +4522,16 @@ export class GadWorkspaceDO extends DurableObjectBase {
   } {
     this.ensureReady();
     const mode = this.ensureMemoryIndex();
-    const visibility = this.materializeRecallVisibility();
+    const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
+    const visibility = kinds === null || kinds.includes("message")
+      ? this.materializeRecallVisibility()
+      : { clause: "", bindings: [] };
     const visibilityFilter = visibility.clause;
     const limit = Math.min(input.limit ?? 10, 50);
     // Over-fetch so published/fork copies (the same logical item indexed under
     // several (log,head) pairs) can be collapsed BEFORE the page is sliced —
     // otherwise duplicates eat slots and the caller's page under-fills (§8.1/C6).
     const fetchLimit = Math.min(limit * 3, 150);
-    const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
     if (kinds === null || kinds.includes("commit"))
       this.ensureCommitMemoryIndex();
     const pathPrefixes =
