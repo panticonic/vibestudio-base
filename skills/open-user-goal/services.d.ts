@@ -12,4 +12,8 @@ declare module "natlang:services" {
     inspect(): Promise<import("./types.js").BrowserView>;
     activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;
   };
+  export const goalSuite: {
+    discover(): Promise<import("./types.js").OpenSuiteRoute[]>;
+    prepare(choice: import("./types.js").OpenSuiteChoice): Promise<import("./types.js").OpenSuiteRequest | null>;
+  };
 }

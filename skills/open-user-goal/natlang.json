@@ -5,11 +5,13 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
-    "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research"
+    "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research",
+    "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review"
   },
   "serviceScopes": {
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
     "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"],
-    "goalBrowser": ["runUserGoal/workInBrowser.nl"]
+    "goalBrowser": ["runUserGoal/workInBrowser.nl"],
+    "goalSuite": ["runUserGoal/verifyWorkspaceSuite.nl"]
   }
 }

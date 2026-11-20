@@ -25,7 +25,28 @@ export type UserGoalReport =
   | { status: "answered" | "insufficient"; research: ResearchGoalReport }
   | { status: "edited"; path: string; version: string; research: ResearchGoalReport }
   | WorkspaceEditReport
-  | BrowserGoalReport;
+  | BrowserGoalReport
+  | WorkspaceSuiteReport;
+
+export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
+export type OpenSuiteChoice = {
+  routeId: string;
+  mode: "inspect" | "verify";
+  file: string | null;
+  testName: string | null;
+};
+export type OpenSuiteRequest = {
+  operationId: string;
+  goal: string;
+  target: string;
+  suite: string;
+  mode: "inspect" | "verify";
+  file: string | null;
+  testName: string | null;
+};
+export type WorkspaceSuiteReport =
+  | { status: "suite-reviewed"; selection: OpenSuiteChoice; review: unknown }
+  | { status: "blocked"; reason: string };
 
 export type BrowserRow = { label: string; state: string; detail: string; controls: { id: string; label: string }[] };
 export type BrowserView = { heading: string; revision: string; rows: BrowserRow[] };

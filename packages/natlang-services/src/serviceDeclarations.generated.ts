@@ -890,6 +890,32 @@ export function inspect(): Promise<BrowserView>;
 
 /** Inspect a live workspace panel and activate a visible control against its observed revision. */
 export function activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;`,
+  goalSuite: `/** Discover declared test routes and bind a requested suite operation to the current workspace. */
+
+type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
+
+type OpenSuiteChoice = {
+  routeId: string;
+  mode: "inspect" | "verify";
+  file: string | null;
+  testName: string | null;
+};
+
+type OpenSuiteRequest = {
+  operationId: string;
+  goal: string;
+  target: string;
+  suite: string;
+  mode: "inspect" | "verify";
+  file: string | null;
+  testName: string | null;
+};
+
+/** Discover declared test routes and bind a requested suite operation to the current workspace. */
+export function discover(): Promise<OpenSuiteRoute[]>;
+
+/** Discover declared test routes and bind a requested suite operation to the current workspace. */
+export function prepare(choice: OpenSuiteChoice): Promise<OpenSuiteRequest | null>;`,
   goalWorkspace: `/** Read the authorized workspace and revise a document against its observed version. */
 
 type WorkspaceRevision = { path: string; version: string; text: string };

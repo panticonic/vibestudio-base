@@ -442,6 +442,9 @@ it("compiles the open goal program with its installed research skill and scoped 
     goalBrowser: ["runUserGoal/workInBrowser.nl"],
     goalDiscovery: ["runUserGoal/investigatePublicQuestion.nl"],
     goalWorkspace: ["runUserGoal/reviseWorkspaceDocument.nl"],
+    goalSuite: ["runUserGoal/verifyWorkspaceSuite.nl"],
+    testSuitePlanRead: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    testSuiteVerificationRun: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
   });
 });
