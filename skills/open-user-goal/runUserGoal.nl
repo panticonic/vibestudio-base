@@ -19,6 +19,7 @@ When the user asks to publish, resume, or conditionally run an authorized public
 
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
+- For an actual typed program trial, a verified output receipt, or inspecting a callable specifically for a requested trial, call workOnProgramRunGoal with the user's goal. Return status "workspace-skill-reviewed", skill "programRun", and its actual outcome.
 - For reviewing the current authored Natlang program, release compatibility, or compiler evidence, call workOnAuthoringGoal with the user's goal. Return status "workspace-skill-reviewed", skill "authoring", and its actual outcome.
 
 - `news.reviewUserNewsGoal` for News readers and schedules.
