@@ -1,6 +1,5 @@
 import { registryMutationFromLogEnvelope, isAgenticLogKind } from "@workspace/agentic-protocol";
 export { GadHistoryDO } from "./GadHistoryDO.js";
-import type { StateNodeRef } from "@workspace/vcs-engine";
 import { prepareLogEvent, agenticLogCausality as agenticCausality, type PreparedLogEvent, type LogAppendEventInput } from "@workspace/agentic-protocol";
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {

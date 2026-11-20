@@ -1328,7 +1328,7 @@ describe("execution-owned native operation evidence", () => {
   it("marks incomplete evidence without exceeding the wire budget", () => {
     const owner = new ExecutionJournal();
     owner.recordBuildProfile(profile());
-    owner.append({ type: "large", data: "x".repeat(EVAL_OPERATION_JOURNAL_PREVIEW_CHARS) });
+    owner.recordBuildProfile({ ...profile(), source: "x".repeat(EVAL_OPERATION_JOURNAL_PREVIEW_CHARS) });
     const terminal = owner.close();
     expect(terminal.truncated).toBe(true);
     expect(terminal.entries).toHaveLength(1);

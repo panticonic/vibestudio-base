@@ -94,12 +94,12 @@ describe("GadWorkspaceDO — recall deduplication", () => {
       ...finalPage, documents: [migrated, { ...migrated, text: "" }],
     })).toThrow("Invalid native commit memory");
     expect(doi.readHistoryCommitMemoryIndex()).toBe(pending);
-    expect(recalled().find(({ eventId }) => eventId === "event:legacy")?.anchor?.revision).toBeUndefined();
+    expect(recalled().find(({ eventId }) => eventId === "event:legacy")?.anchor?.["revision"]).toBeUndefined();
     expect(recalled().some(({ eventId }) => eventId === "obsolete")).toBe(true);
 
     doi.recordHistoryCommitMemoryPage(finalPage);
     gad.sql.exec("DROP TABLE gad_workspace_events; DROP TABLE vcs_workspace_heads");
-    expect(recalled().map(({ eventId, anchor }) => [eventId, anchor?.revision]).sort()).toEqual([
+    expect(recalled().map(({ eventId, anchor }) => [eventId, anchor?.["revision"]]).sort()).toEqual([
       ["event:first", nativeDocument.revision],
       ["event:legacy", migrated.revision],
     ]);
