@@ -7,7 +7,7 @@ Start from the user's outcome. It may require examining a committed incoming rev
 1. A Natlang child discovers the owned project, active authorization window and required evidence destinations. It chooses whether a local integration is warranted and which evidence must precede that decision.
 2. A typed reconciliation child orchestrates the real assigned workspace service. It compares local current files and the incoming intent, plans valid per-coordinate actions and exact source edits against an observed head, and checks the resulting state. Revision changes require a fresh observation and renewed policy decision.
 3. A typed handoff child selects the relevant exact observed file lines and ties the resulting scratch receipt to a released working revision. It holds pending approvals and keeps a verified integration distinct from retained handoff evidence.
-4. The joint open-goal entry returns the actual decision, native revision and optional receipt. Policy lives in Natlang. The adapter handles exact operation coordinates, native VCS state and artifact durability.
+4. The joint open-goal entry composes two installed sibling modules under its reconciliation callable. The project module settles native integration and returns an authorized evidence assignment. The separately mounted scratch skill consumes that assignment in the same invocation. The entry returns the actual decision, native revision and optional receipt. Policy lives in Natlang. The adapter handles exact operation coordinates, native VCS state and artifact durability.
 
 ## Mechanisms and consumers
 

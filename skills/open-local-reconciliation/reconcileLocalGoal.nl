@@ -1,10 +1,10 @@
 ---
-description: Reconcile local project changes from owned native evidence and retain an authorized local handoff.
+description: Reconcile local project changes and prepare any authorized retained evidence assignment.
 args:
   goal: string
-returns: ReconcileResult
+returns: ReconcilePreparation
 budget: { maxTurns: 16 }
 ---
-1. Call discoverWindow.readWindow to read the live desk record. Call reconcileProject with the unchanged goal and that window. A pending or closed window permits evidence gathering only.
-2. If the user wants a handoff and reconciliation is integrated, call retainEvidence with the exact completed working revision. If a prerequisite remains unsettled, report the handoff held. If the user only asked for integration or diagnosis, report handoff none.
-3. Read the window again. Report the actual latest window, integration result and observed handoff receipt. Keep an integrated decision distinct from a subsequent closure that prevented staging evidence.
+1. Call discoverWindow.readWindow for the live desk record. Call reconcileProject with the unchanged goal and that window. A pending or closed window permits evidence gathering only.
+2. Decide whether the user requested a retained handoff. Only for a requested handoff after verified integration call prepareEvidence with the exact final integration head. Keep the returned assignment unchanged.
+3. Return the actual integration result, whether the handoff was requested, and the observed evidence request or null.

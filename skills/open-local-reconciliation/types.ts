@@ -17,3 +17,4 @@ export type EvidenceRequest = { goal: string; questions: string[]; sources: { id
 export type EvidenceReceipt = { path: string; bytes: number };
 export type RetainedResult = { status: "none" | "held" | "staged"; artifact: EvidenceReceipt | null };
 export type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult };
+export type ReconcilePreparation = { integration: IntegrationResult; handoffRequested: boolean; evidence: EvidenceRequest | null };

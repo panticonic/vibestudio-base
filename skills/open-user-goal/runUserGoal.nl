@@ -36,6 +36,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `personalHistory.reviewPersonalHistory` for historical decisions and evidence across recorded milestones.
 - `personalAutomation.coordinatePersonalAutomation` for coordinated changes across authorized monitors, including interrupted acknowledgments.
 - `personal.workOnMissionGoal` for Mission Control.
+- For integrating local and incoming workspace settings, approval-window decisions, or retaining evidence of the reconciled settings, call workOnLocalReconciliationGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "localReconciliation", and its actual outcome.
 - `diagnostics.workTowardDiagnosticGoal` for System host incident evidence, saved log checkpoints, and follow-up diagnosis.
 - `operator.workOnSystemGoal` for System operations.
 - `localDelivery.workTowardLocalDelivery` for local recipient identity, retained delivery receipts, authorized follow-up, and recovering the original attempt.

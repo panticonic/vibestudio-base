@@ -2,13 +2,20 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-local-reconciliation",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reconcileLocalGoal.nl" } },
+  "targets": {
+    "main": {
+      "entry": "reconcileLocalGoal.nl"
+    }
+  },
   "serviceBinding": "explicit",
-  "workspaceModules": { "reconcileLocalGoal/retainEvidence/scratch": "skills/scratch-handoff" },
   "serviceScopes": {
-    "reconciliationWindow": ["reconcileLocalGoal/discoverWindow/readWindow.nl", "reconcileLocalGoal/retainEvidence/releaseEvidence.nl"],
+    "reconciliationWindow": [
+      "reconcileLocalGoal/discoverWindow/readWindow.nl",
+      "reconcileLocalGoal/prepareEvidence/releaseEvidence.nl"
+    ],
     "reconciliationNative": [
-      "reconcileLocalGoal/reconcileProject/observeProject.nl", "reconcileLocalGoal/reconcileProject/writeResolution.nl"
+      "reconcileLocalGoal/reconcileProject/observeProject.nl",
+      "reconcileLocalGoal/reconcileProject/writeResolution.nl"
     ]
   }
 }

@@ -1085,6 +1085,47 @@ type LocalDeliveryEvidence = {
 
 /** Recover the original owned delivery after submission or interruption. */
 export function read(attemptId: string): Promise<LocalDeliveryEvidence | null>;`,
+  reconciliationWindow: `/** Read the current local approval window and release an exact reviewed revision for a scratch handoff. */
+
+type ReviewWindow = { title: string; window: "open" | "pending" | "closed"; note: string; head: string };
+
+type EvidenceRequest = { goal: string; questions: string[]; sources: { id: string; path: string }[] };
+
+/** Read the current local approval window and release an exact reviewed revision for a scratch handoff. */
+export function read(): Promise<ReviewWindow>;
+
+/** Read the current local approval window and release an exact reviewed revision for a scratch handoff. */
+export function release(head: string): Promise<EvidenceRequest | null>;`,
+  reconciliationNative: `/** Observe and reconcile the assigned local and incoming revisions using scoped native editor and merge effects. */
+
+type ReviewWindow = { title: string; window: "open" | "pending" | "closed"; note: string; head: string };
+
+type ReconcileFile = { path: string; baseline: string; local: string; incoming: string };
+
+type ReconcileResolution = "composed" | "theirs" | "ours" | "current";
+
+type ReconcileChoice = {
+  path: string;
+  id: string;
+  options: ReconcileResolution[];
+};
+
+type ReconcileView = { head: string; source: string; window: ReviewWindow; files: ReconcileFile[]; choices: ReconcileChoice[] };
+
+type ReconcileEdit = { path: string; before: string; after: string };
+
+type ReconcileEffect = { status: "accepted" | "changed" | "held"; head: string };
+
+type ReconcileDecision = { coordinate: { kind: "file"; id: string }; resolution: ReconcileResolution; rationale: string };
+
+/** Observe and reconcile the assigned local and incoming revisions using scoped native editor and merge effects. */
+export function observe(): Promise<ReconcileView>;
+
+/** Observe and reconcile the assigned local and incoming revisions using scoped native editor and merge effects. */
+export function apply(head: string, edits: ReconcileEdit[]): Promise<ReconcileEffect>;
+
+/** Observe and reconcile the assigned local and incoming revisions using scoped native editor and merge effects. */
+export function merge(head: string, decisions: ReconcileDecision[]): Promise<ReconcileEffect>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };

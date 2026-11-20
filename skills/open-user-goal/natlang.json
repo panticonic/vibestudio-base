@@ -25,6 +25,8 @@
     "runUserGoal/personalHistory": "skills/open-personal-history",
     "runUserGoal/personalAutomation": "skills/open-personal-automation",
     "runUserGoal/personal": "skills/open-personal-goal/program",
+    "runUserGoal/workOnLocalReconciliationGoal/project": "skills/open-local-reconciliation",
+    "runUserGoal/workOnLocalReconciliationGoal/scratch": "skills/scratch-handoff",
     "runUserGoal/diagnostics": "skills/open-system-diagnostics",
     "runUserGoal/operator": "skills/open-system-operations",
     "runUserGoal/localDelivery": "skills/open-local-delivery",

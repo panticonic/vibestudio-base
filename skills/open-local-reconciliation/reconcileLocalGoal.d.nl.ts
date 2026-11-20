@@ -21,26 +21,6 @@ type EvidenceRequest = { goal: string; questions: string[]; sources: { id: strin
 type EvidenceReceipt = { path: string; bytes: number };
 type RetainedResult = { status: "none" | "held" | "staged"; artifact: EvidenceReceipt | null };
 type ReconcileResult = { integration: IntegrationResult; window: ReviewWindow; handoff: RetainedResult };
-type AssignedSource = { id: string; path: string };
-type HandoffRequest = {
-  goal: string;
-  questions: string[];
-  sources: AssignedSource[];
-};
-type SourceRead = { id: string; lines: string[] };
-type InspectedSources = {
-  observed: SourceRead[];
-  missing: string[];
-};
-type Excerpt = { sourceId: string; firstLine: number; lastLine: number };
-type AnswerEvidence = { question: number; excerpts: Excerpt[] };
-type PreparedHandoff = { body: string | null; unanswered: string[] };
-type ScratchReceipt = { path: string; bytes: number };
-type HandoffReport = {
-  status: "staged" | "source-unavailable" | "unanswered" | "unverified";
-  artifact: ScratchReceipt | null;
-  missingSources: string[];
-  unanswered: string[];
-};
-declare const fn: NatlangFunction<[goal: string], ReconcileResult> & { readonly reconcileProject: NatlangFunction<[goal: string, window: ReviewWindow], IntegrationResult> & { readonly observeProject: NatlangFunction<[], ReconcileView>; readonly planResolution: NatlangFunction<[goal: string, window: ReviewWindow, observed: ReconcileView], ReconcilePlan>; readonly writeResolution: NatlangFunction<[head: string, operation: ReconcileOperation], ReconcileEffect> }; readonly retainEvidence: NatlangFunction<[head: string], RetainedResult> & { readonly releaseEvidence: NatlangFunction<[head: string], EvidenceRequest | null>; readonly scratch: { readonly assembleHandoff: NatlangFunction<[request: HandoffRequest], HandoffReport> & { readonly deliverHandoff: NatlangFunction<[body: string], HandoffReport> & { readonly commitHandoff: NatlangFunction<[body: string], ScratchReceipt | null> }; readonly inspectSources: NatlangFunction<[sources: AssignedSource[]], InspectedSources> & { readonly readSource: NatlangFunction<[id: string], SourceRead | null> }; readonly prepareHandoff: NatlangFunction<[request: HandoffRequest, observed: SourceRead[]], PreparedHandoff> & { readonly selectEvidence: NatlangFunction<[request: HandoffRequest, observed: SourceRead[]], AnswerEvidence[]>; readonly handoffChecks: { readonly prepare: (questions: string[], observed: SourceRead[], selection: AnswerEvidence[]) => PreparedHandoff } } }; readonly handoffChecks: { readonly prepare: (questions: string[], observed: SourceRead[], selection: AnswerEvidence[]) => PreparedHandoff } } }; readonly discoverWindow: { readonly readWindow: NatlangFunction<[], ReviewWindow> } };
+type ReconcilePreparation = { integration: IntegrationResult; handoffRequested: boolean; evidence: EvidenceRequest | null };
+declare const fn: NatlangFunction<[goal: string], ReconcilePreparation> & { readonly prepareEvidence: NatlangFunction<[head: string], EvidenceRequest | null> & { readonly releaseEvidence: NatlangFunction<[head: string], EvidenceRequest | null> }; readonly reconcileProject: NatlangFunction<[goal: string, window: ReviewWindow], IntegrationResult> & { readonly observeProject: NatlangFunction<[], ReconcileView>; readonly planResolution: NatlangFunction<[goal: string, window: ReviewWindow, observed: ReconcileView], ReconcilePlan>; readonly writeResolution: NatlangFunction<[head: string, operation: ReconcileOperation], ReconcileEffect> }; readonly discoverWindow: { readonly readWindow: NatlangFunction<[], ReviewWindow> } };
 export default fn;
