@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { inflateSync } from "node:zlib";
 import { sha256Hex } from "@vibestudio/content-addressing";
 
 const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -20,7 +22,7 @@ const filters = [
 ];
 
 /** Measure visible marks against the white PDF canvas, using original raster coordinates. */
-export async function inspectPdfRaster(data: Uint8Array) {
+export function inspectPdfRaster(data: Uint8Array) {
   if (!(data instanceof Uint8Array)) throw new Error("The PDF renderer did not return retained image bytes.");
   if (data.length < 45 || !pngSignature.every((byte, index) => data[index] === byte))
     throw new Error("The retained PDF page is not a PNG image.");
@@ -32,14 +34,14 @@ export async function inspectPdfRaster(data: Uint8Array) {
     !width || !height || width * height > 4_000_000 ||
     data[24] !== 8 || !channels || data[26] || data[27] || data[28])
     throw new Error("The retained PDF raster has an unsupported pixel encoding.");
-  const compressed: ArrayBuffer[] = [];
+  const compressed: Uint8Array[] = [];
   let ended = false;
   for (let offset = 8; offset + 12 <= data.length; ) {
     const length = view.getUint32(offset);
     const type = view.getUint32(offset + 4);
     const end = offset + 12 + length;
     if (end > data.length) throw new Error("The retained PDF raster is truncated.");
-    if (type === 0x49444154) compressed.push(data.slice(offset + 8, end - 4).buffer);
+    if (type === 0x49444154) compressed.push(data.subarray(offset + 8, end - 4));
     if (type === 0x49454e44) {
       ended = length === 0 && end === data.length;
       break;
@@ -48,21 +50,9 @@ export async function inspectPdfRaster(data: Uint8Array) {
   }
   if (!ended || !compressed.length) throw new Error("The retained PDF raster lacks complete image data.");
   const stride = width * channels;
-  const raw = new Uint8Array((stride + 1) * height);
-  const reader = new Blob(compressed).stream().pipeThrough(new DecompressionStream("deflate")).getReader();
-  let written = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (written + value.length > raw.length) throw new Error("The PDF raster exceeds its declared pixel extent.");
-      raw.set(value, written);
-      written += value.length;
-    }
-  } finally {
-    await reader.cancel();
-  }
-  if (written !== raw.length) throw new Error("The PDF raster lacks its declared pixels.");
+  const pixelBytes = (stride + 1) * height;
+  const raw = inflateSync(Buffer.concat(compressed), { maxOutputLength: pixelBytes });
+  if (raw.length !== pixelBytes) throw new Error("The PDF raster lacks its declared pixels.");
   const current = new Uint8Array(stride);
   const above = new Uint8Array(stride);
   const alpha = channels % 2 === 0;
