@@ -1289,6 +1289,154 @@ export function observe(): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]
 export function finishCadence(
       change: NewsCadenceChange,
     ): Promise<(NewsReaderEvidence | NewsScheduleEvidence)[]>;`,
+  missionGoalBoard: `/** Observe current mission cards, dependencies and revisions. */
+
+type BoardStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type BoardCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: BoardStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type BoardSnapshot = {
+  id: string;
+  projects: { id: string; name: string; archived: boolean }[];
+  cards: BoardCard[];
+  complete: boolean;
+};
+
+/** Observe current mission cards, dependencies and revisions. */
+export function observe(): Promise<BoardSnapshot>;`,
+  missionGoalChange: `/** Apply an authorized mission change against a current board snapshot. */
+
+type BoardChange =
+  | { kind: "ready"; cardId: string; revision: number }
+  | { kind: "relocate"; cardId: string; revision: number; projectId: string }
+  | { kind: "prerequisites"; cardId: string; revision: number; dependencies: string[] };
+
+type BoardStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type BoardCard = {
+  id: string;
+  projectId: string;
+  title: string;
+  revision: number;
+  dependencies: string[];
+  status: BoardStatus;
+  automationId: string | null;
+  updatedAt: number;
+};
+
+type BoardSnapshot = {
+  id: string;
+  projects: { id: string; name: string; archived: boolean }[];
+  cards: BoardCard[];
+  complete: boolean;
+};
+
+type ChangeResult = { status: "applied" | "changed"; snapshot: BoardSnapshot };
+
+/** Apply an authorized mission change against a current board snapshot. */
+export function apply(snapshotId: string, change: BoardChange): Promise<ChangeResult>;`,
+  missionGoalHandoff: `/** Stage a handoff from the verified current mission board. */
+
+type HandoffReceipt = { path: string; sha256: string; snapshotId: string; cardIds: string[] };
+
+/** Stage a handoff from the verified current mission board. */
+export function stage(snapshotId: string, cardIds: string[]): Promise<HandoffReceipt>;`,
+  operatorDiscovery: `/** Discover the authorized operations target and observe its current identity. */
+
+type OperatorGrant = "start" | "restart" | "pair";
+
+type OperatorTarget = {
+  id: string;
+  label: string;
+  surface: "deployment" | "terminal-profile";
+  grant: OperatorGrant | null;
+};
+
+type OperatorIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type OperatorBaseline = {
+  target: OperatorTarget;
+  state: "ready" | "inactive" | "unverified";
+  identity: OperatorIdentity | null;
+  receipt: string;
+};
+
+/** Discover the authorized operations target and observe its current identity. */
+export function list(): Promise<OperatorTarget[]>;
+
+/** Discover the authorized operations target and observe its current identity. */
+export function observe(targetId: string): Promise<OperatorBaseline>;`,
+  operatorDeployment: `/** Apply an authorized installation operation and verify the resulting hub. */
+
+type OperatorAttempt = {
+  state: "applied" | "failed" | "baseline-changed";
+  receipt: string;
+};
+
+type OperatorIdentity = {
+  serverId: string;
+  bootId: string;
+  buildId: string;
+  workspaceId: string;
+};
+
+type OperatorReadback = {
+  state: "verified" | "unready" | "unchanged-boot" | "identity-changed";
+  identity: OperatorIdentity | null;
+  receipt: string;
+};
+
+/** Apply an authorized installation operation and verify the resulting hub. */
+export function apply(
+      observationReceipt: string,
+      operation: "start" | "restart",
+    ): Promise<OperatorAttempt>;
+
+/** Apply an authorized installation operation and verify the resulting hub. */
+export function verify(installationReceipt: string): Promise<OperatorReadback>;`,
+  operatorProfile: `/** Inspect, pair and verify a private terminal profile against the observed hub. */
+
+type OperatorProfile = {
+  state: "unpaired" | "account" | "workspace" | "foreign" | "unusable";
+  inviteAssigned: boolean;
+  receipt: string;
+};
+
+type OperatorPair = { state: "paired" | "failed"; receipt: string };
+
+type OperatorRoute = { state: "routed" | "failed"; receipt: string };
+
+type OperatorChild = {
+  state: "verified" | "unreachable" | "identity-mismatch";
+  workspaceId: string | null;
+  receipt: string;
+};
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function inspect(observationReceipt: string): Promise<OperatorProfile>;
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function pair(profileReceipt: string): Promise<OperatorPair>;
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function open(pairReceipt: string): Promise<OperatorRoute>;
+
+/** Inspect, pair and verify a private terminal profile against the observed hub. */
+export function verify(routeReceipt: string): Promise<OperatorChild>;`,
   newsGoal: `/** Observe the current News reader and cadence, then apply an authorized change against an observation. */
 
 type NewsScheduleEvidence = {

@@ -453,6 +453,8 @@ it.each([
   ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal"],
   ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
+  ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
+  ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
 ])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable) => {
   const base = new URL("../../../", import.meta.url);
   const installed = new URL(`../${template}/`, base);

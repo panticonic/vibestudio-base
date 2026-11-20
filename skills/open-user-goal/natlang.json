@@ -9,7 +9,9 @@
     "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review",
     "runUserGoal/news": "skills/news-workflows",
     "runUserGoal/spectrolite": "skills/spectrolite-review",
-    "runUserGoal/google": "skills/google-drive/driveWorkflow"
+    "runUserGoal/google": "skills/google-drive/driveWorkflow",
+    "runUserGoal/personal": "skills/open-personal-goal/program",
+    "runUserGoal/operator": "skills/open-system-operations"
   },
   "serviceScopes": {
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],

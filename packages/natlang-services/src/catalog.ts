@@ -109,6 +109,12 @@ const authoredServices = [
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("googleGoalDiscovery", "Discover the authorized Drive folders and change sources for the current goal.", "google-workspace", "google-drive/driveWorkflow", [{ name: "discover", params: [] }]),
   authoredService("newsRead", "Read assigned News readers and schedules and complete the assigned cadence change.", "news", "news-workflows", [{ name: "observe", params: [] }, { name: "finishCadence", params: ["change"] }]),
+  authoredService("missionGoalBoard", "Observe current mission cards, dependencies and revisions.", "personal", "open-personal-goal/program", [{ name: "observe", params: [] }]),
+  authoredService("missionGoalChange", "Apply an authorized mission change against a current board snapshot.", "personal", "open-personal-goal/program", [{ name: "apply", params: ["snapshotId", "change"] }]),
+  authoredService("missionGoalHandoff", "Stage a handoff from the verified current mission board.", "personal", "open-personal-goal/program", [{ name: "stage", params: ["snapshotId", "cardIds"] }]),
+  authoredService("operatorDiscovery", "Discover the authorized operations target and observe its current identity.", "system", "open-system-operations", [{ name: "list", params: [] }, { name: "observe", params: ["targetId"] }]),
+  authoredService("operatorDeployment", "Apply an authorized installation operation and verify the resulting hub.", "system", "open-system-operations", [{ name: "apply", params: ["observationReceipt", "operation"] }, { name: "verify", params: ["installationReceipt"] }]),
+  authoredService("operatorProfile", "Inspect, pair and verify a private terminal profile against the observed hub.", "system", "open-system-operations", [{ name: "inspect", params: ["observationReceipt"] }, { name: "pair", params: ["profileReceipt"] }, { name: "open", params: ["pairReceipt"] }, { name: "verify", params: ["routeReceipt"] }]),
   authoredService("newsGoal", "Observe the current News reader and cadence, then apply an authorized change against an observation.", "news", "news-workflows", [
     { name: "observeCadence", params: [] }, { name: "readReader", params: ["selection"] },
     { name: "apply", params: ["observationId", "change"] },
