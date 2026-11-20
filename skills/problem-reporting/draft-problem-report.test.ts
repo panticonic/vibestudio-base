@@ -105,20 +105,17 @@ describe("draftProblemReport", () => {
         terminal_reason_code: null,
       },
       events: [{}, {}],
-      commands: [{}],
     });
     const draft = await draftProblemReport(evidence({ invocation }));
     expect(runtimeMock.gad.diagnoseInvocation).toHaveBeenCalledWith({
       ...invocation,
       eventLimit: 20,
-      commandLimit: 20,
-      effectLimit: 50,
     });
     expect(draft.narrative.at(-1)).toEqual({
       section: "findings",
       claims: "observed",
       markdown:
-        "invocation inv_1: status failed; terminal outcome error; reason code none; 2 events, 1 commands read",
+        "invocation inv_1: status failed. terminal outcome error. reason code none. 2 recorded events.",
     });
   });
 

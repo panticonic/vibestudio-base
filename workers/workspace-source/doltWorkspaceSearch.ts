@@ -169,14 +169,28 @@ export function searchTrajectoryProse(
            ON m.log_id = a.log_id AND m.head = a.head AND m.turn_id = a.turn_id
        UNION
        SELECT input_log_id, input_head, input_message_id FROM admitted WHERE input_message_id IS NOT NULL
+     ), prose AS (
+       SELECT message.log_id, message.head, message.message_id, message.role,
+              (SELECT group_concat(content, char(10)) FROM (
+                 SELECT block.value ->> '$.content' AS content
+                   FROM json_each(event.payload_ref_json, '$.blocks') AS block
+                  WHERE block.value ->> '$.type' = 'text'
+                    AND json_type(block.value, '$.content') = 'text'
+                  ORDER BY block.key
+               )) AS text
+         FROM messages admitted
+         JOIN trajectory_messages message USING (log_id, head, message_id)
+         JOIN log_events event
+           ON event.log_id = message.log_id AND event.head = message.head
+          AND event.envelope_id = COALESCE(message.completed_event_id, message.started_event_id)
      )
-     SELECT DISTINCT entry.log_id, entry.head, entry.subject_id, entry.label, substr(text, 1, 400) AS excerpt
-       FROM messages m JOIN prov_search_index entry
-         ON entry.log_id = m.log_id AND entry.head = m.head AND entry.subject_id = m.message_id
-      WHERE entry.subject_kind = 'trajectory-message' AND NOT EXISTS (
+     SELECT log_id, head, message_id AS subject_id, 'message · ' || role AS label,
+            substr(text, 1, 400) AS excerpt
+       FROM prose
+      WHERE text IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM json_each(?2) AS term WHERE instr(lower(text), lower(term.value)) = 0
       )
-      ORDER BY entry.log_id, entry.head, entry.subject_id LIMIT ?3`,
+      ORDER BY log_id, head, message_id LIMIT ?3`,
     JSON.stringify(causes), JSON.stringify(terms), input.limit + 1,
   ).toArray().map(({ log_id, head, subject_id, label, excerpt }): VcsSearchHit => {
     if (typeof log_id !== "string" || typeof head !== "string" || typeof subject_id !== "string")

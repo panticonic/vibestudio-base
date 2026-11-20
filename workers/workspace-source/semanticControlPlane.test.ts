@@ -16,7 +16,6 @@ import {
 } from "@vibestudio/durable/test-utils";
 import {
   AgentHealthInspectionSchema,
-  gadWireMethods,
 } from "@vibestudio/service-schemas/workspaceSource";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
@@ -26,7 +25,6 @@ import {
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import { GadWorkspaceDO } from "./index.js";
-import { SemanticVcsStore } from "./semanticVcsStore.js";
 
 const notificationRpcFetch = createTestRpcFetch((request) => {
   if (request.message.type !== "request") throw new Error("Expected request");
@@ -248,64 +246,7 @@ async function countRows(
   return Number(result.rows[0]?.cnt ?? 0);
 }
 
-describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
-  it("binds code-level semantic access to the reviewed product builtin source", async () => {
-    const { instance } = await createTestDO(GadWorkspaceDO);
-    const authority = (
-      instance as unknown as {
-        rpcAuthorityDeclaration(
-          method: string,
-          schema: (typeof gadWireMethods)["vcsStatus"],
-        ): unknown;
-      }
-    ).rpcAuthorityDeclaration("vcsStatus", gadWireMethods.vcsStatus);
-
-    expect(authority).toMatchObject({
-      requires: {
-        kind: "any",
-        requirements: expect.arrayContaining([
-          expect.objectContaining({
-            kind: "all",
-            requirements: expect.arrayContaining([
-              {
-                kind: "relationship",
-                name: "code-source",
-                value: "vibestudio/internal",
-              },
-            ]),
-          }),
-        ]),
-      },
-    });
-  });
-
-  it("fails closed when topology does not bind a workspace identity", async () => {
-    const { instance } = await createTestDO(GadWorkspaceDO, {
-      __objectKey: "storage-coordinate-is-not-workspace-identity",
-      WORKSPACE_ID: undefined,
-    });
-    const semanticWorkspaceId = (
-      instance as unknown as { semanticWorkspaceId(): string }
-    ).semanticWorkspaceId.bind(instance);
-
-    expect(semanticWorkspaceId).toThrow(
-      "GadWorkspaceDO requires the topology-owned WORKSPACE_ID binding",
-    );
-  });
-
-  it("uses only the topology-owned workspace identity, never the object coordinate", async () => {
-    const { instance } = await createTestDO(GadWorkspaceDO, {
-      __objectKey: "storage-coordinate",
-      WORKSPACE_ID: "ws_authoritative",
-    });
-
-    expect(
-      (
-        instance as unknown as { semanticWorkspaceId(): string }
-      ).semanticWorkspaceId(),
-    ).toBe("ws_authoritative");
-  });
-
+describe("GadWorkspaceDO transcript and channel storage", () => {
   it("does not self-register its sealed identity through a public runtime RPC", async () => {
     const { instance } = await createTestDO(GadWorkspaceDO);
 
@@ -317,7 +258,7 @@ describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
   });
 
   // §3.1 — schema shape
-  it("creates the canonical semantic graph and leaves no retired VCS infrastructure", async () => {
+  it("initializes transcript storage without obsolete workspace history tables", async () => {
     const { sql } = await createTestDO(GadWorkspaceDO);
     const tables = await querySql<{ rows: Array<{ name: string }> }>(
       sql,
@@ -338,29 +279,29 @@ describe("GadWorkspaceDO unified log and semantic VCS schema", () => {
         "gad_memory_fts",
         "channel_message_types",
         "channel_roster",
-        "vcs_repositories",
-        "vcs_files",
-        "vcs_repository_states",
-        "vcs_file_states",
-        "vcs_file_manifests",
-        "vcs_workspace_fact_roots",
-        "vcs_contexts",
-        "vcs_workspace_heads",
-        "gad_workspace_events",
-        "gad_workspace_event_parents",
-        "gad_workspace_event_applications",
-        "gad_work_units",
-        "gad_work_unit_applications",
-        "gad_changes",
-        "gad_applied_changes",
-        "gad_applied_change_predicates",
-        "gad_content_edges",
-        "gad_integration_decisions",
-        "vcs_command_journal",
-        "gad_effect_intents",
       ]),
     );
     for (const dropped of [
+      "vcs_repositories",
+      "vcs_files",
+      "vcs_repository_states",
+      "vcs_file_states",
+      "vcs_file_manifests",
+      "vcs_workspace_fact_roots",
+      "vcs_contexts",
+      "vcs_workspace_heads",
+      "gad_workspace_events",
+      "gad_workspace_event_parents",
+      "gad_workspace_event_applications",
+      "gad_work_units",
+      "gad_work_unit_applications",
+      "gad_changes",
+      "gad_applied_changes",
+      "gad_applied_change_predicates",
+      "gad_content_edges",
+      "gad_integration_decisions",
+      "vcs_command_journal",
+      "gad_effect_intents",
       "trajectory_branches",
       "trajectory_events",
       "trajectory_blob_refs",
@@ -1309,7 +1250,7 @@ describe("appendLogEvent core (§3.2)", () => {
 });
 
 describe("trajectory projection invariants", () => {
-  it("walks prompting intent through its turn and invocation to the semantic command", async () => {
+  it("inspects an invocation and follows its triggering transcript message", async () => {
     const { call, instance, sql } = await createTestDO(GadWorkspaceDO, {
       WORKSPACE_ID: "workspace-test",
     });
@@ -1369,54 +1310,24 @@ describe("trajectory projection invariants", () => {
       ],
     });
 
-    new SemanticVcsStore(sql, () => "2026-05-20T12:00:00.000Z").beginCommand({
-      scopeKind: "context",
-      scopeId: "context-1",
-      commandId: "command-1",
-      method: "edit",
-      requestDigest: "request-1",
-      cause: { parent: { logId: "trajectory-1", head: "main", invocationId } },
+    const invocationNode = { kind: "trajectory-invocation" as const, logId: "trajectory-1", head: "main", invocationId };
+    const turnNode = { kind: "trajectory-turn" as const, logId: "trajectory-1", head: "main", turnId };
+    const messageNode = { kind: "trajectory-message" as const, logId: "trajectory-1", head: "main", messageId: triggerMessageId };
+    const inspect = (node: typeof invocationNode | typeof turnNode | typeof messageNode) =>
+      instance.readHistoryTrajectoryProvenance({ operation: "inspect", request: { node, edgeLimit: 5 }, expand: true });
+    expect(inspect(invocationNode)).toMatchObject({
+      root: invocationNode,
+      edges: expect.arrayContaining([{ kind: "part-of-turn", from: invocationNode, to: turnNode }]),
     });
-
-    const walk = sql
-      .exec(
-        `SELECT json_extract(message.payload_ref_json, '$.blocks[0].content') AS intent,
-              turns.trigger_message_id,
-              turns.turn_id,
-              invocations.invocation_id,
-              commands.command_id
-         FROM trajectory_turns turns
-         JOIN trajectory_messages messages
-           ON messages.log_id = turns.log_id
-          AND messages.head = turns.head
-          AND messages.message_id = turns.trigger_message_id
-         JOIN log_events message
-           ON message.log_id = messages.log_id
-          AND message.head = messages.head
-          AND message.envelope_id = messages.completed_event_id
-         JOIN trajectory_invocations invocations
-           ON invocations.log_id = turns.log_id
-          AND invocations.head = turns.head
-          AND invocations.turn_id = turns.turn_id
-         JOIN vcs_command_journal commands
-           ON commands.cause_log_id = invocations.log_id
-          AND commands.cause_head = invocations.head
-          AND commands.cause_invocation_id = invocations.invocation_id
-        WHERE turns.log_id = ? AND turns.head = ? AND turns.turn_id = ?`,
-        "trajectory-1",
-        "main",
-        turnId,
-      )
-      .toArray();
-    expect(walk).toEqual([
-      {
-        intent: "Move the parser without changing its behavior",
-        trigger_message_id: triggerMessageId,
-        turn_id: turnId,
-        invocation_id: invocationId,
-        command_id: "command-1",
-      },
-    ]);
+    expect(inspect(turnNode)).toMatchObject({
+      root: turnNode,
+      edges: expect.arrayContaining([{ kind: "triggered-by", from: turnNode, to: messageNode }]),
+    });
+    expect(inspect(messageNode)).toMatchObject({
+      node: { kind: "trajectory-message", value: {
+        textBlocks: [{ blockId: "prompt-block-1", content: "Move the parser without changing its behavior" }],
+      } },
+    });
 
     const turnInspection = instance.inspectTurnState({
       trajectoryId: "trajectory-1",
@@ -1450,18 +1361,10 @@ describe("trajectory projection invariants", () => {
       turn_id: turnId,
     });
     expect(diagnostic.turn).toMatchObject({ turn_id: turnId });
-    expect(diagnostic.commands).toEqual([
-      expect.objectContaining({
-        command: expect.objectContaining({ command_id: "command-1" }),
-        effects: expect.any(Array),
-      }),
-    ]);
     expect(diagnostic.summary).toMatchObject({
       terminal: false,
-      commandCount: 1,
-      pendingEffectCount: expect.any(Number),
       cleanupFailureCount: 0,
-      truncated: { events: false, commands: false, effects: false },
+      truncated: { events: false },
     });
   });
 

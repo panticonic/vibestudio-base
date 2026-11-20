@@ -46,18 +46,24 @@ it("keeps unrelated trajectory messages out of an admitted invocation's results"
   sql.exec(`
     CREATE TABLE trajectory_invocations (log_id, head, invocation_id, turn_id);
     CREATE TABLE trajectory_invocation_inputs (log_id, head, invocation_id, input_log_id, input_head, input_message_id);
-    CREATE TABLE trajectory_messages (log_id, head, turn_id, message_id);
-    CREATE TABLE prov_search_index (text, subject_kind, subject_id, log_id, head, label);
+    CREATE TABLE trajectory_messages (log_id, head, turn_id, message_id, role, completed_event_id, started_event_id);
+    CREATE TABLE log_events (log_id, head, envelope_id, payload_ref_json);
     INSERT INTO trajectory_invocations VALUES ('child','h','run','turn'), ('other','h','run','turn');
     INSERT INTO trajectory_invocation_inputs VALUES ('child','h','run','parent','parent-head','request');
-    INSERT INTO trajectory_messages VALUES ('child','h','turn','reply'), ('other','h','turn','hidden');
-    INSERT INTO prov_search_index VALUES
-      ('keep this queue','trajectory-message','reply','child','h','assistant'),
-      ('please preserve that queue','trajectory-message','request','parent','parent-head','user'),
-      ('hidden queue','trajectory-message','hidden','other','h','private');
+    INSERT INTO trajectory_messages VALUES
+      ('child','h','turn','reply','assistant','completed','started'),
+      ('parent','parent-head',NULL,'request','user',NULL,'started'),
+      ('other','h','turn','hidden','assistant','completed',NULL);
+    INSERT INTO log_events VALUES
+      ('child','h','completed','{"blocks":[{"type":"text","content":"keep this"},{"type":"text","content":"queue"}]}'),
+      ('child','h','started','{"blocks":[{"type":"text","content":"outdated queue"}]}'),
+      ('parent','parent-head','started','{"blocks":[{"type":"text","content":"please preserve that queue"}]}'),
+      ('other','h','completed','{"blocks":[{"type":"text","content":"hidden queue"}]}');
   `);
   const search = { text:"queue", limit:10 };
-  expect(searchTrajectoryProse(sql, search, [["child","h","run"]]).map(({ node }) => node)).toEqual([
+  const matches = searchTrajectoryProse(sql, search, [["child","h","run"]]);
+  expect(matches[0]?.excerpt).toBe("keep this\nqueue");
+  expect(matches.map(({ node }) => node)).toEqual([
     { kind:"trajectory-message", logId:"child", head:"h", messageId:"reply" },
     { kind:"trajectory-message", logId:"parent", head:"parent-head", messageId:"request" },
   ]);

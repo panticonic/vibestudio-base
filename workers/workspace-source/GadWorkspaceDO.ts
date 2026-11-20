@@ -161,17 +161,12 @@ import {
   canonicalJson,
 } from "@vibestudio/content-addressing";
 import {
-  createSemanticVcsSchema,
   createTrajectoryMirrorSchema,
-  SEMANTIC_VCS_REQUIRED_TABLES,
 } from "./semanticVcsSchema.js";
-import { SemanticVcsError, SemanticVcsStore } from "./semanticVcsStore.js";
+import { SemanticVcsError } from "./semanticVcsErrors.js";
 import {
-  SemanticWorkspace,
   parseSemanticCursor,
   semanticCursor,
-  type SemanticDispatchRequest,
-  type SemanticEffectAcknowledgement,
 } from "./semanticWorkspace.js";
 
 type JsonPrimitive = null | string | number | boolean;
@@ -186,12 +181,11 @@ type InvocationDiagnostic = NonNullable<
   InvocationDiagnosticPacket["invocation"]
 >;
 type TurnDiagnostic = NonNullable<InvocationDiagnosticPacket["turn"]>;
-type CommandDiagnostic = InvocationDiagnosticPacket["commands"][number];
 type ChannelRosterRow = ChannelRosterInspection["rows"][number];
 type StorageDiagnostic = AgentHealthInspection["storage"]["rows"][number];
 
-/** First supported production schema for the semantic workspace authority. */
-const GAD_WORKSPACE_SCHEMA_VERSION = 67;
+/** Transcript and channel storage schema for fresh workspaces. */
+const GAD_WORKSPACE_SCHEMA_VERSION = 68;
 
 
 const utf8Bytes = (value: string): number =>
@@ -397,7 +391,6 @@ const GAD_REQUIRED_TABLES = [
   "gad_blobs",
   "publication_intents",
   "publication_delivery_outbox",
-  ...SEMANTIC_VCS_REQUIRED_TABLES,
 ] as const;
 
 /** Log kinds whose events are full agentic trajectory events (validated and
@@ -1286,17 +1279,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
       )
     `);
     createPublicationDeliveryOutbox(this.sql);
-    createSemanticVcsSchema(this.sql);
     // The recall contents are disposable, but the index table is part of the
     // exact database shape. Lazy creation changed sqlite_master after schema
     // identity was sealed, so the next activation rejected its own database.
     createMemoryIndex(this.sql);
     createAgentDirectory(this.sql);
     createAgentDirectoryIndex(this.sql);
-    // Provenance is compiled from normalized point tables. We intentionally do
-    // not create union views or persisted traversal continuations: callers
-    // inspect a node and keyset-page its immediate indexed edges.
-    this.ensureEmptyState();
   }
 
   @schemaRpc()
@@ -1309,150 +1297,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       mimeType ?? null,
       nowIso(),
     );
-  }
-
-  private semanticVcsStore(): SemanticVcsStore {
-    return new SemanticVcsStore(this.sql, nowIso);
-  }
-
-  private semanticWorkspace(): SemanticWorkspace {
-    return new SemanticWorkspace({
-      workspaceId: this.semanticWorkspaceId(),
-      sql: this.sql,
-      store: this.semanticVcsStore(),
-      now: nowIso,
-      transaction: (fn) => this.transaction(fn),
-    });
-  }
-
-  private semanticWorkspaceId(): string {
-    const configured = this.env["WORKSPACE_ID"];
-    if (typeof configured !== "string" || configured.length === 0) {
-      throw new Error(
-        "GadWorkspaceDO requires the topology-owned WORKSPACE_ID binding",
-      );
-    }
-    return configured;
-  }
-
-  private vcsSemantic(
-    method: import("@vibestudio/service-schemas/vcs").VcsSemanticMethodName,
-    request: SemanticDispatchRequest,
-  ): Promise<unknown> {
-    this.ensureReady();
-    return this.semanticWorkspace().dispatch(method, request);
-  }
-
-  @schemaRpc()
-  vcsEdit(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("edit", request);
-  }
-
-  @schemaRpc()
-  vcsMove(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("move", request);
-  }
-
-  @schemaRpc()
-  vcsCopy(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("copy", request);
-  }
-
-  @schemaRpc()
-  vcsMerge(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("merge", request);
-  }
-
-  @schemaRpc()
-  vcsRevert(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("revert", request);
-  }
-
-  @schemaRpc()
-  vcsCommit(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("commit", request);
-  }
-
-  @schemaRpc()
-  vcsDiscard(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("discard", request);
-  }
-
-  @schemaRpc()
-  vcsImportSnapshot(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("importSnapshot", request);
-  }
-
-  @schemaRpc()
-  vcsRegisterExternalDelta(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("registerExternalDelta", request);
-  }
-
-  @schemaRpc()
-  vcsSupersedeExternalDelta(
-    request: SemanticDispatchRequest,
-  ): Promise<unknown> {
-    return this.vcsSemantic("supersedeExternalDelta", request);
-  }
-
-  @schemaRpc()
-  vcsFinalizeExternalDelta(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("finalizeExternalDelta", request);
-  }
-
-  @schemaRpc()
-  vcsPush(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("push", request);
-  }
-
-  @schemaRpc()
-  vcsStatus(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("status", request);
-  }
-
-  @schemaRpc()
-  vcsMainState(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("mainState", request);
-  }
-
-  @schemaRpc()
-  vcsCompare(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("compare", request);
-  }
-
-  @schemaRpc()
-  vcsInspect(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("inspect", request);
-  }
-
-  @schemaRpc()
-  vcsNeighbors(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("neighbors", request);
-  }
-
-  @schemaRpc()
-  vcsHistory(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("history", request);
-  }
-
-  @schemaRpc()
-  vcsBlame(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("blame", request);
-  }
-
-  @schemaRpc()
-  vcsWalk(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("walk", request);
-  }
-
-  @schemaRpc()
-  vcsQuery(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("query", request);
-  }
-
-  @schemaRpc()
-  vcsSearch(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("search", request);
   }
 
   @rpc({
@@ -1633,67 +1477,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return rows.map(({ log_id, head, invocation_id }) => vcsTrajectoryInvocationRefSchema.parse({
       kind: "trajectory-invocation", logId: log_id, head, invocationId: invocation_id,
     }));
-  }
-
-  @schemaRpc()
-  vcsReadMemory(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("readMemory", request);
-  }
-
-  @schemaRpc()
-  vcsResolveRepository(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("resolveRepository", request);
-  }
-
-  @schemaRpc()
-  vcsReadFiles(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("readFiles", request);
-  }
-
-  @schemaRpc()
-  vcsReadFile(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("readFile", request);
-  }
-
-  @schemaRpc()
-  vcsListDirectory(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("listDirectory", request);
-  }
-
-  @schemaRpc()
-  vcsListFiles(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("listFiles", request);
-  }
-
-  @schemaRpc()
-  vcsSemanticEffectAck(input: { acknowledgement: SemanticEffectAcknowledgement }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().acknowledgeEffect(input.acknowledgement);
-  }
-
-  @schemaRpc()
-  vcsSemanticHostReadAck(input: {
-    acknowledgement: {
-      request: GadJsonRecord;
-      files: Array<{ contentHash: string; text: string }>;
-    };
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().acknowledgeHostRead(input.acknowledgement);
-  }
-
-  @schemaRpc()
-  vcsSemanticContentAck(input: {
-    acknowledgement: { request: GadJsonRecord; contentHashes: string[] };
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().acknowledgeContent(input.acknowledgement);
-  }
-
-  @schemaRpc()
-  vcsPendingSemanticEffects(): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().pendingEffects();
   }
 
   // -------------------------------------------------------------------------
@@ -5429,8 +5212,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
   ): InvocationDiagnosticPacket {
     this.ensureReady();
     const eventLimit = Math.min(Math.max(input.eventLimit ?? 20, 1), 50);
-    const commandLimit = Math.min(Math.max(input.commandLimit ?? 20, 1), 50);
-    const effectLimit = Math.min(Math.max(input.effectLimit ?? 50, 1), 100);
     const invocation = this.sql
       .exec(
         `SELECT log_id,head,invocation_id,turn_id,transport_call_id,kind,status,
@@ -5478,63 +5259,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           this.trajectoryEventView(this.mapLogEnvelope(row)),
         ),
       ) as JsonRecord[];
-    const commandRows = this.sql
-      .exec(
-        `SELECT command_id,scope_kind,scope_id,method,request_digest,status,result_json,
-                created_at,completed_at
-           FROM vcs_command_journal
-          WHERE cause_log_id = ? AND cause_head = ? AND cause_invocation_id = ?
-          ORDER BY created_at ASC, command_id ASC
-          LIMIT ?`,
-        input.trajectoryId,
-        input.branchId,
-        input.invocationId,
-        commandLimit + 1,
-      )
-      .toArray() as JsonRecord[];
-    const commandsTruncated = commandRows.length > commandLimit;
-    let effectsTruncated = false;
-    const commands: CommandDiagnostic[] = commandRows
-      .slice(0, commandLimit)
-      .map((command) => {
-        const effects = this.sql
-          .exec(
-            `SELECT effect_id,scope_kind,scope_id,command_id,kind,payload_digest,status,
-                  receipt_digest,created_at,applied_at,payload_json,receipt_json
-             FROM gad_effect_intents
-            WHERE command_id = ? AND scope_kind = ? AND scope_id = ?
-            ORDER BY created_at ASC,effect_id ASC
-            LIMIT ?`,
-            String(command["command_id"]),
-            String(command["scope_kind"]),
-            String(command["scope_id"]),
-            effectLimit + 1,
-          )
-          .toArray()
-          .slice(0, effectLimit + 1)
-          .map((effect) => {
-            const {
-              payload_json: payloadJson,
-              receipt_json: receiptJson,
-              ...identity
-            } = effect as JsonRecord;
-            return {
-              ...identity,
-            payload: payloadJson == null ? null : parseJson(String(payloadJson)),
-            receipt: receiptJson == null ? null : parseJson(String(receiptJson)),
-            };
-          }) as CommandDiagnostic["effects"];
-        if (effects.length > effectLimit) effectsTruncated = true;
-        effects.splice(effectLimit);
-        const { result_json: resultJson, ...identity } = command;
-        return {
-          command: {
-            ...identity,
-            result: resultJson == null ? null : parseJson(String(resultJson)),
-          } as CommandDiagnostic["command"],
-          effects,
-        };
-      });
     const cleanupFailureCount = events.reduce((count, event) => {
       const payload = event["payload"];
       if (!payload || typeof payload !== "object" || Array.isArray(payload))
@@ -5568,7 +5292,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       invocation: invocation ?? null,
       turn: turn ?? null,
       events,
-      commands,
       summary: {
         terminal: Boolean(
           invocation &&
@@ -5577,21 +5300,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
           ),
         ),
         eventCount: events.length,
-        commandCount: commands.length,
-        pendingEffectCount: commands.reduce(
-          (count, command) =>
-            count +
-            command.effects.filter(
-              (effect) => String(effect["status"]) === "pending",
-            ).length,
-          0,
-        ),
         cleanupFailureCount,
-        truncated: {
-          events: eventsTruncated,
-          commands: commandsTruncated,
-          effects: effectsTruncated,
-        },
+        truncated: { events: eventsTruncated },
       },
     };
   }
@@ -6134,6 +5844,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   getStatus(): { metric: string; value: number }[] {
+    this.ensureReady();
     const count = (sql: string, ...bindings: SqlBinding[]) =>
       asNumber(this.sql.exec(sql, ...bindings).one()["value"]);
     return [
@@ -6152,18 +5863,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
            JOIN log_heads h ON h.log_id = e.log_id AND h.head = e.head
            WHERE h.log_kind = 'channel'`,
         ),
-      },
-      {
-        metric: "Workspace contexts",
-        value: count(`SELECT COUNT(*) AS value FROM vcs_contexts`),
-      },
-      {
-        metric: "Workspace events",
-        value: count(`SELECT COUNT(*) AS value FROM gad_workspace_events`),
-      },
-      {
-        metric: "Work units",
-        value: count(`SELECT COUNT(*) AS value FROM gad_work_units`),
       },
     ];
   }
@@ -6897,18 +6596,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const logIntegrity = await this.checkLogIntegrity({});
     errors.push(...logIntegrity.errors);
 
-    try {
-      this.semanticVcsStore().assertIntegrity();
-    } catch (error) {
-      errors.push({
-        type: "semantic-vcs",
-        message: error instanceof Error ? error.message : String(error),
-        ...(error instanceof SemanticVcsError
-          ? { code: error.code, detail: error.detail }
-          : {}),
-      });
-    }
-
     for (const orphan of this.inspectPublicationIntegrity({}).rows) {
       errors.push({
         ...orphan,
@@ -6952,12 +6639,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
     return { ok: errors.length === 0, errors };
   }
-  private ensureEmptyState(): void {
-    // Semantic workspace genesis is context-scoped and is created lazily by
-    // SemanticVcsStore.ensureWorkspace. Schema creation itself has no authority
-    // to invent a workspace/context identity.
-  }
-
   private transaction<T>(fn: () => T): T {
     return this.ctx.storage.transactionSync(fn);
   }
