@@ -1,0 +1,12 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-session-recovery",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "recoverSessionGoal.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "recoverySessions": ["recoverSessionGoal.nl"],
+    "recoveryReplay": ["recoverSessionGoal/readRecoveryWindows.nl"],
+    "recoveryHandoff": ["recoverSessionGoal/stageRecoveryHandoff.nl"]
+  }
+}
