@@ -1,5 +1,6 @@
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
+export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
 export type { NewsEvidenceReport } from "./workOnNewsEvidenceGoal/types.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
 export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";

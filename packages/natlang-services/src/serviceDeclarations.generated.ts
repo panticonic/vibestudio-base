@@ -4966,6 +4966,43 @@ type PackageRestore = { status: "restored" | "state-changed" | "not-authorized";
 /** Restore one approved installed package declaration at its exact working revision. */
 export function restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<PackageRestore>;`,
+  agentCapabilityEvidence: `/** Read the owned notebook and its actual native action receipt, console and scoped value. */
+
+type AttemptCard = { id: string; notebook: string; revision: string; title: string };
+
+type ActionAssignment = {
+  notebook: string; title: string; revision: string; goal: string; task: "audit" | "continue" | "retry";
+  approval: { notebook: string; revision: string; mode: "continue" | "retry" | "read-only" | "withdrawn" };
+  attempts: AttemptCard[];
+};
+
+type ActionEvidence = {
+  attempt: AttemptCard; runId: string; runDigest: string; resultDigest: string; terminal: string;
+  admitted: boolean; completeEvents: boolean; lastSequence: number; invocationStatus: string;
+  failure: { code: string; kind: string; retry: string } | null;
+  console: { lines: number; tail: string | null; complete: boolean; sha256: string };
+  notebook: { revision: string; saved: boolean; ready: boolean; settledDigest: string; siblingKeys: string[] };
+  exactRetry: boolean;
+};
+
+/** Read the owned notebook and its actual native action receipt, console and scoped value. */
+export function discover(): Promise<ActionAssignment>;
+
+/** Read the owned notebook and its actual native action receipt, console and scoped value. */
+export function inspect(id: string): Promise<ActionEvidence>;`,
+  agentCapabilityContinue: `/** Confirm retained evidence or retry one exact approved local step. */
+
+type CapabilityDecision = "hold-ownership" | "hold-revision" | "inspect-only" | "recover-native-evidence" |
+  "recover-existing-value" | "report-no-effect" | "hold-cancellation" | "hold-prerequisite" |
+  "confirm-continuation" | "retry-exact-step";
+
+type Continuation = { kind: "confirmed-existing" | "retried-step"; original: string; runId: string; runDigest: string;
+  resultDigest: string; valueDigest: string; revision: string };
+
+/** Confirm retained evidence or retry one exact approved local step. */
+export function apply(id: string, resultDigest: string, revision: string,
+      decision: CapabilityDecision):
+      Promise<Continuation | null>;`,
   extensionDossierRead: `/** Read exact owned approval, candidate manifest and release history. */
 
 type ReviewOwner = {

@@ -23,6 +23,7 @@ export type WorkspaceEditReport =
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
+  | { status: "workspace-skill-reviewed"; skill: "agentCapability"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }
   | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
