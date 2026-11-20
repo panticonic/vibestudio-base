@@ -1,0 +1,13 @@
+{
+  "schema":"natlang.package/v2",
+  "name":"vibestudio-open-image-candidate",
+  "version":"0.1.0",
+  "targets":{"main":{"entry":"discoverImageBriefs.nl"}},
+  "serviceBinding":"explicit",
+  "serviceScopes":{
+    "imageCandidateBriefs":["discoverImageBriefs.nl"],
+    "imageCandidateJournal":["readImageJournal.nl"],
+    "imageCandidateOriginal":["readImageOriginal.nl"],
+    "imageCandidateHandoff":["stageImageHandoff.nl"]
+  }
+}
