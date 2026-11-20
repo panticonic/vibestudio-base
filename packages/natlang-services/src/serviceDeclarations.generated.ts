@@ -1060,6 +1060,54 @@ type SpectroliteReviewRequest = {
 
 /** Observe the assigned vault and actual editor. */
 export function observe(): Promise<SpectroliteReviewRequest>;`,
+  spectroliteHandoffRead: `/** Read the verified document and preview from the assigned vault review. */
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultReviewState = {
+  id: string;
+  repositoryId: string;
+  working: VaultReference;
+  committed: VaultReference;
+  mainEventId: string;
+  clean: boolean;
+  relation: "at" | "ahead" | "behind" | "diverged";
+};
+
+type DocumentReviewReceipt = {
+  id: string;
+  repositoryId: string;
+  path: string;
+  ref: VaultReference;
+  fileId: string;
+  contentHash: string;
+  format: "text" | "other";
+  contentClass: "internal" | "external";
+  authoredChangeId: string | null;
+  authoredByWorkUnitId: string | null;
+  externalKeys: string[];
+  title: string | null;
+  dependencies: { name: string; reference: string }[];
+  links: { target: string; resolvedPath: string | null }[];
+};
+
+type PreviewReviewReceipt = {
+  id: string;
+  documentPath: string;
+  contentHash: string;
+  phase: "pending" | "rendered" | "compile-error" | "render-error";
+  detail: string | null;
+};
+
+type VaultHandoffEvidence = {
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt;
+  committedDocument: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+};
+
+/** Read the verified document and preview from the assigned vault review. */
+export function evidence(): Promise<VaultHandoffEvidence>;`,
   architectureProviderRead: `/** Read the assigned installed service and its exact authored declaration. */
 
 type ArchitectureRoute = {
