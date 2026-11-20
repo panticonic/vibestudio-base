@@ -92,6 +92,19 @@ describe("execution-owned native operation evidence", () => {
     expect(journal.entries).toEqual([{ type: "rpc.call", receipt }]);
   });
 
+  it("reserves host observation types while retaining descriptive guest entries", () => {
+    const journal = new ExecutionJournal();
+    for (const type of [
+      "blob-text.observation", "blob-tree.observation", "fs.read", "extension.invocation",
+      "webhook.observation", "permissions.inventory", "runtime.health", "runtime.units",
+      "credentials.resolution", "notification.lifecycle", "server-log.observation", "build.profile",
+    ]) {
+      expect(() => journal.appendGuestOperation({ type })).toThrow(/reserved for host evidence/);
+    }
+    journal.appendGuestOperation({ type: "panel.observation" });
+    expect(journal.close().entries).toEqual([{ type: "panel.observation" }]);
+  });
+
   it("records a settled provider transport call before guest mutation without retaining secrets", async () => {
     const { instance } = await createTestDO(EvalKernel);
     const nativeRpc = wireClientFor(
