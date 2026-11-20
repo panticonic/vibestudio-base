@@ -116,6 +116,8 @@
     "extensionDossierWrite": ["runUserGoal/reviewExtensionDossier/stageDossier.nl"],
     "installedPackageRead": ["runUserGoal/reviewInstalledPackage/discoverPackage.nl", "runUserGoal/reviewInstalledPackage/inspectPackage/readOwnedPackage.nl"],
     "installedPackageChange": ["runUserGoal/reviewInstalledPackage/restorePackage.nl"],
+    "workspaceShareEvidence": ["runUserGoal/reviewWorkspaceShare/discoverShare.nl", "runUserGoal/reviewWorkspaceShare/identifyShare/readShare.nl"],
+    "workspaceShareHandoff": ["runUserGoal/reviewWorkspaceShare/stageShare.nl"],
     "agentCapabilityEvidence": ["runUserGoal/recoverAgentCapability/discoverAttempts.nl", "runUserGoal/recoverAgentCapability/inspectAttempt/readNativeAttempt.nl"],
     "agentCapabilityContinue": ["runUserGoal/recoverAgentCapability/continueCapability.nl"],
     "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],

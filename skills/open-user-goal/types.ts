@@ -24,6 +24,7 @@ export type WorkspaceEditReport =
 export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
+  | { status: "workspace-skill-reviewed"; skill: "workspaceShare"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "agentCapability"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }

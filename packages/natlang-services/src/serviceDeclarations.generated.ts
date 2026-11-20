@@ -5006,6 +5006,57 @@ type PackageRestore = { status: "restored" | "state-changed" | "not-authorized";
 /** Restore one approved installed package declaration at its exact working revision. */
 export function restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<PackageRestore>;`,
+  workspaceShareEvidence: `/** Read one assigned workspace share, exact membership, retained invite and object role. */
+
+type Purpose = "inspect" | "review-note" | "reader-note" | "author-note";
+
+type ShareCard = { id: string; workspace: string; title: string; revision: string };
+
+type ShareAssignment = { goal: string; workspace: string; document: string; user: string; purpose: Purpose; candidates: ShareCard[] };
+
+type LocalRole = "author" | "reviewer" | "reader" | "none";
+
+type ShareObservation = {
+  object: ShareCard & { author: string; digest: string };
+  session: { admitted: boolean; accountRole: "root" | "admin" | "member" };
+  member: { accountRole: "root" | "admin" | "member"; workspaceRole: "admin" | "member" | null; active: boolean; revoked: boolean };
+  invitation: { user: string | null; channel: string | null; revision: number | null;
+    currentRevision: number; member: boolean; action: "put" | "delete"; inbox: "pending" | "acknowledged" | "absent"; exact: boolean };
+  approval: { workspace: string; document: string; revision: string; digest: string; recipient: string; invitationRevision: number;
+    role: LocalRole; status: "approved" | "pending" | "declined" | "withdrawn" };
+};
+
+/** Read one assigned workspace share, exact membership, retained invite and object role. */
+export function discover(): Promise<ShareAssignment>;
+
+/** Read one assigned workspace share, exact membership, retained invite and object role. */
+export function inspect(id: string): Promise<ShareObservation>;`,
+  workspaceShareHandoff: `/** Stage one locally authorized private share review. */
+
+type ShareCard = { id: string; workspace: string; title: string; revision: string };
+
+type LocalRole = "author" | "reviewer" | "reader" | "none";
+
+type ShareObservation = {
+  object: ShareCard & { author: string; digest: string };
+  session: { admitted: boolean; accountRole: "root" | "admin" | "member" };
+  member: { accountRole: "root" | "admin" | "member"; workspaceRole: "admin" | "member" | null; active: boolean; revoked: boolean };
+  invitation: { user: string | null; channel: string | null; revision: number | null;
+    currentRevision: number; member: boolean; action: "put" | "delete"; inbox: "pending" | "acknowledged" | "absent"; exact: boolean };
+  approval: { workspace: string; document: string; revision: string; digest: string; recipient: string; invitationRevision: number;
+    role: LocalRole; status: "approved" | "pending" | "declined" | "withdrawn" };
+};
+
+type ShareDecision = "hold-workspace" | "hold-recipient" | "hold-revoked" | "hold-membership" | "hold-revision" |
+  "hold-invite" | "hold-declined" | "hold-pending" | "hold-role" | "inspect-current" |
+  "stage-author" | "stage-reviewer" | "stage-reader";
+
+type ShareReceipt = { path: string; bytes: number; sha256: string };
+
+/** Stage one locally authorized private share review. */
+export function stage(observation: ShareObservation,
+      decision: ShareDecision):
+      Promise<ShareReceipt | null>;`,
   agentCapabilityEvidence: `/** Read the owned notebook and its actual native action receipt, console and scoped value. */
 
 type AttemptCard = { id: string; notebook: string; revision: string; title: string };

@@ -82,6 +82,15 @@ declare module "natlang:services" {
     restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<import("./runUserGoal/reviewInstalledPackage/contract.js").PackageRestore>;
   };
+  export const workspaceShareEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareAssignment>;
+    inspect(id: string): Promise<import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareObservation>;
+  };
+  export const workspaceShareHandoff: {
+    stage(observation: import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareObservation,
+      decision: import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareDecision):
+      Promise<import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareReceipt | null>;
+  };
   export const agentCapabilityEvidence: {
     discover(): Promise<import("./runUserGoal/recoverAgentCapability/contract.js").ActionAssignment>;
     inspect(id: string): Promise<import("./runUserGoal/recoverAgentCapability/contract.js").ActionEvidence>;
