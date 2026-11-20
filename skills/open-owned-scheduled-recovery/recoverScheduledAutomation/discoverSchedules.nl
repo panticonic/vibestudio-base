@@ -1,5 +1,6 @@
 ---
 description: Locate the current exact owned interval schedule and collect neighboring options.
+uses: [readSchedule]
 args:
   goal: string
 returns: Schedule

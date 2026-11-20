@@ -11,7 +11,7 @@
   "serviceScopes": {
     "scheduledMission": [
       "recoverScheduledAutomation/discoverSchedules/listSchedules.nl",
-      "recoverScheduledAutomation/discoverSchedules/readSchedule.nl",
+      "readSchedule.nl",
       "recoverScheduledAutomation/applyChange/commitChange.nl"
     ],
     "scheduledHistory": [
