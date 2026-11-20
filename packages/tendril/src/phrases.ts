@@ -113,3 +113,12 @@ export function matchPhrase<T>(
   }
   return best ? { key: best.key, phrase: best.phrase, args: best.args } : null;
 }
+
+/** Project the page-local route using the same registrations as the Tendril control. */
+export function matchTendrilFunction(
+  text: string,
+  functions: readonly { name: string; phrases?: readonly string[] }[],
+): PhraseMatch<string> | null {
+  return matchPhrase(text, functions.flatMap(({ name, phrases }) =>
+    phrases?.length ? [{ key: name, phrases }] : []));
+}

@@ -1951,6 +1951,76 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  tendrilRouteRead: `/** Review owned Tendril audiences and project a retained instruction against current registered page capabilities. */
+
+type TendrilBoardCard = { id: string; title: string; room: string; audience: string; edition: "current" | "retired" | "draft" };
+
+type TendrilRouteSlot = {
+  id: string;
+  label: string;
+  device: string | null;
+  state: "current" | "offline" | "retired";
+  functions: { name: string; phrases: string[] }[];
+};
+
+type TendrilRouteSnapshot = TendrilBoardCard & {
+  channel: string;
+  source: string;
+  revision: string;
+  stateRevision: number;
+  agent: "attached" | "detached";
+  retainAllowed: boolean;
+  utterance: { text: string; via: "text" | "voice" };
+  slots: TendrilRouteSlot[];
+};
+
+type TendrilRouteProjection =
+  | { kind: "local"; name: string; phrase: string; text: string | null; captures: string[] }
+  | { kind: "agent"; attached: boolean }
+  | { kind: "ambiguous"; names: string[] };
+
+type TendrilRouteFinding = {
+  id: string;
+  channel: string;
+  audience: string;
+  slot: string;
+  revision: string;
+  utterance: { text: string; via: "text" | "voice" };
+  projection: TendrilRouteProjection;
+};
+
+type TendrilRouteProbe = { status: "projected"; finding: TendrilRouteFinding }
+  | { status: "changed"; revision: string };
+
+/** Review owned Tendril audiences and project a retained instruction against current registered page capabilities. */
+export function listBoards(): Promise<TendrilBoardCard[]>;
+
+/** Review owned Tendril audiences and project a retained instruction against current registered page capabilities. */
+export function readBoard(id: string): Promise<TendrilRouteSnapshot>;
+
+/** Review owned Tendril audiences and project a retained instruction against current registered page capabilities. */
+export function probe(id: string, slot: string, revision: string): Promise<TendrilRouteProbe>;`,
+  tendrilRouteRetention: `/** Retain original scoped Tendril route evidence in private local scratch. */
+
+type TendrilRouteProjection =
+  | { kind: "local"; name: string; phrase: string; text: string | null; captures: string[] }
+  | { kind: "agent"; attached: boolean }
+  | { kind: "ambiguous"; names: string[] };
+
+type TendrilRouteFinding = {
+  id: string;
+  channel: string;
+  audience: string;
+  slot: string;
+  revision: string;
+  utterance: { text: string; via: "text" | "voice" };
+  projection: TendrilRouteProjection;
+};
+
+type TendrilRouteReceipt = { path: string; sha256: string; revision: string };
+
+/** Retain original scoped Tendril route evidence in private local scratch. */
+export function retain(finding: TendrilRouteFinding): Promise<TendrilRouteReceipt | null>;`,
   presentationRecords: `/** Discover exact owned presentation records, read their current revisions, and verify canonical private previews. */
 
 type PresentationSourceCard = {

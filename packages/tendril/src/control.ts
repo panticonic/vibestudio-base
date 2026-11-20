@@ -5,7 +5,7 @@
  * runs that function on the page; anything else goes to the agent as the
  * person's own message. Shadow DOM, so page styles never leak in or out.
  */
-import { matchPhrase, type PhraseEntry } from "./phrases.js";
+import { matchTendrilFunction } from "./phrases.js";
 import type { AgentStatus, Tendril } from "./page.js";
 
 export interface TendrilControl {
@@ -104,11 +104,7 @@ export function mountTendrilControl(
   });
 
   const submit = async (text: string, via: "voice" | "text" = "text") => {
-    const entries: PhraseEntry<string>[] = tendril
-      .functions()
-      .filter((fn) => fn.phrases?.length)
-      .map((fn) => ({ key: fn.name, phrases: fn.phrases! }));
-    const match = matchPhrase(text, entries);
+    const match = matchTendrilFunction(text, tendril.functions());
     if (match) {
       const value = await tendril.call(match.key, match.args);
       result.textContent = value === undefined ? `Done: ${match.key}` : `${match.key}: ${String(value)}`;

@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }
   | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
   | { status: "workspace-skill-reviewed"; skill: "workspaceAssembly"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "capabilityPlan"; outcome: unknown }
@@ -119,3 +120,47 @@ export type PresentationSourceChoice =
 export type LocalPresentationOutcome =
   | { status: "visible"; receipt: LocalPresentationReceipt; notes: string[] }
   | { status: "held"; reason: string; revision: string | null };
+
+export type TendrilBoardCard = { id: string; title: string; room: string; audience: string; edition: "current" | "retired" | "draft" };
+export type TendrilRouteSlot = {
+  id: string;
+  label: string;
+  device: string | null;
+  state: "current" | "offline" | "retired";
+  functions: { name: string; phrases: string[] }[];
+};
+export type TendrilRouteSnapshot = TendrilBoardCard & {
+  channel: string;
+  source: string;
+  revision: string;
+  stateRevision: number;
+  agent: "attached" | "detached";
+  retainAllowed: boolean;
+  utterance: { text: string; via: "text" | "voice" };
+  slots: TendrilRouteSlot[];
+};
+export type TendrilRouteProjection =
+  | { kind: "local"; name: string; phrase: string; text: string | null; captures: string[] }
+  | { kind: "agent"; attached: boolean }
+  | { kind: "ambiguous"; names: string[] };
+export type TendrilRouteFinding = {
+  id: string;
+  channel: string;
+  audience: string;
+  slot: string;
+  revision: string;
+  utterance: { text: string; via: "text" | "voice" };
+  projection: TendrilRouteProjection;
+};
+export type TendrilRouteProbe = { status: "projected"; finding: TendrilRouteFinding }
+  | { status: "changed"; revision: string };
+export type TendrilBoardChoice = { status: "selected"; board: TendrilRouteSnapshot }
+  | { status: "held"; reason: string };
+export type TendrilSlotChoice = TendrilRouteProbe | { status: "held"; reason: string };
+export type TendrilRouteReceipt = { path: string; sha256: string; revision: string };
+export type TendrilRouteOutcome = {
+  status: "verified" | "held";
+  finding: TendrilRouteFinding | null;
+  receipt: TendrilRouteReceipt | null;
+  reason: string;
+};

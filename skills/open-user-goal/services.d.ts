@@ -19,6 +19,14 @@ declare module "natlang:services" {
     stage(checkpoints: string[], focus: import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentFocus):
       Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentReceipt | null>;
   };
+  export const tendrilRouteRead: {
+    listBoards(): Promise<import("./types.js").TendrilBoardCard[]>;
+    readBoard(id: string): Promise<import("./types.js").TendrilRouteSnapshot>;
+    probe(id: string, slot: string, revision: string): Promise<import("./types.js").TendrilRouteProbe>;
+  };
+  export const tendrilRouteRetention: {
+    retain(finding: import("./types.js").TendrilRouteFinding): Promise<import("./types.js").TendrilRouteReceipt | null>;
+  };
   export const presentationRecords: {
     discover(): Promise<import("./types.js").PresentationSourceCard[]>;
     read(id: string): Promise<import("./types.js").LocalPresentationSource>;

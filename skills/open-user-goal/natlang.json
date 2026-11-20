@@ -68,6 +68,12 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "tendrilRouteRead": [
+      "runUserGoal/reviewTendrilRoute/identifyTendril/listBoards.nl",
+      "runUserGoal/reviewTendrilRoute/identifyTendril/readBoard.nl",
+      "runUserGoal/reviewTendrilRoute/reviewSlot/probeSlot.nl"
+    ],
+    "tendrilRouteRetention": ["runUserGoal/reviewTendrilRoute/retainRoute.nl"],
     "presentationRecords": [
       "runUserGoal/reviewLocalPresentation/selectSource/listRecords.nl",
       "runUserGoal/reviewLocalPresentation/selectSource/readRecord.nl",
