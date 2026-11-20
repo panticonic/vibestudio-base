@@ -1,0 +1,13 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-provider-handoff",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "discoverRetainedConversations.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "retainedConversationIndex": ["discoverRetainedConversations.nl"],
+    "retainedConversationState": ["readProviderConversation.nl"],
+    "retainedProviderOutput": ["readProviderOutput.nl"],
+    "retainedProviderHandoff": ["stageProviderHandoff.nl"]
+  }
+}
