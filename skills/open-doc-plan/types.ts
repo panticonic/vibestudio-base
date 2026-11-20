@@ -22,6 +22,7 @@ export type PlanStep = { id: string; sha256: string; argumentNames: string[]; pu
 export type CapabilityPlan = {
   status: "ready" | "hold";
   steps: PlanStep[];
+  rationale: string;
   knowledge: KnowledgeCitation[];
   missing: MissingCapability[];
   memoDisposition: "none" | "current" | "stale" | "conflicting";
