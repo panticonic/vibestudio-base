@@ -327,6 +327,10 @@ it("describes the typed workflows in the installed template domains", async () =
         return {results:[{kind:"domain",domain:"github",operation:remote.operation,report}],remaining:[]};
       }
       if (remote.domain === "remoteAccess") {
+        if (remote.operation === "reviewRemoteRoute") {
+          const report = await domains.remoteAccess.reviewRemoteRoute(remote.input);
+          return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
+        }
         const report = remote.operation === "deployRemoteServer"
           ? await domains.remoteAccess.deployRemoteServer(remote.input)
           : remote.operation === "commissionRemoteWorkspace"
@@ -365,6 +369,23 @@ it("describes the typed workflows in the installed template domains", async () =
       return {deployment, handoff, access};
     `,
     bindVerifiedWorkspace: "return await remoteDeploymentHandoff.open(deploymentReceipt);",
+    reviewRemoteRoute: `
+      const observed=await readGatewayIdentity(request.operationId);
+      const {verdict,diagnostic}=await compareGatewayIdentity(request,observed);
+      const layer=await remoteLayer(diagnostic);
+      return {observed,verdict,layer,next:await routeHandoff(verdict,layer)};
+    `,
+    readGatewayIdentity: "return await remoteGatewayIdentity.observe(operationId);",
+    remoteLayer: `
+      if(diagnosis.includes("different workspace ID")) return "workspace-routing";
+      if(diagnosis.includes("does not belong")) return "device-credential";
+      return "healthy";
+    `,
+    routeHandoff: `
+      if(verdict==="verified") return "accept-identity";
+      if(verdict==="workspace-mismatch"&&layer==="workspace-routing") return "refresh-workspace-reach";
+      return "verify-server-assignment";
+    `,
     reviewRetainedFailure: `
       const packet = await readRetainedFailure(request.operationId);
       const identified = await matchesAssignment(request,packet);
@@ -589,6 +610,7 @@ it("describes the typed workflows in the installed template domains", async () =
         "investigateSystem",
         "prepareLocalModel",
         "openRemoteWorkspace",
+        "reviewRemoteRoute",
         "deployRemoteServer",
         "commissionRemoteWorkspace",
       ],
@@ -715,6 +737,34 @@ it("describes the typed workflows in the installed template domains", async () =
       expect(stagedCalls.splice(0)).toEqual([
         "runWorkflow", "reviewGitHubSetup", "readGitHubSetup", "accessLevelFor",
         "resolveGitHubRoute", "chooseSetupHandoff",
+      ]);
+    }
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "reviewRemoteRoute")) {
+    runReference = true;
+    const observed = {serverId:"actual-server",workspaceId:"actual-workspace",bootId:"boot"};
+    const run = (await loader.load(
+      "skills/vibestudio-workflows/runWorkflow.nl",
+      {services:{remoteGatewayIdentity:{observe: async (id: string) => {
+        expect(id).toBe("assigned-gateway");
+        return structuredClone(observed);
+      }}}},
+    )) as (request: unknown) => Promise<unknown>;
+    for (const [serverId, workspaceId, verdict, layer, next] of [
+      ["actual-server", "actual-workspace", "verified", "healthy", "accept-identity"],
+      ["actual-server", "old-workspace", "workspace-mismatch", "workspace-routing", "refresh-workspace-reach"],
+      ["foreign-server", "old-workspace", "server-mismatch", "device-credential", "verify-server-assignment"],
+    ] as const) {
+      const request = {goal:"Review the opened gateway",operationId:"assigned-gateway",serverId,workspaceId};
+      await expect(run({
+        goal: request.goal,
+        work: [{kind:"domain",domain:"remoteAccess",operation:"reviewRemoteRoute",input:request}],
+      })).resolves.toMatchObject({
+        remaining: [], results: [{report:{observed,verdict,layer,next}}],
+      });
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow","reviewRemoteRoute","readGatewayIdentity","remoteLayer","routeHandoff",
       ]);
     }
     runReference = false;

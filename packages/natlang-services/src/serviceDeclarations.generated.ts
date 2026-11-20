@@ -1500,6 +1500,10 @@ export function provision(
       discoveryReceipt: string,
       deviceId: string,
     ): Promise<PhonePairing>;`,
+  remoteGatewayIdentity: `/** Read the current authenticated gateway for the assigned workspace route. */
+
+/** Read the current authenticated gateway for the assigned workspace route. */
+export function observe(operationId: string): Promise<RemoteGatewayIdentity>;`,
   remoteDeploymentRead: `/** Read the baseline of the assigned managed deployment. */
 
 type DeploymentBaseline = {
