@@ -5,6 +5,8 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
+    "runUserGoal/workOnApiReadinessGoal/installed": "skills/api-integrations/natlang",
     "runUserGoal/workOnNewsEvidenceGoal/workspace": "skills/open-news-evidence",
     "runUserGoal/workOnNewsEvidenceGoal/installed": "skills/news-workflows",
     "runUserGoal/reviewLocalPresentation/visualize": "skills/visualize",

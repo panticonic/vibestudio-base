@@ -47,6 +47,8 @@ For checking a retained provider approval and its original conversation result t
 
 For a News goal requiring cross-checks among retained archive or reader windows, exact original article evidence, the current scheduling lane and a private editorial handoff, call workOnNewsEvidenceGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "newsEvidence", and its actual outcome.
 
+For a trusted API integration profile's quiet binding-readiness review across required and optional endpoints, or a local readiness note based on exact audiences and transports, call workOnApiReadinessGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "apiReadiness", and its actual outcome.
+
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
 - For comparing an extension release candidate and the protected or deployed package, changes in extension approval or permissions, or an extension rollback evidence dossier, call reviewExtensionDossier with the unchanged goal. Return status "workspace-skill-reviewed", skill "extensionDossier", and the actual outcome.

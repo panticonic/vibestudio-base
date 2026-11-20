@@ -5228,6 +5228,81 @@ type AgenticSourceObservation = {
 
 /** Read installed agentic stack sources at the caller's assigned semantic context. */
 export function read(contextId: string): Promise<AgenticSourceObservation>;`,
+  quietIntegrationIndex: `/** List exact quiet integration profiles and public destinations. */
+
+type QuietScope = {contextId:string;channelId:string;revision:string;approvals:"pregranted-only";mayStage:boolean};
+
+type IntegrationUse = "fetch"|"publish"|"git-http"|"git-ssh";
+
+type Destination = {id:string;purpose:string;use:IntegrationUse;required:boolean};
+
+type PublicDestination = Destination & {audience:string};
+
+type Profile = {id:string;title:string;revision:string;destinations:PublicDestination[]};
+
+type IntegrationIndex = {scope:QuietScope;profiles:Profile[]};
+
+/** List exact quiet integration profiles and public destinations. */
+export function list(): Promise<IntegrationIndex>;`,
+  quietIntegrationJournal: `/** Read the native current integration selection frontier. */
+
+type SelectionRow = {messageId:string;envelopeId:string;seq:number;selection:{
+  profileId:string;contextId:string;revision:string;sender:"owner-selection"|"copied-message";
+}};
+
+type SelectionFrontier = {channelId:string;through:number;rows:SelectionRow[]};
+
+/** Read the native current integration selection frontier. */
+export function read(channelId:string): Promise<SelectionFrontier|null>;`,
+  quietIntegrationProtocol: `/** Bind the current trusted plan and read its redacted pregranted-only audit. */
+
+type QuietRequest = {operationId:string;goal:string};
+
+type IntegrationUse = "fetch"|"publish"|"git-http"|"git-ssh";
+
+type DestinationObservation = {id:string;receipt:string;state:"missing"|"unverified"|"active"|"expired"|"revoked";canRefresh:boolean|null};
+
+type LookupFact = {destination:string;transport:IntegrationUse;audience:string;
+  authorization:"pregranted"|"no-match"|"ambiguous"|"actor-refused"|"grant-not-current";state:DestinationObservation["state"];
+  matched: {audience:string;match:"origin"|"path-prefix"|"exact";selection:"trusted-label"|"unique-audience"}|null;
+};
+
+type QuietAudit = {approvals:"pregranted-only";providerAccess:"unobserved";facts:LookupFact[]};
+
+/** Bind the current trusted plan and read its redacted pregranted-only audit. */
+export function open(profileId:string,message:string):Promise<QuietRequest|null>;
+
+/** Bind the current trusted plan and read its redacted pregranted-only audit. */
+export function audit(operationId:string):Promise<QuietAudit|null>;`,
+  quietIntegrationHandoff: `/** Stage one authorized quiet readiness note with no provider claim. */
+
+type IntegrationReadinessPlan = {profileId:string|null;channelId:string;through:number;message:string|null;
+  reason:string;action:"hold"|"escalate"|"report"|"stage";providerAccess:"unobserved";explanation:string};
+
+type QuietRequest = {operationId:string;goal:string};
+
+type DestinationObservation = {id:string;receipt:string;state:"missing"|"unverified"|"active"|"expired"|"revoked";canRefresh:boolean|null};
+
+type BoundReport = {planReceipt:string;destinations:{observation:DestinationObservation;
+  disposition:"ready"|"setup-needed"|"renewal-needed"|"authorization-unverified"}[];held:string[];
+  status:"ready"|"setup-needed"|"renewal-needed"|"authorization-unverified";guidance:string|null};
+
+type IntegrationUse = "fetch"|"publish"|"git-http"|"git-ssh";
+
+type LookupFact = {destination:string;transport:IntegrationUse;audience:string;
+  authorization:"pregranted"|"no-match"|"ambiguous"|"actor-refused"|"grant-not-current";state:DestinationObservation["state"];
+  matched: {audience:string;match:"origin"|"path-prefix"|"exact";selection:"trusted-label"|"unique-audience"}|null;
+};
+
+type QuietAudit = {approvals:"pregranted-only";providerAccess:"unobserved";facts:LookupFact[]};
+
+type ReadinessArtifact = {path:string;sha256:string;bytes:number};
+
+type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietRequest;result:BoundReport}|null;
+  audit:QuietAudit|null;handoff:ReadinessArtifact|null};
+
+/** Stage one authorized quiet readiness note with no provider claim. */
+export function stage(report:ReadinessReport):Promise<ReadinessArtifact|null>;`,
   integrationPlanRead: `/** Read the caller's assigned API integration plan. */
 
 type IntegrationUse = "fetch" | "publish" | "git-http" | "git-ssh";

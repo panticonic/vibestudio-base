@@ -31,3 +31,12 @@ Source checks run on bounded offline records and private temporary scratch.
 Managed environments use the same synthetic fixtures. No external calls,
 real credential reads, credential exchange, grant creation or model calls
 occur during qualification.
+
+## Installed capabilities and exact checks
+
+| Installed capability | Representative selectors by suffix | Independent proof |
+| --- | --- | --- |
+| `api-integrations/reviewIntegration` and `bindIntegrationReview` | `api-readiness-optional-miss-continue-scope`, `api-readiness-optional-temperature-grant-stops-required`, `api-readiness-optional-grant-after-required` | Exact sealed plan arguments and required/optional order, redacted lookup returns, held destination IDs and resulting coverage. |
+| Credential URL and transport canonical matching | `api-readiness-repo-prefix-boundary`, `api-readiness-exact-query-version`, `api-readiness-origin-http-distinct`, `api-readiness-held-publish-transport-separate` | Production selector and audience projection agree on exact use, origin, segment boundary and distinct query. |
+| Credential caller and lifecycle | `api-readiness-other-owners-same-label`, `api-readiness-human-binding-agent-refused`, `api-readiness-refreshable-expiry-quiet`, `api-readiness-held-revoked-archival-binding` | Original synthetic acting member, transport and selected binding; only authorized lifecycle facts leave the fixture. Direct-only egress explicitly still excludes exchange candidates. |
+| Eval authority intent and local handoff | `api-readiness-unknown-first-stops-sensitive-remainder`, `api-readiness-held-old-build-grant`, `api-readiness-held-quiet-multi-use-stage` | Native system-test runner sets `pregranted-only` for both modes. Verification checks the redacted synthetic grant observations, strict local artifact bytes and still-unobserved provider access. Actual hosted qualification remains separate. |
