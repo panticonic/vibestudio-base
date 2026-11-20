@@ -454,6 +454,7 @@ it("compiles the open goal program with its installed research skill and scoped 
     pdfIntakeProbe: ["runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],
     pdfIntakeRead: ["runUserGoal/pdf/extractPdfEvidence/readBatch.nl"],
     pdfLayoutRead: ["runUserGoal/pdf/reviewPdfLayout.nl"],
+    ownedPreviewPublication: ["runUserGoal/publication/publishOwnedPreviewGoal.nl", "runUserGoal/publication/publishOwnedPreviewGoal/deliverPreview.nl"],
     publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
     publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],
     websiteReadback: ["runUserGoal/publication/preflightPublication.nl"],

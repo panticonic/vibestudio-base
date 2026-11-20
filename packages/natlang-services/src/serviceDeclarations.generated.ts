@@ -961,6 +961,72 @@ export function inspect(): Promise<BrowserView>;
 
 /** Inspect a live workspace panel and activate a visible control against its observed revision. */
 export function activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;`,
+  ownedPreviewPublication: `/** undefined */
+
+type PublishEnvironment = "preview" | "production";
+
+type PublishIntent = {
+  provider: string;
+  destination: string;
+  environment: PublishEnvironment;
+};
+
+type OwnedPreviewObservation = {
+  site: string;
+  artifactDigest: string;
+  revision: string;
+  targets: {
+    id: string;
+    name: string;
+    audience: string;
+    intent: PublishIntent;
+    owned: boolean;
+    reviewed: boolean;
+  }[];
+};
+
+type PublishPreflightRequest = {
+  goal: string;
+  action: "prepare" | "check-existing";
+  audience: string;
+  intendedDestination: PublishIntent;
+};
+
+type OwnedPreviewBinding = {
+  targetId: string;
+  operationId: string | null;
+  hold: "outside-owned-preview" | "missing-approval" | null;
+  preflight: PublishPreflightRequest | null;
+};
+
+type OwnedPreviewReceipt = PublishIntent & {
+  operationId: string;
+  artifactDigest: string;
+  phase: "prepared" | "destination-ready" | "uploaded" | "submitted";
+  deploymentId?: string;
+  url?: string;
+  updatedAt: string;
+};
+
+type OwnedPreviewProgress =
+  | { status: "submitted"; receipt: OwnedPreviewReceipt }
+  | { status: "retryable"; receipt: OwnedPreviewReceipt; reason: string };
+
+type OwnedPreviewReadback =
+  | { status: "pending"; reason: string }
+  | { status: "verified"; receipt: OwnedPreviewReceipt; fileCount: number; publicUrl: string };
+
+/** undefined */
+export function discover(): Promise<OwnedPreviewObservation>;
+
+/** undefined */
+export function bind(revision: string, targetId: string): Promise<OwnedPreviewBinding | null>;
+
+/** undefined */
+export function advance(operationId: string): Promise<OwnedPreviewProgress>;
+
+/** undefined */
+export function readback(operationId: string): Promise<OwnedPreviewReadback>;`,
   publicationGoal: `/** Discover the current website review destinations and bind review work to an observed source revision. */
 
 type PublishEnvironment = "preview" | "production";

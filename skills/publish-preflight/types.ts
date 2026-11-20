@@ -141,3 +141,47 @@ export type PublicationGoalReport =
       revision: PublicationRevisionReport | null;
     }
   | { status: "blocked"; reason: string };
+
+export type OwnedPreviewObservation = {
+  site: string;
+  artifactDigest: string;
+  revision: string;
+  targets: {
+    id: string;
+    name: string;
+    audience: string;
+    intent: PublishIntent;
+    owned: boolean;
+    reviewed: boolean;
+  }[];
+};
+export type OwnedPreviewReceipt = PublishIntent & {
+  operationId: string;
+  artifactDigest: string;
+  phase: "prepared" | "destination-ready" | "uploaded" | "submitted";
+  deploymentId?: string;
+  url?: string;
+  updatedAt: string;
+};
+export type OwnedPreviewBinding = {
+  targetId: string;
+  operationId: string | null;
+  hold: "outside-owned-preview" | "missing-approval" | null;
+  preflight: PublishPreflightRequest | null;
+};
+export type OwnedPreviewProgress =
+  | { status: "submitted"; receipt: OwnedPreviewReceipt }
+  | { status: "retryable"; receipt: OwnedPreviewReceipt; reason: string };
+export type OwnedPreviewReadback =
+  | { status: "pending"; reason: string }
+  | { status: "verified"; receipt: OwnedPreviewReceipt; fileCount: number; publicUrl: string };
+export type OwnedPreviewReport =
+  | {
+      status: "published" | "held" | "incomplete";
+      targetId: string;
+      reason: string | null;
+      preflight: PublishPreflightReport | null;
+      receipt: OwnedPreviewReceipt | null;
+      hosted: OwnedPreviewReadback | null;
+    }
+  | { status: "unresolved"; reason: string };

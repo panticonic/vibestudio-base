@@ -135,5 +135,45 @@ type PublicationGoalReport = | {
       revision: PublicationRevisionReport | null;
     }
   | { status: "blocked"; reason: string };
+type OwnedPreviewObservation = {
+  site: string;
+  artifactDigest: string;
+  revision: string;
+  targets: {
+    id: string;
+    name: string;
+    audience: string;
+    intent: PublishIntent;
+    owned: boolean;
+    reviewed: boolean;
+  }[];
+};
+type OwnedPreviewReceipt = PublishIntent & {
+  operationId: string;
+  artifactDigest: string;
+  phase: "prepared" | "destination-ready" | "uploaded" | "submitted";
+  deploymentId?: string;
+  url?: string;
+  updatedAt: string;
+};
+type OwnedPreviewBinding = {
+  targetId: string;
+  operationId: string | null;
+  hold: "outside-owned-preview" | "missing-approval" | null;
+  preflight: PublishPreflightRequest | null;
+};
+type OwnedPreviewProgress = | { status: "submitted"; receipt: OwnedPreviewReceipt }
+  | { status: "retryable"; receipt: OwnedPreviewReceipt; reason: string };
+type OwnedPreviewReadback = | { status: "pending"; reason: string }
+  | { status: "verified"; receipt: OwnedPreviewReceipt; fileCount: number; publicUrl: string };
+type OwnedPreviewReport = | {
+      status: "published" | "held" | "incomplete";
+      targetId: string;
+      reason: string | null;
+      preflight: PublishPreflightReport | null;
+      receipt: OwnedPreviewReceipt | null;
+      hosted: OwnedPreviewReadback | null;
+    }
+  | { status: "unresolved"; reason: string };
 declare const fn: NatlangFunction<[request: PublicationRevisionRequest], PublicationRevisionReport> & { readonly assessRevisionChange: NatlangFunction<[comparison: PublicationRevisionComparison], PublicationRevisionImpact> & { readonly checkCriticalPaths: NatlangFunction<[paths: string[], originalEntry: string, candidateEntry: string], PublicationRevisionImpact> }; readonly matchPublicationTarget: NatlangFunction<[reviewed: PublishIntent, candidate: PublishIntent], "same-target" | "different-target"> };
 export default fn;
