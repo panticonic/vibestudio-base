@@ -212,6 +212,32 @@ type MissionFacilityEvidence = {
 
 /** Read one assigned Mission Control card, project and its prerequisites. */
 export function inspect(operationId: string): Promise<MissionFacilityEvidence>;`,
+  extensionDesignRead: `/** Validate the assigned working and protected-main extension manifests. */
+
+type ManifestReceipt = {
+  id: string;
+  unit: string;
+  candidateDigest: string;
+  errorCode: string | null;
+};
+
+type ExtensionManifestEvidence = {
+  kind: "manifest";
+  source: string;
+  candidateDigest: string;
+  receipt: ManifestReceipt | null;
+};
+
+type LiveExtensionDesignEvidence = {
+  contextId: string;
+  workingRevision: string;
+  mainRevision: string;
+  working: ExtensionManifestEvidence;
+  published: ExtensionManifestEvidence;
+};
+
+/** Validate the assigned working and protected-main extension manifests. */
+export function inspect(operationId: string): Promise<LiveExtensionDesignEvidence>;`,
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
 
 /** Resolve the native GitHub setup route from the observed connection stage. */

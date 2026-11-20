@@ -2,5 +2,9 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-workspace-unit-design",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reviewWorkspaceUnit.nl" } }
+  "targets": { "main": { "entry": "reviewWorkspaceUnit.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "extensionDesignRead": ["reviewWorkspaceUnit/reviewLiveExtensionDesign/readExtensionDesign.nl"]
+  }
 }

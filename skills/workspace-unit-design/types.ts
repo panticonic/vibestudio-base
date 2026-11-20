@@ -164,7 +164,20 @@ export type UnitReviewLeaf =
   | { kind: "agentic"; goal: string; evidence: AgenticEvidence };
 export type UnitReviewRequest =
   | UnitReviewLeaf
+  | LiveExtensionDesignRequest
   | { kind: "composed"; goal: string; work: UnitReviewLeaf[] };
+export type LiveExtensionDesignRequest = {
+  kind: "extension-design-live";
+  goal: string;
+  operationId: string;
+};
+export type LiveExtensionDesignEvidence = {
+  contextId: string;
+  workingRevision: string;
+  mainRevision: string;
+  working: ExtensionManifestEvidence;
+  published: ExtensionManifestEvidence;
+};
 export type ReviewDecision =
   | "ready"
   | "revision-needed"

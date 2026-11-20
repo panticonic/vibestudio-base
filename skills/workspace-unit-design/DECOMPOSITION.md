@@ -19,3 +19,10 @@ The bank includes observations for missing and contradictory receipts as well as
 successful flows. Exact independent oracles check the recommendation and
 evidence identities. Shape and receipt projection tests exercise the original
 host validators instead of duplicating their field constraints inside Natlang.
+
+Live extension design review reads the assigned working and protected-main
+manifests at their exact VCS revisions. A scoped service runs the shared
+manifest validator. The Natlang program reviews each receipt, checks whether
+the reviewed manifest is published, and preserves the three findings in order.
+This branch reviews the manifest boundary. Activation requires separate build
+and runtime evidence.

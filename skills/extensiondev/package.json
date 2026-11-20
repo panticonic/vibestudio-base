@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { "./workflow": "./workflow.ts" },
-  "dependencies": { "@workspace/runtime": "workspace:*" }
+  "exports": {
+    "./workflow": "./workflow.ts",
+    "./unit-design": "./unit-design.ts"
+  },
+  "dependencies": {
+    "@vibestudio/shared": "workspace:*",
+    "@workspace/runtime": "workspace:*"
+  }
 }
