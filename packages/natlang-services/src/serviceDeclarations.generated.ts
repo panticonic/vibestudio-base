@@ -1828,6 +1828,37 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  presentationRecords: `/** Discover exact owned presentation records, read their current revisions, and verify canonical private previews. */
+
+type PresentationSourceCard = {
+  id: string;
+  title: string;
+  desk: string;
+  period: string;
+  status: "current" | "signed" | "archive" | "draft";
+};
+
+type LocalPresentationSource = PresentationSourceCard & {
+  revision: string;
+  previewAllowed: boolean;
+  sections: { id: string; required: boolean; ask: string; data: string }[];
+};
+
+type LocalPresentationReceipt = { source: string; revision: string; viewIds: string[]; mdxDigests: string[] };
+
+type PreviewDisposition =
+  | { status: "visible"; receipt: LocalPresentationReceipt }
+  | { status: "changed"; revision: string }
+  | { status: "unavailable"; reason: string };
+
+/** Discover exact owned presentation records, read their current revisions, and verify canonical private previews. */
+export function discover(): Promise<PresentationSourceCard[]>;
+
+/** Discover exact owned presentation records, read their current revisions, and verify canonical private previews. */
+export function read(id: string): Promise<LocalPresentationSource>;
+
+/** Discover exact owned presentation records, read their current revisions, and verify canonical private previews. */
+export function preview(id: string, revision: string, report: unknown): Promise<PreviewDisposition>;`,
   localWidthEvidence: `/** Read an owned machine's retained provider and execution evidence. */
 
 type MachineScope = { machine: string; boot: string; configuration: string };

@@ -2,5 +2,6 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-visualize",
   "version": "0.1.0",
+  "include": ["preparePresentation.nl", "preparePresentation", "types.ts"],
   "targets": { "main": { "entry": "preparePresentation.nl" } }
 }

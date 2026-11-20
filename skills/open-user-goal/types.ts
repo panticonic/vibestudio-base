@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
   | { status: "workspace-skill-reviewed"; skill: "workspaceAssembly"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "capabilityPlan"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "vaultWork"; outcome: unknown }
@@ -91,3 +92,27 @@ export type PdfVaultHandoff =
   };
 
 export type PdfVaultOutcome = { pdf: unknown; handoff: PdfVaultHandoff; vault: unknown };
+
+export type PresentationSourceCard = {
+  id: string;
+  title: string;
+  desk: string;
+  period: string;
+  status: "current" | "signed" | "archive" | "draft";
+};
+export type LocalPresentationSource = PresentationSourceCard & {
+  revision: string;
+  previewAllowed: boolean;
+  sections: { id: string; required: boolean; ask: string; data: string }[];
+};
+export type LocalPresentationReceipt = { source: string; revision: string; viewIds: string[]; mdxDigests: string[] };
+export type PreviewDisposition =
+  | { status: "visible"; receipt: LocalPresentationReceipt }
+  | { status: "changed"; revision: string }
+  | { status: "unavailable"; reason: string };
+export type PresentationSourceChoice =
+  | { status: "selected"; record: LocalPresentationSource }
+  | { status: "held"; reason: string };
+export type LocalPresentationOutcome =
+  | { status: "visible"; receipt: LocalPresentationReceipt; notes: string[] }
+  | { status: "held"; reason: string; revision: string | null };

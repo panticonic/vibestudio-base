@@ -5,6 +5,7 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/reviewLocalPresentation/visualize": "skills/visualize",
     "runUserGoal/workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
     "runUserGoal/workOnDictationHandoffGoal/dictation": "skills/offline-dictation",
     "runUserGoal/workOnSpecialistHandoffGoal/workspace": "skills/open-specialist-handoff",
@@ -61,6 +62,11 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "presentationRecords": [
+      "runUserGoal/reviewLocalPresentation/selectSource/listRecords.nl",
+      "runUserGoal/reviewLocalPresentation/selectSource/readRecord.nl",
+      "runUserGoal/reviewLocalPresentation/previewRecord.nl"
+    ],
     "problemIncident": ["runUserGoal/workOnProblemReportGoal.nl"],
     "recoveryHandoffLink": ["runUserGoal/workOnRecoveryHandoff/readDirective.nl", "runUserGoal/workOnRecoveryHandoff/acquireSources.nl"],
     "buildIncidentCatalog": ["runUserGoal/reviewRetainedBuildIncident/discoverIncident.nl", "runUserGoal/reviewRetainedBuildIncident/selectCheckpoints/openCheckpoint.nl"],

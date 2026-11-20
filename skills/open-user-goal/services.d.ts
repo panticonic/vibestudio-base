@@ -19,6 +19,11 @@ declare module "natlang:services" {
     stage(checkpoints: string[], focus: import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentFocus):
       Promise<import("./runUserGoal/reviewRetainedBuildIncident/contract.js").IncidentReceipt | null>;
   };
+  export const presentationRecords: {
+    discover(): Promise<import("./types.js").PresentationSourceCard[]>;
+    read(id: string): Promise<import("./types.js").LocalPresentationSource>;
+    preview(id: string, revision: string, report: unknown): Promise<import("./types.js").PreviewDisposition>;
+  };
   export const localWidthEvidence: {
     discover(): Promise<import("./runUserGoal/reviewLocalExecutionWidth/contract.js").WidthSurvey>;
     readWitness(id: string): Promise<import("./runUserGoal/reviewLocalExecutionWidth/contract.js").WidthReceipt>;
