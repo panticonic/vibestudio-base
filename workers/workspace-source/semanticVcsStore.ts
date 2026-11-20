@@ -24,8 +24,6 @@ import {
   type PreparedWorkspaceFactChange,
 } from "./semanticWorkspaceFacts.js";
 import { execBatchedInsert } from "./sqlBatch.js";
-import type { LegacyHistoryStep } from "./legacyHistoryReplay.js";
-import { readLegacyProvenance } from "./legacyProvenance.js";
 import { SemanticVcsError, internalSemanticIntegrityFailure } from "./semanticVcsErrors.js";
 import { SemanticProvenanceWriter, stateNodeKey, validateApplicationPlan } from "./semanticProvenanceWriter.js";
 
@@ -318,33 +316,6 @@ export class SemanticVcsStore {
     private readonly now: () => string = () => new Date().toISOString()
   ) {
     this.facts = new SemanticWorkspaceFacts(sql);
-  }
-
-  legacyProvenance(step: LegacyHistoryStep) {
-    return readLegacyProvenance(this.sql, step);
-  }
-
-  legacyReplayPlan() {
-    const main = this.mainEventId();
-    const history = this.sql.exec(`
-      SELECT 'event' AS kind, event_id AS id FROM gad_workspace_events
-      UNION ALL
-      SELECT 'application', application_id FROM gad_work_unit_applications
-      ORDER BY kind, id
-    `).toArray().map((row) => stateRef(row["kind"], row["id"]));
-    const contexts = this.sql.exec(`
-      SELECT context_id, committed_event_id, working_head_application_id
-      FROM vcs_contexts ORDER BY context_id
-    `).toArray().map((row) => {
-      const committed = stateRef("event", text(row, "committed_event_id"));
-      const application = nullableText(row, "working_head_application_id");
-      return {
-        id: text(row, "context_id"),
-        committed,
-        working: application ? stateRef("application", application) : committed,
-      };
-    });
-    return { main: main ? stateRef("event", main) : null, history, contexts };
   }
 
   assertIntegrity(): void {

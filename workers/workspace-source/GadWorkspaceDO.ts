@@ -1,7 +1,5 @@
 import { registryMutationFromLogEnvelope, isAgenticLogKind } from "@workspace/agentic-protocol";
 export { GadHistoryDO } from "./GadHistoryDO.js";
-import { prepareReplayStep, type PreparedReplayStep } from "./legacyDoltReplay.js";
-import { legacyHistoryReplay } from "./legacyHistoryReplay.js";
 import type { StateNodeRef } from "@workspace/vcs-engine";
 import { prepareLogEvent, agenticLogCausality as agenticCausality, type PreparedLogEvent, type LogAppendEventInput } from "@workspace/agentic-protocol";
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
@@ -1344,138 +1342,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return new SemanticVcsStore(this.sql, nowIso);
   }
 
-  @rpc({
-    principals: ["host"],
-    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
-    effect: { kind: "open" }, tier: "open", sensitivity: "read",
-  })
-  exportHistoryReplayPlan() {
-    this.ensureReady();
-    const store = this.semanticVcsStore();
-    const { main, history, contexts } = store.legacyReplayPlan();
-    return {
-      main,
-      contexts,
-      steps: Array.from(legacyHistoryReplay(store, history), (step): StateNodeRef =>
-        step.kind === "event" ? { kind: "event", eventId: step.record.eventId }
-          : { kind: "application", applicationId: step.record.applicationId }),
-    };
-  }
-
-  @rpc({
-    principals: ["host"],
-    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
-    effect: { kind: "open" }, tier: "open", sensitivity: "write",
-  })
-  beginHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }) {
-    this.ensureReady();
-    if (typeof input.operationId !== "string" || !input.operationId.trim())
-      throw new Error("Workspace history replay requires an operation identity");
-    const marker = canonicalJson(input);
-    const prior = this.getStateValue("legacy-history-replay-freeze");
-    if (prior === null && this.getStateValue("legacy-history-replay-seal") !== null)
-      throw new Error("Retired legacy workspace history is missing its original freeze");
-    if (prior !== null && prior !== marker) throw new Error("Workspace history has a different frozen replay");
-    const plan = this.exportHistoryReplayPlan();
-    if (plan.main?.kind !== "event" || plan.main.eventId !== input.expectedMainEventId)
-      throw new Error("Workspace main changed before replay was frozen");
-    if (prior === null) {
-      const unfinished = this.sql.exec(
-        "SELECT 1 FROM vcs_command_journal WHERE status <> 'complete' LIMIT 1",
-      ).toArray();
-      if (unfinished.length > 0 || this.semanticWorkspace().pendingEffects().length > 0)
-        throw new Error("Workspace history still has unfinished commands");
-    }
-    const priorGeneration = prior === null ? null : this.getStateValue("legacy-history-replay-generation");
-    const generation = priorGeneration ?? crypto.randomUUID();
-    if (priorGeneration === null) {
-      this.transaction(() => {
-        this.setStateValue("legacy-history-replay-freeze", marker);
-        this.setStateValue("legacy-history-replay-generation", generation);
-      });
-    }
-    return { ...plan, generation };
-  }
-
-  @rpc({
-    principals: ["host"],
-    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
-    effect: { kind: "open" }, tier: "open", sensitivity: "write",
-  })
-  releaseHistoryReplayFreeze(input: { operationId: string; expectedMainEventId: string }): void {
-    this.ensureReady();
-    if (this.getStateValue("legacy-history-replay-seal") !== null)
-      throw new Error("Legacy workspace history has been retired");
-    const frozen = this.getStateValue("legacy-history-replay-freeze");
-    if (frozen === null) return;
-    if (frozen !== canonicalJson(input)) throw new Error("Workspace history has a different frozen replay");
-    this.transaction(() => {
-      this.deleteStateValue("legacy-history-replay-freeze");
-      this.deleteStateValue("legacy-history-replay-generation");
-    });
-  }
-
-  @rpc({
-    principals: ["host"],
-    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
-    effect: { kind: "open" }, tier: "open", sensitivity: "read",
-  })
-  readHistoryReplayFreeze(verify?: { receiptDigest: string }): (
-    { operationId: string; expectedMainEventId: string; verification?: { generation: string; sealed: boolean } }
-  ) | null {
-    this.ensureReady();
-    const stored = this.getStateValue("legacy-history-replay-freeze");
-    const sealed = this.getStateValue("legacy-history-replay-seal");
-    if (stored === null) {
-      if (sealed !== null) throw new Error("Retired legacy workspace history is missing its original freeze");
-      return null;
-    }
-    const freeze = JSON.parse(stored) as { operationId: string; expectedMainEventId: string };
-    if (!verify) return freeze;
-    const generation = this.getStateValue("legacy-history-replay-generation");
-    if (!generation) throw new Error("Legacy workspace history freeze has no generation");
-    if (sealed !== null && sealed !== canonicalJson({ generation, receiptDigest: verify.receiptDigest }))
-      throw new Error("Installed history does not match the retired legacy source");
-    return { ...freeze, verification: { generation, sealed: sealed !== null } };
-  }
-
-  @rpc({
-    principals: ["host"],
-    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
-    effect: { kind: "open" }, tier: "open", sensitivity: "write",
-  })
-  sealHistoryReplayFreeze(input: {
-    freeze: { operationId: string; expectedMainEventId: string };
-    generation: string;
-    receiptDigest: string;
-  }): void {
-    this.ensureReady();
-    if (!/^[0-9a-f]{64}$/u.test(input.receiptDigest) ||
-        this.getStateValue("legacy-history-replay-freeze") !== canonicalJson(input.freeze) ||
-        this.getStateValue("legacy-history-replay-generation") !== input.generation)
-      throw new Error("Cannot retire a different legacy history freeze");
-    const seal = canonicalJson({ generation: input.generation, receiptDigest: input.receiptDigest });
-    const previous = this.getStateValue("legacy-history-replay-seal");
-    if (previous !== null && previous !== seal)
-      throw new Error("Legacy workspace history was retired for a different receipt");
-    if (previous === null) this.setStateValue("legacy-history-replay-seal", seal);
-  }
-
   #requireLegacyHistoryAvailable(): void {
     if (this.getStateValue("legacy-history-replay-seal") !== null)
       throw new Error("Legacy workspace history has been retired");
     if (this.getStateValue("legacy-history-replay-freeze") !== null)
       throw new Error("Legacy workspace history is frozen for migration");
-  }
-
-  @rpc({
-    principals: ["host"],
-    website: { kind: "closed", reason: "Workspace replay is a host-owned migration." },
-    effect: { kind: "open" }, tier: "open", sensitivity: "read",
-  })
-  exportHistoryReplayStep(ref: StateNodeRef): PreparedReplayStep {
-    this.ensureReady();
-    return prepareReplayStep(this.semanticVcsStore(), ref);
   }
 
   private semanticWorkspace(): SemanticWorkspace {

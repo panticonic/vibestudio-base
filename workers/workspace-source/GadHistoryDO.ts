@@ -4,7 +4,6 @@ import { DurableObjectBase, rpc } from "@vibestudio/durable";
 import { doltRemotesOf, type DoltRemoteTarget } from "@vibestudio/durable/dolt";
 import { rpcBytesOf } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import type { WorkspaceSourceInitializationReceipt } from "@vibestudio/workspace-contracts/workspaceSource";
 import {
   vcsBlameInputSchema,
   vcsCompareInputSchema,
@@ -68,17 +67,11 @@ import {
   workspaceExternalDeltaRoots,
   workspaceHasFileContent,
   workspacePlacementRoots,
-  workspacePrivateReplayContent,
   workspaceRepositoriesAt,
   workspaceTemplateInstallationAt,
   verifyWorkspaceTemplatePublication,
 } from "./doltWorkspaceState.js";
 import { execBatchedInsert } from "./sqlBatch.js";
-import {
-  installPreparedReplayStep,
-  installReplayedMain,
-  type PreparedReplayStep,
-} from "./legacyDoltReplay.js";
 import {
   APPROVED_MAIN_GRANT_LIFETIME_MS,
   grantApprovedMain,
@@ -123,15 +116,6 @@ function incomingBranch(input: IncomingHistoryPublication): string {
   }
   return incomingPublicationPrefix + input.publicationId;
 }
-type ReplayContextTip = { id: string; committed: string; working: string };
-type ReplayReceipt = { head: string; eventId: string; contexts: ReplayContextTip[]; frozenPlanDigest?: string };
-type LegacyReplaySeal = { receiptDigest: string; generation: string };
-type ReplayReceiptDetails = ReplayReceipt & {
-  sourceInitialization?: WorkspaceSourceInitializationReceipt | null;
-  legacySeal?: LegacyReplaySeal | null;
-};
-const legacyReplaySealKey = "history-legacy-replay-seal";
-const sourceInitializationKey = "history-source-initialization";
 type SharedHistorySeed = { sourceNodeId: string; head: string; eventId: string };
 type SharedHistorySeedReceipt = { seed: SharedHistorySeed; originalHead: string; installed: boolean };
 const seedRemote = "workspace-seed";
@@ -318,63 +302,6 @@ export class GadHistoryDO extends DurableObjectBase {
     return { head: staged.head, eventId: staged.eventId };
   }
 
-  @rpc(hostWrite)
-  stageHistoryReplayStep(input: PreparedReplayStep): { head: string } {
-    this.#assertCanonical();
-    if (this.getStateValue(seedReceiptKey) !== null)
-      throw new Error("Workspace history is reserved for a shared seed");
-    const head = this.#schemaHead();
-    const sealed = this.getStateValue("history-installed") !== null;
-    return { head: installPreparedReplayStep(this.ctx.storage, head, input, sealed).hash };
-  }
-
-  @rpc(hostWrite)
-  finishHistoryReplay(input: Omit<ReplayReceipt, "contexts"> & { contexts?: ReplayContextTip[] }): { head: string } {
-    this.#assertCanonical();
-    if (this.getStateValue(seedReceiptKey) !== null)
-      throw new Error("Workspace history is reserved for a shared seed");
-    const contexts = [...(input.contexts ?? [])].sort((left, right) => compareUtf16CodeUnits(left.id, right.id));
-    const { head: proposedHead, eventId, frozenPlanDigest } = input;
-    if (frozenPlanDigest !== undefined &&
-        (typeof frozenPlanDigest !== "string" || !/^[0-9a-f]{64}$/u.test(frozenPlanDigest)))
-      throw new Error("Workspace replay requires a valid frozen plan digest");
-    const revisions = { head: proposedHead, eventId, contexts };
-    const receipt = { ...revisions, ...(frozenPlanDigest === undefined ? {} : { frozenPlanDigest }) };
-    const recorded = this.readHistoryReplayReceipt();
-    if (recorded) {
-      const { frozenPlanDigest: recordedDigest, ...recordedRevisions } = recorded;
-      if (canonicalJson(recordedRevisions) !== canonicalJson(revisions) ||
-          (recordedDigest && frozenPlanDigest && recordedDigest !== frozenPlanDigest)) {
-        throw new Error("Workspace replay receipt names a different source or revisions");
-      }
-      if (frozenPlanDigest && !recordedDigest)
-        this.setStateValue("history-replay-receipt", canonicalJson(receipt));
-      return { head: recorded.head };
-    }
-    const staged = committedWorkspaceEvent(this.sql, input.head);
-    if (!staged || staged.head !== input.head || staged.eventId !== input.eventId) {
-      throw new Error("Workspace replay did not produce the verified main event");
-    }
-    const seen = new Set<string>();
-    for (const { id, committed, working } of contexts) {
-      if (!id || !committed || !working || seen.has(id) ||
-          committedWorkspaceEvent(this.sql, working)?.head !== committed) {
-        throw new Error("Workspace replay context has no verified saved and working revisions");
-      }
-      seen.add(id);
-    }
-    const head = installReplayedMain(this.ctx.storage, this.#schemaHead(), {
-      main: input.head,
-      contexts: [],
-      commits: new Map(),
-    });
-    this.ctx.storage.transactionSync(() => {
-      this.setStateValue("history-installed", head);
-      this.setStateValue("history-replay-receipt", canonicalJson(receipt));
-    });
-    return { head };
-  }
-
   /** The host has approved a destination to fetch this exact published revision. */
   @rpc(hostWrite)
   offerSharedHistorySeed(input: { destinationNodeId: string; head: string; eventId: string }) {
@@ -527,138 +454,6 @@ export class GadHistoryDO extends DurableObjectBase {
     ])].sort(compareUtf16CodeUnits);
   }
 
-  @rpc(hostRead)
-  supportsHistoryReplay(): boolean {
-    this.#assertCanonical();
-    const dolt = this.#remotes();
-    if (!dolt.queryScoped) return false;
-    const result = dolt.queryScoped(
-      "SELECT count(*) FROM history_capability WHERE marker = 1",
-      { history_capability: "SELECT 1 AS marker" },
-      { maxRows: 1 }
-    );
-    return result.rows[0]?.[0] === 1n;
-  }
-
-  @rpc(hostRead)
-  readHistoryReplayReceipt(input?: { includeSourceInitialization?: true; includeLegacySeal?: true }):
-    ReplayReceiptDetails | null {
-    this.#assertCanonical();
-    const stored = this.getStateValue("history-replay-receipt");
-    if (!stored) return null;
-    const receipt = JSON.parse(stored) as ReplayReceipt;
-    if (receipt.head !== this.getStateValue("history-installed")) {
-      throw new Error("Workspace replay receipt has a different installed head");
-    }
-    if (!input) return receipt;
-    const result: ReplayReceiptDetails = { ...receipt };
-    if (input?.includeSourceInitialization) {
-      const initialization = this.getStateValue(sourceInitializationKey);
-      result.sourceInitialization = initialization ? this.#sourceInitializationReceipt(JSON.parse(initialization)) : null;
-    }
-    if (input?.includeLegacySeal) {
-      const seal = this.getStateValue(legacyReplaySealKey);
-      result.legacySeal = seal ? this.#validateLegacyReplaySeal(JSON.parse(seal), receipt) : null;
-    }
-    return result;
-  }
-
-  /** Record the old store's irreversible seal under this exact canonical receipt. */
-  @rpc(hostWrite)
-  recordHistoryReplaySeal(input: LegacyReplaySeal): LegacyReplaySeal {
-    const seal = this.#validateLegacyReplaySeal(input, this.readHistoryReplayReceipt());
-    const next = canonicalJson(seal);
-    const prior = this.getStateValue(legacyReplaySealKey);
-    if (prior !== null && prior !== next)
-      throw new Error("A different legacy history seal is already recorded");
-    if (prior === null) this.setStateValue(legacyReplaySealKey, next);
-    return seal;
-  }
-
-  #validateLegacyReplaySeal(input: LegacyReplaySeal, receipt: ReplayReceipt | null): LegacyReplaySeal {
-    if (!receipt?.frozenPlanDigest ||
-        input?.receiptDigest !== sha256HexSyncText(canonicalJson(receipt))) {
-      throw new Error("Legacy history seal requires the exact history replay receipt");
-    }
-    if (typeof input.generation !== "string" ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(input.generation)) {
-      throw new Error("Invalid legacy history seal generation");
-    }
-    return { receiptDigest: input.receiptDigest, generation: input.generation };
-  }
-
-  @rpc(hostWrite)
-  rememberHistorySourceInitialization(input: {
-    replayReceiptDigest: string;
-    receipt: WorkspaceSourceInitializationReceipt;
-  }): true {
-    const replay = this.readHistoryReplayReceipt();
-    if (!replay?.frozenPlanDigest ||
-        sha256HexSyncText(canonicalJson(replay)) !== input.replayReceiptDigest)
-      throw new Error("Source initialization requires the exact history replay receipt");
-    const receipt = this.#sourceInitializationReceipt(input.receipt);
-    if (!workspaceCommitForRef(this.sql, replay.head, {
-      kind: "event", eventId: receipt.initializedEventId,
-    })) {
-      throw new Error("Source initialization event is outside the replayed history");
-    }
-    const next = canonicalJson(receipt);
-    const prior = this.getStateValue(sourceInitializationKey);
-    if (prior !== null && prior !== next)
-      throw new Error("A different source initialization receipt is already recorded");
-    if (prior === null) this.setStateValue(sourceInitializationKey, next);
-    return true;
-  }
-
-  #sourceInitializationReceipt(input: unknown): WorkspaceSourceInitializationReceipt {
-    const inspection = gadWireMethods.workspaceSourceInspectInitialization.returns.parse({
-      state: "ready",
-      commandId: (input as Partial<WorkspaceSourceInitializationReceipt> | null)?.commandId,
-      receipt: input,
-    });
-    if (inspection.state !== "ready") throw new Error("Invalid source initialization receipt");
-    return inspection.receipt;
-  }
-
-  @rpc(hostRead)
-  readHistoryReplayPrivateContent(input: { planDigest: string; after: string | null }): string[] {
-    const receipt = this.readHistoryReplayReceipt();
-    if (!receipt?.frozenPlanDigest || input.planDigest !== receipt.frozenPlanDigest)
-      throw new Error("Workspace replay content requires the installed frozen plan");
-    if (input.after !== null && !/^[0-9a-f]{64}$/u.test(input.after))
-      throw new Error("Invalid workspace replay content cursor");
-    const tips = receipt.contexts.map(({ working }) => working);
-    return workspacePrivateReplayContent(this.sql, tips, receipt.head, input.after ?? "", 1_024);
-  }
-
-  @rpc(hostWrite)
-  registerHistoryReplayOwners(input: { owners: { contextId: string; participantId: string }[] }) {
-    const receipt = this.readHistoryReplayReceipt();
-    if (!receipt) throw new Error("Workspace history replay has no installed receipt");
-    const contexts = new Set(receipt.contexts.map(({ id }) => id));
-    const requested = new Map<string, string>();
-    for (const { contextId, participantId } of input.owners) {
-      if (!participantId || !contexts.has(contextId) || requested.has(contextId))
-        throw new Error("Invalid workspace history replay owner");
-      requested.set(contextId, participantId);
-    }
-    return this.ctx.storage.transactionSync(() => {
-      const owners: { contextId: string; participantId: string }[] = [];
-      for (const { id: contextId } of receipt.contexts) {
-        const key = `history-replay-owner:${sha256HexSyncText(contextId)}`;
-        const supplied = requested.get(contextId);
-        const recorded = this.getStateValue(key);
-        if (recorded !== null && supplied !== undefined && recorded !== supplied)
-          throw new Error("Workspace history replay owner is already recorded");
-        const participantId = recorded ?? supplied;
-        if (participantId === undefined) continue;
-        if (recorded === null) this.setStateValue(key, participantId);
-        owners.push({ contextId, participantId });
-      }
-      return owners;
-    });
-  }
-
   /** Record a runtime lifetime before a verified participant needs a working copy. */
   @rpc(hostWrite)
   ensureHistoryRuntimeContext(input: { contextId: string }): void {
@@ -678,20 +473,16 @@ export class GadHistoryDO extends DurableObjectBase {
     const recorded = this.sql.exec(
       `SELECT key, value FROM state WHERE key GLOB 'history-context-binding:*'`,
     ).toArray();
-    const contexts = new Map<string, boolean>();
+    const contexts: string[] = [];
     for (const { key, value } of recorded) {
       if (typeof value !== "string") throw new Error("Invalid workspace context registration");
       const binding = JSON.parse(value) as HistoryContextBinding;
       if (binding.contextId === undefined) continue;
       if (historyContextKey(binding.contextId) !== key)
         throw new Error("Workspace registration names a different context");
-      contexts.set(binding.contextId, binding.closed);
+      if (!binding.closed && binding.contextId.startsWith(prefix)) contexts.push(binding.contextId);
     }
-    for (const { id } of this.readHistoryReplayReceipt()?.contexts ?? []) {
-      if (!contexts.has(id)) contexts.set(id, this.#historyContextBinding(id).closed);
-    }
-    return [...contexts].flatMap(([id, closed]) => !closed && id.startsWith(prefix) ? [id] : [])
-      .sort(compareUtf16CodeUnits);
+    return contexts.sort(compareUtf16CodeUnits);
   }
 
   @rpc(hostWrite)

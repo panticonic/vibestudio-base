@@ -18,11 +18,8 @@ import {
   type VcsProvenanceEdge,
   type VcsSemanticNodeRef,
 } from "@vibestudio/service-schemas/vcs";
-import { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
 import { compactId } from "@workspace/vcs-engine";
-import { createDoltWorkspaceState } from "./doltWorkspaceState.js";
-import { replayLegacyWorkspace } from "./legacyDoltReplay.js";
 import { createSemanticVcsSchema } from "./semanticVcsSchema.js";
 import {
   SemanticWorkspace,
@@ -967,31 +964,6 @@ describe("SemanticWorkspace snapshot import", () => {
       },
     });
     expect(publishIntegratedDelta.kind).toBe("effects-pending");
-
-    const targetHistory = await FakeDoltStorage.create();
-    createDoltWorkspaceState(targetHistory.sql);
-    const schemaHead = targetHistory.dolt.commit("schema");
-    const replayed = replayLegacyWorkspace(store, { ...targetHistory.storage, sql: targetHistory.sql }, schemaHead);
-    const basis = replayed.commits.get(`event:${imported.eventId}`)!;
-    const publishedDelta = replayed.commits.get(`event:${committedResult.event.eventId}`)!;
-    targetHistory.dolt.checkout(basis.branch);
-    expect(targetHistory.sql.exec(
-      "SELECT 1 FROM gad_external_deltas WHERE delta_id = ?", delta.deltaId
-    ).toArray()).toEqual([]);
-    targetHistory.dolt.checkout(publishedDelta.branch);
-    const remembered = targetHistory.sql.exec(
-      `SELECT d.delta_id, d.status, work.command_id
-         FROM gad_external_deltas d JOIN gad_work_units work USING (work_unit_id)
-        WHERE delta_id = ?`, delta.deltaId
-    ).one();
-    expect(remembered).toEqual({
-      delta_id: delta.deltaId, status: "finalized", command_id: "command:register-delta",
-    });
-    expect(targetHistory.sql.exec(
-      `SELECT change.change_id FROM gad_external_deltas d
-       JOIN gad_changes change USING (work_unit_id) WHERE delta_id = ? ORDER BY change.operation, change.ordinal`,
-      delta.deltaId,
-    ).toArray()).toEqual(delta.changeIds.map((change_id) => ({ change_id })));
 
     const noopRegistration = await semantic.dispatch("registerExternalDelta", {
       ingress,
