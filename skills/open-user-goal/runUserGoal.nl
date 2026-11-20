@@ -17,6 +17,8 @@ For owned browser migration, retained import evidence, or a handoff that depends
 
 If the goal asks to inspect or operate the live workspace panel, call workInBrowser with the goal. It inspects what the panel currently shows, determines whether a visible control is authorized, and reads back the result. Return its actual outcome.
 
+If the goal concerns reaching an outcome through the owned release checklist or its PTY, including when a local suite or scratch evidence is part of it, call workOnTerminalGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "terminalHandoff", and its actual outcome.
+
 If the goal asks about a declared workspace test or asks you to verify something by running such a test, call verifyWorkspaceSuite with the goal. Return the chosen route and the actual result. A request about a declaration can be answered without execution.
 
 When the user asks to publish, resume, or conditionally run an authorized publication to a disposable owned preview, use publication.publishOwnedPreviewGoal. It checks the exact authorization and can make the requested preview change. Return status "workspace-skill-reviewed", skill "ownedPreview", and the actual result as outcome.

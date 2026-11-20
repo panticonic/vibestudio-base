@@ -5,6 +5,9 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnTerminalGoal/terminal": "skills/open-terminal-operator",
+    "runUserGoal/workOnTerminalGoal/checklist": "skills/terminal-apps/checklist",
+    "runUserGoal/workOnTerminalGoal/checks": "skills/terminal/natlang",
     "runUserGoal/browserMigration": "skills/browser-import-review",
     "runUserGoal/workOnEvalHandoffGoal/journal": "skills/open-eval-handoff",
     "runUserGoal/workOnEvalHandoffGoal/reviewer": "skills/sandbox/recovery",

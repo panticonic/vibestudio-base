@@ -29,6 +29,7 @@ export type UserGoalReport =
   | BrowserGoalReport
   | WorkspaceSuiteReport
   | { status: "workspace-skill-reviewed"; skill: "news" | "spectrolite" | "google" | "gmail" | "googleHandoff" | "calendar" | "personal" | "personalArtifacts" | "personalHistory" | "personalAutomation" | "operator" | "localReconciliation" | "diagnostics" | "localDelivery" | "recovery" | "publication" | "ownedPreview" | "visualRecovery" | "pdf"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "terminalHandoff"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "evalHandoff"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "programRun"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "browserMigration"; outcome: unknown }

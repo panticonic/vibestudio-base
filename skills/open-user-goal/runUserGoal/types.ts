@@ -1,6 +1,7 @@
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export * from "./workOnEvalHandoffGoal/journal/types.js";
 export * from "./workOnProgramRunGoal/runtime/types.js";
+export * from "./workOnTerminalGoal/types.js";
 
 export type LocalReconciliationGoalReport = {
   integration: { status: "integrated" | "held"; head: string; reason: string };
