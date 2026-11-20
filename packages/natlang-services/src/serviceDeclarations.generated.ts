@@ -2105,6 +2105,79 @@ type AdventureObservations = {
 
 /** Read the assigned Adventure opening and saved artwork. */
 export function observe(): Promise<AdventureObservations>;`,
+  adventureSaveCatalog: `/** Discover the saved Adventure journeys the player may inspect. */
+
+type SavedJourney = { id: string; title: string; label: string };
+
+/** Discover the saved Adventure journeys the player may inspect. */
+export function list(): Promise<SavedJourney[]>;`,
+  adventurePlayerView: `/** Read the current player-scoped view, continuity and pending Adventure input. */
+
+type SavedJourney = { id: string; title: string; label: string };
+
+type PlayerObject = {
+  id: string;
+  name: string;
+  kind: "place" | "person" | "object";
+  description: string;
+  location: string | null;
+  open: boolean | null;
+  sealed: boolean | null;
+  locked: boolean | null;
+};
+
+type PlayerJourney = {
+  save: SavedJourney;
+  observation: string;
+  place: PlayerObject;
+  tick: number;
+  revision: number;
+  scene: { signature: string; artwork: "matched" | "stale" | "missing" };
+  visible: PlayerObject[];
+  inventory: PlayerObject[];
+  exits: { label: string; destination: string }[];
+  pending: { text: string; id: string } | null;
+};
+
+/** Read the current player-scoped view, continuity and pending Adventure input. */
+export function read(save: string): Promise<PlayerJourney>;`,
+  adventurePlayerTurn: `/** Stage or withdraw player input in the exact observed save when authorized. */
+
+type TurnProposal = { intent: "approach" | "inspect" | "bring" | "speak"; target: string };
+
+type SavedJourney = { id: string; title: string; label: string };
+
+type PlayerObject = {
+  id: string;
+  name: string;
+  kind: "place" | "person" | "object";
+  description: string;
+  location: string | null;
+  open: boolean | null;
+  sealed: boolean | null;
+  locked: boolean | null;
+};
+
+type PlayerJourney = {
+  save: SavedJourney;
+  observation: string;
+  place: PlayerObject;
+  tick: number;
+  revision: number;
+  scene: { signature: string; artwork: "matched" | "stale" | "missing" };
+  visible: PlayerObject[];
+  inventory: PlayerObject[];
+  exits: { label: string; destination: string }[];
+  pending: { text: string; id: string } | null;
+};
+
+type TurnReceipt = { status: "staged" | "withdrawn" | "stale" | "unavailable"; view: PlayerJourney };
+
+/** Stage or withdraw player input in the exact observed save when authorized. */
+export function stage(save: string, observation: string, proposal: TurnProposal): Promise<TurnReceipt>;
+
+/** Stage or withdraw player input in the exact observed save when authorized. */
+export function withdraw(save: string, observation: string): Promise<TurnReceipt>;`,
   adventureTransitionRead: `/** Read the assigned committed Adventure turn and reloaded panel. */
 
 type AdventureObject = {

@@ -33,6 +33,7 @@
     "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research",
     "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review",
     "runUserGoal/news": "skills/news-workflows",
+    "runUserGoal/adventureJourney": "skills/open-adventure-journey",
     "runUserGoal/spectrolite": "skills/spectrolite-review",
     "runUserGoal/googleSetup": "skills/google-drive/setupGoal",
     "runUserGoal/google": "skills/google-drive/driveWorkflow",
