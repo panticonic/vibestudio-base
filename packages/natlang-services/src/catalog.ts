@@ -118,6 +118,7 @@ const authoredServices = [
   authoredService("phoneSetupPrepare", "Prepare the assigned desktop for phone setup.", "base", "phone-setup/natlang", [{ name: "prepare", params: ["startReceipt", "providerId"] }]),
   authoredService("phoneSetupPair", "Provision the assigned ready phone.", "base", "phone-setup/natlang", [{ name: "provision", params: ["discoveryReceipt", "deviceId"] }]),
   authoredService("remoteGatewayIdentity", "Read the current authenticated gateway for the assigned workspace route.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
+  authoredService("remoteCliScope", "Read the approved gateway and redacted CLI scope for the assigned command.", "system", "remote-access", [{ name: "evidence", params: ["operationId"] }]),
   authoredService("remoteDeploymentRead", "Read the baseline of the assigned managed deployment.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
   authoredService("remoteDeploymentApply", "Run the caller-authorized managed installer for the observed baseline.", "system", "remote-access", [{ name: "apply", params: ["baselineReceipt"] }]),
   authoredService("remoteDeploymentVerify", "Verify the managed hub and child after the caller-authorized install.", "system", "remote-access", [{ name: "verify", params: ["actionReceipt"] }]),

@@ -1558,6 +1558,31 @@ export function provision(
 
 /** Read the current authenticated gateway for the assigned workspace route. */
 export function observe(operationId: string): Promise<RemoteGatewayIdentity>;`,
+  remoteCliScope: `/** Read the approved gateway and redacted CLI scope for the assigned command. */
+
+type RemoteGatewayIdentity = {
+  serverId: string;
+  bootId: string;
+  workspaceId: string;
+};
+
+type CliContextCoordinate = { serverId?: string; workspaceId?: string; contextId: string };
+
+type CliContextEvidence = {
+  gateway: RemoteGatewayIdentity;
+  credential: { kind: "device" } | { kind: "agent"; contextId: string };
+  operation: "inspect" | "eval" | "edit";
+  selectors: {
+    session?: CliContextCoordinate;
+    context?: CliContextCoordinate;
+    ambient?: CliContextCoordinate;
+    binding?: CliContextCoordinate;
+    default?: CliContextCoordinate;
+  };
+};
+
+/** Read the approved gateway and redacted CLI scope for the assigned command. */
+export function evidence(operationId: string): Promise<CliContextEvidence>;`,
   remoteDeploymentRead: `/** Read the baseline of the assigned managed deployment. */
 
 type DeploymentBaseline = {
