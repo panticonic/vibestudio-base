@@ -165,6 +165,53 @@ type PersonalSetupRequest = {
 
 /** Resolve the assigned GitHub onboarding route without executing it. */
 export function resolve(operationId: string, action: "setup" | "check"): Promise<PersonalSetupRequest>;`,
+  missionFacilityRead: `/** Read one assigned Mission Control card, project and its prerequisites. */
+
+type MissionFacilityEvidence = {
+  kind: "mission";
+  goal: string;
+  target: { id: string; taskId: string; expectedRevision: number };
+  card: {
+    id: string;
+    taskId: string;
+    revision: number;
+    state: "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+    projectArchived: boolean;
+    dependencyAccepted: boolean;
+    automationId: string | null;
+  };
+  detail:
+    | { kind: "revision" }
+    | {
+        kind: "move";
+        id: string;
+        beforeTaskId: string;
+        afterTaskId: string;
+        executionLinkRetained: boolean;
+      }
+    | {
+        kind: "execution";
+        intent: "start" | "cancel" | "archive" | "inspect";
+        automationKind: "manual" | "recurring" | null;
+        receipt: {
+          id: string;
+          automationId: string;
+          phase:
+            | "none"
+            | "admission"
+            | "preparing"
+            | "running"
+            | "complete"
+            | "cancelled"
+            | "failed";
+          cancellationJoined: boolean;
+          recurrenceEnabled: boolean;
+        } | null;
+      };
+};
+
+/** Read one assigned Mission Control card, project and its prerequisites. */
+export function inspect(operationId: string): Promise<MissionFacilityEvidence>;`,
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
 
 /** Resolve the native GitHub setup route from the observed connection stage. */
