@@ -1016,6 +1016,46 @@ type AdventureObservations = {
 
 /** Read the assigned Adventure opening and saved artwork. */
 export function observe(): Promise<AdventureObservations>;`,
+  realmRead: `/** Read the assigned Regency accounts and bounded forecast. */
+
+type RealmRoute = {
+  id: string;
+  subsidy: number;
+  condition: number;
+  progress: number;
+  workers: number;
+  cargo: number | null;
+  capacity: number | null;
+};
+
+type RealmRegion = {
+  id: string;
+  grain: number;
+  population: number;
+  confidence: number;
+};
+
+type RealmReadback = {
+  id: string;
+  month: number;
+  treasury: number;
+  debt: number;
+  income: number;
+  spending: number;
+  serviceCost: number;
+  worksCost: number;
+  routes: RealmRoute[];
+  regions: RealmRegion[];
+  borderTension: number | null;
+};
+
+type RealmObservations = {
+  saved: RealmReadback;
+  forecast: RealmReadback;
+};
+
+/** Read the assigned Regency accounts and bounded forecast. */
+export function observe(months: number): Promise<RealmObservations>;`,
   googleSetupPanel: `/** Read the assigned Google setup journey. */
 
 type GoogleSetupCheck =
