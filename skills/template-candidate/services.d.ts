@@ -11,21 +11,21 @@ declare module "natlang:services" {
 }
 
 declare module "natlang:services" {
-  export namespace templateMigration {
-    function discover(): Promise<import("./types.js").MigrationObservation>;
-    function read(
+  export const templateMigration: {
+    discover(): Promise<import("./types.js").MigrationObservation>;
+    read(
       revision: string,
       ids: string[],
     ): Promise<import("./types.js").MigrationRead[] | null>;
-    function authorizeStage(
+    authorizeStage(
       revision: string,
       candidateId: string,
     ): Promise<import("./types.js").CandidateRequest | null>;
-    function stageHandoff(
+    stageHandoff(
       revision: string,
       candidateId: string | null,
       status: import("./types.js").MigrationStatus,
       recipient: string,
     ): Promise<import("./types.js").MigrationHandoff | null>;
-  }
+  };
 }

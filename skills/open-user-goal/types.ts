@@ -42,6 +42,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "evalHandoff"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "programRun"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "browserMigration"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "templateMigration"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "authoring"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "pdfVault"; outcome: PdfVaultOutcome };
 
