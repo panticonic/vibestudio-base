@@ -31,13 +31,8 @@ import {
   workspaceTransferBasisAt,
 } from "./doltWorkspaceState.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import {
-  MAX_ANCESTRY_EDGES,
-  changeEffects,
-  parseSemanticCursor,
-  publicChangeKind,
-  semanticCursor,
-} from "./semanticWorkspace.js";
+import { MAX_ANCESTRY_EDGES, parseSemanticCursor, semanticCursor } from "./workspaceHistoryPagination.js";
+import { changeEffects, publicChangeKind } from "./workspaceHistoryReads.js";
 
 function parentsAt(sql: SqlStorage, revision: string) {
   return sql.exec(

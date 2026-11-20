@@ -13,8 +13,9 @@ import {
   workspaceEditBasisAt,
   workspaceTransferBasisAt,
 } from "./doltWorkspaceState.js";
-import type { ChangeRecord } from "./semanticVcsStore.js";
-import { SemanticWorkspace, type WorkspaceRevertBasis } from "./semanticWorkspace.js";
+import type { ChangeRecord } from "./semanticHistoryRecords.js";
+import { type WorkspaceRevertBasis, changeCoordinate, revertEndpointHolds } from "./workspaceMutation.js";
+import { changeRecord } from "./workspaceHistoryReads.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 
 const MAX_MANIFEST_FILES = 100_000;
@@ -42,7 +43,7 @@ export function workspaceRevertBasisAt(sql: SqlStorage, commit: string): Workspa
       const changeId = String(row["change_id"]);
       if (seen.has(changeId)) return [];
       seen.add(changeId);
-      return [SemanticWorkspace.changeRecord(changeId, row)];
+      return [changeRecord(changeId, row)];
     });
     return chronologicalChanges;
   };
@@ -51,7 +52,7 @@ export function workspaceRevertBasisAt(sql: SqlStorage, commit: string): Workspa
       const row = sql.exec(
         "SELECT * FROM dolt_at_gad_changes(?) WHERE change_id = ?", commit, changeId,
       ).toArray()[0];
-      return SemanticWorkspace.changeRecord(changeId, row);
+      return changeRecord(changeId, row);
     },
     repository(repositoryId) {
       const cached = repositories.get(repositoryId);
@@ -114,14 +115,14 @@ export function workspaceRevertBasisAt(sql: SqlStorage, commit: string): Workspa
       return result;
     },
     blockingChanges(original) {
-      const coordinate = SemanticWorkspace.changeCoordinate(original);
+      const coordinate = changeCoordinate(original);
       if (!coordinate) return [];
       const lineage = changes();
       const position = lineage.findIndex(({ changeId }) => changeId === original.changeId);
       if (position < 0) return [];
       return lineage.slice(position + 1).flatMap((change) =>
-        SemanticWorkspace.changeCoordinate(change) === coordinate &&
-        change.result && SemanticWorkspace.revertEndpointHolds(basis, change.result)
+        changeCoordinate(change) === coordinate &&
+        change.result && revertEndpointHolds(basis, change.result)
           ? [change.changeId] : [],
       );
     },

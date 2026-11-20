@@ -17,9 +17,9 @@ import {
   ParticipantHistory,
   retireParticipantHistory,
 } from "./participantHistory.js";
-import { SemanticWorkspace } from "./semanticWorkspace.js";
+import { planEdit, editContentHashes } from "./workspaceMutation.js";
 import { SemanticProvenanceWriter } from "./semanticProvenanceWriter.js";
-import type { WorkUnitRecord } from "./semanticVcsStore.js";
+import type { WorkUnitRecord } from "./semanticHistoryRecords.js";
 
 async function workspace(now = Date.now) {
   const canonical = await FakeDoltStorage.create({ now });
@@ -411,7 +411,7 @@ it("reads edit placements at the selected revision without changing the checkout
     },
   };
   const basis = workspaceEditBasisAt(historicalSql, genesis);
-  const plan = SemanticWorkspace.planEdit(input, null, basis);
+  const plan = planEdit(input, null, basis);
   expect(plan).toMatchObject({
     fileResults: [
       {
@@ -430,13 +430,13 @@ it("reads edit placements at the selected revision without changing the checkout
       edits: [{ start: 0, end: 1, text: "z" }],
     }],
   };
-  expect(SemanticWorkspace.editContentHashes(text, basis)).toEqual([original]);
-  expect(() => SemanticWorkspace.planEdit(
+  expect(editContentHashes(text, basis)).toEqual([original]);
+  expect(() => planEdit(
     text,
     { files: [{ contentHash: original, base64: "Yg==" }] },
     basis,
   )).toThrow("Observed content differs");
-  expect(SemanticWorkspace.planEdit(
+  expect(planEdit(
     text,
     { files: [{ contentHash: original, base64: "YQ==" }] },
     basis,

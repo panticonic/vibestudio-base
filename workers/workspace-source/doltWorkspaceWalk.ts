@@ -10,7 +10,7 @@ import { firstSavedApplication } from "./doltWorkspaceMemory.js";
 import { readHistoryWorkUnitIntent } from "./doltMergeReview.js";
 import { inspectWorkspaceProvenance, workspaceFileHistoryWithOrigin } from "./doltWorkspaceProvenance.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import { publicChangeKind } from "./semanticWorkspace.js";
+import { publicChangeKind } from "./workspaceHistoryReads.js";
 
 type Invocation = ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>;
 type WalkPage = { entries: VcsWalkEntry[]; notes: string[] };

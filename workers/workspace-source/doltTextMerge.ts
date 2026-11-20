@@ -8,7 +8,8 @@ import {
 } from "@workspace/vcs-engine";
 import { workspaceContentOriginsAt, workspaceEditBasisAt } from "./doltWorkspaceState.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import { base64FromBytes, type MutationDraft, type WorkspaceEditBasis } from "./semanticWorkspace.js";
+import { bytesToBase64 as base64FromBytes } from "@vibestudio/rpc";
+import { type MutationDraft, type WorkspaceEditBasis } from "./workspaceMutation.js";
 
 export interface HistoryMergeSelection {
   head: string;

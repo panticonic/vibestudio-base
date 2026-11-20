@@ -1,7 +1,7 @@
 import { canonicalJson } from "@vibestudio/content-addressing";
 import type { SqlStorage } from "@vibestudio/durable";
 import { contentMappingDigest, type ContentMapping } from "@workspace/vcs-engine";
-import type { ContentOriginRef } from "./semanticVcsStore.js";
+import type { ContentOriginRef } from "./semanticHistoryRecords.js";
 import { contentMappingFromRow } from "./semanticVcsContentMappingCodec.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 

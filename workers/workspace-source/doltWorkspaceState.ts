@@ -15,18 +15,17 @@ import type {
   ApplicationRecord,
   IntegrationDecisionRecord,
   WorkspaceEventRecord,
-} from "./semanticVcsStore.js";
+} from "./semanticHistoryRecords.js";
 import { createSemanticHistoryTables } from "./semanticHistorySchema.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
+import { type FileContentOrigin, readAppliedFileChanges } from "./workspaceHistoryReads.js";
 import {
-  SemanticWorkspace,
-  type FileContentOrigin,
   type FileTransition,
   type RepositoryTransition,
   type WorkspaceEditBasis,
   type WorkspaceSnapshotImportBasis,
   type WorkspaceTransferBasis,
-} from "./semanticWorkspace.js";
+} from "./workspaceMutation.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 
 const repositoryColumns = [
@@ -687,7 +686,7 @@ export function workspaceContentOriginsAt(
   for (const [at, selected] of pending) {
     pending.delete(at);
     const merge = nearestPlacementMerge(sql, at);
-    const applied = SemanticWorkspace.readAppliedFileChanges(
+    const applied = readAppliedFileChanges(
       sql,
       workspaceApplicationsAt(sql, at, merge?.ours),
       [...selected],

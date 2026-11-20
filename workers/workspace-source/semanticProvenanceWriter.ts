@@ -14,7 +14,7 @@ import type {
   ExternalDeltaRecord,
   IntegrationDecisionRecord,
   WorkUnitRecord,
-} from "./semanticVcsStore.js";
+} from "./semanticHistoryRecords.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 import { PROV_RESOLVER_PROTOCOL } from "./provenanceViews.js";
 

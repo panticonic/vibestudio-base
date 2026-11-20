@@ -7,8 +7,9 @@ import { readHistoryMergeObservations, type HistoryMergeObservation } from "./do
 import { workspaceContentOriginsAt, workspaceEditBasisAt } from "./doltWorkspaceState.js";
 import { workspaceRevertBasisAt } from "./doltWorkspaceRevert.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import type { ChangeRecord } from "./semanticVcsStore.js";
-import { base64FromBytes, type MutationDraft } from "./semanticWorkspace.js";
+import type { ChangeRecord } from "./semanticHistoryRecords.js";
+import { bytesToBase64 as base64FromBytes } from "@vibestudio/rpc";
+import { type MutationDraft } from "./workspaceMutation.js";
 
 type PlacedFile = NonNullable<ReturnType<ReturnType<typeof workspaceEditBasisAt>["file"]>>;
 type File = Omit<PlacedFile, "presence" | "fileStateId">;

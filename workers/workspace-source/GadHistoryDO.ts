@@ -90,7 +90,7 @@ import {
   type MainPublication,
   type MergeSource,
 } from "./participantHistory.js";
-import type { WorkUnitRecord } from "./semanticVcsStore.js";
+import type { WorkUnitRecord } from "./semanticHistoryRecords.js";
 import { workspaceHistoryInitializationInputSchema, HistoryQueryRequestSchema, HistoryRecallBasisRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";

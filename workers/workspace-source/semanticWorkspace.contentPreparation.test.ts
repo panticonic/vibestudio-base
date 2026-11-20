@@ -3,11 +3,7 @@ import { sha256Hex } from "@vibestudio/content-addressing";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
 import { createSemanticVcsSchema } from "./semanticVcsSchema.js";
 import { SemanticVcsStore } from "./semanticVcsStore.js";
-import {
-  SemanticWorkspace,
-  type SemanticDispatchRequest,
-  type SemanticDispatchResult,
-} from "./semanticWorkspace.js";
+import { SemanticWorkspace, type SemanticDispatchRequest, type SemanticDispatchResult } from "./semanticWorkspace.js";
 
 const ingress: SemanticDispatchRequest["ingress"] = {
   causalParent: null,

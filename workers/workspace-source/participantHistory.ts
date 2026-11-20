@@ -95,8 +95,21 @@ import type {
   JournalCommand,
   WorkspaceEventRecord,
   WorkUnitRecord,
-} from "./semanticVcsStore.js";
-import { MAX_WORKING_APPLICATIONS, SemanticWorkspace, describeSemanticEffects, importedRepositories, projectContentBlame, type FileContentOrigin, type MutationDraft } from "./semanticWorkspace.js";
+} from "./semanticHistoryRecords.js";
+import { MAX_WORKING_APPLICATIONS } from "./workspaceHistoryPagination.js";
+import { describeSemanticEffects, projectContentBlame, type FileContentOrigin } from "./workspaceHistoryReads.js";
+import {
+  importedRepositories,
+  type MutationDraft,
+  prepareApplication,
+  editContentHashes,
+  planEdit,
+  planMove,
+  planCopy,
+  planRevert,
+  planImportSnapshot,
+  planExternalDeltaDraft,
+} from "./workspaceMutation.js";
 
 type ResolvingMerge = DoltMergeOptions & {
   readonly resolve: NonNullable<DoltMergeOptions["resolve"]>;
@@ -156,8 +169,8 @@ interface HistoryMergeContent {
   contentHashes?: readonly string[];
 }
 
-type HistoryMutationResult = ReturnType<typeof SemanticWorkspace.prepareApplication>["result"];
-export type HistoryApplicationPlan = Omit<ApplicationPersistencePlan, "workspaceFacts"> & {
+type HistoryMutationResult = ReturnType<typeof prepareApplication>["result"];
+export type HistoryApplicationPlan = ApplicationPersistencePlan & {
   placement: WorkspacePlacementChange | null;
 };
 
@@ -781,10 +794,10 @@ export class ParticipantHistory {
       }
       const basis = workspaceEditBasisAt(sql, head);
       if (receipt === null) {
-        const contentHashes = SemanticWorkspace.editContentHashes(edit, basis);
+        const contentHashes = editContentHashes(edit, basis);
         if (contentHashes.length > 0) return { kind: "read-content", contentHashes };
       }
-      const draft = SemanticWorkspace.planEdit(edit, receipt, basis);
+      const draft = planEdit(edit, receipt, basis);
       return this.#prepareMutation(head, edit, command, draft, triggerEvidence);
     });
   }
@@ -811,7 +824,7 @@ export class ParticipantHistory {
       }
       const target = workspaceTransferBasisAt(sql, head);
       if (transfer.method === "move") {
-        return this.#prepareMutation(head, value, command, SemanticWorkspace.planMove(transfer.value, target), triggerEvidence);
+        return this.#prepareMutation(head, value, command, planMove(transfer.value, target), triggerEvidence);
       }
       const sources = new Map<string, { head: string; basis: ReturnType<typeof workspaceTransferBasisAt> }>();
       const basis = stateNodeKey(expectedWorkingHead);
@@ -823,7 +836,7 @@ export class ParticipantHistory {
           sources.set(key, { head: at, basis: workspaceTransferBasisAt(sql, at) });
         }
       }
-      const draft = SemanticWorkspace.planCopy(transfer.value, target, (state) => {
+      const draft = planCopy(transfer.value, target, (state) => {
         const source = sources.get(stateNodeKey(state));
         if (!source) throw new SemanticVcsError("IntegrityFailure", "Workspace copy lost its source revision");
         return source.basis;
@@ -850,7 +863,7 @@ export class ParticipantHistory {
       if (workspaceCommitForRef(sql, head, expectedWorkingHead) !== head) {
         throw new SemanticVcsError("RevisionChanged", "Workspace revert names a different working revision");
       }
-      const draft = SemanticWorkspace.planRevert(revert, workspaceRevertBasisAt(sql, head));
+      const draft = planRevert(revert, workspaceRevertBasisAt(sql, head));
       return this.#prepareMutation(head, revert, command, draft, triggerEvidence);
     });
   }
@@ -902,7 +915,7 @@ export class ParticipantHistory {
         "A semantic mutation cannot persist more than 256 external lineage keys",
       );
     }
-    const prepared = SemanticWorkspace.prepareApplication(input, draft, command.commandId, {
+    const prepared = prepareApplication(input, draft, command.commandId, {
       now: () => new Date().toISOString(),
       workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
       contentIntegrity: () => ({
@@ -1293,7 +1306,7 @@ export class ParticipantHistory {
       if (!staged || !this.#hasCommand(staged, contextId, command)) {
         if (staged && staged !== current)
           throw new SemanticVcsError("IntegrityFailure", "Snapshot staging changed its expected basis");
-        const { draft } = SemanticWorkspace.planImportSnapshot(input, observation, workspaceSnapshotImportBasisAt(sql, current));
+        const { draft } = planImportSnapshot(input, observation, workspaceSnapshotImportBasisAt(sql, current));
         const prepared = await this.#prepareMutation(current, input, command, draft, triggerEvidence);
         if (!staged) this.#dolt.branch.create(stage, { from: current });
         staged = this.#commitBranch(stage, "Import workspace snapshot", () =>
@@ -1371,7 +1384,7 @@ export class ParticipantHistory {
         current, repositoryId,
       ).toArray().map(({ file_id, path }) => [String(path), String(file_id)]));
       for (const file of [...input.oldFiles, ...input.newFiles]) assertSemanticVcsPathAdmissible(file.path);
-      const { record, workUnit, changes } = SemanticWorkspace.planExternalDeltaDraft(input, observation, {
+      const { record, workUnit, changes } = planExternalDeltaDraft(input, observation, {
         fileIdAtPath: (path) => placed.get(path) ?? null,
         evidence: () => ({ authorContextId: contextId, triggerEvidence }),
         now: () => new Date().toISOString(),
@@ -2208,7 +2221,7 @@ export class ParticipantHistory {
             contentDerivations: prepared.flatMap(({ derivations }) => derivations),
             decisions: [{ targetState: input.expectedWorkingHead, sourceEventId: source.eventId, sourceDeltaId: null, entries }],
           };
-          const { plan } = SemanticWorkspace.prepareApplication(input, draft, commandId, {
+          const { plan } = prepareApplication(input, draft, commandId, {
             now: () => new Date().toISOString(),
             workUnitEvidence: () => ({ authorContextId: contextId, triggerEvidence }),
             contentIntegrity: () => ({

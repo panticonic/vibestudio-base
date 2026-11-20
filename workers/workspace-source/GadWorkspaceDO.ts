@@ -160,14 +160,9 @@ import {
   sortForCanonicalJson,
   canonicalJson,
 } from "@vibestudio/content-addressing";
-import {
-  createTrajectoryMirrorSchema,
-} from "./semanticVcsSchema.js";
+import { createTrajectoryMirrorSchema } from "./trajectorySchema.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import {
-  parseSemanticCursor,
-  semanticCursor,
-} from "./semanticWorkspace.js";
+import { parseSemanticCursor, semanticCursor } from "./workspaceHistoryPagination.js";
 
 type JsonPrimitive = null | string | number | boolean;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };

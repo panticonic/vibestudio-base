@@ -15,7 +15,7 @@ import { readHistoryWorkUnitIntent } from "./doltMergeReview.js";
 import { inspectWorkspaceProvenance, workspaceFileHistory } from "./doltWorkspaceProvenance.js";
 import { workspaceContentOriginsAt, workspaceTransferBasisAt } from "./doltWorkspaceState.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
-import { projectContentBlame } from "./semanticWorkspace.js";
+import { projectContentBlame } from "./workspaceHistoryReads.js";
 
 type VcsTrajectoryInvocationRef = ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>;
 type AuthoredSpan = Exclude<VcsBlameSpan, { stop: "snapshot-boundary" }>;

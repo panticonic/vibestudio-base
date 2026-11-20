@@ -110,9 +110,6 @@
     "vitest": "^3.2.7"
   },
   "exports": {
-    ".": "./index.ts",
-    "./semanticVcsSchema": "./semanticVcsSchema.ts",
-    "./semanticVcsStore": "./semanticVcsStore.ts",
-    "./semanticWorkspace": "./semanticWorkspace.ts"
+    ".": "./index.ts"
   }
 }
