@@ -1194,6 +1194,79 @@ type RolloutCommit =
 
 /** Save the exact verified candidate in the owned local context when authorized. */
 export function commit(unitId: string, revision: string): Promise<RolloutCommit>;`,
+  ownedTaskBoard: `/** Discover and observe scoped native task assignments and apply an exact working revision transition. */
+
+type TaskOption = { id: string; project: string; title: string };
+
+type TaskStatus = "inbox" | "ready" | "active" | "review" | "done" | "cancelled";
+
+type TaskView = {
+  task: TaskOption;
+  revision: number;
+  status: TaskStatus;
+  owner: string;
+  attempt: string;
+  artifact: string;
+  work: string;
+  allowed: TaskStatus[];
+  prerequisites: { title: string; status: TaskStatus; revision: number }[];
+};
+
+type UpdateTaskResult = { status: "applied" | "changed" | "held"; task: TaskView };
+
+/** Discover and observe scoped native task assignments and apply an exact working revision transition. */
+export function discover(): Promise<TaskOption[]>;
+
+/** Discover and observe scoped native task assignments and apply an exact working revision transition. */
+export function observe(id: string): Promise<TaskView>;
+
+/** Discover and observe scoped native task assignments and apply an exact working revision transition. */
+export function transition(id: string, revision: number, status: TaskStatus): Promise<UpdateTaskResult>;`,
+  ownedTaskAttempts: `/** Inspect actual owned local participant attempt receipts and recipient scope. */
+
+type OwnerLane = { id: string; title: string; maySend: boolean };
+
+type MessageReceipt = {
+  roomId: string; channelId: string; messageId: string; senderId: string;
+  recipientRef: string; content: string; sequence: number; acknowledged: boolean;
+};
+
+type AttemptRecord = {
+  taskId: string;
+  task: string;
+  owner: string;
+  attempt: string;
+  artifact: string;
+  phase: "failed" | "cancelled" | "draft" | "ready" | "accepted";
+};
+
+type LaneObservation = {
+  lane: OwnerLane;
+  basis: string;
+  owner: string | null;
+  receipt: MessageReceipt | null;
+  record: AttemptRecord | null;
+};
+
+/** Inspect actual owned local participant attempt receipts and recipient scope. */
+export function discover(): Promise<OwnerLane[]>;
+
+/** Inspect actual owned local participant attempt receipts and recipient scope. */
+export function inspect(room: string, recipient: string | null): Promise<LaneObservation>;`,
+  ownedTaskHandoff: `/** Submit one exact-revision owned local handoff and read back its original attempt. */
+
+type HandoffAttempt = { attemptId: string; response: "submitted" | "interrupted" };
+
+type MessageReceipt = {
+  roomId: string; channelId: string; messageId: string; senderId: string;
+  recipientRef: string; content: string; sequence: number; acknowledged: boolean;
+};
+
+/** Submit one exact-revision owned local handoff and read back its original attempt. */
+export function submit(task: string, revision: number, basis: string, content: string): Promise<HandoffAttempt>;
+
+/** Submit one exact-revision owned local handoff and read back its original attempt. */
+export function read(attemptId: string): Promise<MessageReceipt | null>;`,
   goalDiscovery: `/** Discover public sources in the current user-goal invocation. */
 
 type GoalCandidate = { url: string; title?: string; snippet?: string };

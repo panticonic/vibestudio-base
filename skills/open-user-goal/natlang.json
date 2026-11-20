@@ -34,6 +34,7 @@
     "runUserGoal/diagnostics": "skills/open-system-diagnostics",
     "runUserGoal/operator": "skills/open-system-operations",
     "runUserGoal/unitRollout": "skills/open-unit-rollout",
+    "runUserGoal/ownedTaskRecovery": "skills/open-owned-task-recovery",
     "runUserGoal/localDelivery": "skills/open-local-delivery",
     "runUserGoal/recovery": "skills/open-session-recovery/program",
     "runUserGoal/publication": "skills/publish-preflight",
