@@ -31,3 +31,32 @@ export type AuthorityCombined = {
 export type AuthorityReview = AuthorityCombined & {
   reviews: AuthorityOperationReview[];
 };
+
+export type ApprovalSurface = "workspace" | "hub";
+export type ApprovalCaller = "device-workspace" | "device-account" | "linked-agent";
+export type ApprovalQueueReceipt = {
+  source: ApprovalSurface;
+  kind: "acknowledged" | "snapshot" | "unavailable";
+  ids: string[];
+};
+export type ApprovalVisibilityRequest = {
+  goal: string;
+  caller: ApprovalCaller;
+  approvalId: string | null;
+  receipts: ApprovalQueueReceipt[];
+};
+export type ApprovalSurfaceReview = {
+  source: ApprovalSurface;
+  state: "visible" | "awaiting-snapshot" | "unavailable";
+  ids: string[];
+};
+export type ApprovalVisibility = "complete" | "partial" | "unknown";
+export type ApprovalLocation = {
+  status: "unassigned" | "located" | "absent" | "unconfirmed";
+  source: ApprovalSurface | null;
+};
+export type ApprovalVisibilityReport = {
+  coverage: ApprovalVisibility;
+  surfaces: ApprovalSurfaceReview[];
+  location: ApprovalLocation;
+};

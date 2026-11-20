@@ -34,5 +34,33 @@ type AuthorityCombined = {
 type AuthorityReview = AuthorityCombined & {
   reviews: AuthorityOperationReview[];
 };
+type ApprovalSurface = "workspace" | "hub";
+type ApprovalCaller = "device-workspace" | "device-account" | "linked-agent";
+type ApprovalQueueReceipt = {
+  source: ApprovalSurface;
+  kind: "acknowledged" | "snapshot" | "unavailable";
+  ids: string[];
+};
+type ApprovalVisibilityRequest = {
+  goal: string;
+  caller: ApprovalCaller;
+  approvalId: string | null;
+  receipts: ApprovalQueueReceipt[];
+};
+type ApprovalSurfaceReview = {
+  source: ApprovalSurface;
+  state: "visible" | "awaiting-snapshot" | "unavailable";
+  ids: string[];
+};
+type ApprovalVisibility = "complete" | "partial" | "unknown";
+type ApprovalLocation = {
+  status: "unassigned" | "located" | "absent" | "unconfirmed";
+  source: ApprovalSurface | null;
+};
+type ApprovalVisibilityReport = {
+  coverage: ApprovalVisibility;
+  surfaces: ApprovalSurfaceReview[];
+  location: ApprovalLocation;
+};
 declare const fn: NatlangFunction<[request: AuthorityReviewRequest], AuthorityReview> & { readonly combineCeiling: NatlangFunction<[reviews: AuthorityOperationReview[]], AuthorityCombined> & { readonly collectProtected: NatlangFunction<[reviews: AuthorityOperationReview[]], ExactAuthority[]> }; readonly reviewOperation: NatlangFunction<[operationId: string, ceiling: ExactAuthority[]], AuthorityOperationReview> & { readonly decideDisposition: NatlangFunction<[decision: AuthorityObservation["decision"], outside: ExactAuthority[]], AuthorityDisposition>; readonly findOutside: NatlangFunction<[leaves: AuthorityHostLeaf[], ceiling: ExactAuthority[]], ExactAuthority[]>; readonly preflight: NatlangFunction<[operationId: string], AuthorityObservation> } };
 export default fn;

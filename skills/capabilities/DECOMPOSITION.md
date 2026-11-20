@@ -15,3 +15,13 @@ host's capability, resource, tier and status for each leaf.
 - Typed RPC, the operation allowlist and receipt construction are TypeScript.
   The workflow has no binding for executing a reviewed operation or requesting
   or consuming authority.
+
+## CLI approval visibility
+
+`reviewApprovalQueues` interprets supplied list or watch receipts.
+`selectApprovalSurfaces` identifies the queues the caller can consult.
+`reviewApprovalSurface` reduces one queue to its latest authoritative state,
+while `summarizeApprovalVisibility` determines what the combined view establishes.
+`latestApprovalReceipt` implements the exact reverse lookup in TypeScript.
+`locatePendingApproval` attributes the supplied ID to an observed queue.
+The caller supplies redacted receipts and retains access to the CLI.

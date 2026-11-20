@@ -11,6 +11,8 @@ import { confinedRealm } from "./realm.js";
 import { testNewFunction } from "./testSupport.js";
 import { bindChannelMembership } from "../../../skills/agents/channelMembershipBoundary.js";
 import { localReviewerWorlds } from "../../../skills/channel-agent-membership-fixtures/localReviewerWorlds.js";
+import { approvalVisibilityWorlds } from "../../../skills/approval-visibility-fixtures/worlds.js";
+import { verifyApprovalVisibility } from "../../../skills/approval-visibility-fixtures/verify.js";
 import { membershipReference } from "../../../skills/channel-agent-membership-fixtures/reference.js";
 
 it("runs two skill trees from the same package using only the caller's scoped bindings", async () => {
@@ -295,6 +297,34 @@ it("describes the typed workflows in the installed template domains", async () =
   let runReference = false;
   const referenceSteps: Record<string, string> = {
     ...membershipReference,
+    reviewApprovalQueues: `
+      const surfaces = [];
+      for (const source of await selectApprovalSurfaces(request.caller)) {
+        surfaces.push(await reviewApprovalSurface(source, request.receipts));
+      }
+      const coverage = await summarizeApprovalVisibility(surfaces);
+      const location = await locatePendingApproval(request.approvalId, surfaces, coverage);
+      return {coverage, surfaces, location};
+    `,
+    selectApprovalSurfaces: `
+      if (caller === "device-workspace") return ["workspace", "hub"];
+      return [caller === "device-account" ? "hub" : "workspace"];
+    `,
+    reviewApprovalSurface: `
+      const receipt = await latestApprovalReceipt(source, receipts);
+      if (receipt?.kind === "snapshot") return {source, state: "visible", ids: receipt.ids};
+      return {source, state: receipt?.kind === "unavailable" ? "unavailable" : "awaiting-snapshot", ids: []};
+    `,
+    summarizeApprovalVisibility: `
+      const visible = surfaces.filter(item => item.state === "visible").length;
+      return visible === 0 ? "unknown" : visible === surfaces.length ? "complete" : "partial";
+    `,
+    locatePendingApproval: `
+      if (approvalId === null) return {status: "unassigned", source: null};
+      const found = surfaces.find(item => item.state === "visible" && item.ids.includes(approvalId));
+      if (found) return {status: "located", source: found.source};
+      return {status: coverage === "complete" ? "absent" : "unconfirmed", source: null};
+    `,
     runRosterPlan: `
       const earlier = [], findings = [];
       for (const step of request.steps) {
@@ -318,6 +348,10 @@ it("describes the typed workflows in the installed template domains", async () =
     `,
     runWorkflow: `
       const remote = request.work[0];
+      if (remote.domain === "capabilities" && remote.operation === "reviewApprovalQueues") {
+        const report = await domains.capabilities.reviewApprovalQueues(remote.input);
+        return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "testReview") {
         const report = await domains.testReview.reviewRetainedFailure(remote.input);
         return {results:[{kind:"domain",domain:"testReview",operation:remote.operation,report}],remaining:[]};
@@ -1217,6 +1251,30 @@ it("describes the typed workflows in the installed template domains", async () =
     remaining: ["No established regression"],
   });
   expect(stagedCalls).not.toContain("prepareAutomation");
+  for (const world of approvalVisibilityWorlds) {
+    const catalog = cases.find((scenario) => scenario.id === world.id);
+    expect(catalog?.request?.work[0]?.input, world.id).toEqual(world.request);
+    stagedCalls.length = 0;
+    const value = (await program(catalog?.request)) as {
+      results: { report: unknown }[];
+      remaining: string[];
+    };
+    expect(value.remaining, world.id).toEqual([]);
+    expect(value.results, world.id).toHaveLength(1);
+    expect(
+      verifyApprovalVisibility(world, value.results[0]?.report).passed,
+      world.id,
+    ).toBe(true);
+    expect(stagedCalls.slice(0, 3), world.id).toEqual([
+      "runWorkflow",
+      "reviewApprovalQueues",
+      "selectApprovalSurfaces",
+    ]);
+    expect(stagedCalls.slice(-2), world.id).toEqual([
+      "summarizeApprovalVisibility",
+      "locatePendingApproval",
+    ]);
+  }
   for (const world of localReviewerWorlds) {
     const catalog = cases.find((scenario) => scenario.id === world.id);
     expect(catalog?.request, world.id).toBeDefined();
