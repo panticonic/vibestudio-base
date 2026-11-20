@@ -961,7 +961,7 @@ export function inspect(): Promise<BrowserView>;
 
 /** Inspect a live workspace panel and activate a visible control against its observed revision. */
 export function activate(control: string, revision: string): Promise<"activated" | "changed" | "unavailable">;`,
-  ownedPreviewPublication: `/** undefined */
+  ownedPreviewPublication: `/** Discover, bind, advance and independently read back an exact owned preview publication. */
 
 type PublishEnvironment = "preview" | "production";
 
@@ -1016,16 +1016,16 @@ type OwnedPreviewReadback =
   | { status: "pending"; reason: string }
   | { status: "verified"; receipt: OwnedPreviewReceipt; fileCount: number; publicUrl: string };
 
-/** undefined */
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
 export function discover(): Promise<OwnedPreviewObservation>;
 
-/** undefined */
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
 export function bind(revision: string, targetId: string): Promise<OwnedPreviewBinding | null>;
 
-/** undefined */
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
 export function advance(operationId: string): Promise<OwnedPreviewProgress>;
 
-/** undefined */
+/** Discover, bind, advance and independently read back an exact owned preview publication. */
 export function readback(operationId: string): Promise<OwnedPreviewReadback>;`,
   publicationGoal: `/** Discover the current website review destinations and bind review work to an observed source revision. */
 
