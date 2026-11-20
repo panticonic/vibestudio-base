@@ -68,6 +68,8 @@ export type ChannelCommitted = <T>(
 ) => T;
 
 export class ChannelLedger {
+  private readonly storedValues = new WeakMap<LogEnvelope, Readonly<Record<string, string>>>();
+
   constructor(
     readonly sql: SqlStorage,
     private readonly transaction: <T>(operation: () => T) => T,
@@ -128,13 +130,23 @@ export class ChannelLedger {
       )
       .toArray();
     if (!chunks.length) return null;
-    const envelope = JSON.parse(
+    const { storedValues, ...envelope } = JSON.parse(
       chunks.map((row) => String(row["body"])).join(""),
-    ) as LogEnvelope & { prevHash?: unknown; hash?: unknown };
+    ) as LogEnvelope & {
+      storedValues?: Record<string, string>;
+      prevHash?: unknown;
+      hash?: unknown;
+    };
     // An event stored before the hash chain was deleted still carries its two fields.
     delete envelope.prevHash;
     delete envelope.hash;
+    if (storedValues) this.storedValues.set(envelope, storedValues);
     return envelope;
+  }
+
+  storedText(envelope: LogEnvelope, digest: string): string | null {
+    const values = this.storedValues.get(envelope);
+    return values && Object.hasOwn(values, digest) ? values[digest]! : null;
   }
 
   /** The id of the event at `sequence`: how a boundary of the ledger is named. Null for sequence 0. */
@@ -157,6 +169,7 @@ export class ChannelLedger {
   append(
     semantic: SemanticEnvelope,
     idempotency: "exact" | "idempotent-by-id",
+    values?: Readonly<Record<string, string>>,
   ): LogEnvelope {
     let appended = false;
     return this.committed(
@@ -205,24 +218,26 @@ export class ChannelLedger {
           envelope.payloadKind,
           openedTurnId,
         );
-        const body = JSON.stringify(envelope);
+        const body = JSON.stringify(values ? { ...envelope, storedValues: values } : envelope);
         // Chunks bound individual SQLite rows independently of event size.
-        for (
-          let offset = 0, chunk = 0;
-          offset < body.length;
-          offset += 65536, chunk++
-        )
+        for (let offset = 0, chunk = 0; offset < body.length; chunk++) {
+          let end = Math.min(offset + 65536, body.length);
+          const last = body.charCodeAt(end - 1);
+          if (end < body.length && last >= 0xd800 && last <= 0xdbff) end--;
           this.sql.exec(
             `INSERT INTO channel_ledger_chunks (sequence, chunk, body) VALUES (?, ?, ?)`,
             sequence,
             chunk,
-            body.slice(offset, offset + 65536),
+            body.slice(offset, end),
           );
+          offset = end;
+        }
         this.sql.exec(
           `UPDATE channel_ledger_state SET head_sequence = ? WHERE singleton = 1`,
           sequence,
         );
         appended = true;
+        if (values) this.storedValues.set(envelope, values);
         return envelope;
       },
     );

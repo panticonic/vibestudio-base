@@ -117,6 +117,32 @@ describe("ChannelLog owner history", () => {
     expect(log.ledger.peekObservation()).toMatchObject({kind:"append",sequence:1,envelope:{envelopeId:"env-1"}});
   });
 
+  it("keeps stored result bytes in the channel's exact inherited prefix", async () => {
+    const parent = await owner();
+    const value = "\uFEFF" + "📚".repeat(70_000);
+    const input = {
+      type: "message", payload: { value }, senderId: "agent-1", messageId: "retained-result",
+      contentClass: "internal" as const, externalKeys: [],
+    };
+    const original = await parent.log.append(input);
+    await expect(parent.log.append(input)).resolves.toEqual(original);
+    expect(original.payload).toEqual({ value });
+    expect(parent.log.ledger.at(1)?.payload).toMatchObject({
+      value: { protocol: "vibestudio.blob-ref.v1", digest: sha256HexSyncText(value) },
+    });
+    expect(parent.log.ledger.at(1)).not.toHaveProperty("storedValues");
+    expect(parent.calls).toEqual([]);
+
+    const child = await clonedChannelFake(parent, 1);
+    const fixture = await createTestDO(PubSubChannel, { __objectKey: "child" }, { storage: child.storage as never });
+    const log = new ChannelLog({
+      call: async () => { throw new Error("The inherited channel must own its stored result"); },
+    }, "child", fixture.sql as SqlStorage, (operation) => child.storage.transactionSync(operation));
+    log.ledger.initializeClone();
+    log.ledger.adoptParent("channel-1", 1);
+    expect((await log.replayAfter({ after: 0 }, {})).logEvents[0]?.payload).toEqual({ value });
+  });
+
   it("keeps exact retries, immutable hashes and pending observation across owner reactivation", async () => {
     const fixture=await owner();
     const input={type:"message",payload:{value:"one"},senderId:"agent-1",messageId:"immutable",contentClass:"internal" as const,externalKeys:[]};
