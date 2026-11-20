@@ -2769,6 +2769,84 @@ type CapabilityHandoff = { path: string; bytes: number; sha256: string };
 
 /** Commit an authorized ready plan into the owned scratch workspace. */
 export function stage(plan: CapabilityPlan): Promise<CapabilityHandoff | null>;`,
+  assemblyInventory: `/** Observe owned package candidates and exact assembly planning context. */
+
+type AssemblyRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type AssemblyUnit = { id: string; label: string; role: string; repoPath: string; packageName: string };
+
+type AssemblyInventory = {
+  head: AssemblyRevision;
+  reviewed: AssemblyRevision;
+  units: AssemblyUnit[];
+  allowedBuilds: string[];
+  mayStage: boolean;
+  note: string;
+};
+
+/** Observe owned package candidates and exact assembly planning context. */
+export function observe(): Promise<AssemblyInventory>;`,
+  assemblySource: `/** Read exact owned package manifests and source files at the observed semantic revision. */
+
+type AssemblyRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type AssemblyUnit = { id: string; label: string; role: string; repoPath: string; packageName: string };
+
+type SourceFile = { path: string; text: string; contentHash: string };
+
+type UnitSource = { unit: AssemblyUnit; head: AssemblyRevision; files: SourceFile[]; manifestSha: string };
+
+/** Read exact owned package manifests and source files at the observed semantic revision. */
+export function read(unit: string, head: AssemblyRevision): Promise<UnitSource | null>;`,
+  assemblyBuild: `/** Build and independently read retained native metadata for an authorized current package. */
+
+type AssemblyRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type AssemblyBuildReceipt = {
+  unit: string;
+  head: AssemblyRevision;
+  stateHash: string;
+  buildKeys: string[];
+  diagnosticCodes: string[];
+  result: "ok" | "failed" | "skipped";
+  cached: boolean;
+  sha256: string;
+};
+
+/** Build and independently read retained native metadata for an authorized current package. */
+export function verify(unit: string, head: AssemblyRevision): Promise<AssemblyBuildReceipt | null>;`,
+  assemblyDraft: `/** Store an authorized assembly manifest plan and native receipts in local scratch. */
+
+type ManifestAdjustment = { unit: string; dependency: string; action: "add-runtime" | "remove-runtime" };
+
+type AssemblyDependencies = { included: string[]; amendment: ManifestAdjustment[]; blockers: string[] };
+
+type AssemblyRevision = { kind: "event"; eventId: string } | { kind: "application"; applicationId: string };
+
+type AssemblyBuildReceipt = {
+  unit: string;
+  head: AssemblyRevision;
+  stateHash: string;
+  buildKeys: string[];
+  diagnosticCodes: string[];
+  result: "ok" | "failed" | "skipped";
+  cached: boolean;
+  sha256: string;
+};
+
+type AssemblyPlan = {
+  root: string | null;
+  dependencies: AssemblyDependencies;
+  head: AssemblyRevision;
+  disposition: "ready" | "hold" | "unchanged" | "draft-repair";
+  builds: AssemblyBuildReceipt[];
+  rationale: string;
+};
+
+type AssemblyHandoff = { path: string; bytes: number; sha256: string };
+
+/** Store an authorized assembly manifest plan and native receipts in local scratch. */
+export function stage(plan: AssemblyPlan): Promise<AssemblyHandoff | null>;`,
   programRunCatalog: `/** Discover and compile the owned current workspace program and its authorized sample scope. */
 
 type RunSample = {
