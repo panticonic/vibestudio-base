@@ -1,3 +1,4 @@
+import type { ProgramReadback, ProgramRole } from "../natlang-authoring/types.js";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -90,7 +91,7 @@ const reference: Record<string, string> = {
   readAssignedProgram: "return await authoringCompiler.inspect(role);",
   reviewContract: `
     const signature = await checkSignature(contract,candidate.functions,baseline?.functions ?? []);
-    const authority = await checkServices(contract,candidate.services,baseline?.services ?? []);
+    const authority = await checkAuthority(contract,candidate,baseline);
     const topology = await checkTopology(contract.requiredHelpers,candidate.functions);
     return signature.concat(authority,topology);
   `,
@@ -99,7 +100,32 @@ const reference: Record<string, string> = {
     if (!entry) return [{code:"missing-entry",subject:contract.entry,observed:"missing",recovery:"Restore the entry."}];
     return entry.returns === contract.expectedReturn ? [] : [{code:"return-change",subject:entry.source,observed:entry.returns,recovery:"Restore the result type."}];
   `,
-  checkServices: `return candidate.filter(name => !contract.declaredServices.includes(name)).map(name => ({code:"unexpected-service",subject:name,observed:"declared",recovery:"Remove the declaration."}));`,
+  checkAuthority: `
+    const findings = await checkServices(contract,candidate.services,baseline?.services ?? []);
+    const expected = contract.expectedServiceScopes ?? {};
+    for (const service of candidate.services) {
+      if (Object.hasOwn(expected, service)) {
+        findings.push(...await compareSelectors(service,expected[service],candidate.serviceScopes[service] ?? null));
+      } else if (contract.preserveBaseline && baseline?.services.includes(service)) {
+        findings.push(...await compareSelectors(service,baseline.serviceScopes[service] ?? null,candidate.serviceScopes[service] ?? null));
+      }
+    }
+    return findings;
+  `,
+  checkServices: `
+    const expected = contract.declaredServices ?? (contract.preserveBaseline ? baseline : null);
+    if (!expected) return [];
+    return [
+      ...expected.filter(name => !candidate.includes(name)).map(name => ({code:"missing-service",subject:name,observed:"missing",recovery:"Restore the required declaration."})),
+      ...candidate.filter(name => !expected.includes(name)).map(name => ({code:"unexpected-service",subject:name,observed:"declared",recovery:"Remove the declaration."})),
+    ];
+  `,
+  compareSelectors: `
+    const normalized = value => value === null ? "unrestricted" : JSON.stringify([...new Set(value)].sort());
+    return normalized(candidate) === normalized(expected) ? [] : [{
+      code:"service-scope-change",subject:service,observed:normalized(candidate),recovery:"Restore " + normalized(expected),
+    }];
+  `,
   checkTopology: `return required.filter(path => !functions.some(fn => fn.source === path)).map(path => ({code:"missing-helper",subject:path,observed:"missing",recovery:"Restore the helper."}));`,
   runMobileScenario: `
     const target = await reviewSetup(request);
@@ -751,7 +777,7 @@ it("reviews a live compiler description from the shared Workerd program", async 
     {
       services: {
         authoringCompiler: {
-          async inspect(role: string) {
+          async inspect(role: ProgramRole): Promise<ProgramReadback> {
             reads.push(role);
             const shape = await program.describe("skills/pdf-intake");
             return {
@@ -764,6 +790,7 @@ it("reviews a live compiler description from the shared Workerd program", async 
                 returns,
               })),
               services: shape.services,
+              serviceScopes: shape.serviceScopes,
             };
           },
         },
@@ -786,7 +813,8 @@ it("reviews a live compiler description from the shared Workerd program", async 
             entry: "extractPdfEvidence.nl",
             expectedParameters: null,
             expectedReturn: "string",
-            declaredServices: ["pdfIntakeProbe"],
+            declaredServices: ["pdfIntakeProbe", "pdfLayoutRead"],
+            expectedServiceScopes: { pdfIntakeProbe: [] },
             requiredHelpers: ["extractPdfEvidence/missing.nl"],
             preserveBaseline: false,
           },
@@ -811,6 +839,11 @@ it("reviews a live compiler description from the shared Workerd program", async 
               observed: "PdfIntakeReport",
             },
             { code: "unexpected-service", subject: "pdfIntakeRead" },
+            {
+              code: "service-scope-change",
+              subject: "pdfIntakeProbe",
+              observed: '["extractPdfEvidence/probeDocument.nl"]',
+            },
             {
               code: "missing-helper",
               subject: "extractPdfEvidence/missing.nl",
