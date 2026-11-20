@@ -895,6 +895,7 @@ export class MissionsDO extends DurableObjectBase {
     // A guarded replay can omit an already verified proof after the revision has
     // moved. Its command is the original authored patch and observed revision.
     const intentJson = canonicalJson({
+      schemaVersion: 2,
       missionId,
       input: guarded ? authoredPatch : input,
     });
@@ -907,7 +908,10 @@ export class MissionsDO extends DurableObjectBase {
         )
         .toArray()[0];
     const prior = readEdit();
-    if (prior && String(prior["intent_json"]) !== intentJson)
+    const legacyIntent =
+      !guarded &&
+      prior?.["intent_json"] === canonicalJson({ missionId, input });
+    if (prior && !legacyIntent && prior["intent_json"] !== intentJson)
       throw denied(
         "Edit idempotency key was reused for a different automation change",
       );
@@ -951,8 +955,11 @@ export class MissionsDO extends DurableObjectBase {
     const digest = missionRevisionDigest(charter, policy.digest);
     // Rows created before atomic receipt stamping can still be recovered using
     // the original unguarded command protocol.
-    if (!guarded && current.revision === targetRevision) {
-      if (current.revisionDigest !== digest)
+    if (legacyIntent && current.revision === targetRevision) {
+      if (
+        current.revisionDigest !== digest ||
+        (input.name && current.name !== input.name)
+      )
         throw new Error(
           "Prepared automation edit conflicts with the active revision",
         );

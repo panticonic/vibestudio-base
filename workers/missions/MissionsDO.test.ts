@@ -1014,56 +1014,76 @@ describe("MissionsDO", () => {
     });
   });
 
-  it("checks the observed revision again at commit after authority verification yields", async () => {
-    const harness = await createMissions(IdempotentCommandMissionsDO);
-    const original = await harness.callAs(alice, "launch", {
-      name: "Original",
-      authorityPlan: policy(),
-      charter: agentCharter(),
-    });
-    let finishVerification!: () => void;
-    const waitForPeer = new Promise<void>((resolve) => {
-      finishVerification = resolve;
-    });
-    let startVerification!: () => void;
-    const verificationStarted = new Promise<void>((resolve) => {
-      startVerification = resolve;
-    });
-    const externalCall = harness.rpcCall.getMockImplementation()!;
-    harness.rpcCall.mockImplementation(
-      async (target, method, args, options) => {
-        if (method === "authority.verifyAuthorityPlan") {
-          startVerification();
-          await waitForPeer;
-          return policy(HASH_B);
-        }
-        return externalCall(target, method, args, options);
-      },
-    );
-    const pending = harness.callAs(alice, "edit", original.missionId, {
-      charter: agentCharter("Replace the instructions"),
-      authorityPlan: policy(HASH_B),
-      expectedRevision: original.revision,
-    });
-    const rejected = expect(pending).rejects.toMatchObject({
-      code: MISSION_REVISION_CHANGED,
-    });
-    await verificationStarted;
-    harness.instance.commandKey = "peer";
-    const peer = await harness.callAs(alice, "edit", original.missionId, {
-      name: "Peer rename",
-    });
-    finishVerification();
-    await rejected;
-    expect(await harness.callAs(alice, "get", original.missionId)).toEqual(
-      peer,
-    );
-    expect(
-      harness.sql.exec("SELECT COUNT(*) AS count FROM mission_revisions").one(),
-    ).toEqual({
-      count: 1,
-    });
-  });
+  it.each([true, false])(
+    "checks again at commit after authority verification yields, guarded %s",
+    async (guarded) => {
+      const harness = await createMissions(IdempotentCommandMissionsDO);
+      const original = await harness.callAs(alice, "launch", {
+        name: "Original",
+        authorityPlan: policy(),
+        charter: agentCharter(),
+      });
+      let finishVerification!: () => void;
+      const waitForPeer = new Promise<void>((resolve) => {
+        finishVerification = resolve;
+      });
+      let startVerification!: () => void;
+      const verificationStarted = new Promise<void>((resolve) => {
+        startVerification = resolve;
+      });
+      const externalCall = harness.rpcCall.getMockImplementation()!;
+      harness.rpcCall.mockImplementation(
+        async (target, method, args, options) => {
+          if (method === "authority.verifyAuthorityPlan") {
+            startVerification();
+            await waitForPeer;
+            return policy();
+          }
+          return externalCall(target, method, args, options);
+        },
+      );
+      const patch = {
+        name: "Owner rename",
+        authorityPlan: policy(),
+        ...(guarded ? { expectedRevision: original.revision } : {}),
+      };
+      const pending = harness.callAs(alice, "edit", original.missionId, patch);
+      const rejected = guarded
+        ? expect(pending).rejects.toMatchObject({
+            code: MISSION_REVISION_CHANGED,
+          })
+        : expect(pending).rejects.toThrow(
+            "no longer follows the active revision",
+          );
+      await verificationStarted;
+      harness.instance.commandKey = "peer";
+      const peer = await harness.callAs(alice, "edit", original.missionId, {
+        name: "Peer rename",
+      });
+      finishVerification();
+      await rejected;
+      harness.instance.commandKey = "stable-command";
+      const retry = harness.callAs(alice, "edit", original.missionId, patch);
+      if (guarded)
+        await expect(retry).rejects.toMatchObject({
+          code: MISSION_REVISION_CHANGED,
+        });
+      else
+        await expect(retry).rejects.toThrow(
+          "no longer follows the active revision",
+        );
+      expect(await harness.callAs(alice, "get", original.missionId)).toEqual(
+        peer,
+      );
+      expect(
+        harness.sql
+          .exec("SELECT COUNT(*) AS count FROM mission_revisions")
+          .one(),
+      ).toEqual({
+        count: 1,
+      });
+    },
+  );
 
   it("recovers its exact guarded edit after an effect fails and a later revision commits", async () => {
     const harness = await createMissions(IdempotentCommandMissionsDO);
