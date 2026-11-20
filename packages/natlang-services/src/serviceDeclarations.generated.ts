@@ -3084,6 +3084,27 @@ type VaultHandoffEvidence = {
 
 /** Read the verified document and preview from the assigned vault review. */
 export function evidence(): Promise<VaultHandoffEvidence>;`,
+  vaultKnowledgeHandoff: `/** Stage a revision-bound local Spectrolite review for an assigned audience. */
+
+type VaultReference = { kind: "event" | "application"; id: string };
+
+type VaultHandoffPlan = {
+  disposition: "committed-review" | "draft-only" | "hold";
+  ref: VaultReference | null;
+  contentHash: string | null;
+  evidenceIds: string[];
+};
+
+type VaultKnowledgeHandoff = {
+  audience: string;
+  path: string;
+  revision: string;
+  plan: VaultHandoffPlan;
+  receipt: string;
+};
+
+/** Stage a revision-bound local Spectrolite review for an assigned audience. */
+export function stage(revision: string, audience: string, plan: VaultHandoffPlan): Promise<VaultKnowledgeHandoff | null>;`,
   spectroliteGoal: `/** Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence. */
 
 type OpenVaultView = {

@@ -186,6 +186,7 @@ const authoredServices = [
   authoredService("missionPlanningChange", "Apply an assigned mission change against its observed revision.", "personal", "mission-planning", [{ name: "apply", params: ["snapshotId", "changes"] }]),
   authoredService("spectroliteRead", "Observe the assigned vault and actual editor.", "spectrolite", "spectrolite-review", [{ name: "observe", params: [] }]),
   authoredService("spectroliteHandoffRead", "Read the verified document and preview from the assigned vault review.", "spectrolite", "spectrolite-review", [{ name: "evidence", params: [] }]),
+  authoredService("vaultKnowledgeHandoff", "Stage a revision-bound local Spectrolite review for an assigned audience.", "spectrolite", "spectrolite-review", [{ name: "stage", params: ["revision", "audience", "plan"] }]),
   authoredService("spectroliteGoal", "Inspect the current Spectrolite document, act against its observed revision, and read back live editor evidence.", "spectrolite", "spectrolite-review", [
     { name: "inspect", params: [] }, { name: "follow", params: ["target", "revision"] },
     { name: "revise", params: ["revision", "source"] }, { name: "evidence", params: ["checks"] },

@@ -28,7 +28,8 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - For reviewing the current authored Natlang program, release compatibility, or compiler evidence, call workOnAuthoringGoal with the user's goal. Return status "workspace-skill-reviewed", skill "authoring", and its actual outcome.
 
 - `news.reviewUserNewsGoal` for News readers and schedules.
-- `spectrolite.workTowardVaultGoal` for Spectrolite vaults.
+- `spectrolite.workOnVaultKnowledgeGoal` for a multi-record Spectrolite review, authority or provenance decision, multiple linked working changes, or an owned vault handoff. Return skill "vaultWork" for this callable.
+- `spectrolite.workTowardVaultGoal` for a single-document Spectrolite vault review or correction.
 - `googleHandoff.reconcileGoogleHandoff` when a retained Gmail decision determines which linked Drive evidence or handoff is authorized.
 - `google.workOnDriveGoal` for Drive, and `gmail.recoverGmailGoal` for Gmail drafts and delivery evidence.
 - `calendar.workOnCalendarGoal` for reconciling current calendar proposals and staging a scheduling handoff.
