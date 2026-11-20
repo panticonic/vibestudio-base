@@ -17,6 +17,7 @@
     "runWorkflow/domains/automationLifecycle": "skills/automation-lifecycle",
     "runWorkflow/domains/capabilities": "skills/capabilities/natlang",
     "runWorkflow/domains/channelAgent": "skills/agents/channel-membership",
+    "runWorkflow/domains/browserImport": "skills/browser-import-review",
     "runWorkflow/domains/browserLibrary": "skills/browser-library",
     "runWorkflow/domains/clientDevelopment": "skills/clientdev/natlang",
     "runWorkflow/domains/collection": "skills/collection-conductor",
