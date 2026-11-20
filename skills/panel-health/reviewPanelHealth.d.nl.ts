@@ -37,5 +37,31 @@ type PanelHealthReport = {
   later: PanelHealthAssessment | null;
   outcome: "healthy" | "recovered" | "attention" | "inconclusive";
 };
-declare const fn: NatlangFunction<[request: PanelHealthRequest], PanelHealthReport> & { readonly assessObservation: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], PanelHealthAssessment> & { readonly checkDiagnostics: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]>; readonly checkMarkers: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]> }; readonly checkHealthChange: NatlangFunction<[first: PanelHealthObservation, initial: PanelHealthAssessment, expectation: PanelHealthExpectation], PanelHealthReport> & { readonly checkObservationIdentity: NatlangFunction<[first: PanelHealthObservation, later: PanelHealthObservation], boolean>; readonly assessObservation: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], PanelHealthAssessment> & { readonly checkDiagnostics: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]>; readonly checkMarkers: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]> } } };
+type RecoverySurface = { id: string; title: string; audience: string; authorized: boolean };
+type RecoveryCatalog = { revision: string; surfaces: RecoverySurface[] };
+type RecoveryBinding = {
+  surface: RecoverySurface;
+  expectation: PanelHealthExpectation;
+  reloadAllowed: boolean;
+};
+type RecoveryView = {
+  revision: string;
+  title: string;
+  rendererInstance: string;
+  controls: { id: string; label: string }[];
+  health: PanelHealthObservation;
+};
+type RecoveryAction = { kind: "click"; control: string } | { kind: "reload" };
+type RecoveryDecision = RecoveryAction | { kind: "stop"; reason: string };
+type RecoveryEffect = { revision: string; action: RecoveryAction; result: "applied" | "changed" | "denied" };
+type RecoveryReport = | { status: "unresolved"; reason: string }
+  | {
+    status: "healthy" | "recovered" | "attention" | "inconclusive" | "held";
+    surfaceId: string;
+    initial: PanelHealthAssessment;
+    final: PanelHealthAssessment;
+    effects: RecoveryEffect[];
+    reason: string;
+  };
+declare const fn: NatlangFunction<[request: PanelHealthRequest], PanelHealthReport> & { readonly checkHealthChange: NatlangFunction<[first: PanelHealthObservation, initial: PanelHealthAssessment, expectation: PanelHealthExpectation], PanelHealthReport> & { readonly checkObservationIdentity: NatlangFunction<[first: PanelHealthObservation, later: PanelHealthObservation], boolean>; readonly assessObservation: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], PanelHealthAssessment> & { readonly checkDiagnostics: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]>; readonly checkMarkers: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]> } }; readonly assessObservation: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], PanelHealthAssessment> & { readonly checkDiagnostics: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]>; readonly checkMarkers: NatlangFunction<[observation: PanelHealthObservation, expectation: PanelHealthExpectation], string[]> } };
 export default fn;

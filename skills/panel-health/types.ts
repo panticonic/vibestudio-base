@@ -33,3 +33,31 @@ export type PanelHealthReport = {
   later: PanelHealthAssessment | null;
   outcome: "healthy" | "recovered" | "attention" | "inconclusive";
 };
+
+export type RecoverySurface = { id: string; title: string; audience: string; authorized: boolean };
+export type RecoveryCatalog = { revision: string; surfaces: RecoverySurface[] };
+export type RecoveryBinding = {
+  surface: RecoverySurface;
+  expectation: PanelHealthExpectation;
+  reloadAllowed: boolean;
+};
+export type RecoveryView = {
+  revision: string;
+  title: string;
+  rendererInstance: string;
+  controls: { id: string; label: string }[];
+  health: PanelHealthObservation;
+};
+export type RecoveryAction = { kind: "click"; control: string } | { kind: "reload" };
+export type RecoveryDecision = RecoveryAction | { kind: "stop"; reason: string };
+export type RecoveryEffect = { revision: string; action: RecoveryAction; result: "applied" | "changed" | "denied" };
+export type RecoveryReport =
+  | { status: "unresolved"; reason: string }
+  | {
+    status: "healthy" | "recovered" | "attention" | "inconclusive" | "held";
+    surfaceId: string;
+    initial: PanelHealthAssessment;
+    final: PanelHealthAssessment;
+    effects: RecoveryEffect[];
+    reason: string;
+  };

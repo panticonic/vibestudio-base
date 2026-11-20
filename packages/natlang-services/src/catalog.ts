@@ -98,6 +98,7 @@ const authoredServices = [
   authoredService("testSuiteVerificationRun", "Verify the exact caller-assigned test plan after live resolution.", "base", "native-suite-review", [{ name: "run", params: ["operationId", "stateHash"] }]),
   authoredService("gitBridgeReviewRead", "Read the assigned Git Bridge upstream and semantic repository state.", "base", "git-bridge-review", [{ name: "observe", params: ["operationId"] }]),
   authoredService("vcsDeliveryRead", "Read one assigned semantic VCS file across working, committed, and protected-main states.", "base", "vibestudio-vcs/natlang", [{ name: "observe", params: ["operationId"] }]),
+  authoredService("panelRecovery", "Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action.", "base", "panel-health", [{ name: "discover", params: [] }, { name: "bind", params: ["revision", "surfaceId"] }, { name: "inspect", params: [] }, { name: "apply", params: ["revision", "action"] }]),
   authoredService("panelHealth", "Read observations from the assigned panel.", "base", "panel-health", [{ name: "observe", params: [] }, { name: "observeAfter", params: ["snapshotId"] }]),
   authoredService("localDeliveryCatalog", "Discover owned local conversations and their send grants.", "base", "open-local-delivery", [{ name: "discover", params: [] }]),
   authoredService("localDeliveryHistory", "Read the current roster and original receipt of an owned conversation.", "base", "open-local-delivery", [{ name: "inspect", params: ["roomId", "recipientPhrase"] }]),

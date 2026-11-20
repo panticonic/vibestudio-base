@@ -959,6 +959,64 @@ type VcsDeliverySnapshot = {
 
 /** Read one assigned semantic VCS file across working, committed, and protected-main states. */
 export function observe(operationId: string): Promise<VcsDeliverySnapshot>;`,
+  panelRecovery: `/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+
+type RecoverySurface = { id: string; title: string; audience: string; authorized: boolean };
+
+type RecoveryCatalog = { revision: string; surfaces: RecoverySurface[] };
+
+type PanelHealthExpectation = {
+  markers: { id: string; exact: string[] }[];
+  allowedErrors: string[];
+};
+
+type RecoveryBinding = {
+  surface: RecoverySurface;
+  expectation: PanelHealthExpectation;
+  reloadAllowed: boolean;
+};
+
+type PanelHealthSignal = {
+  sequence: number;
+  level: "error" | "warning" | "info";
+  message: string;
+};
+
+type PanelHealthObservation = {
+  id: string;
+  panelId: string;
+  attemptId: string;
+  buildKey: string;
+  phase: "ready" | "pending" | "failed" | "unavailable";
+  markers: { id: string; values: string[] }[];
+  diagnostics: PanelHealthSignal[];
+  consoleThrough: number;
+  dropped: number;
+};
+
+type RecoveryView = {
+  revision: string;
+  title: string;
+  rendererInstance: string;
+  controls: { id: string; label: string }[];
+  health: PanelHealthObservation;
+};
+
+type RecoveryAction = { kind: "click"; control: string } | { kind: "reload" };
+
+type RecoveryEffect = { revision: string; action: RecoveryAction; result: "applied" | "changed" | "denied" };
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function discover(): Promise<RecoveryCatalog>;
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function bind(revision: string, surfaceId: string): Promise<RecoveryBinding | null>;
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function inspect(): Promise<RecoveryView>;
+
+/** Discover owned visual surfaces, bind one panel, inspect its current health and apply one revision-bound recovery action. */
+export function apply(revision: string, action: RecoveryAction): Promise<RecoveryEffect>;`,
   panelHealth: `/** Read observations from the assigned panel. */
 
 type PanelHealthSignal = {

@@ -439,6 +439,8 @@ it("compiles the open goal program with its installed research skill and scoped 
   });
   const result = await loader.describe("skills/open-user-goal/runUserGoal.nl");
   expect(result.serviceScopes).toEqual({
+    panelRecovery: ["runUserGoal/visualRecovery/recoverPanelGoal.nl", "runUserGoal/visualRecovery/recoverPanelGoal/recoverSurface.nl"],
+    panelHealth: ["runUserGoal/visualRecovery/reviewPanelHealth.nl", "runUserGoal/visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
     goalBrowser: ["runUserGoal/workInBrowser.nl"],
     goalDiscovery: ["runUserGoal/investigatePublicQuestion.nl"],
     goalWorkspace: ["runUserGoal/reviseWorkspaceDocument.nl"],

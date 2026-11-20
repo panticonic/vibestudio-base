@@ -7,6 +7,7 @@
   "workspaceModules": {
     "runUserGoal/workOnProgramRunGoal/runtime": "skills/open-program-run",
     "runUserGoal/workOnProgramRunGoal/reviewer": "skills/runtime-evidence-review",
+    "runUserGoal/visualRecovery": "skills/panel-health",
     "runUserGoal/workOnAuthoringGoal/discovery": "skills/open-authoring-goal",
     "runUserGoal/workOnAuthoringGoal/reviewer": "skills/natlang-authoring",
     "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research",
