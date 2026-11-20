@@ -26,6 +26,7 @@ import {
   type AgenticEvent,
 } from "@workspace/agentic-protocol";
 import { GadWorkspaceDO } from "./index.js";
+import { SemanticVcsStore } from "./semanticVcsStore.js";
 
 const notificationRpcFetch = createTestRpcFetch((request) => {
   if (request.message.type !== "request") throw new Error("Expected request");
@@ -1309,7 +1310,7 @@ describe("appendLogEvent core (§3.2)", () => {
 
 describe("trajectory projection invariants", () => {
   it("walks prompting intent through its turn and invocation to the semantic command", async () => {
-    const { call, instance } = await createTestDO(GadWorkspaceDO, {
+    const { call, instance, sql } = await createTestDO(GadWorkspaceDO, {
       WORKSPACE_ID: "workspace-test",
     });
     const triggerMessageId = "recv:channel-1:prompt-envelope-1";
@@ -1368,26 +1369,16 @@ describe("trajectory projection invariants", () => {
       ],
     });
 
-    await call("vcsEnsureContext", {
-      contextId: "context-1",
+    new SemanticVcsStore(sql, () => "2026-05-20T12:00:00.000Z").beginCommand({
+      scopeKind: "context",
+      scopeId: "context-1",
       commandId: "command-1",
-      ingress: {
-        causalParent: {
-          kind: "trajectory-invocation",
-          logId: "trajectory-1",
-          head: "main",
-          invocationId,
-        },
-      },
+      method: "edit",
+      requestDigest: "request-1",
+      cause: { parent: { logId: "trajectory-1", head: "main", invocationId } },
     });
 
-    const walk = (
-      instance as unknown as {
-        sql: {
-          exec(sql: string, ...bindings: unknown[]): { toArray(): unknown[] };
-        };
-      }
-    ).sql
+    const walk = sql
       .exec(
         `SELECT json_extract(message.payload_ref_json, '$.blocks[0].content') AS intent,
               turns.trigger_message_id,

@@ -1654,12 +1654,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  vcsListContexts(input: { prefix?: string }): string[] {
-    this.ensureReady();
-    return this.semanticWorkspace().listContexts(input.prefix);
-  }
-
-  @schemaRpc()
   vcsReferencesReachable(input: {
     contextIds: string[];
     references: Array<{ kind: string; value: unknown }>;
@@ -1669,33 +1663,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       input.contextIds,
       input.references,
     );
-  }
-
-  @schemaRpc()
-  vcsIsStateDescendant(input: {
-    ancestor: import("@vibestudio/service-schemas/vcs").VcsStateNodeRef;
-    descendant: import("@vibestudio/service-schemas/vcs").VcsStateNodeRef;
-    maxEdges: number;
-  }): boolean {
-    this.ensureReady();
-    return this.semanticWorkspace().isStateDescendant(
-      input.ancestor as import("@workspace/vcs-engine").StateNodeRef,
-      input.descendant as import("@workspace/vcs-engine").StateNodeRef,
-      input.maxEdges,
-    );
-  }
-
-  @schemaRpc()
-  vcsEnsureContext(input: {
-    contextId: string;
-    commandId: string;
-    projection?: "required" | "deferred";
-    ingress: SemanticDispatchRequest["ingress"];
-  }): unknown {
-    this.ensureReady();
-    return input.projection === "deferred"
-      ? this.semanticWorkspace().ensureContextCoordinate(input, input.ingress)
-      : this.semanticWorkspace().ensureContext(input, input.ingress);
   }
 
   @schemaRpc()
@@ -1710,16 +1677,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       input.contextId,
       input.materializedState,
     );
-  }
-
-  @schemaRpc()
-  vcsDropContext(input: { contextId: string }): { dropped: boolean } {
-    this.ensureReady();
-    return {
-      dropped: this.transaction(() =>
-        this.semanticVcsStore().dropContext(input.contextId),
-      ),
-    };
   }
 
   // -------------------------------------------------------------------------

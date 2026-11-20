@@ -1151,18 +1151,6 @@ const causalCommandRef = (
 export class SemanticWorkspace {
   constructor(private readonly deps: SemanticWorkspaceDeps) {}
 
-  listContexts(prefix?: string): string[] {
-    return this.deps.store.listContexts(prefix);
-  }
-
-  isStateDescendant(
-    ancestor: StateNodeRef,
-    descendant: StateNodeRef,
-    maxEdges: number,
-  ): boolean {
-    return this.deps.store.isStateAncestor(ancestor, descendant, maxEdges);
-  }
-
   pendingEffects(): SemanticEffect[] {
     return this.deps.store.pendingEffects();
   }
