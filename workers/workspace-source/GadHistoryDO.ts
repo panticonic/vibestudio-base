@@ -91,6 +91,7 @@ import {
   type MergeSource,
 } from "./participantHistory.js";
 import type { WorkUnitRecord } from "./semanticHistoryRecords.js";
+import { createWorkspaceContentRootIndex, indexedWorkspacePlacementRoots } from "./workspaceContentRoots.js";
 import { workspaceHistoryInitializationInputSchema, HistoryQueryRequestSchema, HistoryRecallBasisRequestSchema, HistorySearchCauseRequestSchema, HistoryWalkCohortRequestSchema, type HistorySearchCause } from "@vibestudio/service-schemas/workspaceSource";
 
 const source = "workers/workspace-source";
@@ -178,12 +179,15 @@ function historyContextKey(contextId: string): string {
 
 /** The hosted, versioned history owner. The workspace's trajectory mirror lives separately. */
 export class GadHistoryDO extends DurableObjectBase {
+  static override schemaVersion = 2;
+
   readonly #allocations = new Map<string, Promise<unknown>>();
   readonly #outgoing = new Set<string>();
   #participant: ParticipantHistory | undefined;
 
   protected createTables(): void {
     createDoltWorkspaceState(this.sql);
+    createWorkspaceContentRootIndex(this.sql);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS gad_history_allocations (
       target_key TEXT PRIMARY KEY,
       context_id TEXT NOT NULL,
@@ -200,6 +204,8 @@ export class GadHistoryDO extends DurableObjectBase {
       "applications",
       "commands",
       "gad_history_allocations",
+      "content_roots",
+      "content_root_basis",
     ];
   }
 
@@ -889,7 +895,7 @@ export class GadHistoryDO extends DurableObjectBase {
     this.ensureReady();
     const heads = this.#remotes().branch.list().map(({ hash }) => hash);
     return [...new Set([
-      ...workspacePlacementRoots(this.sql, heads),
+      ...indexedWorkspacePlacementRoots(this.sql, heads, (write) => this.transactionSync(write)),
       ...workspaceExternalDeltaRoots(this.sql, heads),
     ])].sort(compareUtf16CodeUnits);
   }
