@@ -2,6 +2,7 @@ export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
+export type { RegencyReport } from "./workOnRegencyBriefing/types.js";
 export type { ImageReport } from "./workOnImageCandidateGoal/types.js";
 export type { NewsEvidenceReport } from "./workOnNewsEvidenceGoal/types.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";

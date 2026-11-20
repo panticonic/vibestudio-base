@@ -5,6 +5,8 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnRegencyBriefing/realm": "skills/open-regency-briefing",
+    "runUserGoal/workOnRegencyBriefing/reviewer": "skills/examples-review",
     "runUserGoal/workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
     "runUserGoal/workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
     "runUserGoal/workOnApiReadinessGoal/installed": "skills/api-integrations/natlang",

@@ -5431,6 +5431,109 @@ type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietReque
 
 /** Stage one authorized quiet readiness note with no provider claim. */
 export function stage(report:ReadinessReport):Promise<ReadinessArtifact|null>;`,
+  regencyAssignment: `/** Find the assigned private Regency realm. */
+
+type Horizon = 1 | 2 | 3;
+
+type RegencyMemo = { path:string; digest:string; basis:string; text:string };
+
+type RegencyIndex = { realm:string; title:string; originalMonth:number; allowedHorizons:Horizon[]; routes:string[]; regions:string[]; memo:RegencyMemo|null };
+
+/** Find the assigned private Regency realm. */
+export function list():Promise<RegencyIndex>;`,
+  regencySaved: `/** Read the exact saved Regency account checkpoint. */
+
+type RealmRoute = { id:string; subsidy:number; condition:number; progress:number; workers:number; cargo:number|null; capacity:number|null };
+
+type RealmRegion = { id:string; grain:number; population:number; confidence:number };
+
+type RealmReadback = { id:string; month:number; treasury:number; debt:number; income:number; spending:number;
+  serviceCost:number; worksCost:number; routes:RealmRoute[]; regions:RealmRegion[]; borderTension:number|null; };
+
+type RegencySnapshot = { realm:string; revision:string; accounts:RealmReadback; pending:string|null };
+
+/** Read the exact saved Regency account checkpoint. */
+export function read(realm:string):Promise<RegencySnapshot|null>;`,
+  regencyForecast: `/** Project the assigned Regency realm on its exact saved basis. */
+
+type Horizon = 1 | 2 | 3;
+
+type RealmRoute = { id:string; subsidy:number; condition:number; progress:number; workers:number; cargo:number|null; capacity:number|null };
+
+type RealmRegion = { id:string; grain:number; population:number; confidence:number };
+
+type RealmReadback = { id:string; month:number; treasury:number; debt:number; income:number; spending:number;
+  serviceCost:number; worksCost:number; routes:RealmRoute[]; regions:RealmRegion[]; borderTension:number|null; };
+
+type RegencyForecast = { realm:string; basis:string; months:Horizon; accounts:RealmReadback };
+
+/** Project the assigned Regency realm on its exact saved basis. */
+export function preview(realm:string,basis:string,months:Horizon):Promise<RegencyForecast|null>;`,
+  regencyAdvance: `/** Commit one explicitly allowed settlement on the exact saved basis. */
+
+type Horizon = 1 | 2 | 3;
+
+type RealmRoute = { id:string; subsidy:number; condition:number; progress:number; workers:number; cargo:number|null; capacity:number|null };
+
+type RealmRegion = { id:string; grain:number; population:number; confidence:number };
+
+type RealmReadback = { id:string; month:number; treasury:number; debt:number; income:number; spending:number;
+  serviceCost:number; worksCost:number; routes:RealmRoute[]; regions:RealmRegion[]; borderTension:number|null; };
+
+type RegencySnapshot = { realm:string; revision:string; accounts:RealmReadback; pending:string|null };
+
+type RegencyAdvance = { id:string; realm:string; basis:string; months:Horizon; committed:RegencySnapshot };
+
+/** Commit one explicitly allowed settlement on the exact saved basis. */
+export function commit(realm:string,basis:string,months:Horizon):Promise<RegencyAdvance|null>;`,
+  regencyNote: `/** Stage an authorized private council handoff. */
+
+type Horizon = 1 | 2 | 3;
+
+type Source = "opening" | "current" | Horizon;
+
+type RealmCurrentCheck =
+  | { kind:"subsidy-paid-and-idle"|"cargo-under-capacity"|"crossing-reopened"; route:string }
+  | { kind:"has-debt"|"net-positive" }
+  | { kind:"region-grain-at-least"; region:string; amount:number };
+
+type RealmTrendCheck =
+  | { kind:"route-works-progressed"; route:string }
+  | { kind:"regional-grain-grew"|"population-fell"; region:string }
+  | { kind:"treasury-grew"|"border-tension-grew" };
+
+type RegencyClaim =
+  | { kind:"settlement"; source:Source; check:RealmCurrentCheck }
+  | { kind:"compare"; from:Source; to:Source; check:RealmTrendCheck; assertCommitted:boolean };
+
+type RegencyPlan = { horizons:Horizon[]; claims:RegencyClaim[]; localNote:boolean; advance:Horizon|null; treasuryFloor:number|null };
+
+type RealmRoute = { id:string; subsidy:number; condition:number; progress:number; workers:number; cargo:number|null; capacity:number|null };
+
+type RealmRegion = { id:string; grain:number; population:number; confidence:number };
+
+type RealmReadback = { id:string; month:number; treasury:number; debt:number; income:number; spending:number;
+  serviceCost:number; worksCost:number; routes:RealmRoute[]; regions:RealmRegion[]; borderTension:number|null; };
+
+type RegencySnapshot = { realm:string; revision:string; accounts:RealmReadback; pending:string|null };
+
+type RegencyForecast = { realm:string; basis:string; months:Horizon; accounts:RealmReadback };
+
+type RealmFinding = { decision:"supported"|"contradicted"|"not-observed"; finding:string; evidenceIds:string[] };
+
+type RegencyFinding = { claim:RegencyClaim; review:RealmFinding };
+
+type RegencyDecision = { action:"report"|"hold"|"stage"|"advance"; explanation:string };
+
+type RegencyAdvance = { id:string; realm:string; basis:string; months:Horizon; committed:RegencySnapshot };
+
+type RegencyNote = { path:string; digest:string; realm:string; revision:string };
+
+type RegencyReport = { plan:RegencyPlan; opening:RegencySnapshot; current:RegencySnapshot; forecasts:RegencyForecast[];
+  findings:RegencyFinding[]; decision:RegencyDecision; advance:RegencyAdvance|null; note:RegencyNote|null };
+
+/** Stage an authorized private council handoff. */
+export function stage(report:RegencyReport):Promise<RegencyNote|null>;`,
   imageCandidateBriefs: `/** Discover exact owned briefs for retained image selection. */
 
 type Format = "png" | "jpeg" | "webp";
