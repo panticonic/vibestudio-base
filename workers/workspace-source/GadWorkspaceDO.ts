@@ -4219,7 +4219,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
    * commits stay workspace-wide: they are committed workspace state every
    * context shares, and the boundary held here is around conversation.
    */
-  private materializeRecallVisibility(): {
+  private recallVisibility(): {
     clause: string;
     bindings: SqlBinding[];
   } {
@@ -4233,15 +4233,14 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const binding = authorization.agentBinding;
     const ownLogId = binding ? logIdForChannel(binding.channelId) : null;
     const causes = authorization.workspaceRecallCauses;
-    if (causes) {
-      if (!binding || causes.length === 0) {
-        return {
-          clause: " AND (kind <> 'message' OR log_id = ?)",
-          bindings: [ownLogId],
-        };
-      }
+    if (!binding || !causes?.length) {
       return {
-        clause: ` AND (kind <> 'message' OR log_id = ?
+        clause: " AND (kind <> 'message' OR log_id = ?)",
+        bindings: [ownLogId],
+      };
+    }
+    return {
+      clause: ` AND (kind <> 'message' OR log_id = ?
           OR (log_id, head, json_extract(anchor_json, '$.messageId')) IN (
             WITH invocations AS MATERIALIZED (
               SELECT invocation.log_id, invocation.head, invocation.turn_id,
@@ -4262,22 +4261,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
                 ON message.log_id = invocation.input_log_id AND message.head = invocation.input_head
                AND message.message_id = invocation.input_message_id
           ))`,
-        bindings: [ownLogId, JSON.stringify(causes)],
-      };
-    }
-    this.semanticWorkspace().materializeVisibilityBasis(
-      binding ? [binding.contextId] : [],
-    );
-    return {
-      clause: ` AND (kind <> 'message'
-              OR log_id = ?
-              OR EXISTS (
-                   SELECT 1 FROM prov_messages visible
-                    WHERE visible.log_id = gad_memory_fts.log_id
-                      AND visible.head = gad_memory_fts.head
-                      AND visible.message_id =
-                            json_extract(gad_memory_fts.anchor_json, '$.messageId')))`,
-      bindings: [ownLogId],
+      bindings: [ownLogId, JSON.stringify(causes)],
     };
   }
 
@@ -4320,7 +4304,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const mode = this.ensureMemoryIndex();
     const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
     const visibility = kinds === null || kinds.includes("message")
-      ? this.materializeRecallVisibility()
+      ? this.recallVisibility()
       : { clause: "", bindings: [] };
     const visibilityFilter =
       ` AND (kind <> 'commit' OR json_extract(anchor_json, '$.revision') IS NOT NULL)${visibility.clause}`;
