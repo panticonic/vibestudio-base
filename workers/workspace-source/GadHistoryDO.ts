@@ -64,13 +64,16 @@ import {
   createDoltWorkspaceState,
   recordDoltWorkspaceEvent,
   workspaceCommitForRef,
+  workspaceEditBasisAt,
   workspaceExternalDeltaRoots,
+  workspaceFileReadsAt,
   workspaceHasFileContent,
   workspacePlacementRoots,
   workspaceRepositoriesAt,
   workspaceTemplateInstallationAt,
   verifyWorkspaceTemplatePublication,
 } from "./doltWorkspaceState.js";
+import { workspaceListDirectoryAt, workspaceListFilesAt } from "./doltWorkspaceListings.js";
 import { execBatchedInsert } from "./sqlBatch.js";
 import {
   APPROVED_MAIN_GRANT_LIFETIME_MS,
@@ -751,23 +754,37 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
-  readHistoryFiles(input: { contextId: string; read: VcsReadFilesInput }) {
-    return this.#history().readFiles(input.contextId, vcsReadFilesInputSchema.parse(input.read));
+  readHistoryFiles(input: { contextId: string | null; read: VcsReadFilesInput }) {
+    const read = vcsReadFilesInputSchema.parse(input.read);
+    return input.contextId === null
+      ? workspaceFileReadsAt(this.sql, this.#publishedRevision(read.state), read)
+      : this.#history().readFiles(input.contextId, read);
   }
 
   @rpc(hostRead)
-  listHistoryFiles(input: { contextId: string; list: VcsListFilesInput }) {
-    return this.#history().listFiles(input.contextId, vcsListFilesInputSchema.parse(input.list));
+  listHistoryFiles(input: { contextId: string | null; list: VcsListFilesInput }) {
+    const list = vcsListFilesInputSchema.parse(input.list);
+    return input.contextId === null
+      ? workspaceListFilesAt(this.sql, this.#publishedRevision(list.state), list)
+      : this.#history().listFiles(input.contextId, list);
   }
 
   @rpc(hostRead)
-  listHistoryDirectory(input: { contextId: string; list: VcsListDirectoryInput }) {
-    return this.#history().listDirectory(input.contextId, vcsListDirectoryInputSchema.parse(input.list));
+  listHistoryDirectory(input: { contextId: string | null; list: VcsListDirectoryInput }) {
+    const list = vcsListDirectoryInputSchema.parse(input.list);
+    return input.contextId === null
+      ? workspaceListDirectoryAt(this.sql, this.#publishedRevision(list.state), list)
+      : this.#history().listDirectory(input.contextId, list);
   }
 
   @rpc(hostRead)
-  resolveHistoryRepository(input: { contextId: string; repository: VcsResolveRepositoryInput }) {
-    return this.#history().resolveRepository(input.contextId, vcsResolveRepositoryInputSchema.parse(input.repository));
+  resolveHistoryRepository(input: { contextId: string | null; repository: VcsResolveRepositoryInput }) {
+    const repository = vcsResolveRepositoryInputSchema.parse(input.repository);
+    if (input.contextId !== null) return this.#history().resolveRepository(input.contextId, repository);
+    const { state, repoPath } = repository;
+    const basis = workspaceEditBasisAt(this.sql, this.#publishedRevision(state));
+    const resolved = basis.repositoryAtPath(repoPath);
+    return resolved ? { state, repoPath, repositoryId: resolved.repositoryId } : null;
   }
 
   @rpc(hostRead)
@@ -969,12 +986,16 @@ export class GadHistoryDO extends DurableObjectBase {
 
   @rpc(hostRead)
   readHistoryTemplateInstallation(input: { eventId: string }) {
-    this.#assertCanonical();
-    const main = this.#remotes().hashOf("main");
     const state = vcsStateNodeRefSchema.parse({ kind: "event", eventId: input.eventId });
-    const revision = workspaceCommitForRef(this.sql, main, state);
+    return workspaceTemplateInstallationAt(this.sql, this.#publishedRevision(state));
+  }
+
+  #publishedRevision(state: StateNodeRef): string {
+    this.#assertCanonical();
+    if (state.kind !== "event") throw new Error("Published workspace reads require a saved event");
+    const revision = workspaceCommitForRef(this.sql, this.#remotes().hashOf("main"), state);
     if (!revision) throw new Error("Workspace event is outside canonical history");
-    return workspaceTemplateInstallationAt(this.sql, revision);
+    return revision;
   }
 
   @rpc(hostRead)
