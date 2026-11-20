@@ -5,6 +5,7 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",
     "runUserGoal/workOnCapabilityGoal/workspace": "skills/open-doc-plan",
     "runUserGoal/workOnCapabilityGoal/help": "skills/sandbox/help",
     "runUserGoal/workOnTerminalGoal/terminal": "skills/open-terminal-operator",
