@@ -3,10 +3,23 @@
   "name": "vibestudio-template-candidate",
   "version": "0.1.0",
   "serviceBinding": "explicit",
-  "targets": { "main": { "entry": "stageTemplateCandidate.nl" } },
+  "targets": {
+    "main": {
+      "entry": "stageTemplateCandidate.nl"
+    }
+  },
   "serviceScopes": {
-    "templateOffer": ["stageTemplateCandidate/inspectOffer/readOffer.nl"],
-    "templateCandidatePrepare": ["stageTemplateCandidate/prepareCandidate/requestPreparation.nl"],
-    "templateCandidateReview": ["stageTemplateCandidate/reconcileCandidate/readCandidate.nl"]
+    "templateOffer": [
+      "stageTemplateCandidate/inspectOffer/readOffer.nl"
+    ],
+    "templateCandidatePrepare": [
+      "stageTemplateCandidate/prepareCandidate/requestPreparation.nl"
+    ],
+    "templateCandidateReview": [
+      "stageTemplateCandidate/reconcileCandidate/readCandidate.nl"
+    ],
+    "templateMigration": [
+      "reviewTemplateMigration.nl"
+    ]
   }
 }

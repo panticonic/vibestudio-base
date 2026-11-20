@@ -11,6 +11,7 @@
     "runUserGoal/workOnProblemReportGoal/reporter": "skills/problem-reporting/natlang",
     "runUserGoal/workOnRecoveryHandoff/scratch": "skills/scratch-handoff",
     "runUserGoal/workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",
+    "runUserGoal/templateMigration": "skills/template-candidate",
     "runUserGoal/workOnCapabilityGoal/workspace": "skills/open-doc-plan",
     "runUserGoal/workOnCapabilityGoal/help": "skills/sandbox/help",
     "runUserGoal/workOnTerminalGoal/terminal": "skills/open-terminal-operator",

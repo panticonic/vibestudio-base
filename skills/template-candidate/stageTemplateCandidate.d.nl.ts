@@ -70,6 +70,53 @@ type CandidateReport = {
   operationId: string | null;
   candidate: CandidateReview | null;
 };
+type MigrationTemplate = {
+  source: string;
+  installed: string;
+  incoming: string | null;
+  status: CandidateOffer["status"];
+  minimumAppVersion: string | null;
+};
+type MigrationObservation = {
+  mainEvent: string;
+  revision: string;
+  appVersion: string;
+  templates: MigrationTemplate[];
+  records: { id: string; title: string; kind: string }[];
+};
+type MigrationRead = {
+  id: string;
+  text: string;
+  sha256: string;
+};
+type MigrationStatus = | "current"
+  | "draft-only"
+  | "obsolete-dependency"
+  | "foreign-candidate"
+  | "stale-review"
+  | "awaiting-approval"
+  | "already-deployed"
+  | "insufficient-evidence"
+  | "ready-for-review"
+  | "candidate-staged";
+type MigrationDecision = {
+  candidateId: string | null;
+  status: MigrationStatus;
+  prepare: boolean;
+  recipient: string | null;
+  answer: string;
+};
+type MigrationHandoff = { path: string; sha256: string; bytes: number };
+type MigrationReport = {
+  status: MigrationStatus;
+  candidateId: string | null;
+  deployedMain: string;
+  dossierRevision: string;
+  readIds: string[];
+  candidate: CandidateReport | null;
+  handoff: MigrationHandoff | null;
+  answer: string;
+};
 declare const fn: NatlangFunction<[request: CandidateRequest], CandidateReport> & { readonly inspectOffer: NatlangFunction<[request: CandidateRequest], { decision: OfferDecision; offer: CandidateOffer | null }> & { readonly assessOffer: NatlangFunction<[request: CandidateRequest, offer: CandidateOffer | null], OfferDecision>; readonly readOffer: NatlangFunction<[], CandidateOffer | null> }; readonly prepareCandidate: NatlangFunction<[], StageReceipt> & { readonly requestPreparation: NatlangFunction<[], StageReceipt> }; readonly reconcileCandidate: NatlangFunction<[request: CandidateRequest, receipt: StageReceipt], { status: ReportStatus; candidate: CandidateReview | null }> & { readonly chooseReview: NatlangFunction<[candidate: CandidateReview], "already-published" | "resolve-conflicts" | "validate-candidate">; readonly readCandidate: NatlangFunction<[], CandidateState | null>; readonly candidateIdentity: { readonly verify: (request: CandidateRequest, receipt: StageReceipt, observed: CandidateState | null) => | { state: "verified"; candidate: CandidateReview }
   | {
       state: "unconfirmed" | "stale-base";

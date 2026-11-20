@@ -72,3 +72,54 @@ export type CandidateReport = {
   operationId: string | null;
   candidate: CandidateReview | null;
 };
+
+export type MigrationTemplate = {
+  source: string;
+  installed: string;
+  incoming: string | null;
+  status: CandidateOffer["status"];
+  minimumAppVersion: string | null;
+};
+
+export type MigrationObservation = {
+  mainEvent: string;
+  revision: string;
+  appVersion: string;
+  templates: MigrationTemplate[];
+  records: { id: string; title: string; kind: string }[];
+};
+
+export type MigrationRead = {
+  id: string;
+  text: string;
+  sha256: string;
+};
+export type MigrationStatus =
+  | "current"
+  | "draft-only"
+  | "obsolete-dependency"
+  | "foreign-candidate"
+  | "stale-review"
+  | "awaiting-approval"
+  | "already-deployed"
+  | "insufficient-evidence"
+  | "ready-for-review"
+  | "candidate-staged";
+export type MigrationDecision = {
+  candidateId: string | null;
+  status: MigrationStatus;
+  prepare: boolean;
+  recipient: string | null;
+  answer: string;
+};
+export type MigrationHandoff = { path: string; sha256: string; bytes: number };
+export type MigrationReport = {
+  status: MigrationStatus;
+  candidateId: string | null;
+  deployedMain: string;
+  dossierRevision: string;
+  readIds: string[];
+  candidate: CandidateReport | null;
+  handoff: MigrationHandoff | null;
+  answer: string;
+};
