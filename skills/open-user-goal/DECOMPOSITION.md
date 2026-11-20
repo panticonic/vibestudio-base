@@ -12,7 +12,7 @@ criteria, source coordinates, and expected tool calls stay in the harness.
 | Read actual pages and ground the answer in exact excerpts | The existing web research skill. Workspace RPC owns the fetch and cached bytes. |
 | Report success or what remains unresolved | The root retains the research result, including its citations and failures. |
 | Identify the document and reconcile it with authoritative workspace evidence | A judgment lambda scoped to document revision. |
-| Retry a revision against fresh state, preserving other edits | The document revision lambda chooses when to reread and revise. The managed service handles exact version comparison and storage. |
+| Retry a revision against fresh state, preserving other edits | The document revision lambda rereads the current target and evidence. Its reconciliation child compares the original, proposed, and current text to decide whether the requested change still applies. The managed service handles exact version comparison and storage. |
 | Use verified public evidence as the basis for an authorized local revision | The root chooses the dependent call using the research outcome. The revision receives observed source evidence and current workspace contents. |
 | Interpret the current browser panel and choose an authorized unfinished action | The browser lambda owns the inspect, decide, act, and readback loop. Its decision child interprets observed row details and goal dependencies. |
 | Observe the owned renderer and activate a current visible control | The managed CDP service checks renderer identity and the observed revision. The independent verifier reads the final panel state and checks action order and untouched rows. |
