@@ -87,3 +87,12 @@ export type ChatDeliveryReport = {
   panel: ChatDeliveryPanel | null;
   verdict: ChatDeliveryMessageVerdict | "history-unverified" | "panel-mismatch";
 };
+export type NotificationLifecycleRequest = { goal: string; operationId: string };
+export type NotificationAcceptance = { notificationId: string; actionLabels: string[] };
+export type NotificationDismissal = { notificationId: string };
+export type NotificationLifecycleReport = {
+  status: "cleaned-up" | "unverified";
+  notificationId: string;
+  actionLabels: string[];
+  interaction: "unobserved";
+};

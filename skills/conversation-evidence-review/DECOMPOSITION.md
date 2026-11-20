@@ -40,3 +40,11 @@ a stale panel and a missing, duplicate, or divergent visible row.
 | Read the assigned panel attempt, channel, and DOM | `inspectPanel` with a scoped service | Only the host resolves the assigned handle and reads its DOM. The program receives bounded evidence. |
 | Validate panel identity before considering its contents | `checkPanel` | A matching transcript in a different panel, channel, or context cannot prove delivery. |
 | Compare the single rendered message with the accepted history | `checkMessage` with a crisp comparison | Message identity, cardinality, and text equality are exact. |
+
+## Temporary notification lifecycle
+
+`runNotificationLifecycle` presents one assigned shell notification, passes the
+host-issued identity to its cleanup step, then calls
+`confirmNotificationLifecycle` for the final receipt assessment. The presentation
+and cleanup lambdas each have one scoped service. TypeScript owns the allowed
+payload, the host calls, and exact readback checks.

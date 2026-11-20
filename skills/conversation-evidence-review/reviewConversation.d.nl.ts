@@ -88,5 +88,14 @@ type ChatDeliveryReport = {
   panel: ChatDeliveryPanel | null;
   verdict: ChatDeliveryMessageVerdict | "history-unverified" | "panel-mismatch";
 };
+type NotificationLifecycleRequest = { goal: string; operationId: string };
+type NotificationAcceptance = { notificationId: string; actionLabels: string[] };
+type NotificationDismissal = { notificationId: string };
+type NotificationLifecycleReport = {
+  status: "cleaned-up" | "unverified";
+  notificationId: string;
+  actionLabels: string[];
+  interaction: "unobserved";
+};
 declare const fn: NatlangFunction<[request: ConversationRequest], ConversationReport> & { readonly reviewContract: NatlangFunction<[request: ContractInput], ConversationReport> & { readonly checkCanonical: NatlangFunction<[request: ContractInput], string[]>; readonly checkConsumers: NatlangFunction<[request: ContractInput], string[]> }; readonly reviewDelivery: NatlangFunction<[request: DeliveryInput], ConversationReport> & { readonly checkEnvelope: NatlangFunction<[request: DeliveryInput], string[]>; readonly checkSettlement: NatlangFunction<[request: DeliveryInput], string[]> }; readonly reviewSurface: NatlangFunction<[request: SurfaceInput], ConversationReport> & { readonly verifyContext: NatlangFunction<[request: SurfaceInput], string[]>; readonly verifyTurn: NatlangFunction<[request: SurfaceInput], string[]> } };
 export default fn;

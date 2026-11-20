@@ -17,6 +17,18 @@ export function observeApplication(operationId: string): Promise<AndroidRuntimeO
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
+  temporaryNotificationShow: `/** Request the caller-assigned temporary shell notification. */
+
+type NotificationAcceptance = { notificationId: string; actionLabels: string[] };
+
+/** Request the caller-assigned temporary shell notification. */
+export function show(operationId: string): Promise<NotificationAcceptance>;`,
+  temporaryNotificationDismiss: `/** Dismiss the temporary notification named by host acceptance. */
+
+type NotificationDismissal = { notificationId: string };
+
+/** Dismiss the temporary notification named by host acceptance. */
+export function dismiss(operationId: string, notificationId: string): Promise<NotificationDismissal>;`,
   retainedTestFailure: `/** Read and identify the assigned durable system-test failure after its run has settled. */
 
 /** Read and identify the assigned durable system-test failure after its run has settled. */

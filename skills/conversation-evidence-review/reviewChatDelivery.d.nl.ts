@@ -88,5 +88,14 @@ type ChatDeliveryReport = {
   panel: ChatDeliveryPanel | null;
   verdict: ChatDeliveryMessageVerdict | "history-unverified" | "panel-mismatch";
 };
+type NotificationLifecycleRequest = { goal: string; operationId: string };
+type NotificationAcceptance = { notificationId: string; actionLabels: string[] };
+type NotificationDismissal = { notificationId: string };
+type NotificationLifecycleReport = {
+  status: "cleaned-up" | "unverified";
+  notificationId: string;
+  actionLabels: string[];
+  interaction: "unobserved";
+};
 declare const fn: NatlangFunction<[request: ChatDeliveryRequest], ChatDeliveryReport> & { readonly checkMessage: NatlangFunction<[retained: DurableDeliveryRow, messages: ChatDeliveryMessage[]], ChatDeliveryMessageVerdict> & { readonly compareVisibleMessage: ((retained: DurableDeliveryRow, messages: ChatDeliveryMessage[]) => ChatDeliveryMessageVerdict) & {  } }; readonly checkPanel: NatlangFunction<[request: ChatDeliveryRequest, channelId: string, panel: ChatDeliveryPanel], boolean>; readonly inspectPanel: NatlangFunction<[panelId: string], ChatDeliveryPanel>; readonly reviewDeliveryHistory: NatlangFunction<[request: DeliveryHistoryRequest], DeliveryHistoryReport> & { readonly checkOrigin: NatlangFunction<[observation: DeliveryHistoryObservation], DeliveryOrigin> & { readonly matchReceipt: NatlangFunction<[receipt: DeliveryReceipt, row: DurableDeliveryRow], DeliveryOrigin> }; readonly compareConsumer: NatlangFunction<[retained: DurableDeliveryRow, rendered: DeliveryMessage[]], DeliveryConsumer> & { readonly sameMessage: ((original: DeliveryMessage, rendered: DeliveryMessage) => boolean) & {  } } } };
 export default fn;
