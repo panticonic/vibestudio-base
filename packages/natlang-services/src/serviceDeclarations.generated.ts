@@ -105,6 +105,139 @@ export function read(operationId: string): Promise<ResearchIntakeRequest>;`,
 
 /** Read and identify the assigned durable system-test failure after its run has settled. */
 export function inspect(operationId: string): Promise<RetainedFailurePacket | null>;`,
+  openGitHubWork: `/** Discover assigned Git repositories, inspect native local Git, review inert owner approval and stage a revision-bound local handoff. */
+
+type GitHubOpenRepository = {
+  id: string;
+  title: string;
+  intendedOwner: string;
+};
+
+type GitHubApproval = {
+  id: string;
+  owner: string;
+  state: "approved" | "pending" | "denied" | "partial" | "expired";
+};
+
+type GitHubOpenProfile = {
+  id: string;
+  owner: string;
+  label: string;
+  approval: GitHubApproval;
+  retained: GitHubApproval[];
+};
+
+type GitHubOpenCatalog = {
+  revision: string;
+  repositories: GitHubOpenRepository[];
+  profiles: GitHubOpenProfile[];
+  interactive: boolean;
+};
+
+type GitHubLocalView = {
+  id: string;
+  repository: GitHubOpenRepository;
+  head: string;
+  branch: string | null;
+  trackedHead: string | null;
+  ahead: number;
+  behind: number;
+  changes: string[];
+  remote: string | null;
+  normalizedRemote: string | null;
+  remoteOwner: string | null;
+};
+
+type GitHubOpenIntent = {
+  repositoryId: string;
+  localOnly: boolean;
+  explicitOwner: string | null;
+  profileId: string | null;
+};
+
+type GitHubAccessLevel =
+  /** Look: read repositories, issues and pull requests; clone and pull. Nothing is changed. */
+  | "read-only"
+  /** Work with code in existing repositories: push, issues, pull requests. The default for repository work. */
+  | "collaborate"
+  /** Create repositories (adds Administration: write), push, issues and pull requests. */
+  | "publish"
+  /** Publish a website: create a repository, push source, configure GitHub Pages. */
+  | "publish-pages"
+  /** Collaborate, and also change GitHub Actions workflow files. */
+  | "code-workflows"
+  /** The broadest supported permissions. Only when the user explicitly asks for full access. */
+  | "broad";
+
+type GitHubSetupRequest = {
+  goal: string;
+  operationId: string;
+  interactive: boolean;
+};
+
+type GitHubOpenPreflight = {
+  id: string;
+  status:
+    | "available"
+    | "unconnected"
+    | "ambiguous"
+    | "wrong-owner"
+    | "scope-or-binding"
+    | "profile-unavailable";
+  failure: string | null;
+  profile: GitHubOpenProfile | null;
+  setup: GitHubSetupRequest | null;
+};
+
+type GitHubOpenRoute =
+  | "report-local"
+  | "repair-remote"
+  | "preserve-local-work"
+  | "integrate-local-history"
+  | "choose-account"
+  | "wait-for-owner"
+  | "offer-setup"
+  | "verify-account"
+  | "repair-account"
+  | "request-scoped-access"
+  | "ready-for-owner";
+
+type GitHubOpenDecision = {
+  route: GitHubOpenRoute;
+  access: GitHubAccessLevel;
+  profileId: string | null;
+  currentApproval: string | null;
+  retainedApprovals: string[];
+  reason: string;
+};
+
+type GitHubOpenHandoff = {
+  revision: string;
+  receipt: string;
+  decision: GitHubOpenDecision;
+};
+
+/** Discover assigned Git repositories, inspect native local Git, review inert owner approval and stage a revision-bound local handoff. */
+export function discover(): Promise<GitHubOpenCatalog>;
+
+/** Discover assigned Git repositories, inspect native local Git, review inert owner approval and stage a revision-bound local handoff. */
+export function inspect(
+      revision: string,
+      repositoryId: string,
+    ): Promise<GitHubLocalView | null>;
+
+/** Discover assigned Git repositories, inspect native local Git, review inert owner approval and stage a revision-bound local handoff. */
+export function preflight(
+      revision: string,
+      intent: GitHubOpenIntent,
+      access: GitHubAccessLevel,
+    ): Promise<GitHubOpenPreflight | null>;
+
+/** Discover assigned Git repositories, inspect native local Git, review inert owner approval and stage a revision-bound local handoff. */
+export function stage(
+      revision: string,
+      decision: GitHubOpenDecision,
+    ): Promise<GitHubOpenHandoff | null>;`,
   githubSetupRead: `/** Read the assigned local GitHub connection stage without verification. */
 
 /** Read the assigned local GitHub connection stage without verification. */
@@ -277,7 +410,10 @@ export function inspect(operationId: string): Promise<GitHubDiagnosisObservation
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
 
 /** Resolve the native GitHub setup route from the observed connection stage. */
-export function resolve(operationId: string, accessLevel: GitHubAccessLevel): Promise<GitHubSetupReceipt>;`,
+export function resolve(
+      operationId: string,
+      accessLevel: GitHubAccessLevel,
+    ): Promise<GitHubSetupReceipt>;`,
   templateAuthoringRead: `/** Inspect the caller-assigned protected-main template authoring plan. */
 
 /** Inspect the caller-assigned protected-main template authoring plan. */

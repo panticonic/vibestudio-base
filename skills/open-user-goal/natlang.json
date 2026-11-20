@@ -29,6 +29,7 @@
     "runUserGoal/googleHandoff": "skills/open-google-handoff-goal/program",
     "runUserGoal/calendar": "skills/open-calendar-goal/program",
     "runUserGoal/personalArtifacts": "skills/open-personal-artifacts",
+    "runUserGoal/githubWork": "skills/github/natlang",
     "runUserGoal/personalHistory": "skills/open-personal-history",
     "runUserGoal/personalAutomation": "skills/open-personal-automation",
     "runUserGoal/personal": "skills/open-personal-goal/program",

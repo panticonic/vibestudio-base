@@ -41,6 +41,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `google.workOnDriveGoal` for Drive, and `gmail.recoverGmailGoal` for Gmail drafts and delivery evidence.
 - `calendar.workOnCalendarGoal` for reconciling current calendar proposals and staging a scheduling handoff.
 - `personalArtifacts.workOnPersonalArtifactsGoal` for saved browser references and their use in a collection.
+- `githubWork.workOnGitHubGoal` for local Git evidence, GitHub setup and current owner approvals or a protected handoff.
 - `personalHistory.reviewPersonalHistory` for historical decisions and evidence across recorded milestones.
 - `personalAutomation.coordinatePersonalAutomation` for coordinated changes across authorized monitors, including interrupted acknowledgments.
 - `personal.workOnMissionGoal` for Mission Control.
