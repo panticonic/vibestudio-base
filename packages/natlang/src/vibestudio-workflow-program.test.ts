@@ -1539,7 +1539,7 @@ it("describes the typed workflows in the installed template domains", async () =
     expect(stagedCalls.filter((name) => name === "reviewApprovalQueues"), world.id).toHaveLength(2);
     expect(stagedCalls.at(-1), world.id).toBe("interpretApprovalTransition");
   }
-  const approvalReadback = process.env.VIBESTUDIO_APPROVAL_VISIBILITY_SMOKE_JSON;
+  const approvalReadback = process.env["VIBESTUDIO_APPROVAL_VISIBILITY_SMOKE_JSON"];
   if (approvalReadback) {
     const worlds = JSON.parse(await readFile(approvalReadback, "utf8")) as
       (typeof approvalVisibilityWorlds[number] | typeof approvalTransitionWorlds[number])[];
@@ -1968,6 +1968,7 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
   });
   const loader = new ProgramLoader({
     platform,
+    bindings: {},
     fs: {
       readFile: (path) => readFile(join(root, path), "utf8"),
       readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
@@ -2047,10 +2048,10 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
 
   await expect(run(request)).resolves.toMatchObject(result("verified"));
   expect(reads.splice(0)).toEqual(["receipt", "panel"]);
-  expect(scopedServices.reviewChatDelivery).toEqual([]);
-  expect(scopedServices.reviewDeliveryHistory).toEqual(["deliveryHistory"]);
-  expect(scopedServices.inspectPanel).toEqual(["chatDeliveryPanel"]);
-  expect(scopedServices.checkMessage).toEqual([]);
+  expect(scopedServices["reviewChatDelivery"]).toEqual([]);
+  expect(scopedServices["reviewDeliveryHistory"]).toEqual(["deliveryHistory"]);
+  expect(scopedServices["inspectPanel"]).toEqual(["chatDeliveryPanel"]);
+  expect(scopedServices["checkMessage"]).toEqual([]);
 
   const handoff = {
     goal,
@@ -2069,8 +2070,8 @@ it("composes the chat delivery audit behind separately scoped reads", async () =
   });
   await expect(run(handoff)).resolves.toMatchObject(handoffResult("ready", []));
   expect(reads.splice(0)).toEqual(["receipt", "panel"]);
-  expect(scopedServices.reviewConversation).toEqual([]);
-  expect(scopedServices.chooseChatHandoff).toEqual([]);
+  expect(scopedServices["reviewConversation"]).toEqual([]);
+  expect(scopedServices["chooseChatHandoff"]).toEqual([]);
 
   panel.messages = [{ ...actualMessage, messageId: "other-message" }];
   await expect(run(request)).resolves.toMatchObject(result("message-missing"));
@@ -2161,6 +2162,7 @@ it("reuses the mounted automation planner and rejects a stale handoff", async ()
   });
   const loader = new ProgramLoader({
     platform,
+    bindings: {},
     fs: {
       readFile: (path) => readFile(join(root, path), "utf8"),
       readdir: (path) => readdir(join(root, path), { withFileTypes: true }),
@@ -2288,6 +2290,7 @@ it("reviews the native template plan through the mounted publication tree", asyn
   });
   const loader = new ProgramLoader({
     platform,
+    bindings: {},
     fs: {
       readFile: (path) => readFile(join(root, path), "utf8"),
       readdir: (path) => readdir(join(root, path), { withFileTypes: true }),

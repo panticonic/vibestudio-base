@@ -38,7 +38,7 @@ export function bindOfflineDictation(
   )
     ? "invalid-sample"
     : recording;
-  const measurements = {
+  const measurements: Omit<DictationCapture, "ready"> = {
     recording: validity,
     durationMs: samples ? (samples.length * 1000) / SPEECH_SAMPLE_RATE : null,
     windowed:

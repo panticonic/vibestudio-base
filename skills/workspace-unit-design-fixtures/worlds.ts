@@ -16,7 +16,7 @@ export type WorkspaceUnitDesignWorld = {
   id: string;
   sourceGroup: string;
   sourceGroups?: string[];
-  request: UnitReviewRequest;
+  request: Exclude<UnitReviewRequest, { kind: "extension-design-live" }>;
   expected: UnitFinding & { components?: UnitFinding[] };
 };
 

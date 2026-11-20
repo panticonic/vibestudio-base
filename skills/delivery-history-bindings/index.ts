@@ -35,10 +35,11 @@ export function bindDeliveryHistory(assignment: {
             const event = row.payload as AgenticEvent<"message.completed"> | undefined;
             if (event?.kind !== "message.completed" || event.causality?.messageId !== receipt.messageId)
               return [];
+            const blocks = event.payload && "blocks" in event.payload ? event.payload.blocks : [];
             return [{
               messageId: receipt.messageId, senderId: row.senderId ?? "",
               envelopeId: row.messageId, sequence: row.id,
-              text: (event.payload.blocks ?? []).flatMap((b) => b.type === "text" ? [b.content] : []).join(""),
+              text: (blocks ?? []).flatMap((b) => b.type === "text" ? [b.content] : []).join(""),
             }];
           });
           const rendered = (await observeConsumer()).filter(({ messageId }) => messageId === receipt.messageId);

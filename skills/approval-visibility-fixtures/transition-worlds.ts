@@ -141,8 +141,9 @@ export const approvalTransitionWorlds = cases.map((entry) => {
         : caller === "device-account"
           ? (["hub"] as const)
           : (["workspace"] as const);
+    const newestFirst = [...receipts].reverse();
     const surfaces = selected.map((source): ApprovalSurfaceReview => {
-      const latest = receipts.findLast((receipt) => receipt.source === source);
+      const latest = newestFirst.find((receipt) => receipt.source === source);
       return latest?.kind === "snapshot"
         ? { source, state: "visible", ids: latest.ids }
         : {
