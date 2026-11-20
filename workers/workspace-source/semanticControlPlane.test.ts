@@ -6,6 +6,7 @@ import type { ChannelLog } from "../pubsub-channel/log-store.js";
 import { observeChannelEvent } from "../pubsub-channel/channel-observation.js";
 import { serializeRpcFailure } from "@vibestudio/rpc";
 import { notificationMethods } from "@vibestudio/service-schemas/notification";
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
 // Builtin semantic-authority tests.
 import { describe, expect, it } from "vitest";
 import initSqlJs from "sql.js";
@@ -1256,6 +1257,7 @@ describe("trajectory projection invariants", () => {
     const triggerMessageId = "recv:channel-1:prompt-envelope-1";
     const turnId = "turn-1";
     const invocationId = "invocation-1";
+    const encodedRequest = '{"path":"src/parser.ts"}';
 
     await appendTrajectoryEvents(call, {
       trajectoryId: "trajectory-1",
@@ -1302,7 +1304,7 @@ describe("trajectory projection invariants", () => {
             payload: {
               protocol: AGENTIC_PROTOCOL_VERSION,
               name: "edit",
-              request: blobRef("intent-request-1", '{"path":"src/parser.ts"}'),
+              request: blobRef(sha256HexSyncText(encodedRequest), encodedRequest),
             },
           }),
         },

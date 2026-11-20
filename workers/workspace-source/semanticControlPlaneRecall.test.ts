@@ -270,7 +270,6 @@ describe("GadWorkspaceDO — recall visibility", () => {
              ('agent-log', 'other-branch', 'answer', 'turn', 'assistant', 'completed', '2026-01-02'),
              ('origin', 'main', 'request', NULL, 'user', 'completed', '2026-01-02'),
              ('imposter', 'main', 'request', NULL, 'user', 'completed', '2026-01-02');
-      DROP TABLE prov_vis_commands;
     `);
     for (const [logId, head, messageId] of [
       ["agent-log", "branch", "answer"],
