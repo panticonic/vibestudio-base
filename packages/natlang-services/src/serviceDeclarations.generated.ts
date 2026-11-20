@@ -4934,6 +4934,7 @@ type PackageObservation = {
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
   declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
+  suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
 };
 
@@ -4958,6 +4959,7 @@ type PackageObservation = {
   catalog: { source: string; name: string; kind: string } | null;
   baselineValue: PackageValue; workingValue: PackageValue;
   declaredReceiverMatches: boolean; scopeMatches: boolean; targetFieldMatches: boolean;
+  suiteBlockedBy: string | null;
   suiteRequest: SuiteRequest | null;
 };
 
