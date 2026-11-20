@@ -4,7 +4,11 @@ import {
   createCredentialClient,
   type StoredCredentialSummary,
 } from "@workspace/runtime/credentials";
-import { createGitHubClient, resolveGitHubPublishOperation } from "./github.js";
+import {
+  createGitHubClient,
+  preflightGitHubPublishCredential,
+  resolveGitHubPublishOperation,
+} from "./github.js";
 
 /**
  * Build a mock RPC caller that:
@@ -111,6 +115,17 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("createGitHubClient", () => {
+  it("can inspect locally eligible publication credentials without verifying them against GitHub", async () => {
+    const { credentials, stats } = makeMockEnv(() => {
+      throw new Error("Local preflight must not call GitHub");
+    });
+    await expect(preflightGitHubPublishCredential(credentials)).resolves.toMatchObject({
+      credential: { id: "cred-mock" },
+      targetName: "acme",
+    });
+    expect(stats.fetchCalls).toHaveLength(0);
+  });
+
   it("accepts repository-scoped OAuth credentials after live account verification", async () => {
     const { credentials, credential, stats } = makeMockEnv(() =>
       jsonResponse({ login: "acme" }),

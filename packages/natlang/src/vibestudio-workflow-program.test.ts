@@ -358,7 +358,9 @@ it("describes the typed workflows in the installed template domains", async () =
         return {results:[{kind:"domain",domain:"testReview",operation:remote.operation,report}],remaining:[]};
       }
       if (remote.domain === "github") {
-        const report = await domains.github.reviewGitHubSetup(remote.input);
+        const report = remote.operation==="diagnoseGitHubOperation"
+          ? await domains.github.diagnoseGitHubOperation(remote.input)
+          : await domains.github.reviewGitHubSetup(remote.input);
         return {results:[{kind:"domain",domain:"github",operation:remote.operation,report}],remaining:[]};
       }
       if (remote.domain === "personal") {
@@ -455,9 +457,22 @@ it("describes the typed workflows in the installed template domains", async () =
       return {status, accessLevel, route, handoff: await chooseSetupHandoff(route,request.interactive)};
     `,
     readGitHubSetup: "return await githubSetupRead.inspect(operationId);",
-    accessLevelFor: 'return intent.includes("Pages") ? "publish-pages" : "read-only";',
+    accessLevelFor: `
+      return intent.includes("Pages") ? "publish-pages" :
+        intent.includes("create a GitHub repository") ? "publish" : "read-only";
+    `,
     resolveGitHubRoute: "return await githubSetupRoute.resolve(operationId, accessLevel);",
     chooseSetupHandoff: 'return route.action==="render-setup" ? (interactive?"offer-setup":"interactive-required") : route.action;',
+    diagnoseGitHubOperation: `
+      const observation=await readGitHubDiagnosis(request.operationId);
+      const diagnosis=observation.failure?await troubleshootGithub(observation.failure):null;
+      const setup=diagnosis?.cause==="not-connected"&&observation.setup
+        ?await reviewGitHubSetup(observation.setup):null;
+      return {observation,diagnosis,setup};
+    `,
+    readGitHubDiagnosis: "return await githubDiagnosisRead.inspect(operationId);",
+    troubleshootGithub: "return await steps(await cause(failure));",
+    cause: 'return failure.includes("Invalid GitHub remote")?"invalid-remote":"not-connected";',
     runPersonalWorkflow: `
       const task=request.work[0];
       return {results:[{kind:task.kind,report:await resumeRepositoryWork(task.input)}],unresolved:[]};
@@ -683,6 +698,9 @@ it("describes the typed workflows in the installed template domains", async () =
       }
       if (["reviewDeviceAndTerminal", "reviewLiveTerminal", "readTerminalEvidence", "reviewTerminal", "inspectInvocation", "inspectExecution"].includes(name)) {
         expect(Object.keys(session.availableServices())).toEqual(name === "readTerminalEvidence" ? ["terminalEvidenceRead"] : []);
+      }
+      if (["diagnoseGitHubOperation", "readGitHubDiagnosis", "troubleshootGithub", "cause"].includes(name)) {
+        expect(Object.keys(session.availableServices())).toEqual(name === "readGitHubDiagnosis" ? ["githubDiagnosisRead"] : []);
       }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
@@ -1046,6 +1064,57 @@ it("describes the typed workflows in the installed template domains", async () =
     packet.runId = "different-run";
     await expect(run(workflow)).resolves.toMatchObject({results:[{report:{status:"unavailable",triage:null}}]});
     expect(stagedCalls.splice(0)).toEqual(["runWorkflow","reviewRetainedFailure","readRetainedFailure"]);
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "diagnoseGitHubOperation")) {
+    runReference = true;
+    const status = { stage: "needs-token", connected: false, verified: false };
+    for (const [goal, level, interactive, expected] of [
+      ["Verify a GitHub remote", null, false, null],
+      ["Diagnose a request to create a GitHub repository", "publish", true, "offer-setup"],
+      ["Diagnose a GitHub Pages publication", "publish-pages", false, "interactive-required"],
+    ] as const) {
+      const request = { goal, operationId: "diagnosis" };
+      const observation = {
+        operationId: "diagnosis",
+        failure: level ? "No active GitHub credential is available." : "Invalid GitHub remote URL for local verification.",
+        setup: level ? { goal, operationId: "setup", interactive } : null,
+      };
+      const reads: string[] = [];
+      const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+        services: {
+          githubDiagnosisRead: { async inspect(id: string) {
+            expect(id).toBe("diagnosis");
+            reads.push("diagnosis");
+            return observation;
+          } },
+          githubSetupRead: { async inspect(id: string) {
+            expect(id).toBe("setup");
+            reads.push("setup");
+            return status;
+          } },
+          githubSetupRoute: { async resolve(id: string, accessLevel: string) {
+            expect([id, accessLevel]).toEqual(["setup", level]);
+            reads.push("route");
+            return { action: "render-setup", accessLevel, next: "open setup", reason: "connect GitHub" };
+          } },
+        },
+      })) as (input: unknown) => Promise<unknown>;
+      stagedCalls.length = 0;
+      await expect(run({ goal, work: [{
+        kind: "domain", domain: "github", operation: "diagnoseGitHubOperation", input: request,
+      }] })).resolves.toMatchObject({
+        results: [{ report: {
+          observation, diagnosis: { cause: level ? "not-connected" : "invalid-remote" },
+          setup: level ? { accessLevel: level, handoff: expected } : null,
+        } }],
+      });
+      expect(reads).toEqual(level ? ["diagnosis", "setup", "route"] : ["diagnosis"]);
+      expect(stagedCalls.splice(0)).toEqual([
+        "runWorkflow","diagnoseGitHubOperation","readGitHubDiagnosis","troubleshootGithub","cause",
+        ...(level ? ["reviewGitHubSetup","readGitHubSetup","accessLevelFor","resolveGitHubRoute","chooseSetupHandoff"] : []),
+      ]);
+    }
     runReference = false;
   }
   if (description.functions.some(({ name }) => name === "reviewGitHubSetup")) {
