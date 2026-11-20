@@ -8,7 +8,8 @@ import type { MainMergePreview } from "./participantHistory.js";
 import { PROV_RESOLVER_PROTOCOL } from "./provenanceViews.js";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 import type { ChangeRecord } from "./semanticVcsStore.js";
-import { describeSemanticEffects, parseSemanticCursor, semanticCursor, trajectorySenderRef, type WorkspaceEditBasis } from "./semanticWorkspace.js";
+import { describeSemanticEffects, parseSemanticCursor, semanticCursor, type WorkspaceEditBasis } from "./semanticWorkspace.js";
+import { trajectorySenderRef } from "./trajectoryEvidence.js";
 
 export type HistoryMergeCoordinate = VcsCompareResult["coordinates"][number];
 type Coordinate = HistoryMergeCoordinate;

@@ -45,6 +45,7 @@ import {
   logIdForChannel,
   headForChannel,
 } from "@vibestudio/trajectory-identity";
+import { readHistoryMemoryCause, readHistoryWalkInvocation } from "./trajectoryEvidence.js";
 import { DurableObjectBase } from "@vibestudio/durable";
 import type {
   ChannelInvite,
@@ -1954,7 +1955,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
     sensitivity: "read",
   })
   readHistoryMemoryCause(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
-    return this.semanticWorkspace().readHistoryMemoryCause(vcsTrajectoryInvocationRefSchema.parse(input));
+    this.ensureReady();
+    return readHistoryMemoryCause(this.sql, vcsTrajectoryInvocationRefSchema.parse(input));
   }
 
   @rpc({
@@ -2028,7 +2030,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
     sensitivity: "read",
   })
   readHistoryWalkInvocation(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
-    return this.semanticWorkspace().readHistoryWalkInvocation(vcsTrajectoryInvocationRefSchema.parse(input));
+    this.ensureReady();
+    return readHistoryWalkInvocation(this.sql, vcsTrajectoryInvocationRefSchema.parse(input));
   }
 
   @rpc({
