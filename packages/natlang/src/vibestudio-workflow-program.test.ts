@@ -299,6 +299,27 @@ it("describes the typed workflows in the installed template domains", async () =
   let runReference = false;
   const referenceSteps: Record<string, string> = {
     ...membershipReference,
+    reviewBrowserImport: `
+      const job = await inspectRetainedJob();
+      let {next, findings} = await interpretRetainedJob(job);
+      let source = null;
+      if (next === "review-retry") {
+        const checked = await inspectAssignedSource(request.categories);
+        source = checked.observation;
+        if (!checked.usable) next = "use-inspector";
+      }
+      return {next, source, progress: job.progress, totals: [], findings};
+    `,
+    inspectRetainedJob: "return await browserImportHistory.observe();",
+    interpretRetainedJob: `
+      return {next: job.phase === "cancelled" ? "keep-results" : "review-retry", findings: []};
+    `,
+    inspectAssignedSource: `
+      const observation = await browserImportSource.observe();
+      const usable = observation.state === "available" && requested.every(value => observation.categories.includes(value));
+      return {observation, usable, findings: []};
+    `,
+
     reviewApprovalQueues: `
       const surfaces = [];
       for (const source of await selectApprovalSurfaces(request.caller)) {
@@ -368,6 +389,10 @@ it("describes the typed workflows in the installed template domains", async () =
     `,
     runWorkflow: `
       const remote = request.work[0];
+      if (remote.domain === "browserImport") {
+        const report = await domains.browserImport.reviewBrowserImport(remote.input);
+        return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
+      }
       if (remote.domain === "capabilities") {
         const report = await domains.capabilities[remote.operation](remote.input);
         return {results:[{kind:"domain",domain:remote.domain,operation:remote.operation,report}],remaining:[]};
@@ -668,6 +693,16 @@ it("describes the typed workflows in the installed template domains", async () =
       if (["reviewHostLogHandoff", "briefServerLog", "classifyHostLogGroup", "interpretLogProgress"].includes(name)) {
         expect(Object.keys(session.availableServices())).toEqual(name === "briefServerLog" ? ["serverLog"] : []);
       }
+      const importScopes: Record<string, string[]> = {
+        reviewBrowserImport: [],
+        inspectAssignedSource: ["browserImportSource"],
+        inspectPreview: ["browserImportPreview"],
+        inspectRetainedJob: ["browserImportHistory"],
+        interpretRetainedJob: [],
+      };
+      if (name && name in importScopes) {
+        expect(Object.keys(session.availableServices())).toEqual(importScopes[name]);
+      }
       stagedCalls.push(name);
       const action = await session.applyAsync("eval", { code, finish: true });
       if (action.kind === "rejected") throw new Error(action.text);
@@ -742,6 +777,7 @@ it("describes the typed workflows in the installed template domains", async () =
       [
         "runPersonalWorkflow",
         "reviewGitHubSetup",
+        "reviewBrowserImport",
         "reviewPersonalFacility",
         "recallDecision",
         "compareDecisionRevisions",
@@ -837,6 +873,34 @@ it("describes the typed workflows in the installed template domains", async () =
     stagedCalls.length = 0;
     await expect(execute({ ...request, serverBootId: "expired-boot" })).rejects.toThrow();
     expect(stagedCalls.splice(0)).not.toContain("interpretLogProgress");
+    runReference = false;
+  }
+  if (description.functions.some(({ name }) => name === "reviewBrowserImport")) {
+    runReference = true;
+    let phase = "partial";
+    const progress = [{ category: "bookmarks", stored: 3, skipped: 1, errors: 0 }];
+    const source = { state: "blocked", categories: ["bookmarks"] };
+    const run = (await loader.load("skills/vibestudio-workflows/runWorkflow.nl", {
+      services: {
+        browserImportHistory: { async observe() { return { phase, progress, resumable: true }; } },
+        browserImportSource: { async observe() { return source; } },
+      },
+    })) as (input: unknown) => Promise<unknown>;
+    const goal = "Recover the assigned interruption";
+    const request = { goal, work: [{
+      kind: "domain", domain: "browserImport", operation: "reviewBrowserImport",
+      input: { goal, kind: "recover", categories: ["bookmarks"] },
+    }] };
+    await expect(run(request)).resolves.toMatchObject({
+      results: [{ report: { next: "use-inspector", source, progress } }],
+    });
+    const steps = ["runWorkflow", "reviewBrowserImport", "inspectRetainedJob", "interpretRetainedJob"];
+    expect(stagedCalls.splice(0)).toEqual([...steps, "inspectAssignedSource"]);
+    phase = "cancelled";
+    await expect(run(request)).resolves.toMatchObject({
+      results: [{ report: { next: "keep-results", source: null, progress } }],
+    });
+    expect(stagedCalls.splice(0)).toEqual(steps);
     runReference = false;
   }
   if (description.functions.some(({ name }) => name === "runPersonalWorkflow")) {
