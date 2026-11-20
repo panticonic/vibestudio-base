@@ -19,6 +19,7 @@
     "runUserGoal/personalHistory": "skills/open-personal-history",
     "runUserGoal/personalAutomation": "skills/open-personal-automation",
     "runUserGoal/personal": "skills/open-personal-goal/program",
+    "runUserGoal/diagnostics": "skills/open-system-diagnostics",
     "runUserGoal/operator": "skills/open-system-operations",
     "runUserGoal/recovery": "skills/open-session-recovery/program",
     "runUserGoal/publication": "skills/publish-preflight",

@@ -30,6 +30,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `personalHistory.reviewPersonalHistory` for historical decisions and evidence across recorded milestones.
 - `personalAutomation.coordinatePersonalAutomation` for coordinated changes across authorized monitors, including interrupted acknowledgments.
 - `personal.workOnMissionGoal` for Mission Control.
+- `diagnostics.workTowardDiagnosticGoal` for System host incident evidence, saved log checkpoints, and follow-up diagnosis.
 - `operator.workOnSystemGoal` for System operations.
 - `recovery.recoverSessionGoal` for retained conversations and recovery handoffs.
 - `publication.workTowardPublicationGoal` for website readiness and publication progress.
