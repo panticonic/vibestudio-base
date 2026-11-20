@@ -1,0 +1,12 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-owned-task-recovery",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "recoverOwnedTask.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "ownedTaskBoard": ["recoverOwnedTask/findTask/listTasks.nl", "recoverOwnedTask/findTask/readTask.nl", "recoverOwnedTask/advanceTask/moveTask.nl"],
+    "ownedTaskAttempts": ["recoverOwnedTask/reviewAttempts/listLanes.nl", "recoverOwnedTask/reviewAttempts/readLane.nl"],
+    "ownedTaskHandoff": ["recoverOwnedTask/deliverHandoff/submitNote.nl", "recoverOwnedTask/deliverHandoff/readNote.nl"]
+  }
+}
