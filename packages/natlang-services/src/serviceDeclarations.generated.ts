@@ -1628,6 +1628,91 @@ export function commit(
       expected: string,
       terminal: string,
     ): Promise<GoogleCheckpointReceipt>;`,
+  openGoogleSetup: `/** Inspect actual owned Google welcome setup, apply reversible display changes, and record the verified local handoff. */
+
+type SetupPhase =
+  | "needs-setup"
+  | "ready-to-connect"
+  | "connected"
+  | "verified"
+  | "error";
+
+type SetupCheckpoint = {
+  id: string;
+  profileId: string;
+  phase: SetupPhase;
+  coverage: "none" | "gmail" | "drive" | "workspace";
+  durable: boolean;
+  warning: "declined" | "revoked" | "unavailable" | "session-only" | null;
+};
+
+type SetupScope = "gmail" | "workspace";
+
+type SetupBrowser = "here" | "external";
+
+type SetupObservation = {
+  id: string;
+  profile: string;
+  current: SetupCheckpoint;
+  history: SetupCheckpoint[];
+  scope: SetupScope;
+  opening: SetupBrowser | null;
+  guidance: "gmail" | "workspace" | "unknown";
+  marker: string;
+  warningVisible: boolean;
+  launchEnabled: boolean;
+  accountOwner: boolean;
+  permissionsOwner: boolean;
+  enabledControls: string[];
+  width: number;
+  overflow: boolean;
+};
+
+type SetupAction =
+  | { kind: "scope"; scope: SetupScope }
+  | { kind: "browser"; opening: SetupBrowser }
+  | { kind: "viewport"; width: 320 | 390 | 1280 }
+  | { kind: "reload" };
+
+type SetupRoute =
+  | "configure-desktop"
+  | "review-consent"
+  | "verify-connection"
+  | "recover-authorization"
+  | "gmail-ready"
+  | "workspace-ready"
+  | "review-missing-permissions"
+  | "account-owner"
+  | "permissions-owner";
+
+type SetupDecision = {
+  route: SetupRoute;
+  requestedScope: SetupScope;
+  currentId: string;
+  priorIds: string[];
+  launchEnabled: boolean;
+  note: string;
+};
+
+type SetupHandoff = {
+  decision: SetupDecision;
+  observation: string;
+};
+
+/** Inspect actual owned Google welcome setup, apply reversible display changes, and record the verified local handoff. */
+export function observe(): Promise<SetupObservation>;
+
+/** Inspect actual owned Google welcome setup, apply reversible display changes, and record the verified local handoff. */
+export function apply(
+      revision: string,
+      action: SetupAction,
+    ): Promise<SetupObservation | null>;
+
+/** Inspect actual owned Google welcome setup, apply reversible display changes, and record the verified local handoff. */
+export function stage(
+      revision: string,
+      decision: SetupDecision,
+    ): Promise<SetupHandoff | null>;`,
   googleSetupPanel: `/** Read the assigned Google setup journey. */
 
 type GoogleSetupCheck =

@@ -127,6 +127,7 @@ const authoredServices = [
   authoredService("adventureTransitionRead", "Read the assigned committed Adventure turn and reloaded panel.", "examples", "examples-review", [{ name: "observe", params: [] }]),
   authoredService("realmRead", "Read the assigned Regency accounts and bounded forecast.", "examples", "examples-review", [{ name: "observe", params: ["months"] }]),
   authoredService("driveCheckpoint", "Read and compare the assigned Drive checkpoint file.", "google-workspace", "google-drive/driveWorkflow", [{ name: "read", params: [] }, { name: "commit", params: ["expected", "terminal"] }]),
+  authoredService("openGoogleSetup", "Inspect actual owned Google welcome setup, apply reversible display changes, and record the verified local handoff.", "google-workspace", "google-drive/setupGoal", [{ name: "observe", params: [] }, { name: "apply", params: ["revision", "action"] }, { name: "stage", params: ["revision", "decision"] }]),
   authoredService("googleSetupPanel", "Read the assigned Google setup journey.", "google-workspace", "google-drive/driveWorkflow", [{ name: "observe", params: [] }]),
   authoredService("googleGoalDiscovery", "Discover the authorized Drive folders and change sources for the current goal.", "google-workspace", "google-drive/driveWorkflow", [{ name: "discover", params: [] }]),
   authoredService("gmailGoalCatalog", "Discover authorized retained Gmail compose records.", "google-workspace", "open-gmail-goal/program", [{ name: "discover", params: [] }]),

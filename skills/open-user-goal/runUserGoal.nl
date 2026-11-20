@@ -33,6 +33,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - `spectrolite.workOnVaultKnowledgeGoal` for a multi-record Spectrolite review, authority or provenance decision, multiple linked working changes, or an owned vault handoff. Return skill "vaultWork" for this callable.
 - `spectrolite.workTowardVaultGoal` for a single-document Spectrolite vault review or correction.
 - `googleHandoff.reconcileGoogleHandoff` when a retained Gmail decision determines which linked Drive evidence or handoff is authorized.
+- `googleSetup.workOnGoogleSetupGoal` for current Google welcome readiness, onboarding and permission ownership, or staged setup handoffs.
 - `google.workOnDriveGoal` for Drive, and `gmail.recoverGmailGoal` for Gmail drafts and delivery evidence.
 - `calendar.workOnCalendarGoal` for reconciling current calendar proposals and staging a scheduling handoff.
 - `personalArtifacts.workOnPersonalArtifactsGoal` for saved browser references and their use in a collection.

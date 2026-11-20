@@ -20,6 +20,7 @@
     "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review",
     "runUserGoal/news": "skills/news-workflows",
     "runUserGoal/spectrolite": "skills/spectrolite-review",
+    "runUserGoal/googleSetup": "skills/google-drive/setupGoal",
     "runUserGoal/google": "skills/google-drive/driveWorkflow",
     "runUserGoal/gmail": "skills/open-gmail-goal/program",
     "runUserGoal/googleHandoff": "skills/open-google-handoff-goal/program",
