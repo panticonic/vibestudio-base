@@ -834,10 +834,9 @@ export class GadHistoryDO extends DurableObjectBase {
     participantId: string;
     origin: DoltRemoteTarget;
     contextId: string;
-    replayedHead?: string;
   }): Promise<string> {
     this.#recordHistoryOrigin(input);
-    return this.#history().bindContext(input.contextId, input.origin, input.replayedHead);
+    return this.#history().bindContext(input.contextId, input.origin);
   }
 
   @rpc(hostWrite)

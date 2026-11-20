@@ -34,11 +34,9 @@ async function workspace(now = Date.now) {
     const local = await canonical.fork({ at: genesis });
     const history = new ParticipantHistory(id, local.storage, transport);
     const grant = grantParticipantHistory(origin, id);
-    const main = await history.connect({
-      id: canonical.id,
-      token: grant.token,
-    });
-    return { local, history, head: await history.openContext("edit", main) };
+    const target = { id: canonical.id, token: grant.token };
+    const head = await history.bindContext("edit", target);
+    return { local, history, target, head };
   }
   const rows = (storage: FakeDoltStorage) =>
     storage.sql.exec("SELECT id, body FROM files ORDER BY id").toArray();
@@ -98,6 +96,8 @@ it("keeps participant changes private until publication and merges shared change
     b.local.sql.exec("INSERT INTO files VALUES ('bob-file', 'new')");
   });
 
+  const reopened = new ParticipantHistory("alice", a.local.storage, transport);
+  await expect(reopened.bindContext("edit", a.target)).resolves.toBe(aliceCommit.head);
   expect(rows(canonical)).toEqual([{ id: "shared", body: "initial" }]);
   expect(rows(b.local)).toEqual([
     { id: "bob-file", body: "new" },

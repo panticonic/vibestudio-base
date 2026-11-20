@@ -381,7 +381,7 @@ export class ParticipantHistory {
     return this.#run(() => this.#connectOrigin(origin, this.#originIdentity(origin)));
   }
 
-  bindContext(contextId: string, origin: DoltRemoteTarget, replayedHead?: string): Promise<string> {
+  bindContext(contextId: string, origin: DoltRemoteTarget): Promise<string> {
     return this.#run(async () => {
       const identity = this.#originIdentity(origin);
       const branch = this.#contextBranch(contextId);
@@ -392,7 +392,7 @@ export class ParticipantHistory {
       const known = this.#dolt.branch.list().find(({ name }) => name === branch);
       if (known && this.#connectedOrigin === identity) return known.hash;
       const main = await this.#connectOrigin(origin, identity);
-      return known?.hash ?? this.#openBranch(contextId, replayedHead ?? main);
+      return known?.hash ?? this.#openBranch(contextId, main);
     });
   }
 
