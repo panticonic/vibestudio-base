@@ -393,9 +393,6 @@ async function createGadBackedChannel(
     gad?: TestDO<typeof GadWorkspaceDO>;
     /** The cell the channel runs on; a new Dolt cell when absent. Reusing one reactivates the object over its durable state. */
     fake?: FakeDoltStorage;
-    blobstorePutText?: (
-      value: string,
-    ) => Promise<{ digest: string; size: number }>;
     rpcCall?: (
       target: string,
       method: string,
@@ -474,12 +471,7 @@ async function createGadBackedChannel(
         }
         if (target === "main" && method === "blobstore.putText") {
           const value = String(args[0] ?? "");
-          const blob = options.blobstorePutText
-            ? await options.blobstorePutText(value)
-            : {
-                digest: sha256HexSyncText(value),
-                size: value.length,
-              };
+          const blob = { digest: sha256HexSyncText(value), size: value.length };
           blobs.set(blob.digest, value);
           return blob;
         }
@@ -3405,15 +3397,8 @@ describe("PubSubChannel", () => {
     ).toBe(true);
   });
 
-  it("fails durable publishes when blobstore storage fails", async () => {
-    const { instance } = await createGadBackedChannel({
-      blobstorePutText: async (value) => {
-        if (!value.includes("must be stored")) {
-          return { digest: sha256HexSyncText(value), size: value.length };
-        }
-        throw new Error("blobstore unavailable");
-      },
-    });
+  it("rolls back a durable publish if its stored bytes cannot be committed", async () => {
+    const { instance, sql } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
 
     await instance.subscribe("panel:user", {
@@ -3421,27 +3406,22 @@ describe("PubSubChannel", () => {
       name: "User",
       type: "panel",
     });
-    let error: unknown;
-    try {
-      await instance.publish("panel:user", "custom.large", {
+    const before = await instance.getReplayAfter({ after: 0 });
+    sql.exec(`
+      CREATE TEMP TRIGGER fail_stored_value BEFORE INSERT ON channel_ledger_chunks
+      WHEN NEW.chunk = 1 BEGIN SELECT RAISE(ABORT, 'stored bytes unavailable'); END
+    `);
+    await expect(
+      instance.publish("panel:user", "custom.large", {
         value: `must be stored ${"x".repeat(160 * 1024)}`,
-      });
-    } catch (err) {
-      error = err;
-    }
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("blobstore unavailable");
+      }),
+    ).rejects.toThrow("stored bytes unavailable");
+    const after = await instance.getReplayAfter({ after: 0 });
+    expect(after.logEvents).toEqual(before.logEvents);
   });
 
-  it("spills large durable payloads to blobstore and replays hydrated payloads", async () => {
-    const blobs = new Map<string, string>();
-    const { instance } = await createGadBackedChannel({
-      blobstorePutText: async (value) => {
-        const digest = sha256HexSyncText(value);
-        blobs.set(digest, value);
-        return { digest, size: value.length };
-      },
-    });
+  it("replays large durable payloads from the channel's committed bytes", async () => {
+    const { instance, blobs } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     const largeResult = "x".repeat(140 * 1024);
 
@@ -3471,7 +3451,7 @@ describe("PubSubChannel", () => {
     );
     const payload = ((event?.payload as { payload?: unknown })?.payload ??
       {}) as Record<string, unknown>;
-    expect(blobs.size).toBeGreaterThan(0);
+    expect(blobs.size).toBe(0);
     expect(payload["result"]).toEqual({ text: largeResult });
   });
 
@@ -7706,7 +7686,7 @@ describe("PubSubChannel", () => {
   });
 
   it("spills oversized method results to a blob ref on the durable terminal", async () => {
-    const { instance, blobs } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -7747,9 +7727,7 @@ describe("PubSubChannel", () => {
         event.kind === "invocation.completed" &&
         event.causality?.invocationId === "invocation-large",
     );
-    // The channel-log store's generic encoder spills the oversized result to a
-    // blob ref on the durable event; the blob holds the real content (no
-    // method-specific "capped/omitted" wrapper).
+    // The observed event stays compact while channel replay returns the full result.
     const resultRef = eventKindSchemas["invocation.completed"].parse(completed)
       .payload.result as { digest?: string } | undefined;
     expect(resultRef).toMatchObject({
@@ -7757,8 +7735,12 @@ describe("PubSubChannel", () => {
       digest: expect.any(String),
       encoding: "json",
     });
-    const storedResult = JSON.parse(blobs.get(resultRef!.digest!)!);
-    expect(storedResult).toMatchObject({ text: "x".repeat(80 * 1024) });
+    const replay = await instance.getReplayAfter({ after: 0 });
+    const result = replay.logEvents.find(({ payload }) => {
+      const event = eventKindSchemas["invocation.completed"].safeParse(payload);
+      return event.success && event.data.causality?.invocationId === "invocation-large";
+    });
+    expect(result?.payload).toMatchObject({ payload: { result: { text: "x".repeat(80 * 1024) } } });
     expect(JSON.stringify(completed).length).toBeLessThan(1_000);
   });
 
