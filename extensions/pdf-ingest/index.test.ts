@@ -154,6 +154,15 @@ describe("@workspace-extensions/pdf-ingest", () => {
     ).rejects.toThrow("expected PDF bytes as a Uint8Array");
   });
 
+  it("uses the default options when the extension RPC sends null", async () => {
+    const api = await testApi();
+    const pdf = makePdf(["BT", "/F1 12 Tf", "36 120 Td (Default page) Tj", "ET"]);
+
+    expect((await api.probe(pdf, null)).selectedPages).toEqual([1]);
+    expect((await api.ingest(pdf, null)).pages[0]?.text).toContain("Default page");
+    expect((await api.renderPage(pdf, null)).pageNumber).toBe(1);
+  });
+
   it("reports bundled and optional engines separately", async () => {
     const api = await testApi();
     const engines = await api.engines();
