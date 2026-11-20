@@ -1647,20 +1647,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return this.semanticWorkspace().pendingEffects();
   }
 
-  @schemaRpc()
-  vcsContextMaterializationCommand(input: {
-    contextId: string;
-    materializedState:
-      | import("@vibestudio/shared/vcs/workspaceProjection").WorkspaceStateRef
-      | null;
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().contextMaterializationCommand(
-      input.contextId,
-      input.materializedState,
-    );
-  }
-
   // -------------------------------------------------------------------------
   // Generic refs — tag-style mutable pointers. VCS heads do not live here.
   // -------------------------------------------------------------------------
