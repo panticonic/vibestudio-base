@@ -1,3 +1,4 @@
+import { createJsonMergePatch } from "@vibestudio/shared/panelStateArgs";
 import type {
   PerSessionState,
   ScratchBuffer,
@@ -38,6 +39,15 @@ export function defaultTerminalState(): TerminalState {
     scratchOpen: false,
     schemaVersion: TERMINAL_STATE_SCHEMA_VERSION,
   };
+}
+
+/** Persist a complete terminal snapshot through the state's JSON merge-patch API. */
+export function terminalStatePatch(
+  previous: Record<string, unknown>,
+  state: TerminalState
+): Record<string, unknown> {
+  const snapshot = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+  return createJsonMergePatch(previous, snapshot) as Record<string, unknown>;
 }
 
 export function loadTerminalState(raw: unknown): TerminalState {

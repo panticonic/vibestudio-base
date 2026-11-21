@@ -1,9 +1,13 @@
+import { applyStateArgsMergePatch } from "@vibestudio/shared/panelStateArgs";
+import { JsonObjectSchema } from "@vibestudio/shared/wireValues";
 import { describe, expect, it } from "vitest";
 import {
   defaultTerminalState,
   loadTerminalState,
+  terminalStatePatch,
   TERMINAL_STATE_SCHEMA_VERSION,
 } from "./terminalState.js";
+import type { TerminalState } from "./types.js";
 
 describe("terminal exact state", () => {
   it("creates defaults only when the panel has no persisted state", () => {
@@ -29,6 +33,39 @@ describe("terminal exact state", () => {
     };
 
     expect(loadTerminalState(current)).toEqual(current);
+  });
+
+  it("persists JSON-safe layout snapshots and removes obsolete split and session fields", () => {
+    const survivor = { kind: "leaf" as const, sessionId: "survivor" };
+    const previous: TerminalState = {
+      ...defaultTerminalState(),
+      tree: {
+        kind: "split",
+        direction: "row",
+        ratio: 0.5,
+        a: survivor,
+        b: { kind: "leaf", sessionId: "closed" },
+      },
+      focusedSessionId: "survivor",
+      zoomedSessionId: "closed",
+      perSession: { closed: { cwd: "/repo", readCursor: 0, lastSeenAt: 1 } },
+    };
+    const saved = JsonObjectSchema.parse(terminalStatePatch({}, previous));
+    const next: TerminalState = {
+      ...defaultTerminalState(),
+      tree: survivor,
+      focusedSessionId: "survivor",
+      perSession: {
+        survivor: { label: undefined, cwd: "/repo", readCursor: 0, lastSeenAt: 1 },
+      },
+    };
+    const patch = JsonObjectSchema.parse(terminalStatePatch(saved, next));
+    const persisted = applyStateArgsMergePatch(saved, patch);
+
+    expect(persisted).not.toHaveProperty("zoomedSessionId");
+    expect(persisted).not.toHaveProperty("perSession.closed");
+    expect(persisted.tree).toEqual(survivor);
+    expect(loadTerminalState(persisted)).toEqual(next);
   });
 
   it("does not restore transient scratch visibility", () => {

@@ -35,7 +35,7 @@ import {
   displayChord,
   type KeybindingAction,
 } from "./keybindings.js";
-import { loadTerminalState } from "./terminalState.js";
+import { loadTerminalState, terminalStatePatch } from "./terminalState.js";
 import { findDirectionalPane, type PaneFocusDirection } from "./paneFocus.js";
 import { openPort, openUrl } from "./portClick.js";
 import { restoreTerminalState } from "./restore.js";
@@ -154,7 +154,7 @@ export function TerminalApp() {
   const initialOpenInFlightRef = useRef(false);
   const initialOpenHintTimerRef = useRef<number | null>(null);
   const interactiveOpenInFlightRef = useRef(false);
-  const pendingStatePersistenceRef = useRef<Record<string, unknown> | null>(null);
+  const pendingStatePersistenceRef = useRef<TerminalState | null>(null);
   const statePersistenceInFlightRef = useRef<Promise<void> | null>(null);
   const approvedOpenUrlIdsRef = useRef(new Set<string>());
   const latestStateRef = useRef(state);
@@ -346,7 +346,7 @@ export function TerminalApp() {
   );
 
   const persistLatestState = useCallback(
-    (nextState: Record<string, unknown>) => {
+    (nextState: TerminalState) => {
       pendingStatePersistenceRef.current = nextState;
       if (statePersistenceInFlightRef.current) return;
 
@@ -355,7 +355,7 @@ export function TerminalApp() {
           const snapshot = pendingStatePersistenceRef.current;
           pendingStatePersistenceRef.current = null;
           try {
-            await panel.stateArgs.patch(snapshot);
+            await panel.stateArgs.patch(terminalStatePatch(panel.stateArgs.get(), snapshot));
           } catch (error) {
             // A launch/install review can temporarily gate the workspace-state
             // service. That is expected while the user is deciding; the latest
@@ -382,7 +382,7 @@ export function TerminalApp() {
   );
 
   useEffect(() => {
-    persistLatestState(state as unknown as Record<string, unknown>);
+    persistLatestState(state);
   }, [persistLatestState, state]);
 
   useEffect(() => {
