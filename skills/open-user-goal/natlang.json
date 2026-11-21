@@ -307,6 +307,8 @@
     "webhookAdmissionHandoff": ["runUserGoal/reviewWebhookAdmission/stageWebhookAudit.nl"],
     "sameTurnEvalEvidence": ["runUserGoal/recoverSameTurnEval/discoverSameTurnEval.nl", "runUserGoal/recoverSameTurnEval/inspectSameTurnEval/readNativeEvalState.nl"],
     "sameTurnEvalRecovery": ["runUserGoal/recoverSameTurnEval/resolveSameTurnEval.nl"],
+    "deliveryWakeEvidence": ["runUserGoal/reviewDeliveryWake/discoverDeliveryWake.nl", "runUserGoal/reviewDeliveryWake/inspectDeliveryWake/readNativeWake.nl"],
+    "deliveryWakeAction": ["runUserGoal/reviewDeliveryWake/applyDeliveryWake.nl"],
     "logFollowerEvidence": ["runUserGoal/reviewLogFollower/discoverLogFollower.nl", "runUserGoal/reviewLogFollower/observeLogFollower/readNativeFollow.nl"],
     "logFollowerHandoff": ["runUserGoal/reviewLogFollower/stageLogFollower.nl"],
     "ptyContinuityEvidence": ["runUserGoal/reviewPtyContinuity/discoverPtyReview.nl", "runUserGoal/reviewPtyContinuity/inspectPtyReceipts/readPtyAttempt.nl"],

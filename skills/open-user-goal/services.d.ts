@@ -132,6 +132,14 @@ declare module "natlang:services" {
     resolve(id: string, runId: string, decision: import("./runUserGoal/recoverSameTurnEval/contract.js").EvalPick["decision"]):
       Promise<import("./runUserGoal/recoverSameTurnEval/contract.js").EvalRecoveryReceipt>;
   };
+  export const deliveryWakeEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewDeliveryWake/contract.js").DeliveryWakeAssignment>;
+    observe(id: string): Promise<import("./runUserGoal/reviewDeliveryWake/contract.js").DeliveryWakeEvidence>;
+  };
+  export const deliveryWakeAction: {
+    apply(id: string, event: string, cursor: import("./runUserGoal/reviewDeliveryWake/contract.js").DeliveryBound | null):
+      Promise<import("./runUserGoal/reviewDeliveryWake/contract.js").DeliveryWakeReceipt>;
+  };
   export const logFollowerEvidence: {
     discover(): Promise<import("./runUserGoal/reviewLogFollower/contract.js").FollowAssignment>;
     observe(id: string): Promise<import("./runUserGoal/reviewLogFollower/contract.js").FollowCapture>;

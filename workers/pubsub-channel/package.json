@@ -219,6 +219,7 @@
   },
   "exports": {
     "./contract": "./contract.ts",
+    "./delivery-projection": "./delivery-projection.ts",
     ".": "./index.ts"
   }
 }

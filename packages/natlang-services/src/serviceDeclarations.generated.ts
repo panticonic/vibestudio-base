@@ -5823,6 +5823,41 @@ type EvalRecoveryReceipt = { observation: EvalUsefulResult; scopeId: string; res
 /** Recover one exact authorized useful result in the original owned scope. */
 export function resolve(id: string, runId: string, decision: EvalPick["decision"]):
       Promise<EvalRecoveryReceipt>;`,
+  deliveryWakeEvidence: `/** Read one owned native reconnect, current receiver and retained mailbox scope. */
+
+type DeliveryWakeKind = "message" | "terminal" | "failed" | "progress";
+
+type DeliveryWakeAssignment = { id: string; goal: string; subject: string; request: string; kind: DeliveryWakeKind;
+  channel: string; recipient: string; revision: number; saved: number; mayWake: boolean };
+
+type DeliveryConnection = { channel: string; context: string; attempts: number; firstRejected: boolean; ready: boolean; admittedSurfaces: number };
+
+type DeliveryTarget = { id: string; revision: number; active: boolean; attached: boolean };
+
+type DeliveryBound = { recipient: string; revision: number; after: number; through: number };
+
+type DeliveryEnvelope = { id: string; sequence: number; name: string; kind: DeliveryWakeKind; recipients: string[] };
+
+type DeliveryMailbox = { deliveryId: string; event: string; sequence: number; recipient: string; revision: number; state: string };
+
+type DeliveryWakeEvidence = { connection: DeliveryConnection; current: DeliveryTarget | null; cursor: number; pending: DeliveryBound | null;
+  rangeComplete: boolean; events: DeliveryEnvelope[]; mailbox: DeliveryMailbox[]; contextRows: number; contextCopies: number };
+
+/** Read one owned native reconnect, current receiver and retained mailbox scope. */
+export function discover(): Promise<DeliveryWakeAssignment>;
+
+/** Read one owned native reconnect, current receiver and retained mailbox scope. */
+export function observe(id: string): Promise<DeliveryWakeEvidence>;`,
+  deliveryWakeAction: `/** Advance the exact complete authorized native mailbox range for its current receiver. */
+
+type DeliveryBound = { recipient: string; revision: number; after: number; through: number };
+
+type DeliveryWakeReceipt = { event: string; deliveryId: string; revision: number; cursor: number; newRows: number;
+  repeatRows: number; contextRows: number; contextCopies: number };
+
+/** Advance the exact complete authorized native mailbox range for its current receiver. */
+export function apply(id: string, event: string, cursor: DeliveryBound | null):
+      Promise<DeliveryWakeReceipt>;`,
   logFollowerEvidence: `/** Read exact bounded native server log catch-up and owned stream evidence. */
 
 type FollowCursor = { boot: string; seq: number };

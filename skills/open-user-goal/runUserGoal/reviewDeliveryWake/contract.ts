@@ -1,0 +1,18 @@
+export type DeliveryWakeKind = "message" | "terminal" | "failed" | "progress";
+export type DeliveryWakeAssignment = { id: string; goal: string; subject: string; request: string; kind: DeliveryWakeKind;
+  channel: string; recipient: string; revision: number; saved: number; mayWake: boolean };
+export type DeliveryConnection = { channel: string; context: string; attempts: number; firstRejected: boolean; ready: boolean; admittedSurfaces: number };
+export type DeliveryTarget = { id: string; revision: number; active: boolean; attached: boolean };
+export type DeliveryBound = { recipient: string; revision: number; after: number; through: number };
+export type DeliveryEnvelope = { id: string; sequence: number; name: string; kind: DeliveryWakeKind; recipients: string[] };
+export type DeliveryMailbox = { deliveryId: string; event: string; sequence: number; recipient: string; revision: number; state: string };
+export type DeliveryWakeEvidence = { connection: DeliveryConnection; current: DeliveryTarget | null; cursor: number; pending: DeliveryBound | null;
+  rangeComplete: boolean; events: DeliveryEnvelope[]; mailbox: DeliveryMailbox[]; contextRows: number; contextCopies: number };
+export type DeliveryWakeOutcome = "advance" | "confirmed" | "hold-connection" | "hold-recipient" | "hold-revision" |
+  "hold-cursor" | "hold-evidence" | "hold-policy";
+export type DeliveryMatch = { event: DeliveryEnvelope | null; mailbox: DeliveryMailbox | null };
+export type DeliveryWakeChoice = { disposition: DeliveryWakeOutcome; event: DeliveryEnvelope | null };
+export type DeliveryWakeReceipt = { event: string; deliveryId: string; revision: number; cursor: number; newRows: number;
+  repeatRows: number; contextRows: number; contextCopies: number };
+export type DeliveryWakeReport = { assignment: DeliveryWakeAssignment; evidence: DeliveryWakeEvidence;
+  choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };
