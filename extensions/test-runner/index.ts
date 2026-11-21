@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { WORKSPACE_IMPORT_PARENT_DIRS } from "@vibestudio/workspace-contracts/sourceDirs";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import {
   nativeTestExecutionSource,
@@ -52,17 +53,7 @@ interface JsonReport {
   }>;
 }
 
-const WORKSPACE_ROOTS = new Set([
-  "about",
-  "clients",
-  "extensions",
-  "packages",
-  "panels",
-  "projects",
-  "skills",
-  "templates",
-  "workers",
-]);
+const WORKSPACE_ROOTS = new Set<string>(WORKSPACE_IMPORT_PARENT_DIRS);
 
 function assertContextId(value: string): void {
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(value)) {

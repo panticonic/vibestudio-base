@@ -14,12 +14,12 @@ function sealed(overrides: Partial<TestRunRequest> = {}): TestRunRequest {
   return { ...request, artifactKey: `native:${executionDigest}`, executionDigest };
 }
 
-function fixture(runtime: "browser" | "native" = "native") {
+function fixture(runtime: "browser" | "native" = "native", unit = "packages/fixture") {
   const projections = fs.mkdtempSync(
     path.join(os.tmpdir(), "native-test-adapter-"),
   );
   cleanup.push(projections);
-  const target = path.join(projections, "ctx-1", "packages", "fixture");
+  const target = path.join(projections, "ctx-1", unit);
   fs.mkdirSync(target, { recursive: true });
   fs.writeFileSync(
     path.join(target, "package.json"),
@@ -79,6 +79,19 @@ describe("native test adapter boundary", () => {
     await expect(
       api.runNative(sealed({ suite: "missing" })),
     ).rejects.toThrow("Unknown declared test suite");
+  });
+
+  it("executes the manifest-selected focused suite in a terminal app", async () => {
+    const unit = "terminal-apps/fixture";
+    const { ctx, target } = fixture("native", unit);
+    fs.writeFileSync(
+      path.join(target, "format.test.ts"),
+      'import { expect, it } from "vitest"; it("keeps a visible title", () => expect("Builds".trim()).toBe("Builds"));\n',
+    );
+    const api = await activate(ctx);
+    await expect(api.runNative(sealed({ target: unit }))).resolves.toMatchObject({
+      target: unit, runtime: "native", status: "passed", total: 1, passed: 1,
+    });
   });
 
   it("executes selected modules in a child using the installed test-engine dependencies", async () => {

@@ -76,6 +76,7 @@
     "vitest": "^3.2.7",
     "@vibestudio/service-schemas": "workspace:*",
     "@vibestudio/shared": "workspace:*",
+    "@vibestudio/workspace-contracts": "workspace:*",
     "@workspace/test-runtime": "workspace:*"
   },
   "exports": {
