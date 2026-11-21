@@ -82,6 +82,14 @@ declare module "natlang:services" {
     restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<import("./runUserGoal/reviewInstalledPackage/contract.js").PackageRestore>;
   };
+  export const contentArchiveEvidence: {
+    discover(): Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveAssignment>;
+    inspect(id: string): Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveObservation>;
+  };
+  export const contentArchiveChange: {
+    restore(id: string, ref: string | null, head: string, paths: string[]):
+      Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveReceipt>;
+  };
   export const systemReleaseEvidence: {
     discover(): Promise<import("./runUserGoal/reviewSystemRelease/contract.js").ReleaseAssignment>;
     compare(id: string): Promise<import("./runUserGoal/reviewSystemRelease/contract.js").RetainedRunPair>;

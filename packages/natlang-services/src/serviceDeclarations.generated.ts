@@ -5097,6 +5097,54 @@ type PackageRestore = { status: "restored" | "state-changed" | "not-authorized";
 /** Restore one approved installed package declaration at its exact working revision. */
 export function restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<PackageRestore>;`,
+  contentArchiveEvidence: `/** Read the locally admitted content archive assignment, two exact immutable trees, and current project working proof. */
+
+type ContentArchiveAssignment = {
+  id: string; goal: string; project: string; repository: string; edition: string;
+  primary: string; previous: string; previousAllowed: boolean; manifestDigest: string;
+  paths: string[]; permitted: string[];
+  approval: { repository: string; workingRevision: string; mode: "local" | "inspect" };
+};
+
+type ContentArchiveFile = { path: string; digest: string; mode: number };
+
+type ContentArchiveEdition = {
+  ref: string; available: boolean; rootTreeHash: string | null; edition: string | null;
+  repository: string | null; manifestDigest: string | null; files: ContentArchiveFile[];
+  coherent: boolean;
+};
+
+type ContentArchiveWorkingFile = {
+  path: string; fileId: string | null; digest: string | null; mode: number | null;
+  state: "current" | "old" | "missing" | "coedit" | "collision" | "mode";
+};
+
+type ContentArchiveObservation = {
+  workingRevision: string; mainRevision: string; repository: string;
+  primary: ContentArchiveEdition; previous: ContentArchiveEdition; working: ContentArchiveWorkingFile[];
+};
+
+/** Read the locally admitted content archive assignment, two exact immutable trees, and current project working proof. */
+export function discover(): Promise<ContentArchiveAssignment>;
+
+/** Read the locally admitted content archive assignment, two exact immutable trees, and current project working proof. */
+export function inspect(id: string): Promise<ContentArchiveObservation>;`,
+  contentArchiveChange: `/** Restore the exact authorized immutable file set in one local semantic edit. */
+
+type ContentArchiveWorkingFile = {
+  path: string; fileId: string | null; digest: string | null; mode: number | null;
+  state: "current" | "old" | "missing" | "coedit" | "collision" | "mode";
+};
+
+type ContentArchiveReceipt = {
+  status: "restored" | "state-changed";
+  workingRevision: string; application: { id: string; changes: string[] } | null;
+  files: ContentArchiveWorkingFile[];
+};
+
+/** Restore the exact authorized immutable file set in one local semantic edit. */
+export function restore(id: string, ref: string | null, head: string, paths: string[]):
+      Promise<ContentArchiveReceipt>;`,
   systemReleaseEvidence: `/** Read an owned release assignment, the two scoped run headers, and required retained case evidence. */
 
 type ReleaseAssignment = {
