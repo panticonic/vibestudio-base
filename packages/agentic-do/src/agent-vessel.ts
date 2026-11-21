@@ -5443,7 +5443,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     runId: string,
     query: string,
     parentChannelId?: string,
-    page: { limit: number; cursor?: string } = { limit: 20 }
+    page: { limit: number; cursor?: string } = { limit: 20 },
+    toolRpc: RpcClient = this.rpc
   ): Promise<ToolExecutionResult> {
     const wrapperStartedAt = performance.now();
     const wrapperWallStartedAt = Date.now();
@@ -5466,7 +5467,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         }
       );
     }
-    const vcs = createSubagentVcsClient(this.rpc);
+    const vcs = createSubagentVcsClient(toolRpc);
     const childStatusStartedAt = performance.now();
     const childStatus = vcs.status({ contextId: run.childContextId });
     let statusFetchMs = 0;

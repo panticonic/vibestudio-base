@@ -1589,7 +1589,8 @@ export abstract class AgentWorkerBase extends AgentVesselBase {
                   ? Math.max(1, Math.min(100, p.limit))
                   : 20,
               cursor: typeof p.cursor === "string" && p.cursor ? p.cursor : undefined,
-            }
+            },
+            toolRpc
           );
         },
       },

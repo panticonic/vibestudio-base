@@ -205,6 +205,7 @@ export interface HistoryForkRequest {
   parentContextId: string;
   childContextId: string;
   childPeer: string;
+  expectedHead?: string;
 }
 
 export interface HistoryForkSeed {
@@ -1033,6 +1034,8 @@ export class ParticipantHistory {
       let receipt: HistoryForkReceipt;
       if (stored === null) {
         const { head, state } = this.#contextState(request.parentContextId);
+        if (request.expectedHead !== undefined && request.expectedHead !== head)
+          throw new HistoryHeadChanged(request.expectedHead, head);
         receipt = { branch, head, state, completed: false };
         journal.set(key, canonicalJson(receipt));
       } else {

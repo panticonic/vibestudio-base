@@ -495,7 +495,8 @@ export class GadHistoryDO extends DurableObjectBase {
       if (binding.contextId === undefined) continue;
       if (historyContextKey(binding.contextId) !== key)
         throw new Error("Workspace registration names a different context");
-      if (!binding.closed && binding.contextId.startsWith(prefix)) contexts.push(binding.contextId);
+      if (!binding.closed && !binding.contextId.startsWith("review:") &&
+          binding.contextId.startsWith(prefix)) contexts.push(binding.contextId);
     }
     return contexts.sort(compareUtf16CodeUnits);
   }
@@ -624,6 +625,29 @@ export class GadHistoryDO extends DurableObjectBase {
   readHistoryRuntimeFork(input: { contextId: string }) {
     this.#assertCanonical();
     return this.#assertHistoryContextOpen(input.contextId).runtimeFork ?? null;
+  }
+
+  @rpc(hostRead)
+  readHistoryRuntimeAuthor(input: { contextId: string; runtimeId?: string }) {
+    this.#assertCanonical();
+    const binding = this.#historyContextBinding(input.contextId);
+    if (binding.closed || !binding.runtimeFork) return null;
+    const authors = binding.targets.flatMap((target) => {
+      if (this.#allocationStatus(target) !== "active") return [];
+      const participant = this.getStateValue(`history-allocation-identity:${target}`);
+      if (!participant || workKey(participant) !== target) return [];
+      const identity: unknown = JSON.parse(participant);
+      if (!Array.isArray(identity) || identity[0] !== "agent" ||
+          identity[2] !== input.contextId || identity[1]?.contextId !== input.contextId ||
+          (input.runtimeId && identity[1]?.runtimeId !== input.runtimeId)) {
+        return [];
+      }
+      return [participant];
+    });
+    if (authors.length > 1) {
+      throw new Error("Runtime workspace context has several active authors");
+    }
+    return authors[0] ?? null;
   }
 
   @rpc(hostWrite)
