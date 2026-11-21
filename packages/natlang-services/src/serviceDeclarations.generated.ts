@@ -2281,6 +2281,48 @@ export function refresh(lane: NotificationLane): Promise<NotificationRefresh>;
 /** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
 export function acknowledge(lane: NotificationLane, id: string, revision: number):
       Promise<NotificationAcknowledgment>;`,
+  adoptionReview: `/** Read exact Examples installation, staged composition and independent private readback. */
+
+type AdoptionReviewCard = { id: string; title: string; event: string; edition: "staged" | "retired"; mayRecord: boolean };
+
+type AdoptionInstalled = { repository: string; packageName: string; manifestDigest: string; templateDigest: string; main: string };
+
+type AdoptionComposition = {
+  id: string; event: string; status: "composed" | "conflict" | "bad-override" | "epoch" | "missing-unit" | "duplicate-source";
+  issue: string | null; owner: string | null; privateFiles: string[]; pulledUnits: string[];
+  settings: string[]; minimumAppVersion: string | null; digest: string | null;
+};
+
+type AdoptionGate = { event: string; status: "current" | "changed" };
+
+type AdoptionReadback = { main: string; event: string; digest: string | null };
+
+/** Read exact Examples installation, staged composition and independent private readback. */
+export function discover(): Promise<AdoptionReviewCard[]>;
+
+/** Read exact Examples installation, staged composition and independent private readback. */
+export function installed(id: string): Promise<AdoptionInstalled>;
+
+/** Read exact Examples installation, staged composition and independent private readback. */
+export function compose(id: string, event: string): Promise<AdoptionComposition>;
+
+/** Read exact Examples installation, staged composition and independent private readback. */
+export function confirm(id: string, event: string): Promise<AdoptionGate>;
+
+/** Read exact Examples installation, staged composition and independent private readback. */
+export function readback(id: string, path: string | null): Promise<AdoptionReadback>;`,
+  adoptionHandoff: `/** Record one approved owned Examples composition privately. */
+
+type AdoptionPlan = {
+  disposition: "record-private" | "explain-only" | "hold-authority" | "hold-conflict" | "hold-override" |
+    "hold-epoch" | "hold-closure" | "hold-duplicate" | "hold-stale";
+  finding: string; proof: string[];
+};
+
+type AdoptionReceipt = { path: string; digest: string; event: string };
+
+/** Record one approved owned Examples composition privately. */
+export function record(id: string, event: string, plan: AdoptionPlan): Promise<AdoptionReceipt | null>;`,
   grimoireScene: `/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
 
 type GrimoireDocket = { id: string; title: string; edition: "current" | "archive" };

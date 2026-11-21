@@ -83,6 +83,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - For recovering a cancelled, failed, or incomplete native eval and handing off verified retained output, call workOnEvalHandoffGoal with the user's goal. Report as "evalHandoff".
 - For an actual typed program trial, a verified output receipt, or inspecting a callable specifically for a requested trial, call workOnProgramRunGoal with the user's goal. Report as "programRun".
 - For reviewing the current authored Natlang program, release compatibility, or compiler evidence, call workOnAuthoringGoal with the user's goal. Report as "authoring".
+- For an owned Examples composition review of whole-unit ownership, inherited settings or a private adoption artifact, call reviewExamplesAdoption. Report as "examplesAdoption".
 - For an owned Grimoire caretaker request about its current interactive canvas, accessible labels or a scene-specific private artifact, call careForGrimoireScene. Report as "grimoireScene".
 - For an owned phone first-run rehearsal, declared desktop install eligibility or a retained paired workspace readiness decision, call planPhoneFirstRun. Report as "phoneFirstRun".
 - For a local first-party webhook registration audit based on retained receipt, current scoped activation and effective metadata, call reviewWebhookAdmission. Report as "webhookAdmission".

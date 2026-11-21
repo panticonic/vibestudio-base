@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "examplesAdoption"; outcome: AdoptionOutcome }
   | { status: "workspace-skill-reviewed"; skill: "grimoireScene"; outcome: GrimoireSceneOutcome }
   | { status: "workspace-skill-reviewed"; skill: "testkitCloseout"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "phoneFirstRun"; outcome: PhoneFirstRunOutcome }
@@ -449,4 +450,25 @@ export type GrimoireSceneReadback = {
 export type GrimoireSceneOutcome = {
   scope: "owned-grimoire-caretaker-draft"; docket: GrimoireDocket; evidence: GrimoireSceneEvidence;
   plan: GrimoirePlan; gate: GrimoireSceneGate; receipt: GrimoireSceneReceipt | null; readback: GrimoireSceneReadback;
+};
+
+export type AdoptionReviewCard = { id: string; title: string; event: string; edition: "staged" | "retired"; mayRecord: boolean };
+export type AdoptionInstalled = { repository: string; packageName: string; manifestDigest: string; templateDigest: string; main: string };
+export type AdoptionComposition = {
+  id: string; event: string; status: "composed" | "conflict" | "bad-override" | "epoch" | "missing-unit" | "duplicate-source";
+  issue: string | null; owner: string | null; privateFiles: string[]; pulledUnits: string[];
+  settings: string[]; minimumAppVersion: string | null; digest: string | null;
+};
+export type AdoptionEvidence = { installed: AdoptionInstalled; composition: AdoptionComposition };
+export type AdoptionPlan = {
+  disposition: "record-private" | "explain-only" | "hold-authority" | "hold-conflict" | "hold-override" |
+    "hold-epoch" | "hold-closure" | "hold-duplicate" | "hold-stale";
+  finding: string; proof: string[];
+};
+export type AdoptionGate = { event: string; status: "current" | "changed" };
+export type AdoptionReceipt = { path: string; digest: string; event: string };
+export type AdoptionReadback = { main: string; event: string; digest: string | null };
+export type AdoptionOutcome = {
+  scope: "owned-examples-composition-rehearsal"; card: AdoptionReviewCard; evidence: AdoptionEvidence;
+  plan: AdoptionPlan; gate: AdoptionGate; receipt: AdoptionReceipt | null; readback: AdoptionReadback;
 };

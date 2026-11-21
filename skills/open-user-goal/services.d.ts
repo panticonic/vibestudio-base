@@ -215,3 +215,16 @@ declare module "natlang:services" {
     stage(id: string, frontier: string, plan: import("./types.js").GrimoirePlan): Promise<import("./types.js").GrimoireSceneReceipt | null>;
   };
 }
+
+declare module "natlang:services" {
+  export const adoptionReview: {
+    discover(): Promise<import("./types.js").AdoptionReviewCard[]>;
+    installed(id: string): Promise<import("./types.js").AdoptionInstalled>;
+    compose(id: string, event: string): Promise<import("./types.js").AdoptionComposition>;
+    confirm(id: string, event: string): Promise<import("./types.js").AdoptionGate>;
+    readback(id: string, path: string | null): Promise<import("./types.js").AdoptionReadback>;
+  };
+  export const adoptionHandoff: {
+    record(id: string, event: string, plan: import("./types.js").AdoptionPlan): Promise<import("./types.js").AdoptionReceipt | null>;
+  };
+}

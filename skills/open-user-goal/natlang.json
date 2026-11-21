@@ -174,6 +174,14 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "adoptionReview": [
+      "runUserGoal/reviewExamplesAdoption/findStagedComposition.nl",
+      "runUserGoal/reviewExamplesAdoption/inspectComposition/readInstalledExamples.nl",
+      "runUserGoal/reviewExamplesAdoption/inspectComposition/simulateOwnedComposition.nl",
+      "runUserGoal/reviewExamplesAdoption/confirmAdoptionFrontier.nl",
+      "runUserGoal/reviewExamplesAdoption/readAdoptionHandoff.nl"
+    ],
+    "adoptionHandoff": ["runUserGoal/reviewExamplesAdoption/recordPrivateAdoption.nl"],
     "grimoireScene": [
       "runUserGoal/careForGrimoireScene/findCaretakerDocket.nl",
       "runUserGoal/careForGrimoireScene/readSceneEvidence/readOwnerView.nl",
