@@ -291,6 +291,35 @@ describe("workspace VCS agent tool", () => {
     });
   });
 
+  it("reports an empty local comparison when the working copy matches main", async () => {
+    const f = fixture();
+    const main = { kind: "event" as const, eventId: "event:main" };
+    f.status.mockResolvedValue({
+      contextId: "context:test",
+      committed: main,
+      workingHead: main,
+      clean: true,
+      mainEventId: main.eventId,
+      mainRelation: "at",
+      workingCounts: { applications: 0, workUnits: 0, changes: 0 },
+      integrating: [],
+    });
+    const tool = createWorkspaceVcsTool("/", f.vcs, {
+      contextId: "context:test",
+      commandId: "command:clean-compare",
+    });
+
+    const compared = await executeTool(tool, { operation: "compare", view: "local" }, {
+      callId: "call:clean-compare",
+    });
+
+    expect(f.compare).not.toHaveBeenCalled();
+    expect(compared.output[0]).toMatchObject({
+      type: "text",
+      text: expect.stringContaining("There are no local changes."),
+    });
+  });
+
   it("resolves a compact event ref through the unified source selector", async () => {
     const f = fixture();
     const references = createMemoryAgentReferenceStore();

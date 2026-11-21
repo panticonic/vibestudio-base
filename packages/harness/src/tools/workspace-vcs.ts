@@ -565,6 +565,21 @@ export function createWorkspaceVcsTool(
           const status = localView
             ? await vcs.status({ contextId: selectedContextId })
             : null;
+          if (status?.clean && status.mainRelation === "at") {
+            return resultOf(
+              command.operation,
+              "The local working state matches protected main. There are no local changes.",
+              {
+                page: 1,
+                resolution: { complete: true, remainingCoordinateCount: 0, concluded: true },
+                counts: { adopt: 0, convergent: 0, composed: 0, conflict: 0, resolved: 0 },
+                intentCounts: { merged: 0, settled: 0, split: 0, contested: 0, pending: 0 },
+                coordinateCount: 0,
+                intentsTruncated: false,
+                continuation: null,
+              },
+            );
+          }
           const target = localView
             ? ({ kind: "event", eventId: status!.mainEventId } as const)
             : await resolveToolWorkingState(vcs, {
