@@ -291,6 +291,8 @@
     "installedPackageChange": ["runUserGoal/reviewInstalledPackage/restorePackage.nl"],
     "webhookAdmissionEvidence": ["runUserGoal/reviewWebhookAdmission/discoverWebhook.nl", "runUserGoal/reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"],
     "webhookAdmissionHandoff": ["runUserGoal/reviewWebhookAdmission/stageWebhookAudit.nl"],
+    "sameTurnEvalEvidence": ["runUserGoal/recoverSameTurnEval/discoverSameTurnEval.nl", "runUserGoal/recoverSameTurnEval/inspectSameTurnEval/readNativeEvalState.nl"],
+    "sameTurnEvalRecovery": ["runUserGoal/recoverSameTurnEval/resolveSameTurnEval.nl"],
     "logFollowerEvidence": ["runUserGoal/reviewLogFollower/discoverLogFollower.nl", "runUserGoal/reviewLogFollower/observeLogFollower/readNativeFollow.nl"],
     "logFollowerHandoff": ["runUserGoal/reviewLogFollower/stageLogFollower.nl"],
     "ptyContinuityEvidence": ["runUserGoal/reviewPtyContinuity/discoverPtyReview.nl", "runUserGoal/reviewPtyContinuity/inspectPtyReceipts/readPtyAttempt.nl"],

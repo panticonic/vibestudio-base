@@ -5697,6 +5697,41 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  sameTurnEvalEvidence: `/** Read terminal EvalDO evidence for the current user task and its owned scope. */
+
+type EvalAssignment = {
+  id: string; goal: string; subject: string; request: string; revision: string;
+  mayNarrow: boolean; mayUseCheckpoint: boolean; mayUseWindow: boolean;
+};
+
+type EvalCandidate = { request: string; revision: string; complete: boolean; digest: string };
+
+type EvalCellEvidence = {
+  runId: string; scopeId: string; status: "unadmitted" | "failed" | "timed-out" | "completed";
+  runDigest: string | null; failureCode: string | null; diagnostic: string | null; returnKind: "none" | "compact" | "window";
+  checkpoint: EvalCandidate | null; window: EvalCandidate | null; compact: EvalCandidate | null;
+};
+
+/** Read terminal EvalDO evidence for the current user task and its owned scope. */
+export function discover(): Promise<EvalAssignment>;
+
+/** Read terminal EvalDO evidence for the current user task and its owned scope. */
+export function observe(id: string): Promise<EvalCellEvidence>;`,
+  sameTurnEvalRecovery: `/** Recover one exact authorized useful result in the original owned scope. */
+
+type EvalPick = {
+  decision: "checkpoint" | "window" | "narrow" | "compact" | "held";
+  reason: "complete-checkpoint" | "complete-window" | "clean-return" | "bounded-retry" |
+    "partial-checkpoint" | "stale-checkpoint" | "stale-window" | "no-authorized-result";
+};
+
+type EvalUsefulResult = { request: string; revision: string; count: number; detail: string };
+
+type EvalRecoveryReceipt = { observation: EvalUsefulResult; scopeId: string; resultDigest: string; recoveryRun: string | null; pages: number };
+
+/** Recover one exact authorized useful result in the original owned scope. */
+export function resolve(id: string, runId: string, decision: EvalPick["decision"]):
+      Promise<EvalRecoveryReceipt>;`,
   logFollowerEvidence: `/** Read exact bounded native server log catch-up and owned stream evidence. */
 
 type FollowCursor = { boot: string; seq: number };
