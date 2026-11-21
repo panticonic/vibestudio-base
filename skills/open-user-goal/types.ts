@@ -22,88 +22,47 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
-  | { status: "workspace-skill-reviewed"; skill: "boardMigration"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "preparedContentProject"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "liveLocalInventory"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "androidDelivery"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "terminalAppRepair"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "liveTendrilBoard"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "cliRoute"; outcome: unknown }
+  | {
+      status: "workspace-skill-reviewed";
+      skill:
+        | "boardMigration" | "preparedContentProject" | "liveLocalInventory" | "androidDelivery" | "terminalAppRepair"
+        | "liveTendrilBoard" | "cliRoute" | "ownedOperations" | "testkitCloseout" | "webhookAdmission"
+        | "transcriptSurface" | "sourceAttribution" | "workspaceSmoke" | "sameTurnEval" | "deliveryWake"
+        | "logFollower" | "ptyContinuity" | "developmentAudit" | "contentArchive" | "systemRelease"
+        | "panelSourceMigration" | "workspaceShare" | "agentCapability" | "workspaceAssembly" | "capabilityPlan"
+        | "vaultWork" | "googleSetup" | "gadDurableQuestion" | "clientDiagnostics" | "githubWork"
+        | "news" | "adventureJourney" | "spectrolite" | "google" | "gmail"
+        | "googleHandoff" | "calendar" | "personal" | "personalArtifacts" | "personalHistory"
+        | "scheduledRecovery" | "personalAutomation" | "operator" | "localReconciliation" | "diagnostics"
+        | "ownedTaskRecovery" | "unitRollout" | "localDelivery" | "recovery" | "publication"
+        | "ownedPreview" | "visualRecovery" | "pdf" | "terminalHandoff" | "personalWelcome"
+        | "dictationHandoff" | "specialistHandoff" | "providerHandoff" | "problemReport" | "compoundRecovery"
+        | "buildIncident" | "deployedInterface" | "apiReadiness" | "chatContinuity" | "editorialPacket"
+        | "demoPortfolio" | "regencyBriefing" | "imageCandidate" | "newsEvidence" | "installedPackage"
+        | "extensionDossier" | "localWidth" | "evalHandoff" | "programRun" | "browserMigration"
+        | "templateMigration" | "authoring" | "bridgeDelivery" | "workspaceClaims" | "panelLaunchState"
+        | "ownedRouteAuthority" | "workspaceConfig" | "audienceResponse" | "coordinatedRevision" | "retainedMemory"
+        | "intentDiscovery";
+      outcome: unknown;
+    }
   | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }
   | { status: "workspace-skill-reviewed"; skill: "localMethodExchange"; outcome: LocalMethodOutcome }
   | { status: "workspace-skill-reviewed"; skill: "systemCandidateTriage"; outcome: SystemCandidateOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "ownedOperations"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "examplesAdoption"; outcome: AdoptionOutcome }
   | { status: "workspace-skill-reviewed"; skill: "grimoireScene"; outcome: GrimoireSceneOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "testkitCloseout"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "phoneFirstRun"; outcome: PhoneFirstRunOutcome }
   | { status: "workspace-skill-reviewed"; skill: "skillMaintenance"; outcome: SkillMaintenanceOutcome }
   | { status: "workspace-skill-reviewed"; skill: "desktopReadiness"; outcome: DesktopReadinessOutcome }
   | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "webhookAdmission"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "transcriptSurface"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "sourceAttribution"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "workspaceSmoke"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "sameTurnEval"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "deliveryWake"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "logFollower"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "ptyContinuity"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "developmentAudit"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "contentArchive"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "systemRelease"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "panelSourceMigration"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "workspaceShare"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "agentCapability"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }
   | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "workspaceAssembly"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "capabilityPlan"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "vaultWork"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "googleSetup"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "gadDurableQuestion"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "clientDiagnostics"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "githubWork"; outcome: unknown }
   | { status: "answered" | "insufficient"; research: ResearchGoalReport }
   | { status: "edited"; path: string; version: string; research: ResearchGoalReport }
   | WorkspaceEditReport
   | BrowserGoalReport
   | WorkspaceSuiteReport
-  | { status: "workspace-skill-reviewed"; skill: "news" | "adventureJourney" | "spectrolite" | "google" | "gmail" | "googleHandoff" | "calendar" | "personal" | "personalArtifacts" | "personalHistory" | "scheduledRecovery" | "personalAutomation" | "operator" | "localReconciliation" | "diagnostics" | "ownedTaskRecovery" | "unitRollout" | "localDelivery" | "recovery" | "publication" | "ownedPreview" | "visualRecovery" | "pdf"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "terminalHandoff"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "personalWelcome"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "dictationHandoff"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "specialistHandoff"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "providerHandoff"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "problemReport"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "compoundRecovery"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "buildIncident"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "deployedInterface"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "apiReadiness"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "chatContinuity"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "editorialPacket"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "demoPortfolio"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "regencyBriefing"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "imageCandidate"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "newsEvidence"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "installedPackage"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "extensionDossier"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "localWidth"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "evalHandoff"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "programRun"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "browserMigration"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "templateMigration"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "authoring"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "bridgeDelivery"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "workspaceClaims"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "panelLaunchState"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "ownedRouteAuthority"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "workspaceConfig"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "audienceResponse"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "coordinatedRevision"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "retainedMemory"; outcome: unknown }
-  | { status: "workspace-skill-reviewed"; skill: "intentDiscovery"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "pdfVault"; outcome: PdfVaultOutcome };
 
 export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
