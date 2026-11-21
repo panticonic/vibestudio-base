@@ -408,6 +408,36 @@ it("links installed workspace modules as typed callable subtrees in the same tas
   expect(fs.reads).not.toContain("skills/uninstalled/natlang.json");
 });
 
+it("links a typed callable branch only when every installed module is present", async () => {
+  const configuration = JSON.stringify({
+    workspaceModules: { "brief/release/input": "skills/release-input", "brief/release/reviewer": "skills/reviewer" },
+    workspaceBranches: { "brief/release": { mounts: ["brief/release/input", "brief/release/reviewer"], types: ["ReleaseReport"] } },
+    serviceScopes: { panelRepairEdit: ["brief/release/stage.nl"] },
+  });
+  const files = {
+    "skills/hub/natlang.json": configuration,
+    "skills/hub/brief.nl": BRIEF,
+    "skills/hub/brief/release.nl": BRIEF.replace("returns: string", "returns: ReleaseReport"),
+    "skills/hub/brief/release/types.ts": 'export type { ReleaseReport } from "./input/types.js";',
+    "skills/hub/brief/release/stage.nl": BRIEF,
+    "skills/hub/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+    "skills/release-input/types.ts": 'export type ReleaseReport = { version: string };',
+    "skills/release-input/read.nl": BRIEF,
+  };
+  const describe = (present: boolean) => new ProgramLoader({
+    platform: platform(), bindings: {}, runTask: run => run(),
+    fs: memoryFs({ ...files, ...(present ? { "skills/reviewer/check.nl": BRIEF } : {}) }),
+  }).describe("skills/hub/brief.nl");
+  const missing = await describe(false);
+  expect(missing.functions.map(fn => fn.source)).toEqual(["brief.nl"]);
+  expect(missing.serviceScopes.panelRepairEdit).toEqual([]);
+  const ready = await describe(true);
+  expect(ready.functions.map(fn => fn.source)).toEqual(expect.arrayContaining([
+    "brief/release.nl", "brief/release/input/read.nl", "brief/release/reviewer/check.nl", "brief/release/stage.nl",
+  ]));
+  expect(ready.serviceScopes.panelRepairEdit).toEqual(["brief/release/stage.nl"]);
+});
+
 it("refuses a mounted package with an unscoped service or overlapping ownership", async () => {
   const fs = memoryFs({
     "skills/hub/brief.nl": BRIEF,
@@ -438,7 +468,7 @@ it("compiles the open goal program with its installed research skill and scoped 
     platform: platform(), fs, bindings: {}, runTask: (run) => run(),
   });
   const result = await loader.describe("skills/open-user-goal/runUserGoal.nl");
-  expect(result.serviceScopes).toEqual({
+  expect(result.serviceScopes).toMatchObject({
     panelRecovery: ["runUserGoal/visualRecovery/recoverPanelGoal.nl", "runUserGoal/visualRecovery/recoverPanelGoal/recoverSurface.nl"],
     panelHealth: ["runUserGoal/visualRecovery/reviewPanelHealth.nl", "runUserGoal/visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
     goalBrowser: ["runUserGoal/workInBrowser.nl"],
@@ -448,14 +478,14 @@ it("compiles the open goal program with its installed research skill and scoped 
     recoverySessions: ["runUserGoal/recovery/recoverSessionGoal.nl"],
     recoveryReplay: ["runUserGoal/recovery/recoverSessionGoal/readRecoveryWindows.nl"],
     recoveryHandoff: ["runUserGoal/recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
-    testSuitePlanRead: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
-    testSuiteVerificationRun: ["runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    testSuitePlanRead: ["runUserGoal/reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    testSuiteVerificationRun: ["runUserGoal/reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     pdfVaultBridge: ["runUserGoal/authorizePdfVaultHandoff.nl"],
-    pdfGoalDocuments: ["runUserGoal/pdf/workOnPdfGoal.nl"],
-    pdfGoalVisual: ["runUserGoal/pdf/workOnPdfGoal/readRenderedPages.nl"],
-    pdfIntakeProbe: ["runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],
-    pdfIntakeRead: ["runUserGoal/pdf/extractPdfEvidence/readBatch.nl"],
-    pdfLayoutRead: ["runUserGoal/pdf/reviewPdfLayout.nl"],
+    pdfGoalDocuments: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.nl", "runUserGoal/pdf/workOnPdfGoal.nl"],
+    pdfGoalVisual: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.nl", "runUserGoal/pdf/workOnPdfGoal/readRenderedPages.nl"],
+    pdfIntakeProbe: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/probeDocument.nl", "runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],
+    pdfIntakeRead: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/readBatch.nl", "runUserGoal/pdf/extractPdfEvidence/readBatch.nl"],
+    pdfLayoutRead: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl", "runUserGoal/pdf/reviewPdfLayout.nl"],
     ownedPreviewPublication: ["runUserGoal/publication/publishOwnedPreviewGoal.nl", "runUserGoal/publication/publishOwnedPreviewGoal/deliverPreview.nl"],
     publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
     publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],

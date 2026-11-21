@@ -109,6 +109,10 @@ export type NativeRuntimeOptions = {
         root?: number;
     };
 };
+/** Every tool the runtime can apply; a call's offer is a subset. */
+/** A return_result value that is a single `${...}` placeholder: return_result sends its value as written. */
+export declare const PLACEHOLDER_VALUE: RegExp;
+export declare const PLACEHOLDER_ADVICE: string;
 export declare const BUILT_IN_DOCS: Record<string, string>;
 /**
  * The scope type of a portable value, as a local holding it is declared. A list or record that holds a live value is one
@@ -118,6 +122,8 @@ export declare const BUILT_IN_DOCS: Record<string, string>;
 export declare function inferValueType(value: unknown, options?: {
     liveFields?: boolean;
 }): string;
+/** The source of type alias `name` as the program's items declare it (their folders' types.ts), nearest item first. */
+export declare function codebaseTypeAlias(codebase: Record<string, unknown>, name: string): string | undefined;
 /** Find a codebase item by dotted path; module exports resolve to their module's source. */
 export declare function findCodebaseItem(codebase: Record<string, unknown>, name: string): {
     path: string[];
@@ -348,6 +354,8 @@ export declare class NativeSession {
     codeEditsDenied(): boolean;
     /** The call can change code: its program has functions of its own and code edits are not denied (edit_code, diff_code). */
     codeEditable(): boolean;
+    /** Whether `name` is a parameter of this call declared Neuralese<T>: its state is in the call's opening message. */
+    neuraleseParameter(name: string): boolean;
     /** Whether this call's result is text (a string or Neuralese<string>, with nothing staged). */
     expectsTextResult(): boolean;
     /** Complete the invocation if an eval has returned a value of the declared type. */

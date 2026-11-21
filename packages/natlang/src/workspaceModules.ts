@@ -13,10 +13,10 @@ export async function linkWorkspaceModules(
   local: Files,
   readProjectFiles: (fs: WorkspaceFs, directory: string) => Promise<Files>,
 ): Promise<Files> {
-  const declaration = JSON.parse(
-    local["natlang.json"] ?? "{}",
-  )?.workspaceModules;
-  if (declaration === undefined) return local;
+  const configuration = JSON.parse(local["natlang.json"] ?? "{}");
+  const declaration = configuration?.workspaceModules;
+  const branchConfiguration: unknown = configuration?.workspaceBranches;
+  if (declaration === undefined && branchConfiguration === undefined) return local;
   const reject = (message: string): never => {
     throw new NatlangProgramError(
       `Invalid workspaceModules for ${directory}: ${message}`,
@@ -58,6 +58,28 @@ export async function linkWorkspaceModules(
       reject(`The callable mount ${mount} overlaps another item.`);
   }
 
+  type Branch = { mounts: string[]; types?: string[] };
+  const branches = new Map<string, Branch>();
+  if (branchConfiguration !== undefined) {
+    if (!branchConfiguration || typeof branchConfiguration !== "object" || Array.isArray(branchConfiguration))
+      reject("workspaceBranches must map local callable paths to mounts and optional portable type names.");
+    for (const [path, entry] of Object.entries(branchConfiguration!)) {
+      if (!path.includes("/") || !path.split("/").every(part => identifier.test(part)) ||
+          !Object.hasOwn(local, `${path}.nl`) || !entry || typeof entry !== "object" || Array.isArray(entry))
+        reject(`Invalid local callable branch ${path}.`);
+      const { mounts, types } = entry as Branch;
+      if (!Array.isArray(mounts) || !mounts.length ||
+          mounts.some(mount => typeof mount !== "string" || !mount.startsWith(`${path}/`) || !Object.hasOwn(declaration, mount)))
+        reject(`List declared mounts under the workspace branch ${path}.`);
+      if (types !== undefined && (!Array.isArray(types) || !types.length ||
+          types.some(name => typeof name !== "string" || !identifier.test(name)) || !Object.hasOwn(local, `${path}/types.ts`)))
+        reject(`List exported type names in ${path}/types.ts.`);
+      branches.set(path, { mounts, types });
+    }
+    for (const path of branches.keys()) if ([...branches.keys()].some(other => other !== path && path.startsWith(`${other}/`)))
+      reject(`Workspace branch ${path} overlaps another branch.`);
+  }
+
   const readDirectory = new Map<string, ReturnType<WorkspaceFs["readdir"]>>();
   async function installed(source: string) {
     let parent = "skills";
@@ -82,7 +104,7 @@ export async function linkWorkspaceModules(
       if (typeof source !== "string" || !(await installed(source))) return null;
       const sourceFiles = await readProjectFiles(fs, source);
       const config = JSON.parse(sourceFiles["natlang.json"] ?? "{}");
-      if (config?.workspaceModules !== undefined)
+      if (config?.workspaceModules !== undefined || config?.workspaceBranches !== undefined)
         reject(`Mount ${source} as a self-contained package.`);
       const include: unknown = config?.include;
       if (
@@ -122,11 +144,24 @@ export async function linkWorkspaceModules(
       return { mount, files, scopes };
     }),
   );
-  const linked = { ...local };
+  const present = new Set(modules.flatMap(entry => entry ? [entry.mount] : []));
+  const unavailable = [...branches].filter(([, branch]) => branch.mounts.some(mount => !present.has(mount)))
+    .map(([path]) => path);
+  const visible = (path: string) => !unavailable.some(branch => path === `${branch}.nl` || path.startsWith(`${branch}/`));
+  const linked = Object.fromEntries(Object.entries(local).filter(([path]) => visible(path)));
+  for (const [path, branch] of branches) {
+    if (!branch.types?.length || !visible(`${path}.nl`)) continue;
+    const slash = path.lastIndexOf("/");
+    const typesPath = `${path.slice(0, slash)}/types.ts`;
+    linked[typesPath] = `${linked[typesPath] ?? ""}
+export type { ${branch.types.join(", ")} } from "./${path.slice(slash + 1)}/types.js";
+`;
+  }
   const localNames = declaredServiceNames(local);
   const serviceScopes = declaredServiceScopes(local, localNames, directory);
+  for (const name of Object.keys(serviceScopes)) serviceScopes[name] = serviceScopes[name]!.filter(visible);
   for (const entry of modules) {
-    if (!entry) continue;
+    if (!entry || !visible(`${entry.mount}/`)) continue;
     for (const [path, text] of Object.entries(entry.files))
       linked[`${entry.mount}/${path}`] = text;
     for (const [name, selectors] of Object.entries(entry.scopes)) {
@@ -141,7 +176,7 @@ export async function linkWorkspaceModules(
     }
   }
   linked["natlang.json"] = JSON.stringify({
-    ...JSON.parse(local["natlang.json"] ?? "{}"),
+    ...configuration,
     serviceScopes,
   });
   return linked;
