@@ -6920,6 +6920,29 @@ export class SemanticWorkspace {
    * deltas, and `ours`/`current` merge resolutions are collected in one place
    * with the intent that explains *why* the work was undone.
    */
+  private fileCounteractions(fileId: string | null): Row[] {
+    return this.deps.sql
+      .exec(
+        `SELECT DISTINCT counteraction.change_id AS counteracting_change_id,
+                counteraction.counteracted_change_id AS counteracted_change_id,
+                counteracting.work_unit_id AS counteracting_work_unit_id,
+                counteracted.work_unit_id AS counteracted_work_unit_id,
+                work.created_at AS created_at
+           FROM gad_change_coordinates coordinate
+           JOIN gad_change_counteractions counteraction
+             ON counteraction.counteracted_change_id = coordinate.change_id
+           JOIN gad_changes counteracted ON counteracted.change_id = coordinate.change_id
+           JOIN gad_changes counteracting ON counteracting.change_id = counteraction.change_id
+           JOIN gad_work_units work ON work.work_unit_id = counteracting.work_unit_id
+          WHERE coordinate.file_id = ?
+          ORDER BY work.created_at DESC, counteraction.change_id
+          LIMIT ?`,
+        fileId,
+        MAX_REJECTION_ROWS,
+      )
+      .toArray() as Row[];
+  }
+
   private rejectionsWalk(subject: Row): WalkPage {
     const kind = String(subject["kind"] ?? "");
     let fileId: string | null = null;
@@ -6953,26 +6976,7 @@ export class SemanticWorkspace {
       );
       return { entries, omitted: [], notes };
     }
-    const counteractions = this.deps.sql
-      .exec(
-        `SELECT counteraction.change_id AS counteracting_change_id,
-                counteraction.counteracted_change_id AS counteracted_change_id,
-                counteracting.work_unit_id AS counteracting_work_unit_id,
-                counteracted.work_unit_id AS counteracted_work_unit_id,
-                work.created_at AS created_at
-           FROM gad_change_coordinates coordinate
-           JOIN gad_change_counteractions counteraction
-             ON counteraction.counteracted_change_id = coordinate.change_id
-           JOIN gad_changes counteracted ON counteracted.change_id = coordinate.change_id
-           JOIN gad_changes counteracting ON counteracting.change_id = counteraction.change_id
-           JOIN gad_work_units work ON work.work_unit_id = counteracting.work_unit_id
-          WHERE coordinate.file_id = ?
-          ORDER BY work.created_at DESC, counteraction.change_id
-          LIMIT ?`,
-        fileId,
-        MAX_REJECTION_ROWS,
-      )
-      .toArray() as Row[];
+    const counteractions = this.fileCounteractions(fileId);
     const visible = this.visibleWorkUnitIds([
       ...counteractions.map((row) => String(row["counteracting_work_unit_id"])),
       ...counteractions.map((row) => String(row["counteracted_work_unit_id"])),
@@ -7599,24 +7603,14 @@ export class SemanticWorkspace {
       .toArray();
     if (any.length === 0) return 0;
     this.materializeVisibilityBasis([contextId]);
-    const rows = this.deps.sql
-      .exec(
-        `SELECT counteracting.work_unit_id AS counteracting_work_unit_id
-           FROM gad_change_coordinates coordinate
-           JOIN gad_change_counteractions counteraction
-             ON counteraction.counteracted_change_id = coordinate.change_id
-           JOIN gad_changes counteracting ON counteracting.change_id = counteraction.change_id
-          WHERE coordinate.file_id = ?
-          LIMIT ?`,
-        fileId,
-        MAX_REJECTION_ROWS,
-      )
-      .toArray() as Row[];
-    const visible = this.visibleWorkUnitIds(
-      rows.map((row) => String(row["counteracting_work_unit_id"])),
-    );
+    const rows = this.fileCounteractions(fileId);
+    const visible = this.visibleWorkUnitIds(rows.flatMap((row) => [
+      String(row["counteracting_work_unit_id"]),
+      String(row["counteracted_work_unit_id"]),
+    ]));
     return rows.filter((row) =>
-      visible.has(String(row["counteracting_work_unit_id"])),
+      visible.has(String(row["counteracting_work_unit_id"])) &&
+      visible.has(String(row["counteracted_work_unit_id"])),
     ).length;
   }
 

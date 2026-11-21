@@ -445,8 +445,16 @@ describe("provenance walks", () => {
       subject: { kind: "file", state: workingHead, repositoryId, fileId },
       visibilityContextIds: ["context:test"],
     });
-    const counteraction = result.entries.find((entry) => entry.group === "counteractions");
-    expect(counteraction).toBeTruthy();
+    const counteractions = result.entries.filter((entry) => entry.group === "counteractions");
+    expect(counteractions).toHaveLength(1);
+    const [counteraction] = counteractions;
+    const text = "export const backoffMs = 5_000;\n";
+    const memory = vcsReadMemoryResultSchema.parse(complete(await semantic.dispatch("readMemory", {
+      ingress,
+      input: { contextId: "context:test", path: "packages/fixture/retry.ts",
+        expectedContentHash: sha256Hex(new TextEncoder().encode(text)), range: { start: 0, end: text.length } },
+    })));
+    expect(memory).toMatchObject({ status: "attached", rejectionCount: 1 });
     expect(counteraction?.intent?.text).toContain("kills long-lived connections");
     expect(counteraction?.detail).toContain("Cap the retry backoff at 30 seconds");
     expect(result.entries.some((entry) => entry.group === "reverts")).toBe(true);
