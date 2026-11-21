@@ -37,6 +37,8 @@ export type VirtualProjectOptions = {
     modules?: Record<string, unknown>;
     /** Validate source and produce declarations without emitting JavaScript. */
     emit?: boolean;
+    /** Collect the program descriptor for adaptation. Defaults to true. */
+    adaptation?: boolean;
 };
 /**
  * Compile a virtual project and return a loader for its modules. `runtime` is the namespace that

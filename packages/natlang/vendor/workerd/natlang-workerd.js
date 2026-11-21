@@ -257546,24 +257546,25 @@ function compileProject(options) {
       sourceProblem(dir, error);
     }
   }
+  const collectAdaptation = options.adaptation !== false;
   const optimizationComponents = [];
   const optimizationSources = {};
   const programId = options.programId ?? basename(root2);
   const described = /* @__PURE__ */ new Set();
   const describeNamed = (record3) => {
-    if (described.has(record3.source)) return;
+    if (!collectAdaptation || described.has(record3.source)) return;
     described.add(record3.source);
     optimizationComponents.push(namedDescriptor(programId, record3));
   };
   const checkModules = (level) => {
     for (const item of Object.values(level)) {
       if (item.kind !== "namespace") item.programId = programId;
-      if (item.kind !== "namespace") optimizationSources[item.source] = item.text;
+      if (collectAdaptation && item.kind !== "namespace") optimizationSources[item.source] = item.text;
       if (item.kind === "natlang") describeNamed(item);
       if (item.kind === "module" && !described.has(item.source)) {
         described.add(item.source);
         try {
-          compileModule(item, level, (plans2) => optimizationComponents.push(...plans2.map((plan) => inlineDescriptor(programId, plan))));
+          compileModule(item, level, collectAdaptation ? (plans2) => optimizationComponents.push(...plans2.map((plan) => inlineDescriptor(programId, plan))) : void 0);
         } catch (error) {
           problem(item.source, error instanceof Error ? error.message : String(error));
         }
@@ -257573,7 +257574,7 @@ function compileProject(options) {
   };
   for (const record3 of namedRecords.values()) {
     record3.programId = programId;
-    optimizationSources[record3.source] = record3.text;
+    if (collectAdaptation) optimizationSources[record3.source] = record3.text;
     describeNamed(record3);
     checkModules(record3.codebase);
   }
@@ -257702,8 +257703,10 @@ function compileProject(options) {
     plans.set(file, analysis.plans);
     readouts.set(file, analysis.readouts);
     instantiations.set(file, analysis.instantiations);
-    optimizationSources[rel(file.fileName)] = file.text;
-    optimizationComponents.push(...analysis.plans.map((plan) => inlineDescriptor(programId, plan)));
+    if (collectAdaptation) {
+      optimizationSources[rel(file.fileName)] = file.text;
+      optimizationComponents.push(...analysis.plans.map((plan) => inlineDescriptor(programId, plan)));
+    }
   }
   const collectSources = (dir) => {
     for (const name of fs2.list(dir).sort()) {
@@ -257739,16 +257742,18 @@ function compileProject(options) {
       }
     }
   };
-  collectSources(root2);
-  let dependencyRoot = root2;
-  while (true) {
-    for (const lock of ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"]) {
-      const path2 = joinSourcePath(dependencyRoot, lock);
-      if (fs2.isFile(path2)) optimizationSources["@dependency-lock/" + lock] = fs2.read(path2);
+  if (collectAdaptation) {
+    collectSources(root2);
+    let dependencyRoot = root2;
+    while (true) {
+      for (const lock of ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"]) {
+        const path2 = joinSourcePath(dependencyRoot, lock);
+        if (fs2.isFile(path2)) optimizationSources["@dependency-lock/" + lock] = fs2.read(path2);
+      }
+      const parent = dirname2(dependencyRoot);
+      if (parent === dependencyRoot) break;
+      dependencyRoot = parent;
     }
-    const parent = dirname2(dependencyRoot);
-    if (parent === dependencyRoot) break;
-    dependencyRoot = parent;
   }
   const manifest = {
     version: NATLANG_COMPILE_VERSION,
@@ -257764,14 +257769,14 @@ function compileProject(options) {
       signature: `(${Object.entries(record3.args).map(([name, type]) => `${name}: ${type}`).join(", ")}) => ${record3.returns}`
     })),
     sites: [],
-    adaptation: describeProgram(
+    ...collectAdaptation ? { adaptation: describeProgram(
       programId,
       optimizationSources,
       optimizationComponents,
       options.guidance,
       options.importedGuidancePrograms,
       options.services ? { declarations: Object.fromEntries(Object.entries(options.services.declarations).map(([name, text3]) => [name, /^\s*declare (?:namespace|const) /.test(text3) ? text3.trim() : declarationNamespace(name, text3)])), scopes: options.services.scopes } : void 0
-    )
+    ) } : {}
   };
   const refinedSlots = [];
   const collectSlots = (level) => {
@@ -258090,6 +258095,7 @@ function compileVirtualProject(project, runtime, options) {
     runtimeSpecifier: specifiers[0],
     write: true,
     emit: options.emit,
+    adaptation: options.adaptation,
     surfaceSpecifiers: specifiers
   });
   const cache = /* @__PURE__ */ new Map();

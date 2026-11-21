@@ -231,6 +231,8 @@ export function compileProgram(options: {
     {
       platform,
       emit: !sourceEntry,
+      // VibeStudio executes the program without program-adaptation bindings.
+      adaptation: false,
       programId: label,
       ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: serviceScopes } } : {}),
     }
