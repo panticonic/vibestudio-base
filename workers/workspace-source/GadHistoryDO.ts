@@ -941,6 +941,11 @@ export class GadHistoryDO extends DurableObjectBase {
   }
 
   @rpc(hostRead)
+  readHistoryWorkingState(input: { contextId: string }) {
+    return this.#history().workingState(input.contextId);
+  }
+
+  @rpc(hostRead)
   readHistoryMain(input?: {
     commitMemoryEventId: string;
     commitMemoryPage?: { previousEventId: string | null; after: string | null } | null;

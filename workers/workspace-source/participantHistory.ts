@@ -422,6 +422,10 @@ export class ParticipantHistory {
     });
   }
 
+  workingState(contextId: string): Promise<StateNodeRef> {
+    return this.#run(() => this.#contextState(contextId).state);
+  }
+
   resolveState(contextId: string, ref: StateNodeRef): Promise<string | null> {
     return this.#run(() => this.#resolveState(contextId, ref));
   }
