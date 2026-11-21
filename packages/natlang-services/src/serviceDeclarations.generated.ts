@@ -5854,6 +5854,32 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  workspaceSmokeEvidence: `/** Search and read exact owned local workspace smoke specifications. */
+
+type SmokeAssignment = { id: string; goal: string; subject: string; context: string; revision: string; mayStage: boolean };
+
+type SmokePlan = { path: string; digest: string; context: string; revision: string; subject: string; exportName: string;
+  probe: string; input: unknown; accepted: unknown };
+
+type SmokeSource = { matches: number; truncated: boolean; plans: SmokePlan[] };
+
+/** Search and read exact owned local workspace smoke specifications. */
+export function discover(): Promise<SmokeAssignment>;
+
+/** Search and read exact owned local workspace smoke specifications. */
+export function scan(id: string): Promise<SmokeSource>;`,
+  workspaceSmokeRuntime: `/** Check the exact approved owned smoke contract in the installed local package. */
+
+type SmokeRuntime = { packageName: string; exportName: string; callable: boolean; value: unknown; runDigest: string };
+
+/** Check the exact approved owned smoke contract in the installed local package. */
+export function run(id: string, path: string, digest: string): Promise<SmokeRuntime>;`,
+  workspaceSmokeHandoff: `/** Retain an authorized successful workspace smoke receipt. */
+
+type SmokeReceipt = { path: string; bytes: number; sha256: string };
+
+/** Retain an authorized successful workspace smoke receipt. */
+export function stage(id: string, path: string, runDigest: string): Promise<SmokeReceipt>;`,
   sameTurnEvalEvidence: `/** Read terminal EvalDO evidence for the current user task and its owned scope. */
 
 type EvalAssignment = {
