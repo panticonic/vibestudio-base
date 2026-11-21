@@ -59,7 +59,7 @@ export const unitRepairTestEvidenceSchema = z.union([
       report: z
         .object({
           status: testRunStatus,
-          runtime: z.literal("workerd"),
+          runtime: z.enum(["workerd", "native"]),
           artifactKey: z.string(),
           executionDigest: z.string(),
           contextId: z.string(),
@@ -98,19 +98,19 @@ const revision = z
 export const unitRepairMethods = {
   observe: {
     description:
-      "Read a real compiler report at the assigned worker's current revision.",
+      "Read a real compiler report at the assigned unit's current revision.",
     args: z.tuple([]),
     returns: unitRepairEvidenceSchema,
   },
   listSource: {
     description:
-      "List files in the assigned worker repository at the supplied revision.",
+      "List files in the assigned unit repository at the supplied revision.",
     args: z.tuple([revision]),
     returns: z.array(z.string()),
   },
   readSource: {
     description:
-      "Read exact text from the assigned worker repository at the supplied revision.",
+      "Read exact text from the assigned unit repository at the supplied revision.",
     args: z.tuple([revision, z.array(z.string())]),
     returns: z.array(sourceFile),
   },
@@ -122,13 +122,13 @@ export const unitRepairMethods = {
   },
   build: {
     description:
-      "Compile the assigned worker at the supplied revision and read its diagnostics.",
+      "Compile the assigned unit at the supplied revision and read its diagnostics.",
     args: z.tuple([revision]),
     returns: unitRepairEvidenceSchema,
   },
   test: {
     description:
-      "Run the original manifest-selected workerd suite at the compiled revision and read the actual receipt.",
+      "Run the original manifest-selected suite at the compiled revision and read the actual receipt.",
     args: z.tuple([revision]),
     returns: unitRepairEvidenceSchema,
   },

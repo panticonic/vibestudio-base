@@ -9,6 +9,22 @@ declare module "natlang:services" {
 }
 
 declare module "natlang:services" {
+  export const terminalRepairCatalog: {
+    list(): Promise<import("./types.js").TerminalRepairApp[]>;
+  };
+  export const terminalRepairObserve: {
+    read(appId: string): Promise<import("./types.js").TerminalRepairCheck>;
+  };
+  export const terminalRepairApply: {
+    edit(appId: string, revision: string, edits: import("./types.js").TerminalRepairEdit[]): Promise<import("./types.js").TerminalRepairApplied>;
+  };
+  export const terminalRepairFinal: {
+    verify(appId: string, revision: string): Promise<import("./types.js").TerminalRepairCheck>;
+  };
+  export const terminalRepairArtifact: {
+    read(appId: string, revision: string): Promise<import("./types.js").TerminalRepairArtifact | null>;
+  };
+
   export const tendrilBoardDocket: {
     list(): Promise<import("./runUserGoal/workOnLiveTendrilBoard/types.js").LiveTendrilCard[]>;
     read(id: string): Promise<import("./runUserGoal/workOnLiveTendrilBoard/types.js").LiveTendrilTicket>;

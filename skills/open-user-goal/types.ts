@@ -24,6 +24,7 @@ export type WorkspaceEditReport =
 export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "liveLocalInventory"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "androidDelivery"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "terminalAppRepair"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "liveTendrilBoard"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "cliRoute"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }
@@ -558,4 +559,76 @@ export type LocalMethodReport = {
 export type LocalMethodOutcome = {
   scope: "owned-local-method-exchange"; card: LocalMethodCard; evidence: LocalMethodEvidence; plan: LocalMethodPlan;
   attempt: LocalMethodAttempt | null; terminal: LocalMethodReport | null;
+};
+
+export type TerminalRepairApp = {
+  id: string;
+  title: string;
+  path: string;
+  ownership: "current" | "retired";
+  mayEdit: boolean;
+  mayTest: boolean;
+};
+
+export type TerminalRepairSource = {path: string; text: string};
+export type TerminalRepairEdit = {path: string; before: string; after: string};
+
+export type TerminalRepairObservation = {
+  revision: string;
+  stateHash: string;
+  buildStatus: "ok" | "failed" | "skipped";
+  diagnostics: {severity: string; source: string; message: string; file: string}[];
+  paths: string[];
+  sources: TerminalRepairSource[];
+};
+
+export type TerminalRepairTests = {
+  revision: string;
+  stateHash: string;
+  runtime: string;
+  status: string;
+  suite: string;
+  artifactKey: string | null;
+  executionDigest: string | null;
+  passed: number;
+  failed: number;
+  total: number;
+  details: {file: string; status: string; errors?: string[]}[];
+};
+
+export type TerminalRepairCheck = {
+  observed: TerminalRepairObservation;
+  tests: TerminalRepairTests | null;
+};
+
+export type TerminalRepairApplied = {
+  status: "applied" | "moved";
+  revision: string;
+};
+
+export type TerminalRepairArtifact = {
+  source: string;
+  revision: string;
+  stateHash: string;
+  buildKey: string;
+  runtime: "terminal";
+  artifactDigest: string;
+  executionDigest: string;
+};
+
+export type TerminalRepairPlan = {
+  status: "repair" | "existing" | "hold-edit" | "hold-test" | "blocked";
+  edits: TerminalRepairEdit[];
+  reason: string;
+};
+
+export type TerminalRepairReport = {
+  app: TerminalRepairApp;
+  initial: TerminalRepairCheck;
+  plans: TerminalRepairPlan[];
+  applied: TerminalRepairApplied[];
+  final: TerminalRepairCheck | null;
+  artifact: TerminalRepairArtifact | null;
+  outcome: "verified" | "already-ready" | "hold-edit" | "hold-test" | "hold-moved" | "blocked";
+  explanation: string;
 };

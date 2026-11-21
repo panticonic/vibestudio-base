@@ -1,4 +1,5 @@
 import type { WorkspaceRuntime } from "@workspace/runtime/hosted";
+import { expectedBuildUnitName, isTerminalAppLocation } from "@vibestudio/workspace-contracts/sourceDirs";
 import { unitBuildReportSchema } from "@vibestudio/service-schemas/build";
 import type { z } from "zod";
 import {
@@ -28,8 +29,10 @@ export function createUnitRepair(options: {
   }): Promise<unknown>;
 }) {
   const { contextId, unit, suite, vcs } = options;
-  if (!/^workers\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(unit))
-    throw new Error("Assign one worker repository.");
+  if (!/^(?:workers|terminal-apps)\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(unit) ||
+      !expectedBuildUnitName(unit))
+    throw new Error("Assign one worker or terminal app repository.");
+  const runtime = isTerminalAppLocation(unit) ? "native" : "workerd";
   const allowed = new Set(options.editablePaths);
   const validPath = (path: string) =>
     path.startsWith(unit + "/") &&
@@ -59,7 +62,7 @@ export function createUnitRepair(options: {
   };
   const read = async (expected: string, path: string) => {
     if (!validPath(path))
-      throw new Error("Read source only in the assigned worker repository.");
+      throw new Error("Read source only in the assigned unit repository.");
     const state = await basis(expected);
     const repo = await vcs.resolveRepository({ state, repoPath: unit });
     if (!repo) throw new Error("Assigned worker repository is absent.");
@@ -183,15 +186,18 @@ export function createUnitRepair(options: {
         receipt.contextId !== contextId ||
         receipt.ref !== `ctx:${contextId}` ||
         receipt.suite !== suite ||
-        receipt.runtime !== "workerd" ||
+        receipt.runtime !== runtime ||
         receipt.stateHash !== built.build.stateHash
       )
         throw new Error(
-          "Test receipt does not match the assigned candidate and declared workerd suite.",
+          "Test receipt does not match the assigned candidate and declared suite runtime.",
         );
       if (
         result.status !== "compilation-failed" &&
-        (!receipt.artifactKey ||
+        (result.report.runtime !== runtime ||
+          result.report.contextId !== contextId ||
+          result.report.target !== unit ||
+          !receipt.artifactKey ||
           !receipt.executionDigest ||
           result.report.artifactKey !== receipt.artifactKey ||
           result.report.executionDigest !== receipt.executionDigest)

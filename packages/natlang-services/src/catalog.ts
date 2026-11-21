@@ -56,6 +56,11 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("terminalRepairCatalog", "List current and retired owned terminal app source identities.", "base", "open-user-goal", [{ name: "list", params: [] }]),
+  authoredService("terminalRepairObserve", "Read the assigned terminal app and actual native baseline evidence.", "base", "open-user-goal", [{ name: "read", params: ["appId"] }]),
+  authoredService("terminalRepairApply", "Apply exact production source changes at the approved terminal app revision.", "base", "open-user-goal", [{ name: "edit", params: ["appId", "revision", "edits"] }]),
+  authoredService("terminalRepairFinal", "Verify the exact terminal source with its focused native suite.", "base", "open-user-goal", [{ name: "verify", params: ["appId", "revision"] }]),
+  authoredService("terminalRepairArtifact", "Read the verified terminal app build artifact at its exact source state.", "base", "open-user-goal", [{ name: "read", params: ["appId", "revision"] }]),
   authoredService("localMethodRead", "Read the owned native method lane and exact terminal result.", "base", "open-user-goal", [{ name: "discover", params: [] }, { name: "inspect", params: ["id"] }, { name: "settle", params: ["id", "basis", "transport"] }]),
   authoredService("localMethodDispatch", "Dispatch the exact owned local native method once.", "base", "open-user-goal", [{ name: "request", params: ["id", "basis", "method"] }]),
   authoredService("scheduledMission", "Inspect owned future interval schedules and perform a revision-bound update.", "base", "open-owned-scheduled-recovery", [{ name: "discover", params: [] }, { name: "observe", params: ["id"] }, { name: "change", params: ["schedule", "change", "authorization"] }]),
@@ -694,7 +699,7 @@ export const SERVICE_CATALOG = [
   },
   {
     name: "unitRepair",
-    summary: "Read the assigned worker's source and real compiler diagnostics at one working revision.",
+    summary: "Read the assigned unit's source and real compiler diagnostics at one working revision.",
     contract: { origin: "base", file: "packages/natlang-services/src/unitRepairContracts.ts", table: "unitRepairMethods" },
     methods: [
       { name: "observe", params: [] },
@@ -704,7 +709,7 @@ export const SERVICE_CATALOG = [
   },
   {
     name: "unitRepairEdit",
-    summary: "Apply source edits and check the assigned worker using its original declared workerd suite.",
+    summary: "Apply source edits and check the assigned unit using its original declared Workerd or native suite.",
     contract: { origin: "base", file: "packages/natlang-services/src/unitRepairContracts.ts", table: "unitRepairMethods" },
     methods: [
       { name: "apply", params: ["revision", "edits"] },

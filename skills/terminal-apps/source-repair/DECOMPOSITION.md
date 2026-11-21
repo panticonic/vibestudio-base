@@ -1,0 +1,12 @@
+# Repair a current terminal application and prove the checked build
+
+| Stage | Form | Reason |
+| --- | --- | --- |
+| Identify current app and scope | `workOnTerminalApp` calls typed inventory and an authority judgment | A goal describes a user-visible behavior. Select the owned current app, understand allowed repair and test boundaries, and retain the observed repo identity and desired behavior. A lookalike app or missing test authorization cannot substitute. |
+| Diagnose source, propose and apply | Typed terminal-app source planning and exact existing unit repair services | Natural-language callable folders own the source hypothesis, diagnosis, repair and final artifact decision. Semantic VCS compare-and-set owns production source writes. The user-visible regression tests and app manifest are protected. |
+| Verify focused native tests and one production build | Reuse the canonical `verifyUnit` native runner, build report, and artifact metadata | The original manifest declares the native focused suite. A bounded test result is valid only if its native test artifact, execution digest, ref and state hash match the current production build evidence. A fresh independent compile and native test receipt join the model's result. |
+| Report eligibility or a scoped hold | Typed closeout | A user authorizes a repair only within the owned app. Readback has to distinguish verified, unchanged, and blocked candidates, including lack of authority, a stale handoff, or unavailable test/build evidence. No deployment or PTY invocation. |
+
+The corpus lineage is the existing `app-edit-test-build` system test. Its private fixture used the old `apps/` path. Live repository discovery classifies `terminal-apps/` as a terminal-hosted panel and routes it through the production Node bundler. Source mutation, build at `ctx:`, manifest-selected `native` execution, and exact artifact readback apply to that path. This family does not overlap the existing checklist input/session or PTY continuity cases. The current `createUnitRepair` consumer only allows a worker path and Workerd results. Extend this shared mechanism to recognize the canonical terminal path and retain its native runtime identity; retain the worker constraint for old callers. No parallel compiler or production verification APIs.
+
+The native test adapter now accepts terminal-app paths through the same import-parent taxonomy used by the host. Its scope traversal, exact context, suite declaration, dependency state, and sealed execution checks still apply.

@@ -215,6 +215,11 @@
   "serviceScopes": {
     "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
     "androidDeliveryScope": ["runUserGoal/verifyAndroidDelivery/readAndroidDeliveryScope.nl"],
+    "terminalRepairCatalog": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"],
+    "terminalRepairObserve": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/observeTerminalApp.nl"],
+    "terminalRepairApply": ["runUserGoal/workOnTerminalApp.nl"],
+    "terminalRepairFinal": ["runUserGoal/workOnTerminalApp/verifyTerminalOutput/checkFinalSource.nl"],
+    "terminalRepairArtifact": ["runUserGoal/workOnTerminalApp/verifyTerminalOutput/readTerminalArtifact.nl"],
     "tendrilBoardDocket": ["runUserGoal/workOnLiveTendrilBoard/findLiveTendrilTicket.nl"],
     "cliRouteDocket": ["runUserGoal/recoverCliRoute/selectCliDocket.nl"],
     "scaffoldRead": [

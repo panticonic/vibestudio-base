@@ -6,6 +6,112 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  terminalRepairCatalog: `/** List current and retired owned terminal app source identities. */
+
+type TerminalRepairApp = {
+  id: string;
+  title: string;
+  path: string;
+  ownership: "current" | "retired";
+  mayEdit: boolean;
+  mayTest: boolean;
+};
+
+/** List current and retired owned terminal app source identities. */
+export function list(): Promise<TerminalRepairApp[]>;`,
+  terminalRepairObserve: `/** Read the assigned terminal app and actual native baseline evidence. */
+
+type TerminalRepairSource = {path: string; text: string};
+
+type TerminalRepairObservation = {
+  revision: string;
+  stateHash: string;
+  buildStatus: "ok" | "failed" | "skipped";
+  diagnostics: {severity: string; source: string; message: string; file: string}[];
+  paths: string[];
+  sources: TerminalRepairSource[];
+};
+
+type TerminalRepairTests = {
+  revision: string;
+  stateHash: string;
+  runtime: string;
+  status: string;
+  suite: string;
+  artifactKey: string | null;
+  executionDigest: string | null;
+  passed: number;
+  failed: number;
+  total: number;
+  details: {file: string; status: string; errors?: string[]}[];
+};
+
+type TerminalRepairCheck = {
+  observed: TerminalRepairObservation;
+  tests: TerminalRepairTests | null;
+};
+
+/** Read the assigned terminal app and actual native baseline evidence. */
+export function read(appId: string): Promise<TerminalRepairCheck>;`,
+  terminalRepairApply: `/** Apply exact production source changes at the approved terminal app revision. */
+
+type TerminalRepairEdit = {path: string; before: string; after: string};
+
+type TerminalRepairApplied = {
+  status: "applied" | "moved";
+  revision: string;
+};
+
+/** Apply exact production source changes at the approved terminal app revision. */
+export function edit(appId: string, revision: string, edits: TerminalRepairEdit[]): Promise<TerminalRepairApplied>;`,
+  terminalRepairFinal: `/** Verify the exact terminal source with its focused native suite. */
+
+type TerminalRepairSource = {path: string; text: string};
+
+type TerminalRepairObservation = {
+  revision: string;
+  stateHash: string;
+  buildStatus: "ok" | "failed" | "skipped";
+  diagnostics: {severity: string; source: string; message: string; file: string}[];
+  paths: string[];
+  sources: TerminalRepairSource[];
+};
+
+type TerminalRepairTests = {
+  revision: string;
+  stateHash: string;
+  runtime: string;
+  status: string;
+  suite: string;
+  artifactKey: string | null;
+  executionDigest: string | null;
+  passed: number;
+  failed: number;
+  total: number;
+  details: {file: string; status: string; errors?: string[]}[];
+};
+
+type TerminalRepairCheck = {
+  observed: TerminalRepairObservation;
+  tests: TerminalRepairTests | null;
+};
+
+/** Verify the exact terminal source with its focused native suite. */
+export function verify(appId: string, revision: string): Promise<TerminalRepairCheck>;`,
+  terminalRepairArtifact: `/** Read the verified terminal app build artifact at its exact source state. */
+
+type TerminalRepairArtifact = {
+  source: string;
+  revision: string;
+  stateHash: string;
+  buildKey: string;
+  runtime: "terminal";
+  artifactDigest: string;
+  executionDigest: string;
+};
+
+/** Read the verified terminal app build artifact at its exact source state. */
+export function read(appId: string, revision: string): Promise<TerminalRepairArtifact | null>;`,
   localMethodRead: `/** Read the owned native method lane and exact terminal result. */
 
 type LocalMethodKind = "inspect-counts" | "compare-template" | "verify-ownership" | "confirm-state";
@@ -8808,9 +8914,9 @@ export function commit(head: string, message: string): Promise<{
   eventId: string;
   head: string;
 }>;`,
-  unitRepair: `/** Read the assigned worker's source and real compiler diagnostics at one working revision. */
+  unitRepair: `/** Read the assigned unit's source and real compiler diagnostics at one working revision. */
 
-/** Read a real compiler report at the assigned worker's current revision. */
+/** Read a real compiler report at the assigned unit's current revision. */
 export function observe(): Promise<{
   revision: string;
   build: {
@@ -8852,7 +8958,7 @@ export function observe(): Promise<{
     status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
     report: {
       status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
-      runtime: "workerd";
+      runtime: "workerd" | "native";
       artifactKey: string;
       executionDigest: string;
       contextId: string;
@@ -8903,15 +9009,15 @@ export function observe(): Promise<{
   } | null;
 }>;
 
-/** List files in the assigned worker repository at the supplied revision. */
+/** List files in the assigned unit repository at the supplied revision. */
 export function listSource(revision: string): Promise<string[]>;
 
-/** Read exact text from the assigned worker repository at the supplied revision. */
+/** Read exact text from the assigned unit repository at the supplied revision. */
 export function readSource(revision: string, paths: string[]): Promise<{
   path: string;
   text: string;
 }[]>;`,
-  unitRepairEdit: `/** Apply source edits and check the assigned worker using its original declared workerd suite. */
+  unitRepairEdit: `/** Apply source edits and check the assigned unit using its original declared Workerd or native suite. */
 
 /** Apply the exact production source edits atomically at the expected revision. */
 export function apply(revision: string, edits: {
@@ -8922,7 +9028,7 @@ export function apply(revision: string, edits: {
   revision: string;
 }>;
 
-/** Compile the assigned worker at the supplied revision and read its diagnostics. */
+/** Compile the assigned unit at the supplied revision and read its diagnostics. */
 export function build(revision: string): Promise<{
   revision: string;
   build: {
@@ -8964,7 +9070,7 @@ export function build(revision: string): Promise<{
     status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
     report: {
       status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
-      runtime: "workerd";
+      runtime: "workerd" | "native";
       artifactKey: string;
       executionDigest: string;
       contextId: string;
@@ -9015,7 +9121,7 @@ export function build(revision: string): Promise<{
   } | null;
 }>;
 
-/** Run the original manifest-selected workerd suite at the compiled revision and read the actual receipt. */
+/** Run the original manifest-selected suite at the compiled revision and read the actual receipt. */
 export function test(revision: string): Promise<{
   revision: string;
   build: {
@@ -9057,7 +9163,7 @@ export function test(revision: string): Promise<{
     status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
     report: {
       status: "passed" | "failed" | "no-tests" | "cancelled" | "infrastructure-error";
-      runtime: "workerd";
+      runtime: "workerd" | "native";
       artifactKey: string;
       executionDigest: string;
       contextId: string;

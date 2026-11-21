@@ -13,6 +13,8 @@ For an owned live Tendril handoff board that needs presentation, a visible state
 
 For a saved workspace CLI invocation whose server, workspace route or selected context needs confirmation, use recoverCliRoute when available. Report skill "cliRoute". Terminal command output and PTY resumption are separate requests.
 
+For a request to diagnose or repair an installed terminal application's own source and verify its native focused tests and build, call workOnTerminalApp. Report skill "terminalAppRepair" and the actual outcome.
+
 For a local operational rehearsal that needs independent impact and recovery workers or a release checkpoint carried across its owned worker restart, call coordinateOwnedOperations when available. Report skill "ownedOperations".
 
 For a request to save or update a local incident report or distinguish the correct incident before drafting, call workOnProblemReportGoal. Return skill "problemReport" and its actual outcome.

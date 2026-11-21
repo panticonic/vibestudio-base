@@ -18,7 +18,7 @@ export type BuildReport = {
 };
 export type TestReport = {
   status: string;
-  runtime: "workerd";
+  runtime: "workerd" | "native";
   artifactKey?: string;
   executionDigest?: string;
   contextId: string;
