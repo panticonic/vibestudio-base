@@ -16,6 +16,12 @@ declare module "natlang:services" {
       decision: import("./types.js").ClientDecision,
     ): Promise<import("./types.js").ClientHandoff | null>;
   };
+  export const gadDurableHistory: {
+    read(): Promise<import("./types.js").DurableQuestionHistory>;
+  };
+  export const gadDurableRoster: {
+    read(historyReceipt: string): Promise<import("./types.js").DurableQuestionRoster>;
+  };
   export const gadHealth: {
     observe(operationId: string): Promise<ChannelHealth>;
   };

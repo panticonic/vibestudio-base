@@ -113,3 +113,57 @@ export type ClientDiagnosticsReport = {
   decision: ClientDecision;
   handoff: ClientHandoff | null;
 };
+
+export type DurableQuestionMessage = {
+  messageId: string;
+  envelopeId: string;
+  sequence: number;
+  senderId: string;
+  senderKind: string;
+  role: "user" | "assistant";
+  textBlocks: string[];
+};
+
+export type DurableQuestionHistory = {
+  receipt: string;
+  channelId: string;
+  complete: boolean;
+  through: number | null;
+  messages: DurableQuestionMessage[];
+};
+
+export type DurableRosterMember = {
+  participantId: string;
+  handle: string | null;
+  displayName: string | null;
+  kind: string | null;
+  joinedAt: string;
+  leftAt: string | null;
+};
+
+export type DurableQuestionRoster = {
+  receipt: string;
+  channelId: string;
+  complete: boolean;
+  members: DurableRosterMember[];
+};
+
+export type DurableQuestionJudgment = {
+  status: "current" | "withdrawn" | "settled" | "no-question" | "history-incomplete";
+  message: DurableQuestionMessage | null;
+};
+
+export type DurableParticipantJudgment = {
+  status: "confirmed" | "absent" | "incomplete" | "inactive" | "ambiguous";
+  member: DurableRosterMember | null;
+};
+
+export type DurableQuestionReport = {
+  historyReceipt: string;
+  rosterReceipt: string;
+  channelId: string;
+  question: DurableQuestionJudgment;
+  participant: DurableParticipantJudgment;
+  disposition: "ready" | "hold";
+  explanation: string;
+};

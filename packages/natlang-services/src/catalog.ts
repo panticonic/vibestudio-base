@@ -339,6 +339,8 @@ const authoredServices = [
   authoredService("clientDiagnostics", "Inspect and recover current owned clients, join durable GAD evidence, and stage an exact local handoff.", "base", "gad-context/natlang", [{ name: "discover", params: [] }, { name: "observe", params: ["surfaceId"] }, { name: "apply", params: ["viewId", "action"] }, { name: "channel", params: ["view"] }, { name: "stage", params: ["audience", "decision"] }]),
   authoredService("gadHealth", "Observe one assigned GAD health snapshot.", "base", "gad-context/natlang", [{ name: "observe", params: ["operationId"] }]),
   authoredService("gadFollowUp", "Inspect the exact assigned channel finding.", "base", "gad-context/natlang", [{ name: "inspect", params: ["healthReceipt", "kind"] }]),
+  authoredService("gadDurableHistory", "Read exact current published messages in the assigned conversation.", "base", "gad-context/natlang", [{ name: "read", params: [] }]),
+  authoredService("gadDurableRoster", "Read current participant identities using the assigned durable history receipt.", "base", "gad-context/natlang", [{ name: "read", params: ["historyReceipt"] }]),
   authoredService("gadConversation", "Read the assigned bounded channel tail.", "base", "gad-context/natlang", [{ name: "read", params: ["operationId"] }]),
   authoredService("phoneSetupRead", "Read the assigned phone setup and paired workspace readiness.", "base", "phone-setup/natlang", [{ name: "start", params: ["operationId"] }, { name: "discover", params: ["prepareReceipt"] }, { name: "readiness", params: ["pairingReceipt"] }]),
   authoredService("phoneSetupPrepare", "Prepare the assigned desktop for phone setup.", "base", "phone-setup/natlang", [{ name: "prepare", params: ["startReceipt", "providerId"] }]),

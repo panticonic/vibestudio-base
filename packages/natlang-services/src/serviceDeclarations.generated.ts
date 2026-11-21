@@ -7047,6 +7047,48 @@ type ChannelFollowUp = {
 
 /** Inspect the exact assigned channel finding. */
 export function inspect(healthReceipt: string, kind: string): Promise<ChannelFollowUp>;`,
+  gadDurableHistory: `/** Read exact current published messages in the assigned conversation. */
+
+type DurableQuestionMessage = {
+  messageId: string;
+  envelopeId: string;
+  sequence: number;
+  senderId: string;
+  senderKind: string;
+  role: "user" | "assistant";
+  textBlocks: string[];
+};
+
+type DurableQuestionHistory = {
+  receipt: string;
+  channelId: string;
+  complete: boolean;
+  through: number | null;
+  messages: DurableQuestionMessage[];
+};
+
+/** Read exact current published messages in the assigned conversation. */
+export function read(): Promise<DurableQuestionHistory>;`,
+  gadDurableRoster: `/** Read current participant identities using the assigned durable history receipt. */
+
+type DurableRosterMember = {
+  participantId: string;
+  handle: string | null;
+  displayName: string | null;
+  kind: string | null;
+  joinedAt: string;
+  leftAt: string | null;
+};
+
+type DurableQuestionRoster = {
+  receipt: string;
+  channelId: string;
+  complete: boolean;
+  members: DurableRosterMember[];
+};
+
+/** Read current participant identities using the assigned durable history receipt. */
+export function read(historyReceipt: string): Promise<DurableQuestionRoster>;`,
   gadConversation: `/** Read the assigned bounded channel tail. */
 
 type ChannelTail = {

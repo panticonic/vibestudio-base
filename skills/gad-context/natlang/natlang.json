@@ -7,6 +7,8 @@
   "serviceScopes": {
     "clientDiagnostics": ["workOnClientDiagnostics.nl", "workOnClientDiagnostics/stageClientHandoff.nl"],
     "gadHealth": ["reviewChannel/reviewHealth/readHealth.nl"],
+    "gadDurableHistory": ["reviewDurableQuestion/reviewQuestion/readMessages.nl"],
+    "gadDurableRoster": ["reviewDurableQuestion/reviewParticipant/readMembers.nl"],
     "gadFollowUp": ["reviewChannel/inspectFinding.nl"],
     "gadConversation": ["reviewChannel/reviewConversation/readConversation.nl"]
   }

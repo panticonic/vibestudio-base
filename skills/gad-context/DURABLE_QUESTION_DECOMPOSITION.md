@@ -1,0 +1,11 @@
+# Review an individual durable question and its current participant
+
+| Stage | Form | Mechanism and reason |
+| --- | --- | --- |
+| Open the assigned conversation | Typed entry in the installed `gad-context/natlang` package | Retain the original goal and require both history and roster in the same review. |
+| Read the durable history | A leaf calling a scoped read service | `gad.readChannelEnvelopes` hydrates the workspace log payload. Natively bounded paging establishes one snapshot and small local fixture size keeps the current evidence visible. Exact projection preserves identity, original text blocks, sequence, publication identity, speaker role and sender. |
+| Decide which message matters | Natural-language question selection | Distinguish current individual user questions from reported speech, answered or withdrawn questions, later nonquestions and agent prose. Keep the selected exact row and its disposition. |
+| Verify current participant | Separate scoped roster leaf and natural-language judgment | `gad.inspectChannelRoster` reads persisted `channel_roster` join, update and leave projections. Exact readback includes participant ID, handle, current/inactive state and channel. Match the question and goal to one still-current participant. A display name, other channel, empty roster or incomplete/ambiguous role cannot establish that identity. |
+| Return a read-only handoff or grounded hold | Typed outer lambda | Explain the decisive current facts together. Report the exact evidence receipts, selected message and participant. No action modifies the channel or contacts a participant. |
+
+The existing reviewChannel path intentionally summarizes a recent tail and can inspect roster counters after health triage. It continues to handle that problem. This entry uses the same installed review package but follows the whole bounded durable question and current roster together. System Testing provisions owned conversations, publishes individual user messages through the native caller relay, and reads the channel runtime history and membership separately from the GAD client. The source check runs the actual channel and GAD SQLite projection under local test transport. The managed Workerd check can exercise the same scoped service binding later.

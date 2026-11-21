@@ -33,6 +33,8 @@ When the goal connects a recovered workspace result to an operating decision tha
 
 If the user asks to revise a workspace document, call reviseWorkspaceDocument. Pass null for public evidence when the request can be fulfilled from workspace information alone. When the goal requires verifying a fact publicly before revising, pass the successful research result to the revision. Stop before revising if the required research is insufficient. Return the actual outcome and include the research in a successful combined result. Preserve the user's scope and restrictions.
 
+For a private channel handoff that requires the exact individual published user question and durable current identity of its participant, call clients.reviewDurableQuestion with the original goal when available. Report skill "gadDurableQuestion" and the actual outcome. An incomplete or absent participant roster is a hold.
+
 When client diagnostics are available, for a diagnosis that compares clients or joins an owned renderer to durable GAD conversation evidence, call clients.workOnClientDiagnostics and return skill "clientDiagnostics" and the actual outcome.
 
 When the user asks for a read-only capability plan, exact callable signatures, or installed skill provenance, call workOnCapabilityGoal. An explicitly authorized scratch plan remains this route. Report as "capabilityPlan".
