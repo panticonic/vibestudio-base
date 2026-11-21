@@ -1,4 +1,5 @@
 import { type GenericResult } from '../native/representation.js';
+export { readTypesFile } from './linked-types.js';
 export type SourceFiles = {
     join(...parts: string[]): string;
     dirname(path: string): string;
@@ -114,12 +115,6 @@ export declare function readNatlangFrontmatter(source: string): Record<string, u
 export declare function parseNatlang(path: string, text: string, inherited: Record<string, string>, files: SourceFiles): NatlangRecord;
 /** Parse a TypeScript module in a callable folder: its exports, imports, and type aliases. */
 export declare function parseModule(path: string, text: string, inherited: Record<string, string>, files: SourceFiles): ModuleRecord;
-/**
- * The type aliases of a `types.ts`, including those it re-exports from another types module with
- * `export type { A, B } from "../other/types.js"` or `export * from "./more.js"`. Two applications share one definition
- * that way instead of declaring it twice. Only relative specifiers that name a readable file are followed.
- */
-export declare function readTypesFile(path: string, files: SourceFiles, seen?: string[]): Record<string, string>;
 /** Load a callable folder into a record tree. `inherited` holds type aliases from enclosing folders. */
 export declare function loadCallableFolder(dir: string, files: SourceFiles, inherited?: Record<string, string>): Record<string, ItemRecord>;
 /** Load a named `.nl` function with its companion folder as its callable context. */
