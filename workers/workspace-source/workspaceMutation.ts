@@ -637,7 +637,7 @@ export function planEdit(
   const changes: MutationDraft["changes"] = [];
   const fileResults: MutationDraft["fileResults"] = [];
   const repositoryResults: MutationDraft["repositoryResults"] = [];
-  const blobs: NonNullable<MutationDraft["blobs"]> = [];
+  const contentByHash = new Map<string, Uint8Array>();
   const touched = new Set<string>();
   input.changes.forEach((change, operation) => {
     if (change.kind === "repository-create") {
@@ -709,7 +709,7 @@ export function planEdit(
           newFile: true,
           changeRef: { kind: "authored", ordinal: fileChangeIndex },
         });
-        blobs.push({ contentHash, base64: base64FromBytes(bytes) });
+        contentByHash.set(contentHash, bytes);
       });
       return;
     }
@@ -812,7 +812,7 @@ export function planEdit(
         newFile: true,
         changeRef: { kind: "authored", ordinal: operation },
       });
-      blobs.push({ contentHash, base64: base64FromBytes(bytes) });
+      contentByHash.set(contentHash, bytes);
       return;
     }
     const file = basis.file(change.fileId);
@@ -943,11 +943,7 @@ export function planEdit(
       newFile: false,
       changeRef: { kind: "authored", ordinal: operation },
     });
-    if (bytes)
-      blobs.push({
-        contentHash: result.contentHash,
-        base64: base64FromBytes(bytes),
-      });
+    if (bytes) contentByHash.set(result.contentHash, bytes);
   });
   return {
     kind: input.changes.some((change) => change.kind === "repository-create")
@@ -958,7 +954,10 @@ export function planEdit(
     changes,
     fileResults,
     repositoryResults,
-    blobs,
+    blobs: [...contentByHash].map(([contentHash, bytes]) => ({
+      contentHash,
+      base64: base64FromBytes(bytes),
+    })),
   };
 }
 

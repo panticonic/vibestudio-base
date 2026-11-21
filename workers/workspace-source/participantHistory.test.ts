@@ -480,6 +480,35 @@ it("reads edit placements at the selected revision without changing the checkout
   expect(graph.dolt.hashOf("HEAD")).toBe(other.head);
 });
 
+it("prepares identical files once without dropping either repository placement", () => {
+  const file = (path: string, text: string) => ({
+    path,
+    mode: 0o644,
+    content: { kind: "text" as const, text },
+  });
+  const draft = planEdit({
+    commandId: "prepare-application",
+    contextId: "edit",
+    expectedWorkingHead: { kind: "event", eventId: "genesis" },
+    changes: [
+      { kind: "repository-create", repoPath: "panels/tasks", files: [file("README.md", "shared"), file("index.ts", "panel")] },
+      { kind: "repository-create", repoPath: "workers/tasks", files: [file("README.md", "shared")] },
+    ],
+  }, null, {
+    file: () => null,
+    repository: () => null,
+    repositoryAtPath: () => null,
+    emptyRepository: () => null,
+    hasFileAtPath: () => false,
+  });
+  const shared = sha256HexSyncText("shared");
+  const panel = sha256HexSyncText("panel");
+
+  expect(draft.repositoryResults).toHaveLength(2);
+  expect(draft.fileResults.map(({ result }) => result?.contentHash)).toEqual([shared, panel, shared]);
+  expect(draft.blobs?.map(({ contentHash }) => contentHash)).toEqual([shared, panel]);
+});
+
 it("rejects an approved main publication after its grant expires", async () => {
   let now = Date.now();
   const { canonical, genesis, origin, createParticipant } = await workspace(() => now);
