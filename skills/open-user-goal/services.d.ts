@@ -269,3 +269,14 @@ declare module "natlang:services" {
       Promise<import("./types.js").SystemCandidateReceipt | null>;
   };
 }
+
+declare module "natlang:services" {
+  export const scaffoldRead: {
+    discover(): Promise<import("./types.js").ScaffoldCard[]>;
+    options(id: string): Promise<import("./types.js").ScaffoldOptions>;
+    readback(id: string, draft: string | null): Promise<import("./types.js").ScaffoldReadback>;
+  };
+  export const scaffoldPrepare: {
+    prepare(id: string, event: string, kinds: import("./types.js").ScaffoldKind[]): Promise<import("./types.js").ScaffoldReceipt | null>;
+  };
+}

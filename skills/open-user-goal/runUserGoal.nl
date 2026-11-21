@@ -87,6 +87,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - For recovering a cancelled, failed, or incomplete native eval and handing off verified retained output, call workOnEvalHandoffGoal with the user's goal. Report as "evalHandoff".
 - For an actual typed program trial, a verified output receipt, or inspecting a callable specifically for a requested trial, call workOnProgramRunGoal with the user's goal. Report as "programRun".
 - For reviewing the current authored Natlang program, release compatibility, or compiler evidence, call workOnAuthoringGoal with the user's goal. Report as "authoring".
+- To choose or prepare a native starter from a product outcome and read its exact private draft, call prepareOwnedScaffold. Report as "scaffoldReview".
 - For an owned staged System template conflict, coordinate-level local versus incoming changes or private conflict evidence, call triageSystemTemplate with the unchanged goal. Report as "systemCandidateTriage".
 - For an owned Examples composition review of whole-unit ownership, inherited settings or a private adoption artifact, call reviewExamplesAdoption. Report as "examplesAdoption".
 - For an owned Grimoire caretaker request about its current interactive canvas, accessible labels or a scene-specific private artifact, call careForGrimoireScene. Report as "grimoireScene".

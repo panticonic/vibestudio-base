@@ -177,6 +177,12 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "scaffoldRead": [
+      "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl",
+      "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/readInstalledScaffolds.nl",
+      "runUserGoal/prepareOwnedScaffold/rereadScaffoldDraft.nl"
+    ],
+    "scaffoldPrepare": ["runUserGoal/prepareOwnedScaffold/stageNativeScaffold.nl"],
     "systemCandidateRead": [
       "runUserGoal/triageSystemTemplate/findSystemCandidate.nl",
       "runUserGoal/triageSystemTemplate/readCandidateEvidence/readDeltaFrontier.nl",

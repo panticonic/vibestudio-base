@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }
   | { status: "workspace-skill-reviewed"; skill: "systemCandidateTriage"; outcome: SystemCandidateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "ownedOperations"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "examplesAdoption"; outcome: AdoptionOutcome }
@@ -506,4 +507,20 @@ export type SystemCandidateOutcome = {
   scope: "owned-system-template-conflict-review"; card: SystemCandidateCard; frontier: SystemCandidateFrontier;
   preview: SystemCandidatePreview; plan: SystemCandidatePlan; gate: SystemCandidateGate;
   receipt: SystemCandidateReceipt | null; readback: SystemCandidateReadback;
+};
+
+export type ScaffoldKind = "react" | "react-site" | "svelte" | "svelte-site" | "stateless" | "agentic" |
+  "package" | "skill" | "content" | "web-client" | "terminal-client" | "native-client";
+export type ScaffoldCard = { id: string; label: string; names: string[]; event: string; edition: "owned" | "archived"; permission: "draft" | "read-only" };
+export type ScaffoldOptions = { id: string; available: ScaffoldKind[]; occupied: string[]; svelteSource: string | null; protectedMain: string };
+export type ScaffoldPlan = {
+  disposition: "prepare" | "advise-only" | "hold-authority" | "hold-unavailable" | "hold-occupied";
+  kinds: ScaffoldKind[]; finding: string;
+};
+export type ScaffoldDraftUnit = { target: string; kind: ScaffoldKind; files: string[]; manifestDigest: string | null; entry: string | null; portableEntry: string | null; hostAbi: string | null; authority: string[]; nativeTests: string[] };
+export type ScaffoldReceipt = { commandId: string; draft: string; publication: "unchanged"; runtime: "unchanged"; units: ScaffoldDraftUnit[] };
+export type ScaffoldReadback = { main: string; draft: string; units: ScaffoldDraftUnit[] };
+export type ScaffoldOutcome = {
+  scope: "owned-scaffold-draft"; card: ScaffoldCard; options: ScaffoldOptions; plan: ScaffoldPlan;
+  receipt: ScaffoldReceipt | null; readback: ScaffoldReadback;
 };

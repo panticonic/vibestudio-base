@@ -2324,6 +2324,38 @@ export function refresh(lane: NotificationLane): Promise<NotificationRefresh>;
 /** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
 export function acknowledge(lane: NotificationLane, id: string, revision: number):
       Promise<NotificationAcknowledgment>;`,
+  scaffoldRead: `/** Read an owned scaffold brief, installed native options and exact VCS draft. */
+
+type ScaffoldCard = { id: string; label: string; names: string[]; event: string; edition: "owned" | "archived"; permission: "draft" | "read-only" };
+
+type ScaffoldKind = "react" | "react-site" | "svelte" | "svelte-site" | "stateless" | "agentic" |
+  "package" | "skill" | "content" | "web-client" | "terminal-client" | "native-client";
+
+type ScaffoldOptions = { id: string; available: ScaffoldKind[]; occupied: string[]; svelteSource: string | null; protectedMain: string };
+
+type ScaffoldDraftUnit = { target: string; kind: ScaffoldKind; files: string[]; manifestDigest: string | null; entry: string | null; portableEntry: string | null; hostAbi: string | null; authority: string[]; nativeTests: string[] };
+
+type ScaffoldReadback = { main: string; draft: string; units: ScaffoldDraftUnit[] };
+
+/** Read an owned scaffold brief, installed native options and exact VCS draft. */
+export function discover(): Promise<ScaffoldCard[]>;
+
+/** Read an owned scaffold brief, installed native options and exact VCS draft. */
+export function options(id: string): Promise<ScaffoldOptions>;
+
+/** Read an owned scaffold brief, installed native options and exact VCS draft. */
+export function readback(id: string, draft: string | null): Promise<ScaffoldReadback>;`,
+  scaffoldPrepare: `/** Prepare the assigned native scaffold without publishing. */
+
+type ScaffoldKind = "react" | "react-site" | "svelte" | "svelte-site" | "stateless" | "agentic" |
+  "package" | "skill" | "content" | "web-client" | "terminal-client" | "native-client";
+
+type ScaffoldDraftUnit = { target: string; kind: ScaffoldKind; files: string[]; manifestDigest: string | null; entry: string | null; portableEntry: string | null; hostAbi: string | null; authority: string[]; nativeTests: string[] };
+
+type ScaffoldReceipt = { commandId: string; draft: string; publication: "unchanged"; runtime: "unchanged"; units: ScaffoldDraftUnit[] };
+
+/** Prepare the assigned native scaffold without publishing. */
+export function prepare(id: string, event: string, kinds: ScaffoldKind[]): Promise<ScaffoldReceipt | null>;`,
   systemCandidateRead: `/** Read one exact System semantic delta and bounded file triage. */
 
 type SystemCandidateCard = {
