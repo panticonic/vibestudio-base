@@ -33,3 +33,16 @@
 3. Re-read the exact native conflict coordinates and current frontier before
    a private handoff. Record an exact source-bound artifact or hold. No change
    to template, deployment or review content.
+
+## Installed review harness
+
+The owned fixture uses native semantic `importSnapshot`, `registerExternalDelta`
+and `compare`, the same staged coordinate mechanisms used by the Templates
+lifecycle. Complete installed System unit bytes anchor the fixture. Each
+base/local read uses the native repository ID and event; the incoming body is
+reread from the registered content address. The lifecycle's byte preview and
+the authored binding share the same VCS engine projector. A scenario is
+available only in System and when its exact installed unit and the Templates
+review units are present. The managed path does not rely on a remote update
+offer. Source verification uses the real SQL-backed semantic workspace with
+explicit host-side blob and materialization test ports.

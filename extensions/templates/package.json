@@ -390,6 +390,7 @@
     }
   },
   "dependencies": {
+    "@workspace/vcs-engine": "workspace:*",
     "@vibestudio/content-addressing": "workspace:*",
     "@vibestudio/credential-client": "workspace:*",
     "@vibestudio/git": "workspace:*",

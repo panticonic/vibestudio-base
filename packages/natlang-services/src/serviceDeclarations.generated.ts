@@ -2324,6 +2324,61 @@ export function refresh(lane: NotificationLane): Promise<NotificationRefresh>;
 /** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
 export function acknowledge(lane: NotificationLane, id: string, revision: number):
       Promise<NotificationAcknowledgment>;`,
+  systemCandidateRead: `/** Read one exact System semantic delta and bounded file triage. */
+
+type SystemCandidateCard = {
+  id: string; title: string; usual: string; workingEvent: string; deltaId: string;
+  main: string; mayRecord: boolean; edition: "working" | "retired";
+};
+
+type SystemCandidateCoordinate = {
+  id: string; path: string; status: "adopt" | "convergent" | "composed" | "conflict" | "resolved";
+  aspects: string[];
+};
+
+type SystemCandidateFrontier = {
+  id: string; workingEvent: string; deltaId: string; repository: string; installedDigest: string;
+  coordinates: SystemCandidateCoordinate[];
+};
+
+type SystemCandidateSide = { status: "text" | "missing" | "too-large" | "binary"; digest: string | null; text: string | null };
+
+type SystemCandidatePreview = {
+  coordinate: SystemCandidateCoordinate; base: SystemCandidateSide; ours: SystemCandidateSide; theirs: SystemCandidateSide;
+  result: "compose" | "same-change" | "incoming-only" | "collision" | "absence" | "limited";
+  composedDigest: string | null;
+};
+
+type SystemCandidateGate = { current: boolean; event: string; main: string };
+
+type SystemCandidateReadback = { event: string; main: string; artifactDigest: string | null };
+
+/** Read one exact System semantic delta and bounded file triage. */
+export function discover(): Promise<SystemCandidateCard[]>;
+
+/** Read one exact System semantic delta and bounded file triage. */
+export function compare(id: string, event: string): Promise<SystemCandidateFrontier>;
+
+/** Read one exact System semantic delta and bounded file triage. */
+export function preview(id: string, event: string, coordinate: string): Promise<SystemCandidatePreview>;
+
+/** Read one exact System semantic delta and bounded file triage. */
+export function confirm(id: string, event: string, coordinate: string): Promise<SystemCandidateGate>;
+
+/** Read one exact System semantic delta and bounded file triage. */
+export function readback(id: string, path: string | null): Promise<SystemCandidateReadback>;`,
+  systemCandidateHandoff: `/** Record one approved private System candidate diagnosis. */
+
+type SystemCandidateDecision = "carry-both" | "keep-converged" | "review-incoming" | "hold-collision" |
+  "hold-absence" | "hold-preview" | "hold-stale";
+
+type SystemCandidatePlan = { decision: SystemCandidateDecision; record: boolean; finding: string; proof: string[] };
+
+type SystemCandidateReceipt = { path: string; digest: string; coordinate: string; event: string };
+
+/** Record one approved private System candidate diagnosis. */
+export function record(id: string, event: string, coordinate: string, plan: SystemCandidatePlan):
+      Promise<SystemCandidateReceipt | null>;`,
   adoptionReview: `/** Read exact Examples installation, staged composition and independent private readback. */
 
 type AdoptionReviewCard = { id: string; title: string; event: string; edition: "staged" | "retired"; mayRecord: boolean };

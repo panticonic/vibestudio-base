@@ -176,6 +176,14 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "systemCandidateRead": [
+      "runUserGoal/triageSystemTemplate/findSystemCandidate.nl",
+      "runUserGoal/triageSystemTemplate/readCandidateEvidence/readDeltaFrontier.nl",
+      "runUserGoal/triageSystemTemplate/readCandidateEvidence/readFileTriplet.nl",
+      "runUserGoal/triageSystemTemplate/checkCandidateCurrent.nl",
+      "runUserGoal/triageSystemTemplate/verifyCandidateHandoff.nl"
+    ],
+    "systemCandidateHandoff": ["runUserGoal/triageSystemTemplate/recordCandidateHandoff.nl"],
     "adoptionReview": [
       "runUserGoal/reviewExamplesAdoption/findStagedComposition.nl",
       "runUserGoal/reviewExamplesAdoption/inspectComposition/readInstalledExamples.nl",

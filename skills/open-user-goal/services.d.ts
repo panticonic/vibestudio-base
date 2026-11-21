@@ -235,3 +235,17 @@ declare module "natlang:services" {
     record(id: string, event: string, plan: import("./types.js").AdoptionPlan): Promise<import("./types.js").AdoptionReceipt | null>;
   };
 }
+
+declare module "natlang:services" {
+  export const systemCandidateRead: {
+    discover(): Promise<import("./types.js").SystemCandidateCard[]>;
+    compare(id: string, event: string): Promise<import("./types.js").SystemCandidateFrontier>;
+    preview(id: string, event: string, coordinate: string): Promise<import("./types.js").SystemCandidatePreview>;
+    confirm(id: string, event: string, coordinate: string): Promise<import("./types.js").SystemCandidateGate>;
+    readback(id: string, path: string | null): Promise<import("./types.js").SystemCandidateReadback>;
+  };
+  export const systemCandidateHandoff: {
+    record(id: string, event: string, coordinate: string, plan: import("./types.js").SystemCandidatePlan):
+      Promise<import("./types.js").SystemCandidateReceipt | null>;
+  };
+}

@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "systemCandidateTriage"; outcome: SystemCandidateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "examplesAdoption"; outcome: AdoptionOutcome }
   | { status: "workspace-skill-reviewed"; skill: "grimoireScene"; outcome: GrimoireSceneOutcome }
   | { status: "workspace-skill-reviewed"; skill: "testkitCloseout"; outcome: unknown }
@@ -473,4 +474,34 @@ export type AdoptionReadback = { main: string; event: string; digest: string | n
 export type AdoptionOutcome = {
   scope: "owned-examples-composition-rehearsal"; card: AdoptionReviewCard; evidence: AdoptionEvidence;
   plan: AdoptionPlan; gate: AdoptionGate; receipt: AdoptionReceipt | null; readback: AdoptionReadback;
+};
+
+export type SystemCandidateCard = {
+  id: string; title: string; usual: string; workingEvent: string; deltaId: string;
+  main: string; mayRecord: boolean; edition: "working" | "retired";
+};
+export type SystemCandidateCoordinate = {
+  id: string; path: string; status: "adopt" | "convergent" | "composed" | "conflict" | "resolved";
+  aspects: string[];
+};
+export type SystemCandidateFrontier = {
+  id: string; workingEvent: string; deltaId: string; repository: string; installedDigest: string;
+  coordinates: SystemCandidateCoordinate[];
+};
+export type SystemCandidateSide = { status: "text" | "missing" | "too-large" | "binary"; digest: string | null; text: string | null };
+export type SystemCandidatePreview = {
+  coordinate: SystemCandidateCoordinate; base: SystemCandidateSide; ours: SystemCandidateSide; theirs: SystemCandidateSide;
+  result: "compose" | "same-change" | "incoming-only" | "collision" | "absence" | "limited";
+  composedDigest: string | null;
+};
+export type SystemCandidateDecision = "carry-both" | "keep-converged" | "review-incoming" | "hold-collision" |
+  "hold-absence" | "hold-preview" | "hold-stale";
+export type SystemCandidatePlan = { decision: SystemCandidateDecision; record: boolean; finding: string; proof: string[] };
+export type SystemCandidateGate = { current: boolean; event: string; main: string };
+export type SystemCandidateReceipt = { path: string; digest: string; coordinate: string; event: string };
+export type SystemCandidateReadback = { event: string; main: string; artifactDigest: string | null };
+export type SystemCandidateOutcome = {
+  scope: "owned-system-template-conflict-review"; card: SystemCandidateCard; frontier: SystemCandidateFrontier;
+  preview: SystemCandidatePreview; plan: SystemCandidatePlan; gate: SystemCandidateGate;
+  receipt: SystemCandidateReceipt | null; readback: SystemCandidateReadback;
 };
