@@ -253,6 +253,8 @@
     "installedPackageChange": ["runUserGoal/reviewInstalledPackage/restorePackage.nl"],
     "webhookAdmissionEvidence": ["runUserGoal/reviewWebhookAdmission/discoverWebhook.nl", "runUserGoal/reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"],
     "webhookAdmissionHandoff": ["runUserGoal/reviewWebhookAdmission/stageWebhookAudit.nl"],
+    "developmentAuditEvidence": ["runUserGoal/reviewDevelopmentAudit/discoverDevelopmentAudit.nl", "runUserGoal/reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl"],
+    "developmentAuditKeep": ["runUserGoal/reviewDevelopmentAudit/keepDevelopmentRepair.nl"],
     "contentArchiveEvidence": ["runUserGoal/recoverContentArchive/discoverArchive.nl", "runUserGoal/recoverContentArchive/inspectArchive/readArchiveEvidence.nl"],
     "contentArchiveChange": ["runUserGoal/recoverContentArchive/applyArchive.nl"],
     "systemReleaseEvidence": ["runUserGoal/reviewSystemRelease/discoverRelease.nl", "runUserGoal/reviewSystemRelease/compareRuns/readRuns.nl", "runUserGoal/reviewSystemRelease/evaluateCases/readCase.nl"],

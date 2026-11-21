@@ -5366,6 +5366,37 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  developmentAuditEvidence: `/** Read the exact owned development build assignment and retained native run journal. */
+
+type DevelopmentAssignment = {
+  goal: string; project: string; session: string; requested: string;
+  alternate: string; allowAlternate: boolean; approval: string | null; permission: "review" | "review-and-keep";
+};
+
+type DevelopmentJournalEntry = {
+  sequence: number; at: number; kind: string; code: string | null; snapshot: string | null;
+};
+
+type DevelopmentObservation = {
+  id: string; session: string; sessionState: string; contextEffect: string; snapshot: string;
+  snapshotMatchesSession: boolean; planMatches: boolean; state: string; commitPoint: string;
+  updatedAt: number; terminalAt: number | null; attention: string | null; primary: string | null;
+  phase: string | null; artifactDigest: string | null; instanceGeneration: string | null;
+  cleanup: string[]; executionRoot: string | null; process: string | null; artifact: string | null;
+  journal: DevelopmentJournalEntry[];
+};
+
+/** Read the exact owned development build assignment and retained native run journal. */
+export function discover(): Promise<DevelopmentAssignment>;
+
+/** Read the exact owned development build assignment and retained native run journal. */
+export function read(id: string): Promise<DevelopmentObservation | null>;`,
+  developmentAuditKeep: `/** Retain one approved exact owned development run for later repair. */
+
+type DevelopmentKeepReceipt = { runId: string; snapshot: string; updatedAt: number; sequence: number; attention: "kept" };
+
+/** Retain one approved exact owned development run for later repair. */
+export function keep(id: string, snapshot: string, updatedAt: number): Promise<DevelopmentKeepReceipt>;`,
   contentArchiveEvidence: `/** Read the locally admitted content archive assignment, two exact immutable trees, and current project working proof. */
 
 type ContentArchiveAssignment = {

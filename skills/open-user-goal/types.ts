@@ -31,6 +31,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
   | { status: "workspace-skill-reviewed"; skill: "webhookAdmission"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "developmentAudit"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "contentArchive"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "systemRelease"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "panelSourceMigration"; outcome: unknown }

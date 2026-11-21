@@ -91,6 +91,13 @@ declare module "natlang:services" {
       disposition: import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionDecision):
       Promise<import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionReceipt>;
   };
+  export const developmentAuditEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewDevelopmentAudit/contract.js").DevelopmentAssignment>;
+    read(id: string): Promise<import("./runUserGoal/reviewDevelopmentAudit/contract.js").DevelopmentObservation | null>;
+  };
+  export const developmentAuditKeep: {
+    keep(id: string, snapshot: string, updatedAt: number): Promise<import("./runUserGoal/reviewDevelopmentAudit/contract.js").DevelopmentKeepReceipt>;
+  };
   export const contentArchiveEvidence: {
     discover(): Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveAssignment>;
     inspect(id: string): Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveObservation>;

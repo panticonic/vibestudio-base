@@ -88,6 +88,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - For an owned phone first-run rehearsal, declared desktop install eligibility or a retained paired workspace readiness decision, call planPhoneFirstRun. Report as "phoneFirstRun".
 - For a local first-party webhook registration audit based on retained receipt, current scoped activation and effective metadata, call reviewWebhookAdmission. Report as "webhookAdmission".
 - To recover approved files from an immutable archived edition into an existing local content project, including verifying its admitted snapshot and protecting current edits, call recoverContentArchive. Report as "contentArchive".
+- For an exact retained development build or session checkpoint review after an interrupted native run, call reviewDevelopmentAudit with the entire goal. Report as "developmentAudit".
 
 - `news.reviewUserNewsGoal` for News readers and schedules.
 - `adventureJourney.reviewAdventureJourney` for Adventure save recovery, player-scoped evidence, and an authorized change to pending player input.
