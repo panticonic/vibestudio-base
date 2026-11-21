@@ -36,6 +36,10 @@
       "mounts": ["runUserGoal/reconcileWorkspaceConfig/settings", "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings"],
       "types": ["ConfigReport"]
     },
+    "runUserGoal/auditAndroidGoal": {
+      "mounts": ["runUserGoal/auditAndroidGoal/installed"],
+      "types": ["AndroidGoalAuditReport"]
+    },
     "runUserGoal/verifyAndroidDelivery": {
       "mounts": ["runUserGoal/verifyAndroidDelivery/mobile"],
       "types": ["AndroidDeliveryOutcome"]
@@ -124,6 +128,7 @@
     "runUserGoal/reviewUnitHandoffGoal/reviewIdentity/installed": "skills/workspace-dev/natlang",
     "runUserGoal/prepareContentProject/authorProjectDocuments/compose": "skills/vibestudio-workflows/runWorkflow/deliverProject",
     "runUserGoal/compareLiveLocalInventory/installed": "skills/local-model-task",
+    "runUserGoal/auditAndroidGoal/installed": "skills/mobile-runtime-audit",
     "runUserGoal/verifyAndroidDelivery/mobile": "skills/mobile-system-testing/scenario",
     "runUserGoal/workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
     "runUserGoal/recoverCliRoute/remote": "skills/remote-access",
@@ -247,6 +252,7 @@
     "contentProjectDraft": ["runUserGoal/prepareContentProject/authorProjectDocuments/writeInitialProject.nl"],
     "contentProjectCommit": ["runUserGoal/prepareContentProject/finishPrivateProject/commitReviewedProject.nl"],
     "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
+    "androidGoalAudit": ["runUserGoal/auditAndroidGoal/readAndroidAuditScope.nl"],
     "androidDeliveryScope": ["runUserGoal/verifyAndroidDelivery/readAndroidDeliveryScope.nl"],
     "terminalRepairCatalog": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"],
     "terminalRepairObserve": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/observeTerminalApp.nl"],

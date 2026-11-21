@@ -63,6 +63,7 @@ Execution, clients, and communications:
 - `recoverAgentCapability → agentCapability`: retained notebook action, console or large output across local revisions, or exact retry of one admitted step.
 - `compareLiveLocalInventory → liveLocalInventory`: exact local model eligibility from current inventory and requirements, with conversation continuity.
 - `reviewLocalExecutionWidth → localWidth`: retained local model/provider readiness or exact local completed branch width.
+- `auditAndroidGoal → androidGoalAudit`: passive check of an exact Android connection or the internal app process/display; never infer workspace readiness.
 - `verifyAndroidDelivery → androidDelivery`: internal Android app installation/validation or dedicated test emulator pairing; distinct from retained mobile session diagnosis.
 - `reviewMobileContinuity → mobileContinuity`: retained Android/companion session continuity, release identity, reconnect, startup or routes.
 - `planPhoneFirstRun → phoneFirstRun`: owned phone rehearsal, declared desktop install eligibility or retained paired workspace readiness.

@@ -29,6 +29,9 @@ declare module "natlang:services" {
     list(): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryCard[]>;
     read(id: string): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryDocket>;
   };
+  export const androidGoalAudit: {
+    readScope(goal: string): Promise<import("./runUserGoal/auditAndroidGoal/types.js").AndroidGoalAuditScope>;
+  };
   export const androidDeliveryScope: {
     read(goal: string): Promise<import("./runUserGoal/verifyAndroidDelivery/types.js").AndroidDeliveryScope>;
   };

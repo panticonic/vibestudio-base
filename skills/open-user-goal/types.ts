@@ -25,7 +25,7 @@ export type UserGoalReport =
   | {
       status: "workspace-skill-reviewed";
       skill:
-        | "boardMigration" | "preparedContentProject" | "liveLocalInventory" | "androidDelivery" | "terminalAppRepair"
+        | "boardMigration" | "preparedContentProject" | "liveLocalInventory" | "androidDelivery" | "androidGoalAudit" | "terminalAppRepair"
         | "liveTendrilBoard" | "cliRoute" | "ownedOperations" | "testkitCloseout" | "webhookAdmission"
         | "provenanceQuestion" | "transcriptSurface" | "sourceAttribution" | "workspaceSmoke" | "sameTurnEval" | "deliveryWake"
         | "logFollower" | "ptyContinuity" | "developmentAudit" | "contentArchive" | "systemRelease"
