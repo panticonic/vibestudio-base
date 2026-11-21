@@ -1,4 +1,11 @@
 declare module "natlang:services" {
+  export const localInventoryDocket: {
+    list(): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryCard[]>;
+    read(id: string): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryDocket>;
+  };
+}
+
+declare module "natlang:services" {
   export const tendrilBoardDocket: {
     list(): Promise<import("./runUserGoal/workOnLiveTendrilBoard/types.js").LiveTendrilCard[]>;
     read(id: string): Promise<import("./runUserGoal/workOnLiveTendrilBoard/types.js").LiveTendrilTicket>;

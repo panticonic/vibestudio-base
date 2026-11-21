@@ -7250,6 +7250,21 @@ export function list(): Promise<LiveTendrilCard[]>;
 
 /** Read a caller-owned live board's current presentation ticket. */
 export function read(id: string): Promise<LiveTendrilTicket>;`,
+  localInventoryDocket: `/** Discover and read the current caller-owned local workload constraints. */
+
+type LocalInventoryCard = { id: string; title: string; current: boolean };
+
+type LocalInventoryDocket = {
+  card: LocalInventoryCard;
+  preferences: { ref: string; label: string }[];
+  purpose: string;
+};
+
+/** Discover and read the current caller-owned local workload constraints. */
+export function list(): Promise<LocalInventoryCard[]>;
+
+/** Discover and read the current caller-owned local workload constraints. */
+export function read(id: string): Promise<LocalInventoryDocket>;`,
   cliRouteDocket: `/** Discover and read the exact owned saved CLI invocation. */
 
 type CliDocket = { id: string; name: string; revision: string; current: boolean };

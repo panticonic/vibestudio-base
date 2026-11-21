@@ -5,6 +5,10 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/compareLiveLocalInventory": {
+      "mounts": ["runUserGoal/compareLiveLocalInventory/installed"],
+      "types": ["LocalInventoryOutcome"]
+    },
     "runUserGoal/recoverCliRoute": {
       "mounts": ["runUserGoal/recoverCliRoute/remote"],
       "types": ["CliRouteOutcome"]
@@ -85,6 +89,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/compareLiveLocalInventory/installed": "skills/local-model-task",
     "runUserGoal/workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
     "runUserGoal/recoverCliRoute/remote": "skills/remote-access",
     "runUserGoal/coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
@@ -189,6 +194,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
     "tendrilBoardDocket": ["runUserGoal/workOnLiveTendrilBoard/findLiveTendrilTicket.nl"],
     "cliRouteDocket": ["runUserGoal/recoverCliRoute/selectCliDocket.nl"],
     "scaffoldRead": [
