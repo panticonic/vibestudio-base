@@ -13,6 +13,10 @@
       "mounts": ["runUserGoal/reconcileWorkspaceConfig/settings", "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings"],
       "types": ["ConfigReport"]
     },
+    "runUserGoal/verifyAndroidDelivery": {
+      "mounts": ["runUserGoal/verifyAndroidDelivery/mobile"],
+      "types": ["AndroidDeliveryOutcome"]
+    },
     "runUserGoal/recoverCliRoute": {
       "mounts": ["runUserGoal/recoverCliRoute/remote"],
       "types": ["CliRouteOutcome"]
@@ -94,6 +98,7 @@
   },
   "workspaceModules": {
     "runUserGoal/compareLiveLocalInventory/installed": "skills/local-model-task",
+    "runUserGoal/verifyAndroidDelivery/mobile": "skills/mobile-system-testing/scenario",
     "runUserGoal/workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
     "runUserGoal/recoverCliRoute/remote": "skills/remote-access",
     "runUserGoal/coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
@@ -201,6 +206,7 @@
   },
   "serviceScopes": {
     "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
+    "androidDeliveryScope": ["runUserGoal/verifyAndroidDelivery/readAndroidDeliveryScope.nl"],
     "tendrilBoardDocket": ["runUserGoal/workOnLiveTendrilBoard/findLiveTendrilTicket.nl"],
     "cliRouteDocket": ["runUserGoal/recoverCliRoute/selectCliDocket.nl"],
     "scaffoldRead": [

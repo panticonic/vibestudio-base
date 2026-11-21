@@ -7,6 +7,8 @@ returns: UserGoalReport
 ---
 For choosing among exact local model candidates based on current inventory and task requirements, use compareLiveLocalInventory when it is available. Report skill "liveLocalInventory". This route compares candidate eligibility and conversation continuity.
 
+When asked to install or validate the internal Android app or pair the dedicated test emulator, use verifyAndroidDelivery when it is visible. Report skill "androidDelivery". Existing retained mobile session diagnosis is a separate route.
+
 For an owned live Tendril handoff board that needs presentation, a visible state change, a layout trial or rollback, and durable readback, use workOnLiveTendrilBoard. Report skill "liveTendrilBoard".
 
 For a saved workspace CLI invocation whose server, workspace route or selected context needs confirmation, use recoverCliRoute when available. Report skill "cliRoute". Terminal command output and PTY resumption are separate requests.

@@ -7391,6 +7391,17 @@ export function list(): Promise<LocalInventoryCard[]>;
 
 /** Discover and read the current caller-owned local workload constraints. */
 export function read(id: string): Promise<LocalInventoryDocket>;`,
+  androidDeliveryScope: `/** Read the exact current owned Android test scope. */
+
+type AndroidDeliveryScope = {
+  workspace: string;
+  deviceId: string | null;
+  deviceKind: "disposable-emulator";
+  note: string;
+};
+
+/** Read the exact current owned Android test scope. */
+export function read(goal: string): Promise<AndroidDeliveryScope>;`,
   cliRouteDocket: `/** Discover and read the exact owned saved CLI invocation. */
 
 type CliDocket = { id: string; name: string; revision: string; current: boolean };
