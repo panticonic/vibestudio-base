@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./extract": "./src/extract.ts",
-    "./provider": "./src/provider.ts"
+    "./provider": "./src/provider.ts",
+    "./contract": "./src/contract.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
