@@ -106,6 +106,8 @@ export declare class TypeSyntaxError extends Error {
 /** A predicate with its whitespace collapsed: two predicates are the same when their normalized texts are equal. */
 export declare const normalizePredicate: (predicate: string) => string;
 export declare function parseType(text: string): Type;
+/** Parse a static declaration for internal read-only use. The public parser still creates a mutable tree. */
+export declare function parseTypeCached(text: string): Type;
 export declare function formatType(type: Type): string;
 /** A name that can be redefined by the lexical type environment. */
 export declare function typeAliasName(type: Type): string | undefined;

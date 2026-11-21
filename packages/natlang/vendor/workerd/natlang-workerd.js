@@ -212764,6 +212764,28 @@ function parseType(text3) {
   if (typeof text3 !== "string") throw new TypeSyntaxError("type must be a string");
   return new Parser(tokenize(text3)).parse();
 }
+function freezeTypeTree(node) {
+  if (Object.isFrozen(node)) return;
+  for (const value of Object.values(node))
+    if (value !== null && typeof value === "object") freezeTypeTree(value);
+  Object.freeze(node);
+}
+function parseTypeCached(text3) {
+  if (!typeCacheEnabled || typeof text3 !== "string" || text3.length > MAX_CACHEABLE_TYPE_CHARACTERS)
+    return parseType(text3);
+  const hit = typeCache.get(text3);
+  if (hit) return hit;
+  const type = parseType(text3);
+  freezeTypeTree(type);
+  while (typeCache.size >= MAX_TYPE_CACHE_ENTRIES || typeCacheCharacters + text3.length > MAX_TYPE_CACHE_CHARACTERS) {
+    const oldest = typeCache.keys().next().value;
+    typeCacheCharacters -= oldest.length;
+    typeCache.delete(oldest);
+  }
+  typeCache.set(text3, type);
+  typeCacheCharacters += text3.length;
+  return type;
+}
 function formatType(type) {
   switch (type.kind) {
     case "prim":
@@ -212933,7 +212955,7 @@ function mergeIntersection(members, resolve2) {
   if (parts.every((part) => JSON.stringify(part) === JSON.stringify(parts[0]))) return parts[0];
   throw new TypeSyntaxError(`${members.map(formatType).join(" & ")} intersects types that are not all objects; intersect record types, or write one record with the fields you need`);
 }
-var DEFAULT_DIALECT2, NATIVE_ADAPTER_TYPE, NATIVE_TENSOR_TYPE, BUILTIN_HOST_TAGS, TypeSyntaxError, normalizePredicate, refinementInvalid, TOKEN, PRIMS, Parser, TypeEnv, refinements;
+var DEFAULT_DIALECT2, NATIVE_ADAPTER_TYPE, NATIVE_TENSOR_TYPE, BUILTIN_HOST_TAGS, TypeSyntaxError, normalizePredicate, refinementInvalid, TOKEN, PRIMS, Parser, MAX_TYPE_CACHE_ENTRIES, MAX_TYPE_CACHE_CHARACTERS, MAX_CACHEABLE_TYPE_CHARACTERS, typeCacheEnabled, typeCache, typeCacheCharacters, TypeEnv, refinements;
 var init_types = __esm({
   "src/native/types.ts"() {
     "use strict";
@@ -213185,6 +213207,12 @@ var init_types = __esm({
         return { kind: "name", name: token.value };
       }
     };
+    MAX_TYPE_CACHE_ENTRIES = 4096;
+    MAX_TYPE_CACHE_CHARACTERS = 512 * 1024;
+    MAX_CACHEABLE_TYPE_CHARACTERS = 16 * 1024;
+    typeCacheEnabled = typeof process === "undefined" || process.env?.NATLANG_TYPE_PARSE_CACHE !== "off";
+    typeCache = /* @__PURE__ */ new Map();
+    typeCacheCharacters = 0;
     TypeEnv = class _TypeEnv {
       constructor(names = {}, parent) {
         this.names = names;
@@ -214065,9 +214093,9 @@ function evalTypeDeclarations(code) {
       else continue;
       const name = namespace + statement.name.text;
       try {
-        declared[name] = parseType(text3);
+        declared[name] = parseTypeCached(text3);
       } catch {
-        declared[name] = parseType("unknown");
+        declared[name] = parseTypeCached("unknown");
       }
       namespaces.set(name, namespace);
     }
@@ -219737,7 +219765,7 @@ function genericResult(generic, returns) {
   if (returns.trim() !== name) throw new Error(`generic declares ${name} for the result, so the result is returns: ${name}`);
   let type;
   try {
-    type = parseType(constraint);
+    type = parseTypeCached(constraint);
   } catch (error) {
     throw new Error(`generic: ${name}: ${error.message}`);
   }
@@ -220010,10 +220038,10 @@ function checkName(path2, name) {
   if (RESERVED_CALLABLE_PROPERTIES.has(name)) throw new NatlangSourceError(path2, reservedNameMessage(name));
 }
 function checkSignature(path2, args, returns, types3, text3 = "") {
-  const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name, text4]) => [name, parseType(text4)])));
+  const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name, text4]) => [name, parseTypeCached(text4)])));
   const check = (type, line) => {
     try {
-      env.checkNames(parseType(type));
+      env.checkNames(parseTypeCached(type));
     } catch (error) {
       const unknown = /^unknown type name (\S+)/.exec(error.message)?.[1];
       const near = unknown && closestName(unknown, [...Object.keys(types3), ...PLAIN_TYPES]);
@@ -220082,8 +220110,8 @@ function parseNatlang(path2, text3, inherited, files2) {
       frontmatterLine(text3, "withhold")
     );
   if (meta.readout === "decision") {
-    const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name2, text4]) => [name2, parseType(text4)])));
-    if ((finiteValues(parseType(returns), env)?.length ?? 0) < 2)
+    const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name2, text4]) => [name2, parseTypeCached(text4)])));
+    if ((finiteValues(parseTypeCached(returns), env)?.length ?? 0) < 2)
       throw new NatlangSourceError(
         path2,
         'readout: decision needs a finite returns type with at least two values, such as "yes" | "no"',
@@ -227620,7 +227648,7 @@ function returnTypeOf(codebase, name, caller) {
 function transferCallableType(record3, source2, caller) {
   let type;
   try {
-    type = parseType(source2);
+    type = parseTypeCached(source2);
   } catch (error) {
     if (!(error instanceof TypeSyntaxError)) throw error;
     return;
@@ -227631,7 +227659,7 @@ function transferCallableType(record3, source2, caller) {
     aliases = callableTypes(record3.codebase);
     for (const [alias, text3] of Object.entries(record3.types)) {
       try {
-        aliases[alias] = parseType(text3);
+        aliases[alias] = parseTypeCached(text3);
       } catch {
       }
     }
@@ -227814,7 +227842,7 @@ function callableTypes(codebase) {
   const types3 = {};
   for (const [name, text3] of texts) if (text3 !== null) {
     try {
-      types3[name] = parseType(text3);
+      types3[name] = parseTypeCached(text3);
     } catch {
     }
   }
@@ -228085,7 +228113,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         const aliases = {};
         for (const [name, source2] of Object.entries(definition.types)) {
           try {
-            aliases[name] = parseType(source2);
+            aliases[name] = parseTypeCached(source2);
           } catch {
           }
         }
@@ -228098,7 +228126,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
           const parameter = definition.params[index];
           let wanted;
           try {
-            wanted = env.resolve(parseType(parameter.type));
+            wanted = env.resolve(parseTypeCached(parameter.type));
           } catch {
             continue;
           }
@@ -228522,7 +228550,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         }
         for (const cell of Object.values(lam.captures ?? {})) {
           try {
-            const type = parseType(cell.type);
+            const type = parseTypeCached(cell.type);
             if (containsUntrusted(type, this.env)) registry.markTyped(cell.get(), type, this.env, `variable ${cell.name}`);
           } catch {
           }
@@ -228782,7 +228810,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
       }
       /** Materialize plain text or validated JSON only when the declared Neuralese element type makes that representation exact. */
       async coerceReturn(value, source2, parseJsonFallback = false) {
-        const wanted = this.env.resolve(this.lam.type.kind === "lambda" ? this.lam.type.returns : parseType("null"));
+        const wanted = this.env.resolve(this.lam.type.kind === "lambda" ? this.lam.type.returns : parseTypeCached("null"));
         const element = wanted.kind === "neuralese" ? this.env.resolve(wanted.element) : void 0;
         if (typeof value === "string" && wanted.kind === "neuralese" && element?.kind === "prim" && element.name === "string") {
           try {
@@ -228797,7 +228825,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           }
           return this.writeNeuraleseResult(value, wanted, source2, "typed-text-result");
         }
-        const resultType = this.lam.type.kind === "lambda" ? this.lam.type.returns : parseType("null");
+        const resultType = this.lam.type.kind === "lambda" ? this.lam.type.returns : parseTypeCached("null");
         try {
           return coerce(value, resultType, this.env, "return", source2 === "return_result" ? {} : { preserveRecordExtras: true });
         } catch (first) {
@@ -229394,9 +229422,9 @@ ${paths.join("\n")}`;
         const meta = callableMeta2(value);
         if (!meta || !["inline", "named"].includes(meta.kind)) return;
         try {
-          const returns = parseType(meta.definition.returns);
+          const returns = parseTypeCached(meta.definition.returns);
           const fields = meta.definition.params.map((parameter) => {
-            return { name: parameter.name, type: parseType(parameter.type), optional: parameter.optional === true };
+            return { name: parameter.name, type: parseTypeCached(parameter.type), optional: parameter.optional === true };
           });
           const signature = { kind: "lambda", params: { kind: "record", fields }, returns };
           this.env.child(availableTypes).checkNames(signature);
@@ -229503,7 +229531,7 @@ ${paths.join("\n")}`;
         const neuraleseElement = declaredResult?.kind === "neuralese" ? this.env.resolve(declaredResult.element) : void 0;
         const isNeuraleseType = (source3) => {
           try {
-            return this.env.resolve(parseType(source3)).kind === "neuralese";
+            return this.env.resolve(parseTypeCached(source3)).kind === "neuralese";
           } catch {
             return false;
           }
@@ -229811,7 +229839,7 @@ return await ${compiled2.entrypoint}(Object.assign({}, self.inputs, __live.input
             const stored2 = this.lam.letTypes[name];
             let type = annotations.has(name) || stored2?.kind === "prim" && stored2.name === "null" && value !== null ? void 0 : stored2;
             const annotation2 = annotations.get(name);
-            if (annotation2) type = inlineDeclaredTypes(parseType(annotation2), localTypes);
+            if (annotation2) type = inlineDeclaredTypes(parseTypeCached(annotation2), localTypes);
             if (!type && initializers.get(name)) type = this.scopeInitializerType(initializers.get(name), inferred);
             if (!type) type = await this.sourceCallableType(value, localTypes);
             if (!type) {
@@ -230004,7 +230032,7 @@ ${requested.tool}: ${refused.text}` };
           const ref = itemRef(
             this.lam,
             "return",
-            this.lam.type.kind === "lambda" ? this.lam.type.returns : parseType("null"),
+            this.lam.type.kind === "lambda" ? this.lam.type.returns : parseTypeCached("null"),
             this.env,
             "return"
           );
@@ -234965,7 +234993,7 @@ function instantiateDefinition(frame, definition, at) {
   if (!generic) {
     let declared2;
     try {
-      declared2 = parseType(definition.returns);
+      declared2 = parseTypeCached(definition.returns);
     } catch {
       declared2 = void 0;
     }
@@ -235094,8 +235122,8 @@ function refinedSignature(definition) {
   const texts = [definition.returns, ...definition.params.map((parameter) => parameter.type), ...Object.values(definition.types)];
   if (!texts.some((text3) => /\bIs\s*</.test(text3))) return void 0;
   try {
-    const env = new TypeEnv(Object.fromEntries(Object.entries(definition.types).map(([name, text3]) => [name, parseType(text3)])));
-    const params = definition.params.map((parameter) => parseType(parameter.type)), returns = parseType(definition.returns);
+    const env = new TypeEnv(Object.fromEntries(Object.entries(definition.types).map(([name, text3]) => [name, parseTypeCached(text3)])));
+    const params = definition.params.map((parameter) => parseTypeCached(parameter.type)), returns = parseTypeCached(definition.returns);
     if (![...params, returns].some((type) => containsRefinement(type, env))) return void 0;
     return { env, params, returns, refinedReturns: containsRefinement(returns, env) };
   } catch {
@@ -235109,7 +235137,7 @@ function checkedServices(task, frame, services, model, callId, emit3, signal) {
   const types3 = {};
   for (const [name, text3] of Object.entries(declared)) {
     try {
-      types3[name] = parseType(text3);
+      types3[name] = parseTypeCached(text3);
     } catch (error) {
       throw new TypeError(`refinements.services.${name}: ${error.message}`);
     }
@@ -256797,8 +256825,8 @@ function refinedPredicates(type, env, path2, seen = /* @__PURE__ */ new Set()) {
 }
 function refinedSlotsOf(source2, name, args, returns, types3) {
   try {
-    const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([alias, text3]) => [alias, parseType(text3)])));
-    const slots = [...Object.entries(args).map(([raw, text3]) => ({ path: raw.replace(/\?$/, ""), text: text3 })), { path: "return", text: returns }].flatMap(({ path: path2, text: text3 }) => refinedPredicates(parseType(text3), env, path2));
+    const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([alias, text3]) => [alias, parseTypeCached(text3)])));
+    const slots = [...Object.entries(args).map(([raw, text3]) => ({ path: raw.replace(/\?$/, ""), text: text3 })), { path: "return", text: returns }].flatMap(({ path: path2, text: text3 }) => refinedPredicates(parseTypeCached(text3), env, path2));
     return slots.map((slot) => ({ source: source2, function: name, ...slot }));
   } catch {
     return [];
