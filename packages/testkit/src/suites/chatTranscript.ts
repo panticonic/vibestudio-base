@@ -6,6 +6,7 @@
  * prompt, an eval tool bead that transitions pending → complete, and the
  * deterministic agent reply — without raw tool-call/JSON leakage.
  */
+import type { PanelHandle } from "@workspace/runtime";
 import { suite } from "../run.js";
 import { expect } from "../expect.js";
 import { evalInPanel, panelText, waitFor, waitForText, withPanel } from "../panels.js";
@@ -24,6 +25,20 @@ const CHAT_STATE_ARGS = {
     delayMs: 500,
   },
 };
+
+async function waitForAgentReply(handle: PanelHandle): Promise<void> {
+  try {
+    await waitForText(handle, AGENT_REPLY, { timeoutMs: 60_000 });
+  } catch (cause) {
+    const visible = await panelText(handle).catch(() => "<snapshot unavailable>");
+    const history = await handle.cdp.consoleHistory({ errorLimit: 4 }).catch(() => null);
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `${message}; visible=${JSON.stringify(visible.slice(0, 1400))}; consoleErrors=${JSON.stringify(history?.errors ?? []).slice(0, 1400)}`,
+      { cause }
+    );
+  }
+}
 
 export const chatTranscript = suite("chat-transcript", {
   timeoutMs: 120_000,
@@ -44,7 +59,7 @@ export const chatTranscript = suite("chat-transcript", {
             ),
           { timeoutMs: 60_000, label: "eval bead complete" }
         );
-        await waitForText(handle, AGENT_REPLY, { timeoutMs: 60_000 });
+        await waitForAgentReply(handle);
 
         const finalText = await panelText(handle);
         expect(finalText, "tool bead label").toContain("Eval");
@@ -60,7 +75,7 @@ export const chatTranscript = suite("chat-transcript", {
       "panels/chat",
       async (handle) => {
         const page = (await handle.cdp.session()).page;
-        await waitForText(handle, AGENT_REPLY, { timeoutMs: 60_000 });
+        await waitForAgentReply(handle);
         await waitFor(
           () =>
             evalInPanel<boolean>(

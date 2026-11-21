@@ -135,7 +135,12 @@ export type BoundingBox = {
   width: number;
   height: number;
 };
-export type CdpViewportSize = { width: number; height: number };
+export type CdpViewportSize = {
+  width: number;
+  height: number;
+  deviceScaleFactor?: number;
+  mobile?: boolean;
+};
 export type CdpScreenshotOptions = {
   type?: "png" | "jpeg";
   quality?: number;
@@ -2125,7 +2130,7 @@ class WorkerCdpPage {
 
   /** Emulate a CSS viewport using the canonical CDP device-metrics override. */
   async setViewportSize(viewportSize: CdpViewportSize): Promise<void> {
-    const { width, height } = viewportSize;
+    const { width, height, deviceScaleFactor = 1, mobile = false } = viewportSize;
     if (
       !Number.isInteger(width) ||
       width <= 0 ||
@@ -2141,10 +2146,15 @@ class WorkerCdpPage {
     await this.connection.send("Emulation.setDeviceMetricsOverride", {
       width,
       height,
-      deviceScaleFactor: 1,
-      mobile: false,
+      deviceScaleFactor,
+      mobile,
     });
     this.currentViewportSize = { width, height };
+  }
+
+  async resetViewportSize(): Promise<void> {
+    await this.connection.send("Emulation.clearDeviceMetricsOverride");
+    this.currentViewportSize = null;
   }
 
   viewportSize(): CdpViewportSize | null {

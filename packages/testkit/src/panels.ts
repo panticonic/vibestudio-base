@@ -9,12 +9,6 @@
 import { openPanel as runtimeOpenPanel, panelTree } from "@workspace/runtime";
 import type { OpenPanelOptions as RuntimeOpenPanelOptions, PanelHandle } from "@workspace/runtime";
 import { activeTestContext } from "./run.js";
-import { withCdpSession } from "./cdp.js";
-// Workspace-panel CDP must use the driver DO. Keep this registration anchored
-// to the panel helper itself: eval callers commonly import only runSuites and
-// summarize from the package entry, which lets an entry-point-only side effect
-// be tree-shaken before this helper is used.
-import "./driver.js";
 import { TestAssertionError } from "./expect.js";
 
 export type OpenPanelOptions = RuntimeOpenPanelOptions;
@@ -170,21 +164,14 @@ export interface ViewportSpec {
 /** Emulate a viewport on the panel via CDP Emulation.setDeviceMetricsOverride. */
 export async function setViewport(handle: PanelHandle, viewport: ViewportSpec): Promise<void> {
   assertNotSelf(handle);
-  await withCdpSession(handle, async (session) => {
-    await session.send("Emulation.setDeviceMetricsOverride", {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
-      mobile: viewport.mobile ?? false,
-    });
-  });
+  const { page } = await handle.cdp.session();
+  await page.setViewportSize(viewport);
 }
 
 export async function clearViewport(handle: PanelHandle): Promise<void> {
   assertNotSelf(handle);
-  await withCdpSession(handle, async (session) => {
-    await session.send("Emulation.clearDeviceMetricsOverride");
-  });
+  const { page } = await handle.cdp.session();
+  await page.resetViewportSize();
 }
 
 export interface PanelAudit {
@@ -233,14 +220,10 @@ export const PANEL_AUDIT_EXPRESSION = `(() => {
 
 /** Layout + console-health audit of a panel (CDP-based measurement). */
 export async function audit(handle: PanelHandle): Promise<PanelAudit> {
-  assertNotSelf(handle);
-  const layout = await withCdpSession(handle, async (session) => {
-    const result = (await session.send("Runtime.evaluate", {
-      expression: PANEL_AUDIT_EXPRESSION,
-      returnByValue: true,
-    })) as { result?: { value?: string } };
-    return JSON.parse(result.result?.value ?? "{}") as Omit<PanelAudit, "consoleErrors">;
-  });
+  const layout = JSON.parse(await evalInPanel<string>(handle, PANEL_AUDIT_EXPRESSION)) as Omit<
+    PanelAudit,
+    "consoleErrors"
+  >;
   let consoleErrors = 0;
   try {
     const history = await handle.cdp.consoleHistory();
@@ -254,19 +237,6 @@ export async function audit(handle: PanelHandle): Promise<PanelAudit> {
 /** Evaluate an expression in the panel's page context, returning by value. */
 export async function evalInPanel<T = unknown>(handle: PanelHandle, expression: string): Promise<T> {
   assertNotSelf(handle);
-  return withCdpSession(handle, async (session) => {
-    const result = (await session.send("Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    })) as { result?: { value?: unknown }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
-    if (result.exceptionDetails) {
-      throw new Error(
-        result.exceptionDetails.exception?.description ??
-          result.exceptionDetails.text ??
-          "evalInPanel failed"
-      );
-    }
-    return result.result?.value as T;
-  });
+  const { page } = await handle.cdp.session();
+  return page.evaluate<T>(expression);
 }
