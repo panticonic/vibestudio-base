@@ -2,8 +2,8 @@ import type {
   ConversationCard as Card, ConversationRead as Read, OutputReadback as Output,
   ProviderGoalReport as Report, ProviderPlan as Plan,
 } from "./workspace/types.js";
-import type { ApprovalTransitionReport as Transition, ApprovalTransitionRequest } from "./authority/types.js";
-import type { ConversationReport as Delivery, DeliveryInput } from "./conversation/types.js";
+import type { ApprovalTransitionReport as Transition, ApprovalTransitionRequest } from "./reviewRetainedApproval/authority/types.js";
+import type { ConversationReport as Delivery, DeliveryInput } from "./reviewRetainedDelivery/conversation/types.js";
 
 export type ConversationCard = Card;
 export type ConversationRead = Read;
