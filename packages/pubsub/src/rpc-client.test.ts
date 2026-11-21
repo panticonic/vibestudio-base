@@ -19,7 +19,11 @@ import {
   invocationCompletedPayload,
   invocationFailedPayload,
 } from "@workspace/agentic-protocol";
-import { RpcBoundaryError, type RpcMethod } from "@vibestudio/rpc";
+import {
+  RpcBoundaryError,
+  rpcCallerAbortedError,
+  type RpcMethod,
+} from "@vibestudio/rpc";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createRecoveryCoordinator } from "@vibestudio/shell-core/recoveryCoordinator";
 import { encodeEventWatchRecord } from "@vibestudio/shared/events";
@@ -3894,6 +3898,38 @@ describe("connectViaRpc", () => {
   // ── 4. Close ──────────────────────────────────────────────────────────
 
   describe("close", () => {
+    it("closes a response pending acknowledgement without reporting an error", async () => {
+      let entered!: () => void;
+      const opening = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      mockRpc.streamReadable.mockImplementationOnce(
+        async (_target, _method, _args, { signal }: { signal: AbortSignal }) => {
+          entered();
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => reject(rpcCallerAbortedError(signal.reason)),
+              { once: true },
+            );
+          });
+        },
+      );
+      const client = connectViaRpc({
+        rpc: publicRpcMock(mockRpc),
+        channel: CHANNEL,
+      });
+      const onError = vi.fn();
+      client.onError(onError);
+      const ready = expect(client.ready()).rejects.toThrow(
+        "connection closed before ready",
+      );
+      await opening;
+      await client.close();
+      await ready;
+      expect(onError).not.toHaveBeenCalled();
+    });
+
     it("leaves the subscription resource and fires disconnect handlers", async () => {
       const client = connectViaRpc({
         rpc: publicRpcMock(mockRpc),

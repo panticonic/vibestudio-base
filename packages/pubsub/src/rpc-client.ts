@@ -2430,6 +2430,9 @@ export function connectViaRpc<
       subscribeAckReject = null;
     })
     .catch((err: unknown) => {
+      // close() owns pending readiness and the cancelled opening once the
+      // client has retired. There is no live recipient for a recovery error.
+      if (closed) return;
       const pubsubError = toPubSubError(err, "connection");
       if (!hasSubscriptionRecovery) {
         subscribeAckReject?.(pubsubError);
@@ -3053,9 +3056,14 @@ export function connectViaRpc<
     closed = true;
     unregisterResubscribe?.();
     unregisterColdRecover?.();
-    rejectReady(
-      new PubSubError("connection closed before ready", "connection"),
+    const closedBeforeReady = new PubSubError(
+      "connection closed before ready",
+      "connection",
     );
+    rejectReady(closedBeforeReady);
+    subscribeAckReject?.(closedBeforeReady);
+    subscribeAckResolve = null;
+    subscribeAckReject = null;
     eventsFanout.close();
     // Reject all pending method calls so callers don't hang
     for (const [callId, state] of methodCallStates) {
