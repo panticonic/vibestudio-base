@@ -125,7 +125,7 @@ export declare class TypeEnv {
      * Reject an alias that reaches itself through a function type (`type-recursive-function`): self-application
      * would make recursion expressible without a recursive definition. Recursive data types stay allowed.
      */
-    private checkRecursiveFunction;
+    private checkRecursiveFunctions;
     child(names: Record<string, Type>): TypeEnv;
     lookup(name: string): Type | undefined;
     /** The dialect a type's dialect name means here: `DefaultDialect` is the bound reader dialect, when there is one. */
