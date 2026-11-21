@@ -1,0 +1,43 @@
+export type BranchState ="in-sync"|"ahead"|"behind"|"diverged"|"integration-required"|"auth-failed"|"fetch-failed"|"error"|"exporting"|"pushing"|"local-only"|"not-materialized"|"empty";
+export type RetainedBranch = { repository:string; remote:string|null; branch:string|null; state:BranchState;
+  relationship:string|null; observedAt:number|null; lastSuccessfulAt:number|null; branchExists:boolean|null;
+  ahead:number|null; behind:number|null; candidateContext:string|null; candidateEvent:string|null };
+export type DeliveryState={kind:"event";eventId:string}|{kind:"application";applicationId:string};
+export type BridgeScope={id:string;title:string;path:string;purpose:"delivery"|"archive"};
+export type BridgeIndex={scopes:BridgeScope[]};
+export type DeliveryScope={id:string;repository:string;remote:string;branch:string;reviewSince:number;retained:RetainedBranch|null;
+  retainedDigest:string|null;specPath:string;notePath:string};
+export type BridgePlan={id:string;intent:"review"|"commit";handoff:boolean};
+export type DeliveryVersion={hash:string;fileId:string;mode:number;excerpt:string|null;truncated:boolean};
+export type DeliveryFile={path:string;working:DeliveryVersion|null;committed:DeliveryVersion|null;protectedMain:DeliveryVersion|null;
+  hasLocalDifference:boolean;hasDeliveryDifference:boolean};
+export type DeliveryIntegration={
+  source:{kind:"event";eventId:string}|{kind:"external-delta";deltaId:string};
+  remaining:number;conflicts:number;concluded:boolean;stale:boolean;
+};
+export type LocalFileReview={
+  next:string;
+  snapshot:{contextId:string;current:boolean;clean:boolean;relation:string;working:DeliveryState;committed:DeliveryState;
+    protectedMain:DeliveryState;integrations:DeliveryIntegration[];file:DeliveryFile};
+  chain:{local:{state:string;summary:string};main:{state:string;summary:string}}|null;
+  review:{effect:string;risks:string[];checks:string[]}|null;
+};
+export type CandidateCoordinates={contextId:string;eventId:string};
+export type LocalGitReview={
+  view:{repository:string;upstream:{state:BranchState;remote:string|null;branch:string|null;autoPush:boolean;
+    candidate:CandidateCoordinates|null;
+    observation:{at:number;branchExists:boolean;relationship:string|null;ahead:number|null;behind:number|null}|null};
+    semantic:{contextId:string;current:boolean;mainEventId:string;working:DeliveryState;clean:boolean;relation:string;
+      workingRepositoryId:string|null;mainRepositoryId:string|null}};
+  upstreamReview:{freshness:string;consequence:string}|null;
+  semanticReview:{source:{state:string;explanation:string};integration:{candidate:CandidateCoordinates|null;explanation:string}}|null;
+  next:string;
+  reason:string;
+};
+export type BranchAssessment={status:"aligned"|"target-mismatch"|"failed-observation"|"stale"|"branch-absent"|"candidate-pending"|"diverged"|"behind"|"missing";
+  explanation:string};
+export type BridgeDecision={status:"reviewed"|"hold"|"commit";explanation:string};
+export type LocalDeliveryReceipt={repository:string;eventId:string;from:DeliveryState;protectedEventId:string;files:string[]};
+export type BranchPrivateNote={path:string;digest:string};
+export type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview;spec:LocalFileReview;note:LocalFileReview;
+  branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};

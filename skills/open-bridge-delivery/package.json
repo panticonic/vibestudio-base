@@ -1,0 +1,9 @@
+{
+  "name": "@workspace-skills/open-bridge-delivery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./types": "./types.ts" },
+  "main": "./types.ts",
+  "types": "./types.ts"
+}

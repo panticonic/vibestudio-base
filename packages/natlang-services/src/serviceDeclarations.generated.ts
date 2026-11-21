@@ -1536,6 +1536,93 @@ type SuiteReviewExecution = {
 
 /** Verify the exact caller-assigned test plan after live resolution. */
 export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  branchDeliveryRead: `/** Discover and bind exact owned semantic branch delivery evidence. */
+
+type BridgeScope={id:string;title:string;path:string;purpose:"delivery"|"archive"};
+
+type BridgeIndex={scopes:BridgeScope[]};
+
+type BranchState ="in-sync"|"ahead"|"behind"|"diverged"|"integration-required"|"auth-failed"|"fetch-failed"|"error"|"exporting"|"pushing"|"local-only"|"not-materialized"|"empty";
+
+type RetainedBranch = { repository:string; remote:string|null; branch:string|null; state:BranchState;
+  relationship:string|null; observedAt:number|null; lastSuccessfulAt:number|null; branchExists:boolean|null;
+  ahead:number|null; behind:number|null; candidateContext:string|null; candidateEvent:string|null };
+
+type DeliveryScope={id:string;repository:string;remote:string;branch:string;reviewSince:number;retained:RetainedBranch|null;
+  retainedDigest:string|null;specPath:string;notePath:string};
+
+/** Discover and bind exact owned semantic branch delivery evidence. */
+export function discover(): Promise<BridgeIndex>;
+
+/** Discover and bind exact owned semantic branch delivery evidence. */
+export function inspect(id:string): Promise<DeliveryScope|null>;
+
+/** Discover and bind exact owned semantic branch delivery evidence. */
+export function operation(id:string,path:string): Promise<string|null>;`,
+  branchDeliveryWrite: `/** Commit or retain local branch delivery in the explicitly authorized scope. */
+
+type DeliveryState={kind:"event";eventId:string}|{kind:"application";applicationId:string};
+
+type LocalDeliveryReceipt={repository:string;eventId:string;from:DeliveryState;protectedEventId:string;files:string[]};
+
+type BranchState ="in-sync"|"ahead"|"behind"|"diverged"|"integration-required"|"auth-failed"|"fetch-failed"|"error"|"exporting"|"pushing"|"local-only"|"not-materialized"|"empty";
+
+type RetainedBranch = { repository:string; remote:string|null; branch:string|null; state:BranchState;
+  relationship:string|null; observedAt:number|null; lastSuccessfulAt:number|null; branchExists:boolean|null;
+  ahead:number|null; behind:number|null; candidateContext:string|null; candidateEvent:string|null };
+
+type DeliveryScope={id:string;repository:string;remote:string;branch:string;reviewSince:number;retained:RetainedBranch|null;
+  retainedDigest:string|null;specPath:string;notePath:string};
+
+type BridgePlan={id:string;intent:"review"|"commit";handoff:boolean};
+
+type CandidateCoordinates={contextId:string;eventId:string};
+
+type LocalGitReview={
+  view:{repository:string;upstream:{state:BranchState;remote:string|null;branch:string|null;autoPush:boolean;
+    candidate:CandidateCoordinates|null;
+    observation:{at:number;branchExists:boolean;relationship:string|null;ahead:number|null;behind:number|null}|null};
+    semantic:{contextId:string;current:boolean;mainEventId:string;working:DeliveryState;clean:boolean;relation:string;
+      workingRepositoryId:string|null;mainRepositoryId:string|null}};
+  upstreamReview:{freshness:string;consequence:string}|null;
+  semanticReview:{source:{state:string;explanation:string};integration:{candidate:CandidateCoordinates|null;explanation:string}}|null;
+  next:string;
+  reason:string;
+};
+
+type DeliveryIntegration={
+  source:{kind:"event";eventId:string}|{kind:"external-delta";deltaId:string};
+  remaining:number;conflicts:number;concluded:boolean;stale:boolean;
+};
+
+type DeliveryVersion={hash:string;fileId:string;mode:number;excerpt:string|null;truncated:boolean};
+
+type DeliveryFile={path:string;working:DeliveryVersion|null;committed:DeliveryVersion|null;protectedMain:DeliveryVersion|null;
+  hasLocalDifference:boolean;hasDeliveryDifference:boolean};
+
+type LocalFileReview={
+  next:string;
+  snapshot:{contextId:string;current:boolean;clean:boolean;relation:string;working:DeliveryState;committed:DeliveryState;
+    protectedMain:DeliveryState;integrations:DeliveryIntegration[];file:DeliveryFile};
+  chain:{local:{state:string;summary:string};main:{state:string;summary:string}}|null;
+  review:{effect:string;risks:string[];checks:string[]}|null;
+};
+
+type BranchAssessment={status:"aligned"|"target-mismatch"|"failed-observation"|"stale"|"branch-absent"|"candidate-pending"|"diverged"|"behind"|"missing";
+  explanation:string};
+
+type BridgeDecision={status:"reviewed"|"hold"|"commit";explanation:string};
+
+type BranchPrivateNote={path:string;digest:string};
+
+type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview;spec:LocalFileReview;note:LocalFileReview;
+  branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};
+
+/** Commit or retain local branch delivery in the explicitly authorized scope. */
+export function commit(id:string,basis:DeliveryState): Promise<LocalDeliveryReceipt|null>;
+
+/** Commit or retain local branch delivery in the explicitly authorized scope. */
+export function retain(report:BridgeDeliveryReport): Promise<BranchPrivateNote|null>;`,
   gitBridgeReviewRead: `/** Read the assigned Git Bridge upstream and semantic repository state. */
 
 type GitBridgeRelationship = "in-sync" | "ahead" | "behind" | "diverged";

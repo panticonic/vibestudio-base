@@ -9,6 +9,8 @@ For a request to save or update a local incident report or distinguish the corre
 
 When the goal asks whether current Testkit teardown and retained cleanup evidence justify release, or whether to save the exact private closeout, call compareTestkitCloseouts. Report as "testkitCloseout".
 
+For local semantic release delivery that depends on a retained Git Bridge branch observation and paired file revisions, call workOnBridgeDelivery. Report as "bridgeDelivery".
+
 Interpret the user's goal and choose from the available capabilities. Pass the original goal unchanged unless a step asks for another input. For a named report key, return status "workspace-skill-reviewed", that key as skill, and the exact child result as outcome. Use a route only when its callable is visible in the current workspace. If a requested feature is unavailable, explain what is missing and use an authorized alternative only if it still satisfies the goal. If the goal calls for public evidence, call investigatePublicQuestion with the user's goal. For a research-only request, return its actual result with the same status.
 
 If the goal connects exact facts from a local PDF to a working Spectrolite vault change, first call pdf.workOnPdfGoal with the user's unchanged goal. Call authorizePdfVaultHandoff with the goal and the actual PDF result. Call spectrolite.workTowardVaultGoal only for a bound handoff, using its directive unchanged. Return status "workspace-skill-reviewed", skill "pdfVault", and outcome {pdf: the actual PDF result, handoff: the actual handoff, vault: the actual vault result or null when the handoff holds}. Finish this combined route before considering the single-skill routes.

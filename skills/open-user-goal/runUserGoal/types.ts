@@ -1,3 +1,4 @@
+export type { BridgeDeliveryReport } from "./workOnBridgeDelivery/types.js";
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
 export * from "./reviewWebhookAdmission/contract.js";
