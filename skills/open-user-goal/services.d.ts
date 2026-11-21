@@ -82,6 +82,15 @@ declare module "natlang:services" {
     restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<import("./runUserGoal/reviewInstalledPackage/contract.js").PackageRestore>;
   };
+  export const panelMigrationEvidence: {
+    discover(): Promise<import("./runUserGoal/migratePanelSource/contract.js").PanelMigrationAssignment>;
+    inspect(id: string): Promise<import("./runUserGoal/migratePanelSource/contract.js").MigrationObservation>;
+  };
+  export const panelMigrationChange: {
+    move(id: string, head: string): Promise<import("./runUserGoal/migratePanelSource/contract.js").MigrationReceipt>;
+    align(id: string, head: string, manifestDigest: string): Promise<import("./runUserGoal/migratePanelSource/contract.js").MigrationReceipt>;
+    update(id: string, head: string, guideDigest: string): Promise<import("./runUserGoal/migratePanelSource/contract.js").MigrationReceipt>;
+  };
   export const workspaceShareEvidence: {
     discover(): Promise<import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareAssignment>;
     inspect(id: string): Promise<import("./runUserGoal/reviewWorkspaceShare/contract.js").ShareObservation>;

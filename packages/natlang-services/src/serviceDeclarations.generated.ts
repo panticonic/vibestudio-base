@@ -5043,6 +5043,60 @@ type PackageRestore = { status: "restored" | "state-changed" | "not-authorized";
 /** Restore one approved installed package declaration at its exact working revision. */
 export function restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<PackageRestore>;`,
+  panelMigrationEvidence: `/** Read one exact existing panel source, current local links and migration authority. */
+
+type PanelMigrationAssignment = {
+  id: string; goal: string; title: string; original: string; destination: string; repository: string;
+  authority: { mode: "local" | "inspect"; destination: string; revision: string };
+};
+
+type ConsumerLink = {
+  id: string; value: string; carrier: "scheme" | "https" | null; source: string | null;
+  scope: "working" | "historical" | "foreign" | "invalid"; compatible: boolean;
+};
+
+type MigrationObservation = {
+  id: string; workingRevision: string; mainRevision: string; repository: string; location: string | null;
+  layout: "original" | "moved" | "parked" | "missing";
+  destinationOwner: string | null; destinationPanel: boolean;
+  compatiblePanel: boolean; actualSource: string | null; contractDigest: string | null;
+  buildIdentity: "current" | "needs-alignment" | "unexpected"; manifestDigest: string; consumerDigest: string; consumerLinks: ConsumerLink[];
+};
+
+/** Read one exact existing panel source, current local links and migration authority. */
+export function discover(): Promise<PanelMigrationAssignment>;
+
+/** Read one exact existing panel source, current local links and migration authority. */
+export function inspect(id: string): Promise<MigrationObservation>;`,
+  panelMigrationChange: `/** Relocate one owned panel source and amend compatible local caller links at a reviewed revision. */
+
+type ConsumerLink = {
+  id: string; value: string; carrier: "scheme" | "https" | null; source: string | null;
+  scope: "working" | "historical" | "foreign" | "invalid"; compatible: boolean;
+};
+
+type MigrationObservation = {
+  id: string; workingRevision: string; mainRevision: string; repository: string; location: string | null;
+  layout: "original" | "moved" | "parked" | "missing";
+  destinationOwner: string | null; destinationPanel: boolean;
+  compatiblePanel: boolean; actualSource: string | null; contractDigest: string | null;
+  buildIdentity: "current" | "needs-alignment" | "unexpected"; manifestDigest: string; consumerDigest: string; consumerLinks: ConsumerLink[];
+};
+
+type MigrationReceipt = {
+  status: "moved" | "aligned" | "updated" | "state-changed" | "not-authorized";
+  workingRevision: string; observation: MigrationObservation;
+  operation: { applicationId: string; changeIds: string[] } | null;
+};
+
+/** Relocate one owned panel source and amend compatible local caller links at a reviewed revision. */
+export function move(id: string, head: string): Promise<MigrationReceipt>;
+
+/** Relocate one owned panel source and amend compatible local caller links at a reviewed revision. */
+export function align(id: string, head: string, manifestDigest: string): Promise<MigrationReceipt>;
+
+/** Relocate one owned panel source and amend compatible local caller links at a reviewed revision. */
+export function update(id: string, head: string, guideDigest: string): Promise<MigrationReceipt>;`,
   workspaceShareEvidence: `/** Read one assigned workspace share, exact membership, retained invite and object role. */
 
 type Purpose = "inspect" | "review-note" | "reader-note" | "author-note";
