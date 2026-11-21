@@ -171,3 +171,11 @@ declare module "natlang:services" {
       Promise<import("./types.js").SkillMaintenanceReceipt>;
   };
 }
+
+declare module "natlang:services" {
+  export const testkitCloseout: {
+    nominate(goal: string): Promise<import("./runUserGoal/compareTestkitCloseouts/types.js").CloseoutPair>;
+    stage(report: import("./runUserGoal/compareTestkitCloseouts/types.js").CloseoutReport):
+      Promise<import("./runUserGoal/compareTestkitCloseouts/types.js").CloseoutReceipt>;
+  };
+}

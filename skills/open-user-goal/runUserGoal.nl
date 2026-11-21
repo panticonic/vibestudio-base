@@ -7,6 +7,8 @@ returns: UserGoalReport
 ---
 For a request to save or update a local incident report or distinguish the correct incident before drafting, call workOnProblemReportGoal with the unchanged user goal. Return skill "problemReport" and its actual outcome.
 
+When the goal asks whether current Testkit teardown and retained cleanup evidence justify release, or whether to save the exact private closeout, call compareTestkitCloseouts with the unchanged goal. Return status "workspace-skill-reviewed", skill "testkitCloseout", and its actual outcome.
+
 Interpret the user's goal and choose from the available capabilities. If the goal calls for public evidence, call investigatePublicQuestion with the user's goal. For a research-only request, return its actual result with the same status.
 
 If the goal connects exact facts from a local PDF to a working Spectrolite vault change, first call pdf.workOnPdfGoal with the user's unchanged goal. Call authorizePdfVaultHandoff with the goal and the actual PDF result. Call spectrolite.workTowardVaultGoal only for a bound handoff, using its directive unchanged. Return status "workspace-skill-reviewed", skill "pdfVault", and outcome {pdf: the actual PDF result, handoff: the actual handoff, vault: the actual vault result or null when the handoff holds}. Finish this combined route before considering the single-skill routes.

@@ -41,3 +41,5 @@ export type { WelcomeGoalReport } from "./workOnPersonalWelcomeGoal/types.js";
 export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
 export type { SpecialistGoalReport } from "./workOnSpecialistHandoffGoal/types.js";
 export * from "./workOnProviderHandoffGoal/types.js";
+
+export type { CloseoutReport } from "./compareTestkitCloseouts/types.js";

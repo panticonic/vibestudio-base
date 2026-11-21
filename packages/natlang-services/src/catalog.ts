@@ -318,6 +318,7 @@ const authoredServices = [
   authoredService("remoteAccessRoute", "Select the caller-assigned workspace through the verified hub.", "system", "remote-access", [{ name: "select", params: ["priorReceipt"] }]),
   authoredService("remoteAccessVerify", "Verify the child identity on the caller-assigned route.", "system", "remote-access", [{ name: "verify", params: ["routeReceipt"] }]),
   authoredService("sessionReplay", "Read the assigned durable replay checkpoint.", "system-testing", "session-test-review", [{ name: "inspect", params: ["receipt"] }]),
+  authoredService("testkitCloseout", "Nominate the two owned Testkit closeout receipts and stage an authorized private review.", "base", "open-user-goal", [{ name: "nominate", params: ["goal"] }, { name: "stage", params: ["report"] }]),
   authoredService("testkitCleanup", "Read the assigned live Testkit teardown receipt.", "system-testing", "session-test-review", [{ name: "inspect", params: ["receipt"] }]),
 ] as const;
 

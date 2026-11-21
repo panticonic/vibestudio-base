@@ -5,6 +5,7 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
     "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
@@ -91,6 +92,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "testkitCloseout": ["runUserGoal/compareTestkitCloseouts/discoverCloseoutAttempts.nl", "runUserGoal/compareTestkitCloseouts/stageCloseoutEvidence.nl"],
     "skillMaintenanceEvidence": [
       "runUserGoal/maintainWorkspaceSkill/locateMaintenanceSkill.nl",
       "runUserGoal/maintainWorkspaceSkill/inspectMaintenanceEvidence/readScopedSkill.nl",

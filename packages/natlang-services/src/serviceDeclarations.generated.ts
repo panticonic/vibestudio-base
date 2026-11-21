@@ -6409,6 +6409,43 @@ type ReplayCheckpoint = {
 
 /** Read the assigned durable replay checkpoint. */
 export function inspect(receipt: string): Promise<ReplayCheckpoint>;`,
+  testkitCloseout: `/** Nominate the two owned Testkit closeout receipts and stage an authorized private review. */
+
+type CloseoutAttempt = { label: string; receipt: string };
+
+type CloseoutPair = { current: CloseoutAttempt; prior: CloseoutAttempt };
+
+type CloseoutEvidence = {
+  receipt: string;
+  testOutcome: "passed" | "failed" | "errored" | "timeout";
+  release: { decision: "confirmed" | "waiting" | "revise" | "unobserved"; finding: string; evidenceIds: string[] };
+  inventory: "clear" | "registered-residue" | "unregistered-residue" | "mixed-residue";
+  remainingIds: string[];
+};
+
+type CloseoutDecision = {
+  status: "cleared" | "hold-test" | "hold-residue" | "hold-ack";
+  currentRemaining: string[];
+  note: boolean;
+  explanation: string;
+};
+
+type CloseoutReceipt = { path: string; sha256: string; bytes: number };
+
+type CloseoutReport = {
+  pair: CloseoutPair;
+  current: CloseoutEvidence;
+  prior: CloseoutEvidence;
+  decision: CloseoutDecision;
+  handoff: CloseoutReceipt | null;
+};
+
+/** Nominate the two owned Testkit closeout receipts and stage an authorized private review. */
+export function nominate(goal: string): Promise<CloseoutPair>;
+
+/** Nominate the two owned Testkit closeout receipts and stage an authorized private review. */
+export function stage(report: CloseoutReport):
+      Promise<CloseoutReceipt>;`,
   testkitCleanup: `/** Read the assigned live Testkit teardown receipt. */
 
 type TestkitOutcome = "passed" | "failed" | "errored" | "timeout";
