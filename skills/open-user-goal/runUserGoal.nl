@@ -36,6 +36,7 @@ Workspace engineering, evidence and delivery:
 - `workOnAssemblyGoal → workspaceAssembly`: workspace/template parts and dependencies, exact authorized rollout revision or local assembly draft.
 - `prepareOwnedScaffold → scaffoldReview`: native starter for a product outcome and its exact private draft.
 - `reviewDeployedInterface → deployedInterface`: installed/deployed agent, worker or extension RPC and allowed local review scope.
+- `reviewUnitHandoffGoal → unitHandoff`: compare installed unit manifest or identity evidence, and prepare a local icon draft only when allowed.
 - `reviewExtensionDossier → extensionDossier`: candidate vs protected/deployed extension, approval or permission changes, or rollback dossier.
 - `maintainWorkspaceSkill → skillMaintenance`: one reusable skill after retained typed contract failure.
 - `workOnAuthoringGoal → authoring`: current Natlang authoring, release compatibility or compiler evidence.

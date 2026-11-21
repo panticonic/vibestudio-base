@@ -421,3 +421,11 @@ declare module "natlang:services" {
     request(id: string, basis: string, method: import("./types.js").LocalMethodKind): Promise<import("./types.js").LocalMethodAttempt>;
   };
 }
+
+declare module "natlang:services" {
+  export const unitHandoff: {
+    discover(): Promise<import("./runUserGoal/reviewUnitHandoffGoal/contract.js").UnitHandoffUnit[]>;
+    begin(path: string): Promise<import("./runUserGoal/reviewUnitHandoffGoal/contract.js").UnitHandoffObservation>;
+    lifecycle(path: string): Promise<import("./runUserGoal/reviewUnitHandoffGoal/contract.js").UnitLifecycleObservation>;
+  };
+}

@@ -42,7 +42,7 @@ export type UserGoalReport =
         | "extensionDossier" | "localWidth" | "evalHandoff" | "programRun" | "browserMigration"
         | "templateMigration" | "authoring" | "bridgeDelivery" | "workspaceClaims" | "panelLaunchState"
         | "ownedRouteAuthority" | "workspaceConfig" | "audienceResponse" | "coordinatedRevision" | "retainedMemory"
-        | "intentDiscovery";
+        | "intentDiscovery" | "unitHandoff";
       outcome: unknown;
     }
   | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }

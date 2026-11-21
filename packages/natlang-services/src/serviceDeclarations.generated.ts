@@ -768,6 +768,57 @@ export function open(operationId: string): Promise<TranscriptStart>;
 
 /** Recover one caller-assigned channel transcript snapshot. */
 export function next(operationId: string, after: number, through: number): Promise<TranscriptPage>;`,
+  unitHandoff: `/** Discover owned installed units and read their current workspace and lifecycle evidence. */
+
+type UnitHandoffUnit = {
+  path: string;
+  name: string;
+  kind: string;
+  description: string;
+};
+
+type UnitManifestAnchor = {
+  digest: string;
+  validationError: string | null;
+  entry: string | null;
+  activationEvents: string[];
+  dependencyMode: string | null;
+  icon: string | null;
+};
+
+type UnitHandoffObservation = {
+  unit: UnitHandoffUnit;
+  revision: string;
+  mainRevision: string;
+  manifest: { working: UnitManifestAnchor; protectedMain: UnitManifestAnchor } | null;
+  designRequest: { kind: "extension-design-live"; goal: string; operationId: string } | null;
+  identityRequest: {
+    goal: string;
+    operationId: string;
+    unit: { name: string; kind: string; description: string };
+    prepare: boolean;
+  };
+};
+
+type UnitLifecycleObservation = {
+  status: string;
+  activeVersion: string | null;
+  buildKey: string | null;
+  sourceRevision: string | null;
+  buildVersion: string | null;
+  processId: string | null;
+  health: string | null;
+  pendingApproval: string | null;
+};
+
+/** Discover owned installed units and read their current workspace and lifecycle evidence. */
+export function discover(): Promise<UnitHandoffUnit[]>;
+
+/** Discover owned installed units and read their current workspace and lifecycle evidence. */
+export function begin(path: string): Promise<UnitHandoffObservation>;
+
+/** Discover owned installed units and read their current workspace and lifecycle evidence. */
+export function lifecycle(path: string): Promise<UnitLifecycleObservation>;`,
   unitIdentity: `/** Read and prepare the caller-assigned workspace icon. */
 
 type UnitIdentityObservation = {
