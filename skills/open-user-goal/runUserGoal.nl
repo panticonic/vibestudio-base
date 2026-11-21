@@ -6,7 +6,7 @@ args:
 returns: UserGoalReport
 ---
 
-1. Identify the requested outcome and any limits on what may change. Use the current callable declarations and host service scopes to find a route that can accomplish it. A callable can be installed while its required services are absent. When the host lists a relevant service under a scope, look for that branch first. For example, a scope `runUserGoal/mail/recoverDraft.nl` points to `mail.recoverDraft`; scopes farther inside that branch describe its children's services. Inspect an uncertain callable with `read_code`.
+1. Identify the requested outcome and any limits on what may change. Check the current host service scopes before choosing an entry point. A callable can be installed while its required services are absent. A service bound to a nested callable supports that callable. Check the entry point's own requirements separately before choosing a composed branch. Use `read_code` when the entry point's requirements are uncertain.
 2. Pass the original `goal` into the chosen route unless a composed call needs observed results as additional inputs. Use the requested outcome to resolve ambiguity between routes that share services. Prefer read-only discovery if intent, current state, or authority is uncertain. If a child reports a missing service, revisit the current scope and look for another route that covers the same request. Before retrying an operation, check whether the attempted call already changed anything.
 3. Return what actually happened. For a workspace skill use `{status: "workspace-skill-reviewed", skill: key, outcome: actualChildResult}`. Below, `callable → key` gives the result label. If the goal cannot be completed within the current workspace, state which required capability or evidence is missing.
 
@@ -64,6 +64,6 @@ Presentation and workspace-specific routes:
 - `workOnNewsEvidenceGoal → newsEvidence` (original articles and retained schedule evidence); `news.reviewUserNewsGoal → news` (reader and schedule operations); `prepareNewsEditionReview → newsEditionReview` (visual editorial packet).
 - `gmail.recoverGmailGoal → gmail` (retained compose, provider draft and delivery continuity); `googleHandoff.reconcileGoogleHandoff → googleHandoff` (Gmail decision determines access to linked Drive evidence).
 - `google.workOnDriveGoal → google` (Drive); `googleSetup.workOnGoogleSetupGoal → googleSetup` (onboarding and permission ownership).
-- `calendar.workOnCalendarGoal → calendar` (schedule proposals and handoff); `reconcileGoogleRunbook → googleRunbook` (Calendar evidence and approval for a local runbook).
+- `calendar.workOnCalendarGoal → calendar` (reconcile schedule proposals and leave a scheduling handoff). Use `reconcileGoogleRunbook → googleRunbook` for an explicit local runbook correction when the `googleRunbook` service is bound.
 - `personalArtifacts.workOnPersonalArtifactsGoal → personalArtifacts` (browser library and collections); `githubWork.workOnGitHubGoal → githubWork` (owned local Git evidence and current GitHub owner authority).
 - `personalHistory.reviewPersonalHistory → personalHistory` (archive milestones); `workOnPersonalWelcomeGoal → personalWelcome` (first-run welcome, preferences and tour); `personal.workOnMissionGoal → personal` (Mission Control).
