@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "skillMaintenance"; outcome: SkillMaintenanceOutcome }
   | { status: "workspace-skill-reviewed"; skill: "desktopReadiness"; outcome: DesktopReadinessOutcome }
   | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
@@ -340,4 +341,43 @@ export type DesktopReadinessDecision = {
 export type DesktopReadinessOutcome = {
   scope: "owned-desktop-readiness-fixture";
   evidence: DesktopReadinessEvidence; decision: DesktopReadinessDecision;
+};
+
+export type SkillMaintenanceCard = { id: string; label: string; edition: "working" | "archive" };
+export type SkillMaintenanceClause = { path: string; parameters: string[]; returns: string };
+export type SkillMaintenanceCheck = {
+  path: string; revision: string; runId: string; runDigest: string; resultDigest: string;
+  satisfied: boolean; failures: string[]; expected: SkillMaintenanceClause[];
+  absent: string[]; requiredSelectors: string[] | null;
+};
+export type SkillMaintenanceFile = { path: string; text: string };
+export type SkillMaintenanceObservation = {
+  card: SkillMaintenanceCard; path: string; revision: string;
+  files: SkillMaintenanceFile[]; check: SkillMaintenanceCheck;
+  editable: string[]; approval: "approved" | "denied";
+  authoringRequest: {
+    goal: string; compare: boolean;
+    contract: {
+      entry: string; expectedParameters: string[] | null; expectedReturn: string | null;
+      declaredServices: string[] | null; expectedServiceScopes?: Record<string, string[] | null>;
+      requiredHelpers: string[]; preserveBaseline: boolean;
+    };
+  };
+};
+export type SkillMaintenanceGate = { current: string; status: "current" | "changed" | "denied" };
+export type SkillMaintenanceDecision = {
+  action: "stage-local-patch" | "hold-authorization" | "hold-stale" | "hold-evidence" | "keep-current";
+  reason: string;
+};
+export type SkillMaintenanceChange = { path: string; text: string | null };
+export type SkillMaintenanceReceipt = {
+  before: string; after: string;
+  disposition: "staged" | "stale" | "denied";
+  paths: string[];
+};
+export type SkillMaintenanceOutcome = {
+  scope: "owned-working-skill";
+  observation: SkillMaintenanceObservation; authoring: unknown;
+  gate: SkillMaintenanceGate; decision: SkillMaintenanceDecision;
+  receipt: SkillMaintenanceReceipt | null; final: SkillMaintenanceCheck;
 };

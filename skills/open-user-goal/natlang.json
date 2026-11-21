@@ -9,6 +9,7 @@
     "runUserGoal/workOnDemoPortfolio/reviewer": "skills/examples-review",
     "runUserGoal/workOnRegencyBriefing/realm": "skills/open-regency-briefing",
     "runUserGoal/workOnRegencyBriefing/reviewer": "skills/examples-review",
+    "runUserGoal/maintainWorkspaceSkill/authoring": "skills/natlang-authoring",
     "runUserGoal/workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
     "runUserGoal/reviewDesktopReadiness/clientDevelopment": "skills/clientdev/natlang",
     "runUserGoal/workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
@@ -79,6 +80,13 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "skillMaintenanceEvidence": [
+      "runUserGoal/maintainWorkspaceSkill/locateMaintenanceSkill.nl",
+      "runUserGoal/maintainWorkspaceSkill/inspectMaintenanceEvidence/readScopedSkill.nl",
+      "runUserGoal/maintainWorkspaceSkill/confirmSkillFrontier.nl",
+      "runUserGoal/maintainWorkspaceSkill/checkSkillReadback.nl"
+    ],
+    "skillMaintenanceEdit": ["runUserGoal/maintainWorkspaceSkill/prepareSkillRepair/stageSkillChanges.nl"],
     "desktopReadiness": [
       "runUserGoal/reviewDesktopReadiness/locateDesktopDesk.nl",
       "runUserGoal/reviewDesktopReadiness/inspectDesktopWindow/readDesktopWindow.nl",

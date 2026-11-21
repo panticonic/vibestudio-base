@@ -148,3 +148,16 @@ declare module "natlang:services" {
     readUpdates(id: string): Promise<import("./types.js").DesktopUpdateObservation>;
   };
 }
+
+declare module "natlang:services" {
+  export const skillMaintenanceEvidence: {
+    discover(): Promise<import("./types.js").SkillMaintenanceCard[]>;
+    inspect(id: string): Promise<import("./types.js").SkillMaintenanceObservation>;
+    confirm(id: string, revision: string): Promise<import("./types.js").SkillMaintenanceGate>;
+    readback(id: string): Promise<import("./types.js").SkillMaintenanceCheck>;
+  };
+  export const skillMaintenanceEdit: {
+    stage(id: string, revision: string, changes: import("./types.js").SkillMaintenanceChange[]):
+      Promise<import("./types.js").SkillMaintenanceReceipt>;
+  };
+}

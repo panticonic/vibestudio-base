@@ -2065,6 +2065,60 @@ export function discover(): Promise<RecoveryHandoffDirective>;
 export function prepare(jobId: string, runId: string, runDigest: string, resultDigest: string, digest: string,
       directive: RecoveryHandoffDirective
     ): Promise<RecoveryHandoffInput>;`,
+  skillMaintenanceEvidence: `/** Discover exact retained evidence for one owned working Natlang skill. */
+
+type SkillMaintenanceCard = { id: string; label: string; edition: "working" | "archive" };
+
+type SkillMaintenanceFile = { path: string; text: string };
+
+type SkillMaintenanceClause = { path: string; parameters: string[]; returns: string };
+
+type SkillMaintenanceCheck = {
+  path: string; revision: string; runId: string; runDigest: string; resultDigest: string;
+  satisfied: boolean; failures: string[]; expected: SkillMaintenanceClause[];
+  absent: string[]; requiredSelectors: string[] | null;
+};
+
+type SkillMaintenanceObservation = {
+  card: SkillMaintenanceCard; path: string; revision: string;
+  files: SkillMaintenanceFile[]; check: SkillMaintenanceCheck;
+  editable: string[]; approval: "approved" | "denied";
+  authoringRequest: {
+    goal: string; compare: boolean;
+    contract: {
+      entry: string; expectedParameters: string[] | null; expectedReturn: string | null;
+      declaredServices: string[] | null; expectedServiceScopes?: Record<string, string[] | null>;
+      requiredHelpers: string[]; preserveBaseline: boolean;
+    };
+  };
+};
+
+type SkillMaintenanceGate = { current: string; status: "current" | "changed" | "denied" };
+
+/** Discover exact retained evidence for one owned working Natlang skill. */
+export function discover(): Promise<SkillMaintenanceCard[]>;
+
+/** Discover exact retained evidence for one owned working Natlang skill. */
+export function inspect(id: string): Promise<SkillMaintenanceObservation>;
+
+/** Discover exact retained evidence for one owned working Natlang skill. */
+export function confirm(id: string, revision: string): Promise<SkillMaintenanceGate>;
+
+/** Discover exact retained evidence for one owned working Natlang skill. */
+export function readback(id: string): Promise<SkillMaintenanceCheck>;`,
+  skillMaintenanceEdit: `/** Stage the authorized local Natlang contract repair at its exact observed working head. */
+
+type SkillMaintenanceChange = { path: string; text: string | null };
+
+type SkillMaintenanceReceipt = {
+  before: string; after: string;
+  disposition: "staged" | "stale" | "denied";
+  paths: string[];
+};
+
+/** Stage the authorized local Natlang contract repair at its exact observed working head. */
+export function stage(id: string, revision: string, changes: SkillMaintenanceChange[]):
+      Promise<SkillMaintenanceReceipt>;`,
   desktopReadiness: `/** Read retained desktop offers and responsive window placement for one assigned client. */
 
 type DesktopDesk = { id: string; name: string; operationId: string };
