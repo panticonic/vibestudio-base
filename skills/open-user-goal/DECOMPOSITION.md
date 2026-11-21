@@ -5,6 +5,13 @@ skills based on the requested outcome and observations from this invocation.
 The caller supplies the current workspace and authorized services. Evaluation
 criteria, source coordinates, and expected tool calls stay in the harness.
 
+The root judges intent from the goal and chooses a route using the actual
+callable and service scopes rendered by Natlang. The route list documents
+entry point names and result labels. It supplies no authority to call them.
+After a scope failure, the root distinguishes an inapplicable route from
+unavailable capability and checks for any completed effects before continuing.
+The host remains responsible for binding and enforcing service authority.
+
 | Procedure | Owner |
 | --- | --- |
 | Choose between public research and a local document revision | The root Natlang lambda. |

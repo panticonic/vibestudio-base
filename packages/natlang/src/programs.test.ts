@@ -523,7 +523,10 @@ it("compiles the open goal program with its installed research skill and scoped 
     publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
     publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],
     websiteReadback: ["runUserGoal/publication/preflightPublication.nl"],
-    web: ["runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**"],
+    web: [
+      "runUserGoal/answerFromAssignedPublicSources/webResearch/researchBrief.nl/**",
+      "runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**",
+    ],
   });
   expect(result.functions.some(fn => fn.source === "runUserGoal/publication/workTowardPublicationGoal.nl")).toBe(true);
   expect(result.functions.some(fn => fn.source === "runUserGoal/pdf/workOnPdfGoal.nl")).toBe(true);
