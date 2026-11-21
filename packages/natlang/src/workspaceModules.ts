@@ -11,7 +11,7 @@ export async function linkWorkspaceModules(
   fs: WorkspaceFs,
   directory: string,
   local: Files,
-  readProjectFiles: (fs: WorkspaceFs, directory: string) => Promise<Files>,
+  readProjectRoots: (fs: WorkspaceFs, roots: readonly string[]) => Promise<Map<string, Files>>,
 ): Promise<Files> {
   const configuration = JSON.parse(local["natlang.json"] ?? "{}");
   const declaration = configuration?.workspaceModules;
@@ -99,52 +99,56 @@ export async function linkWorkspaceModules(
     }
     return true;
   }
-  const modules = await Promise.all(
-    entries.map(async ([mount, source]) => {
-      if (typeof source !== "string" || !(await installed(source))) return null;
-      const sourceFiles = await readProjectFiles(fs, source);
-      const config = JSON.parse(sourceFiles["natlang.json"] ?? "{}");
-      if (config?.workspaceModules !== undefined || config?.workspaceBranches !== undefined)
-        reject(`Mount ${source} as a self-contained package.`);
-      const include: unknown = config?.include;
-      if (
-        include !== undefined &&
-        (!Array.isArray(include) ||
-          include.some(
-            (path) =>
-              typeof path !== "string" ||
-              !path
-                .split("/")
-                .every((part: string) =>
-                  /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/u.test(part),
-                ),
-          ))
-      )
+  const installedModules: Array<{ mount: string; source: string }> = [];
+  for (const [mount, source] of entries) {
+    if (typeof source === "string" && await installed(source))
+      installedModules.push({ mount, source });
+  }
+  const roots = [...new Set(installedModules.map(({ source }) => source))];
+  const projects = await readProjectRoots(fs, roots);
+  const modules = installedModules.map(({ mount, source }) => {
+    const sourceFiles = projects.get(source)!;
+    const config = JSON.parse(sourceFiles["natlang.json"] ?? "{}");
+    if (config?.workspaceModules !== undefined || config?.workspaceBranches !== undefined)
+      reject(`Mount ${source} as a self-contained package.`);
+    const include: unknown = config?.include;
+    if (
+      include !== undefined &&
+      (!Array.isArray(include) ||
+        include.some(
+          (path) =>
+            typeof path !== "string" ||
+            !path
+              .split("/")
+              .every((part: string) =>
+                /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/u.test(part),
+              ),
+        ))
+    )
+      reject(
+        `Use explicit package-relative file and directory names in ${source}/natlang.json include.`,
+      );
+    const files = Array.isArray(include)
+      ? Object.fromEntries(
+          Object.entries(sourceFiles).filter(
+            ([path]) =>
+              path === "natlang.json" ||
+              include.some(
+                (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+              ),
+          ),
+        )
+      : sourceFiles;
+    const names = declaredServiceNames(files);
+    const scopes = declaredServiceScopes(files, names, source);
+    for (const name of names)
+      if (!Object.hasOwn(scopes, name))
         reject(
-          `Use explicit package-relative file and directory names in ${source}/natlang.json include.`,
+          `Scope service ${name} in ${source}/natlang.json before mounting it.`,
         );
-      const files = Array.isArray(include)
-        ? Object.fromEntries(
-            Object.entries(sourceFiles).filter(
-              ([path]) =>
-                path === "natlang.json" ||
-                include.some(
-                  (prefix) => path === prefix || path.startsWith(`${prefix}/`),
-                ),
-            ),
-          )
-        : sourceFiles;
-      const names = declaredServiceNames(files);
-      const scopes = declaredServiceScopes(files, names, source);
-      for (const name of names)
-        if (!Object.hasOwn(scopes, name))
-          reject(
-            `Scope service ${name} in ${source}/natlang.json before mounting it.`,
-          );
-      return { mount, files, scopes };
-    }),
-  );
-  const present = new Set(modules.flatMap(entry => entry ? [entry.mount] : []));
+    return { mount, files, scopes };
+  });
+  const present = new Set(modules.map(({ mount }) => mount));
   const unavailable = [...branches].filter(([, branch]) => branch.mounts.some(mount => !present.has(mount)))
     .map(([path]) => path);
   const visible = (path: string) => !unavailable.some(branch => path === `${branch}.nl` || path.startsWith(`${branch}/`));
@@ -161,7 +165,7 @@ export type { ${branch.types.join(", ")} } from "./${path.slice(slash + 1)}/type
   const serviceScopes = declaredServiceScopes(local, localNames, directory);
   for (const name of Object.keys(serviceScopes)) serviceScopes[name] = serviceScopes[name]!.filter(visible);
   for (const entry of modules) {
-    if (!entry || !visible(`${entry.mount}/`)) continue;
+    if (!visible(`${entry.mount}/`)) continue;
     for (const [path, text] of Object.entries(entry.files))
       linked[`${entry.mount}/${path}`] = text;
     for (const [name, selectors] of Object.entries(entry.scopes)) {

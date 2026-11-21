@@ -388,6 +388,59 @@ it("limits an authored editing service to the exact root of a loaded program", a
   expect(visible["inspectStage"]).not.toContain("panelRepairEdit");
 });
 
+it("bounds semantic source reads across mounted trees and concurrent loads", async () => {
+  const mounts = {
+    "brief/first": "skills/first",
+    "brief/second": "skills/second",
+    "brief/again": "skills/first",
+  };
+  const files = {
+    "skills/root/brief.nl": BRIEF,
+    "skills/root/natlang.json": JSON.stringify({ workspaceModules: mounts }),
+    "skills/first/readFirst.nl": BRIEF,
+    "skills/second/readSecond.nl": BRIEF,
+  } as Record<string, string>;
+  for (const source of new Set(Object.values(mounts))) {
+    for (let index = 0; index < 24; index++) {
+      files[`${source}/docs/page${index}/README.md`] = "Workspace skill notes.";
+    }
+  }
+  const storage = memoryFs(files);
+  let active = 0;
+  let peak = 0;
+  const observe = async <T>(read: () => Promise<T>): Promise<T> => {
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      return await read();
+    } finally {
+      active--;
+    }
+  };
+  const loader = new ProgramLoader({
+    platform: platform(),
+    fs: {
+      readFile: (...args) => observe(() => storage.readFile(...args)),
+      readdir: (...args) => observe(() => storage.readdir(...args)),
+      stat: (...args) => observe(() => storage.stat(...args)),
+    },
+    bindings: {},
+    runTask: (run) => run(),
+  });
+  const descriptions = await Promise.all([
+    loader.describe("skills/root/brief.nl"),
+    loader.describe("skills/root/brief.nl"),
+  ]);
+  expect(peak).toBe(8);
+  expect(active).toBe(0);
+  expect(descriptions[0]?.functions.map(({ source }) => source)).toEqual(expect.arrayContaining([
+    "brief/first/readFirst.nl", "brief/second/readSecond.nl", "brief/again/readFirst.nl",
+  ]));
+  expect(descriptions[1]).toEqual(descriptions[0]);
+  expect(storage.reads.filter((file) => file === "skills/first/readFirst.nl")).toHaveLength(2);
+});
+
 it("links installed workspace modules as typed callable subtrees in the same task", async () => {
   const deployed = platform();
   const seen: Record<string, string[]> = {};

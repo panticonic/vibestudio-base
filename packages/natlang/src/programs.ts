@@ -67,33 +67,55 @@ export function workspacePath(specifier: string): string {
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
+/** Active semantic FS calls per Eval loader. Mounted packages share the same window. */
+const MAX_PROJECT_READS = 8;
+
 /** The files of the program rooted at `directory`, keyed by their path relative to it. */
 export async function readProjectFiles(
   fs: WorkspaceFs,
   directory: string
 ): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
+  return (await readProjectRoots(fs, [directory])).get(directory)!;
+}
+
+async function readProjectRoots(
+  fs: WorkspaceFs,
+  roots: readonly string[]
+): Promise<Map<string, Record<string, string>>> {
+  type Source = { root: string; relative: string; directory: boolean };
+  const sources = new Map(roots.map((root) => [root, {} as Record<string, string>]));
+  const frontier: Source[] = roots.map((root) => ({ root, relative: "", directory: true }));
   const decoder = new TextDecoder();
-  const walk = async (relative: string): Promise<void> => {
-    const entries = await fs.readdir(relative ? `${directory}/${relative}` : directory, {
-      withFileTypes: true,
-    });
-    await Promise.all(
-      entries
-        .filter((entry) => !entry.name.startsWith("."))
-        .map(async (entry) => {
-          const child = relative ? `${relative}/${entry.name}` : entry.name;
-          if (entry.isDirectory()) {
-            if (!SKIPPED_DIRECTORIES.has(entry.name)) await walk(child);
-          } else if (PROGRAM_FILE.test(entry.name) && !BESIDE_PROGRAM.test(entry.name) && !GENERATED_DECLARATION.test(entry.name)) {
-            const content = await fs.readFile(`${directory}/${child}`, "utf8");
-            files[child] = typeof content === "string" ? content : decoder.decode(content);
-          }
-        })
-    );
-  };
-  await walk("");
-  return Object.fromEntries(Object.entries(files).sort(([left], [right]) => (left < right ? -1 : 1)));
+  let next = 0;
+  while (next < frontier.length) {
+    const batch = frontier.slice(next, next + MAX_PROJECT_READS);
+    next += batch.length;
+    const results = await Promise.allSettled(batch.map(async ({ root, relative, directory }) => {
+      const path = relative ? `${root}/${relative}` : root;
+      if (!directory) {
+        const content = await fs.readFile(path, "utf8");
+        sources.get(root)![relative] = typeof content === "string" ? content : decoder.decode(content);
+        return;
+      }
+      const entries = await fs.readdir(path, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+        const child = relative ? `${relative}/${entry.name}` : entry.name;
+        const childDirectory = entry.isDirectory();
+        if (childDirectory ? !SKIPPED_DIRECTORIES.has(entry.name)
+          : PROGRAM_FILE.test(entry.name) && !BESIDE_PROGRAM.test(entry.name) && !GENERATED_DECLARATION.test(entry.name)) {
+          frontier.push({ root, relative: child, directory: childDirectory });
+        }
+      }
+    }));
+    const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Reading Natlang workspace sources failed", { cause: failures[0] });
+  }
+  return new Map([...sources].map(([root, files]) => [root,
+    Object.fromEntries(Object.entries(files).sort(([left], [right]) => (left < right ? -1 : 1))),
+  ]));
 }
 
 /** A program's content identity: its files and the services it declares. */
@@ -229,6 +251,8 @@ export function bindProgram(value: unknown, task: Parameters<TaskRunner>[1], run
  */
 export class ProgramLoader {
   private readonly compiled = new Map<string, CompiledProgram>();
+  private sourceReadTail = Promise.resolve();
+
 
   constructor(
     private readonly options: {
@@ -241,6 +265,18 @@ export class ProgramLoader {
 
   /** The program a specifier names, compiled (a cache hit when its files are unchanged). */
   private async compiledProgram(specifier: string): Promise<{
+    path: string;
+    root: string;
+    program: CompiledProgram;
+  }> {
+    // A single Eval can load several programs concurrently. Own one source
+    // window for that loader as well as for all mounts within each request.
+    const request = this.sourceReadTail.then(() => this.readAndCompile(specifier));
+    this.sourceReadTail = request.then(() => undefined, () => undefined);
+    return request;
+  }
+
+  private async readAndCompile(specifier: string): Promise<{
     path: string;
     root: string;
     program: CompiledProgram;
@@ -260,7 +296,12 @@ export class ProgramLoader {
       );
     }
     const directoryPath = root || ".";
-    const files = await linkWorkspaceModules(fs, directoryPath, await readProjectFiles(fs, directoryPath), readProjectFiles);
+    const files = await linkWorkspaceModules(
+      fs,
+      directoryPath,
+      await readProjectFiles(fs, directoryPath),
+      readProjectRoots
+    );
     const key = programKey(files, declaredServiceNames(files));
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
