@@ -5,6 +5,8 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
+    "runUserGoal/workOnDemoPortfolio/reviewer": "skills/examples-review",
     "runUserGoal/workOnRegencyBriefing/realm": "skills/open-regency-briefing",
     "runUserGoal/workOnRegencyBriefing/reviewer": "skills/examples-review",
     "runUserGoal/workOnImageCandidateGoal/workspace": "skills/open-image-candidate",

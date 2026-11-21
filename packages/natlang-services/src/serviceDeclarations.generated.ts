@@ -5522,6 +5522,111 @@ type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietReque
 
 /** Stage one authorized quiet readiness note with no provider claim. */
 export function stage(report:ReadinessReport):Promise<ReadinessArtifact|null>;`,
+  demoPortfolioIndex: `/** Find the assigned private paired Examples demos. */
+
+type Horizon = 1 | 2 | 3;
+
+type PortfolioIndex = {id:string;gardenId:string;realmId:string;title:string;allowedHorizons:Horizon[]};
+
+/** Find the assigned private paired Examples demos. */
+export function list():Promise<PortfolioIndex>;`,
+  demoPortfolioState: `/** Read exact paired game state and the current acceptance card. */
+
+type GardenHome = {id:string; values:{key:string;amount:number}[]};
+
+type GardenResident = {id:string;name:string;home:string;needs:{key:string;amount:number}[];
+  energy:number;attachment:number;settled:number;lastVisit:number};
+
+type GardenState = {id:string;day:number;phase:number;weather:string;homes:GardenHome[];
+  residents:GardenResident[];discoveries:{id:string;title:string}[]};
+
+type RealmRoute = {id:string;subsidy:number;condition:number;progress:number;workers:number;cargo:number|null;capacity:number|null};
+
+type RealmRegion = {id:string;grain:number;population:number;confidence:number};
+
+type RealmState = {id:string;month:number;treasury:number;debt:number;income:number;spending:number;
+  serviceCost:number;worksCost:number;routes:RealmRoute[];regions:RealmRegion[];borderTension:number|null};
+
+type AcceptanceCard = {title:string;path:string;digest:string;text:string};
+
+type PortfolioFrame = {portfolio:string;id:string;garden:GardenState;realm:RealmState;card:AcceptanceCard|null};
+
+/** Read exact paired game state and the current acceptance card. */
+export function read(portfolio:string):Promise<PortfolioFrame|null>;`,
+  demoPortfolioForecast: `/** Read a forecast on the exact current paired basis. */
+
+type Horizon = 1 | 2 | 3;
+
+type RealmRoute = {id:string;subsidy:number;condition:number;progress:number;workers:number;cargo:number|null;capacity:number|null};
+
+type RealmRegion = {id:string;grain:number;population:number;confidence:number};
+
+type RealmState = {id:string;month:number;treasury:number;debt:number;income:number;spending:number;
+  serviceCost:number;worksCost:number;routes:RealmRoute[];regions:RealmRegion[];borderTension:number|null};
+
+type PortfolioProjection = {portfolio:string;basis:string;months:Horizon;accounts:RealmState};
+
+/** Read a forecast on the exact current paired basis. */
+export function preview(portfolio:string,basis:string,months:Horizon):Promise<PortfolioProjection|null>;`,
+  demoPortfolioHandoff: `/** Stage one authorized private paired demo note. */
+
+type GardenCondition = {kind:"meets-needs"|"is-home"|"settled";resident:string;home:string};
+
+type GardenTransition = {kind:"recognized"|"attachment-grew"|"relocated";resident:string}
+  | {kind:"day-advanced"|"phase-advanced"|"weather-changed"|"new-discovery"};
+
+type GardenCriterion = {kind:"habitat";check:GardenCondition} | {kind:"transition";check:GardenTransition};
+
+type RealmCondition = {kind:"subsidy-paid-and-idle"|"cargo-under-capacity"|"crossing-reopened";route:string}
+  | {kind:"has-debt"|"net-positive"} | {kind:"region-grain-at-least";region:string;amount:number};
+
+type RealmTrend = {kind:"route-works-progressed";route:string}
+  | {kind:"regional-grain-grew"|"population-fell";region:string} | {kind:"treasury-grew"|"border-tension-grew"};
+
+type RealmCriterion = {kind:"settlement";basis:"saved"|"forecast";check:RealmCondition}
+  | {kind:"compare";basis:"saved"|"forecast";check:RealmTrend;assertCommitted:boolean};
+
+type Horizon = 1 | 2 | 3;
+
+type PortfolioPlan = {criteriaBasis:string|null;garden:GardenCriterion[];realm:RealmCriterion[];
+  months:Horizon|null;note:"none"|"decision"|"ready-only"};
+
+type GardenHome = {id:string; values:{key:string;amount:number}[]};
+
+type GardenResident = {id:string;name:string;home:string;needs:{key:string;amount:number}[];
+  energy:number;attachment:number;settled:number;lastVisit:number};
+
+type GardenState = {id:string;day:number;phase:number;weather:string;homes:GardenHome[];
+  residents:GardenResident[];discoveries:{id:string;title:string}[]};
+
+type RealmRoute = {id:string;subsidy:number;condition:number;progress:number;workers:number;cargo:number|null;capacity:number|null};
+
+type RealmRegion = {id:string;grain:number;population:number;confidence:number};
+
+type RealmState = {id:string;month:number;treasury:number;debt:number;income:number;spending:number;
+  serviceCost:number;worksCost:number;routes:RealmRoute[];regions:RealmRegion[];borderTension:number|null};
+
+type AcceptanceCard = {title:string;path:string;digest:string;text:string};
+
+type PortfolioFrame = {portfolio:string;id:string;garden:GardenState;realm:RealmState;card:AcceptanceCard|null};
+
+type PortfolioProjection = {portfolio:string;basis:string;months:Horizon;accounts:RealmState};
+
+type PortfolioFinding = {decision:"supported"|"contradicted"|"not-observed";finding:string;evidenceIds:string[]};
+
+type GardenResult = {criterion:GardenCriterion;review:PortfolioFinding};
+
+type RealmResult = {criterion:RealmCriterion;review:PortfolioFinding};
+
+type PortfolioDecision = {status:"ready"|"blocked"|"incomplete";write:boolean;explanation:string};
+
+type PortfolioNote = {path:string;digest:string;portfolio:string;basis:string};
+
+type PortfolioReport = {plan:PortfolioPlan;opening:PortfolioFrame;current:PortfolioFrame;projection:PortfolioProjection|null;
+  garden:GardenResult[];realm:RealmResult[];decision:PortfolioDecision;note:PortfolioNote|null};
+
+/** Stage one authorized private paired demo note. */
+export function stage(report:PortfolioReport):Promise<PortfolioNote|null>;`,
   regencyAssignment: `/** Find the assigned private Regency realm. */
 
 type Horizon = 1 | 2 | 3;
