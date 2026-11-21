@@ -3,7 +3,7 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectionManager } from "./connection.js";
 import type { ChatParticipantMetadata, ConnectionConfig } from "./types.js";
-import { createRpcClient } from "@vibestudio/rpc";
+import { createRpcClient, rpcCallerAbortedError } from "@vibestudio/rpc";
 import {
   createInProcessNetwork,
   inProcessTransport,
@@ -756,6 +756,44 @@ it("preserves the pending owner when a replacement is already cancelled", async 
 
 describe("Native-owner readiness cancellation", () => {
   afterEach(() => vi.useRealTimers());
+  it("keeps a transport-wrapped cancellation owned by the replaced panel", async () => {
+    const config = createConfig();
+    const onError = vi.fn();
+    const original = pubsub.connectViaRpc;
+    let announceReady!: () => void;
+    const readyStarted = new Promise<void>((resolve) => { announceReady = resolve; });
+    const connect = vi
+      .spyOn(pubsub, "connectViaRpc")
+      .mockImplementationOnce(function wrappedClient<T extends pubsub.ParticipantMetadata>(
+        options: pubsub.RpcConnectOptions<T>,
+      ): pubsub.PubSubClient<T> {
+        const client = original(options);
+        client.ready = (signal) => new Promise((_resolve, reject) => {
+          announceReady();
+          signal!.addEventListener("abort", () => {
+            const cause = rpcCallerAbortedError(signal!.reason);
+            reject(new pubsub.PubSubError(cause.message, "connection", { cause }));
+          }, { once: true });
+        });
+        return client;
+      });
+    const manager = new ConnectionManager({ config, metadata, callbacks: { onError } });
+    const owner = new AbortController();
+    try {
+      const attempt = manager.connect({ channelId: "chat-1", methods: {}, signal: owner.signal });
+      const rejected = expect(attempt).rejects.toBeInstanceOf(pubsub.PubSubError);
+      await readyStarted;
+      owner.abort(new Error("Panel replaced"));
+      await rejected;
+      expect(onError).not.toHaveBeenCalled();
+      expect(manager.status).toBe("disconnected");
+    } finally {
+      connect.mockRestore();
+      owner.abort();
+      await manager.disconnect();
+    }
+  });
+
   it("keeps a slow replay owned until explicit cancellation", async () => {
     vi.useFakeTimers();
     const config = createConfig();
