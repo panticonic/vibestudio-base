@@ -1536,6 +1536,49 @@ type SuiteReviewExecution = {
 
 /** Verify the exact caller-assigned test plan after live resolution. */
 export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  workspaceClaimRead: `/** Find exact owned claim packets and independently read their source and native test facts. */
+
+type ClaimScope={id:string;title:string;purpose:"review"|"archive"};
+
+type ClaimIndex={scopes:ClaimScope[]};
+
+type ClaimRequirement={id:string;text:string};
+
+type ClaimPacket={id:string;title:string;candidateEvent:string;priorEvent:string;protectedEvent:string;
+  requirements:ClaimRequirement[];packetHash:string};
+
+type ClaimEvidence={packetId:string;candidateEvent:string;priorEvent:string;sourceHash:string;observations:string[]};
+
+/** Find exact owned claim packets and independently read their source and native test facts. */
+export function list():Promise<ClaimIndex>;
+
+/** Find exact owned claim packets and independently read their source and native test facts. */
+export function read(id:string):Promise<ClaimPacket|null>;
+
+/** Find exact owned claim packets and independently read their source and native test facts. */
+export function observe(id:string):Promise<ClaimEvidence|null>;`,
+  workspaceClaimHandoff: `/** Retain the explicitly authorized private claim audit. */
+
+type ClaimReviewChoice={id:string;retain:boolean};
+
+type ClaimRequirement={id:string;text:string};
+
+type ClaimPacket={id:string;title:string;candidateEvent:string;priorEvent:string;protectedEvent:string;
+  requirements:ClaimRequirement[];packetHash:string};
+
+type ClaimEvidence={packetId:string;candidateEvent:string;priorEvent:string;sourceHash:string;observations:string[]};
+
+type ClaimSupport={supported:string[];missing:string[]};
+
+type ClaimDisposition={status:"confirmed"|"partial"|"unconfirmed";summary:string};
+
+type ClaimHandoff={path:string;digest:string};
+
+type WorkspaceClaimReview={choice:ClaimReviewChoice;packet:ClaimPacket;evidence:ClaimEvidence;
+  support:ClaimSupport;disposition:ClaimDisposition;handoff:ClaimHandoff|null};
+
+/** Retain the explicitly authorized private claim audit. */
+export function stage(report:WorkspaceClaimReview):Promise<ClaimHandoff|null>;`,
   branchDeliveryRead: `/** Discover and bind exact owned semantic branch delivery evidence. */
 
 type BridgeScope={id:string;title:string;path:string;purpose:"delivery"|"archive"};

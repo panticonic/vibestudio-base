@@ -9,6 +9,8 @@ For a request to save or update a local incident report or distinguish the corre
 
 When the goal asks whether current Testkit teardown and retained cleanup evidence justify release, or whether to save the exact private closeout, call compareTestkitCloseouts. Report as "testkitCloseout".
 
+For an exact workspace acceptance claim audit matching native TestKit, semantic file readback and current authority, call reviewWorkspaceClaims. Report as "workspaceClaims".
+
 For local semantic release delivery that depends on a retained Git Bridge branch observation and paired file revisions, call workOnBridgeDelivery. Report as "bridgeDelivery".
 
 Interpret the user's goal and choose from the available capabilities. Pass the original goal unchanged unless a step asks for another input. For a named report key, return status "workspace-skill-reviewed", that key as skill, and the exact child result as outcome. Use a route only when its callable is visible in the current workspace. If a requested feature is unavailable, explain what is missing and use an authorized alternative only if it still satisfies the goal. If the goal calls for public evidence, call investigatePublicQuestion with the user's goal. For a research-only request, return its actual result with the same status.

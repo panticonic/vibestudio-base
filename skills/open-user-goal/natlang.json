@@ -87,6 +87,8 @@
     "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
+    "runUserGoal/reviewWorkspaceClaims/workspace": "skills/open-workspace-claims",
+    "runUserGoal/reviewWorkspaceClaims/verifyClaimSupport/evidenceRules": "skills/vibestudio-workflows/evidence",
     "runUserGoal/workOnBridgeDelivery/project": "skills/open-bridge-delivery",
     "runUserGoal/workOnBridgeDelivery/inspectCurrentBridge/bridge": "skills/git-bridge-review",
     "runUserGoal/workOnBridgeDelivery/reviewDeliveryFile/semantic": "skills/vibestudio-vcs/natlang",

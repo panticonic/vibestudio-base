@@ -118,6 +118,8 @@ const authoredServices = [
   authoredService("dictationTranscription", "Transcribe the caller-assigned recording through an already-ready local worker.", "base", "offline-dictation", [{ name: "run", params: ["operationId"] }]),
   authoredService("testSuitePlanRead", "Resolve the assigned test-suite declaration.", "base", "native-suite-review", [{ name: "resolve", params: ["operationId"] }]),
   authoredService("testSuiteVerificationRun", "Verify the exact caller-assigned test plan after live resolution.", "base", "native-suite-review", [{ name: "run", params: ["operationId", "stateHash"] }]),
+  authoredService("workspaceClaimRead", "Find exact owned claim packets and independently read their source and native test facts.", "base", "open-workspace-claims", [{ name: "list", params: [] }, { name: "read", params: ["id"] }, { name: "observe", params: ["id"] }]),
+  authoredService("workspaceClaimHandoff", "Retain the explicitly authorized private claim audit.", "base", "open-workspace-claims", [{ name: "stage", params: ["report"] }]),
   authoredService("branchDeliveryRead", "Discover and bind exact owned semantic branch delivery evidence.", "base", "open-bridge-delivery", [{ name: "discover", params: [] }, { name: "inspect", params: ["id"] }, { name: "operation", params: ["id", "path"] }]),
   authoredService("branchDeliveryWrite", "Commit or retain local branch delivery in the explicitly authorized scope.", "base", "open-bridge-delivery", [{ name: "commit", params: ["id", "basis"] }, { name: "retain", params: ["report"] }]),
   authoredService("gitBridgeReviewRead", "Read the assigned Git Bridge upstream and semantic repository state.", "base", "git-bridge-review", [{ name: "observe", params: ["operationId"] }]),

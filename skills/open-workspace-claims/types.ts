@@ -1,0 +1,12 @@
+export type ClaimScope={id:string;title:string;purpose:"review"|"archive"};
+export type ClaimIndex={scopes:ClaimScope[]};
+export type ClaimReviewChoice={id:string;retain:boolean};
+export type ClaimRequirement={id:string;text:string};
+export type ClaimPacket={id:string;title:string;candidateEvent:string;priorEvent:string;protectedEvent:string;
+  requirements:ClaimRequirement[];packetHash:string};
+export type ClaimEvidence={packetId:string;candidateEvent:string;priorEvent:string;sourceHash:string;observations:string[]};
+export type ClaimSupport={supported:string[];missing:string[]};
+export type ClaimDisposition={status:"confirmed"|"partial"|"unconfirmed";summary:string};
+export type ClaimHandoff={path:string;digest:string};
+export type WorkspaceClaimReview={choice:ClaimReviewChoice;packet:ClaimPacket;evidence:ClaimEvidence;
+  support:ClaimSupport;disposition:ClaimDisposition;handoff:ClaimHandoff|null};

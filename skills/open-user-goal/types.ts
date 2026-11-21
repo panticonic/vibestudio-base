@@ -77,6 +77,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "templateMigration"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "authoring"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "bridgeDelivery"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "workspaceClaims"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "pdfVault"; outcome: PdfVaultOutcome };
 
 export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
