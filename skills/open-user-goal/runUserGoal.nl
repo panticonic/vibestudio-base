@@ -13,10 +13,11 @@ returns: UserGoalReport
 Composite outcomes:
 - A vault revision grounded in a local PDF uses `pdf.workOnPdfGoal(goal)` and `authorizePdfVaultHandoff(goal, pdfResult)`. Call `spectrolite.workTowardVaultGoal` with its directive only when the handoff is bound. Report `pdfVault` with the actual `{pdf, handoff, vault}` and null vault on hold.
 - A local handoff that needs verified native recovery uses `workOnEvalHandoffGoal` to recover within the goal's scope, then `workOnRecoveryHandoff(goal, actualRecovery)`. Report `compoundRecovery` with the actual result and preserve all scope, authority, and cancellation conditions.
-- Public evidence uses `investigatePublicQuestion(goal)`. For research alone return its result. For a document change, pass verified research to `reviseWorkspaceDocument` if the goal requires it, or pass null when local evidence suffices. Report the actual research and revision when both are requested.
+- Public evidence uses `investigatePublicQuestion(goal)`. For research alone return its result. When a document change depends on public findings, pass verified research to `reviseWorkspaceDocument` only after establishing the required evidence. Report the actual research and revision.
 
 Common workspace entry points:
 - Explicit public URLs for evidence or a decision: `answerFromAssignedPublicSources → publicBrief`.
+- A local document change supported by workspace evidence: return the result of `reviseWorkspaceDocument(goal, null)`.
 - Work on the current panel: `workInBrowser`. Use only visible authorized controls and read back changes.
 - Inspect or run a declared workspace suite: `verifyWorkspaceSuite`. Execute only when requested.
 - Activate a new private schedule only when the goal requests it and retained consent authorizes it: `activateOwnedAutomation → automationActivation`. Existing schedule recovery uses `scheduledRecovery.recoverScheduledAutomation → scheduledRecovery`; coordinated monitor changes use `personalAutomation.coordinatePersonalAutomation → personalAutomation`.
