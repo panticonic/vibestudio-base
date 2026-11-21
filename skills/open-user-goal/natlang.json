@@ -213,6 +213,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "boardMigration": ["runUserGoal/reviewBoardMigration.nl", "runUserGoal/reviewBoardMigration/locateSource.nl", "runUserGoal/reviewBoardMigration/decideMigration.nl"],
     "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
     "androidDeliveryScope": ["runUserGoal/verifyAndroidDelivery/readAndroidDeliveryScope.nl"],
     "terminalRepairCatalog": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"],

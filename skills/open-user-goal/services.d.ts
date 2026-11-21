@@ -1,4 +1,12 @@
 declare module "natlang:services" {
+  export const boardMigration: {
+    listSources(): Promise<import("./runUserGoal/reviewBoardMigration/types.js").LegacyBoard[]>;
+    inspect(id: string): Promise<import("./runUserGoal/reviewBoardMigration/types.js").MigrationView>;
+    readTarget(): Promise<import("./runUserGoal/reviewBoardMigration/types.js").MigrationBasis>;
+    retain(boardId: string, revision: string, selection: import("./runUserGoal/reviewBoardMigration/types.js").MigrationSelection): Promise<import("./runUserGoal/reviewBoardMigration/types.js").BoardMigrationReceipt | null>;
+  };
+}
+declare module "natlang:services" {
   export const localInventoryDocket: {
     list(): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryCard[]>;
     read(id: string): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryDocket>;

@@ -364,6 +364,7 @@ const authoredServices = [
   authoredService("remoteDeploymentRead", "Read the baseline of the assigned managed deployment.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
   authoredService("remoteDeploymentApply", "Run the caller-authorized managed installer for the observed baseline.", "system", "remote-access", [{ name: "apply", params: ["baselineReceipt"] }]),
   authoredService("remoteDeploymentVerify", "Verify the managed hub and child after the caller-authorized install.", "system", "remote-access", [{ name: "verify", params: ["actionReceipt"] }]),
+  authoredService("boardMigration", "Inspect an exact owned board and retain an authorized scope against current evidence.", "base", "open-user-goal", [{ name: "listSources", params: [] }, { name: "inspect", params: ["id"] }, { name: "readTarget", params: [] }, { name: "retain", params: ["boardId", "revision", "selection"] }]),
   authoredService("tendrilBoardDocket", "Read a caller-owned live board's current presentation ticket.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["id"] }]),
   authoredService("localInventoryDocket", "Discover and read the current caller-owned local workload constraints.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["id"] }]),
   authoredService("androidDeliveryScope", "Read the exact current owned Android test scope.", "base", "open-user-goal", [{ name: "read", params: ["goal"] }]),

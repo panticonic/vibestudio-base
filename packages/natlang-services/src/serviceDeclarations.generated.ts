@@ -7557,6 +7557,66 @@ type DeploymentVerification = {
 
 /** Verify the managed hub and child after the caller-authorized install. */
 export function verify(actionReceipt: string): Promise<DeploymentVerification>;`,
+  boardMigration: `/** Inspect an exact owned board and retain an authorized scope against current evidence. */
+
+type LegacyBoard = {
+  id: string;
+  title: string;
+  edition: string;
+  revision: string;
+};
+
+type BoardCard = {
+  id: string;
+  title: string;
+  list: string;
+  archived: boolean;
+  summary: string;
+  checklist: string[];
+  attachments: string[];
+};
+
+type MigrationView = {
+  board: LegacyBoard;
+  cards: BoardCard[];
+};
+
+type MigrationApproval = {
+  boardId: string;
+  revision: string;
+  target: string;
+  authorizedCardIds: string[];
+} | null;
+
+type MigrationBasis = {
+  approval: MigrationApproval;
+  target: string;
+  existing: BoardCard[] | null;
+};
+
+type MigrationSelection = {
+  target: string;
+  cards: BoardCard[];
+};
+
+type BoardMigrationReceipt = {
+  target: string;
+  boardId: string;
+  revision: string;
+  cards: BoardCard[];
+};
+
+/** Inspect an exact owned board and retain an authorized scope against current evidence. */
+export function listSources(): Promise<LegacyBoard[]>;
+
+/** Inspect an exact owned board and retain an authorized scope against current evidence. */
+export function inspect(id: string): Promise<MigrationView>;
+
+/** Inspect an exact owned board and retain an authorized scope against current evidence. */
+export function readTarget(): Promise<MigrationBasis>;
+
+/** Inspect an exact owned board and retain an authorized scope against current evidence. */
+export function retain(boardId: string, revision: string, selection: MigrationSelection): Promise<BoardMigrationReceipt | null>;`,
   tendrilBoardDocket: `/** Read a caller-owned live board's current presentation ticket. */
 
 type LiveTendrilCard = { id: string; title: string; edition: "current" | "archive" };

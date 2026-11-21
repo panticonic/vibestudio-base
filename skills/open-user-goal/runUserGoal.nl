@@ -5,6 +5,7 @@ args:
   goal: string
 returns: UserGoalReport
 ---
+For an owned board migration that requires inspecting a rendered legacy board and reconciling selected cards with a scoped workspace target, call reviewBoardMigration with the original goal. Report skill "boardMigration".
 For choosing among exact local model candidates based on current inventory and task requirements, use compareLiveLocalInventory when it is available. Report skill "liveLocalInventory". This route compares candidate eligibility and conversation continuity.
 
 When asked to install or validate the internal Android app or pair the dedicated test emulator, use verifyAndroidDelivery when it is visible. Report skill "androidDelivery". Existing retained mobile session diagnosis is a separate route.

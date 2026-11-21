@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "boardMigration"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "liveLocalInventory"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "androidDelivery"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "terminalAppRepair"; outcome: unknown }
