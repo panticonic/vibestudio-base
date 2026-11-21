@@ -10,6 +10,10 @@
       "types": ["CoordinatedRevisionReport"]
     },
 
+    "runUserGoal/prepareContentProject": {
+      "mounts": ["runUserGoal/prepareContentProject/authorProjectDocuments/compose"],
+      "types": ["ProjectEvidenceReview", "ProjectEvidenceDecision", "ProjectScopeLease", "PreparedContentSnapshot", "AuthoredProjectDraft", "PrivateProjectFinish", "PreparedContentProjectReport"]
+    },
     "runUserGoal/reviewRetainedMemory": {
       "mounts": ["runUserGoal/reviewRetainedMemory/evidence", "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance", "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence"],
       "types": ["RetainedMemoryReport"]
@@ -107,6 +111,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/prepareContentProject/authorProjectDocuments/compose": "skills/vibestudio-workflows/runWorkflow/deliverProject",
     "runUserGoal/compareLiveLocalInventory/installed": "skills/local-model-task",
     "runUserGoal/verifyAndroidDelivery/mobile": "skills/mobile-system-testing/scenario",
     "runUserGoal/workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
@@ -223,6 +228,10 @@
   },
   "serviceScopes": {
     "boardMigration": ["runUserGoal/reviewBoardMigration.nl", "runUserGoal/reviewBoardMigration/locateSource.nl", "runUserGoal/reviewBoardMigration/decideMigration.nl"],
+    "contentProjectSources": ["runUserGoal/prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.nl"],
+    "contentProjectScope": ["runUserGoal/prepareContentProject/confirmProjectScope.nl"],
+    "contentProjectDraft": ["runUserGoal/prepareContentProject/authorProjectDocuments/writeInitialProject.nl"],
+    "contentProjectCommit": ["runUserGoal/prepareContentProject/finishPrivateProject/commitReviewedProject.nl"],
     "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
     "androidDeliveryScope": ["runUserGoal/verifyAndroidDelivery/readAndroidDeliveryScope.nl"],
     "terminalRepairCatalog": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"],

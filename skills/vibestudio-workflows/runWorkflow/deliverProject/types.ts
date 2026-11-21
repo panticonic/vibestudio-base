@@ -1,3 +1,20 @@
+export type ContentFact = { id: string; text: string };
+
+export type ContentRequest = {
+  goal: string;
+  audience: string;
+  facts: ContentFact[];
+  documentRoles: string[];
+};
+
+export type ContentReview = {
+  ready: boolean;
+  coveredRoles: string[];
+  unsupportedClaims: string[];
+  blockers: string[];
+  reason: string;
+};
+
 export type Brief = {
   audienceNeeds: string[];
   constraints: string[];

@@ -6,6 +6,82 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  contentProjectSources: `/** Read the current project evidence from the owned semantic workspace. */
+
+type ProjectSourceDocument = {
+  id: string;
+  path: string;
+  fileId: string;
+  digest: string;
+  edition: "current" | "retired";
+  purpose: "requirements" | "safety" | "approval";
+  facts: { id: string; text: string }[];
+  localApproval: "commit" | "draft" | "pending" | null;
+};
+
+type ProjectEvidenceReview = {
+  title: string;
+  repoPath: string;
+  audience: string;
+  documentRoles: string[];
+  revision: string;
+  occupied: boolean;
+  records: ProjectSourceDocument[];
+};
+
+/** Read the current project evidence from the owned semantic workspace. */
+export function observe(): Promise<ProjectEvidenceReview>;`,
+  contentProjectScope: `/** Attest the exact fact selection and current local consent. */
+
+type ProjectCitation = { source: string; digest: string; fact: string };
+
+type ProjectEvidenceDecision = {
+  action: "commit" | "draft" | "hold";
+  basis: "authorized" | "occupied" | "missing" | "conflict" | "pending";
+  selected: ProjectCitation[];
+  reason: string;
+};
+
+type ApprovedProjectRequest = {
+  goal: string;
+  audience: string;
+  facts: {id:string; text:string}[];
+  documentRoles: string[];
+};
+
+type ProjectScopeLease = {
+  status: "admitted" | "held" | "moved";
+  receipt: string | null;
+  initialHead: string;
+  request: ApprovedProjectRequest | null;
+};
+
+/** Attest the exact fact selection and current local consent. */
+export function confirm(revision: string, decision: ProjectEvidenceDecision):
+      Promise<ProjectScopeLease>;`,
+  contentProjectDraft: `/** Prepare and write one explicitly scoped private content project. */
+
+type PreparedContentSnapshot = {
+  contextId: string;
+  repoPath: string;
+  repositoryId: string | null;
+  head: string;
+  mainEventId: string;
+  committedEventId: string;
+  clean: boolean;
+  files: {path:string; text:string}[];
+};
+
+/** Prepare and write one explicitly scoped private content project. */
+export function prepare(receipt: string | null, head: string): Promise<PreparedContentSnapshot | null>;
+
+/** Prepare and write one explicitly scoped private content project. */
+export function write(receipt: string | null, head: string, documents: {path: string; text: string}[]):
+      Promise<PreparedContentSnapshot | null>;`,
+  contentProjectCommit: `/** Locally commit the exact reviewed project with current owner approval. */
+
+/** Locally commit the exact reviewed project with current owner approval. */
+export function commit(receipt: string | null, head: string, message: string): Promise<{eventId:string;head:string} | null>;`,
   terminalRepairCatalog: `/** List current and retired owned terminal app source identities. */
 
 type TerminalRepairApp = {

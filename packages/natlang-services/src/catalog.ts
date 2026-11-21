@@ -56,6 +56,10 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("contentProjectSources", "Read the current project evidence from the owned semantic workspace.", "base", "open-user-goal", [{ name: "observe", params: [] }]),
+  authoredService("contentProjectScope", "Attest the exact fact selection and current local consent.", "base", "open-user-goal", [{ name: "confirm", params: ["revision", "decision"] }]),
+  authoredService("contentProjectDraft", "Prepare and write one explicitly scoped private content project.", "base", "open-user-goal", [{ name: "prepare", params: ["receipt", "head"] }, { name: "write", params: ["receipt", "head", "documents"] }]),
+  authoredService("contentProjectCommit", "Locally commit the exact reviewed project with current owner approval.", "base", "open-user-goal", [{ name: "commit", params: ["receipt", "head", "message"] }]),
   authoredService("terminalRepairCatalog", "List current and retired owned terminal app source identities.", "base", "open-user-goal", [{ name: "list", params: [] }]),
   authoredService("terminalRepairObserve", "Read the assigned terminal app and actual native baseline evidence.", "base", "open-user-goal", [{ name: "read", params: ["appId"] }]),
   authoredService("terminalRepairApply", "Apply exact production source changes at the approved terminal app revision.", "base", "open-user-goal", [{ name: "edit", params: ["appId", "revision", "edits"] }]),

@@ -7,6 +7,24 @@ declare module "natlang:services" {
   };
 }
 declare module "natlang:services" {
+  export const contentProjectSources: {
+    observe(): Promise<import("./runUserGoal/prepareContentProject/types.js").ProjectEvidenceReview>;
+  };
+  export const contentProjectScope: {
+    confirm(revision: string, decision: import("./runUserGoal/prepareContentProject/types.js").ProjectEvidenceDecision):
+      Promise<import("./runUserGoal/prepareContentProject/types.js").ProjectScopeLease>;
+  };
+  export const contentProjectDraft: {
+    prepare(receipt: string | null, head: string): Promise<import("./runUserGoal/prepareContentProject/types.js").PreparedContentSnapshot | null>;
+    write(receipt: string | null, head: string, documents: {path: string; text: string}[]):
+      Promise<import("./runUserGoal/prepareContentProject/types.js").PreparedContentSnapshot | null>;
+  };
+  export const contentProjectCommit: {
+    commit(receipt: string | null, head: string, message: string): Promise<{eventId:string;head:string} | null>;
+  };
+}
+
+declare module "natlang:services" {
   export const localInventoryDocket: {
     list(): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryCard[]>;
     read(id: string): Promise<import("./runUserGoal/compareLiveLocalInventory/types.js").LocalInventoryDocket>;

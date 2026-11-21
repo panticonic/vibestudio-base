@@ -16,22 +16,8 @@ export type UnitReport = {
   evidence: string[];
 };
 
-export type ContentFact = { id: string; text: string };
-
-export type ContentRequest = {
-  goal: string;
-  audience: string;
-  facts: ContentFact[];
-  documentRoles: string[];
-};
-
-export type ContentReview = {
-  ready: boolean;
-  coveredRoles: string[];
-  unsupportedClaims: string[];
-  blockers: string[];
-  reason: string;
-};
+import type { ContentReview } from "./runWorkflow/deliverProject/types.js";
+export type { ContentFact, ContentRequest, ContentReview } from "./runWorkflow/deliverProject/types.js";
 
 export type ContentReport = {
   status: "committed" | "blocked";
