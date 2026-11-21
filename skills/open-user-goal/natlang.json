@@ -164,6 +164,8 @@
     "extensionDossierWrite": ["runUserGoal/reviewExtensionDossier/stageDossier.nl"],
     "installedPackageRead": ["runUserGoal/reviewInstalledPackage/discoverPackage.nl", "runUserGoal/reviewInstalledPackage/inspectPackage/readOwnedPackage.nl"],
     "installedPackageChange": ["runUserGoal/reviewInstalledPackage/restorePackage.nl"],
+    "webhookAdmissionEvidence": ["runUserGoal/reviewWebhookAdmission/discoverWebhook.nl", "runUserGoal/reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"],
+    "webhookAdmissionHandoff": ["runUserGoal/reviewWebhookAdmission/stageWebhookAudit.nl"],
     "contentArchiveEvidence": ["runUserGoal/recoverContentArchive/discoverArchive.nl", "runUserGoal/recoverContentArchive/inspectArchive/readArchiveEvidence.nl"],
     "contentArchiveChange": ["runUserGoal/recoverContentArchive/applyArchive.nl"],
     "systemReleaseEvidence": ["runUserGoal/reviewSystemRelease/discoverRelease.nl", "runUserGoal/reviewSystemRelease/compareRuns/readRuns.nl", "runUserGoal/reviewSystemRelease/evaluateCases/readCase.nl"],

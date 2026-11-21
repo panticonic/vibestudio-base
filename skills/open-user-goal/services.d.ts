@@ -82,6 +82,15 @@ declare module "natlang:services" {
     restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<import("./runUserGoal/reviewInstalledPackage/contract.js").PackageRestore>;
   };
+  export const webhookAdmissionEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionAssignment>;
+    inspect(id: string): Promise<import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionEvidence>;
+  };
+  export const webhookAdmissionHandoff: {
+    stage(id: string, digest: string | null, row: import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionRow | null,
+      disposition: import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionDecision):
+      Promise<import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionReceipt>;
+  };
   export const contentArchiveEvidence: {
     discover(): Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveAssignment>;
     inspect(id: string): Promise<import("./runUserGoal/recoverContentArchive/contract.js").ContentArchiveObservation>;

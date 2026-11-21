@@ -5182,6 +5182,61 @@ type PackageRestore = { status: "restored" | "state-changed" | "not-authorized";
 /** Restore one approved installed package declaration at its exact working revision. */
 export function restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<PackageRestore>;`,
+  webhookAdmissionEvidence: `/** Read one local webhook registration, its retained receipt and exact redacted native status. */
+
+type WebhookAdmissionRequirement = "target" | "payload" | "body-limit" | "replay-key" | "replay-window" |
+  "retry" | "malformed" | "status" | "full";
+
+type WebhookAdmissionTarget = { source: string; className: string; objectKey: string; method: string };
+
+type WebhookAdmissionAssignment = {
+  id: string; goal: string; label: string; contextId: string; registration: string; mayStage: boolean;
+  requirement: WebhookAdmissionRequirement; target: WebhookAdmissionTarget; minBody: number;
+  replayField: string; minReplayWindow: number; successStatus: number;
+};
+
+type WebhookAdmissionWitness = {
+  contextId: string; registration: string; createdAt: number; updatedAt: number; digest: string;
+};
+
+type WebhookAdmissionRow = {
+  id: string; label: string; target: WebhookAdmissionTarget; createdAt: number; updatedAt: number;
+  revokedAt: number | null; delivery: string; maxBodyBytes: number; payload: string;
+  replayKind: string | null; replayField: string | null; replayWindow: number | null;
+  successStatus: number; malformed: string; dispatch: string; verifierKind: string; hasSecret: boolean;
+};
+
+type WebhookAdmissionEvidence = {
+  witness: WebhookAdmissionWitness | null; retainedDigest: string | null; rowDigest: string | null;
+  active: WebhookAdmissionRow[]; history: WebhookAdmissionRow[];
+};
+
+/** Read one local webhook registration, its retained receipt and exact redacted native status. */
+export function discover(): Promise<WebhookAdmissionAssignment>;
+
+/** Read one local webhook registration, its retained receipt and exact redacted native status. */
+export function inspect(id: string): Promise<WebhookAdmissionEvidence>;`,
+  webhookAdmissionHandoff: `/** Write the exact authorized metadata-only local admission audit. */
+
+type WebhookAdmissionTarget = { source: string; className: string; objectKey: string; method: string };
+
+type WebhookAdmissionRow = {
+  id: string; label: string; target: WebhookAdmissionTarget; createdAt: number; updatedAt: number;
+  revokedAt: number | null; delivery: string; maxBodyBytes: number; payload: string;
+  replayKind: string | null; replayField: string | null; replayWindow: number | null;
+  successStatus: number; malformed: string; dispatch: string; verifierKind: string; hasSecret: boolean;
+};
+
+type WebhookAdmissionDecision = "stage-audit" | "report-only" | "hold-record" | "hold-scope" |
+  "hold-revoked" | "hold-receipt" | "hold-target" | "hold-payload" | "hold-body-limit" | "hold-replay-key" |
+  "hold-replay-window" | "hold-retry" | "hold-malformed" | "hold-status";
+
+type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
+
+/** Write the exact authorized metadata-only local admission audit. */
+export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
+      disposition: WebhookAdmissionDecision):
+      Promise<WebhookAdmissionReceipt>;`,
   contentArchiveEvidence: `/** Read the locally admitted content archive assignment, two exact immutable trees, and current project working proof. */
 
 type ContentArchiveAssignment = {
