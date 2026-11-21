@@ -31,6 +31,19 @@ function mockRpc() {
 }
 
 describe("createRpcFs transport lifetime", () => {
+  it("reads Natlang program sources using the snapshot-bound filesystem contract", async () => {
+    const request = { roots: ["skills/brief"], expectedSnapshot: "a".repeat(64) };
+    const result = {
+      snapshot: request.expectedSnapshot,
+      directories: request.roots,
+      files: [{ path: "skills/brief/run.nl", content: "Review the brief." }],
+    };
+    const rpc = schemaRpcMock({ call: vi.fn(async () => result) });
+    const fs = createRpcFs(rpc as never);
+    await expect(fs.readProgramSources?.(request)).resolves.toEqual(result);
+    expect(rpc.call).toHaveBeenCalledWith("main", "fs.readProgramSources", [request], undefined);
+  });
+
   it("does not impose an implicit deadline on a filesystem operation", async () => {
     let resolve!: (value: ReturnType<typeof statFixture>) => void;
     const rpc = schemaRpcMock({

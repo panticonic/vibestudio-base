@@ -1,4 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2.js";
+import type { FsProgramSourcesRequest, FsProgramSourcesResult } from "@vibestudio/service-schemas/fs";
 import * as core from "../vendor/workerd/natlang-workerd.js";
 import {
   compileVirtualProject,
@@ -24,11 +25,7 @@ export interface WorkspaceFs {
     options: { withFileTypes: true }
   ): Promise<Array<{ name: string; isDirectory(): boolean }>>;
   stat(path: string): Promise<{ isDirectory(): boolean }>;
-  readProgramSources?(input: { roots: string[]; expectedSnapshot?: string }): Promise<{
-    snapshot: string;
-    directories: string[];
-    files: Array<{ path: string; content: string }>;
-  }>;
+  readProgramSources?(input: FsProgramSourcesRequest): Promise<FsProgramSourcesResult>;
 }
 
 /** The root every program's in-memory project is mounted at. */

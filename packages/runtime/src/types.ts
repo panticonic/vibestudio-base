@@ -1,6 +1,7 @@
 export { DEFAULT_THEME_CONFIG } from "@vibestudio/shared/theme";
 export type { ThemeConfig } from "@vibestudio/shared/theme";
 export type { HostCommand } from "@vibestudio/shared/hostCommands";
+import type { FsProgramSourcesRequest, FsProgramSourcesResult } from "@vibestudio/service-schemas/fs";
 
 export type ThemeAppearance = "light" | "dark";
 
@@ -111,6 +112,8 @@ export interface RuntimeFs {
   /** Create and return a unique context-local directory under `/.tmp`. */
   mkdtemp(prefix?: string): Promise<string>;
   readFile(path: string, encoding?: string): Promise<string | Uint8Array>;
+  /** Available in semantic workspace contexts for reading the current Natlang source snapshot. */
+  readProgramSources?(input: FsProgramSourcesRequest): Promise<FsProgramSourcesResult>;
   writeFile(path: string, data: string | RuntimeBinaryData): Promise<void>;
   readdir(path: string): Promise<string[]>;
   readdir(path: string, options: { withFileTypes: true }): Promise<Dirent[]>;

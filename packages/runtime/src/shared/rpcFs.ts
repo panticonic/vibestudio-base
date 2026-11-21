@@ -132,6 +132,9 @@ export function createRpcFs(rpc: Pick<RpcClient, "call">, options: RpcFsOptions 
     async readFile(path: string, encoding?: string): Promise<string | Uint8Array> {
       return call("readFile", path, encoding);
     },
+    async readProgramSources(input) {
+      return call("readProgramSources", input);
+    },
     async writeFile(path: string, data: string | RuntimeBinaryData): Promise<void> {
       await call("writeFile", path, encodeWritePayload(data));
     },
