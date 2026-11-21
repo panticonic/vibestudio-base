@@ -22,6 +22,7 @@ export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
+  | { status: "workspace-skill-reviewed"; skill: "grimoireScene"; outcome: GrimoireSceneOutcome }
   | { status: "workspace-skill-reviewed"; skill: "testkitCloseout"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "phoneFirstRun"; outcome: PhoneFirstRunOutcome }
   | { status: "workspace-skill-reviewed"; skill: "skillMaintenance"; outcome: SkillMaintenanceOutcome }
@@ -416,4 +417,34 @@ export type PhoneFirstRunDecision = {
 };
 export type PhoneFirstRunOutcome = {
   scope: "owned-phone-eligibility-rehearsal"; evidence: PhoneFirstRunEvidence; decision: PhoneFirstRunDecision;
+};
+
+export type GrimoireDocket = { id: string; title: string; edition: "current" | "archive" };
+export type GrimoireSceneSource = {
+  id: string; title: string; detail: string; x: number; y: number; kind: "observed" | "planned";
+};
+export type GrimoireSceneView = {
+  docketId: string; ownerId: string; frontier: string; sceneDigest: string; description: string;
+  turn: number; day: number; weather: string; pending: boolean; assets: string[];
+  anchors: GrimoireSceneSource[];
+};
+export type GrimoireCaretakerScope = {
+  docketId: string; ownerId: string; frontier: string; directive: string; approved: boolean;
+  proposed: GrimoireSceneSource | null; requestedAsset: string | null;
+};
+export type GrimoireSceneEvidence = { scene: GrimoireSceneView; scope: GrimoireCaretakerScope };
+export type GrimoirePlan = {
+  action: "stage-scene" | "stage-note" | "keep-current" | "hold-foreign" | "hold-no-art" | "hold-authority" | "hold-stale";
+  finding: string; proposedIds: string[]; description: string | null;
+};
+export type GrimoireSceneGate = { ownerId: string; frontier: string; status: "current" | "changed" };
+export type GrimoireSceneReceipt = {
+  status: "staged"; path: string; digest: string; previewDigest: string | null; frontier: string;
+};
+export type GrimoireSceneReadback = {
+  ownerId: string; frontier: string; sceneDigest: string; fileDigest: string | null;
+};
+export type GrimoireSceneOutcome = {
+  scope: "owned-grimoire-caretaker-draft"; docket: GrimoireDocket; evidence: GrimoireSceneEvidence;
+  plan: GrimoirePlan; gate: GrimoireSceneGate; receipt: GrimoireSceneReceipt | null; readback: GrimoireSceneReadback;
 };

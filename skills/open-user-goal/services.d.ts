@@ -193,3 +193,16 @@ declare module "natlang:services" {
     provider(id: string): Promise<import("./types.js").PhoneProviderEvidence>;
   };
 }
+
+declare module "natlang:services" {
+  export const grimoireScene: {
+    discover(): Promise<import("./types.js").GrimoireDocket[]>;
+    view(id: string): Promise<import("./types.js").GrimoireSceneView>;
+    readScope(id: string): Promise<import("./types.js").GrimoireCaretakerScope>;
+    confirm(id: string, frontier: string): Promise<import("./types.js").GrimoireSceneGate>;
+    readback(id: string, path: string | null): Promise<import("./types.js").GrimoireSceneReadback>;
+  };
+  export const grimoireHandoff: {
+    stage(id: string, frontier: string, plan: import("./types.js").GrimoirePlan): Promise<import("./types.js").GrimoireSceneReceipt | null>;
+  };
+}

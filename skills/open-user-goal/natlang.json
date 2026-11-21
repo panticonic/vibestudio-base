@@ -95,6 +95,14 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "grimoireScene": [
+      "runUserGoal/careForGrimoireScene/findCaretakerDocket.nl",
+      "runUserGoal/careForGrimoireScene/readSceneEvidence/readOwnerView.nl",
+      "runUserGoal/careForGrimoireScene/readSceneEvidence/readCaretakerScope.nl",
+      "runUserGoal/careForGrimoireScene/confirmSceneFrontier.nl",
+      "runUserGoal/careForGrimoireScene/verifySceneHandoff/readSceneAndArtifact.nl"
+    ],
+    "grimoireHandoff": ["runUserGoal/careForGrimoireScene/stageCaretakerArtifact.nl"],
     "testkitCloseout": ["runUserGoal/compareTestkitCloseouts/discoverCloseoutAttempts.nl", "runUserGoal/compareTestkitCloseouts/stageCloseoutEvidence.nl"],
     "phoneFirstRun": [
       "runUserGoal/planPhoneFirstRun/locatePhoneRehearsal.nl",

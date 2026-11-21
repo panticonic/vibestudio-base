@@ -2194,6 +2194,58 @@ export function refresh(lane: NotificationLane): Promise<NotificationRefresh>;
 /** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
 export function acknowledge(lane: NotificationLane, id: string, revision: number):
       Promise<NotificationAcknowledgment>;`,
+  grimoireScene: `/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
+
+type GrimoireDocket = { id: string; title: string; edition: "current" | "archive" };
+
+type GrimoireSceneSource = {
+  id: string; title: string; detail: string; x: number; y: number; kind: "observed" | "planned";
+};
+
+type GrimoireSceneView = {
+  docketId: string; ownerId: string; frontier: string; sceneDigest: string; description: string;
+  turn: number; day: number; weather: string; pending: boolean; assets: string[];
+  anchors: GrimoireSceneSource[];
+};
+
+type GrimoireCaretakerScope = {
+  docketId: string; ownerId: string; frontier: string; directive: string; approved: boolean;
+  proposed: GrimoireSceneSource | null; requestedAsset: string | null;
+};
+
+type GrimoireSceneGate = { ownerId: string; frontier: string; status: "current" | "changed" };
+
+type GrimoireSceneReadback = {
+  ownerId: string; frontier: string; sceneDigest: string; fileDigest: string | null;
+};
+
+/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
+export function discover(): Promise<GrimoireDocket[]>;
+
+/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
+export function view(id: string): Promise<GrimoireSceneView>;
+
+/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
+export function readScope(id: string): Promise<GrimoireCaretakerScope>;
+
+/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
+export function confirm(id: string, frontier: string): Promise<GrimoireSceneGate>;
+
+/** Read the current owned Grimoire scene and exact caretaker draft evidence. */
+export function readback(id: string, path: string | null): Promise<GrimoireSceneReadback>;`,
+  grimoireHandoff: `/** Stage one private Grimoire artifact against its confirmed scene frontier. */
+
+type GrimoirePlan = {
+  action: "stage-scene" | "stage-note" | "keep-current" | "hold-foreign" | "hold-no-art" | "hold-authority" | "hold-stale";
+  finding: string; proposedIds: string[]; description: string | null;
+};
+
+type GrimoireSceneReceipt = {
+  status: "staged"; path: string; digest: string; previewDigest: string | null; frontier: string;
+};
+
+/** Stage one private Grimoire artifact against its confirmed scene frontier. */
+export function stage(id: string, frontier: string, plan: GrimoirePlan): Promise<GrimoireSceneReceipt | null>;`,
   phoneFirstRun: `/** Read owned phone setup eligibility, scoped native phase excerpts and the installed System build declaration. */
 
 type PhoneFirstRunCard = { id: string; title: string; edition: "current" | "archive" };
