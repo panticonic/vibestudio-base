@@ -212877,15 +212877,29 @@ function containsRefinement(type, env, seen = /* @__PURE__ */ new Set()) {
   if (type.kind === "neuralese" || type.kind === "host") return false;
   return children(type).some((child) => containsRefinement(child, env, seen));
 }
-function indexedType(base, key, resolve2) {
+function indexedType(base, key, resolve2, activeUnions = /* @__PURE__ */ new Set()) {
   const resolved = resolve2(base);
+  if (resolved.kind === "union") {
+    if (activeUnions.has(resolved))
+      throw new TypeSyntaxError(`cannot index field ${JSON.stringify(key)} through a recursive union`);
+    activeUnions.add(resolved);
+    try {
+      const members = resolved.members.flatMap((member) => {
+        const field = indexedType(member, key, resolve2, activeUnions);
+        return field.kind === "union" ? field.members : [field];
+      });
+      return { kind: "union", members };
+    } finally {
+      activeUnions.delete(resolved);
+    }
+  }
   if (resolved.kind === "record") {
     const field = resolved.fields.find((item) => item.name === key);
     if (!field) throw new TypeSyntaxError(`${formatType(resolved)} has no field ${JSON.stringify(key)}; index it with one of its field names`);
     return field.optional ? { kind: "union", members: [field.type, { kind: "prim", name: "null" }] } : field.type;
   }
   if (resolved.kind === "dict") return resolved.element;
-  throw new TypeSyntaxError(`${formatType(resolved)}[${JSON.stringify(key)}] indexes a record or dictionary; index a record type, or name the field's type directly`);
+  throw new TypeSyntaxError(`${formatType(resolved)}[${JSON.stringify(key)}] requires a record, dictionary, or a union of indexable types`);
 }
 function mergeIntersection(members, resolve2) {
   const parts = members.map(resolve2);
@@ -213221,7 +213235,7 @@ var init_types = __esm({
           } else if (type.kind === "host" && type.contract.kind === "tag" && type.name === type.contract.tag && this.lookup(type.name)) {
             type = { kind: "name", name: type.name };
           } else if (type.kind === "intersection") type = mergeIntersection(type.members, (member) => this.resolve(member));
-          else if (type.kind === "index") type = indexedType(this.resolve(type.base), type.key, (member) => this.resolve(member));
+          else if (type.kind === "index") type = indexedType(type.base, type.key, (member) => this.resolve(member));
           else return type;
         }
       }

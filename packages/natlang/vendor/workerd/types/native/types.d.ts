@@ -56,7 +56,7 @@ export type Type = {
     kind: 'intersection';
     members: Type[];
 }
-/** `T['field']`: the type of a field of a record, or the element of a dictionary, found when it is resolved. */
+/** `T['field']`: a record field, a dictionary element, or the union of the selected members. */
  | {
     kind: 'index';
     base: Type;
