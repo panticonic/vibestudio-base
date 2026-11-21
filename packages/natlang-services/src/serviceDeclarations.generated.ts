@@ -5724,6 +5724,65 @@ type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietReque
 
 /** Stage one authorized quiet readiness note with no provider claim. */
 export function stage(report:ReadinessReport):Promise<ReadinessArtifact|null>;`,
+  chatContinuityIndex: `/** Discover the owned original chat and exact source receipt. */
+
+type ChatScope = {id:string; title:string; purpose:string; contextId:string};
+
+type ChatReceipt = {channelId:string;messageId:string;senderId:string;text:string};
+
+type ChatWorker = {objectKey:string;participantId:string;active:boolean;revision:number;endedRevision:number|null;handle:string;mode:"addressed-observer"};
+
+type ChatIndex = {scopes:ChatScope[]; original:ChatReceipt; openingWorker:ChatWorker|null};
+
+/** Discover the owned original chat and exact source receipt. */
+export function list():Promise<ChatIndex>;`,
+  chatContinuityState: `/** Read an exact durable chat, first-party view and worker relationship. */
+
+type ChatRow = {id:string;envelope:string;sender:string;sequence:number;text:string};
+
+type ChatConsumerRow = {id:string;sender:string;text:string};
+
+type ChatWorker = {objectKey:string;participantId:string;active:boolean;revision:number;endedRevision:number|null;handle:string;mode:"addressed-observer"};
+
+type ChatReceipt = {channelId:string;messageId:string;senderId:string;text:string};
+
+type ChatObservation = {channelId:string;through:number;rows:ChatRow[];consumer:{channelId:string;rows:ChatConsumerRow[];
+  settled:boolean};worker:ChatWorker|null;receipt:ChatReceipt;retryId:string|null};
+
+/** Read an exact durable chat, first-party view and worker relationship. */
+export function read(channelId:string):Promise<ChatObservation|null>;`,
+  chatContinuityHandoff: `/** Stage one authorized private chat continuity note. */
+
+type ChatPlan = {channelId:string; requireWorker:boolean; note:"none"|"decision"|"ready-only"};
+
+type ChatRow = {id:string;envelope:string;sender:string;sequence:number;text:string};
+
+type ChatConsumerRow = {id:string;sender:string;text:string};
+
+type ChatWorker = {objectKey:string;participantId:string;active:boolean;revision:number;endedRevision:number|null;handle:string;mode:"addressed-observer"};
+
+type ChatReceipt = {channelId:string;messageId:string;senderId:string;text:string};
+
+type ChatObservation = {channelId:string;through:number;rows:ChatRow[];consumer:{channelId:string;rows:ChatConsumerRow[];
+  settled:boolean};worker:ChatWorker|null;receipt:ChatReceipt;retryId:string|null};
+
+type DeliveryReview = {kind:"delivery";goal:string;channelId:string;channelAccepted:boolean;originMatched:boolean;
+  durableCount:number;recipientsResolved:boolean;membershipVerified:boolean;replayMeaningMatches:boolean;
+  settlement:"pending"|"delivered"|"failed";accountedRetry:boolean};
+
+type ReviewedDelivery = {kind:"delivery";basis:string;blockers:string[];ready:boolean};
+
+type ChatEvidence = {request:DeliveryReview;review:ReviewedDelivery};
+
+type ChatDisposition = {status:"ready"|"held";write:boolean;explanation:string};
+
+type ChatHandoff = {path:string;digest:string;messageId:string;channelId:string;through:number};
+
+type ChatContinuityReport = {plan:ChatPlan;opening:ChatObservation;current:ChatObservation;evidence:ChatEvidence;
+  disposition:ChatDisposition;handoff:ChatHandoff|null};
+
+/** Stage one authorized private chat continuity note. */
+export function stage(report:ChatContinuityReport):Promise<ChatHandoff|null>;`,
   editorialMission: `/** Discover the exact owned Personal editorial assignment. */
 
 type PacketMission = {id:string;title:string;revision:number;description:string;status:string};

@@ -6,6 +6,8 @@
   "serviceBinding": "explicit",
   "workspaceModules": {
     "runUserGoal/compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
+    "runUserGoal/workOnChatContinuity/workspace": "skills/open-chat-continuity",
+    "runUserGoal/workOnChatContinuity/reviewChatContinuity/policy": "skills/conversation-evidence-review",
     "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",

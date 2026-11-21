@@ -1,0 +1,18 @@
+export type ChatScope = {id:string; title:string; purpose:string; contextId:string};
+export type ChatReceipt = {channelId:string;messageId:string;senderId:string;text:string};
+export type ChatWorker = {objectKey:string;participantId:string;active:boolean;revision:number;endedRevision:number|null;handle:string;mode:"addressed-observer"};
+export type ChatIndex = {scopes:ChatScope[]; original:ChatReceipt; openingWorker:ChatWorker|null};
+export type ChatPlan = {channelId:string; requireWorker:boolean; note:"none"|"decision"|"ready-only"};
+export type ChatRow = {id:string;envelope:string;sender:string;sequence:number;text:string};
+export type ChatConsumerRow = {id:string;sender:string;text:string};
+export type ChatObservation = {channelId:string;through:number;rows:ChatRow[];consumer:{channelId:string;rows:ChatConsumerRow[];
+  settled:boolean};worker:ChatWorker|null;receipt:ChatReceipt;retryId:string|null};
+export type DeliveryReview = {kind:"delivery";goal:string;channelId:string;channelAccepted:boolean;originMatched:boolean;
+  durableCount:number;recipientsResolved:boolean;membershipVerified:boolean;replayMeaningMatches:boolean;
+  settlement:"pending"|"delivered"|"failed";accountedRetry:boolean};
+export type ReviewedDelivery = {kind:"delivery";basis:string;blockers:string[];ready:boolean};
+export type ChatEvidence = {request:DeliveryReview;review:ReviewedDelivery};
+export type ChatDisposition = {status:"ready"|"held";write:boolean;explanation:string};
+export type ChatHandoff = {path:string;digest:string;messageId:string;channelId:string;through:number};
+export type ChatContinuityReport = {plan:ChatPlan;opening:ChatObservation;current:ChatObservation;evidence:ChatEvidence;
+  disposition:ChatDisposition;handoff:ChatHandoff|null};

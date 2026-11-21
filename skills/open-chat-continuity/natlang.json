@@ -1,0 +1,12 @@
+{
+  "schema":"natlang.package/v2",
+  "name":"vibestudio-open-chat-continuity",
+  "version":"0.1.0",
+  "targets":{"main":{"entry":"discoverChatContinuity.nl"}},
+  "serviceBinding":"explicit",
+  "serviceScopes":{
+    "chatContinuityIndex":["discoverChatContinuity.nl"],
+    "chatContinuityState":["observeChatContinuity.nl"],
+    "chatContinuityHandoff":["stageChatContinuityNote.nl"]
+  }
+}

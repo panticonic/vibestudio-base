@@ -47,6 +47,8 @@ For the retained Personal first-run welcome, current device, remote, local infer
 
 For checking a retained provider approval and its original conversation result together, including a scoped local handoff of that evidence, call workOnProviderHandoffGoal with the unchanged goal. Return status "workspace-skill-reviewed", skill "providerHandoff", and its actual outcome.
 
+For the original receipt, stock chat transcript and default worker continuity in an owned local conversation, call workOnChatContinuity with the unchanged goal. Return status "workspace-skill-reviewed", skill "chatContinuity", and its actual report.
+
 For a local publication candidate tied to a Personal editorial mission and approved local PDF evidence, call workOnEditorialPacket with the unchanged goal. Preserve co-edits and the private review scope. Return status "workspace-skill-reviewed", skill "editorialPacket", and its actual outcome.
 
 For a paired Examples demo readiness, acceptance card, or private handoff requiring both Grimoire and Regency, call workOnDemoPortfolio with the unchanged goal. Return status "workspace-skill-reviewed", skill "demoPortfolio", and its actual outcome.
