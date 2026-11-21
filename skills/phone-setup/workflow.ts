@@ -1,4 +1,5 @@
 import { phoneSetup } from "./index.js";
+import { eligiblePhoneDesktops } from "./providerEligibility.js";
 import type {
   DesktopCandidate,
   DiscoveredPhones,
@@ -27,10 +28,16 @@ export type PhoneSetupAssignment =
 /** Bind hardware operations only in the workspace that owns the public phone setup service. */
 export async function bindPhoneSetup(
   assignment: PhoneSetupAssignment,
-  { signal }: { signal?: AbortSignal } = {},
+  {
+    signal,
+    client,
+  }: {
+    signal?: AbortSignal;
+    client?: Awaited<ReturnType<typeof phoneSetup>>;
+  } = {},
 ) {
   signal?.throwIfAborted();
-  const client = await phoneSetup();
+  const resolved = client ?? (await phoneSetup());
   const target = assignment.target ? { ...assignment.target } : null;
   const platform = target?.platform ?? assignment.paired!.platform;
   const operationId = crypto.randomUUID();
@@ -63,22 +70,7 @@ export async function bindPhoneSetup(
       async start(id: string): Promise<SetupStart> {
         claim("start", id, operationId);
         if (target) {
-          desktops = (await client.providers())
-            .filter((desktop) => desktop.platforms.includes(platform))
-            .filter(
-              (desktop) =>
-                target.mode !== "source" ||
-                desktop.sourcePlatforms.includes(platform),
-            )
-            .filter(
-              (desktop) =>
-                !target.providerId || desktop.providerId === target.providerId,
-            )
-            .map(({ providerId, label, sourcePlatforms }) => ({
-              providerId,
-              label,
-              supportsSource: sourcePlatforms.includes(platform),
-            }));
+          desktops = eligiblePhoneDesktops(await resolved.providers(), target);
         }
         const startReceipt = receipt("assignment");
         if (pairedDeviceId) {
@@ -98,7 +90,7 @@ export async function bindPhoneSetup(
       },
       async discover(prepareReceipt: string): Promise<DiscoveredPhones> {
         claim("prepared", prepareReceipt, receipt("prepare"));
-        const result = await client.devices(providerId!, platform);
+        const result = await resolved.devices(providerId!, platform);
         const devices = result.devices.filter(
           (device) =>
             device.providerId === providerId &&
@@ -128,7 +120,7 @@ export async function bindPhoneSetup(
         claim("paired", priorReceipt, pairingReceipt);
         const id = receipt("readiness");
         try {
-          const current = await client.readiness(pairedDeviceId, signal);
+          const current = await resolved.readiness(pairedDeviceId, signal);
           return { receipt: id, state: current.status };
         } catch {
           signal?.throwIfAborted();
@@ -147,7 +139,7 @@ export async function bindPhoneSetup(
         providerId = selected;
         const id = receipt("prepare");
         try {
-          await client.prepare(providerId, platform);
+          await resolved.prepare(providerId, platform);
           phase = "prepared";
           return { receipt: id, state: "prepared" };
         } catch {
@@ -173,7 +165,7 @@ export async function bindPhoneSetup(
         claim("discovered", discoveryReceipt, receipt("discovery"));
         const id = receipt("pairing");
         try {
-          await client.provision(
+          await resolved.provision(
             { providerId, platform, deviceId, mode: target.mode },
             (event) => {
               if (event.type !== "paired" || pairingReceipt !== null) return;

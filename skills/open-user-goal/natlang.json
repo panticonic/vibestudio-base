@@ -13,6 +13,7 @@
     "runUserGoal/workOnEditorialPacket/reconcileEditorialRevision/policy": "skills/workspace-document-revision",
     "runUserGoal/reviseWorkspaceDocument/chooseRevision/policy": "skills/workspace-document-revision",
     "runUserGoal/reviseWorkspaceDocument/reconcileRevision/policy": "skills/workspace-document-revision",
+    "runUserGoal/planPhoneFirstRun/phoneSetup": "skills/phone-setup/natlang",
     "runUserGoal/workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
     "runUserGoal/workOnDemoPortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
     "runUserGoal/workOnDemoPortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
@@ -93,6 +94,12 @@
   },
   "serviceScopes": {
     "testkitCloseout": ["runUserGoal/compareTestkitCloseouts/discoverCloseoutAttempts.nl", "runUserGoal/compareTestkitCloseouts/stageCloseoutEvidence.nl"],
+    "phoneFirstRun": [
+      "runUserGoal/planPhoneFirstRun/locatePhoneRehearsal.nl",
+      "runUserGoal/planPhoneFirstRun/readPhoneEvidence/readSetupAssignment.nl",
+      "runUserGoal/planPhoneFirstRun/readPhoneEvidence/readStartupPhases.nl",
+      "runUserGoal/planPhoneFirstRun/readPhoneEvidence/readBuildProvider.nl"
+    ],
     "skillMaintenanceEvidence": [
       "runUserGoal/maintainWorkspaceSkill/locateMaintenanceSkill.nl",
       "runUserGoal/maintainWorkspaceSkill/inspectMaintenanceEvidence/readScopedSkill.nl",

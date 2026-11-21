@@ -186,4 +186,10 @@ declare module "natlang:services" {
     stage(report: import("./runUserGoal/compareTestkitCloseouts/types.js").CloseoutReport):
       Promise<import("./runUserGoal/compareTestkitCloseouts/types.js").CloseoutReceipt>;
   };
+  export const phoneFirstRun: {
+    discover(): Promise<import("./types.js").PhoneFirstRunCard[]>;
+    inspect(id: string): Promise<import("./types.js").PhoneFirstRunAssignment>;
+    phases(id: string): Promise<import("./types.js").PhonePhaseEvidence>;
+    provider(id: string): Promise<import("./types.js").PhoneProviderEvidence>;
+  };
 }

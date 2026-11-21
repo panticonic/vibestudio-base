@@ -23,6 +23,7 @@ export type WorkspaceEditReport =
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "testkitCloseout"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "phoneFirstRun"; outcome: PhoneFirstRunOutcome }
   | { status: "workspace-skill-reviewed"; skill: "skillMaintenance"; outcome: SkillMaintenanceOutcome }
   | { status: "workspace-skill-reviewed"; skill: "desktopReadiness"; outcome: DesktopReadinessOutcome }
   | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
@@ -384,4 +385,34 @@ export type SkillMaintenanceOutcome = {
   observation: SkillMaintenanceObservation; authoring: unknown;
   gate: SkillMaintenanceGate; decision: SkillMaintenanceDecision;
   receipt: SkillMaintenanceReceipt | null; final: SkillMaintenanceCheck;
+};
+
+export type PhoneFirstRunCard = { id: string; title: string; edition: "current" | "archive" };
+export type PhoneFirstRunAssignment = {
+  id: string; targetId: string; platform: "android" | "ios"; mode: "auto" | "release" | "source";
+  paired: "owned" | "foreign-owner" | "foreign-workspace" | "none";
+  installed: "absent" | "release" | "internal";
+  desktops: { providerId: string; label: string; supportsSource: boolean }[];
+  setupRequest: { goal: string; operationId: string } | null;
+};
+export type PhonePhaseEvidence = {
+  id: string; status: "unavailable" | "rejected" | "await-shell" | "await-connection" | "complete" | "failed";
+  observedConnection: boolean; observedShell: boolean; observedPanel: boolean; issues: string[];
+};
+export type PhoneProviderEvidence = {
+  id: string; revision: string; client: string; runtime: string; abi: string; expectedAbi: string;
+  provider: string; providerPackage: string; manifestDigest: string; clientDigest: string;
+};
+export type PhoneFirstRunEvidence = {
+  card: PhoneFirstRunCard; assignment: PhoneFirstRunAssignment;
+  startup: PhonePhaseEvidence; build: PhoneProviderEvidence; resume: unknown;
+};
+export type PhoneFirstRunDecision = {
+  action: "record-ready-evidence" | "wait-workspace" | "review-startup-failure" |
+    "hold-owner" | "choose-desktop" | "review-release" | "review-source" |
+    "open-owned-desktop" | "continue-existing-install" | "inspect-native-evidence";
+  reason: string;
+};
+export type PhoneFirstRunOutcome = {
+  scope: "owned-phone-eligibility-rehearsal"; evidence: PhoneFirstRunEvidence; decision: PhoneFirstRunDecision;
 };

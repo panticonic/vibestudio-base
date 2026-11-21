@@ -2194,6 +2194,39 @@ export function refresh(lane: NotificationLane): Promise<NotificationRefresh>;
 /** Review retained owned notifications, their current observation authority, and exact acknowledgment evidence in a disposable store. */
 export function acknowledge(lane: NotificationLane, id: string, revision: number):
       Promise<NotificationAcknowledgment>;`,
+  phoneFirstRun: `/** Read owned phone setup eligibility, scoped native phase excerpts and the installed System build declaration. */
+
+type PhoneFirstRunCard = { id: string; title: string; edition: "current" | "archive" };
+
+type PhoneFirstRunAssignment = {
+  id: string; targetId: string; platform: "android" | "ios"; mode: "auto" | "release" | "source";
+  paired: "owned" | "foreign-owner" | "foreign-workspace" | "none";
+  installed: "absent" | "release" | "internal";
+  desktops: { providerId: string; label: string; supportsSource: boolean }[];
+  setupRequest: { goal: string; operationId: string } | null;
+};
+
+type PhonePhaseEvidence = {
+  id: string; status: "unavailable" | "rejected" | "await-shell" | "await-connection" | "complete" | "failed";
+  observedConnection: boolean; observedShell: boolean; observedPanel: boolean; issues: string[];
+};
+
+type PhoneProviderEvidence = {
+  id: string; revision: string; client: string; runtime: string; abi: string; expectedAbi: string;
+  provider: string; providerPackage: string; manifestDigest: string; clientDigest: string;
+};
+
+/** Read owned phone setup eligibility, scoped native phase excerpts and the installed System build declaration. */
+export function discover(): Promise<PhoneFirstRunCard[]>;
+
+/** Read owned phone setup eligibility, scoped native phase excerpts and the installed System build declaration. */
+export function inspect(id: string): Promise<PhoneFirstRunAssignment>;
+
+/** Read owned phone setup eligibility, scoped native phase excerpts and the installed System build declaration. */
+export function phases(id: string): Promise<PhonePhaseEvidence>;
+
+/** Read owned phone setup eligibility, scoped native phase excerpts and the installed System build declaration. */
+export function provider(id: string): Promise<PhoneProviderEvidence>;`,
   mobileContinuity: `/** Read owned fixture records and run the installed mobile build identity, recovery, startup and lease checks without connecting a physical device. */
 
 type MobileContinuityCard = { id: string; title: string; workspace: string; device: string; edition: "current" | "archive" };

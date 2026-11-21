@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
-    "./workflow": "./workflow.ts"
+    "./workflow": "./workflow.ts",
+    "./eligibility": "./providerEligibility.ts"
   },
   "dependencies": {
     "@workspace/runtime": "workspace:*",
