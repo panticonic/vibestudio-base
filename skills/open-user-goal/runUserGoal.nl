@@ -73,6 +73,8 @@ For a trusted API integration profile's quiet binding-readiness review across re
 
 When the current workspace exposes a skill that addresses the goal, pass the user's goal to the relevant available callable.
 
+- For a local channel method exchange where an exact native result or refusal is requested, call reconcileOwnedMethodCall. Report as "localMethodExchange".
+
 - For comparing an extension release candidate and the protected or deployed package, changes in extension approval or permissions, or an extension rollback evidence dossier, call reviewExtensionDossier. Report as "extensionDossier".
 - For a timing, cache, initial payload, compiler or memory claim grounded in retained workspace build checkpoints, call reviewRetainedBuildIncident. Report as "buildIncident".
 - For maintaining one reusable workspace skill after a retained typed contract failure, call maintainWorkspaceSkill. Report as "skillMaintenance".

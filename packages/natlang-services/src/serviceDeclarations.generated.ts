@@ -6,6 +6,38 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  localMethodRead: `/** Read the owned native method lane and exact terminal result. */
+
+type LocalMethodKind = "inspect-counts" | "compare-template" | "verify-ownership" | "confirm-state";
+
+type LocalMethodCard = { id: string; title: string; method: LocalMethodKind; edition: "current" | "retired" };
+
+type LocalMethodReport = {
+  channel: string; transport: string; invocation: string; method: LocalMethodKind;
+  outcome: "success" | "error"; detail: string; executed: number; start: number; terminal: number;
+};
+
+type LocalMethodEvidence = {
+  cardId: string; channel: string; caller: string; provider: string | null; basis: string;
+  permitted: boolean; current: boolean; retained: LocalMethodReport | null;
+};
+
+/** Read the owned native method lane and exact terminal result. */
+export function discover(): Promise<LocalMethodCard[]>;
+
+/** Read the owned native method lane and exact terminal result. */
+export function inspect(id: string): Promise<LocalMethodEvidence>;
+
+/** Read the owned native method lane and exact terminal result. */
+export function settle(id: string, basis: string, transport: string | null): Promise<LocalMethodReport | null>;`,
+  localMethodDispatch: `/** Dispatch the exact owned local native method once. */
+
+type LocalMethodKind = "inspect-counts" | "compare-template" | "verify-ownership" | "confirm-state";
+
+type LocalMethodAttempt = { transport: string; invocation: string; disposition: "submitted" | "interrupted" };
+
+/** Dispatch the exact owned local native method once. */
+export function request(id: string, basis: string, method: LocalMethodKind): Promise<LocalMethodAttempt>;`,
   scheduledMission: `/** Inspect owned future interval schedules and perform a revision-bound update. */
 
 type ScheduleState = "active" | "paused";

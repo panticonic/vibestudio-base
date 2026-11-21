@@ -187,6 +187,12 @@
       "runUserGoal/prepareOwnedScaffold/rereadScaffoldDraft.nl"
     ],
     "scaffoldPrepare": ["runUserGoal/prepareOwnedScaffold/stageNativeScaffold.nl"],
+    "localMethodRead": [
+      "runUserGoal/reconcileOwnedMethodCall/readMethodLane/findOwnedMethodCard.nl",
+      "runUserGoal/reconcileOwnedMethodCall/readMethodLane/inspectOwnedMethodLane.nl",
+      "runUserGoal/reconcileOwnedMethodCall/readExactMethodTerminal.nl"
+    ],
+    "localMethodDispatch": ["runUserGoal/reconcileOwnedMethodCall/dispatchOwnedLocalMethod.nl"],
     "systemCandidateRead": [
       "runUserGoal/triageSystemTemplate/findSystemCandidate.nl",
       "runUserGoal/triageSystemTemplate/readCandidateEvidence/readDeltaFrontier.nl",

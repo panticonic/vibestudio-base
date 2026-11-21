@@ -56,6 +56,8 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("localMethodRead", "Read the owned native method lane and exact terminal result.", "base", "open-user-goal", [{ name: "discover", params: [] }, { name: "inspect", params: ["id"] }, { name: "settle", params: ["id", "basis", "transport"] }]),
+  authoredService("localMethodDispatch", "Dispatch the exact owned local native method once.", "base", "open-user-goal", [{ name: "request", params: ["id", "basis", "method"] }]),
   authoredService("scheduledMission", "Inspect owned future interval schedules and perform a revision-bound update.", "base", "open-owned-scheduled-recovery", [{ name: "discover", params: [] }, { name: "observe", params: ["id"] }, { name: "change", params: ["schedule", "change", "authorization"] }]),
   authoredService("scheduledHistory", "Read an owned retained scheduling decision or archive lane.", "base", "open-owned-scheduled-recovery", [{ name: "discover", params: [] }, { name: "read", params: ["lane"] }]),
   authoredService("scheduledHandoff", "Record and independently recover one exact local scheduling handoff attempt.", "base", "open-owned-scheduled-recovery", [{ name: "submit", params: ["schedule", "authorization", "lane"] }, { name: "read", params: ["submission"] }]),

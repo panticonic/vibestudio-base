@@ -23,6 +23,7 @@ export type WorkspaceEditReport =
   | { status: "blocked"; reason: string };
 export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }
+  | { status: "workspace-skill-reviewed"; skill: "localMethodExchange"; outcome: LocalMethodOutcome }
   | { status: "workspace-skill-reviewed"; skill: "systemCandidateTriage"; outcome: SystemCandidateOutcome }
   | { status: "workspace-skill-reviewed"; skill: "ownedOperations"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "examplesAdoption"; outcome: AdoptionOutcome }
@@ -526,4 +527,24 @@ export type ScaffoldReadback = { main: string; draft: string; units: ScaffoldDra
 export type ScaffoldOutcome = {
   scope: "owned-scaffold-draft"; card: ScaffoldCard; options: ScaffoldOptions; plan: ScaffoldPlan;
   receipt: ScaffoldReceipt | null; readback: ScaffoldReadback;
+};
+
+export type LocalMethodKind = "inspect-counts" | "compare-template" | "verify-ownership" | "confirm-state";
+export type LocalMethodCard = { id: string; title: string; method: LocalMethodKind; edition: "current" | "retired" };
+export type LocalMethodEvidence = {
+  cardId: string; channel: string; caller: string; provider: string | null; basis: string;
+  permitted: boolean; current: boolean; retained: LocalMethodReport | null;
+};
+export type LocalMethodPlan = {
+  action: "request" | "recover" | "hold-authority" | "hold-route" | "hold-moved";
+  method: LocalMethodKind; finding: string;
+};
+export type LocalMethodAttempt = { transport: string; invocation: string; disposition: "submitted" | "interrupted" };
+export type LocalMethodReport = {
+  channel: string; transport: string; invocation: string; method: LocalMethodKind;
+  outcome: "success" | "error"; detail: string; executed: number; start: number; terminal: number;
+};
+export type LocalMethodOutcome = {
+  scope: "owned-local-method-exchange"; card: LocalMethodCard; evidence: LocalMethodEvidence; plan: LocalMethodPlan;
+  attempt: LocalMethodAttempt | null; terminal: LocalMethodReport | null;
 };

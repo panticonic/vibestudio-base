@@ -288,4 +288,12 @@ declare module "natlang:services" {
   export const scaffoldPrepare: {
     prepare(id: string, event: string, kinds: import("./types.js").ScaffoldKind[]): Promise<import("./types.js").ScaffoldReceipt | null>;
   };
+  export const localMethodRead: {
+    discover(): Promise<import("./types.js").LocalMethodCard[]>;
+    inspect(id: string): Promise<import("./types.js").LocalMethodEvidence>;
+    settle(id: string, basis: string, transport: string | null): Promise<import("./types.js").LocalMethodReport | null>;
+  };
+  export const localMethodDispatch: {
+    request(id: string, basis: string, method: import("./types.js").LocalMethodKind): Promise<import("./types.js").LocalMethodAttempt>;
+  };
 }
