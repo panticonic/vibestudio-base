@@ -103,6 +103,15 @@ declare module "natlang:services" {
       disposition: import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionDecision):
       Promise<import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionReceipt>;
   };
+  export const logFollowerEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewLogFollower/contract.js").FollowAssignment>;
+    observe(id: string): Promise<import("./runUserGoal/reviewLogFollower/contract.js").FollowCapture>;
+  };
+  export const logFollowerHandoff: {
+    stage(id: string, joined: import("./runUserGoal/reviewLogFollower/contract.js").FollowJoin,
+      decision: import("./runUserGoal/reviewLogFollower/contract.js").FollowDecision):
+      Promise<import("./runUserGoal/reviewLogFollower/contract.js").FollowReceipt>;
+  };
   export const ptyContinuityEvidence: {
     discover(): Promise<import("./runUserGoal/reviewPtyContinuity/contract.js").PtyAssignment>;
     inspect(sessionId: string): Promise<import("./runUserGoal/reviewPtyContinuity/contract.js").PtyObservation | null>;

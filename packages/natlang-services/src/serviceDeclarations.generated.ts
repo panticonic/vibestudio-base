@@ -5564,6 +5564,49 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  logFollowerEvidence: `/** Read exact bounded native server log catch-up and owned stream evidence. */
+
+type FollowCursor = { boot: string; seq: number };
+
+type FollowAssignment = { id: string; goal: string; subject: string; lane: string; request: string; saved: FollowCursor;
+  limit: number; allowFresh: boolean; mayStage: boolean };
+
+type FollowState = "seen" | "accepted" | "committed" | "failed" | "waiting" | "cleanup";
+
+type FollowRow = { seq: number; lane: string; request: string; state: FollowState; detail: string };
+
+type FollowCapture = {
+  boot: string; workspace: string; epoch: string; opened: boolean; canceled: boolean;
+  start: number; oldest: number | null; catchupThrough: number; witnessedThrough: number; lastSeen: number | null;
+  overflow: boolean; query: FollowRow[]; live: FollowRow[];
+};
+
+/** Read exact bounded native server log catch-up and owned stream evidence. */
+export function discover(): Promise<FollowAssignment>;
+
+/** Read exact bounded native server log catch-up and owned stream evidence. */
+export function observe(id: string): Promise<FollowCapture>;`,
+  logFollowerHandoff: `/** Retain approved exact joined native log evidence locally. */
+
+type FollowContinuity = "continued" | "fresh" | "hold-boot" | "hold-future" | "hold-expired" |
+  "hold-window" | "hold-stream" | "hold-conflict";
+
+type FollowState = "seen" | "accepted" | "committed" | "failed" | "waiting" | "cleanup";
+
+type FollowRow = { seq: number; lane: string; request: string; state: FollowState; detail: string };
+
+type FollowJoin = { continuity: FollowContinuity; boot: string; through: number | null; rows: FollowRow[]; duplicates: number[] };
+
+type FollowFinding = { state: FollowState | "unobserved"; citations: number[] };
+
+type FollowDecision = FollowFinding & { stage: boolean };
+
+type FollowReceipt = { path: string; bytes: number; sha256: string };
+
+/** Retain approved exact joined native log evidence locally. */
+export function stage(id: string, joined: FollowJoin,
+      decision: FollowDecision):
+      Promise<FollowReceipt>;`,
   ptyContinuityEvidence: `/** Read the assigned terminal attempts and exact retained PTY cursor and exit evidence. */
 
 type PtyCursor = { epoch: number; cursor: number };
