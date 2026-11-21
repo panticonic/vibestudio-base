@@ -1,0 +1,15 @@
+export type SourceAttributionCandidate = { id: string; name: string; path: string };
+export type SourceAttributionAssignment = { id: string; goal: string; scope: string; mayRetain: boolean; candidates: SourceAttributionCandidate[] };
+export type SourceAttributionFragment = { id: string; text: string; start: number; end: number };
+export type SourceAttributionFile = { candidate: SourceAttributionCandidate; state: string; file: string; coordinateKind: "utf16" | "byte"; digest: string; fragments: SourceAttributionFragment[] };
+export type SourceAttributionSelection = { candidate: string; fragment: string };
+export type SourceAttributionSpan = { id: string; start: number; end: number; boundary: "authored" | "import-boundary" | "snapshot-boundary";
+  intentTier: "stated" | "trigger" | "mechanical" | null; paths: string[]; work: string | null; command: string; externalSource: string | null };
+export type SourceAttributionTrace = { file: string; state: string; fragment: string; spans: SourceAttributionSpan[]; truncated: boolean };
+export type SourceAttributionRoot = { ref: string; kind: string; label: string; intent: string | null; tier: string | null; externalSource: string | null };
+export type SourceAttributionEvidence = { selected: SourceAttributionSelection; trace: SourceAttributionTrace; roots: SourceAttributionRoot[] };
+export type SourceAttributionClaim = { fragment: string; span: string; origin: "external" | "native" | "unresolved"; intent: string | null; refs: string[] };
+export type SourceAttributionConclusion = { disposition: "supported" | "partial" | "unverifiable"; claims: SourceAttributionClaim[] };
+export type SourceAttributionReceipt = { state: string; status: "retained" | "authority-closed" | "stale"; path: string | null; sha256: string | null };
+export type SourceAttributionReport = { assignment: SourceAttributionAssignment; files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[];
+  conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };

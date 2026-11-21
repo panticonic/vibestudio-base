@@ -151,6 +151,18 @@ declare module "natlang:services" {
       disposition: import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionDecision):
       Promise<import("./runUserGoal/reviewWebhookAdmission/contract.js").WebhookAdmissionReceipt>;
   };
+  export const sourceOriginEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionAssignment>;
+    read(id: string, candidate: string): Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionFile | null>;
+  };
+  export const sourceOriginGraph: {
+    trace(id: string, state: string, candidate: string, fragment: string): Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionTrace>;
+    inspect(id: string, ref: string): Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionRoot>;
+  };
+  export const sourceOriginReceipt: {
+    retain(id: string, state: string, conclusion: import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionConclusion):
+      Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionReceipt>;
+  };
   export const workspaceSmokeEvidence: {
     discover(): Promise<import("./runUserGoal/reviewWorkspaceSmoke/contract.js").SmokeAssignment>;
     scan(id: string): Promise<import("./runUserGoal/reviewWorkspaceSmoke/contract.js").SmokeSource>;

@@ -12,6 +12,7 @@ export type { BridgeDeliveryReport } from "./workOnBridgeDelivery/types.js";
 export * from "./workOnAuthoringGoal/discovery/types.js";
 export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
 export * from "./reviewWebhookAdmission/contract.js";
+export * from "./reviewSourceAttribution/contract.js";
 export * from "./reviewWorkspaceSmoke/contract.js";
 export * from "./recoverSameTurnEval/contract.js";
 export * from "./reviewDeliveryWake/contract.js";

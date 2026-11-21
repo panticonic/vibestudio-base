@@ -5984,6 +5984,46 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  sourceOriginEvidence: `/** Read exact current source and authorized scope for semantic attribution. */
+
+type SourceAttributionCandidate = { id: string; name: string; path: string };
+
+type SourceAttributionAssignment = { id: string; goal: string; scope: string; mayRetain: boolean; candidates: SourceAttributionCandidate[] };
+
+type SourceAttributionFragment = { id: string; text: string; start: number; end: number };
+
+type SourceAttributionFile = { candidate: SourceAttributionCandidate; state: string; file: string; coordinateKind: "utf16" | "byte"; digest: string; fragments: SourceAttributionFragment[] };
+
+/** Read exact current source and authorized scope for semantic attribution. */
+export function discover(): Promise<SourceAttributionAssignment>;
+
+/** Read exact current source and authorized scope for semantic attribution. */
+export function read(id: string, candidate: string): Promise<SourceAttributionFile | null>;`,
+  sourceOriginGraph: `/** Trace the owned current range and inspect its typed semantic evidence. */
+
+type SourceAttributionSpan = { id: string; start: number; end: number; boundary: "authored" | "import-boundary" | "snapshot-boundary";
+  intentTier: "stated" | "trigger" | "mechanical" | null; paths: string[]; work: string | null; command: string; externalSource: string | null };
+
+type SourceAttributionTrace = { file: string; state: string; fragment: string; spans: SourceAttributionSpan[]; truncated: boolean };
+
+type SourceAttributionRoot = { ref: string; kind: string; label: string; intent: string | null; tier: string | null; externalSource: string | null };
+
+/** Trace the owned current range and inspect its typed semantic evidence. */
+export function trace(id: string, state: string, candidate: string, fragment: string): Promise<SourceAttributionTrace>;
+
+/** Trace the owned current range and inspect its typed semantic evidence. */
+export function inspect(id: string, ref: string): Promise<SourceAttributionRoot>;`,
+  sourceOriginReceipt: `/** Bind an authorized source attribution receipt to the unchanged current head. */
+
+type SourceAttributionClaim = { fragment: string; span: string; origin: "external" | "native" | "unresolved"; intent: string | null; refs: string[] };
+
+type SourceAttributionConclusion = { disposition: "supported" | "partial" | "unverifiable"; claims: SourceAttributionClaim[] };
+
+type SourceAttributionReceipt = { state: string; status: "retained" | "authority-closed" | "stale"; path: string | null; sha256: string | null };
+
+/** Bind an authorized source attribution receipt to the unchanged current head. */
+export function retain(id: string, state: string, conclusion: SourceAttributionConclusion):
+      Promise<SourceAttributionReceipt>;`,
   workspaceSmokeEvidence: `/** Search and read exact owned local workspace smoke specifications. */
 
 type SmokeAssignment = { id: string; goal: string; subject: string; context: string; revision: string; mayStage: boolean };
