@@ -1,6 +1,7 @@
 import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { installedSourceDependencies } from "./sourceDependencies";
+import { previewTemplateUpdateContent, binaryTemplateUpdatePreview } from "./update-file-preview.js";
 import {
   TemplateOperations,
   type TemplateOperationStep,
@@ -460,15 +461,7 @@ export function createTemplateLifecycle(
           );
           if (encoded === null)
             throw new Error("Update content is unavailable");
-          const bytes = Buffer.from(encoded, "base64");
-          if (bytes.length > 128 * 1024)
-            return "[File exceeds the 128 KiB preview limit]";
-          if (bytes.includes(0)) return "[Binary file]";
-          try {
-            return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-          } catch {
-            return "[Binary file]";
-          }
+          return previewTemplateUpdateContent(Buffer.from(encoded, "base64"));
         };
         const state = (await status(update)).workingHead;
         const repo = await vcs.resolveRepository({
@@ -487,10 +480,8 @@ export function createTemplateLifecycle(
           ours: !local
             ? null
             : local.content.kind === "text"
-              ? local.content.text.length > 128 * 1024
-                ? "[File exceeds the 128 KiB preview limit]"
-                : local.content.text
-              : "[Binary file]",
+              ? previewTemplateUpdateContent(local.content.text)
+              : binaryTemplateUpdatePreview,
           theirs: await read(update.after),
         };
       }),
