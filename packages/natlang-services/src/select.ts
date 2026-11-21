@@ -96,6 +96,8 @@ const builders: Record<AmbientServiceName, (bindings: ServiceBindings) => Natlan
   panelRepairEdit: binding("panelRepairEdit"),
   unitRepair: binding("unitRepair"),
   ownedOperations: binding("ownedOperations"),
+  operationsDocket: binding("operationsDocket"),
+  operationsDossier: binding("operationsDossier"),
   unitRepairEdit: binding("unitRepairEdit"),
   workspaceIntegration: binding("workspaceIntegration"),
   projectWorkspace: binding("projectWorkspace"),

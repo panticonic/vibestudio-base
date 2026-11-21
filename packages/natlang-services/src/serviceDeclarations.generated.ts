@@ -7432,6 +7432,73 @@ export function readChanges(cursor: string): Promise<{
   next: string | null;
   checkpoint: string | null;
 }>;`,
+  operationsDocket: `/** Discover retained incident and release evidence in the current owned workspace. */
+
+/** List retained owned incident and release dockets by their exact identity and revision. */
+export function list(): Promise<{
+  id: string;
+  title: string;
+  revision: string;
+  kind: "incident-handoff" | "release-continuation";
+  edition: "current" | "retired";
+}[]>;
+
+/** Read role evidence and local authority from the selected exact docket revision. */
+export function read(id: string, revision: string): Promise<{
+  docket: {
+    id: string;
+    title: string;
+    revision: string;
+    kind: "incident-handoff" | "release-continuation";
+    edition: "current" | "retired";
+  };
+  authority: "local-exercise" | "review-only";
+  rationale: string;
+  retainWhenReady: boolean;
+  request: {
+    kind: "incident-handoff";
+    goal: string;
+    signals: {
+      id: string;
+      text: string;
+    }[];
+  } | {
+    kind: "release-continuation";
+    goal: string;
+    before: {
+      id: string;
+      state: "approved" | "pending" | "rejected";
+    }[];
+    after: {
+      id: string;
+      state: "approved" | "pending" | "rejected";
+    }[];
+  };
+}>;`,
+  operationsDossier: `/** Retain a private readiness dossier inside the local owned workspace. */
+
+/** Retain one private readiness dossier for the current authorized docket after verified cleanup. */
+export function retain(id: string, revision: string, report: {
+  kind: "incident-handoff" | "release-continuation";
+  handoff: {
+    decision: "ready" | "blocked";
+    evidenceIds: string[];
+    summary: string;
+  };
+  handles: {
+    id: string;
+    contextId: string;
+    targetId: string;
+    role: "impact" | "recovery" | "release";
+  }[];
+  cleanup: {
+    retiredIds: string[];
+    destroyedContextIds: string[];
+  };
+}): Promise<{
+  path: string;
+  digest: string;
+}>;`,
   ownedOperations: `/** Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable. */
 
 /** Create one actual caller-owned context and durable checkpoint worker for a semantic role. Retain its returned exact handle. */

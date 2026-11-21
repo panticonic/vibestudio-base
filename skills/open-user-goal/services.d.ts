@@ -1,4 +1,16 @@
 declare module "natlang:services" {
+  export const operationsDocket: {
+    list(): Promise<import("./runUserGoal/coordinateOwnedOperations/types.js").OperationsDocket[]>;
+    read(id: string, revision: string): Promise<import("./runUserGoal/coordinateOwnedOperations/types.js").OperationsDocketEvidence>;
+  };
+  export const operationsDossier: {
+    retain(id: string, revision: string, report: import("./runUserGoal/coordinateOwnedOperations/roles/types.js").OperationsReport):
+      Promise<import("./runUserGoal/coordinateOwnedOperations/types.js").OperationsDossier>;
+  };
+  export const ownedOperations: import("./runUserGoal/coordinateOwnedOperations/roles/types.js").OwnedOperations;
+}
+
+declare module "natlang:services" {
   export const problemIncident: {
     discover(): Promise<import("./runUserGoal/workOnProblemReportGoal/types.js").IncidentCard[]>;
     open(incident: string): Promise<{ operationId: string } | null>;

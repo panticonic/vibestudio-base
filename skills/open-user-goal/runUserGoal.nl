@@ -5,6 +5,8 @@ args:
   goal: string
 returns: UserGoalReport
 ---
+For a local operational rehearsal that needs independent impact and recovery workers or a release checkpoint carried across its owned worker restart, call coordinateOwnedOperations when available. Report skill "ownedOperations".
+
 For a request to save or update a local incident report or distinguish the correct incident before drafting, call workOnProblemReportGoal. Return skill "problemReport" and its actual outcome.
 
 When the goal asks whether current Testkit teardown and retained cleanup evidence justify release, or whether to save the exact private closeout, call compareTestkitCloseouts. Report as "testkitCloseout".

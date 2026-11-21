@@ -521,6 +521,18 @@ export const SERVICE_CATALOG = [
       { name: "readChanges", params: ["cursor"], description: "Read changes from a cursor issued for the assigned view." },
     ],
   },
+  {
+    name: "operationsDocket",
+    summary: "Discover retained incident and release evidence in the current owned workspace.",
+    contract: { origin: "base", file: "packages/natlang-services/src/ownedOperationsContracts.ts", table: "operationsDocketMethods" },
+    methods: [{ name: "list", params: [] }, { name: "read", params: ["id", "revision"] }],
+  },
+  {
+    name: "operationsDossier",
+    summary: "Retain a private readiness dossier inside the local owned workspace.",
+    contract: { origin: "base", file: "packages/natlang-services/src/ownedOperationsContracts.ts", table: "operationsDossierMethods" },
+    methods: [{ name: "retain", params: ["id", "revision", "report"] }],
+  },
   { name: "ownedOperations", summary: "Operate only the contexts and durable operational-checkpoint workers issued to this invocation; actual readbacks and cleanup remain observable.",
     contract: { origin: "base", file: "packages/natlang-services/src/ownedOperationsContracts.ts", table: "ownedOperationsMethods" },
     methods: [{ name: "open", params: ["role"] }, { name: "read", params: ["handle"] },

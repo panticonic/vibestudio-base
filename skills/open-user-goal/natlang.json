@@ -81,6 +81,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
     "runUserGoal/compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
     "runUserGoal/workOnChatContinuity/workspace": "skills/open-chat-continuity",
     "runUserGoal/workOnChatContinuity/reviewChatContinuity/policy": "skills/conversation-evidence-review",
@@ -184,6 +185,9 @@
       "runUserGoal/triageSystemTemplate/verifyCandidateHandoff.nl"
     ],
     "systemCandidateHandoff": ["runUserGoal/triageSystemTemplate/recordCandidateHandoff.nl"],
+    "operationsDossier": ["runUserGoal/coordinateOwnedOperations/retainOperationsDossier.nl"],
+    "operationsDocket": ["runUserGoal/coordinateOwnedOperations/selectOperationsDocket.nl"],
+    "ownedOperations": ["runUserGoal/coordinateOwnedOperations.nl"],
     "adoptionReview": [
       "runUserGoal/reviewExamplesAdoption/findStagedComposition.nl",
       "runUserGoal/reviewExamplesAdoption/inspectComposition/readInstalledExamples.nl",

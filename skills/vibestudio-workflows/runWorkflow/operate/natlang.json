@@ -1,0 +1,8 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-owned-operations",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "incident.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": { "ownedOperations": ["incident.nl", "release.nl"] }
+}
