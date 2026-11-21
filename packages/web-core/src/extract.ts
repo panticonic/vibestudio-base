@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "linkedom/worker";
 import { Readability } from "@mozilla/readability";
 
 const USER_AGENT =
