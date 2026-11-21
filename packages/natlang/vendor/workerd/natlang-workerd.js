@@ -213605,7 +213605,7 @@ var init_prompt = __esm({
     init_define_NATLANG_TS_LIBS();
     SEMANTIC_RESULT_PROMPT = `Answer with the return_result tool: call it with status "success" and a value of the declared type (for a string result, the text itself). That value is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. A reply without a tool call is not an answer. When the declared result is a string and the task asks you to save JSON and return it, return exactly the JSON text saved in the file as that string. Send it as the value of an actual return_result tool call; do not print a pseudo invocation, status envelope, explanation, or code fence instead. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. A successful finish:true eval ends this call immediately; include every required predicate in that final expression and do not send another conflicting final action. Never present code as though it had run. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
 
-At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. A Neuralese marker body is literal payload written before eval runs: \${...} inside it is not JavaScript interpolation. Use a marker only for a literal body. Never concatenate marker strings around a computed value; return the computed string or structured value according to T.
+At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. Use a Neuralese marker only for a literal body; return a computed string or structured value according to T.
 
 `;
     SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. This applies to inline nl children: when the child's inputs and captured context are enough to judge its assigned question, return that declared typed answer directly. Nest another nl call only for a genuinely distinct subproblem needed to complete this assignment, not a near-identical re-ask. When the evidence is already available, return the declared value directly.
@@ -217518,7 +217518,7 @@ function neuraleseRefSentinel(ref) {
   return neuraleseSentinel(ref.$neuralese.id, ref.$neuralese.stop_gradient, ref.$neuralese.source_occurrence);
 }
 function neuraleseDisplayText(ref) {
-  return `[${ref.$neuralese.type} value: opaque here; pass it on as is, or read it with read(value)]`;
+  return `[${ref.$neuralese.type} value: opaque in code; its content is where it was given to you, so pass it on as is, or write await read(value) for an ordinary copy]`;
 }
 function soleSentinelUse(text3) {
   const match2 = /^(nzs1_[a-z2-7]{52})(!)?(?:@([^]+))?$/.exec(text3);
@@ -217570,6 +217570,13 @@ async function writeLiterals(text3, port, producer = {}) {
     rest = body.slice(close + NEURALESE_CLOSE.length);
   }
   return { text: out, parts, blocks };
+}
+function isNoNeuraleseWriterFault(error) {
+  for (let current = error, depth2 = 0; current && depth2 < 16; current = current.cause, depth2++) {
+    if (current instanceof NeuraleseNoWriterError) return true;
+    if (current instanceof Error && current.message.includes(NO_NEURALESE_WRITER)) return true;
+  }
+  return false;
 }
 function nativeStateConsumerFromInfo(info) {
   const native = info.native_state;
@@ -217708,7 +217715,7 @@ async function decodeTurnValue(value, port, producer, written, expected, nativeS
   }
   return value;
 }
-var NEURALESE_OPEN, NEURALESE_CLOSE, isNativeAdapterRef, NATIVE_TENSOR_REF_KINDS, isNativeTensorRef, NATIVE_SENTINEL_OPEN, NATIVE_SENTINEL_CLOSE, NATIVE_STATE_ID, NATIVE_TENSOR_ID, TEACHER_TEXT_ID, NATIVE_SENTINEL, hasNeuraleseSentinel, isContentParts, NeuraleseUnsupportedError, NeuraleseDialectError, supportsNeuralese, supportsGuidance;
+var NEURALESE_OPEN, NEURALESE_CLOSE, isNativeAdapterRef, NATIVE_TENSOR_REF_KINDS, isNativeTensorRef, NATIVE_SENTINEL_OPEN, NATIVE_SENTINEL_CLOSE, NATIVE_STATE_ID, NATIVE_TENSOR_ID, TEACHER_TEXT_ID, NATIVE_SENTINEL, hasNeuraleseSentinel, isContentParts, NeuraleseUnsupportedError, NO_NEURALESE_WRITER, NeuraleseNoWriterError, NeuraleseDialectError, supportsNeuralese, supportsGuidance;
 var init_neuralese2 = __esm({
   "src/native/neuralese.ts"() {
     "use strict";
@@ -217740,6 +217747,13 @@ var init_neuralese2 = __esm({
       constructor(detail) {
         super(`neuralese-unsupported-backend: ${detail}`);
         this.name = "NeuraleseUnsupportedError";
+      }
+    };
+    NO_NEURALESE_WRITER = "this runtime has no Neuralese writer; run it with a Neuralese port (a native-state server, or the literal-text transport of a remote teacher)";
+    NeuraleseNoWriterError = class extends NeuraleseUnsupportedError {
+      constructor(detail) {
+        super(`${detail}: ${NO_NEURALESE_WRITER}`);
+        this.name = "NeuraleseNoWriterError";
       }
     };
     NeuraleseDialectError = class extends Error {
@@ -227139,8 +227153,8 @@ var init_model_facing = __esm({
   "src/runtime/model-facing.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction"];
-    ADOPTED2 = ["effect-receipt"];
+    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction", "compact-callable-scope"];
+    ADOPTED2 = ["effect-receipt", "compact-callable-scope"];
     active = enabled();
     modelFacing = (name) => active.has(name);
   }
@@ -227525,6 +227539,15 @@ function inferValueType(value, options = {}) {
   }
   throw new Reject([{ path: "value", code: "type-mismatch", expected: "a portable value" }]);
 }
+function codebaseTypeAlias(codebase, name) {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return void 0;
+  let level = Object.values(codebase);
+  for (let depth2 = 0; level.length && depth2 < 64; depth2++) {
+    for (const item of level) if (item.kind !== "namespace" && Object.hasOwn(item.types ?? {}, name)) return item.types[name];
+    level = level.flatMap((item) => Object.values(item.codebase ?? {}));
+  }
+  return void 0;
+}
 function findCodebaseItem(codebase, name) {
   const parts = name.trim().replace(/\//g, ".").split(".").filter(Boolean);
   const walk = (level, index, trail) => {
@@ -227730,7 +227753,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -227778,6 +227801,8 @@ var init_runtime2 = __esm({
       "no-such-path": "Use a variable or field that exists in the scope.",
       "capture-conflict": "Another caller changed that captured variable; run the eval again with its current value."
     };
+    PLACEHOLDER_VALUE = /^\$\{[^{}]*\}$/;
+    PLACEHOLDER_ADVICE = "the value itself: return_result fills in no placeholder, so write out the text or value you mean";
     NATIVE_TOOLS = [
       "eval",
       "read_page",
@@ -228027,7 +228052,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
       async writeNeuraleseText(text3, wanted, metadata) {
         const port = this.neuralese?.port;
         const type = formatType(wanted), bodySha = hexDigest(text3);
-        if (!port) throw new NeuraleseUnsupportedError(`${metadata.sourceKind === "typed-json-result" ? "plain JSON" : "plain-text"} ${type} needs a configured Neuralese write port`);
+        if (!port) throw new NeuraleseNoWriterError(`${metadata.sourceKind === "typed-json-result" ? "plain JSON" : "plain-text"} ${type} cannot be written`);
         const wantedDialect = wanted.kind === "neuralese" && wanted.dialect !== DEFAULT_DIALECT2 ? wanted.dialect : port.dialect;
         if (wantedDialect !== port.dialect) throw new Reject([{
           path: metadata.argumentName ? `argument/${metadata.argumentName}` : "return",
@@ -228539,6 +228564,12 @@ Repair subsequent work without repeating an already completed write.` : "") + //
       codeEditable() {
         return Object.keys(this.lam.codebase).length > 0 && !this.codeEditsDenied();
       }
+      /** Whether `name` is a parameter of this call declared Neuralese<T>: its state is in the call's opening message. */
+      neuraleseParameter(name) {
+        if (this.lam.type.kind !== "lambda") return false;
+        const field = this.lam.type.params.fields.find((item) => item.name === name);
+        return !!field && this.env.resolve(field.type).kind === "neuralese";
+      }
       /** Whether this call's result is text (a string or Neuralese<string>, with nothing staged). */
       expectsTextResult() {
         if (this.lam.type.kind !== "lambda" || this.lam.return !== MISSING) return false;
@@ -228758,6 +228789,8 @@ Repair subsequent work without repeating an already completed write.` : "") + //
             return record3(await this.evaluate(String(args.code ?? ""), timeout, args.finish === true, toolCallId));
           }
           if (name === "return_result" && (args.status ?? "success") === "success" && Object.hasOwn(args, "value") && this.lam.type.kind === "lambda") {
+            if (typeof args.value === "string" && PLACEHOLDER_VALUE.test(args.value.trim()))
+              throw new Reject([{ path: "value", code: "bad-action", expected: PLACEHOLDER_ADVICE }]);
             const value = await this.coerceReturn(args.value, "return_result", true);
             return record3(this.scopeTool(name, { ...args, value }));
           }
@@ -228851,6 +228884,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
             return record3(await this.fileTool(name, args));
           return record3(this.scopeTool(name, args));
         } catch (error) {
+          if (isNoNeuraleseWriterFault(error)) throw error;
           if (error instanceof Reject) return record3(rejected(error));
           return record3({ kind: "error", text: error instanceof Error ? error.message : String(error) });
         }
@@ -229128,6 +229162,16 @@ ${SELF_CALL_ADVICE}`;
           }
           const toolDocumentation = name === "read_code" ? this.toolDocumentation(requested) : void 0;
           if (toolDocumentation !== void 0) return { kind: "ok", text: toolDocumentation, value: toolDocumentation };
+          const separator = requested.lastIndexOf(".");
+          if (name === "read_code" && separator > 0) {
+            const parent = findCodebaseItem(this.lam.codebase, requested.slice(0, separator))?.record;
+            const alias = requested.slice(separator + 1);
+            const record4 = parent && (this.runtime.frame?.task.programView?.record(parent) ?? parent);
+            if (record4 && record4.kind !== "namespace" && Object.hasOwn(record4.types, alias)) {
+              const declaration = (record4.kind === "module" ? record4.declarations?.[alias] : void 0) ?? `type ${alias} = ${record4.types[alias]};`;
+              return { kind: "ok", text: declaration, value: declaration };
+            }
+          }
           const availableServices = this.availableServices();
           if (name === "read_code" && Object.hasOwn(availableServices, requested)) {
             const declaration = `Host service object declaration (type only, not implementation or field values):
@@ -229138,6 +229182,11 @@ These members are available to this call under its current service scope. Inspec
           }
           if (name === "read_code" && Object.hasOwn(this.lam.typesSrc ?? {}, requested)) {
             const alias = `type ${requested} = ${this.lam.typesSrc[requested]};`;
+            return { kind: "ok", text: alias, value: alias };
+          }
+          const programAlias = name === "read_code" ? codebaseTypeAlias(this.lam.codebase, requested) : void 0;
+          if (programAlias !== void 0) {
+            const alias = `type ${requested} = ${programAlias};`;
             return { kind: "ok", text: alias, value: alias };
           }
           const owner = name === "read_code" && /^[A-Za-z_$][\w$]*$/.test(requested) ? Object.entries(availableServices).find(([service3, value]) => Object.hasOwn(this.runtime.declarations, service3) && value !== null && typeof value === "object" && requested in value)?.[0] : void 0;
@@ -229154,7 +229203,7 @@ ${declaration}`;
           const own = listCodebase(this.lam.codebase);
           const readable = own.length ? `a function of this program: ${own.join(", ")}` : "a function of this program, and this program has none of its own";
           const inScope = (this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : []).concat(Object.keys(this.lam.captures ?? {}), Object.keys(this.lam.let));
-          const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : (
+          const what = NATIVE_TOOLS.includes(requested) ? this.offeredToolDocs.has(requested) ? `${requested} is one of your currently offered tools, not a function of this program; call it directly` : `${requested} is a native tool name but is not offered in this call` : requested === this.lam.functionName ? `${requested} is the call you are executing: the opening message has all of its signature and instructions. ${SELF_CALL_ADVICE.replace(/\.$/, "")}` : this.neuraleseParameter(requested) ? `${requested} is this call's Neuralese input: its content is in your opening message, so use it from there, or write await read(${requested}) in eval for an ordinary copy` : inScope.includes(requested) ? `${requested} is a value in this call's eval scope: inspect it with eval, for example console.log(${requested})` : (
             // A text-typed call with no functions of its own (a writer) has nothing to read: it answers with its text.
             !own.length && this.expectsTextResult() ? "This call returns text: send the text itself as the value of return_result" : void 0
           );
@@ -229163,6 +229212,12 @@ ${declaration}`;
         const view = this.runtime.frame?.task.programView;
         const record3 = view ? view.record(found.record) : found.record;
         const expectedRevision = view?.revisionId ?? 0;
+        if (record3.kind === "namespace" && name === "read_code") {
+          const paths = Object.keys(record3.codebase).map((child) => `${requested}.${child}`);
+          const text4 = `Callable namespace ${requested}:
+${paths.join("\n")}`;
+          return { kind: "ok", text: this.show(text4), value: paths };
+        }
         if (record3.kind === "namespace")
           throw new Reject([{ path: requested, code: "no-such-function", expected: `an item inside ${requested}: ${Object.keys(record3.codebase).join(", ")}` }]);
         if (name === "read_code") {
@@ -229755,7 +229810,7 @@ This is not the result: ${refinementFailure.code}: ${refinementFailure.message}`
           const rendered = isLive(output.result) || isHandle(output.result) ? livePreview(output.result, this.runtime.displayLiveId) : raw.valueless === true && !isHandle(output.result) ? "undefined" : this.showValue(output.result ?? null);
           const status = functionResult !== void 0 ? stagedMessage(functionResult, this.runtime.displayLiveId, this.runtime.untrusted) : notResult;
           const stored = changed.map(([name, , value]) => `local ${name} = ${oneLine(value, name, this.runtime.displayLiveId, this.runtime.untrusted)}` + // A Neuralese value is shown as its state; the words beside it say what it is and how to use it.
-          (isNeuraleseRef(value) ? ` (${value.$neuralese.type}: pass it on as is, or read it with read(${name}))` : ""));
+          (isNeuraleseRef(value) ? ` (${value.$neuralese.type}: pass it on as is, or write await read(${name}) for an ordinary copy)` : ""));
           const performed = /* @__PURE__ */ new Map();
           if (modelFacing("effect-receipt")) {
             for (const event of this.runtime.trace.events.slice(traceMark))
@@ -229836,6 +229891,7 @@ ${requested.tool}: ${refused.text}` };
           };
         } catch (error) {
           evalStop?.abort(new Error("the eval that started this call failed"));
+          if (isNoNeuraleseWriterFault(error)) throw error;
           const message2 = error instanceof Error ? error.message : String(error);
           const note2 = this.captureScopeFailure(
             error instanceof EvalFailure ? "runtime" : "boundary",
@@ -230302,17 +230358,28 @@ function schemaOf(type, env, depth2 = 0) {
   };
   return {};
 }
-function referencedTypeAliases(signatures, definitions, declarations = {}) {
+function referencedTypeAliases(signatures, definitions, declarations = {}, transitive = true) {
   const found = /* @__PURE__ */ new Set();
   const visit = (text3) => {
     for (const name of Object.keys(definitions)) {
       if (found.has(name) || !new RegExp(`\\b${name}\\b`).test(text3)) continue;
       found.add(name);
-      visit(declarations[name] ?? definitions[name]);
+      if (transitive) visit(declarations[name] ?? definitions[name]);
     }
   };
   for (const signature of signatures) visit(signature);
   return [...found].map((name) => declarations[name] ?? `type ${name} = ${definitions[name]};`);
+}
+function largeCallableScope(codebase) {
+  const pending = Object.values(codebase);
+  let remaining = 96;
+  while (pending.length) {
+    const item = pending.pop();
+    remaining -= 1 + Object.keys(item.exports ?? {}).length;
+    if (remaining < 0) return true;
+    for (const child of Object.values(item.codebase ?? {})) pending.push(child);
+  }
+  return false;
 }
 function renderValue(value, options = {}) {
   if (value === void 0) return "undefined";
@@ -231582,9 +231649,12 @@ ${notes}` : opening;
         const scopeTypes = referencedTypeAliases([
           ...lam.type.params.fields.map((field) => formatType(field.type)),
           formatType(lam.type.returns)
-        ], lam.typesSrc);
+        ], lam.typesSrc, {}, !this.compactCallableScope(session));
         const signature = `${lam.functionName || "run"}(` + lam.type.params.fields.map((field) => `${field.name}${field.optional ? "?" : ""}: ${formatType(field.type)}`).join(", ") + `): ${formatType(lam.type.returns)}`;
         return { signature, scopeTypes, program };
+      }
+      compactCallableScope(session) {
+        return modelFacing("compact-callable-scope") && largeCallableScope(session.lam.codebase);
       }
       /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
        * withCallNotes). */
@@ -231616,19 +231686,20 @@ ${notes}` : opening;
       /** Ambient TypeScript declarations for the functions this call can use, with the aliases they reference. */
       callableDeclarations(session) {
         const lam = session.lam, aliases = /* @__PURE__ */ new Set(), lines = [];
+        const compact = this.compactCallableScope(session);
         const params = (args) => Object.entries(args).map(([key, value]) => `${key.replace(/\?$/, "")}${key.endsWith("?") ? "?" : ""}: ${value}`);
         const doc = (text3, indent) => typeof text3 === "string" && text3.trim() ? [`${indent}/** ${text3.trim().replace(/\s+/g, " ").replace(/\*\//g, "* /")} */`] : [];
         const returns = (spec) => spec.async ? `Promise<${spec.returns}>` : String(spec.returns);
         const propertyName = (name) => /^[A-Za-z_$][\w$]*$/.test(name) ? name : JSON.stringify(name);
-        const propertyTree = (raw) => {
+        const propertyTree = (raw, depth2 = 0) => {
           const entries = [];
           if (raw.kind === "namespace") {
             for (const [key, child] of Object.entries(raw.codebase ?? {}))
-              entries.push(`${propertyName(key)}: ${propertyTree(child)}`);
+              entries.push(`${propertyName(key)}: ${compact && depth2 >= 1 ? "unknown" : propertyTree(child, depth2 + 1)}`);
           } else if (raw.kind === "module") {
             const exports = raw.exports ?? {};
             for (const [key, spec] of Object.entries(exports)) {
-              for (const line of referencedTypeAliases(
+              if (!compact) for (const line of referencedTypeAliases(
                 [...Object.values(spec.args ?? {}), spec.returns ?? "", spec.type ?? ""],
                 raw.types ?? {},
                 raw.declarations ?? {}
@@ -231636,10 +231707,10 @@ ${notes}` : opening;
               entries.push(spec.kind === "function" ? `${propertyName(key)}: (${params(spec.args ?? {}).join(", ")}) => ${returns(spec)}` : `${propertyName(key)}: ${spec.type ?? "unknown"}`);
             }
             for (const [key, child] of Object.entries(raw.codebase ?? {}))
-              entries.push(`${propertyName(key)}: ${propertyTree(child)}`);
+              entries.push(`${propertyName(key)}: ${compact && depth2 >= 1 ? "unknown" : propertyTree(child, depth2 + 1)}`);
           } else {
             const args = raw.args ?? {};
-            for (const line of referencedTypeAliases(
+            if (!compact) for (const line of referencedTypeAliases(
               [...Object.values(args), String(raw.returns ?? "unknown")],
               raw.types ?? {}
             )) aliases.add(line);
@@ -231647,7 +231718,7 @@ ${notes}` : opening;
           }
           return `{ ${entries.join("; ")} }`;
         };
-        const declare = (name, raw, indent) => {
+        const declare = (name, raw, indent, depth2 = 0) => {
           const lead = indent ? indent : "declare ";
           const types3 = raw.types ?? {};
           const members = Object.entries(raw.codebase ?? {});
@@ -231655,7 +231726,7 @@ ${notes}` : opening;
           if (raw.kind === "module") {
             const exports = raw.exports ?? {};
             for (const [exportName, spec] of Object.entries(exports)) {
-              for (const line of referencedTypeAliases(
+              if (!compact) for (const line of referencedTypeAliases(
                 [...Object.values(spec.args ?? {}), spec.returns ?? "", spec.type ?? ""],
                 types3,
                 raw.declarations ?? {}
@@ -231678,12 +231749,16 @@ ${notes}` : opening;
             if (reducer) lines.push(`${indent}/** Directory reducer: calling it uses only its result and discards its file changes; handle.apply(${name}, ...) keeps them. */`);
             else lines.push(...doc(raw.description, indent));
             lines.push(`${lead}function ${name}(${list.join(", ")}): Promise<${raw.returns}>;${reducer ? "" : "  // natural language"}`);
-            for (const line of referencedTypeAliases([...Object.values(raw.args ?? {}), String(raw.returns)], types3)) aliases.add(line);
+            if (!compact) for (const line of referencedTypeAliases([...Object.values(raw.args ?? {}), String(raw.returns)], types3)) aliases.add(line);
           }
-          if (!inner.length && !members.length) return;
+          const expand2 = !compact || depth2 === 0 && raw.kind !== "natlang";
+          if (compact && !expand2 && members.length) {
+            lines.push(`${indent}// ${name} also has ${members.length} callable-scope entries. Read its source or inspect properties in eval.`);
+          }
+          if (!inner.length && (!expand2 || !members.length)) return;
           lines.push(`${lead}namespace ${name} {`);
           for (const line of inner) lines.push(`${indent}  ${line}`);
-          for (const [child, item] of members) declare(child, item, `${indent}  `);
+          if (expand2) for (const [child, item] of members) declare(child, item, `${indent}  `, depth2 + 1);
           lines.push(`${indent}}`);
         };
         for (const [name, raw] of Object.entries(lam.codebase)) {
@@ -231695,6 +231770,11 @@ ${notes}` : opening;
           }
           declare(name, record3, "");
         }
+        if (compact) return [
+          '// Entry points are listed here. Use read_code("namespace") to see its members, read_code("namespace.function") for source,',
+          '// or read_code("namespace.function.TypeName") for the exact type there. Nested callables remain available in eval.',
+          ...lines
+        ];
         const own = new Set(referencedTypeAliases([...lam.type.kind === "lambda" ? [
           ...lam.type.params.fields.map((field) => formatType(field.type)),
           formatType(lam.type.returns)
@@ -255888,6 +255968,7 @@ ${compiled2}`)});`;
 
 // src/native/realm.ts
 init_neuralese2();
+var UNAWAITED_DISPLAY = "[a Promise: not awaited yet; write await before the call to get its value]";
 function constructorRealm(newFunction, name = "natlang") {
   return { call: (body, parameters, args) => newFunction(`"use strict";
 ${body}`, name, ...parameters)(...args) };
@@ -256013,6 +256094,8 @@ var RealmEnvironment = class {
     });
     const realm = this.realm();
     const write = consoleWriter(logs, (value) => {
+      if (value !== null && typeof value === "object" && typeof value.then === "function")
+        return UNAWAITED_DISPLAY;
       try {
         const data = portable2(value);
         return isNeuraleseRef(data) ? neuraleseDisplayText(data) : JSON.stringify(data, (_key, item) => isNeuraleseRef(item) ? neuraleseDisplayText(item) : item);

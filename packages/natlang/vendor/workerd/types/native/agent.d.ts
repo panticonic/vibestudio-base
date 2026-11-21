@@ -368,6 +368,7 @@ export declare class NativeToolAgent {
     tools(session: NativeSession): unknown[];
     /** The call's signature line, the type aliases it references, and its instructions. */
     private callHeading;
+    private compactCallableScope;
     /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
      * withCallNotes). */
     private scopeOpening;

@@ -6,6 +6,8 @@
  */
 import { type EnvironmentMode, type EvalEnvironment, type EvalRequest, type EvalResult, type HostEvent } from './evaluator.js';
 import { type HeapProbe } from './eval-memory.js';
+/** How console output shows a promise: what it is and the fix, never `[object Promise]`. */
+export declare const UNAWAITED_DISPLAY = "[a Promise: not awaited yet; write await before the call to get its value]";
 /** Where compiled eval code runs: a JavaScript realm's global environment. */
 export interface Realm {
     /**

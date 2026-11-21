@@ -117,6 +117,18 @@ export declare class NeuraleseUnsupportedError extends Error {
     readonly code = "neuralese-unsupported-backend";
     constructor(detail: string);
 }
+/** What every no-writer fault says, so it is recognised across the eval boundary (which keeps only an error's message). */
+export declare const NO_NEURALESE_WRITER: string;
+/**
+ * A declared Neuralese<T> boundary needs a writer and the runtime has none: a fault of the runtime's configuration that
+ * no model action can repair. It ends the run instead of becoming a tool result (teacher-gen-20261119/gap-v1: models
+ * fed this error retried the same return until the 40-call budget, in 1,833 of 2,191 failed teacher episodes).
+ */
+export declare class NeuraleseNoWriterError extends NeuraleseUnsupportedError {
+    constructor(detail: string);
+}
+/** Whether `error`, or any error in its cause chain, is a no-writer configuration fault (see NeuraleseNoWriterError). */
+export declare function isNoNeuraleseWriterFault(error: unknown): boolean;
 /** A soft value met a reader or slot of another dialect. Values are never reused across dialects (NEURALESE_DIALECTS.md). */
 export declare class NeuraleseDialectError extends Error {
     readonly code = "neuralese-dialect-mismatch";
