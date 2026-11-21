@@ -263,6 +263,8 @@
     "installedPackageChange": ["runUserGoal/reviewInstalledPackage/restorePackage.nl"],
     "webhookAdmissionEvidence": ["runUserGoal/reviewWebhookAdmission/discoverWebhook.nl", "runUserGoal/reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"],
     "webhookAdmissionHandoff": ["runUserGoal/reviewWebhookAdmission/stageWebhookAudit.nl"],
+    "ptyContinuityEvidence": ["runUserGoal/reviewPtyContinuity/discoverPtyReview.nl", "runUserGoal/reviewPtyContinuity/inspectPtyReceipts/readPtyAttempt.nl"],
+    "ptyContinuityHandoff": ["runUserGoal/reviewPtyContinuity/stagePtyReceipt.nl"],
     "developmentAuditEvidence": ["runUserGoal/reviewDevelopmentAudit/discoverDevelopmentAudit.nl", "runUserGoal/reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl"],
     "developmentAuditKeep": ["runUserGoal/reviewDevelopmentAudit/keepDevelopmentRepair.nl"],
     "contentArchiveEvidence": ["runUserGoal/recoverContentArchive/discoverArchive.nl", "runUserGoal/recoverContentArchive/inspectArchive/readArchiveEvidence.nl"],

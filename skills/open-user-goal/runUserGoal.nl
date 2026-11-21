@@ -91,6 +91,7 @@ When the current workspace exposes a skill that addresses the goal, pass the use
 - For an owned phone first-run rehearsal, declared desktop install eligibility or a retained paired workspace readiness decision, call planPhoneFirstRun. Report as "phoneFirstRun".
 - For a local first-party webhook registration audit based on retained receipt, current scoped activation and effective metadata, call reviewWebhookAdmission. Report as "webhookAdmission".
 - To recover approved files from an immutable archived edition into an existing local content project, including verifying its admitted snapshot and protecting current edits, call recoverContentArchive. Report as "contentArchive".
+- For an interrupted shell console goal about matching the original PTY, resuming saved output, checking the actual exit or preserving its exact local receipt, call reviewPtyContinuity with the entire goal. Return status "workspace-skill-reviewed", skill "ptyContinuity", and its actual outcome.
 - For an exact retained development build or session checkpoint review after an interrupted native run, call reviewDevelopmentAudit with the entire goal. Report as "developmentAudit".
 
 - `news.reviewUserNewsGoal` for News readers and schedules.

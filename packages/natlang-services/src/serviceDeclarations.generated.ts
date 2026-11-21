@@ -5464,6 +5464,38 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  ptyContinuityEvidence: `/** Read the assigned terminal attempts and exact retained PTY cursor and exit evidence. */
+
+type PtyCursor = { epoch: number; cursor: number };
+
+type PtyCheck = { sessionId: string; pid: number; contextId: string; checkpoint: PtyCursor; digest: string; needsReturnCode: boolean };
+
+type PtyAssignment = {
+  goal: string; subject: string; nominated: PtyCheck; alternative: PtyCheck; allowAlternative: boolean; mayStage: boolean;
+};
+
+type PtyObservation = {
+  sessionId: string; pid: number; contextId: string; alive: boolean; epoch: number; start: number; end: number;
+  cursorState: "continued" | "gap" | "reset"; replayStart: number; replayBytes: number; replayDigest: string;
+  replayPreview: string | null; retainedDigest: string; retainedBytes: number; byteAgreement: boolean; exit: { code: number | null; signal: string | null } | null;
+};
+
+/** Read the assigned terminal attempts and exact retained PTY cursor and exit evidence. */
+export function discover(): Promise<PtyAssignment>;
+
+/** Read the assigned terminal attempts and exact retained PTY cursor and exit evidence. */
+export function inspect(sessionId: string): Promise<PtyObservation | null>;`,
+  ptyContinuityHandoff: `/** Retain verified evidence from an approved exact terminal attempt in local scratch. */
+
+type PtyBlocker = "hold-no-session" | "hold-context" | "hold-generation";
+
+type PtyDisposition = PtyBlocker | "hold-running" | "hold-gap" | "hold-reset" | "hold-proof" | "report-failed" | "report-signal" | "report-good" | "stage-good";
+
+type PtyReceipt = { path: string; bytes: number; sha256: string };
+
+/** Retain verified evidence from an approved exact terminal attempt in local scratch. */
+export function stage(sessionId: string, digest: string, disposition: PtyDisposition):
+      Promise<PtyReceipt>;`,
   developmentAuditEvidence: `/** Read the exact owned development build assignment and retained native run journal. */
 
 type DevelopmentAssignment = {
