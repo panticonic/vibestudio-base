@@ -87,6 +87,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "workspaceClaims"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "panelLaunchState"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "ownedRouteAuthority"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "intentDiscovery"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "pdfVault"; outcome: PdfVaultOutcome };
 
 export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };

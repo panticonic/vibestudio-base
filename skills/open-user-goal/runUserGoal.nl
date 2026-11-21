@@ -13,6 +13,8 @@ For a request to save or update a local incident report or distinguish the corre
 
 When the goal asks whether current Testkit teardown and retained cleanup evidence justify release, or whether to save the exact private closeout, call compareTestkitCloseouts. Report as "testkitCloseout".
 
+For an underspecified local status question that needs choosing between working state, a saved note, an installed guide, and an exact native helper, call discoverScopedIntent. Report as "intentDiscovery".
+
 For choosing between working, prior, committed, independently retained, or approval-only evidence routes in an owned decision, call chooseAuthorizedEvidenceRoute. Report as "ownedRouteAuthority".
 
 For an owned panel launch setting change, validator rejection, or exact native slot readback, call reconcilePanelLaunchState. Report as "panelLaunchState".

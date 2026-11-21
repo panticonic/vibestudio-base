@@ -1568,6 +1568,54 @@ type SuiteReviewExecution = {
 
 /** Verify the exact caller-assigned test plan after live resolution. */
 export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  nativeIntentDiscovery: `/** Search actual installed scope and read the exact native evidence that answers the user. */
+
+type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};
+
+type IntentHit={id:string;name:string;description:string};
+
+type IntentDescription={id:string;name:string;description:string;digest:string};
+
+type IntentObservation={methodId:string;scope:string;status:"observed"|"missing";coordinate:string|null;
+  details:string[];digest:string|null};
+
+/** Search actual installed scope and read the exact native evidence that answers the user. */
+export function notice():Promise<IntentNotice>;
+
+/** Search actual installed scope and read the exact native evidence that answers the user. */
+export function search(query:string):Promise<IntentHit[]>;
+
+/** Search actual installed scope and read the exact native evidence that answers the user. */
+export function describe(id:string):Promise<IntentDescription|null>;
+
+/** Search actual installed scope and read the exact native evidence that answers the user. */
+export function inspect(methodId:string,scope:string):Promise<IntentObservation|null>;`,
+  nativeIntentHandoff: `/** Retain the expressly authorized private intent discovery result. */
+
+type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};
+
+type IntentHit={id:string;name:string;description:string};
+
+type IntentDescription={id:string;name:string;description:string;digest:string};
+
+type IntentSearch={queries:string[];hits:IntentHit[][];described:IntentDescription[]};
+
+type IntentAction={methodId:string;scope:string};
+
+type IntentPlan={actions:IntentAction[];retain:boolean};
+
+type IntentObservation={methodId:string;scope:string;status:"observed"|"missing";coordinate:string|null;
+  details:string[];digest:string|null};
+
+type IntentOutcome={status:"observed"|"partial"|"unavailable";summary:string};
+
+type IntentNote={path:string;digest:string};
+
+type IntentReport={notice:IntentNotice;search:IntentSearch;plan:IntentPlan;
+  evidence:IntentObservation[];outcome:IntentOutcome;handoff:IntentNote|null};
+
+/** Retain the expressly authorized private intent discovery result. */
+export function stage(report:IntentReport):Promise<IntentNote|null>;`,
   routeEvidenceRead: `/** Discover and verify exact authorized local route evidence. */
 
 type EvidenceBasis="working"|"committed"|"earlier"|"private-copy"|"comparison"|"external"|"alternate-link";

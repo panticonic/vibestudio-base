@@ -1,0 +1,11 @@
+{
+  "schema":"natlang.package/v2",
+  "name":"vibestudio-open-intent-discovery",
+  "version":"0.1.0",
+  "targets":{"main":{"entry":"readIntentNotice.nl"}},
+  "serviceBinding":"explicit",
+  "serviceScopes":{
+    "nativeIntentDiscovery":["readIntentNotice.nl","searchIntentCatalog.nl","describeIntentCapability.nl","inspectIntentEvidence.nl"],
+    "nativeIntentHandoff":["stageIntentNote.nl"]
+  }
+}
