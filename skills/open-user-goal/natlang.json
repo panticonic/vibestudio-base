@@ -5,6 +5,11 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/chooseAudienceResponse": {
+      "mounts": ["runUserGoal/chooseAudienceResponse/workspace", "runUserGoal/chooseAudienceResponse/prepareAudienceVisual/visualize"],
+      "types": ["AudienceReport"]
+    },
+
     "runUserGoal/reviseCoordinatedDocuments": {
       "mounts": ["runUserGoal/reviseCoordinatedDocuments/workspace", "runUserGoal/reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules", "runUserGoal/reviseCoordinatedDocuments/planCoordinatedRevision/policy", "runUserGoal/reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"],
       "types": ["CoordinatedRevisionReport"]
@@ -125,6 +130,8 @@
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
     "runUserGoal/reconcileWorkspaceConfig/settings": "skills/open-workspace-config",
     "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings": "skills/open-workspace-config",
+    "runUserGoal/chooseAudienceResponse/workspace": "skills/open-audience-response",
+    "runUserGoal/chooseAudienceResponse/prepareAudienceVisual/visualize": "skills/visualize",
     "runUserGoal/reviseCoordinatedDocuments/workspace": "skills/open-coordinated-revision",
     "runUserGoal/reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules": "skills/vibestudio-workflows/evidence",
     "runUserGoal/reviseCoordinatedDocuments/planCoordinatedRevision/policy": "skills/workspace-document-revision",

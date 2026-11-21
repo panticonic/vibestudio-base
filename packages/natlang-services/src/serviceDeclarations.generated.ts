@@ -1841,6 +1841,37 @@ type ConfigDisposition = { path: string; digest: string };
 
 /** Retain the expressly authorized private configuration decision. */
 export function stage(brief: ConfigBrief, lens: ConfigLens, evidence: ConfigEvidence, outcome: ConfigOutcome): Promise<ConfigDisposition | null>;`,
+  nativeAudienceResponse: `/** Read the owned answer evidence and render only an authorized canonical presentation. */
+
+type AudienceFact = { id: string; value: string };
+
+type AudienceSection = { id: string; required: boolean; ask: string; data: string };
+
+type AudienceModel = {
+  id: string; title: string; inputLabel: string; outputLabel: string;
+  baseCents: number; unitCents: number; divisor: number; initial: number; min: number; max: number;
+};
+
+type AudienceRecord = {
+  id: string; revision: string; title: string; source: string; facts: AudienceFact[];
+  sections: AudienceSection[]; model: AudienceModel | null;
+};
+
+type AudiencePrepared = { presentation: unknown; modelId: string | null };
+
+type AudienceInteraction = {
+  inputLabel: string; beforeInput: number; afterInput: number; beforeResult: string; afterResult: string;
+};
+
+type AudienceReceipt = {
+  revision: string; ids: string[]; mdxDigests: string[]; interaction: AudienceInteraction | null;
+};
+
+/** Read the owned answer evidence and render only an authorized canonical presentation. */
+export function readRecord(): Promise<AudienceRecord>;
+
+/** Read the owned answer evidence and render only an authorized canonical presentation. */
+export function render(recordId: string, revision: string, prepared: AudiencePrepared): Promise<AudienceReceipt | null>;`,
   nativeCoordinatedRevision: `/** Observe and atomically update a reviewer's exact local workspace documents. */
 
 type RevisionFile = { path: string; version: string; text: string; fileId: string };

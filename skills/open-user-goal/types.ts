@@ -99,6 +99,7 @@ export type UserGoalReport =
   | { status: "workspace-skill-reviewed"; skill: "panelLaunchState"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "ownedRouteAuthority"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "workspaceConfig"; outcome: unknown }
+  | { status: "workspace-skill-reviewed"; skill: "audienceResponse"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "coordinatedRevision"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "retainedMemory"; outcome: unknown }
   | { status: "workspace-skill-reviewed"; skill: "intentDiscovery"; outcome: unknown }

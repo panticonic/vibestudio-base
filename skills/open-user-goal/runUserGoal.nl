@@ -26,6 +26,8 @@ When the goal asks whether current Testkit teardown and retained cleanup evidenc
 
 For the active workspace identity, resolved configuration or retained facts that need current settings, protected manifests or exact protected template dependency declarations, call reconcileWorkspaceConfig. Report as "workspaceConfig".
 
+For an audience question about how to present a local decision, when to use interactive controls, or whether simple grounded prose is enough, call chooseAudienceResponse and report as "audienceResponse".
+
 For coordinated edits across existing local documents based on exact retained approval, call reviseCoordinatedDocuments. Also use it to verify a linked document set that may already comply or may require holding an unsafe atomic edit. Report as "coordinatedRevision".
 
 For a remembered workspace decision or claim that needs memory recall, original conversation citations or immutable saved evidence, call reviewRetainedMemory and report as "retainedMemory". Use the original historical sources the user permits.

@@ -1,0 +1,8 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-audience-response",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "readAudienceRecord.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": { "nativeAudienceResponse": ["readAudienceRecord.nl", "renderAudienceVisual.nl"] }
+}
