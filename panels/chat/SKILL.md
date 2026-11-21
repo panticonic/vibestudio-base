@@ -135,7 +135,8 @@ The seed applies only at creation:
   create a new conversation with a new seed.
 
 The reusable chat component accepts `channelConfig.seed` as creation input.
-PubSub installs it on the first context-bound subscription, before replay.
+The chat connection retains the seed before opening replay. Direct PubSub
+clients can also supply a seed on their first context-bound subscription.
 `client.resolveOpeningRequest("deliver")` requires a subscribed agent;
 `"cancel"` retires the request. The chosen resolution is kept across retries.
 Neither `seed` nor `initialization` is mutable channel config. The old

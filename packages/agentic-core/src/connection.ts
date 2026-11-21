@@ -1,5 +1,6 @@
 /** Headless PubSub connection and its owned replay/event delivery lifecycle. */
 import { connectViaRpc, resolveRpcChannelTarget } from "@workspace/pubsub";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import type {
   PubSubClient,
   RosterUpdate,
@@ -172,12 +173,29 @@ export class ConnectionManager {
           signal,
         }));
       signal.throwIfAborted();
+      let channelConfig = options.channelConfig;
+      if (
+        channelConfig?.seed &&
+        options.contextId &&
+        this.config.deliveryMode !== "resident"
+      ) {
+        // Commit the creation input before opening the response-owned
+        // subscription. Replay reads the retained configuration on every join.
+        await this.config.rpc.call(
+          channelTargetId,
+          channelClientRpcMethods.initializeConversation,
+          [options.contextId, channelConfig],
+          { signal },
+        );
+        signal.throwIfAborted();
+        channelConfig = undefined;
+      }
       const client = connectViaRpc<ChatParticipantMetadata>({
         rpc: this.config.rpc,
         channel: options.channelId,
         channelTargetId,
         contextId: options.contextId,
-        channelConfig: options.channelConfig,
+        channelConfig,
         ...(this.metadata.handle !== undefined
           ? { handle: this.metadata.handle }
           : {}),

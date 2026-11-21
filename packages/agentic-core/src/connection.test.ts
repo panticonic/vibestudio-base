@@ -230,6 +230,46 @@ describe("ConnectionManager owned readiness", () => {
     );
   };
 
+  it("retains a conversation seed before starting the replay stream", async () => {
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const config = createConfig((controller) => {
+      stream = controller;
+    });
+    const manager = new ConnectionManager({ config, metadata, callbacks: {} });
+    const channelConfig = {
+      seed: { openingRequest: "Testkit initial prompt for the chat transcript suite" },
+    };
+    const connecting = manager.connect({
+      channelId: "chat-1",
+      contextId: "ctx-chat",
+      channelConfig,
+      methods: {},
+    });
+    try {
+      await vi.waitFor(() => {
+        expect(config.rpc!.streamReadable).toHaveBeenCalledOnce();
+      });
+      expect(config.rpc!.call).toHaveBeenCalledWith(
+        CHANNEL_TARGET,
+        "initializeConversation",
+        ["ctx-chat", channelConfig],
+        { signal: expect.any(AbortSignal) },
+      );
+      const calls = vi.mocked(config.rpc!.call);
+      const initialization = calls.mock.calls.findIndex(([, method]) => method === "initializeConversation");
+      const subscribe = vi.mocked(config.rpc!.streamReadable);
+      expect(calls.mock.invocationCallOrder[initialization]).toBeLessThan(
+        subscribe.mock.invocationCallOrder[0]!,
+      );
+      expect(subscribe.mock.calls[0]?.[2]?.[1]).not.toHaveProperty("channelConfig");
+      sendReady(stream);
+      await expect(connecting).resolves.toMatchObject({ contextId: "ctx-chat" });
+    } finally {
+      await manager.disconnect();
+      await connecting.catch(() => undefined);
+    }
+  });
+
   it("keeps slow service resolution alive until the actual RPC reply", async () => {
     vi.useFakeTimers();
     let resolveService!: () => void;
