@@ -223,9 +223,9 @@ function createFileTransferTool(
         path: destinationRoute.repoRelPath,
       };
       const intentSummary = input.intent?.trim();
-      const result =
+      const transfer =
         kind === "move"
-          ? await vcs.move({
+          ? vcs.move({
               contextId: toolContextId(context),
               expectedWorkingHead: workingHead,
               commandId,
@@ -240,7 +240,7 @@ function createFileTransferTool(
                 },
               ],
             })
-          : await vcs.copy({
+          : vcs.copy({
               contextId: toolContextId(context),
               expectedWorkingHead: workingHead,
               commandId,
@@ -256,6 +256,18 @@ function createFileTransferTool(
                 },
               ],
             });
+      const result = await transfer.catch((error: unknown) => {
+        if (!(error instanceof Error)) throw error;
+        const data = (error as Error & { errorData?: { code?: unknown; path?: unknown } }).errorData;
+        if (typeof data?.code !== "string") throw error;
+        const cause = {
+          code: data.code,
+          ...(typeof data.path === "string" ? { path: data.path } : {}),
+        };
+        // The tool journal preserves a JSON cause across the execution boundary.
+        const message = `${data.code}: ${error.message}\nUse the workspace VCS typed recovery table for the next step.`;
+        throw Object.assign(new Error(message, { cause }), { code: data.code, errorData: data });
+      });
       const produced = await resolveToolFile(
         vcs,
         result.workingHead,

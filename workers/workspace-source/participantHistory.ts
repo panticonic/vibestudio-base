@@ -1799,7 +1799,7 @@ export class ParticipantHistory {
 
   /** Inspect F1's exact conflict and violation rows before accepting resolutions. */
   previewMainMerge(contextId: string, head: string, expectedMain: string): Promise<MainMergePreview> {
-    return this.#previewMerge(contextId, head, () => this.#fetchExpectedMain(expectedMain));
+    return this.#previewMerge(head, () => this.#fetchExpectedMain(expectedMain), contextId);
   }
 
   /** Find the exact source in shared history or an admitted branch of this cell. */
@@ -1846,7 +1846,7 @@ export class ParticipantHistory {
         target: input.target, source: input.source,
       });
     }
-    const preview = await this.#previewMerge(contextId, head, () =>
+    const preview = await this.#previewMerge(head, () =>
       "main" in selection ? this.#fetchCanonicalRevision(selection.main) : this.#resolveContextSource(selection.source),
     );
     return this.#run(() => reviewHistoryMerge(this.#storage.sql, input, this.#stateAt(base).state, preview, observation));
@@ -1966,14 +1966,14 @@ export class ParticipantHistory {
 
   async previewContextMerge(contextId: string, head: string, source: MergeSource) {
     const { main, ...preview } = await this.#previewMerge(
-      contextId, head, () => this.#resolveContextSource(source),
+      head, () => this.#resolveContextSource(source), contextId,
     );
     return { ...preview, source: main };
   }
 
-  #previewMerge(contextId: string, head: string, readSource: () => Promise<string>): Promise<MainMergePreview> {
+  #previewMerge(head: string, readSource: () => Promise<string>, workingContextId?: string): Promise<MainMergePreview> {
     return this.#run(async () => {
-      this.#assertHead(this.#contextBranch(contextId), head);
+      if (workingContextId !== undefined) this.#assertHead(this.#contextBranch(workingContextId), head);
       const main = await readSource();
       const base = this.#mergeBase(head, main);
       if (!base) {
@@ -1989,10 +1989,13 @@ export class ParticipantHistory {
       if (base === head) {
         return { head, main, base, incoming, placements, conflicts: [], violations: [] };
       }
-      this.#checkoutExpected(contextId, head);
+      const originalBranch = this.#dolt.branch.current();
+      const previewBranch = `merge-preview/${crypto.randomUUID()}`;
       const rollback = new Error("Workspace merge preview complete");
       let preview: MainMergePreview | undefined;
+      this.#dolt.branch.create(previewBranch, { from: head });
       try {
+        this.#dolt.checkout(previewBranch);
         this.#dolt.merge(main, {
           fastForward: false,
           resolve(merge) {
@@ -2011,10 +2014,13 @@ export class ParticipantHistory {
         });
       } catch (error) {
         if (error !== rollback) throw error;
+      } finally {
+        const previewHead = this.#dolt.hashOf(previewBranch);
+        if (this.#dolt.branch.current() === previewBranch) this.#dolt.checkout(originalBranch);
+        this.#dolt.branch.delete(previewBranch, { force: true });
+        if (previewHead !== head) throw new Error("Workspace merge preview changed its target revision");
       }
-      if (!preview || this.#dolt.hashOf(this.#contextBranch(contextId)) !== head) {
-        throw new Error("Workspace merge preview changed the working revision");
-      }
+      if (!preview) throw new Error("Workspace merge did not produce a preview");
       return preview;
     });
   }
