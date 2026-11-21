@@ -117,6 +117,8 @@ Presentation, publication and workspace-specific routes:
 - `googleHandoff.reconcileGoogleHandoff → googleHandoff`: retained Gmail decision determines authority for linked Drive evidence or handoff.
 - `googleSetup.workOnGoogleSetupGoal → googleSetup`: current welcome readiness, onboarding, permission ownership or staged setup handoff.
 - `google.workOnDriveGoal → google`: Drive. `gmail.recoverGmailGoal → gmail`: drafts and delivery evidence.
+- `reconcileGoogleRunbook → googleRunbook`: verify actual Calendar and approval evidence, then correct the owned local runbook.
+- `prepareNewsEditionReview → newsEditionReview`: prepare a grounded private visual editorial packet for the retained News edition.
 - `calendar.workOnCalendarGoal → calendar`: reconcile current proposals and stage a scheduling handoff.
 - `personalArtifacts.workOnPersonalArtifactsGoal → personalArtifacts`: saved browser references used in a collection.
 - `githubWork.workOnGitHubGoal → githubWork`: local Git evidence, GitHub setup, current owner approvals or protected handoff.

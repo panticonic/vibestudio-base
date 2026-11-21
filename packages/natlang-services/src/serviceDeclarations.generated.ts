@@ -896,6 +896,43 @@ export function begin(path: string): Promise<UnitHandoffObservation>;
 
 /** Discover owned installed units and read their current workspace and lifecycle evidence. */
 export function lifecycle(path: string): Promise<UnitLifecycleObservation>;`,
+  googleRunbook: `/** Read and cautiously revise the authorized Calendar operations runbook. */
+
+type RunbookDocument = { path: string; version: string; text: string };
+
+type RunbookBasis = { documents: RunbookDocument[]; authorization: string; currentRevision: string };
+
+type RunbookWrite = { status: "written" | "changed" | "held"; path: string | null; version: string | null };
+
+/** Read and cautiously revise the authorized Calendar operations runbook. */
+export function read(): Promise<RunbookBasis>;
+
+/** Read and cautiously revise the authorized Calendar operations runbook. */
+export function apply(calendar: unknown, proposal: RunbookDocument):
+      Promise<RunbookWrite>;`,
+  newsEditionReview: `/** Read the current News editor brief and stage a verified private visual packet. */
+
+type EditorDesk = {
+  id: string;
+  revision: string;
+  title: string;
+  topic: string;
+  format: "stats" | "checklist" | "timeline";
+  facts: string;
+  grant: "private-draft" | "inspect" | "withdrawn";
+};
+
+type EditorPacketPlan = { action: "packet" | "review-only" | "hold"; format: string; revision: string; reason: string };
+
+type EditorPacketReceipt = { path: string; bytes: number; sha256: string };
+
+/** Read the current News editor brief and stage a verified private visual packet. */
+export function readDesk(): Promise<EditorDesk>;
+
+/** Read the current News editor brief and stage a verified private visual packet. */
+export function stage(desk: EditorDesk,
+      plan: EditorPacketPlan, news: unknown, presentation: unknown):
+      Promise<EditorPacketReceipt | null>;`,
   unitIdentity: `/** Read and prepare the caller-assigned workspace icon. */
 
 type UnitIdentityObservation = {

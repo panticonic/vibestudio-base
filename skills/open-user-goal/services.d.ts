@@ -458,3 +458,17 @@ declare module "natlang:services" {
     lifecycle(path: string): Promise<import("./runUserGoal/reviewUnitHandoffGoal/contract.js").UnitLifecycleObservation>;
   };
 }
+
+declare module "natlang:services" {
+  export const googleRunbook: {
+    read(): Promise<import("./runUserGoal/reconcileGoogleRunbook/contract.js").RunbookBasis>;
+    apply(calendar: unknown, proposal: import("./runUserGoal/reconcileGoogleRunbook/contract.js").RunbookDocument):
+      Promise<import("./runUserGoal/reconcileGoogleRunbook/contract.js").RunbookWrite>;
+  };
+  export const newsEditionReview: {
+    readDesk(): Promise<import("./runUserGoal/prepareNewsEditionReview/contract.js").EditorDesk>;
+    stage(desk: import("./runUserGoal/prepareNewsEditionReview/contract.js").EditorDesk,
+      plan: import("./runUserGoal/prepareNewsEditionReview/contract.js").EditorPacketPlan, news: unknown, presentation: unknown):
+      Promise<import("./runUserGoal/prepareNewsEditionReview/contract.js").EditorPacketReceipt | null>;
+  };
+}

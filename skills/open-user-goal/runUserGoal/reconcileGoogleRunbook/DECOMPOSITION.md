@@ -1,0 +1,8 @@
+# Product-owned work across installed shared skills
+
+| Workflow | Natural language | Production mechanisms and independent outcome |
+| --- | --- | --- |
+| Google Workspace operations runbook | Reconcile one current Calendar event against protected local instructions. Use the installed Calendar hierarchy and Base document revision to update the minimum authorized lines, or hold on a stale, cancelled or unauthorized basis. | Calendar adapter checks exact windows, instance and retained revisions through in-process owned Calendar fixtures. Base VCS/runtime-backed scope and local filesystem readback checks the exact written runbook, concurrent coexistence, preserved original notes and unchanged main. |
+| News edition review | Review the native edition and allowed reader first, then decide whether the editor's request calls for an evidence-backed private visual packet or a no-artifact hold. Use installed News and Base visual/narrow handoff subtrees. | Native News journal, exact article byte digests and cadence feed the review. Read the active owned desk brief independently. Validate the checked visual component props against exact current edition facts, stage in a private scratch path through the shared handoff binder, and read it back while preserving original sources and main. |
+
+The two products share the root dispatcher, typed workspace I/O and durable readback mechanisms. The Calendar source and News article receipts represent different task outcomes and evidence, including distinct held sources. All retained provider-shaped responses are local fixtures. The source checks do not run a managed provider or teacher.
