@@ -7191,6 +7191,23 @@ type DeploymentVerification = {
 
 /** Verify the managed hub and child after the caller-authorized install. */
 export function verify(actionReceipt: string): Promise<DeploymentVerification>;`,
+  tendrilBoardDocket: `/** Read a caller-owned live board's current presentation ticket. */
+
+type LiveTendrilCard = { id: string; title: string; edition: "current" | "archive" };
+
+type LiveTendrilTicket = {
+  card: LiveTendrilCard;
+  platform: "headless";
+  fields: { key: string; shape: string }[];
+  controls: { name: string; key: string; value: string | number | boolean }[];
+  layouts: { candidate: string; build: string; heading: string }[];
+};
+
+/** Read a caller-owned live board's current presentation ticket. */
+export function list(): Promise<LiveTendrilCard[]>;
+
+/** Read a caller-owned live board's current presentation ticket. */
+export function read(id: string): Promise<LiveTendrilTicket>;`,
   cliRouteDocket: `/** Discover and read the exact owned saved CLI invocation. */
 
 type CliDocket = { id: string; name: string; revision: string; current: boolean };

@@ -85,6 +85,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
     "runUserGoal/recoverCliRoute/remote": "skills/remote-access",
     "runUserGoal/coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
     "runUserGoal/compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
@@ -188,6 +189,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "tendrilBoardDocket": ["runUserGoal/workOnLiveTendrilBoard/findLiveTendrilTicket.nl"],
     "cliRouteDocket": ["runUserGoal/recoverCliRoute/selectCliDocket.nl"],
     "scaffoldRead": [
       "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl",

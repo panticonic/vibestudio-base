@@ -1,4 +1,11 @@
 declare module "natlang:services" {
+  export const tendrilBoardDocket: {
+    list(): Promise<import("./runUserGoal/workOnLiveTendrilBoard/types.js").LiveTendrilCard[]>;
+    read(id: string): Promise<import("./runUserGoal/workOnLiveTendrilBoard/types.js").LiveTendrilTicket>;
+  };
+}
+
+declare module "natlang:services" {
   export const cliRouteDocket: {
     list(): Promise<import("./runUserGoal/recoverCliRoute/types.js").CliDocket[]>;
     read(id: string, revision: string): Promise<import("./runUserGoal/recoverCliRoute/types.js").CliDocketEvidence>;

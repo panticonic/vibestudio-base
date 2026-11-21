@@ -1,4 +1,5 @@
 export type { IntentReport } from "./discoverScopedIntent/types.js";
+export type { LiveTendrilOutcome } from "./workOnLiveTendrilBoard/types.js";
 export type { OwnedRouteReview } from "./chooseAuthorizedEvidenceRoute/types.js";
 export type { CliRouteOutcome } from "./recoverCliRoute/types.js";
 export type { LaunchReport } from "./reconcilePanelLaunchState/types.js";
