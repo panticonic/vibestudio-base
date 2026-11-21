@@ -1154,7 +1154,12 @@ describe("execution-owned native operation evidence", () => {
       { description: "skills/system-testing/tests/example.ts" },
     ]);
     expect(nonRpcEntries(owner.operationJournal.close().entries)).toEqual([
-      { type: "fs.read", method: "fs.readFile", path: "skills/system-testing/tests/example.ts" },
+      {
+        type: "fs.read",
+        method: "fs.readFile",
+        path: "skills/system-testing/tests/example.ts",
+        contentDigest: sha256HexSyncText("PRIVATE FILE CONTENT"),
+      },
     ]);
     expect(JSON.stringify(owner.operationJournal.entries)).not.toContain("PRIVATE FILE CONTENT");
   });

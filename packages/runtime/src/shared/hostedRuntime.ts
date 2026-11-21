@@ -356,7 +356,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
   const gad = helpfulNamespace("gad", createGadClient(rpc));
   const blobstore = helpfulNamespace(
     "blobstore",
-    createBlobstoreClient(rpc, host.fs, host.recordOperation),
+    createBlobstoreClient(rpc, host.fs),
   );
   const workspace = helpfulNamespace("workspace", createWorkspaceClient(rpc));
   const workspaces = helpfulNamespace(

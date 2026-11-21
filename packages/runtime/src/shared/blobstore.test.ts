@@ -2,7 +2,6 @@ import { Buffer } from "buffer";
 import { describe, expect, it, vi } from "vitest";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import { createBlobstoreClient } from "./blobstore.js";
-import { Journal } from "./journal.js";
 
 describe("createBlobstoreClient", () => {
   it("provides a portable readText alias over the canonical text read", async () => {
@@ -147,28 +146,13 @@ describe("createBlobstoreClient", () => {
       chmod: vi.fn(async () => undefined),
     };
 
-    const journal = new Journal();
-    const client = createBlobstoreClient(schemaRpcMock(rpc), fs as never, (entry) =>
-      journal.append(entry),
-    );
+    const client = createBlobstoreClient(schemaRpcMock(rpc), fs as never);
     await expect(
       client.materializeTree(`manifest:${"d".repeat(64)}`, "/checkout"),
     ).resolves.toEqual({ written: 1, unchanged: 1 });
     expect(files.get("/checkout/nested/run.sh")?.toString()).toBe(
       "#!/bin/sh\n",
     );
-    expect(journal.entries).toEqual([
-      {
-        type: "blob-tree.observation",
-        receipt: {
-          protocol: "blob-tree-observation.v1",
-          method: "materializeTree",
-          ref: `manifest:${"d".repeat(64)}`,
-          written: 1,
-          unchanged: 1,
-        },
-      },
-    ]);
     expect(fs.chmod).toHaveBeenCalledWith("/checkout/same.txt", 33188);
     expect(fs.chmod).toHaveBeenCalledWith("/checkout/nested/run.sh", 33261);
     expect(rpc.call).toHaveBeenCalledWith("main", "blobstore.listTree", [

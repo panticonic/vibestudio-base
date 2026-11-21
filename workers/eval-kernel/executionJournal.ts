@@ -117,6 +117,16 @@ export class ExecutionJournal {
     this.characters += encoded.length;
   }
 
+  recordFilesystemRead(method: string, args: unknown[], result: unknown): void {
+    const [path] = args;
+    if (typeof path !== "string" || !["fs.readFile", "fs.readdir", "fs.open"].includes(method)) return;
+    const contentDigest =
+      method === "fs.readFile" && typeof result === "string" && result.length <= 1024 * 1024
+        ? sha256HexSyncText(result)
+        : undefined;
+    this.append({ type: "fs.read", method, path, ...(contentDigest ? { contentDigest } : {}) });
+  }
+
   recordRpcCall(receipt: EvalRpcCallObservation): void {
     if (this.closed) return;
     this.append({

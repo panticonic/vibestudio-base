@@ -884,13 +884,6 @@ export class EvalKernel extends DurableObjectBase {
           state: "waiting",
         });
       }
-      if (
-        targetId === "main" &&
-        ["fs.readFile", "fs.readdir", "fs.open"].includes(method) &&
-        typeof args[0] === "string"
-      ) {
-        operationJournal.append({ type: "fs.read", method, path: args[0] });
-      }
       let rpcReceiptRecorded = false;
       try {
         const result = await base.call(targetId, method, args, mergeOptions(options));
@@ -910,6 +903,7 @@ export class EvalKernel extends DurableObjectBase {
         });
         rpcReceiptRecorded = true;
         if (targetId === "main") {
+          operationJournal.recordFilesystemRead(method, args, result);
           operationJournal.recordWorkerLifecycle(workerLifecycleRequest, result, callId);
           operationJournal.recordExtensionInvocation(method, args, result);
           operationJournal.recordServerLogRead(method, args, result);
