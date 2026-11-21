@@ -1,4 +1,4 @@
-import type { SuiteReviewReport as Verification } from "./nativeSuite/types.js";
+import type { SuiteReviewReport as Verification } from "./reviewVerification/nativeSuite/types.js";
 import type { PackageAssignment as Assignment, PackageObservation as Observation, PackageDecision as Decision,
   PackageRestore as Restore } from "./contract.js";
 
