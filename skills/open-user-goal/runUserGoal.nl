@@ -5,6 +5,8 @@ args:
   goal: string
 returns: UserGoalReport
 ---
+For a saved workspace CLI invocation whose server, workspace route or selected context needs confirmation, use recoverCliRoute when available. Report skill "cliRoute". Terminal command output and PTY resumption are separate requests.
+
 For a local operational rehearsal that needs independent impact and recovery workers or a release checkpoint carried across its owned worker restart, call coordinateOwnedOperations when available. Report skill "ownedOperations".
 
 For a request to save or update a local incident report or distinguish the correct incident before drafting, call workOnProblemReportGoal. Return skill "problemReport" and its actual outcome.

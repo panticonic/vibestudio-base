@@ -1,4 +1,11 @@
 declare module "natlang:services" {
+  export const cliRouteDocket: {
+    list(): Promise<import("./runUserGoal/recoverCliRoute/types.js").CliDocket[]>;
+    read(id: string, revision: string): Promise<import("./runUserGoal/recoverCliRoute/types.js").CliDocketEvidence>;
+  };
+}
+
+declare module "natlang:services" {
   export const operationsDocket: {
     list(): Promise<import("./runUserGoal/coordinateOwnedOperations/types.js").OperationsDocket[]>;
     read(id: string, revision: string): Promise<import("./runUserGoal/coordinateOwnedOperations/types.js").OperationsDocketEvidence>;

@@ -344,6 +344,7 @@ const authoredServices = [
   authoredService("remoteDeploymentRead", "Read the baseline of the assigned managed deployment.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
   authoredService("remoteDeploymentApply", "Run the caller-authorized managed installer for the observed baseline.", "system", "remote-access", [{ name: "apply", params: ["baselineReceipt"] }]),
   authoredService("remoteDeploymentVerify", "Verify the managed hub and child after the caller-authorized install.", "system", "remote-access", [{ name: "verify", params: ["actionReceipt"] }]),
+  authoredService("cliRouteDocket", "Discover and read the exact owned saved CLI invocation.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["id", "revision"] }]),
   authoredService("remoteDeploymentHandoff", "Bind the assigned device profile to the verified deployment.", "system", "remote-access", [{ name: "open", params: ["deploymentReceipt"] }]),
   authoredService("remoteAccessRead", "Read the caller-assigned remote profile.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
   authoredService("remoteAccessPair", "Redeem the caller-assigned invitation.", "system", "remote-access", [{ name: "pair", params: ["profileReceipt"] }]),

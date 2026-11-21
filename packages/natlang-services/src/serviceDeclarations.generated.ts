@@ -7108,6 +7108,20 @@ type DeploymentVerification = {
 
 /** Verify the managed hub and child after the caller-authorized install. */
 export function verify(actionReceipt: string): Promise<DeploymentVerification>;`,
+  cliRouteDocket: `/** Discover and read the exact owned saved CLI invocation. */
+
+type CliDocket = { id: string; name: string; revision: string; current: boolean };
+
+type CliDocketEvidence = {
+  docket: CliDocket;
+  request: { goal: string; operationId: string; serverId: string; workspaceId: string };
+};
+
+/** Discover and read the exact owned saved CLI invocation. */
+export function list(): Promise<CliDocket[]>;
+
+/** Discover and read the exact owned saved CLI invocation. */
+export function read(id: string, revision: string): Promise<CliDocketEvidence>;`,
   remoteDeploymentHandoff: `/** Bind the assigned device profile to the verified deployment. */
 
 type RemoteDeploymentHandoff = {

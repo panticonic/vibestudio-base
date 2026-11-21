@@ -1,4 +1,5 @@
 export type { OwnedRouteReview } from "./chooseAuthorizedEvidenceRoute/types.js";
+export type { CliRouteOutcome } from "./recoverCliRoute/types.js";
 export type { LaunchReport } from "./reconcilePanelLaunchState/types.js";
 export type { WorkspaceClaimReview } from "./reviewWorkspaceClaims/types.js";
 export type { OperationsGoalOutcome } from "./coordinateOwnedOperations/types.js";

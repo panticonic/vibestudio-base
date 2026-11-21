@@ -5,6 +5,10 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/recoverCliRoute": {
+      "mounts": ["runUserGoal/recoverCliRoute/remote"],
+      "types": ["CliRouteOutcome"]
+    },
     "runUserGoal/compareTestkitCloseouts": {
       "mounts": ["runUserGoal/compareTestkitCloseouts/readAttempt/session"],
       "types": ["CloseoutReport"]
@@ -81,6 +85,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/recoverCliRoute/remote": "skills/remote-access",
     "runUserGoal/coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
     "runUserGoal/compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
     "runUserGoal/workOnChatContinuity/workspace": "skills/open-chat-continuity",
@@ -181,6 +186,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "cliRouteDocket": ["runUserGoal/recoverCliRoute/selectCliDocket.nl"],
     "scaffoldRead": [
       "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl",
       "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/readInstalledScaffolds.nl",
