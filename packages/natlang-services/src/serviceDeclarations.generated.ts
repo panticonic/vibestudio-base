@@ -1536,6 +1536,74 @@ type SuiteReviewExecution = {
 
 /** Verify the exact caller-assigned test plan after live resolution. */
 export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  launchStateRead: `/** Scope an owned panel launch state and read its independent native owner snapshot. */
+
+type LaunchIndex={panelId:string;title:string;purpose:"active"|"archive"}[];
+
+type LaunchState={title:string;owner:string;mode:string;count:number;label?:string;
+  settings:{side:string;order:string;pins:string[];lastNote?:string}};
+
+type LaunchSnapshot={panelId:string;entryKey:string;entityId:string;contextId:string;buildKey:string;digest:string;state:LaunchState};
+
+type LaunchPatch=Record<string,unknown>;
+
+type LaunchAuthorityChoice={operationId:string;label:string};
+
+type LaunchAuthorityScope={capability:string;resourceKey:string};
+
+type LaunchAuthorityRequest={goal:string;operations:LaunchAuthorityChoice[];ceiling:LaunchAuthorityScope[]};
+
+/** Scope an owned panel launch state and read its independent native owner snapshot. */
+export function enumerate():Promise<LaunchIndex>;
+
+/** Scope an owned panel launch state and read its independent native owner snapshot. */
+export function read(panelId:string):Promise<LaunchSnapshot|null>;
+
+/** Scope an owned panel launch state and read its independent native owner snapshot. */
+export function seal(panelId:string):Promise<LaunchSnapshot|null>;
+
+/** Scope an owned panel launch state and read its independent native owner snapshot. */
+export function bind(panelId:string,basis:string,patch:LaunchPatch):Promise<LaunchAuthorityRequest|null>;`,
+  launchStateWrite: `/** Apply an authorized exact launch patch or retain the resulting private state review. */
+
+type LaunchPatch=Record<string,unknown>;
+
+type LaunchState={title:string;owner:string;mode:string;count:number;label?:string;
+  settings:{side:string;order:string;pins:string[];lastNote?:string}};
+
+type LaunchEffect={panelId:string;basis:string;kind:"saved"|"invalid"|"stale";state:LaunchState|null;message:string|null};
+
+type LaunchPlan={panelId:string;direction:"read"|"write"|"test";patch:LaunchPatch;retain:boolean};
+
+type LaunchSnapshot={panelId:string;entryKey:string;entityId:string;contextId:string;buildKey:string;digest:string;state:LaunchState};
+
+type LaunchDecision={attempt:boolean;reason:string};
+
+type LaunchAuthorityChoice={operationId:string;label:string};
+
+type LaunchAuthorityScope={capability:string;resourceKey:string};
+
+type LaunchAuthorityRequest={goal:string;operations:LaunchAuthorityChoice[];ceiling:LaunchAuthorityScope[]};
+
+type LaunchAuthorityObservation={operationId:string;decision:string;leaves:{capability:string;resourceKey:string;tier:string;status:string}[]};
+
+type LaunchAuthorityReport={status:string;protectedLeaves:LaunchAuthorityScope[];held:string[];
+  reviews:{observation:LaunchAuthorityObservation;outside:LaunchAuthorityScope[];disposition:string}[]};
+
+type LaunchPreflight={request:LaunchAuthorityRequest;report:LaunchAuthorityReport};
+
+type LaunchVerdict={status:"confirmed"|"held"|"applied"|"rejected";summary:string};
+
+type LaunchNote={path:string;digest:string};
+
+type LaunchReport={plan:LaunchPlan;opening:LaunchSnapshot;current:LaunchSnapshot;decision:LaunchDecision;
+  preflight:LaunchPreflight|null;effect:LaunchEffect|null;readback:LaunchSnapshot;result:LaunchVerdict;handoff:LaunchNote|null};
+
+/** Apply an authorized exact launch patch or retain the resulting private state review. */
+export function patch(panelId:string,basis:string,patch:LaunchPatch):Promise<LaunchEffect|null>;
+
+/** Apply an authorized exact launch patch or retain the resulting private state review. */
+export function stage(report:LaunchReport):Promise<LaunchNote|null>;`,
   workspaceClaimRead: `/** Find exact owned claim packets and independently read their source and native test facts. */
 
 type ClaimScope={id:string;title:string;purpose:"review"|"archive"};

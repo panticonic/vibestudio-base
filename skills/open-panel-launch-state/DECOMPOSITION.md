@@ -1,0 +1,13 @@
+# Panel launch-state reconciliation
+
+| Installed mechanism | Responsibility |
+| --- | --- |
+| Baseline `state-args-immediate-snapshot` in System Testing and `packages/runtime/src/shared/panelStateArgsPersistence.ts` | Read and patch the runtime's exact current slot history state through the supported PanelHandle API. Current slot identity, presentation data, and state from a different history entry are separate evidence. |
+| Production WorkspaceDO `slotPatchCurrentStateArgs`, Host state service, `@vibestudio/shared/stateArgsValidator` | Runtime applies and validates RFC 7386 in one native transaction. Arrays replace, null removes, and the active schema coerces or rejects input. Keep protected sibling values exact. Refuse stale model observations before trying an effect, and still preserve native typed conflict responses. |
+| `skills/capabilities/natlang/reviewAuthority.nl` and scope binding | Read the exact operation's authority preflight where the chosen patch is allowed. Requested action, preflight and a finished exact slot write have separate outcomes. The adapter binds a single owned Slot ID, never runs generic routes and grants nothing. |
+| Disposable typed fixture panel, System Testing, and independent native Workspace State read | Open private fixture slots with exact source and active schema. Derive current data from PanelHandle and the host's persisted slot detail. Retain exact before/after snapshots, preserve aliases / protected siblings and clean up owned resources. Source qualification uses the actual WorkspaceDO test subclass backed by SQLite, the native slot history mutation and independent persisted detail, and the installed manifest schema. No rendered UI or production model call is required to prove persistence. |
+
+1. Discover active and similarly named panels. Choose a target scoped to the owner and convert user-visible desired values to a minimal typed patch.
+2. Get two owned runtime snapshots. If the target or a relevant value moved, branch between retaining concurrently changed siblings, holding for current owner intent, and an explicitly authorized retry. Never retarget to a same-name panel.
+3. When an effect is authorized, ask the installed authority reviewer and call the native patch only with an exact current basis. Keep its typed rejection or receipt.
+4. Independently read back the native saved state and confirm exact value, retained keys and unchanged protected surfaces. Treat a callback or accepted patch response as insufficient evidence on its own. For read-only or held outcomes, show the latest unmodified state. Stage a private note only on explicit user request.

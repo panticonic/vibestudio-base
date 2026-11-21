@@ -1,0 +1,9 @@
+{
+  "name":"@workspace-skills/open-panel-launch-state",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "exports":{"./types":"./types.ts"},
+  "main":"./types.ts",
+  "types":"./types.ts"
+}

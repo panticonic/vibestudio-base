@@ -11,6 +11,8 @@ For a request to save or update a local incident report or distinguish the corre
 
 When the goal asks whether current Testkit teardown and retained cleanup evidence justify release, or whether to save the exact private closeout, call compareTestkitCloseouts. Report as "testkitCloseout".
 
+For an owned panel launch setting change, validator rejection, or exact native slot readback, call reconcilePanelLaunchState. Report as "panelLaunchState".
+
 For an exact workspace acceptance claim audit matching native TestKit, semantic file readback and current authority, call reviewWorkspaceClaims. Report as "workspaceClaims".
 
 For local semantic release delivery that depends on a retained Git Bridge branch observation and paired file revisions, call workOnBridgeDelivery. Report as "bridgeDelivery".
