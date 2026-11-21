@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { createInMemorySql } from "@vibestudio/durable/test-utils";
+import { HistoryWalkPageSchema } from "@vibestudio/service-schemas/workspaceSource";
 import { createTrajectoryMirrorSchema } from "./trajectorySchema.js";
 import {
   inspectTrajectoryNode,
@@ -64,7 +65,8 @@ it("reads a native invocation's causal evidence from trajectory tables alone", a
   expect(trajectoryNeighborEdges(sql, root, edges[0]!.position, 1)).toEqual(
     edges.slice(1),
   );
-  expect(readHistoryWalkInvocation(sql, invocation).entries).toMatchObject([
+  const walk = HistoryWalkPageSchema.parse(readHistoryWalkInvocation(sql, invocation));
+  expect(walk.entries).toMatchObject([
     { node: { kind: "trajectory-invocation" }, depth: 0 },
     { node: { kind: "trajectory-turn" }, depth: 1 },
     {
@@ -74,6 +76,21 @@ it("reads a native invocation's causal evidence from trajectory tables alone", a
       statement: { text: "Change the config", sender: "user" },
     },
   ]);
+  const missingInvocation = {
+    ...invocation,
+    invocationId: "invocation:missing",
+  };
+  const missingWalk = HistoryWalkPageSchema.parse(
+    readHistoryWalkInvocation(sql, missingInvocation),
+  );
+  expect(missingWalk).toEqual({
+    entries: [{
+      node: { kind: "trajectory-invocation", ...missingInvocation },
+      label: "tool invocation · unnamed",
+      depth: 0,
+    }],
+    notes: [],
+  });
 
   sql.exec(
     `INSERT INTO trajectory_invocations

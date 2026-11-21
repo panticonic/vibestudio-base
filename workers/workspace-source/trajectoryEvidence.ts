@@ -9,7 +9,7 @@ import { channelTrajectoryFor } from "@vibestudio/trajectory-identity";
 import { SemanticVcsError } from "./semanticVcsErrors.js";
 
 type Row = Record<string, unknown>;
-type WalkPage = { entries: Row[]; omitted: Row[]; notes: string[] };
+type WalkPage = { entries: Row[]; notes: string[] };
 const MAX_CAUSE_MESSAGE_HOPS = 8;
 
 export const boundedMemoryText = (value: string, maximum: number): string | null => {
@@ -234,7 +234,7 @@ export function readHistoryWalkInvocation(
   invocation: { logId: string; head: string; invocationId: string },
 ): WalkPage {
   const cause = readHistoryMemoryCause(sql, invocation);
-  return cause ? walkTrajectoryInvocation(sql, cause, 0) : { entries: [], omitted: [], notes: [] };
+  return cause ? walkTrajectoryInvocation(sql, cause, 0) : { entries: [], notes: [] };
 }
 
 export function walkTrajectoryInvocation(sql: SqlStorage, cause: Row, depth: number): WalkPage {
@@ -326,7 +326,7 @@ export function walkTrajectoryInvocation(sql: SqlStorage, cause: Row, depth: num
       notes.push("The chain ends at a message with no recorded source.");
     }
   }
-  return { entries, omitted: [], notes };
+  return { entries, notes };
 }
 
 export function inspectTrajectoryNode(sql: SqlStorage, node: Row): Row {
