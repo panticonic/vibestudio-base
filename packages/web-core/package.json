@@ -6,7 +6,8 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./extract": "./src/extract.ts"
+    "./extract": "./src/extract.ts",
+    "./provider": "./src/provider.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
