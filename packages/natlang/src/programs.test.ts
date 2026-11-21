@@ -392,6 +392,43 @@ it("limits an authored editing service to the exact root of a loaded program", a
   expect(visible["inspectStage"]).not.toContain("panelRepairEdit");
 });
 
+it("compiles the installed program from two reads of the same workspace snapshot", async () => {
+  const files = {
+    "skills/root/brief.nl": BRIEF,
+    "skills/root/natlang.json": JSON.stringify({
+      workspaceModules: { "brief/first": "skills/mounted", "brief/absent": "skills/absent" },
+    }),
+    "skills/mounted/read.nl": BRIEF,
+  };
+  const fs = memoryFs(files);
+  const requests: Array<{ roots: string[]; expectedSnapshot?: string }> = [];
+  let snapshot = "working-head";
+  fs.readProgramSources = async input => {
+    requests.push(input);
+    const sources = Object.entries(files)
+      .filter(([path]) => input.roots.some(root => path.startsWith(`${root}/`)))
+      .map(([path, content]) => ({ path, content }));
+    return {
+      snapshot: input.expectedSnapshot ? snapshot : "working-head",
+      directories: input.roots.filter(root => sources.some(({ path }) => path.startsWith(`${root}/`))),
+      files: sources.reverse(),
+    };
+  };
+  const getLoader = (workspaceFs: WorkspaceFs) => new ProgramLoader({
+    platform: platform(), fs: workspaceFs, bindings: {}, runTask: run => run(),
+  });
+  const direct = await getLoader(memoryFs(files)).describe("skills/root/brief.nl");
+  const loader = getLoader(fs);
+  expect(await loader.describe("skills/root/brief.nl")).toEqual(direct);
+  expect(requests).toEqual([
+    { roots: ["skills/root"] },
+    { roots: ["skills/mounted", "skills/absent"], expectedSnapshot: "working-head" },
+  ]);
+  expect(fs.reads).toEqual([]);
+  snapshot = "new-revision";
+  await expect(loader.describe("skills/root/brief.nl")).rejects.toThrow("changed while resolving installed mounts");
+});
+
 it("bounds semantic source reads across mounted trees and concurrent loads", async () => {
   const mounts = {
     "brief/first": "skills/first",

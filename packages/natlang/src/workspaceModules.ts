@@ -1,6 +1,5 @@
 import { declaredServiceNames, declaredServiceScopes } from "./services.js";
 import { NatlangProgramError } from "./programError.js";
-import type { WorkspaceFs } from "./programs.js";
 
 type Files = Record<string, string>;
 const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -8,10 +7,9 @@ const skillPath = /^skills(?:\/[A-Za-z0-9_-]+)+$/u;
 
 /** Selected installed skill packages mounted under a named callable namespace. */
 export async function linkWorkspaceModules(
-  fs: WorkspaceFs,
   directory: string,
   local: Files,
-  readProjectRoots: (fs: WorkspaceFs, roots: readonly string[]) => Promise<Map<string, Files>>,
+  readInstalledRoots: (roots: readonly string[]) => Promise<Map<string, Files>>,
 ): Promise<Files> {
   const configuration = JSON.parse(local["natlang.json"] ?? "{}");
   const declaration = configuration?.workspaceModules;
@@ -80,32 +78,9 @@ export async function linkWorkspaceModules(
       reject(`Workspace branch ${path} overlaps another branch.`);
   }
 
-  const readDirectory = new Map<string, ReturnType<WorkspaceFs["readdir"]>>();
-  async function installed(source: string) {
-    let parent = "skills";
-    for (const part of source.split("/").slice(1)) {
-      let contents = readDirectory.get(parent);
-      if (!contents) {
-        contents = fs.readdir(parent, { withFileTypes: true });
-        readDirectory.set(parent, contents);
-      }
-      if (
-        !(await contents).some(
-          (item) => item.name === part && item.isDirectory(),
-        )
-      )
-        return false;
-      parent += `/${part}`;
-    }
-    return true;
-  }
-  const installedModules: Array<{ mount: string; source: string }> = [];
-  for (const [mount, source] of entries) {
-    if (typeof source === "string" && await installed(source))
-      installedModules.push({ mount, source });
-  }
-  const roots = [...new Set(installedModules.map(({ source }) => source))];
-  const projects = await readProjectRoots(fs, roots);
+  const mounts = entries.map(([mount, source]) => ({ mount, source: source as string }));
+  const projects = await readInstalledRoots([...new Set(mounts.map(({ source }) => source))]);
+  const installedModules = mounts.filter(({ source }) => projects.has(source));
   const modules = installedModules.map(({ mount, source }) => {
     const sourceFiles = projects.get(source)!;
     const config = JSON.parse(sourceFiles["natlang.json"] ?? "{}");

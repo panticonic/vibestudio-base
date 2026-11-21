@@ -24,6 +24,11 @@ export interface WorkspaceFs {
     options: { withFileTypes: true }
   ): Promise<Array<{ name: string; isDirectory(): boolean }>>;
   stat(path: string): Promise<{ isDirectory(): boolean }>;
+  readProgramSources?(input: { roots: string[]; expectedSnapshot?: string }): Promise<{
+    snapshot: string;
+    directories: string[];
+    files: Array<{ path: string; content: string }>;
+  }>;
 }
 
 /** The root every program's in-memory project is mounted at. */
@@ -70,6 +75,55 @@ const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16)
 /** Active semantic FS calls per Eval loader. Mounted packages share the same window. */
 const MAX_PROJECT_READS = 8;
 
+type Sources = Map<string, Record<string, string>>;
+
+function orderedSources(sources: Sources): Sources {
+  return new Map([...sources].map(([root, files]) => [root,
+    Object.fromEntries(Object.entries(files).sort(([left], [right]) => (left < right ? -1 : 1))),
+  ]));
+}
+
+function isProgramSource(relative: string): boolean {
+  const parts = relative.split("/");
+  const name = parts.pop()!;
+  return parts.every(part => part.length > 0 && !part.startsWith(".") && !SKIPPED_DIRECTORIES.has(part)) &&
+    !name.startsWith(".") && PROGRAM_FILE.test(name) && !BESIDE_PROGRAM.test(name) &&
+    !GENERATED_DECLARATION.test(name);
+}
+
+async function readSnapshotRoots(
+  read: NonNullable<WorkspaceFs["readProgramSources"]>,
+  roots: readonly string[],
+  expectedSnapshot?: string
+): Promise<{ snapshot: string; sources: Sources }> {
+  if (!roots.length) return { snapshot: expectedSnapshot ?? "", sources: new Map() };
+  const result = await read({ roots: [...roots], ...(expectedSnapshot ? { expectedSnapshot } : {}) });
+  if (!result.snapshot || (expectedSnapshot && result.snapshot !== expectedSnapshot))
+    throw new Error("Natlang program sources changed while resolving installed mounts");
+  const requested = new Set(roots);
+  const sources: Sources = new Map();
+  for (const directory of result.directories) {
+    if (!requested.has(directory) || sources.has(directory))
+      throw new Error("Program source read returned an invalid root");
+    sources.set(directory, {});
+  }
+  const paths = new Set<string>();
+  for (const { path, content } of result.files) {
+    if (paths.has(path)) throw new Error("Program source read returned a duplicate path");
+    paths.add(path);
+    let matched = false;
+    for (const [directory, files] of sources) {
+      if (!path.startsWith(`${directory}/`)) continue;
+      const relative = path.slice(directory.length + 1);
+      if (!isProgramSource(relative)) throw new Error("Program source read returned a non-program path");
+      files[relative] = content;
+      matched = true;
+    }
+    if (!matched) throw new Error("Program source read returned a path outside the requested roots");
+  }
+  return { snapshot: result.snapshot, sources: orderedSources(sources) };
+}
+
 /** The files of the program rooted at `directory`, keyed by their path relative to it. */
 export async function readProjectFiles(
   fs: WorkspaceFs,
@@ -102,8 +156,7 @@ async function readProjectRoots(
         if (entry.name.startsWith(".")) continue;
         const child = relative ? `${relative}/${entry.name}` : entry.name;
         const childDirectory = entry.isDirectory();
-        if (childDirectory ? !SKIPPED_DIRECTORIES.has(entry.name)
-          : PROGRAM_FILE.test(entry.name) && !BESIDE_PROGRAM.test(entry.name) && !GENERATED_DECLARATION.test(entry.name)) {
+        if (childDirectory ? !SKIPPED_DIRECTORIES.has(entry.name) : isProgramSource(child)) {
           frontier.push({ root, relative: child, directory: childDirectory });
         }
       }
@@ -113,9 +166,26 @@ async function readProjectRoots(
     if (failures.length > 1)
       throw new AggregateError(failures, "Reading Natlang workspace sources failed", { cause: failures[0] });
   }
-  return new Map([...sources].map(([root, files]) => [root,
-    Object.fromEntries(Object.entries(files).sort(([left], [right]) => (left < right ? -1 : 1))),
-  ]));
+  return orderedSources(sources);
+}
+
+async function readInstalledProjectRoots(fs: WorkspaceFs, roots: readonly string[]): Promise<Sources> {
+  const listings = new Map<string, ReturnType<WorkspaceFs["readdir"]>>();
+  const installed: string[] = [];
+  for (const root of roots) {
+    let parent = "skills";
+    for (const part of root.split("/").slice(1)) {
+      let entries = listings.get(parent);
+      if (!entries) {
+        entries = fs.readdir(parent, { withFileTypes: true });
+        listings.set(parent, entries);
+      }
+      if (!(await entries).some(entry => entry.name === part && entry.isDirectory())) break;
+      parent += `/${part}`;
+    }
+    if (parent === root) installed.push(root);
+  }
+  return readProjectRoots(fs, installed);
 }
 
 /** A program's content identity: its files and the services it declares. */
@@ -296,11 +366,21 @@ export class ProgramLoader {
       );
     }
     const directoryPath = root || ".";
-    const files = await linkWorkspaceModules(
-      fs,
-      directoryPath,
-      await readProjectFiles(fs, directoryPath),
-      readProjectRoots
+    // Managed skills can load their own source and mounted skill sources
+    // against one semantic workspace snapshot.
+    const batched = fs.readProgramSources?.bind(fs);
+    const local = batched && /^skills(?:\/[A-Za-z0-9_-]+)*$/u.test(directoryPath)
+      ? await readSnapshotRoots(batched, [directoryPath])
+      : undefined;
+    const localFiles = local
+      ? local.sources.get(directoryPath)
+      : await readProjectFiles(fs, directoryPath);
+    if (!localFiles)
+      throw new Error(`Natlang program directory is outside the current source snapshot: ${directoryPath}`);
+    const files = await linkWorkspaceModules(directoryPath, localFiles, async (roots) =>
+      local && batched
+        ? (await readSnapshotRoots(batched, roots, local.snapshot)).sources
+        : readInstalledProjectRoots(fs, roots)
     );
     const key = programKey(files, declaredServiceNames(files));
     let program = this.compiled.get(`${path}\u0000${key}`);
