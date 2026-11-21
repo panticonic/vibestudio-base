@@ -562,5 +562,16 @@ it.each([
   expect(program.functions.map(fn => fn.source)).toContain(path);
   const scopes = program.serviceScopes[service] ?? [];
   expect(scopes).toContain(`runUserGoal/${namespace}/${owner}.nl`);
-  expect(scopes.every(scope => scope.startsWith(`runUserGoal/${namespace}/`))).toBe(true);
+  if (template === "news") {
+    const mounts = [
+      "runUserGoal/news",
+      "runUserGoal/workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed",
+      "runUserGoal/workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed",
+      "runUserGoal/workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed",
+    ];
+    const selectors = ["reviewUserNewsGoal.nl", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
+    expect([...scopes].sort()).toEqual(mounts.flatMap(mount => selectors.map(selector => `${mount}/${selector}`)).sort());
+  } else {
+    expect(scopes.every(scope => scope.startsWith(`runUserGoal/${namespace}/`))).toBe(true);
+  }
 });
