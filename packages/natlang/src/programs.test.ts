@@ -285,6 +285,27 @@ describe("ProgramLoader", () => {
     expect((await loader.describe("skills/s/triage.nl")).root).toBe("skills/s");
   });
 
+  it("resolves repeated signature text separately in mounted lexical scopes", async () => {
+    const nested = BRIEF.replace("returns: string", "returns: Reply");
+    const loader = new ProgramLoader({
+      platform: platform(),
+      fs: memoryFs({
+        "skills/root/brief.nl": BRIEF,
+        "skills/root/natlang.json": '{"workspaceModules":{"brief/first":"skills/first","brief/second":"skills/second"}}',
+        "skills/first/read.nl": nested,
+        "skills/first/types.ts": "export type Reply = { value: string };",
+        "skills/second/read.nl": nested,
+        "skills/second/types.ts": "export type Reply = { value: number };",
+      }),
+      bindings: {},
+      runTask: run => run(),
+    });
+    const { functions } = await loader.describe("skills/root/brief.nl");
+    const resultFor = (source: string) => functions.find(fn => fn.source === source)?.result.tree;
+    expect(resultFor("brief/first/read.nl")).toMatchObject({ fields: [{ name: "value", type: { name: "string" } }] });
+    expect(resultFor("brief/second/read.nl")).toMatchObject({ fields: [{ name: "value", type: { name: "number" } }] });
+  });
+
   it("describes nothing for a program that does not compile, with its diagnostics", async () => {
     const loader = new ProgramLoader({
       platform: platform(),

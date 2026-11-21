@@ -16,7 +16,7 @@ export type UnitReport = {
   evidence: string[];
 };
 
-import type { ContentReview } from "./runWorkflow/deliverProject/types.js";
+import type { ContentRequest, ContentReview } from "./runWorkflow/deliverProject/types.js";
 export type { ContentFact, ContentRequest, ContentReview } from "./runWorkflow/deliverProject/types.js";
 
 export type ContentReport = {

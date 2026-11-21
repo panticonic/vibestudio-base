@@ -57,11 +57,12 @@ function describeType(
   typeText: string,
   required: boolean,
   env: Environment,
-  docs: Record<string, Record<string, string>>
+  docs: Record<string, Record<string, string>>,
+  parse: typeof core.parseType
 ): ArgumentDescription {
   let type: Type;
   try {
-    type = core.parseType(typeText);
+    type = parse(typeText);
   } catch (error) {
     return {
       name,
@@ -79,22 +80,24 @@ function describeType(
     problem = error instanceof Error ? error.message : String(error);
   }
   const text = core.formatType(type);
-  return { name, type: text, text, required, tree: core.expandType(type, env, docs) as NatlangTypeTree, ...(problem ? { problem } : {}) };
+  // Expansion can return nodes of the parsed syntax. Keep each public tree independent.
+  const tree = structuredClone(core.expandType(type, env, docs)) as NatlangTypeTree;
+  return { name, type: text, text, required, tree, ...(problem ? { problem } : {}) };
 }
 
-function describeFunction(definition: Definition, source: string): FunctionDescription {
+function describeFunction(definition: Definition, source: string, parse: typeof core.parseType): FunctionDescription {
   const aliases: Record<string, Type> = {};
   for (const [alias, text] of Object.entries(definition.types)) {
     try {
-      aliases[alias] = core.parseType(text);
+      aliases[alias] = parse(text);
     } catch {
-      aliases[alias] = core.parseType("unknown");
+      aliases[alias] = parse("unknown");
     }
   }
   const env = new core.TypeEnv(aliases);
   const docs = fieldDocs(definition.types);
   const fields = definition.params.map((param) =>
-    describeType(param.name, param.type, !param.optional, env, docs)
+    describeType(param.name, param.type, !param.optional, env, docs, parse)
   );
   return {
     name: definition.name,
@@ -103,7 +106,7 @@ function describeFunction(definition: Definition, source: string): FunctionDescr
     params: definition.params.map((param) => `${param.name}${param.optional ? "?" : ""}: ${param.type}`),
     returns: definition.returns,
     fields,
-    result: describeType("expected result", definition.returns, true, env, docs),
+    result: describeType("expected result", definition.returns, true, env, docs, parse),
     ...(definition.readout ? { readout: definition.readout } : {}),
     ...(definition.model ? { model: definition.model } : {}),
   };
@@ -120,6 +123,16 @@ export function describeProgram(
   serviceScopes: Readonly<Record<string, readonly string[]>>
 ): ProgramDescription {
   const functions = new Map<string, FunctionDescription>();
+  // A mounted program repeats alias declarations across its functions. Reuse only the
+  // parsed syntax for this request; each function resolves names in its own lexical scope.
+  const parsedTypes = new Map<string, Type>();
+  const parse = (text: string): Type => {
+    const cached = parsedTypes.get(text);
+    if (cached) return cached;
+    const type = core.parseType(text);
+    parsedTypes.set(text, type);
+    return type;
+  };
   const seen = new Set<unknown>();
   const visit = (item: unknown): void => {
     if (item === null || (typeof item !== "object" && typeof item !== "function") || seen.has(item)) return;
@@ -127,7 +140,7 @@ export function describeProgram(
     const definition = definitionOf(item);
     if (definition) {
       const source = (definition.source ?? `${definition.name}.nl`).replace(/^\/?project\//, "");
-      if (!functions.has(source)) functions.set(source, describeFunction(definition, source));
+      if (!functions.has(source)) functions.set(source, describeFunction(definition, source, parse));
     }
     for (const child of Object.values(item as Record<string, unknown>)) visit(child);
   };
