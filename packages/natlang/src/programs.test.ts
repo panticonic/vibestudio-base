@@ -575,6 +575,12 @@ it.each([
     const selectors = ["reviewUserNewsGoal.nl", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
     expect([...scopes].sort()).toEqual(mounts.flatMap(mount => selectors.map(selector => `${mount}/${selector}`)).sort());
   } else {
-    expect(scopes.every(scope => scope.startsWith(`runUserGoal/${namespace}/`))).toBe(true);
+    const manifest = JSON.parse(await fs.readFile("skills/open-user-goal/natlang.json", "utf8")) as {
+      workspaceModules: Record<string, string>;
+    };
+    const mounts = Object.entries(manifest.workspaceModules)
+      .filter(([, sourcePath]) => sourcePath.startsWith(`${skillPath}/`))
+      .map(([mount]) => mount);
+    expect(scopes.every(scope => mounts.some(mount => scope.startsWith(`${mount}/`)))).toBe(true);
   }
 });
