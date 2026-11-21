@@ -107,6 +107,10 @@ export declare class TypeSyntaxError extends Error {
 export declare const normalizePredicate: (predicate: string) => string;
 export declare function parseType(text: string): Type;
 export declare function formatType(type: Type): string;
+/** A name that can be redefined by the lexical type environment. */
+export declare function typeAliasName(type: Type): string | undefined;
+/** Names whose definitions participate in this portable type. */
+export declare function typeAliasNames(type: Type): string[];
 export declare class TypeEnv {
     readonly names: Record<string, Type>;
     readonly parent?: TypeEnv | undefined;

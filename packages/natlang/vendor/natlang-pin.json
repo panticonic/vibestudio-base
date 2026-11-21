@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "a32989afd667d520ec59700de6fd4bddbe45b1ec",
+  "commit": "6f16ebb18759629aa56d6b5af1d67abafb40c03c",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "50d9fcd0543ef6e04f3b3623b5272eb0124d8a96a1e051766f7dfbfff4d1578b",
+    "workerd/natlang-workerd.js": "6199fc139d015b70415b4109115f9d1ffb0f9fbc52a3b62ee529d3d6ca859b6a",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -69,12 +69,12 @@
     "workerd/types/native/refinement.d.ts": "e18e94c7eb21b8f208cd87821cfc23c7122c4bf8a3b9b338d782f66535000818",
     "workerd/types/native/representation.d.ts": "c6b0029b95337b4778ed2c9565e3e0006b99de5c8a70840d844fdf284fad7dda",
     "workerd/types/native/return-errors.d.ts": "784a1c44b1bf20a2270240ecc43abf1e7f0ce3a097b226b8e9a6402698f32172",
-    "workerd/types/native/runtime.d.ts": "d524976aa6806f2299eeb48b2ade350363b12de9b9e8e3f8157c7c4b45a64ddc",
+    "workerd/types/native/runtime.d.ts": "8e6ae306eac2dd3f5fb250251fe97abab2ad93351e1a00d17be53d47bbdc254d",
     "workerd/types/native/scoped-fs.d.ts": "2822cefcd3c40b1fc0064c9dcf98b07cd687a9a8e9f87133215615772edfee39",
     "workerd/types/native/system-prompts.d.ts": "3e10168d05d1dc331441eb2b5f124b1f483fdb8177fcd280e0c7ca205cc8bd74",
     "workerd/types/native/trace.d.ts": "915a063fb9fdea55a1b68c644ca12724a1c961e0c538aec0ab46977ffd40e3a4",
     "workerd/types/native/training-guidance.d.ts": "e1ba5c1c7d8b89a64ef54c741d9a1650778cc928a4eb09bf4a1ddbf6e8e2a72f",
-    "workerd/types/native/types.d.ts": "211267b33bb90729a9dcda62829f7b876746a46394f9bd2e36928516448acae4",
+    "workerd/types/native/types.d.ts": "52da1b7f54692cf3a49392569fd2e27b1fac1e488671a0fc66d4abb29e487bf4",
     "workerd/types/native/untrusted.d.ts": "635ac030a38702fb15a114d1aab3ebdb859368a04b0d39224fc4b048a926cc1c",
     "workerd/types/native/values.d.ts": "934208820b7ec0aa3a94b6693de9e8d8d5d63730829fd580c168d3b4db341e4d",
     "workerd/types/neuralese/combinators.d.ts": "e6f4185384d5e31b8dc2e4ff0e1ed87a4a29eaddd871c87bc22d223a6c59bbce",

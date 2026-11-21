@@ -212817,6 +212817,14 @@ function children(type) {
       return [];
   }
 }
+function typeAliasName(type) {
+  if (type.kind === "name" || type.kind === "host" && type.contract.kind === "tag" && type.contract.tag === type.name)
+    return type.name;
+}
+function typeAliasNames(type) {
+  const name = typeAliasName(type);
+  return name === void 0 ? children(type).flatMap(typeAliasNames) : [name];
+}
 function fitsType(source2, target, env = new TypeEnv(), seen = /* @__PURE__ */ new Set()) {
   if (target.kind === "prim" && target.name === "unknown") return true;
   if (source2.kind === "name" && target.kind === "name") {
@@ -214088,19 +214096,26 @@ function evalTypeDeclarations(code) {
 }
 function inlineDeclaredTypes(type, declared, seen = /* @__PURE__ */ new Set()) {
   const inline2 = (inner) => inlineDeclaredTypes(inner, declared, seen);
+  const name = typeAliasName(type);
+  if (name !== void 0) {
+    const definition = Object.hasOwn(declared, name) ? declared[name] : void 0;
+    return definition && !seen.has(name) ? inlineDeclaredTypes(definition, declared, /* @__PURE__ */ new Set([...seen, name])) : type;
+  }
   switch (type.kind) {
-    case "name": {
-      const definition = Object.hasOwn(declared, type.name) ? declared[type.name] : void 0;
-      if (!definition || seen.has(type.name)) return type;
-      return inlineDeclaredTypes(definition, declared, /* @__PURE__ */ new Set([...seen, type.name]));
-    }
     case "record":
       return { ...type, fields: type.fields.map((field) => ({ ...field, type: inline2(field.type) })) };
     case "list":
     case "dict":
       return { ...type, element: inline2(type.element) };
     case "union":
+    case "intersection":
       return { ...type, members: type.members.map(inline2) };
+    case "index":
+    case "refined":
+    case "untrusted":
+      return { ...type, base: inline2(type.base) };
+    case "neuralese":
+      return { ...type, element: inline2(type.element) };
     case "lambda":
       return { ...type, params: inline2(type.params), returns: inline2(type.returns) };
     default:
@@ -227592,29 +227607,67 @@ function replaceCodebaseItem(codebase, path2, record3) {
   const current = codebase[head];
   return { ...codebase, [head]: rest.length ? { ...current, codebase: replaceCodebaseItem(current.codebase, rest, record3) } : record3 };
 }
-function returnTypeOf(codebase, name) {
+function returnTypeOf(codebase, name, caller) {
   const found = findCodebaseItem(codebase, name);
   if (!found || found.path.join(".") !== name.replace(/\//g, ".") && found.record.kind !== "module") return;
   const record3 = found.record;
-  const expanded = (text3) => {
-    const aliases = {};
-    for (const [name2, source2] of Object.entries("types" in record3 ? record3.types : {})) {
+  if (record3.kind === "namespace") return;
+  if (record3.kind === "natlang") return transferCallableType(record3, record3.returns, caller);
+  const exportName = name.split(".").at(-1);
+  const spec = record3.exports[exportName === record3.name ? "default" : exportName] ?? record3.exports.default;
+  return spec?.kind === "function" ? transferCallableType(record3, spec.returns, caller) : void 0;
+}
+function transferCallableType(record3, source2, caller) {
+  let type;
+  try {
+    type = parseType(source2);
+  } catch (error) {
+    if (!(error instanceof TypeSyntaxError)) throw error;
+    return;
+  }
+  if (!typeAliasNames(type).length) return type;
+  let aliases = callableAliases.get(record3);
+  if (!aliases) {
+    aliases = callableTypes(record3.codebase);
+    for (const [alias, text3] of Object.entries(record3.types)) {
       try {
-        aliases[name2] = parseType(source2);
+        aliases[alias] = parseType(text3);
       } catch {
       }
     }
-    const shared = callableTypes(codebase);
-    for (const name2 of Object.keys(aliases)) if (shared[name2] && formatType(shared[name2]) === formatType(aliases[name2])) delete aliases[name2];
-    return formatType(inlineDeclaredTypes(parseType(text3), aliases));
-  };
-  if (record3.kind === "natlang") return expanded(record3.returns);
-  if (record3.kind === "module") {
-    const exportName = name.split(".").at(-1);
-    const spec = record3.exports[exportName === record3.name ? "default" : exportName] ?? record3.exports.default;
-    return spec?.kind === "function" ? expanded(spec.returns) : void 0;
+    callableAliases.set(record3, aliases);
   }
-  return;
+  const sourceAliases = aliases;
+  const sharedAlias = (alias, seen2) => {
+    if (seen2.has(alias)) return true;
+    const from = Object.hasOwn(sourceAliases, alias) ? sourceAliases[alias] : void 0;
+    const to2 = caller.lookup(alias);
+    if (!from || !to2) return from === to2;
+    if (formatType(from) !== formatType(to2)) return false;
+    const next2 = /* @__PURE__ */ new Set([...seen2, alias]);
+    return typeAliasNames(from).every((dependency) => sharedAlias(dependency, next2));
+  };
+  const privateAliases = /* @__PURE__ */ Object.create(null);
+  const seen = /* @__PURE__ */ new Set();
+  const collect = (signature) => {
+    for (const alias of typeAliasNames(signature)) {
+      if (seen.has(alias)) continue;
+      seen.add(alias);
+      if (!Object.hasOwn(sourceAliases, alias) || sharedAlias(alias, /* @__PURE__ */ new Set())) continue;
+      privateAliases[alias] = sourceAliases[alias];
+      collect(privateAliases[alias]);
+    }
+  };
+  collect(type);
+  const expanded = inlineDeclaredTypes(type, privateAliases);
+  if (typeAliasNames(expanded).some((alias) => !sharedAlias(alias, /* @__PURE__ */ new Set()))) return;
+  try {
+    caller.checkNames(expanded);
+  } catch (error) {
+    if (!(error instanceof TypeSyntaxError)) throw error;
+    return;
+  }
+  return expanded;
 }
 function untilAborted(work, signal) {
   if (!signal) return work;
@@ -227767,7 +227820,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -227934,6 +227987,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         delete container[key];
       }
     });
+    callableAliases = /* @__PURE__ */ new WeakMap();
     DEFAULT_RUN_LABEL = "native-run";
     runSeedKey = (options) => options.seedId ?? options.runLabel ?? options.runId;
     NativeRuntime = class {
@@ -228499,6 +228553,21 @@ Invoke this as a separate tool action; it is not callable from eval.`;
         return this.scopeLocalMutability.get(name) ?? true;
       }
       /** Type aliases from prior evals, made visible to the next eval's inline signature analysis. */
+      analysisCallableTypes = /* @__PURE__ */ new WeakMap();
+      /** Use the same lexical signature as runtime local inference in the static eval checker. */
+      analysisCallableType(record3, source2) {
+        let types3 = this.analysisCallableTypes.get(record3);
+        if (!types3) {
+          types3 = /* @__PURE__ */ new Map();
+          this.analysisCallableTypes.set(record3, types3);
+        }
+        const known = types3.get(source2);
+        if (known !== void 0) return known;
+        const transferred = transferCallableType(record3, source2, this.env);
+        const text3 = transferred ? formatType(transferred) : source2;
+        types3.set(source2, text3);
+        return text3;
+      }
       analysisTypeAliases() {
         return Object.fromEntries(Object.entries(this.localTypes).map(([name, type]) => [name, formatType(type)]));
       }
@@ -229361,16 +229430,16 @@ ${paths.join("\n")}`;
         const source2 = expression.trim();
         if (/\.(?:reduce|reduceRight)\s*\(/.test(source2)) return;
         const directCall = /^(?:await\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/.exec(source2);
-        const directReturns = directCall ? returnTypeOf(this.lam.codebase, directCall[1]) : void 0;
-        if (directReturns) return parseType(directReturns);
+        const directReturns = directCall ? returnTypeOf(this.lam.codebase, directCall[1], this.env) : void 0;
+        if (directReturns) return directReturns;
         const mappedCall = /^await\s+Promise\.all\(\s*[\s\S]*?\.map\(\s*(?:async\s+)?(?:\([\w$,\s]*\)|[A-Za-z_$][\w$]*)\s*=>\s*(?:await\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\(/.exec(source2);
         let mappedReturns;
         if (mappedCall) {
           let depth2 = 1, at = mappedCall[0].length;
           for (; at < source2.length && depth2 > 0; at++) depth2 += source2[at] === "(" ? 1 : source2[at] === ")" ? -1 : 0;
-          if (depth2 === 0 && /^\s*\)\s*\)\s*$/.test(source2.slice(at))) mappedReturns = returnTypeOf(this.lam.codebase, mappedCall[1]);
+          if (depth2 === 0 && /^\s*\)\s*\)\s*$/.test(source2.slice(at))) mappedReturns = returnTypeOf(this.lam.codebase, mappedCall[1], this.env);
         }
-        if (mappedReturns) return parseType(`(${mappedReturns})[]`);
+        if (mappedReturns) return { kind: "list", element: mappedReturns };
         const lastCollectionMethod = [...source2.matchAll(/\.(find|filter|slice|map|flatMap)\s*\(/g)].at(-1)?.[1];
         const collection = ["find", "filter", "slice"].includes(lastCollectionMethod ?? "") ? /^(.*)\.(find|filter|slice)\s*\(.*\)$/s.exec(source2) : null;
         const projected = /^(.*)\.map\s*\(\s*(?:\(\s*)?([A-Za-z_$][\w$]*)(?:\s*\))?\s*=>\s*\2((?:\.[A-Za-z_$][\w$]*|\[(?:\d+|"[^"]+"|'[^']+')\])+)\s*\)$/s.exec(source2);
@@ -231688,6 +231757,7 @@ ${notes}` : opening;
         ];
         return [
           `You are inside this call: ${signature}`,
+          ...delegated.length ? ["", "Host services bound only in the listed callable scopes:", ...delegated] : [],
           ...scopeTypes,
           "",
           "Instructions:",
@@ -231696,7 +231766,6 @@ ${notes}` : opening;
           ...writable.length ? ["", `Assignments to ${writable.join(", ")} are written back to the caller and can change what sibling calls see. For a judgment, read these values without changing them; use new local variables for calculations. Write them only when the instructions require an update.`] : [],
           ...names.length ? ["", `In eval you can use ${[...new Set(names)].join(", ")}; the first eval below declares them.`] : [],
           ...noDirectServices ? ["", "This call has no directly bound host services. Work from its inputs and the callables available here."] : [],
-          ...delegated.length ? ["", "Host services bound only in the listed callable scopes:", ...delegated] : [],
           ...lam.skills?.listing ? ["", lam.skills.listing] : [],
           "",
           canGenerateNl(session.runtime.frame) ? BUILT_INS_LINE : NL_DEPTH_LIMIT_BUILT_INS_LINE
@@ -233074,14 +233143,15 @@ ${failed.text}`);
 });
 
 // src/runtime/hooks.ts
-function importOf(name, record3) {
-  const children2 = Object.entries(record3.codebase).map(([child, item]) => importOf(child, item));
+function importOf(name, record3, session) {
+  const children2 = Object.entries(record3.codebase).map(([child, item]) => importOf(child, item, session));
   if (record3.kind === "namespace") return { name, params: [], returns: "null", async: false, kind: "module", children: children2 };
+  const describe2 = (type) => session.analysisCallableType(record3, type);
   if (record3.kind === "module") {
     const exports = Object.entries(record3.exports).filter(([key, spec]) => key !== "default" && spec.kind === "function").map(([key, spec]) => ({
       name: key,
-      params: Object.entries(spec.kind === "function" ? spec.args : {}).map(([raw, type]) => ({ name: raw.replace(/\?$/, ""), type, optional: raw.endsWith("?") })),
-      returns: spec.kind === "function" ? spec.returns : "null",
+      params: Object.entries(spec.kind === "function" ? spec.args : {}).map(([raw, type]) => ({ name: raw.replace(/\?$/, ""), type: describe2(type), optional: raw.endsWith("?") })),
+      returns: spec.kind === "function" ? describe2(spec.returns) : "null",
       async: spec.kind === "function" && spec.async,
       kind: "TypeScript",
       children: []
@@ -233089,24 +233159,24 @@ function importOf(name, record3) {
     const main = record3.exports.default;
     if (main?.kind === "function") return {
       name,
-      params: Object.entries(main.args).map(([raw, type]) => ({ name: raw.replace(/\?$/, ""), type, optional: raw.endsWith("?") })),
-      returns: main.returns,
+      params: Object.entries(main.args).map(([raw, type]) => ({ name: raw.replace(/\?$/, ""), type: describe2(type), optional: raw.endsWith("?") })),
+      returns: describe2(main.returns),
       async: main.async,
       kind: "TypeScript",
       children: [...exports, ...children2]
     };
     return { name, params: [], returns: "null", async: false, kind: "module", children: [...exports, ...children2] };
   }
-  const params = Object.entries(record3.args).map(([raw, type]) => ({ name: raw.replace(/\?$/, ""), type, optional: raw.endsWith("?") }));
+  const params = Object.entries(record3.args).map(([raw, type]) => ({ name: raw.replace(/\?$/, ""), type: describe2(type), optional: raw.endsWith("?") }));
   if (record3.subtype === "directory-reducer") params.unshift({ name: "folder", type: "Folder", optional: false });
   return {
     name,
     params,
-    returns: record3.returns,
+    returns: record3.generic ? record3.returns : describe2(record3.returns),
     async: true,
     kind: record3.subtype === "directory-reducer" ? "directory reducer" : "natural language",
     children: children2,
-    ...record3.generic ? { generic: { constraint: record3.generic.constraint } } : {}
+    ...record3.generic ? { generic: { constraint: describe2(record3.generic.constraint) } } : {}
   };
 }
 function evalDeclarations(session) {
@@ -233134,7 +233204,7 @@ function evalDeclarations(session) {
     inputs,
     locals: Object.entries(lam.letTypes).filter(([name]) => Object.hasOwn(lam.let, name)).map(([name, type]) => ({ name, type: formatType(type), mutable: true })),
     captures: Object.values(lam.captures ?? {}).map((cell) => ({ name: cell.name, type: cell.type, mutable: cell.mutable })),
-    imports: Object.entries(codebase).map(([name, record3]) => importOf(name, record3)),
+    imports: Object.entries(codebase).map(([name, record3]) => importOf(name, record3, session)),
     services: Object.keys(session.runtime.services),
     serviceDeclarations: session.runtime.declarations,
     returns: lam.type.kind === "lambda" ? formatType(lam.type.returns) : void 0,

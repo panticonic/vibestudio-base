@@ -348,6 +348,11 @@ export declare class NativeSession {
     /** Whether the model declared this persistent local with let (true) or const. */
     localMutable(name: string): boolean;
     /** Type aliases from prior evals, made visible to the next eval's inline signature analysis. */
+    private readonly analysisCallableTypes;
+    /** Use the same lexical signature as runtime local inference in the static eval checker. */
+    analysisCallableType(record: Exclude<ItemRecord, {
+        kind: 'namespace';
+    }>, source: string): string;
     analysisTypeAliases(): Record<string, string>;
     private captureScopeFailure;
     /** The runtime or the bound evaluation policy denies code edits. */
