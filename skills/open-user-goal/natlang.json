@@ -4,6 +4,77 @@
   "version": "0.1.0",
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
+  "workspaceBranches": {
+    "runUserGoal/workOnDemoPortfolio": {
+      "mounts": [
+        "runUserGoal/workOnDemoPortfolio/portfolio",
+        "runUserGoal/workOnDemoPortfolio/reviewPortfolioGarden/reviewer",
+        "runUserGoal/workOnDemoPortfolio/reviewPortfolioRealm/reviewer"
+      ],
+      "types": [
+        "PortfolioReport"
+      ]
+    },
+    "runUserGoal/workOnRegencyBriefing": {
+      "mounts": [
+        "runUserGoal/workOnRegencyBriefing/realm",
+        "runUserGoal/workOnRegencyBriefing/qualifyRegencyClaim/reviewer"
+      ],
+      "types": [
+        "RegencyReport"
+      ]
+    },
+    "runUserGoal/workOnEditorialPacket": {
+      "mounts": [
+        "runUserGoal/workOnEditorialPacket/packet",
+        "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet"
+      ],
+      "types": [
+        "PacketReport"
+      ]
+    },
+    "runUserGoal/reviewRetainedBuildIncident": {
+      "mounts": [
+        "runUserGoal/reviewRetainedBuildIncident/performance"
+      ],
+      "types": [
+        "BuildIncidentOutcome"
+      ]
+    },
+    "runUserGoal/reviewLocalExecutionWidth": {
+      "mounts": [
+        "runUserGoal/reviewLocalExecutionWidth/readiness"
+      ],
+      "types": [
+        "LocalWidthOutcome"
+      ]
+    },
+    "runUserGoal/workOnNewsEvidenceGoal": {
+      "mounts": [
+        "runUserGoal/workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed",
+        "runUserGoal/workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed",
+        "runUserGoal/workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed"
+      ],
+      "types": [
+        "NewsEvidenceReport"
+      ]
+    },
+    "runUserGoal/workOnPersonalWelcomeGoal": {
+      "mounts": [
+        "runUserGoal/workOnPersonalWelcomeGoal/reviewWelcomeSetup/onboarding",
+        "runUserGoal/workOnPersonalWelcomeGoal/reviewWelcomeTour/tour",
+        "runUserGoal/workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer"
+      ],
+      "types": [
+        "WelcomeGoalReport"
+      ]
+    },
+    "runUserGoal/reviewDesktopReadiness": {
+      "mounts": [
+        "runUserGoal/reviewDesktopReadiness/clientDevelopment"
+      ]
+    }
+  },
   "workspaceModules": {
     "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",

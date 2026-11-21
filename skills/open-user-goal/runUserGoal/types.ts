@@ -4,16 +4,10 @@ export * from "./reviewSystemRelease/contract.js";
 export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
-export type { PacketReport } from "./workOnEditorialPacket/types.js";
-export type { PortfolioReport } from "./workOnDemoPortfolio/types.js";
-export type { RegencyReport } from "./workOnRegencyBriefing/types.js";
 export type { ImageReport } from "./workOnImageCandidateGoal/types.js";
-export type { NewsEvidenceReport } from "./workOnNewsEvidenceGoal/types.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
 export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
-export type { BuildIncidentOutcome } from "./reviewRetainedBuildIncident/types.js";
 export type { DeployedInterfaceOutcome } from "./reviewDeployedInterface/types.js";
-export type { LocalWidthOutcome } from "./reviewLocalExecutionWidth/types.js";
 export * from "./workOnEvalHandoffGoal/journal/types.js";
 export * from "./workOnProgramRunGoal/runtime/types.js";
 export * from "./workOnTerminalGoal/types.js";
@@ -37,7 +31,6 @@ export * from "./workOnRecoveryHandoff/types.js";
 
 export * from "./workOnProblemReportGoal/types.js";
 
-export type { WelcomeGoalReport } from "./workOnPersonalWelcomeGoal/types.js";
 export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
 export type { SpecialistGoalReport } from "./workOnSpecialistHandoffGoal/types.js";
 export * from "./workOnProviderHandoffGoal/types.js";
