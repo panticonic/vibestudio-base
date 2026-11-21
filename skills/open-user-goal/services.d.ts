@@ -82,6 +82,16 @@ declare module "natlang:services" {
     restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<import("./runUserGoal/reviewInstalledPackage/contract.js").PackageRestore>;
   };
+  export const systemReleaseEvidence: {
+    discover(): Promise<import("./runUserGoal/reviewSystemRelease/contract.js").ReleaseAssignment>;
+    compare(id: string): Promise<import("./runUserGoal/reviewSystemRelease/contract.js").RetainedRunPair>;
+    inspectCase(id: string, runId: string | null, name: string): Promise<import("./runUserGoal/reviewSystemRelease/contract.js").CaseEvidence>;
+  };
+  export const systemReleaseHandoff: {
+    stage(id: string, runId: string | null, disposition: import("./runUserGoal/reviewSystemRelease/contract.js").ReleaseAssessment["disposition"],
+      cases: import("./runUserGoal/reviewSystemRelease/contract.js").CaseEvidence[]):
+      Promise<import("./runUserGoal/reviewSystemRelease/contract.js").ReleaseReceipt | null>;
+  };
   export const panelMigrationEvidence: {
     discover(): Promise<import("./runUserGoal/migratePanelSource/contract.js").PanelMigrationAssignment>;
     inspect(id: string): Promise<import("./runUserGoal/migratePanelSource/contract.js").MigrationObservation>;

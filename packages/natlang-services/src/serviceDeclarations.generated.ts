@@ -5097,6 +5097,73 @@ type PackageRestore = { status: "restored" | "state-changed" | "not-authorized";
 /** Restore one approved installed package declaration at its exact working revision. */
 export function restore(operationId: string, workingRevision: string, workingDigest: string):
       Promise<PackageRestore>;`,
+  systemReleaseEvidence: `/** Read an owned release assignment, the two scoped run headers, and required retained case evidence. */
+
+type ReleaseAssignment = {
+  id: string;
+  goal: string;
+  subject: string;
+  contextId: string;
+  buildKey: string;
+  effectiveVersion: string;
+  current: string;
+  earlier: string;
+  required: string[];
+  allowEarlier: boolean;
+  grant: "both" | "accept-only" | "diagnose-only" | "read";
+};
+
+type RunEvidence = {
+  id: string;
+  context: "same" | "other" | "unavailable";
+  status: "running" | "completed" | "cancelled" | "errored" | "missing";
+  terminalSaved: boolean;
+  buildKey: string | null;
+  effectiveVersion: string | null;
+  declared: string[];
+  unavailable: string[];
+  total: number;
+};
+
+type RetainedRunPair = { current: RunEvidence; earlier: RunEvidence };
+
+type CaseEvidence = {
+  name: string; digest: string | null; rank: "retained" | "missing" | "not-installed";
+  passed: boolean | null; exactWitness: boolean;
+  primary: { kind: "runtime" | "delivery" | "validator" | "assertion" | "unexpected-tool"; code: string; detail: string } | null;
+  cleanup: string[]; expectedToolFailures: string[];
+};
+
+/** Read an owned release assignment, the two scoped run headers, and required retained case evidence. */
+export function discover(): Promise<ReleaseAssignment>;
+
+/** Read an owned release assignment, the two scoped run headers, and required retained case evidence. */
+export function compare(id: string): Promise<RetainedRunPair>;
+
+/** Read an owned release assignment, the two scoped run headers, and required retained case evidence. */
+export function inspectCase(id: string, runId: string | null, name: string): Promise<CaseEvidence>;`,
+  systemReleaseHandoff: `/** Stage only an authorized private acceptance or diagnosis from exact retained test evidence. */
+
+type ReleaseAssessment = {
+  disposition: "stage-acceptance" | "stage-diagnostics" | "report-only" | "hold-context" | "hold-build" |
+    "hold-active" | "hold-cancelled" | "hold-missing-run" | "hold-evidence" | "hold-failure" | "hold-cleanup";
+  reason: string;
+  decisive: string[];
+};
+
+type CaseEvidence = {
+  name: string; digest: string | null; rank: "retained" | "missing" | "not-installed";
+  passed: boolean | null; exactWitness: boolean;
+  primary: { kind: "runtime" | "delivery" | "validator" | "assertion" | "unexpected-tool"; code: string; detail: string } | null;
+  cleanup: string[]; expectedToolFailures: string[];
+};
+
+type ReleaseReceipt = { path: string; bytes: number; sha256: string };
+
+/** Stage only an authorized private acceptance or diagnosis from exact retained test evidence. */
+export function stage(id: string, runId: string | null, disposition: ReleaseAssessment["disposition"],
+      cases: CaseEvidence[]):
+      Promise<ReleaseReceipt | null>;`,
   panelMigrationEvidence: `/** Read one exact existing panel source, current local links and migration authority. */
 
 type PanelMigrationAssignment = {
