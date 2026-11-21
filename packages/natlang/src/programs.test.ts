@@ -112,6 +112,39 @@ describe("compileProgram", () => {
     expect(typeof program.value).toBe("function");
   });
 
+  it("validates authored file and folder entries with the same declarations", () => {
+    const files = { "brief.nl": BRIEF };
+    const single = compileProgram({ platform: platform(), files, entry: "brief.nl", label: "skills/s/brief.nl" });
+    const folder = compileProgram({ platform: platform(), files, entry: "", label: "skills/s" });
+    expect(typeof (folder.value as { brief: unknown }).brief).toBe("function");
+    expect(folder.declarations).toEqual(single.declarations);
+    expect(folder.declarations["brief.d.nl.ts"]).toContain("NatlangFunction<[text: string], string>");
+
+    const stale = {
+      ...files,
+      "broken.ts": "export { default as missing } from './missing.nl';",
+      "missing.d.nl.ts": "declare const missing: string; export default missing;",
+    };
+    for (const entry of ["", "brief.nl"]) {
+      expect(() => compileProgram({ platform: platform(), files: stale, entry, label: "skills/s" })).toThrow(
+        /cannot import \.\/missing\.nl: no such natlang function/
+      );
+    }
+  });
+
+  it("runs emitted TypeScript entry modules including their named Natlang imports", () => {
+    const program = compileProgram({
+      platform: platform(),
+      files: {
+        "brief.nl": BRIEF,
+        "entry.ts": "export { default as brief } from './brief.nl';\nexport const version = 2;",
+      },
+      entry: "entry.ts",
+      label: "skills/s/entry.ts",
+    });
+    expect(program.value).toEqual({ brief: expect.any(Function), version: 2 });
+  });
+
   it("refuses a program that does not type-check, naming it", () => {
     const files = { "main.ts": "export const x: number = 'not a number';\n" };
     expect(() => compileProgram({ platform: platform(), files, entry: "main.ts", label: "skills/bad" })).toThrow(

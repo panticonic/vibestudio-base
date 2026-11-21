@@ -134,11 +134,14 @@ export function compileProgram(options: {
   if (binding !== undefined && binding !== "explicit") {
     throw new NatlangProgramError('Use "explicit" for natlang.json serviceBinding, or omit it.', label, "does-not-compile");
   }
+  // Native source entries load their callables from the original files after validation.
+  const sourceEntry = !entry || entry.endsWith(".nl");
   const compiled = compileVirtualProject(
     { files, root: PROJECT_ROOT },
     core as unknown as Record<string, unknown>,
     {
       platform,
+      emit: !sourceEntry,
       programId: label,
       ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: serviceScopes } } : {}),
     }

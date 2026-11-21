@@ -257676,6 +257676,44 @@ function compileProject(options) {
       {}
     ));
   }
+  const emitting = options.emit !== false;
+  const generated = /* @__PURE__ */ new Map();
+  const generatedNz = /* @__PURE__ */ new Map();
+  const importsBySource = /* @__PURE__ */ new Map();
+  const noNatlangImports = /* @__PURE__ */ new Set();
+  for (const file of program.getSourceFiles()) {
+    if (file.isDeclarationFile || program.isSourceFileFromExternalLibrary(file)) continue;
+    const found = /* @__PURE__ */ new Set();
+    const commonjs = file.impliedNodeFormat === import_typescript26.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript26.default.ModuleKind.CommonJS;
+    for (const statement of file.statements) {
+      if (!import_typescript26.default.isImportDeclaration(statement) && !import_typescript26.default.isExportDeclaration(statement) || !statement.moduleSpecifier || !import_typescript26.default.isStringLiteral(statement.moduleSpecifier)) continue;
+      const specifier = statement.moduleSpecifier.text;
+      if (specifier.endsWith(".nz")) {
+        const target = resolve(dirname2(file.fileName), specifier);
+        const bytes2 = nzFiles.get(target);
+        if (!bytes2) {
+          problem(rel(file.fileName), `cannot import ${specifier}: no such .nz file`);
+          continue;
+        }
+        if (emitting) {
+          found.add(specifier);
+          generatedNz.set(joinSourcePath(outDir, relative(compilerOptions.rootDir, target)) + ".js", { bytes: bytes2, commonjs });
+        }
+      } else if (specifier.endsWith(".nl")) {
+        const target = resolve(dirname2(file.fileName), specifier);
+        const record3 = namedRecords.get(target);
+        if (!record3) {
+          problem(rel(file.fileName), `cannot import ${specifier}: no such natlang function`);
+          continue;
+        }
+        if (emitting) {
+          found.add(specifier);
+          generated.set(joinSourcePath(outDir, relative(compilerOptions.rootDir, target)) + ".js", { record: record3, target, commonjs });
+        }
+      }
+    }
+    if (found.size) importsBySource.set(file, found);
+  }
   const ok2 = !diagnostics.some((item) => item.severity === "error");
   const outputs = {};
   const rewrites = {};
@@ -257683,43 +257721,7 @@ function compileProject(options) {
     for (const [path2, text3] of Object.entries(declarations))
       if (!fs2.isFile(path2) || fs2.read(path2) !== text3) fs2.write(path2, text3);
   }
-  if (ok2 && options.emit !== false) {
-    const generated = /* @__PURE__ */ new Map();
-    const generatedNz = /* @__PURE__ */ new Map();
-    const natlangImports = (file) => {
-      const found = /* @__PURE__ */ new Set();
-      for (const statement of file.statements) {
-        if (!import_typescript26.default.isImportDeclaration(statement) && !import_typescript26.default.isExportDeclaration(statement) || !statement.moduleSpecifier || !import_typescript26.default.isStringLiteral(statement.moduleSpecifier)) continue;
-        const specifier = statement.moduleSpecifier.text;
-        if (specifier.endsWith(".nz")) {
-          const target2 = resolve(dirname2(file.fileName), specifier);
-          const bytes2 = nzFiles.get(target2);
-          if (!bytes2) {
-            problem(rel(file.fileName), `cannot import ${specifier}: no such .nz file`);
-            continue;
-          }
-          found.add(specifier);
-          generatedNz.set(
-            joinSourcePath(outDir, relative(compilerOptions.rootDir, target2)) + ".js",
-            { bytes: bytes2, commonjs: file.impliedNodeFormat === import_typescript26.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript26.default.ModuleKind.CommonJS }
-          );
-          continue;
-        }
-        if (!specifier.endsWith(".nl")) continue;
-        const target = resolve(dirname2(file.fileName), specifier);
-        const record3 = namedRecords.get(target);
-        if (!record3) {
-          problem(rel(file.fileName), `cannot import ${specifier}: no such natlang function`);
-          continue;
-        }
-        found.add(specifier);
-        generated.set(
-          joinSourcePath(outDir, relative(compilerOptions.rootDir, target)) + ".js",
-          { record: record3, target, commonjs: file.impliedNodeFormat === import_typescript26.default.ModuleKind.CommonJS || compilerOptions.module === import_typescript26.default.ModuleKind.CommonJS }
-        );
-      }
-      return found;
-    };
+  if (ok2 && emitting) {
     const fusionSitesOf = (file) => {
       const names = /* @__PURE__ */ new Map();
       for (const statement of file.statements) {
@@ -257752,7 +257754,7 @@ function compileProject(options) {
         guardPrefix: JSON.stringify([programId, rel(file.fileName)]),
         modulePath: rel(file.fileName),
         browser: options.target === "browser",
-        module: { natlangImports: natlangImports(source2), rewrite: rewriteFor }
+        module: { natlangImports: importsBySource.get(source2) ?? noNatlangImports, rewrite: rewriteFor }
       })(context)(file);
     };
     const emit3 = (fileName, text3) => {
@@ -257878,24 +257880,41 @@ init_modules();
 function virtualProjectFiles(files2, root2 = "/project") {
   const store = new Map(Object.entries(files2).map(([path2, text3]) => [path2.startsWith("/") ? path2 : `${root2}/${path2}`, text3]));
   const outputs = /* @__PURE__ */ new Map();
-  const directories = () => {
-    const dirs = /* @__PURE__ */ new Set(["/"]);
-    for (const path2 of [...store.keys(), ...outputs.keys()]) {
-      let at = path2.lastIndexOf("/");
-      while (at > 0) {
-        dirs.add(path2.slice(0, at));
-        at = path2.lastIndexOf("/", at - 1);
+  const sourceChildren = /* @__PURE__ */ new Map([["/", /* @__PURE__ */ new Set()]]);
+  for (const path2 of store.keys()) {
+    let child = path2;
+    for (let slash = child.lastIndexOf("/"); slash >= 0; slash = child.lastIndexOf("/")) {
+      const parent = child.slice(0, slash) || "/";
+      let entries = sourceChildren.get(parent);
+      if (!entries) {
+        entries = /* @__PURE__ */ new Set();
+        sourceChildren.set(parent, entries);
       }
+      entries.add(child.slice(slash + 1));
+      if (slash === 0) break;
+      child = parent;
     }
-    return dirs;
-  };
+  }
+  const directory = (path2) => path2.replace(/\/$/, "") || "/";
+  const prefixOf = (path2) => path2 === "/" ? "/" : path2 + "/";
   return {
     outputs,
     isFile: (path2) => store.has(path2) || outputs.has(path2),
-    isDirectory: (path2) => directories().has(path2.replace(/\/$/, "") || "/"),
-    list: (dir) => {
-      const prefix = dir.replace(/\/$/, "") + "/";
-      return [...new Set([...store.keys(), ...outputs.keys()].filter((path2) => path2.startsWith(prefix)).map((path2) => path2.slice(prefix.length).split("/")[0]))];
+    isDirectory: (path2) => {
+      const dir = directory(path2);
+      if (sourceChildren.has(dir)) return true;
+      const prefix = prefixOf(dir);
+      for (const output of outputs.keys()) if (output.startsWith(prefix)) return true;
+      return false;
+    },
+    list: (path2) => {
+      const dir = directory(path2);
+      if (!outputs.size) return [...sourceChildren.get(dir) ?? []];
+      const entries = new Set(sourceChildren.get(dir));
+      const prefix = prefixOf(dir);
+      for (const output of outputs.keys())
+        if (output.startsWith(prefix)) entries.add(output.slice(prefix.length).split("/")[0]);
+      return [...entries];
     },
     read: (path2) => {
       const text3 = store.get(path2) ?? outputs.get(path2);
@@ -257953,6 +257972,7 @@ function compileVirtualProject(project, runtime, options) {
     target: options.target ?? (moduleTarget(platform) === "await-restoring" ? "browser" : "node"),
     runtimeSpecifier: specifiers[0],
     write: true,
+    emit: options.emit,
     surfaceSpecifiers: specifiers
   });
   const cache = /* @__PURE__ */ new Map();

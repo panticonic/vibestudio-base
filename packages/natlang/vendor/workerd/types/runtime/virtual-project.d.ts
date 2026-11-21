@@ -35,6 +35,8 @@ export type VirtualProjectOptions = {
     runtimeSpecifiers?: string[];
     target?: 'node' | 'browser';
     modules?: Record<string, unknown>;
+    /** Validate source and produce declarations without emitting JavaScript. */
+    emit?: boolean;
 };
 /**
  * Compile a virtual project and return a loader for its modules. `runtime` is the namespace that
