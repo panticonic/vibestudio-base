@@ -6091,6 +6091,41 @@ type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
 export function stage(id: string, digest: string | null, row: WebhookAdmissionRow | null,
       disposition: WebhookAdmissionDecision):
       Promise<WebhookAdmissionReceipt>;`,
+  transcriptApproval: `/** Read exact local authority and provenance of current transcript surface approvals. */
+
+type SurfaceAssignment = { id: string; channel: string; goal: string; subject: string; revision: string; mayPublish: boolean };
+
+type SurfaceMode = "inline" | "bar" | "clear";
+
+type SurfaceCard = { title: string; detail: string; status: string };
+
+type SurfaceApproval = { id: string; channel: string; subject: string; revision: string; approved: boolean;
+  mode: SurfaceMode; key: string; card: SurfaceCard; source: string };
+
+/** Read exact local authority and provenance of current transcript surface approvals. */
+export function discover(): Promise<SurfaceAssignment>;
+
+/** Read exact local authority and provenance of current transcript surface approvals. */
+export function list(id: string): Promise<SurfaceApproval[]>;`,
+  transcriptObservation: `/** Read the approved channel's native transcript surface and exact replay cursor. */
+
+type SurfaceCard = { title: string; detail: string; status: string };
+
+type SurfaceProjection = { key: string | null; card: SurfaceCard | null; cleared: boolean; owner: string; sequence: number; envelope: string };
+
+type SurfaceReplay = { channel: string; owner: string; cursor: number; card: SurfaceProjection | null; bar: SurfaceProjection | null };
+
+/** Read the approved channel's native transcript surface and exact replay cursor. */
+export function replay(id: string, approval: string): Promise<SurfaceReplay>;`,
+  transcriptMutation: `/** Apply only the authorized transcript surface change at its exact observed native cursor. */
+
+type SurfaceEffect = "publish-inline" | "refresh-inline" | "display-bar" | "clear-bar" | "none";
+
+type SurfaceReceipt = { channel: string; basis: number; status: "applied" | "stale"; envelope: string | null; sequence: number | null };
+
+/** Apply only the authorized transcript surface change at its exact observed native cursor. */
+export function apply(id: string, approval: string, cursor: number, effect: SurfaceEffect):
+      Promise<SurfaceReceipt>;`,
   sourceOriginEvidence: `/** Read exact current source and authorized scope for semantic attribution. */
 
 type SourceAttributionCandidate = { id: string; name: string; path: string };

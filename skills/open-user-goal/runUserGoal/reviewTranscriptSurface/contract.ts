@@ -1,0 +1,13 @@
+export type SurfaceCard = { title: string; detail: string; status: string };
+export type SurfaceMode = "inline" | "bar" | "clear";
+export type SurfaceAssignment = { id: string; channel: string; goal: string; subject: string; revision: string; mayPublish: boolean };
+export type SurfaceApproval = { id: string; channel: string; subject: string; revision: string; approved: boolean;
+  mode: SurfaceMode; key: string; card: SurfaceCard; source: string };
+export type SurfaceSelection = { approval: SurfaceApproval | null; blocker: "missing" | "competing" | "authority" | null };
+export type SurfaceProjection = { key: string | null; card: SurfaceCard | null; cleared: boolean; owner: string; sequence: number; envelope: string };
+export type SurfaceReplay = { channel: string; owner: string; cursor: number; card: SurfaceProjection | null; bar: SurfaceProjection | null };
+export type SurfaceEffect = "publish-inline" | "refresh-inline" | "display-bar" | "clear-bar" | "none";
+export type SurfaceDecision = { effect: SurfaceEffect; reason: "ready" | "already-current" | "missing" | "competing" | "authority" };
+export type SurfaceReceipt = { channel: string; basis: number; status: "applied" | "stale"; envelope: string | null; sequence: number | null };
+export type TranscriptSurfaceReport = { assignment: SurfaceAssignment; approvals: SurfaceApproval[]; selection: SurfaceSelection;
+  replay: SurfaceReplay | null; decision: SurfaceDecision; receipt: SurfaceReceipt | null };
