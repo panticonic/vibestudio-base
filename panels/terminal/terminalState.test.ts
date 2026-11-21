@@ -73,6 +73,30 @@ describe("terminal exact state", () => {
     expect(loadTerminalState(current)).toEqual({ ...current, scratchOpen: false });
   });
 
+  it("reopens the state written during a live session update", () => {
+    const state: TerminalState = {
+      ...defaultTerminalState(),
+      panelTitle: "  Build   terminal  ",
+      focusedSessionId: "first",
+      tree: {
+        kind: "split",
+        direction: "row",
+        ratio: 0.9,
+        a: { kind: "leaf", sessionId: "first" },
+        b: { kind: "leaf", sessionId: "second" },
+      },
+      perSession: { first: { cwd: "", readCursor: 12, lastSeenAt: 34 } },
+    };
+    const patch = JsonObjectSchema.parse(terminalStatePatch({}, state));
+    const reopened = loadTerminalState(applyStateArgsMergePatch({}, patch));
+    expect(reopened).toMatchObject({
+      panelTitle: "Build terminal",
+      focusedSessionId: "first",
+      tree: state.tree,
+      perSession: { first: { cwd: ".", readCursor: 12, lastSeenAt: 34 } },
+    });
+  });
+
   it("starts empty panels", () => {
     expect(loadTerminalState({})).toEqual(defaultTerminalState());
   });
