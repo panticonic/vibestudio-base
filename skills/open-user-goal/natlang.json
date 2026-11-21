@@ -5,6 +5,11 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/reviseCoordinatedDocuments": {
+      "mounts": ["runUserGoal/reviseCoordinatedDocuments/workspace", "runUserGoal/reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules", "runUserGoal/reviseCoordinatedDocuments/planCoordinatedRevision/policy", "runUserGoal/reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"],
+      "types": ["CoordinatedRevisionReport"]
+    },
+
     "runUserGoal/reviewRetainedMemory": {
       "mounts": ["runUserGoal/reviewRetainedMemory/evidence", "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance", "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence"],
       "types": ["RetainedMemoryReport"]
@@ -115,6 +120,10 @@
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
     "runUserGoal/reconcileWorkspaceConfig/settings": "skills/open-workspace-config",
     "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings": "skills/open-workspace-config",
+    "runUserGoal/reviseCoordinatedDocuments/workspace": "skills/open-coordinated-revision",
+    "runUserGoal/reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules": "skills/vibestudio-workflows/evidence",
+    "runUserGoal/reviseCoordinatedDocuments/planCoordinatedRevision/policy": "skills/workspace-document-revision",
+    "runUserGoal/reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy": "skills/workspace-document-revision",
     "runUserGoal/reviewRetainedMemory/evidence": "skills/open-retained-memory",
     "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
     "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence": "skills/open-retained-memory",

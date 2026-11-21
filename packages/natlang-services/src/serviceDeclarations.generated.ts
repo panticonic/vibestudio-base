@@ -1765,6 +1765,30 @@ type ConfigDisposition = { path: string; digest: string };
 
 /** Retain the expressly authorized private configuration decision. */
 export function stage(brief: ConfigBrief, lens: ConfigLens, evidence: ConfigEvidence, outcome: ConfigOutcome): Promise<ConfigDisposition | null>;`,
+  nativeCoordinatedRevision: `/** Observe and atomically update a reviewer's exact local workspace documents. */
+
+type RevisionFile = { path: string; version: string; text: string; fileId: string };
+
+type RevisionScope = { subject: string; head: string; files: RevisionFile[] };
+
+type RevisionDraft = { path: string; version: string; text: string };
+
+type RevisionReceipt = {
+  status: "changed" | "applied" | "unavailable"; head: string; paths: string[];
+};
+
+type RevisionReadback = {
+  head: string; protectedMain: string; files: RevisionFile[];
+};
+
+/** Observe and atomically update a reviewer's exact local workspace documents. */
+export function discover(): Promise<RevisionScope>;
+
+/** Observe and atomically update a reviewer's exact local workspace documents. */
+export function revise(head: string, drafts: RevisionDraft[]): Promise<RevisionReceipt>;
+
+/** Observe and atomically update a reviewer's exact local workspace documents. */
+export function readback(): Promise<RevisionReadback>;`,
   nativeRetainedMemory: `/** Recall owned memory and read exact original conversation and file evidence. */
 
 type MemoryBrief = { subject: string; channelId: string; repository: string };
