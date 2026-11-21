@@ -6177,6 +6177,40 @@ type SurfaceReceipt = { channel: string; basis: number; status: "applied" | "sta
 /** Apply only the authorized transcript surface change at its exact observed native cursor. */
 export function apply(id: string, approval: string, cursor: number, effect: SurfaceEffect):
       Promise<SurfaceReceipt>;`,
+  illustrationEvidence: `/** Read the exact native image request and current workspace authorization. */
+
+type IllustrationAssignment = { scope: string; goal: string; request: string; path: string; format: "png" | "jpeg" | "webp" };
+
+type IllustrationJob = { id: string; requestId: string; attempt: number; status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  digest: string | null; error: string | null };
+
+type IllustrationBasis = { head: string; destination: "empty" | "occupied"; generationAllowed: boolean; retryAllowed: boolean;
+  saveAllowed: boolean; referencesApproved: boolean; job: IllustrationJob | null };
+
+/** Read the exact native image request and current workspace authorization. */
+export function discover(): Promise<IllustrationAssignment>;
+
+/** Read the exact native image request and current workspace authorization. */
+export function read(scope: string): Promise<IllustrationBasis>;`,
+  illustrationJobs: `/** Observe the exact terminal original for the authorized durable job. */
+
+type IllustrationDecision = { action: "create" | "retry" | "reuse" | "hold";
+  reason: "new" | "retry" | "already-generated" | "busy" | "occupied" | "no-generation" | "no-retry" | "reference" };
+
+type IllustrationJob = { id: string; requestId: string; attempt: number; status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  digest: string | null; error: string | null };
+
+type IllustrationOutcome = { job: IllustrationJob; original: {digest:string;bytes:number;mime:string} | null };
+
+/** Observe the exact terminal original for the authorized durable job. */
+export function run(scope: string, head: string, action: IllustrationDecision["action"]):
+      Promise<IllustrationOutcome>;`,
+  illustrationOriginal: `/** Save and reopen only the exact original binary in the authorized destination. */
+
+type IllustrationSave = { status: "saved" | "stale"; head: string; path: string; digest: string | null };
+
+/** Save and reopen only the exact original binary in the authorized destination. */
+export function save(scope: string, head: string, job: string, digest: string): Promise<IllustrationSave>;`,
   recordedQuestionDiscovery: `/** Discover the owned local question and find exact native stored rationale. */
 
 type RecordedQuestion = { id: string; goal: string; scope: string };

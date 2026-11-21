@@ -1,0 +1,11 @@
+export type IllustrationAssignment = { scope: string; goal: string; request: string; path: string; format: "png" | "jpeg" | "webp" };
+export type IllustrationJob = { id: string; requestId: string; attempt: number; status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  digest: string | null; error: string | null };
+export type IllustrationBasis = { head: string; destination: "empty" | "occupied"; generationAllowed: boolean; retryAllowed: boolean;
+  saveAllowed: boolean; referencesApproved: boolean; job: IllustrationJob | null };
+export type IllustrationDecision = { action: "create" | "retry" | "reuse" | "hold";
+  reason: "new" | "retry" | "already-generated" | "busy" | "occupied" | "no-generation" | "no-retry" | "reference" };
+export type IllustrationOutcome = { job: IllustrationJob; original: {digest:string;bytes:number;mime:string} | null };
+export type IllustrationSave = { status: "saved" | "stale"; head: string; path: string; digest: string | null };
+export type OwnedIllustrationReport = { assignment: IllustrationAssignment; basis: IllustrationBasis; decision: IllustrationDecision;
+  outcome: IllustrationOutcome | null; saved: IllustrationSave | null };

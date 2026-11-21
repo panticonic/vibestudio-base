@@ -94,6 +94,7 @@ Presentation, publication and workspace-specific routes:
 - `reviewTendrilRoute → tendrilRoute`: retained local instruction routing, intended room or slot audience and private evidence.
 - `reviewWorkspaceShare → workspaceShare`: exact shared object, current author/reader/reviewer scope, grant or retained invitation.
 - `reviewAssetIntegrity → assetIntegrity`: signed/working manifests, historical bytes by stable identity or authorized private recovery bundle.
+- `generateOwnedIllustration → nativeImage`: owned new image generation, exact native retry or reuse and original-byte save only under current authority; distinct from reviewing retained image candidates.
 - `workOnImageCandidateGoal → imageCandidate`: owned retained image attempts, compare prior/current, verify original and permissions, private candidate note only if authorized.
 - `publication.publishOwnedPreviewGoal → ownedPreview`: publish, resume or conditionally run an authorized disposable owned preview; confirm exact authority before effects.
 - `publication.workTowardPublicationGoal → publication`: website readiness and publication progress.

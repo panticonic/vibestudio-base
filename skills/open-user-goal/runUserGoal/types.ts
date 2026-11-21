@@ -28,6 +28,7 @@ export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js"
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
 export type { ChatContinuityReport } from "./workOnChatContinuity/types.js";
+export * from "./generateOwnedIllustration/contract.js";
 export type { ImageReport } from "./workOnImageCandidateGoal/types.js";
 export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
 export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";

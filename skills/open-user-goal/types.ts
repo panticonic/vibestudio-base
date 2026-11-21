@@ -38,7 +38,7 @@ export type UserGoalReport =
         | "ownedPreview" | "visualRecovery" | "pdf" | "terminalHandoff" | "personalWelcome"
         | "dictationHandoff" | "specialistHandoff" | "providerHandoff" | "problemReport" | "compoundRecovery"
         | "buildIncident" | "deployedInterface" | "apiReadiness" | "chatContinuity" | "editorialPacket"
-        | "demoPortfolio" | "regencyBriefing" | "imageCandidate" | "newsEvidence" | "installedPackage"
+        | "demoPortfolio" | "regencyBriefing" | "nativeImage" | "imageCandidate" | "newsEvidence" | "installedPackage"
         | "extensionDossier" | "localWidth" | "evalHandoff" | "programRun" | "browserMigration"
         | "templateMigration" | "authoring" | "bridgeDelivery" | "workspaceClaims" | "panelLaunchState"
         | "ownedRouteAuthority" | "workspaceConfig" | "audienceResponse" | "coordinatedRevision" | "retainedMemory"
