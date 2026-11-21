@@ -54,6 +54,7 @@ import {
 } from "../shared/hostedRuntime.js";
 import type { WorkerEnv } from "./types.js";
 export type { WorkerEnv, ExecutionContext } from "./types.js";
+export type { RuntimeFs } from "../types.js";
 // Portable authoring helpers (z, defineContract, Rpc, path/context helpers,
 // buildPanelLink, createGatewayFetch) — identical on panel · worker · eval.
 export * from "../shared/portable.js";

@@ -403,6 +403,8 @@ export interface CdpPage {
   setDefaultTimeout(timeoutMs: number): void;
   /** Emulate a CSS viewport on the current target. */
   setViewportSize(viewportSize: CdpViewportSize): Promise<void>;
+  /** Clear the current target's emulated viewport. */
+  resetViewportSize(): Promise<void>;
   /** Current configured or observed CSS viewport. */
   viewportSize(): CdpViewportSize | null;
   /**
