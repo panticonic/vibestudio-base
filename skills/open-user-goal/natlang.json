@@ -5,6 +5,11 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/reviewRetainedMemory": {
+      "mounts": ["runUserGoal/reviewRetainedMemory/evidence", "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance", "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence"],
+      "types": ["RetainedMemoryReport"]
+    },
+
     "runUserGoal/compareLiveLocalInventory": {
       "mounts": ["runUserGoal/compareLiveLocalInventory/installed"],
       "types": ["LocalInventoryOutcome"]
@@ -110,6 +115,9 @@
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
     "runUserGoal/reconcileWorkspaceConfig/settings": "skills/open-workspace-config",
     "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings": "skills/open-workspace-config",
+    "runUserGoal/reviewRetainedMemory/evidence": "skills/open-retained-memory",
+    "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
+    "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence": "skills/open-retained-memory",
     "runUserGoal/discoverScopedIntent/workspace": "skills/open-intent-discovery",
     "runUserGoal/discoverScopedIntent/searchRelevantIntent/workspace": "skills/open-intent-discovery",
     "runUserGoal/chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",

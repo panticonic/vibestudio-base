@@ -1659,6 +1659,72 @@ type ConfigDisposition = { path: string; digest: string };
 
 /** Retain the expressly authorized private configuration decision. */
 export function stage(brief: ConfigBrief, lens: ConfigLens, evidence: ConfigEvidence, outcome: ConfigOutcome): Promise<ConfigDisposition | null>;`,
+  nativeRetainedMemory: `/** Recall owned memory and read exact original conversation and file evidence. */
+
+type MemoryBrief = { subject: string; channelId: string; repository: string };
+
+type MemoryKind = "message" | "file" | "commit";
+
+type MemoryLead = {
+  kind: MemoryKind; snippet: string; eventId: string; logId: string | null; head: string | null;
+  path: string | null; digest: string | null;
+};
+
+type MemoryMessage = {
+  channelId: string; envelopeId: string; messageId: string; sender: string; sequence: number; text: string;
+};
+
+type MemoryFile = { eventId: string; fileId: string; path: string; digest: string; text: string };
+
+/** Recall owned memory and read exact original conversation and file evidence. */
+export function brief(): Promise<MemoryBrief>;
+
+/** Recall owned memory and read exact original conversation and file evidence. */
+export function recall(query: string, kinds: MemoryKind[]): Promise<MemoryLead[]>;
+
+/** Recall owned memory and read exact original conversation and file evidence. */
+export function transcript(channelId: string): Promise<MemoryMessage[]>;
+
+/** Recall owned memory and read exact original conversation and file evidence. */
+export function archivedFile(eventId: string): Promise<MemoryFile | null>;
+
+/** Recall owned memory and read exact original conversation and file evidence. */
+export function workingFile(): Promise<MemoryFile | null>;`,
+  nativeMemoryHandoff: `/** Retain an authorized private memory review. */
+
+type MemoryBrief = { subject: string; channelId: string; repository: string };
+
+type MemoryKind = "message" | "file" | "commit";
+
+type MemoryPlan = { query: string; kinds: MemoryKind[]; readTranscript: boolean; readWorking: boolean };
+
+type MemoryLead = {
+  kind: MemoryKind; snippet: string; eventId: string; logId: string | null; head: string | null;
+  path: string | null; digest: string | null;
+};
+
+type MemoryMessage = {
+  channelId: string; envelopeId: string; messageId: string; sender: string; sequence: number; text: string;
+};
+
+type MemoryFile = { eventId: string; fileId: string; path: string; digest: string; text: string };
+
+type MemoryEvidence = {
+  leads: MemoryLead[]; messages: MemoryMessage[]; committed: MemoryFile[]; working: MemoryFile | null;
+};
+
+type MemoryCitation = { layer: "message" | "commit" | "working"; ref: string; coordinate: string; quote: string };
+
+type MemoryOutcome = {
+  disposition: "confirmed" | "contradicted" | "replaced" | "discussion-only" | "record-only" | "working-only" |
+    "ambiguous" | "no-evidence";
+  citations: MemoryCitation[]; summary: string;
+};
+
+type MemoryNote = { path: string; digest: string };
+
+/** Retain an authorized private memory review. */
+export function stage(brief: MemoryBrief, plan: MemoryPlan, evidence: MemoryEvidence, outcome: MemoryOutcome): Promise<MemoryNote | null>;`,
   nativeIntentDiscovery: `/** Search actual installed scope and read the exact native evidence that answers the user. */
 
 type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};

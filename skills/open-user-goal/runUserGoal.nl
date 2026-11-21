@@ -21,6 +21,8 @@ When the goal asks whether current Testkit teardown and retained cleanup evidenc
 
 For the active workspace identity, resolved configuration or retained facts that need current settings, protected manifests or exact protected template dependency declarations, call reconcileWorkspaceConfig. Report as "workspaceConfig".
 
+For a remembered workspace decision or claim that needs memory recall, original conversation citations or immutable saved evidence, call reviewRetainedMemory and report as "retainedMemory". Use the original historical sources the user permits.
+
 For an underspecified local status question that needs choosing between working state, a saved note, an installed guide, and an exact native helper, call discoverScopedIntent. Report as "intentDiscovery".
 
 For choosing between working, prior, committed, independently retained, or approval-only evidence routes in an owned decision, call chooseAuthorizedEvidenceRoute. Report as "ownedRouteAuthority".

@@ -1,0 +1,11 @@
+{
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-retained-memory",
+  "version": "0.1.0",
+  "targets": { "main": { "entry": "identifyMemoryScope.nl" } },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "nativeRetainedMemory": ["identifyMemoryScope.nl", "recallMemoryLeads.nl", "readMemoryMessages.nl", "readMemoryArchive.nl", "readMemoryDraft.nl"],
+    "nativeMemoryHandoff": ["stageMemoryHandoff.nl"]
+  }
+}
