@@ -5,7 +5,7 @@ export type PacketSnapshot = {mission:PacketMission;candidate:PacketDocument;att
   preview:PacketDocument;permittedFields:string[]};
 export type PacketPlan = {missionId:string;operation:"revise"|"review";fields:string[];
   note:"none"|"diagnostic"|"ready-only"};
-export type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:false;query:string};
+export type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:boolean;query:string};
 export type PacketSourcePlan = {attachment:string;pages:number[];query:string};
 export type PacketCitation = {page:number;line:number;quote:string;bounds:number[];confidence:number|null;source:"embedded-text"|"ocr"};
 export type PacketPdf = {digest:string;status:"encrypted"|"missing-pages"|"engine-unavailable"|"verified"|"partial-match"|"no-match"|"incomplete";

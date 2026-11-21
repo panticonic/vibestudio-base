@@ -5678,7 +5678,7 @@ type PacketPlan = {missionId:string;operation:"revise"|"review";fields:string[];
 
 type PacketSourcePlan = {attachment:string;pages:number[];query:string};
 
-type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:false;query:string};
+type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:boolean;query:string};
 
 type PacketCitation = {page:number;line:number;quote:string;bounds:number[];confidence:number|null;source:"embedded-text"|"ocr"};
 
@@ -5719,7 +5719,7 @@ type PacketSnapshot = {mission:PacketMission;candidate:PacketDocument;attachment
 
 type PacketSourcePlan = {attachment:string;pages:number[];query:string};
 
-type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:false;query:string};
+type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:boolean;query:string};
 
 type PacketCitation = {page:number;line:number;quote:string;bounds:number[];confidence:number|null;source:"embedded-text"|"ocr"};
 
