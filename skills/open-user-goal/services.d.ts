@@ -472,3 +472,9 @@ declare module "natlang:services" {
       Promise<import("./runUserGoal/prepareNewsEditionReview/contract.js").EditorPacketReceipt | null>;
   };
 }
+
+declare module "natlang:services" {
+  export const publicBrief: {
+    bind(sources: string[]): Promise<import("./runUserGoal/answerFromAssignedPublicSources/contract.js").AssignedPublicRequest | null>;
+  };
+}

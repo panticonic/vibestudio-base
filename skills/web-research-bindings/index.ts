@@ -11,7 +11,10 @@ type FetchResult = Awaited<ReturnType<typeof web.fetch>>;
 type ReadInput = Parameters<typeof web.read>[0];
 
 /** Bind a public research assignment without giving it search or browser-session authority. */
-export function bindAssignedResearch(input: AssignedResearchRequest) {
+export function bindAssignedResearch(
+  input: AssignedResearchRequest,
+  transport: Pick<typeof web, "fetch" | "read"> = web,
+) {
   const request = structuredClone(input);
   const assigned = [...request.sources];
   if (
@@ -50,7 +53,7 @@ export function bindAssignedResearch(input: AssignedResearchRequest) {
           pending = true;
           next++;
           try {
-            const receipt = await web.fetch(options);
+            const receipt = await transport.fetch(options);
             fetched.set(receipt.digest, receipt);
             return receipt;
           } finally {
@@ -69,7 +72,7 @@ export function bindAssignedResearch(input: AssignedResearchRequest) {
             throw new Error(
               "Continue only the assigned public page at its returned offset",
             );
-          return await web.read(options);
+          return await transport.read(options);
         },
       },
     },

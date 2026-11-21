@@ -43,7 +43,7 @@ export type UserGoalReport =
         | "extensionDossier" | "localWidth" | "evalHandoff" | "programRun" | "browserMigration"
         | "templateMigration" | "authoring" | "bridgeDelivery" | "workspaceClaims" | "panelLaunchState"
         | "ownedRouteAuthority" | "workspaceConfig" | "audienceResponse" | "coordinatedRevision" | "retainedMemory"
-        | "intentDiscovery" | "unitHandoff" | "googleRunbook" | "newsEditionReview";
+        | "intentDiscovery" | "unitHandoff" | "googleRunbook" | "newsEditionReview" | "publicBrief";
       outcome: unknown;
     }
   | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }

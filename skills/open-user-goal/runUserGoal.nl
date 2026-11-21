@@ -15,6 +15,7 @@ Compound routes take priority over their component routes.
 - Verified native recovery needed for a local operating decision dependent on a current instruction, signoff, recipient or release scope: use `workOnEvalHandoffGoal` for recovery and verification only, within the original goal's scope. Call `workOnRecoveryHandoff(goal, actualRecovery)`. Preserve cancellation, authority, scope and fallback conditions. Return skill `compoundRecovery` and the actual compound outcome.
 
 Common routes for goals without a more specific match:
+- For a read-only brief or decision from explicit user-supplied public URLs, use `answerFromAssignedPublicSources` and return `workspace-skill-reviewed` with skill `publicBrief`.
 - For public evidence, call `investigatePublicQuestion(goal)`. For research alone return its actual result with the same status. For a document revision call `reviseWorkspaceDocument` with null evidence if workspace information suffices, or pass verified public research if required. Insufficient required research stops revision. Return the actual outcome and research for a successful combined result. Keep all user scope and restrictions.
 - Live workspace panel inspection or operation: `workInBrowser(goal)` inspects current display, checks authority for the visible control, and reads it back. Return its actual outcome.
 - Declared workspace test or requested verification: `verifyWorkspaceSuite(goal)` returns the chosen route and actual result. Answer declaration-only questions without running tests.

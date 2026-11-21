@@ -5,6 +5,10 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/answerFromAssignedPublicSources": {
+      "mounts": ["runUserGoal/answerFromAssignedPublicSources/webResearch"],
+      "types": ["AssignedPublicGoalReport"]
+    },
     "runUserGoal/activateOwnedAutomation": {
       "mounts": ["runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/planning"],
       "types": ["OwnedAutomationActivationReport"]
@@ -148,6 +152,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/answerFromAssignedPublicSources/webResearch": "skills/web-research/research",
     "runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/planning": "skills/automations",
     "runUserGoal/prepareNewsEditionReview/attributeBasis/installed": "skills/provenance-orientation",
     "runUserGoal/reconcileGoogleRunbook/attributeBasis/installed": "skills/provenance-orientation",
@@ -276,6 +281,7 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "publicBrief": ["runUserGoal/answerFromAssignedPublicSources.nl"],
     "automationActivationEvidence": ["runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/readLaunchEvidence.nl"],
     "automationActivationCommit": ["runUserGoal/activateOwnedAutomation/completeAutomationLaunch/submitOwnedLaunch.nl"],
     "automationActivationReadback": ["runUserGoal/activateOwnedAutomation/completeAutomationLaunch/readActivatedSchedule.nl"],

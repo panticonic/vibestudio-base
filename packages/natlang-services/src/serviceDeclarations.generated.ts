@@ -933,6 +933,12 @@ export function readDesk(): Promise<EditorDesk>;
 export function stage(desk: EditorDesk,
       plan: EditorPacketPlan, news: unknown, presentation: unknown):
       Promise<EditorPacketReceipt | null>;`,
+  publicBrief: `/** Bind the exact user-assigned public URLs and original decision question. */
+
+type AssignedPublicRequest = { goal: string; sources: string[]; retrievedAt: number };
+
+/** Bind the exact user-assigned public URLs and original decision question. */
+export function bind(sources: string[]): Promise<AssignedPublicRequest | null>;`,
   unitIdentity: `/** Read and prepare the caller-assigned workspace icon. */
 
 type UnitIdentityObservation = {
