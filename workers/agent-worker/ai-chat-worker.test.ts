@@ -288,6 +288,17 @@ class TestableAiChatWorker extends AiChatWorker {
     return agent.instructions;
   }
 
+  async retainedChannelState(channelId: string) {
+    const conversation = await this.admittedNativeChannelConversation(channelId);
+    if (!conversation) throw new Error("No retained native channel conversation");
+    const agent = await conversation.agent(BACKGROUND_CONTEXT);
+    return {
+      participantId: this.participantId(),
+      conversationId: conversation.id,
+      instructions: agent.instructions,
+    };
+  }
+
   promptResourceCallCount(method: "workspace.getAgentResources") {
     return this.rpcCall.mock.calls.filter(
       (call) => call[0] === "main" && call[1] === method,
@@ -377,12 +388,24 @@ describe("AiChatWorker", () => {
     expect(TestableAiChatWorker.schemaVersion).toBe(AiChatWorker.schemaVersion);
   });
 
-  it("reconstructs over its complete sealed durable schema", async () => {
+  it("recovers the original channel owner, prompt, and settings after a cold reopen", async () => {
     const first = await createTestDO(TestableAiChatWorker, {
       ...admittedImage,
       __objectKey: "agent-replay",
     }, { props: activationProps("agent-replay") });
     resources.push(first);
+    const channel = "retained-work";
+    const boundedPrompt = "Only reconcile the owned intake queue.";
+    first.instance.seedSubscriptionConfig(channel, {
+      systemPrompt: boundedPrompt,
+      systemPromptMode: "replace",
+    });
+    await expect(first.instance.materializedPrompt(channel)).resolves.toBe(boundedPrompt);
+    const original = await first.instance.retainedChannelState(channel);
+    const changed = await first.instance.deliveredMethod(
+      channel, "retained-approved-setting", "setThinkingLevel", { level: "max" },
+    );
+    expect(changed).toMatchObject({ result: { thinkingLevel: "max" } });
     expect(
       (
         await releaseAcrossPhases(first.instance, {
@@ -402,7 +425,17 @@ describe("AiChatWorker", () => {
       { db: first.db, props: activationProps("agent-replay") },
     );
     resources.push(second);
-    expect(second.instance).toBeInstanceOf(TestableAiChatWorker);
+    const recovered = second.instance;
+    recovered.workspaceAgentsMd = "An unrelated workspace prompt revision";
+    await expect(recovered.retainedChannelState(channel)).resolves.toEqual(original);
+    const settings = await recovered.deliveredMethod(
+      channel, "retained-recovered-settings", "getAgentSettings", {},
+    );
+    expect(settings).toMatchObject({ result: { thinkingLevel: "max" } });
+    expect(recovered.promptResourceCallCount("workspace.getAgentResources")).toBe(0);
+    await expect(recovered.retainedChannelState("lookalike-work"))
+      .rejects.toThrow("No retained native channel conversation");
+    expect(recovered.published).toEqual([]);
   });
 
   it("exposes the shared provider connect presets to the credential flow", async () => {
