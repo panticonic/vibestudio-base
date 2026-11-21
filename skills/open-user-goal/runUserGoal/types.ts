@@ -49,7 +49,7 @@ export type LocalReconciliationGoalReport = {
   } | null;
 };
 
-export * from "./workOnCapabilityGoal/workspace/types.js";
+export type { CapabilityGoalReport } from "./workOnCapabilityGoal/workspace/types.js";
 
 export * from "./workOnAssemblyGoal/workspace/types.js";
 
