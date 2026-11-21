@@ -9,7 +9,7 @@ import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
  * its own stateArgs) rather than duplicated; only when none exists is a fresh
  * panel opened in the channel's owning context.
  */
-import { openPanel, panelTree, rpc } from "@workspace/runtime";
+import { contextId as panelContextId, openPanel, panelTree, rpc } from "@workspace/runtime";
 
 const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 const CHAT_PANEL_SOURCE = "panels/chat";
@@ -76,6 +76,7 @@ export async function openChannelPanel(
   const handle = await openPanel(CHAT_PANEL_SOURCE, {
     focus: true,
     contextId,
+    ref: `ctx:${panelContextId}`,
     stateArgs: {
       channelName: channelId,
       ...(opts?.focusMessageId ? { focusMessageId: opts.focusMessageId } : {}),
