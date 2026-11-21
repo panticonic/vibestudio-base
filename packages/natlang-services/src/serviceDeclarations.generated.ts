@@ -6126,6 +6126,29 @@ type SurfaceReceipt = { channel: string; basis: number; status: "applied" | "sta
 /** Apply only the authorized transcript surface change at its exact observed native cursor. */
 export function apply(id: string, approval: string, cursor: number, effect: SurfaceEffect):
       Promise<SurfaceReceipt>;`,
+  recordedQuestionDiscovery: `/** Discover the owned local question and find exact native stored rationale. */
+
+type RecordedQuestion = { id: string; goal: string; scope: string };
+
+type RecordedCandidate = { ref: string; rationale: string | null; tier: string | null; excerpt: string };
+
+/** Discover the owned local question and find exact native stored rationale. */
+export function discover(): Promise<RecordedQuestion>;
+
+/** Discover the owned local question and find exact native stored rationale. */
+export function search(id: string, phrase: string): Promise<RecordedCandidate[]>;`,
+  recordedQuestionGraph: `/** Read the exact local work cohort and its native counteractions. */
+
+type RecordedCohort = { ref: string; paths: { path: string; count: number }[]; complete: boolean };
+
+type RecordedCounteraction = { path: string; reason: string; attempted: string; ref: string };
+
+/** Read the exact local work cohort and its native counteractions. */
+export function cohort(id: string, ref: string): Promise<RecordedCohort>;
+
+/** Read the exact local work cohort and its native counteractions. */
+export function rejections(id: string, ref: string, cohort: RecordedCohort):
+      Promise<RecordedCounteraction[]>;`,
   sourceOriginEvidence: `/** Read exact current source and authorized scope for semantic attribution. */
 
 type SourceAttributionCandidate = { id: string; name: string; path: string };

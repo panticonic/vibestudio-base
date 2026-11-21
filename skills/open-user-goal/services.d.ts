@@ -180,6 +180,15 @@ declare module "natlang:services" {
     apply(id: string, approval: string, cursor: number, effect: import("./runUserGoal/reviewTranscriptSurface/contract.js").SurfaceEffect):
       Promise<import("./runUserGoal/reviewTranscriptSurface/contract.js").SurfaceReceipt>;
   };
+  export const recordedQuestionDiscovery: {
+    discover(): Promise<import("./runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/contract.js").RecordedQuestion>;
+    search(id: string, phrase: string): Promise<import("./runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/contract.js").RecordedCandidate[]>;
+  };
+  export const recordedQuestionGraph: {
+    cohort(id: string, ref: string): Promise<import("./runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/contract.js").RecordedCohort>;
+    rejections(id: string, ref: string, cohort: import("./runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/contract.js").RecordedCohort):
+      Promise<import("./runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/contract.js").RecordedCounteraction[]>;
+  };
   export const sourceOriginEvidence: {
     discover(): Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionAssignment>;
     read(id: string, candidate: string): Promise<import("./runUserGoal/reviewSourceAttribution/contract.js").SourceAttributionFile | null>;

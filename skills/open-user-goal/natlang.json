@@ -353,6 +353,8 @@
     "transcriptApproval": ["runUserGoal/reviewTranscriptSurface/discoverTranscriptSurface.nl", "runUserGoal/reviewTranscriptSurface/reviewApprovals/readCurrentApprovals.nl"],
     "transcriptObservation": ["runUserGoal/reviewTranscriptSurface/inspectNativeSurface/readChannelReplay.nl"],
     "transcriptMutation": ["runUserGoal/reviewTranscriptSurface/materializeTranscriptEffect/mutateOwnedTranscript.nl"],
+    "recordedQuestionDiscovery": ["runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/discoverRecordedQuestion.nl", "runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/findRecordedProposal/searchNativeRationale.nl"],
+    "recordedQuestionGraph": ["runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/collectRecordedEvidence/readWorkCohort.nl", "runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/collectRecordedEvidence/readRejectionRecord.nl"],
     "sourceOriginEvidence": ["runUserGoal/reviewSourceAttribution/discoverSourceAttribution.nl", "runUserGoal/reviewSourceAttribution/inspectCurrentSource/readOwnedFile.nl"],
     "sourceOriginGraph": ["runUserGoal/reviewSourceAttribution/traceSelectedSource/content/traceOwnedRange.nl", "runUserGoal/reviewSourceAttribution/traceSelectedSource/intent/inspectOwnedRoot.nl"],
     "sourceOriginReceipt": ["runUserGoal/reviewSourceAttribution/reviewAttributionHandoff/writeOwnedReceipt.nl"],

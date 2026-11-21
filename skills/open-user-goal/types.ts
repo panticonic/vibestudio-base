@@ -27,7 +27,7 @@ export type UserGoalReport =
       skill:
         | "boardMigration" | "preparedContentProject" | "liveLocalInventory" | "androidDelivery" | "terminalAppRepair"
         | "liveTendrilBoard" | "cliRoute" | "ownedOperations" | "testkitCloseout" | "webhookAdmission"
-        | "transcriptSurface" | "sourceAttribution" | "workspaceSmoke" | "sameTurnEval" | "deliveryWake"
+        | "provenanceQuestion" | "transcriptSurface" | "sourceAttribution" | "workspaceSmoke" | "sameTurnEval" | "deliveryWake"
         | "logFollower" | "ptyContinuity" | "developmentAudit" | "contentArchive" | "systemRelease"
         | "panelSourceMigration" | "workspaceShare" | "agentCapability" | "workspaceAssembly" | "capabilityPlan"
         | "vaultWork" | "googleSetup" | "gadDurableQuestion" | "clientDiagnostics" | "githubWork"

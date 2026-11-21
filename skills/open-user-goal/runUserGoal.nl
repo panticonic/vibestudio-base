@@ -22,6 +22,7 @@ Workspace engineering, evidence and delivery:
 - `recoverContentArchive → contentArchive`: approved files from an immutable edition into an existing project; verify admitted snapshot and preserve current edits.
 - `reconcileWorkspaceConfig → workspaceConfig`: active identity, resolved settings or retained facts needing protected manifests and exact template dependencies.
 - `reviseCoordinatedDocuments → coordinatedRevision`: linked existing documents and exact retained approval; check already compliant or hold an unsafe atomic edit.
+- `reviewSourceAttribution.reviewRecordedQuestion → provenanceQuestion`: search local rationale, count the exact affected work cohort, or weigh its recorded rejections before reattempting; read-only.
 - `reviewSourceAttribution → sourceAttribution`: exact current fragment origin or native rationale from real semantic source; retain local evidence only within user scope.
 - `reviewWorkspaceClaims → workspaceClaims`: exact acceptance claim joined to native TestKit, semantic readback and current authority.
 - `workOnCapabilityGoal → capabilityPlan`: read-only capability plan, callable signatures or installed provenance, including an explicitly authorized scratch plan.
