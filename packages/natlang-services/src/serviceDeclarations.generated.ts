@@ -7974,6 +7974,12 @@ type AndroidDeliveryScope = {
 
 /** Read the exact current owned Android test scope. */
 export function read(goal: string): Promise<AndroidDeliveryScope>;`,
+  androidGoalAudit: `/** Read the assigned Android runtime audit coordinates. */
+
+type AndroidGoalAuditScope = { operationId: string; target: string };
+
+/** Read the assigned Android runtime audit coordinates. */
+export function readScope(goal: string): Promise<AndroidGoalAuditScope>;`,
   cliRouteDocket: `/** Discover and read the exact owned saved CLI invocation. */
 
 type CliDocket = { id: string; name: string; revision: string; current: boolean };

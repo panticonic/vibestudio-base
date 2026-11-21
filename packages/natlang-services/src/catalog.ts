@@ -386,6 +386,7 @@ const authoredServices = [
   authoredService("tendrilBoardDocket", "Read a caller-owned live board's current presentation ticket.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["id"] }]),
   authoredService("localInventoryDocket", "Discover and read the current caller-owned local workload constraints.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["id"] }]),
   authoredService("androidDeliveryScope", "Read the exact current owned Android test scope.", "base", "open-user-goal", [{ name: "read", params: ["goal"] }]),
+  authoredService("androidGoalAudit", "Read the assigned Android runtime audit coordinates.", "base", "open-user-goal", [{ name: "readScope", params: ["goal"] }]),
   authoredService("cliRouteDocket", "Discover and read the exact owned saved CLI invocation.", "base", "open-user-goal", [{ name: "list", params: [] }, { name: "read", params: ["id", "revision"] }]),
   authoredService("remoteDeploymentHandoff", "Bind the assigned device profile to the verified deployment.", "system", "remote-access", [{ name: "open", params: ["deploymentReceipt"] }]),
   authoredService("remoteAccessRead", "Read the caller-assigned remote profile.", "system", "remote-access", [{ name: "observe", params: ["operationId"] }]),
