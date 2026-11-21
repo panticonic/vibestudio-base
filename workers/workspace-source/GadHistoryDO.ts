@@ -82,6 +82,7 @@ import {
   grantParticipantHistory,
   historyRetirementBranch,
   type HistoryForkRequest,
+  isWorkspaceRuntimeParticipant,
   type HistoryForkSeed,
   HistoryHeadChanged,
   ParticipantHistory,
@@ -636,13 +637,8 @@ export class GadHistoryDO extends DurableObjectBase {
       if (this.#allocationStatus(target) !== "active") return [];
       const participant = this.getStateValue(`history-allocation-identity:${target}`);
       if (!participant || workKey(participant) !== target) return [];
-      const identity: unknown = JSON.parse(participant);
-      if (!Array.isArray(identity) || identity[0] !== "agent" ||
-          identity[2] !== input.contextId || identity[1]?.contextId !== input.contextId ||
-          (input.runtimeId && identity[1]?.runtimeId !== input.runtimeId)) {
-        return [];
-      }
-      return [participant];
+      return isWorkspaceRuntimeParticipant(participant, input.contextId, input.runtimeId)
+        ? [participant] : [];
     });
     if (authors.length > 1) {
       throw new Error("Runtime workspace context has several active authors");

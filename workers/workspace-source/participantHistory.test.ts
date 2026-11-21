@@ -14,12 +14,23 @@ import {
   grantExactHistoryTransition,
   grantParticipantHistory,
   HistoryHeadChanged,
+  isWorkspaceRuntimeParticipant,
   ParticipantHistory,
   retireParticipantHistory,
 } from "./participantHistory.js";
 import { planEdit, editContentHashes } from "./workspaceMutation.js";
 import { SemanticProvenanceWriter } from "./semanticProvenanceWriter.js";
 import type { WorkUnitRecord } from "./semanticHistoryRecords.js";
+
+it("matches the runtime identity and the separate context coordinate", () => {
+  const owner = { runtimeId: "agent:child", authoritySessionId: "session:child" };
+  const participant = JSON.stringify(["agent", owner, "context:child"]);
+  expect(isWorkspaceRuntimeParticipant(participant, "context:child")).toBe(true);
+  expect(isWorkspaceRuntimeParticipant(participant, "context:child", owner.runtimeId)).toBe(true);
+  expect(isWorkspaceRuntimeParticipant(participant, "context:sibling")).toBe(false);
+  expect(isWorkspaceRuntimeParticipant(participant, "context:child", "agent:other")).toBe(false);
+  expect(isWorkspaceRuntimeParticipant(JSON.stringify(["runtime-context-fork-seed", "context:child"]), "context:child")).toBe(false);
+});
 
 async function workspace(now = Date.now) {
   const canonical = await FakeDoltStorage.create({ now });

@@ -214,6 +214,16 @@ export interface HistoryForkSeed {
   state: StateNodeRef;
 }
 
+export function isWorkspaceRuntimeParticipant(
+  participantId: string, contextId: string, runtimeId?: string,
+): boolean {
+  const identity: unknown = JSON.parse(participantId);
+  return Array.isArray(identity) && identity.length === 3 && identity[0] === "agent" &&
+    identity[2] === contextId && typeof identity[1]?.runtimeId === "string" &&
+    typeof identity[1]?.authoritySessionId === "string" &&
+    (runtimeId === undefined || identity[1].runtimeId === runtimeId);
+}
+
 interface HistoryForkReceipt extends HistoryForkSeed {
   completed: boolean;
 }
