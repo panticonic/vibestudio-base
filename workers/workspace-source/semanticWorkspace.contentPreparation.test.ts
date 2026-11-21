@@ -178,6 +178,29 @@ describe("semantic authored content preparation", () => {
       f.store.stateRoot(f.store.context("context:test")!.working.ref),
     ).toBe(root);
 
+    const blame = (state: typeof head) =>
+      f.semantic.dispatch("blame", {
+        ingress,
+        input: {
+          state,
+          repositoryId: repository.repositoryId,
+          fileId: text.state.fileId,
+          range: { start: 0, end: 9 },
+          limit: 10,
+        },
+      });
+    expect(await blame(head)).toMatchObject({
+      kind: "complete",
+      result: { spans: [{ start: 0, end: 9, stop: "authored" }] },
+    });
+    expect(await blame(f.store.context("context:test")!.working.ref)).toMatchObject({
+      kind: "complete",
+      result: { spans: [
+        { start: 0, end: 4, stop: "authored", command: { commandId: "command:no-op-text" } },
+        { start: 4, end: 9, stop: "authored", command: { commandId: "command:seed" } },
+      ] },
+    });
+
     const fileMode = f.request(
       "command:no-op-mode",
       [

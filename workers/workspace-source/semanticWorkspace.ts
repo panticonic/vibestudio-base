@@ -8802,6 +8802,8 @@ export class SemanticWorkspace {
             }),
           ];
         } else if (
+          // Explicit text edits author their exact ranges even when the bytes match.
+          change.kind !== "text" &&
           parentEndpoint.contentHash === child.contentHash &&
           parentEndpoint.coordinateKind === child.coordinateKind &&
           parentEndpoint.coordinateExtent === child.coordinateExtent
