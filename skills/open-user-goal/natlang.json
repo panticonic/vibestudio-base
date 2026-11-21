@@ -88,6 +88,8 @@
     "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
+    "runUserGoal/chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",
+    "runUserGoal/chooseAuthorizedEvidenceRoute/inspectExactRouteAuthority/authority": "skills/capabilities/natlang",
     "runUserGoal/reconcilePanelLaunchState/workspace": "skills/open-panel-launch-state",
     "runUserGoal/reconcilePanelLaunchState/reviewLaunchAuthority/authority": "skills/capabilities/natlang",
     "runUserGoal/reviewWorkspaceClaims/workspace": "skills/open-workspace-claims",

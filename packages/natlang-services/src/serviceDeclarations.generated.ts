@@ -1536,6 +1536,59 @@ type SuiteReviewExecution = {
 
 /** Verify the exact caller-assigned test plan after live resolution. */
 export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  routeEvidenceRead: `/** Discover and verify exact authorized local route evidence. */
+
+type EvidenceBasis="working"|"committed"|"earlier"|"private-copy"|"comparison"|"external"|"alternate-link";
+
+type VisibleRoute={id:string;basis:EvidenceBasis;label:string;operationIds:string[];origin:string|null};
+
+type RouteAuthorityScope={capability:string;resourceKey:string};
+
+type RouteAuthorityRequest={goal:string;operations:{id:string;label:string}[];ceiling:RouteAuthorityScope[]};
+
+type RouteOffer={title:string;purpose:string;field:string;routes:VisibleRoute[];request:RouteAuthorityRequest};
+
+type ExactRouteRecord={basis:EvidenceBasis;coordinate:string;field:string;value:string;fileHash:string};
+
+type RouteReadback={routeId:string;records:(ExactRouteRecord|null)[]};
+
+/** Discover and verify exact authorized local route evidence. */
+export function discover():Promise<RouteOffer>;
+
+/** Discover and verify exact authorized local route evidence. */
+export function inspect(routeId:string):Promise<RouteReadback|null>;`,
+  routeEvidenceHandoff: `/** Retain an explicitly authorized private evidence route assessment. */
+
+type EvidenceBasis="working"|"committed"|"earlier"|"private-copy"|"comparison"|"external"|"alternate-link";
+
+type VisibleRoute={id:string;basis:EvidenceBasis;label:string;operationIds:string[];origin:string|null};
+
+type RouteAuthorityScope={capability:string;resourceKey:string};
+
+type RouteAuthorityRequest={goal:string;operations:{id:string;label:string}[];ceiling:RouteAuthorityScope[]};
+
+type RouteOffer={title:string;purpose:string;field:string;routes:VisibleRoute[];request:RouteAuthorityRequest};
+
+type RouteAuthorityObservation={operationId:string;decision:string;leaves:{capability:string;resourceKey:string;tier:string;status:string}[]};
+
+type RouteAuthorityReport={status:string;protectedLeaves:RouteAuthorityScope[];held:string[];
+  reviews:{observation:RouteAuthorityObservation;outside:RouteAuthorityScope[];disposition:string}[]};
+
+type RouteChoice={routeId:string;execute:boolean;retain:boolean;reason:string};
+
+type ExactRouteRecord={basis:EvidenceBasis;coordinate:string;field:string;value:string;fileHash:string};
+
+type RouteReadback={routeId:string;records:(ExactRouteRecord|null)[]};
+
+type RouteOutcome={status:"verified"|"mismatch"|"missing"|"outside-limit"|"needs-approval"|"refused"|"eligible-preflight";summary:string};
+
+type RouteHandoff={path:string;digest:string};
+
+type OwnedRouteReview={offer:RouteOffer;authority:RouteAuthorityReport;choice:RouteChoice;readback:RouteReadback|null;
+  outcome:RouteOutcome;handoff:RouteHandoff|null};
+
+/** Retain an explicitly authorized private evidence route assessment. */
+export function stage(report:OwnedRouteReview):Promise<RouteHandoff|null>;`,
   launchStateRead: `/** Scope an owned panel launch state and read its independent native owner snapshot. */
 
 type LaunchIndex={panelId:string;title:string;purpose:"active"|"archive"}[];
