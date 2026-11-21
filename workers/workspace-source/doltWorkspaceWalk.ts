@@ -233,13 +233,15 @@ export function workspaceRejectionsWalk(
            JOIN dolt_at_gad_changes(?1) AS counteracted ON counteracted.change_id = coordinate.change_id
            JOIN dolt_at_gad_changes(?1) AS counteracting ON counteracting.change_id = counteraction.change_id
            JOIN dolt_at_gad_work_units(?1) AS work ON work.work_unit_id = counteracting.work_unit_id
-          WHERE coordinate.file_id = ?2 ORDER BY work.created_at DESC, id LIMIT ?4
+          WHERE coordinate.file_id = ?2 OR (?2 IS NULL AND coordinate.repository_id = ?3)
+          ORDER BY work.created_at DESC, id LIMIT ?4
        ), reverts AS (
          SELECT DISTINCT 'reverts', work.work_unit_id, work.work_unit_id, work.created_at, NULL, NULL, NULL, NULL
            FROM dolt_at_gad_work_units(?1) AS work
            JOIN dolt_at_gad_changes(?1) AS change USING (work_unit_id)
            JOIN dolt_at_gad_change_coordinates(?1) AS coordinate USING (change_id)
-          WHERE work.kind = 'revert' AND coordinate.file_id = ?2
+          WHERE work.kind = 'revert' AND
+                (coordinate.file_id = ?2 OR (?2 IS NULL AND coordinate.repository_id = ?3))
           ORDER BY work.created_at DESC, work.work_unit_id LIMIT ?4
        ), deltas AS (
          SELECT 'external', delta.delta_id, delta.work_unit_id, delta.created_at, NULL, NULL, delta.repo_path, NULL
@@ -250,7 +252,9 @@ export function workspaceRejectionsWalk(
          SELECT 'merge', entry.decision_id, decision.work_unit_id, decision.created_at, NULL, NULL, entry.resolution, entry.rationale
            FROM dolt_at_gad_merge_decision_entries(?1) AS entry
            JOIN dolt_at_gad_integration_decisions(?1) AS decision USING (decision_id)
-          WHERE entry.coordinate_kind = 'file' AND entry.coordinate_id = ?2 AND entry.resolution IN ('ours', 'current')
+          WHERE entry.resolution IN ('ours', 'current') AND
+                ((entry.coordinate_kind = 'file' AND entry.coordinate_id = ?2) OR
+                 (?2 IS NULL AND entry.coordinate_kind = 'repository' AND entry.coordinate_id = ?3))
           ORDER BY decision.created_at DESC, entry.decision_id LIMIT ?4
        )
        SELECT * FROM counteractions UNION ALL SELECT * FROM reverts
