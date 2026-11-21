@@ -62,6 +62,10 @@ function memoryFs(files: Record<string, string>): WorkspaceFs & { reads: string[
 
 const platform = () => workerdPlatform({ realm: confinedRealm(testNewFunction()) });
 
+// Compile the full joint program within a test-specific budget. The virtual
+// project includes the complete callable graph and took over 30s cold on Tick.
+const OPEN_GOAL_COMPILE_TEST_MS = 90_000;
+
 describe("workspacePath", () => {
   it("maps import-style specifiers to workspace paths", () => {
     expect(workspacePath("@workspace-skills/server-logs/brief.nl")).toBe("skills/server-logs/brief.nl");
@@ -583,9 +587,9 @@ it("compiles the open goal program with its installed research skill and scoped 
   });
   expect(result.functions.some(fn => fn.source === "runUserGoal/publication/workTowardPublicationGoal.nl")).toBe(true);
   expect(result.functions.some(fn => fn.source === "runUserGoal/pdf/workOnPdfGoal.nl")).toBe(true);
-});
+}, OPEN_GOAL_COMPILE_TEST_MS);
 
-it.each([
+const installedOpenGoalSkills = [
   ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal"],
   ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
@@ -597,43 +601,50 @@ it.each([
   ["personal", "open-personal-automation", "operatorQueue", "personalAutomation", "coordinatePersonalAutomation"],
   ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal"],
   ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
-])("mounts the %s open-goal skill with its own service scope", async (template, skill, service, namespace, callable, owner = callable) => {
+] as const;
+
+it("mounts installed open-goal skills with their own service scopes", async () => {
   const base = new URL("../../../", import.meta.url);
-  const installed = new URL(`../${template}/`, base);
-  const skillPath = `skills/${skill}`;
-  const source = (path: string) => new URL(path, path === skillPath || path.startsWith(skillPath + "/") ? installed : base);
+  const installed = new Map(
+    installedOpenGoalSkills.map(([template, skill]) => [`skills/${skill}`, new URL(`../${template}/`, base)])
+  );
+  const source = (path: string) => {
+    const skill = [...installed.keys()].find(key => path === key || path.startsWith(key + "/"));
+    return new URL(path, skill ? installed.get(skill)! : base);
+  };
   const fs: WorkspaceFs = {
     async readdir(path) {
       const entries = await readdir(source(path + "/"), { withFileTypes: true });
       if (path !== "skills") return entries;
-      const extras = await readdir(new URL("skills/", installed), { withFileTypes: true });
-      return [...entries, ...extras.filter(entry => entry.name === skill)];
+      const roots = new Set([...installed.values()].map(url => url.href));
+      const extras = await Promise.all([...roots].map(async root => {
+        const files = await readdir(new URL("skills/", root), { withFileTypes: true });
+        return files.filter(entry => installed.get(`skills/${entry.name}`)?.href === root);
+      }));
+      return [...entries, ...extras.flat()];
     },
     readFile: path => readFile(source(path), "utf8"),
     async stat(path) { return { isDirectory: () => !/\.[a-z]+$/u.test(path) }; },
   };
   const loader = new ProgramLoader({ platform: platform(), fs, bindings: {}, runTask: run => run() });
   const program = await loader.describe("skills/open-user-goal/runUserGoal.nl");
-  const path = `runUserGoal/${namespace}/${callable}.nl`;
-  expect(program.functions.map(fn => fn.source)).toContain(path);
-  const scopes = program.serviceScopes[service] ?? [];
-  expect(scopes).toContain(`runUserGoal/${namespace}/${owner}.nl`);
-  if (template === "news") {
-    const mounts = [
-      "runUserGoal/news",
-      "runUserGoal/workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed",
-      "runUserGoal/workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed",
-      "runUserGoal/workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed",
-    ];
-    const selectors = ["reviewUserNewsGoal.nl", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
-    expect([...scopes].sort()).toEqual(mounts.flatMap(mount => selectors.map(selector => `${mount}/${selector}`)).sort());
-  } else {
-    const manifest = JSON.parse(await fs.readFile("skills/open-user-goal/natlang.json", "utf8")) as {
-      workspaceModules: Record<string, string>;
-    };
+  const functions = program.functions.map(fn => fn.source);
+  const manifest = JSON.parse(await fs.readFile("skills/open-user-goal/natlang.json", "utf8")) as {
+    workspaceModules: Record<string, string>;
+  };
+  for (const [template, skill, service, namespace, callable, owner = callable] of installedOpenGoalSkills) {
+    const skillPath = `skills/${skill}`;
     const mounts = Object.entries(manifest.workspaceModules)
-      .filter(([, sourcePath]) => sourcePath.startsWith(`${skillPath}/`))
+      .filter(([, sourcePath]) => sourcePath === skillPath || sourcePath.startsWith(`${skillPath}/`))
       .map(([mount]) => mount);
-    expect(scopes.every(scope => mounts.some(mount => scope.startsWith(`${mount}/`)))).toBe(true);
+    const scopes = program.serviceScopes[service] ?? [];
+    expect(functions).toContain(`runUserGoal/${namespace}/${callable}.nl`);
+    expect(scopes).toContain(`runUserGoal/${namespace}/${owner}.nl`);
+    if (template === "news") {
+      const selectors = ["reviewUserNewsGoal.nl", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
+      expect([...scopes].sort()).toEqual(mounts.flatMap(mount => selectors.map(selector => `${mount}/${selector}`)).sort());
+    } else {
+      expect(scopes.every(scope => mounts.some(mount => scope.startsWith(`${mount}/`))), service).toBe(true);
+    }
   }
-});
+}, OPEN_GOAL_COMPILE_TEST_MS);
