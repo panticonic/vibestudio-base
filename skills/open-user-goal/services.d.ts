@@ -1,4 +1,19 @@
 declare module "natlang:services" {
+  export const automationActivationEvidence: {
+    observe(): Promise<import("./runUserGoal/activateOwnedAutomation/types.js").AutomationLaunchEvidence>;
+  };
+  export const automationActivationCommit: {
+    activate(revision: string, plan: import("./runUserGoal/activateOwnedAutomation/types.js").LaunchPlan,
+      decision: import("./runUserGoal/activateOwnedAutomation/types.js").AutomationLaunchChoice):
+      Promise<import("./runUserGoal/activateOwnedAutomation/types.js").AutomationActivation>;
+  };
+  export const automationActivationReadback: {
+    read(receipt: import("./runUserGoal/activateOwnedAutomation/types.js").AutomationLaunchReceipt):
+      Promise<import("./runUserGoal/activateOwnedAutomation/types.js").AutomationLaunchReadback>;
+  };
+}
+
+declare module "natlang:services" {
   export const boardMigration: {
     listSources(): Promise<import("./runUserGoal/reviewBoardMigration/types.js").LegacyBoard[]>;
     inspect(id: string): Promise<import("./runUserGoal/reviewBoardMigration/types.js").MigrationView>;

@@ -56,6 +56,9 @@ function authoredService<const Name extends string>(
 }
 
 const authoredServices = [
+  authoredService("automationActivationEvidence", "Read the exact private automation request and owner consent.", "base", "open-user-goal", [{ name: "observe", params: [] }]),
+  authoredService("automationActivationCommit", "Activate one approved private native schedule at the observed source revision.", "base", "open-user-goal", [{ name: "activate", params: ["revision", "plan", "decision"] }]),
+  authoredService("automationActivationReadback", "Read the native mission at the exact activation receipt.", "base", "open-user-goal", [{ name: "read", params: ["receipt"] }]),
   authoredService("contentProjectSources", "Read the current project evidence from the owned semantic workspace.", "base", "open-user-goal", [{ name: "observe", params: [] }]),
   authoredService("contentProjectScope", "Attest the exact fact selection and current local consent.", "base", "open-user-goal", [{ name: "confirm", params: ["revision", "decision"] }]),
   authoredService("contentProjectDraft", "Prepare and write one explicitly scoped private content project.", "base", "open-user-goal", [{ name: "prepare", params: ["receipt", "head"] }, { name: "write", params: ["receipt", "head", "documents"] }]),

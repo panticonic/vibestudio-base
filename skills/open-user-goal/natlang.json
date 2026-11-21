@@ -5,6 +5,10 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceBranches": {
+    "runUserGoal/activateOwnedAutomation": {
+      "mounts": ["runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/planning"],
+      "types": ["OwnedAutomationActivationReport"]
+    },
     "runUserGoal/reviewUnitHandoffGoal": {
       "mounts": ["runUserGoal/reviewUnitHandoffGoal/reviewDesign/installed", "runUserGoal/reviewUnitHandoffGoal/reviewIdentity/installed"],
       "types": ["UnitHandoffReport"]
@@ -124,6 +128,7 @@
     }
   },
   "workspaceModules": {
+    "runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/planning": "skills/automations",
     "runUserGoal/reviewUnitHandoffGoal/reviewDesign/installed": "skills/workspace-unit-design",
     "runUserGoal/reviewUnitHandoffGoal/reviewIdentity/installed": "skills/workspace-dev/natlang",
     "runUserGoal/prepareContentProject/authorProjectDocuments/compose": "skills/vibestudio-workflows/runWorkflow/deliverProject",
@@ -245,6 +250,9 @@
     "runUserGoal/pdf": "skills/pdf-intake"
   },
   "serviceScopes": {
+    "automationActivationEvidence": ["runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/readLaunchEvidence.nl"],
+    "automationActivationCommit": ["runUserGoal/activateOwnedAutomation/completeAutomationLaunch/submitOwnedLaunch.nl"],
+    "automationActivationReadback": ["runUserGoal/activateOwnedAutomation/completeAutomationLaunch/readActivatedSchedule.nl"],
     "unitHandoff": ["runUserGoal/reviewUnitHandoffGoal.nl", "runUserGoal/reviewUnitHandoffGoal/reviewDesign.nl"],
     "boardMigration": ["runUserGoal/reviewBoardMigration.nl", "runUserGoal/reviewBoardMigration/locateSource.nl", "runUserGoal/reviewBoardMigration/decideMigration.nl"],
     "contentProjectSources": ["runUserGoal/prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.nl"],

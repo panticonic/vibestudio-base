@@ -5,6 +5,9 @@ args:
   goal: string
 returns: UserGoalReport
 ---
+
+For a goal to activate a new private automation from retained owner consent, call activateOwnedAutomation when available. Report skill "automationActivation". Existing schedule recovery uses its separate skill.
+
 Interpret the user's goal and use only a visible callable in the current workspace. Pass the original goal unchanged unless a route specifies otherwise. For each `callable → key` below, return `{status: "workspace-skill-reviewed", skill: key, outcome: actual child result}`. If a capability is unavailable, explain what is missing. Use an authorized alternative only if it still satisfies the goal. For another relevant installed skill, use its visible callable and report its folder name.
 
 Compound routes take priority over their component routes.

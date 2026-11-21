@@ -6,6 +6,83 @@
  * rendered from the service contracts named in `catalog.ts`.
  */
 export const generatedServiceDeclarations: Readonly<Record<string, string>> = {
+  automationActivationEvidence: `/** Read the exact private automation request and owner consent. */
+
+type LaunchConsent = {
+  id:string;digest:string;subject:string;owner:string;
+  state:"approved"|"pending"|"withdrawn"|"preview-only";edition:"current"|"archive";
+};
+
+type LaunchOperation = {service:string;method:string;use:"action"|"conditional"};
+
+type LaunchPlannerInput = {
+  goal:string;timezone:string;now:string;
+  visible:{id:string;name:string;state:"active"|"paused"|"retired";latestRun:null}[];
+  availableOperations:LaunchOperation[];
+};
+
+type AutomationLaunchEvidence = {
+  title:string;operation:string;owner:string;current:string;records:LaunchConsent[];
+  request:LaunchPlannerInput;futureAnchor:number;existing:string|null;requiresBound:boolean;
+};
+
+/** Read the exact private automation request and owner consent. */
+export function observe(): Promise<AutomationLaunchEvidence>;`,
+  automationActivationCommit: `/** Activate one approved private native schedule at the observed source revision. */
+
+type LaunchTrigger =
+  | {kind:"manual"}
+  | {kind:"schedule";everyMs:number;anchorAt?:number;untilAt?:number;maxRuns?:number}
+  | {kind:"cron";expression:string;timezone:string;untilAt?:number;maxRuns?:number};
+
+type LaunchOperation = {service:string;method:string;use:"action"|"conditional"};
+
+type LaunchPlan = {
+  kind:"launch";executor:"notify"|"prompt"|"tool"|"watch"|"eval"|"method";trigger:LaunchTrigger;
+  conversation:"continue"|"fresh";operations:LaunchOperation[];
+}|{kind:"hold";reason:string};
+
+type LaunchConsent = {
+  id:string;digest:string;subject:string;owner:string;
+  state:"approved"|"pending"|"withdrawn"|"preview-only";edition:"current"|"archive";
+};
+
+type AutomationLaunchChoice = {
+  action:"activate"|"hold";basis:"authorized"|"pending"|"withdrawn"|"preview-only"|"scope-mismatch"|"ambiguous"|"already-active"|"invalid-plan";
+  consent:LaunchConsent|null;reason:string;
+};
+
+type AutomationLaunchReceipt = {
+  missionId:string;revisionDigest:string;revision:number;nextRunAt:number|null;recovered:boolean;
+};
+
+type AutomationActivation = {
+  status:"activated"|"held"|"moved";receipt:AutomationLaunchReceipt|null;evidenceRevision:string;
+};
+
+/** Activate one approved private native schedule at the observed source revision. */
+export function activate(revision: string, plan: LaunchPlan,
+      decision: AutomationLaunchChoice):
+      Promise<AutomationActivation>;`,
+  automationActivationReadback: `/** Read the native mission at the exact activation receipt. */
+
+type AutomationLaunchReceipt = {
+  missionId:string;revisionDigest:string;revision:number;nextRunAt:number|null;recovered:boolean;
+};
+
+type LaunchTrigger =
+  | {kind:"manual"}
+  | {kind:"schedule";everyMs:number;anchorAt?:number;untilAt?:number;maxRuns?:number}
+  | {kind:"cron";expression:string;timezone:string;untilAt?:number;maxRuns?:number};
+
+type AutomationLaunchReadback = {
+  missionId:string;owner:string;trigger:LaunchTrigger;revisionDigest:string;
+  nextRunAt:number|null;runCount:number;state:"active"|"paused";
+}|null;
+
+/** Read the native mission at the exact activation receipt. */
+export function read(receipt: AutomationLaunchReceipt):
+      Promise<AutomationLaunchReadback>;`,
   contentProjectSources: `/** Read the current project evidence from the owned semantic workspace. */
 
 type ProjectSourceDocument = {
