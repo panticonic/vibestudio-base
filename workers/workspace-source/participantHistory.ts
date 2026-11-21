@@ -2357,7 +2357,7 @@ export class ParticipantHistory {
 
   archiveAllCommittedContexts(main: string, grantTarget: DoltRemoteTarget): Promise<void> {
     return this.#run(() => {
-      const archives = this.#dolt.branch.list().filter(({name}) => name.startsWith("ctx/")).map(({name, hash}) => {
+      const archives = this.#dolt.branch.list().filter(({name, hash}) => name.startsWith("ctx/") && hash !== main).map(({name, hash}) => {
         const event = committedWorkspaceEvent(this.#storage.sql, hash);
         if (!event) throw new Error(`Workspace history lacks a committed event for ${name}`);
         return { context: name, committed: event.head };
@@ -2379,20 +2379,24 @@ export class ParticipantHistory {
       }
       const branch = branches.find(({ name }) => name === context);
       if (!branch) return;
-      const committed = committedWorkspaceEvent(this.#storage.sql, branch.hash);
-      if (!committed) throw new Error(`Workspace history lacks a committed event for ${context}`);
-      await this.#archiveCommittedBranches([{ context, committed: committed.head }], main, origin);
+      if (branch.hash !== main) {
+        const committed = committedWorkspaceEvent(this.#storage.sql, branch.hash);
+        if (!committed) throw new Error(`Workspace history lacks a committed event for ${context}`);
+        await this.#archiveCommittedBranches([{ context, committed: committed.head }], main, origin);
+      }
       if (this.#dolt.branch.current() === context) this.#dolt.checkout("main");
       this.#dolt.branch.delete(context, { force: true });
     });
   }
 
   async #archiveCommittedBranches(archives: readonly { context: string; committed: string }[], main: string, grantTarget: DoltRemoteTarget): Promise<void> {
+      const candidates = archives.filter(({ committed }) => committed !== main);
+      if (candidates.length === 0) return;
       const remote = "retirement";
       this.#configureRemote(remote, grantTarget);
       try {
         await this.#dolt.fetch(remote, { branches: ["main"], transport: this.#transport });
-        for (const { context, committed } of archives) {
+        for (const { context, committed } of candidates) {
           if (committed === this.#mergeBase(main, committed)) continue;
           const branch = `retired/${this.#participant}/${context.slice("ctx/".length)}`;
           if (!this.#dolt.branch.list().some((entry) => entry.name === branch)) {

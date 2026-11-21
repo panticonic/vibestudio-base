@@ -237,6 +237,28 @@ it("keeps an existing context and rejects a stale head before running a write", 
   expect(local.dolt.hashOf("ctx/edit")).toBe(genesis);
 });
 
+it("retires a copy at protected main without fetching the already shared revision", async () => {
+  const { canonical, genesis, origin, transport } = await workspace();
+  const local = await canonical.fork({ at: genesis });
+  let remoteAvailable = true;
+  const history = new ParticipantHistory("alice", local.storage, (request) => {
+    if (!remoteAvailable) throw new Error("Unexpected retirement transport");
+    return transport(request);
+  });
+  const grant = grantParticipantHistory(origin, "alice");
+  await history.bindContext("edit", { id: canonical.id, token: grant.token });
+  remoteAvailable = false;
+
+  await expect(retireParticipantHistory(
+    origin,
+    "alice",
+    (token, main) => history.archiveAllCommittedContexts(main, { id: canonical.id, token }),
+    async () => {},
+  )).resolves.toBeUndefined();
+  expect(origin.branch.list().some(({ name }) => name.startsWith("retired/"))).toBe(false);
+  expect(origin.remote.grants()).toEqual([]);
+});
+
 it("archives only committed work and preserves it across a failed retirement", async () => {
   const { canonical, genesis, origin, createParticipant } = await workspace();
   const { local, history, head } = await createParticipant("alice");
