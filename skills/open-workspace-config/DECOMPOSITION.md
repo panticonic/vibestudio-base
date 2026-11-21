@@ -1,0 +1,15 @@
+# Reconcile current workspace configuration with retained evidence
+
+| Production mechanism and callers | How the program uses it |
+| --- | --- |
+| Host `src/server/services/workspaceService.ts`, `packages/service-schemas/src/workspace.ts`, runtime `packages/runtime/src/shared/workspace.ts`. Their active identity and resolved-config consumers include template checks, model settings and shell root selection. | Typed native observation reads getActive, getInfo and getConfig across one managed workspace, checking the reported active name and resolved config agree. Only allowlisted answers and app-version/projection facts are returned. |
+| Workspace `packages/workspace/src/configParser.ts`, Host `src/server/workspaceConfigSource.ts`, and native VCS status/readFile/mainState. The Host source reader caches by immutable content state and the context owner resolves mutable heads. | Verify immutable file identity and content hash independently at working, local committed and protected-main state. Parse the genuine root manifest and never infer the running config from an authored YAML draft. |
+| `packages/workspace/src/templateManifest.ts` and Host root template bootstrap/publication. Native exact installation history is restricted to the reviewed templates extension or authenticated shell. | Use the production parser of the protected manifest at the exact main event only. Report the declared tracks, pinned commits, manifest epoch and app floor. Distinguish declarations from evidence of installation. No fallback acquisition or authority changes. |
+| Native scratch handoff bindings. | Retained notes are distinct from live receipts. Private, exact, digest-verified result only when the user's request and its condition permit it. Never update a setting, switch workspace or publish. |
+| System Testing managed context and Host trajectory exporter. | Set up controlled retained notes and disposable VCS differences; keep answer requirements outside the model call. Independently verify observed values, local artifact bytes and protected main. Source replay uses production workspace service and parser with isolated owned data and exact event/read ports. |
+
+1. Discover the owned retained note referenced by the user. Identify which local facts are necessary, which evidence needs exact revision comparators and when a disposition can be written.
+2. Observe the scoped active workspace, its catalog and resolved config. Distinguish host and hub app versions and verify the projection uses its current independent cache namespace where needed.
+3. When relevant, inspect the exact working and committed manifests and compare against protected main. Separately inspect the exact protected template dependency declarations, without resolving an external source.
+4. Decide which differences are due to a different workspace, epoch mismatch, stale values, only a working edit, only a local commit, or the absence of applicable dependency declarations. Explain with exact observations.
+5. If authorized, retain a local decision and verify all bytes and receipts. Keep stale or unsupported requests held and verify native state remains intact.

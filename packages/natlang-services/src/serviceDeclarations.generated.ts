@@ -1568,6 +1568,97 @@ type SuiteReviewExecution = {
 
 /** Verify the exact caller-assigned test plan after live resolution. */
 export function run(operationId: string, stateHash: string): Promise<SuiteReviewExecution>;`,
+  nativeWorkspaceConfig: `/** Read scoped workspace identity, active settings and exact protected source evidence. */
+
+type ConfigQuestion = "panel-restore" | "launch-panels" | "minimum-app" | "desktop-client" |
+  "natlang-provider" | "terminal-extensions" | "agent-fast-mode";
+
+type ConfigFact = { question: ConfigQuestion; declared: boolean; value: string };
+
+type ConfigBrief = {
+  subject: string; noteHash: string | null; noteId: string | null; noteName: string | null;
+  noteEpoch: number | null; noteFacts: ConfigFact[];
+};
+
+type ConfigIdentity = {
+  id: string; name: string; configId: string; epoch: number; appVersion: string;
+  hubVersion: string; projectionNamespace: string; projectionUsesCurrentNamespace: boolean; facts: ConfigFact[];
+};
+
+type ConfigManifestState = { ref: string; fileId: string; digest: string; epoch: number; facts: ConfigFact[] };
+
+type ConfigHistory = {
+  contextId: string; clean: boolean; working: ConfigManifestState; committed: ConfigManifestState;
+  main: ConfigManifestState;
+};
+
+type ConfigSource = { addressDigest: string; track: string | null; pinnedCommit: string | null };
+
+type ConfigDependencies = {
+  mainEvent: string; manifestDigest: string; epoch: number; minimumAppVersion: string | null; sources: ConfigSource[];
+};
+
+/** Read scoped workspace identity, active settings and exact protected source evidence. */
+export function readBrief(): Promise<ConfigBrief>;
+
+/** Read scoped workspace identity, active settings and exact protected source evidence. */
+export function inspectActive(questions: ConfigQuestion[]): Promise<ConfigIdentity | null>;
+
+/** Read scoped workspace identity, active settings and exact protected source evidence. */
+export function inspectManifests(questions: ConfigQuestion[]): Promise<ConfigHistory | null>;
+
+/** Read scoped workspace identity, active settings and exact protected source evidence. */
+export function inspectDependencies(mainEvent: string): Promise<ConfigDependencies | null>;`,
+  nativeConfigHandoff: `/** Retain the expressly authorized private configuration decision. */
+
+type ConfigQuestion = "panel-restore" | "launch-panels" | "minimum-app" | "desktop-client" |
+  "natlang-provider" | "terminal-extensions" | "agent-fast-mode";
+
+type ConfigFact = { question: ConfigQuestion; declared: boolean; value: string };
+
+type ConfigBrief = {
+  subject: string; noteHash: string | null; noteId: string | null; noteName: string | null;
+  noteEpoch: number | null; noteFacts: ConfigFact[];
+};
+
+type ConfigLens = { questions: ConfigQuestion[]; inspectManifest: boolean; inspectDependencies: boolean };
+
+type ConfigIdentity = {
+  id: string; name: string; configId: string; epoch: number; appVersion: string;
+  hubVersion: string; projectionNamespace: string; projectionUsesCurrentNamespace: boolean; facts: ConfigFact[];
+};
+
+type ConfigManifestState = { ref: string; fileId: string; digest: string; epoch: number; facts: ConfigFact[] };
+
+type ConfigHistory = {
+  contextId: string; clean: boolean; working: ConfigManifestState; committed: ConfigManifestState;
+  main: ConfigManifestState;
+};
+
+type ConfigSource = { addressDigest: string; track: string | null; pinnedCommit: string | null };
+
+type ConfigDependencies = {
+  mainEvent: string; manifestDigest: string; epoch: number; minimumAppVersion: string | null; sources: ConfigSource[];
+};
+
+type ConfigEvidence = {
+  active: ConfigIdentity; history: ConfigHistory | null; dependencies: ConfigDependencies | null;
+};
+
+type ConfigOutcome = {
+  noteStatus: "matches" | "stale-values" | "different-workspace" | "stale-name" | "different-epoch" | "no-note";
+  sourceStatus: "uninspected" | "aligned" | "working-only" | "committed-only" | "working-and-committed";
+  dependencyStatus: "uninspected" | "declared" | "no-declarations" | "epoch-mismatch";
+  affectedQuestions: ConfigQuestion[];
+  workingDifferences: ConfigQuestion[];
+  committedDifferences: ConfigQuestion[];
+  summary: string;
+};
+
+type ConfigDisposition = { path: string; digest: string };
+
+/** Retain the expressly authorized private configuration decision. */
+export function stage(brief: ConfigBrief, lens: ConfigLens, evidence: ConfigEvidence, outcome: ConfigOutcome): Promise<ConfigDisposition | null>;`,
   nativeIntentDiscovery: `/** Search actual installed scope and read the exact native evidence that answers the user. */
 
 type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};

@@ -9,6 +9,10 @@
       "mounts": ["runUserGoal/compareLiveLocalInventory/installed"],
       "types": ["LocalInventoryOutcome"]
     },
+    "runUserGoal/reconcileWorkspaceConfig": {
+      "mounts": ["runUserGoal/reconcileWorkspaceConfig/settings", "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings"],
+      "types": ["ConfigReport"]
+    },
     "runUserGoal/recoverCliRoute": {
       "mounts": ["runUserGoal/recoverCliRoute/remote"],
       "types": ["CliRouteOutcome"]
@@ -99,6 +103,8 @@
     "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
     "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
+    "runUserGoal/reconcileWorkspaceConfig/settings": "skills/open-workspace-config",
+    "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings": "skills/open-workspace-config",
     "runUserGoal/discoverScopedIntent/workspace": "skills/open-intent-discovery",
     "runUserGoal/discoverScopedIntent/searchRelevantIntent/workspace": "skills/open-intent-discovery",
     "runUserGoal/chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",
