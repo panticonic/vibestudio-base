@@ -1,0 +1,14 @@
+{
+  "schema":"natlang.package/v2",
+  "name":"vibestudio-open-editorial-packet",
+  "version":"0.1.0",
+  "targets":{"main":{"entry":"listPacketMissions.nl"}},
+  "serviceBinding":"explicit",
+  "serviceScopes":{
+    "editorialMission":["listPacketMissions.nl"],
+    "editorialWorkspace":["readPacketSnapshot.nl"],
+    "editorialPdf":["bindPacketPdf.nl","attestPacketPdf.nl"],
+    "editorialRevision":["applyPacketRevision.nl","readStoredPacket.nl"],
+    "editorialHandoff":["writePacketHandoff.nl"]
+  }
+}

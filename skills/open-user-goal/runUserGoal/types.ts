@@ -4,6 +4,7 @@ export * from "./reviewSystemRelease/contract.js";
 export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
 export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
 export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
+export type { PacketReport } from "./workOnEditorialPacket/types.js";
 export type { PortfolioReport } from "./workOnDemoPortfolio/types.js";
 export type { RegencyReport } from "./workOnRegencyBriefing/types.js";
 export type { ImageReport } from "./workOnImageCandidateGoal/types.js";

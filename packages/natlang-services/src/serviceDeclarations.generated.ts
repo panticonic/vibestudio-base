@@ -5643,6 +5643,106 @@ type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietReque
 
 /** Stage one authorized quiet readiness note with no provider claim. */
 export function stage(report:ReadinessReport):Promise<ReadinessArtifact|null>;`,
+  editorialMission: `/** Discover the exact owned Personal editorial assignment. */
+
+type PacketMission = {id:string;title:string;revision:number;description:string;status:string};
+
+/** Discover the exact owned Personal editorial assignment. */
+export function list():Promise<PacketMission[]>;`,
+  editorialWorkspace: `/** Read exact current mission, candidate and attached source revisions. */
+
+type PacketMission = {id:string;title:string;revision:number;description:string;status:string};
+
+type PacketDocument = {path:string;version:string;text:string};
+
+type PacketAttachment = {name:string;digest:string;pages:number;approval:"approved"|"retained"|"preview"};
+
+type PacketSnapshot = {mission:PacketMission;candidate:PacketDocument;attachments:PacketAttachment[];
+  preview:PacketDocument;permittedFields:string[]};
+
+/** Read exact current mission, candidate and attached source revisions. */
+export function read(missionId:string):Promise<PacketSnapshot|null>;`,
+  editorialPdf: `/** Bind and attest one approved original attachment. */
+
+type PacketMission = {id:string;title:string;revision:number;description:string;status:string};
+
+type PacketDocument = {path:string;version:string;text:string};
+
+type PacketAttachment = {name:string;digest:string;pages:number;approval:"approved"|"retained"|"preview"};
+
+type PacketSnapshot = {mission:PacketMission;candidate:PacketDocument;attachments:PacketAttachment[];
+  preview:PacketDocument;permittedFields:string[]};
+
+type PacketPlan = {missionId:string;operation:"revise"|"review";fields:string[];
+  note:"none"|"diagnostic"|"ready-only"};
+
+type PacketSourcePlan = {attachment:string;pages:number[];query:string};
+
+type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:false;query:string};
+
+type PacketCitation = {page:number;line:number;quote:string;bounds:number[];confidence:number|null;source:"embedded-text"|"ocr"};
+
+type PacketPdf = {digest:string;status:"encrypted"|"missing-pages"|"engine-unavailable"|"verified"|"partial-match"|"no-match"|"incomplete";
+  readPages:number[];remaining:number[];citations:PacketCitation[];unanswered:string[]};
+
+type PacketEvidence = {status:"grounded"|"unavailable";document:PacketDocument|null;source:string|null;citations:PacketCitation[]};
+
+/** Bind and attest one approved original attachment. */
+export function bind(snapshot:PacketSnapshot,plan:PacketPlan,selection:PacketSourcePlan):Promise<PacketReadRequest|null>;
+
+/** Bind and attest one approved original attachment. */
+export function attest(report:PacketPdf):Promise<PacketEvidence>;`,
+  editorialRevision: `/** Apply and read back one exact scoped semantic candidate revision. */
+
+type PacketDocument = {path:string;version:string;text:string};
+
+type PacketWrite = {status:"changed"|"written"|"unavailable";version:string|null};
+
+/** Apply and read back one exact scoped semantic candidate revision. */
+export function apply(missionId:string,proposal:PacketDocument):Promise<PacketWrite>;
+
+/** Apply and read back one exact scoped semantic candidate revision. */
+export function read(missionId:string):Promise<PacketDocument|null>;`,
+  editorialHandoff: `/** Stage one authorized private revision handoff. */
+
+type PacketPlan = {missionId:string;operation:"revise"|"review";fields:string[];
+  note:"none"|"diagnostic"|"ready-only"};
+
+type PacketMission = {id:string;title:string;revision:number;description:string;status:string};
+
+type PacketDocument = {path:string;version:string;text:string};
+
+type PacketAttachment = {name:string;digest:string;pages:number;approval:"approved"|"retained"|"preview"};
+
+type PacketSnapshot = {mission:PacketMission;candidate:PacketDocument;attachments:PacketAttachment[];
+  preview:PacketDocument;permittedFields:string[]};
+
+type PacketSourcePlan = {attachment:string;pages:number[];query:string};
+
+type PacketReadRequest = {goal:string;document:string;pages:number[];batchSize:number;purpose:"text";allowOcr:false;query:string};
+
+type PacketCitation = {page:number;line:number;quote:string;bounds:number[];confidence:number|null;source:"embedded-text"|"ocr"};
+
+type PacketPdf = {digest:string;status:"encrypted"|"missing-pages"|"engine-unavailable"|"verified"|"partial-match"|"no-match"|"incomplete";
+  readPages:number[];remaining:number[];citations:PacketCitation[];unanswered:string[]};
+
+type PacketEvidence = {status:"grounded"|"unavailable";document:PacketDocument|null;source:string|null;citations:PacketCitation[]};
+
+type PacketSource = {selection:PacketSourcePlan|null;request:PacketReadRequest|null;pdf:PacketPdf|null;evidence:PacketEvidence|null};
+
+type PacketWrite = {status:"changed"|"written"|"unavailable";version:string|null};
+
+type PacketEdit = {proposed:PacketDocument|null;revised:string|null;attempts:PacketWrite[];stored:PacketDocument};
+
+type PacketDecision = {status:"ready"|"already-current"|"held"|"reviewed";write:boolean;explanation:string};
+
+type PacketReceipt = {path:string;digest:string;candidateVersion:string;missionRevision:number};
+
+type PacketReport = {plan:PacketPlan;opening:PacketSnapshot;current:PacketSnapshot;sources:PacketSource[];
+  edit:PacketEdit;decision:PacketDecision;note:PacketReceipt|null};
+
+/** Stage one authorized private revision handoff. */
+export function stage(report:PacketReport):Promise<PacketReceipt|null>;`,
   demoPortfolioIndex: `/** Find the assigned private paired Examples demos. */
 
 type Horizon = 1 | 2 | 3;

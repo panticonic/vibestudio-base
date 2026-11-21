@@ -5,6 +5,13 @@
   "targets": { "main": { "entry": "runUserGoal.nl" } },
   "serviceBinding": "explicit",
   "workspaceModules": {
+    "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
+    "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
+    "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
+    "runUserGoal/workOnEditorialPacket/proposeEditorialRevision/policy": "skills/workspace-document-revision",
+    "runUserGoal/workOnEditorialPacket/reconcileEditorialRevision/policy": "skills/workspace-document-revision",
+    "runUserGoal/reviseWorkspaceDocument/chooseRevision/policy": "skills/workspace-document-revision",
+    "runUserGoal/reviseWorkspaceDocument/reconcileRevision/policy": "skills/workspace-document-revision",
     "runUserGoal/workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
     "runUserGoal/workOnDemoPortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
     "runUserGoal/workOnDemoPortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
