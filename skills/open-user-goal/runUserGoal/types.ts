@@ -1,3 +1,4 @@
+export type { PreparedContentProjectReport } from "./prepareContentProject/types.js";
 export type { LocalInventoryOutcome } from "./compareLiveLocalInventory/types.js";
 export type { AndroidDeliveryOutcome } from "./verifyAndroidDelivery/types.js";
 export type { IntentReport } from "./discoverScopedIntent/types.js";
