@@ -162,7 +162,7 @@ function runtimeHarness(
           return {
             id: currentEntityId,
             kind: "panel",
-            contextId: "ctx:test",
+            contextId: (args[0] as { contextId?: string }).contextId ?? "ctx:test",
             targetId: currentEntityId,
             source: { repoPath: "panels/new", effectiveVersion: "" },
             created: true,
@@ -744,6 +744,28 @@ describe("panel runtime topology composition", () => {
           }),
         }),
       ],
+      undefined,
+    );
+  });
+
+  it.each([
+    [undefined, undefined, "ctx:ctx:test"],
+    ["feature", undefined, "ctx:feature"],
+    ["feature", "main", "main"],
+  ])("retains the source ref for a code panel in context %s with ref %s", async (contextId, ref, sourceRef) => {
+    const { runtime, call } = runtimeHarness();
+    await runtime.createPanelSlot("panels/new", {
+      ...(contextId ? { contextId } : {}),
+      ...(ref ? { ref } : {}),
+    });
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.create",
+      [expect.objectContaining({
+        initialEntry: expect.objectContaining({
+          options: expect.objectContaining({ ref: sourceRef }),
+        }),
+      })],
       undefined,
     );
   });

@@ -2092,6 +2092,11 @@ export function createPanelRuntime(
       },
     );
     const historySource = external ? `browser:${source}` : source;
+    // The durable slot can start activation before openPanel observes it.
+    // Give that handoff the same reserved source context as direct activation.
+    const sourceRef =
+      openOptions?.ref ??
+      (!external && !openOptions?.artifact ? `ctx:${runtimeEntity.contextId}` : undefined);
     let slotCommitted = false;
     const rethrowCommittedFailure = (error: unknown): never => {
       if (error instanceof PanelOperationError) throw error;
@@ -2130,7 +2135,7 @@ export function createPanelRuntime(
             contextId: runtimeEntity.contextId,
             stateArgs,
             options: {
-              ...(openOptions?.ref ? { ref: openOptions.ref } : {}),
+              ...(sourceRef ? { ref: sourceRef } : {}),
               ...(openOptions?.artifact
                 ? { artifact: openOptions.artifact }
                 : {}),
