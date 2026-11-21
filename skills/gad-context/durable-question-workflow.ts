@@ -61,7 +61,7 @@ export function bindDurableQuestionReview(channelId: string, readers: Readers = 
         }
         historyRead = true;
         return { receipt: historyReceipt, channelId, complete: !incomplete,
-          through: page.pageInfo.snapshotLastSeq ?? page.pageInfo.lastSeq ?? null, messages };
+          through: messages.at(-1)?.sequence ?? null, messages };
       },
     },
     gadDurableRoster: {
