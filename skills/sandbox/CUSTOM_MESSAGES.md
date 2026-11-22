@@ -307,10 +307,12 @@ file. Any other import goes through the build service on every compile, which
 is slow at best and can misresolve and leave the card stuck. `import type` is
 always fine because it is erased at compile time.
 
-At registration time, run `await lintRendererSource(code, { imports })` from
-`@workspace/agentic-core` (re-exported by `@workspace/agentic-do`) and do not
-register if it reports issues. The gmail agent's `installChannelUi` is the
-reference implementation.
+In installed worker code, run `await lintRendererSource(code, { imports })`
+from `@workspace/agentic-core` before registration and fix any reported
+issues. The gmail agent's `installChannelUi` is the reference implementation.
+From an agent sandbox, use `chat.registerMessageType` and
+`chat.publishCustomMessage` with a self-contained renderer as in the example
+above.
 
 ### Message-type doctor (test harness)
 
