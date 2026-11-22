@@ -917,6 +917,48 @@ describe("workspace VCS agent tool", () => {
     });
   });
 
+  it("returns the candidate build refusal with all its structured diagnostics", async () => {
+    const f = fixture();
+    const diagnostics = Array.from({ length: 21 }, (_, index) => ({
+      source: "tsc",
+      severity: "error",
+      file: "workers/fixture/index.ts",
+      line: index + 1,
+      column: 1,
+      message: `Build diagnostic ${index + 1}`,
+    }));
+    const failure = {
+      code: "BuildGateFailed",
+      message: "Protected main push rejected",
+      candidateState: "state:candidate",
+      affectedUnits: ["@workspace-workers/fixture"],
+      diagnostics,
+      failureClass: "source",
+      failureKind: "domain",
+      retry: { policy: "none", commandIdPolicy: "not-applicable" },
+      recovery: { action: "repair-source", instruction: "Repair the exact candidate." },
+    };
+    f.push.mockRejectedValueOnce(Object.assign(new Error(failure.message), { errorData: failure }));
+    const tool = createWorkspaceVcsTool("/", f.vcs, {
+      contextId: "context:test",
+      commandId: "command:push",
+    });
+
+    const result = await executeTool(tool, { operation: "push" });
+    expect(result.isError).toBe(true);
+    expect(result.details).toEqual({ operation: "push", result: failure });
+    expect(result.output).toEqual([
+      {
+        type: "text",
+        text: expect.stringContaining("workers/fixture/index.ts:20: Build diagnostic 20"),
+      },
+    ]);
+    expect(result.output).toEqual([
+      { type: "text", text: expect.stringContaining("1 additional diagnostics retained") },
+    ]);
+    expect(JSON.stringify(result.output)).not.toContain("Build diagnostic 21");
+  });
+
   it("returns IntegrationRequired without pushing or merging when main moved", async () => {
     const f = fixture();
     f.status.mockResolvedValueOnce({

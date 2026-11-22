@@ -7,7 +7,7 @@ import {
   canonicalJson,
   sha256HexSyncText,
 } from "@vibestudio/content-addressing";
-import { vcsSemanticNodeRefSchema } from "@vibestudio/service-schemas/vcs";
+import { vcsErrorSchema, vcsSemanticNodeRefSchema } from "@vibestudio/service-schemas/vcs";
 import type {
   ToolRegistration,
   ToolExecutionResult,
@@ -930,17 +930,38 @@ export function createWorkspaceVcsTool(
       }
       if (status.committed.kind !== "event")
         throw new Error("Committed state is not an event");
-      const result = await vcs.push({
-        commandId: toolCommandId(context),
-        contextId,
-        expectedCommittedEventId: status.committed.eventId,
-        expectedMainEventId: status.mainEventId,
-      });
-      return resultOf(
-        command.operation,
-        `Published ${result.eventId} as protected main ${result.mainEventId}.`,
-        result,
-      );
+      try {
+        const result = await vcs.push({
+          commandId: toolCommandId(context),
+          contextId,
+          expectedCommittedEventId: status.committed.eventId,
+          expectedMainEventId: status.mainEventId,
+        });
+        return resultOf(
+          command.operation,
+          `Published ${result.eventId} as protected main ${result.mainEventId}.`,
+          result,
+        );
+      } catch (error) {
+        const data = (error as { errorData?: unknown } | null)?.errorData;
+        const parsed = vcsErrorSchema.safeParse(data);
+        if (!parsed.success || parsed.data.code !== "BuildGateFailed") throw error;
+        const failure = parsed.data;
+        const preview = failure.diagnostics.slice(0, 20).map((diagnostic) => {
+          const location = diagnostic.file || diagnostic.source;
+          const line = diagnostic.line ? `:${diagnostic.line}` : "";
+          const message = diagnostic.message.slice(0, 600);
+          return `${location}${line}: ${message}`;
+        });
+        const remaining = failure.diagnostics.length - preview.length;
+        const text = [
+          `Protected main push rejected for candidate ${failure.candidateState}.`,
+          ...preview,
+          ...(remaining > 0 ? [`${remaining} additional diagnostics retained in details.`] : []),
+          failure.recovery.instruction,
+        ].join("\n");
+        return { ...resultOf(command.operation, text, failure), isError: true };
+      }
     },
   };
 }
