@@ -10,6 +10,7 @@ it("resolves every declared task family to a typed application entry with actual
     expect(entry.program.endsWith(`/${entry.callable}.nl`)).toBe(true);
     expect(entry.parameterNames).toContain("goal");
     expect(entry.inputValues).toEqual(entry.parameterNames.map(name => entry.arguments[name]));
+    expect(Object.fromEntries(Object.entries(entry.argumentJson).map(([name, json]) => [name, JSON.parse(json)]))).toEqual(entry.arguments);
     expect(entry.resultType).not.toBe("UserGoalReport");
     expect(entry.callable).not.toBe("runUserGoal");
   }

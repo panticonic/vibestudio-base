@@ -15,6 +15,7 @@ export type SemanticTaskEntry = {
   resultType: string;
   skill: string;
   arguments: Record<string, unknown>;
+  argumentJson: Record<string, string>;
   parameterNames: string[];
   inputValues: unknown[];
 };
@@ -27,13 +28,19 @@ export function semanticTaskEntry(kind: string, goal: string, assignment?: { tar
     ? "workspace-edit" : name;
   const descriptor = (entries as Record<string, Entry>)[selected];
   if (!descriptor) throw new Error(`No application entry is declared for ${kind}`);
-  const input = { ...descriptor.additionalArguments, goal };
+  const input: Record<string, unknown> = { ...descriptor.additionalArguments, goal };
+  const argumentJson = Object.fromEntries(descriptor.parameterNames.map(name => {
+    const json = JSON.stringify(input[name]);
+    if (json === undefined) throw new Error(`Missing JSON argument ${name} for ${kind}`);
+    return [name, json];
+  }));
   return {
     program: descriptor.program,
     callable: descriptor.callable,
     resultType: descriptor.resultType,
     skill: descriptor.skill,
     arguments: input,
+    argumentJson,
     parameterNames: [...descriptor.parameterNames],
     inputValues: descriptor.parameterNames.map(name => input[name as keyof typeof input]),
   };

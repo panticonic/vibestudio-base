@@ -4,10 +4,13 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
-import { ProgramLoader, type WorkspaceFs } from "./programs.js";
+import { compileProgram, readProjectFiles, type WorkspaceFs } from "./programs.js";
+import { linkWorkspaceModules } from "./workspaceModules.js";
 import entries from "../../../skills/open-user-goal/entriesGenerated.js";
 
-it("compiles every declared application entry against its complete installed codebase", async () => {
+const directories = [...new Set(Object.values(entries).map(entry => dirname(entry.program)))];
+
+it.each(directories)("compiles every application entry in %s against its complete installed codebase", async directory => {
   const base = fileURLToPath(new URL("../../..", import.meta.url));
   const templateRoot = process.env.VIBESTUDIO_TEMPLATE_CHECKOUTS ?? dirname(base);
   const overrides = JSON.parse(process.env.VIBESTUDIO_SEMANTIC_TEMPLATE_OVERRIDES ?? "{}") as Record<string, string>;
@@ -34,25 +37,37 @@ it("compiles every declared application entry against its complete installed cod
       return [...result.values()];
     },
   };
-  const loader = new ProgramLoader({ platform: workerdPlatform({ realm: { call() { throw new Error("Compile only"); } } }),
-    fs, bindings: {}, runTask: run => run() });
-  const programs = new Map<string, Awaited<ReturnType<typeof loader.describe>>>();
+  const local = await readProjectFiles(fs, directory);
+  const linked = await linkWorkspaceModules(directory, local, async roots => {
+    const installed = new Map<string, Record<string, string>>();
+    for (const root of roots) {
+      try {
+        await fs.stat(root);
+        installed.set(root, await readProjectFiles(fs, root));
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    return installed;
+  });
+  const platform = workerdPlatform({ realm: { call() { throw new Error("Compile only"); } } });
+  const compiled = compileProgram({ platform, files: linked, entry: "", label: directory, root: directory });
+  const values = compiled.value as Record<string, unknown>;
+  // Compilation checks the entire hierarchy. The runtime metadata gives exact
+  // entry signatures without expanding every nested alias into editor forms.
   for (const [kind, entry] of Object.entries(entries)) {
-    const directory = dirname(entry.program);
-    if (!programs.has(directory)) programs.set(directory, await loader.describe(directory));
-    const described = programs.get(directory)!;
-    const fn = described.functions.find(fn => fn.source === `${entry.callable}.nl`);
-    expect(fn, `${kind}: ${entry.program}`).toBeDefined();
-    expect(fn!.fields.map(field => field.name), kind).toEqual(entry.parameterNames);
-    expect(fn!.returns, kind).toBe(entry.resultType);
-    expect(fn!.fields.some(field => field.problem), kind).toBe(false);
-    expect(fn!.result.problem, kind).toBeUndefined();
+    if (dirname(entry.program) !== directory) continue;
+    const callable = values[entry.callable];
+    expect(typeof callable, `${kind}: ${entry.program}`).toBe("function");
+    const metadata = (callable as unknown as Record<symbol, {
+      definition: { params: { name: string }[]; returns: string; types: Record<string, string> };
+    }>)[Symbol.for("natlang.callable")];
+    expect(metadata.definition.params.map(field => field.name), kind).toEqual(entry.parameterNames);
+    expect(metadata.definition.returns, kind).toBe(entry.resultType);
+    expect(metadata.definition.types[entry.resultType], `${kind}: declared result`).toBeDefined();
   }
-  const library = programs.get("skills/open-user-goal")!;
-  expect(library.functions.some(fn => fn.name === "runUserGoal")).toBe(false);
-  expect(library.functions.map(fn => fn.source)).toEqual(expect.arrayContaining([
-    "correctVaultFromPdf/pdf/workOnPdfGoal.nl",
-    "correctVaultFromPdf/vault/workTowardVaultGoal.nl",
-    "workOnRecoveryHandoff/scratch/assembleHandoff.nl",
-  ]));
+  if (directory === "skills/open-user-goal") {
+    expect(values.runUserGoal).toBeUndefined();
+    expect(linked["correctVaultFromPdf/pdf/workOnPdfGoal.nl"]).toBeDefined();
+    expect(linked["correctVaultFromPdf/vault/workTowardVaultGoal.nl"]).toBeDefined();
+    expect(linked["workOnRecoveryHandoff/scratch/assembleHandoff.nl"]).toBeDefined();
+  }
 }, 180_000);
