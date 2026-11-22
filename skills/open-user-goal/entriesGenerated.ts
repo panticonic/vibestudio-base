@@ -1,4 +1,4 @@
-// Generated from entries.json by scripts/generate-semantic-entries.mjs.
+// Generated from entries.json by packages/natlang/scripts/generate-semantic-entries.mjs.
 export default {
   "outcome-workspace": {
     "program": "skills/open-user-goal/answerWorkspaceQuestion.nl",
