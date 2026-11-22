@@ -1,5 +1,5 @@
 import { WorkspaceServiceExportSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
-import { vcs, workers } from "@workspace/runtime";
+import { vcs, type workers } from "@workspace/runtime";
 import type {
   ArchitectureDeclaration,
   ArchitectureRequest,
@@ -11,12 +11,12 @@ type State = Awaited<ReturnType<typeof vcs.status>>["workingHead"];
 export function bindArchitectureReview(input: {
   contextId: string;
   protocol: string;
-  objectKey?: string;
+  resolveProvider: () => ReturnType<typeof workers.resolveService>;
   goal: string;
   concern: ArchitectureRequest["concern"];
   proposedOwner: ArchitectureRequest["proposedOwner"];
 }) {
-  const { contextId, protocol, objectKey, goal, concern, proposedOwner } =
+  const { contextId, protocol, resolveProvider, goal, concern, proposedOwner } =
     input;
   const operationId = crypto.randomUUID();
   const request: ArchitectureRequest = {
@@ -37,10 +37,7 @@ export function bindArchitectureReview(input: {
           pending = true;
           try {
             const { workingHead } = await vcs.status({ contextId });
-            const resolved = await workers.resolveService(
-              protocol,
-              objectKey ?? null,
-            );
+            const resolved = await resolveProvider();
             const after = await vcs.status({ contextId });
             if (
               JSON.stringify(workingHead) !== JSON.stringify(after.workingHead)
