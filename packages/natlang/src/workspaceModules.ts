@@ -32,7 +32,6 @@ export async function linkWorkspaceModules(
   for (const [mount, source] of entries) {
     if (
       !mount.split("/").every((part) => identifier.test(part)) ||
-      !mount.includes("/") ||
       typeof source !== "string" ||
       !skillPath.test(source) ||
       source === directory ||
@@ -62,7 +61,7 @@ export async function linkWorkspaceModules(
     if (!branchConfiguration || typeof branchConfiguration !== "object" || Array.isArray(branchConfiguration))
       reject("workspaceBranches must map local callable paths to mounts and optional portable type names.");
     for (const [path, entry] of Object.entries(branchConfiguration!)) {
-      if (!path.includes("/") || !path.split("/").every(part => identifier.test(part)) ||
+      if (!path.split("/").every(part => identifier.test(part)) ||
           !Object.hasOwn(local, `${path}.nl`) || !entry || typeof entry !== "object" || Array.isArray(entry))
         reject(`Invalid local callable branch ${path}.`);
       const { mounts, types } = entry as Branch;
@@ -131,7 +130,7 @@ export async function linkWorkspaceModules(
   for (const [path, branch] of branches) {
     if (!branch.types?.length || !visible(`${path}.nl`)) continue;
     const slash = path.lastIndexOf("/");
-    const typesPath = `${path.slice(0, slash)}/types.ts`;
+    const typesPath = slash < 0 ? "types.ts" : `${path.slice(0, slash)}/types.ts`;
     linked[typesPath] = `${linked[typesPath] ?? ""}
 export type { ${branch.types.join(", ")} } from "./${path.slice(slash + 1)}/types.js";
 `;

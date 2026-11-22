@@ -256002,6 +256002,39 @@ function segmentGuard(limitMb, probe, message2 = moduleMemoryMessage(limitMb)) {
     current();
   };
 }
+function syncLimitMessage(subject, limitSeconds) {
+  return `${subject} stopped: it computed for more than ${limitSeconds} s without pausing; use a bounded or faster approach (prune the search, check the input sizes, or compute in smaller parts)`;
+}
+function syncGuard(limitSeconds, message2, sticky = true, now = () => performance.now()) {
+  const limit = limitSeconds * 1e3;
+  let started, ticks = 0, tripped = false;
+  const fail3 = () => {
+    tripped = true;
+    throw new RangeError(message2);
+  };
+  return () => {
+    if (tripped) fail3();
+    if (started === void 0) {
+      started = now();
+      ticks = 0;
+      queueMicrotask(() => {
+        started = void 0;
+        if (!sticky) tripped = false;
+      });
+      return;
+    }
+    if (++ticks < CHECK_EVERY) return;
+    ticks = 0;
+    if (now() - started > limit) fail3();
+  };
+}
+function combinedGuard(...guards) {
+  const on2 = guards.filter((guard2) => typeof guard2 === "function");
+  if (on2.length < 2) return on2[0];
+  return () => {
+    for (const guard2 of on2) guard2();
+  };
+}
 function instrumentMemoryChecks(source2, check = MEMORY_CHECK, kind = "ts") {
   const file = import_typescript21.default.createSourceFile(
     kind === "ts" ? "natlang-eval.ts" : "natlang-module.js",
@@ -256176,6 +256209,10 @@ var RealmEnvironment = class {
   get memoryLimitMb() {
     return this.options.memory?.limitMb || void 0;
   }
+  /** The run-time bound of one synchronous stretch in seconds, or undefined when unbounded. */
+  get syncLimitSeconds() {
+    return this.options.syncLimitSeconds || void 0;
+  }
   fork() {
     if (!this.options.fork) throw new Error(`${this.authority} cannot fork`);
     return this.options.fork();
@@ -256230,12 +256267,17 @@ var RealmEnvironment = class {
       throw new TypeError("invalid eval request");
     const imports = asyncBody ? this.importer() : void 0;
     const memory = this.memoryLimitMb ? this.options.memory : void 0;
+    const syncSeconds = this.syncLimitSeconds, syncMessage = syncSeconds && syncLimitMessage("eval", syncSeconds);
+    const check = combinedGuard(
+      memory && memoryGuard(memory.limitMb, memory.probe),
+      syncSeconds && syncGuard(syncSeconds, syncMessage)
+    );
     const compiled2 = compileEval(request.code, {
       body: request.body,
       asyncBody,
       imports: imports?.validate.bind(imports),
       restoreAfterAwait: !!this.options.bindAwait,
-      memoryChecks: !!memory
+      memoryChecks: !!check
     });
     const realm = this.realm();
     const write = consoleWriter(logs, (value) => {
@@ -256258,15 +256300,17 @@ var RealmEnvironment = class {
       },
       console: logger,
       ...this.options.bindAwait ? { __natlang_bindAwait: this.options.bindAwait } : {},
-      ...memory ? { [MEMORY_CHECK]: memoryGuard(memory.limitMb, memory.probe) } : {},
+      ...check ? { [MEMORY_CHECK]: check } : {},
       ...this.extraBindings()
     };
-    return realm.call(
-      evalRealmBody(compiled2, request.body),
-      Object.keys(bound),
-      Object.values(bound),
-      { timeoutMs: request.timeoutMs ?? this.timeoutMs }
-    );
+    const requested = request.timeoutMs ?? this.timeoutMs, syncMs = syncSeconds ? Math.ceil(syncSeconds * 1e3) : void 0;
+    const interrupt = requested === void 0 ? syncMs : syncMs === void 0 ? requested : Math.min(requested, syncMs);
+    try {
+      return realm.call(evalRealmBody(compiled2, request.body), Object.keys(bound), Object.values(bound), { timeoutMs: interrupt });
+    } catch (error) {
+      if (syncMs !== void 0 && interrupt === syncMs && (requested === void 0 || syncMs < requested) && error?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") throw new RangeError(syncMessage);
+      throw error;
+    }
   }
   execute(request) {
     const logs = [];
@@ -256293,10 +256337,14 @@ var RealmEnvironment = class {
   /** Evaluate a callable-folder module body; bindings are passed by reference. */
   evaluateModule(code, bindings2) {
     if (this.disposed) throw new Error("TypeScript environment is disposed");
-    const memory = this.memoryLimitMb ? this.options.memory : void 0;
-    if (memory) {
+    const memory = this.memoryLimitMb ? this.options.memory : void 0, syncSeconds = this.syncLimitSeconds;
+    const check = combinedGuard(
+      memory && segmentGuard(memory.limitMb, memory.probe),
+      syncSeconds && syncGuard(syncSeconds, syncLimitMessage("callable-folder code", syncSeconds), false)
+    );
+    if (check) {
       code = instrumentMemoryChecks(code, MEMORY_CHECK, "js");
-      bindings2 = { ...bindings2, [MEMORY_CHECK]: segmentGuard(memory.limitMb, memory.probe) };
+      bindings2 = { ...bindings2, [MEMORY_CHECK]: check };
     }
     return this.moduleRealm().call(code, Object.keys(bindings2), Object.values(bindings2));
   }
@@ -257632,7 +257680,7 @@ function compileProject(options) {
   compilerOptions.outDir = outDir;
   compilerOptions.rootDir ??= root2;
   const inFolder = (path2) => [...layout.folders].some((folder2) => path2.startsWith(folder2 + sep) || path2 === folder2);
-  const rootNames = (parsed?.fileNames?.length ? parsed.fileNames : walkTs(fs2, root2)).filter((path2) => !inFolder(path2) && !path2.endsWith(".d.nl.ts") && !path2.endsWith(".d.nz.ts"));
+  const rootNames = (parsed?.fileNames?.length ? parsed.fileNames : walkTs(fs2, root2)).filter((path2) => (!inFolder(path2) || path2.endsWith(".d.ts")) && !path2.endsWith(".d.nl.ts") && !path2.endsWith(".d.nz.ts"));
   const withNeutral = (specifiers) => [.../* @__PURE__ */ new Set([...specifiers, NEUTRAL_RUNTIME_SPECIFIER])];
   const bound = options.runtimeModule && { ...options.runtimeModule, specifiers: withNeutral(options.runtimeModule.specifiers) };
   if (options.runtimeTypeRoots?.length) {
@@ -258001,7 +258049,7 @@ function walkTs(fs2, root2) {
       if (SKIPPED_DIRS.has(entry) || entry.startsWith(".")) continue;
       const path2 = joinSourcePath(dir, entry);
       if (fs2.isDirectory(path2)) walk(path2);
-      else if (/\.(ts|tsx|mts)$/.test(entry) && !entry.endsWith(".d.ts")) out.push(path2);
+      else if (/\.(ts|tsx|mts)$/.test(entry)) out.push(path2);
     }
   };
   walk(root2);

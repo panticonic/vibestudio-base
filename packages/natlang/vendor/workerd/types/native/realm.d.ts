@@ -43,6 +43,11 @@ export type RealmEnvironmentOptions = {
         limitMb: number;
         probe: HeapProbe;
     };
+    /**
+     * The run-time bound in seconds of one synchronous stretch of eval and callable-folder module code (native/eval-memory.ts
+     * `syncGuard`; the realm's own interrupt bounds the first stretch too, builtins included). Absent or 0: unbounded.
+     */
+    syncLimitSeconds?: number;
     scopeCapabilities?: {
         allowModules: boolean;
         allowNetwork: boolean;
@@ -77,6 +82,8 @@ export declare class RealmEnvironment implements EvalEnvironment {
     constructor(options: RealmEnvironmentOptions);
     /** The eval memory bound in MB, or undefined when evals are unbounded. */
     get memoryLimitMb(): number | undefined;
+    /** The run-time bound of one synchronous stretch in seconds, or undefined when unbounded. */
+    get syncLimitSeconds(): number | undefined;
     fork(): EvalEnvironment;
     /** A realm for one evaluation (`fresh`) or for the environment's life (`retained`). */
     protected makeRealm(): Realm;

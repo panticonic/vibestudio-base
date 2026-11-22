@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "cfa223f33920fa34fdab704a2b437354c87a3fc1",
+  "commit": "afdcd5d148ce7707ecfdc77d326ba80b65c82ec1",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "a254ec08c1d4ce6b08278b45b62a8069d2398dec15608792bde10c106425e91c",
+    "workerd/natlang-workerd.js": "68eb20313d4aaa2e5472e0d5dded66082d79585cce1a92c831fa4240582b4bc1",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -47,7 +47,7 @@
     "workerd/types/native/data-layout.d.ts": "15e84a39a1957b702f6671ff0e9cbd189e48bd2d30267125d81d3a0619919dd6",
     "workerd/types/native/effects.d.ts": "c1b30cc4edeafae9addfe070f9ca45d5c9c363f65be0b4ce611720261f62fc89",
     "workerd/types/native/eval-compile.d.ts": "04cae3c3e95512b005e0d0458a93c7fcd25a8b05f6c8afa0306bd3504f26b307",
-    "workerd/types/native/eval-memory.d.ts": "05d80a0fb2503fd8457a7ab908e3bee825090d64e9a024411601f46365121a69",
+    "workerd/types/native/eval-memory.d.ts": "9aae76e69002565008800a8aa3e318eca15aba1a364b37231016e366af5561be",
     "workerd/types/native/evaluator.d.ts": "4062d478a1a1b980eef0fae54c86867441a2766c7a8174848252746f512b5ecb",
     "workerd/types/native/expand-type.d.ts": "38361cfe755c1a84a39eb1871e21a39834934d5122f81f872220d994942685af",
     "workerd/types/native/folder-python.d.ts": "f283111006950341deb51653fff7efaaa288649362fa72038e671fa49be4714d",
@@ -64,7 +64,7 @@
     "workerd/types/native/pages.d.ts": "bcffc8701ec4ed3740b2bda98fbacc9325f2d389b686c37103db59e6e873f044",
     "workerd/types/native/prompt.d.ts": "c9a39a6a3d336e8f14f15e3c6436c444accc85f3a9ec4f09045668f86c5ae934",
     "workerd/types/native/python-watchdog.d.ts": "e19f8d4aa638c0e15e7fffdfa742ade774fbf39e0db4af38cf1ad720b2181e28",
-    "workerd/types/native/realm.d.ts": "9e78bcc8076385a765af497db41e2ac91ec4be78704ffe7f4300de9135021ecb",
+    "workerd/types/native/realm.d.ts": "2dd0141a0067834f93506d9cc79264d05a5b58f15a9e41035b3d2a42855bb4ad",
     "workerd/types/native/refinement-settings.d.ts": "1d8fd6ac1aa19080e50a4662338093cb9291bbca105c47f7d9c252a0693d937d",
     "workerd/types/native/refinement.d.ts": "e18e94c7eb21b8f208cd87821cfc23c7122c4bf8a3b9b338d782f66535000818",
     "workerd/types/native/representation.d.ts": "c6b0029b95337b4778ed2c9565e3e0006b99de5c8a70840d844fdf284fad7dda",

@@ -2,451 +2,731 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-user-goal",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "runUserGoal.nl" } },
+  "targets": {
+    "main": {
+      "entry": "."
+    }
+  },
   "serviceBinding": "explicit",
   "workspaceBranches": {
-    "runUserGoal/answerFromAssignedPublicSources": {
-      "mounts": ["runUserGoal/answerFromAssignedPublicSources/webResearch"],
-      "types": ["AssignedPublicGoalReport"]
-    },
-    "runUserGoal/activateOwnedAutomation": {
-      "mounts": ["runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/planning"],
-      "types": ["OwnedAutomationActivationReport"]
-    },
-    "runUserGoal/reconcileGoogleRunbook": {
+    "answerFromAssignedPublicSources": {
       "mounts": [
-        "runUserGoal/reconcileGoogleRunbook/reviewCalendar/installed",
-        "runUserGoal/reconcileGoogleRunbook/reviseRunbook/installed",
-        "runUserGoal/reconcileGoogleRunbook/attributeBasis/installed"
+        "answerFromAssignedPublicSources/webResearch"
+      ],
+      "types": [
+        "AssignedPublicGoalReport"
+      ]
+    },
+    "activateOwnedAutomation": {
+      "mounts": [
+        "activateOwnedAutomation/reviewLaunchEvidence/planning"
+      ],
+      "types": [
+        "OwnedAutomationActivationReport"
+      ]
+    },
+    "reconcileGoogleRunbook": {
+      "mounts": [
+        "reconcileGoogleRunbook/reviewCalendar/installed",
+        "reconcileGoogleRunbook/reviseRunbook/installed",
+        "reconcileGoogleRunbook/attributeBasis/installed"
       ],
       "types": [
         "GoogleRunbookReport"
       ]
     },
-    "runUserGoal/prepareNewsEditionReview": {
+    "prepareNewsEditionReview": {
       "mounts": [
-        "runUserGoal/prepareNewsEditionReview/designEditorPacket/installed",
-        "runUserGoal/prepareNewsEditionReview/reviewBriefing/installed",
-        "runUserGoal/prepareNewsEditionReview/attributeBasis/installed"
+        "prepareNewsEditionReview/designEditorPacket/installed",
+        "prepareNewsEditionReview/reviewBriefing/installed",
+        "prepareNewsEditionReview/attributeBasis/installed"
       ],
       "types": [
         "NewsEditionReviewReport"
       ]
     },
-    "runUserGoal/reviewUnitHandoffGoal": {
-      "mounts": ["runUserGoal/reviewUnitHandoffGoal/reviewDesign/installed", "runUserGoal/reviewUnitHandoffGoal/reviewIdentity/installed"],
-      "types": ["UnitHandoffReport"]
-    },
-    "runUserGoal/chooseAudienceResponse": {
-      "mounts": ["runUserGoal/chooseAudienceResponse/workspace", "runUserGoal/chooseAudienceResponse/prepareAudienceVisual/visualize"],
-      "types": ["AudienceReport"]
-    },
-
-    "runUserGoal/reviseCoordinatedDocuments": {
-      "mounts": ["runUserGoal/reviseCoordinatedDocuments/workspace", "runUserGoal/reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules", "runUserGoal/reviseCoordinatedDocuments/planCoordinatedRevision/policy", "runUserGoal/reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"],
-      "types": ["CoordinatedRevisionReport"]
-    },
-
-    "runUserGoal/prepareContentProject": {
-      "mounts": ["runUserGoal/prepareContentProject/authorProjectDocuments/compose"],
-      "types": ["ProjectEvidenceReview", "ProjectEvidenceDecision", "ProjectScopeLease", "PreparedContentSnapshot", "AuthoredProjectDraft", "PrivateProjectFinish", "PreparedContentProjectReport"]
-    },
-    "runUserGoal/reviewRetainedMemory": {
-      "mounts": ["runUserGoal/reviewRetainedMemory/evidence", "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance", "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence"],
-      "types": ["RetainedMemoryReport"]
-    },
-
-    "runUserGoal/compareLiveLocalInventory": {
-      "mounts": ["runUserGoal/compareLiveLocalInventory/installed"],
-      "types": ["LocalInventoryOutcome"]
-    },
-    "runUserGoal/reconcileWorkspaceConfig": {
-      "mounts": ["runUserGoal/reconcileWorkspaceConfig/settings", "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings"],
-      "types": ["ConfigReport"]
-    },
-    "runUserGoal/auditAndroidGoal": {
-      "mounts": ["runUserGoal/auditAndroidGoal/installed"],
-      "types": ["AndroidGoalAuditReport"]
-    },
-    "runUserGoal/verifyAndroidDelivery": {
-      "mounts": ["runUserGoal/verifyAndroidDelivery/mobile"],
-      "types": ["AndroidDeliveryOutcome"]
-    },
-    "runUserGoal/recoverCliRoute": {
-      "mounts": ["runUserGoal/recoverCliRoute/remote"],
-      "types": ["CliRouteOutcome"]
-    },
-    "runUserGoal/compareTestkitCloseouts": {
-      "mounts": ["runUserGoal/compareTestkitCloseouts/readAttempt/session"],
-      "types": ["CloseoutReport"]
-    },
-
-    "runUserGoal/workOnDemoPortfolio": {
+    "reviewUnitHandoffGoal": {
       "mounts": [
-        "runUserGoal/workOnDemoPortfolio/portfolio",
-        "runUserGoal/workOnDemoPortfolio/reviewPortfolioGarden/reviewer",
-        "runUserGoal/workOnDemoPortfolio/reviewPortfolioRealm/reviewer"
+        "reviewUnitHandoffGoal/reviewDesign/installed",
+        "reviewUnitHandoffGoal/reviewIdentity/installed"
+      ],
+      "types": [
+        "UnitHandoffReport"
+      ]
+    },
+    "chooseAudienceResponse": {
+      "mounts": [
+        "chooseAudienceResponse/workspace",
+        "chooseAudienceResponse/prepareAudienceVisual/visualize"
+      ],
+      "types": [
+        "AudienceReport"
+      ]
+    },
+    "reviseCoordinatedDocuments": {
+      "mounts": [
+        "reviseCoordinatedDocuments/workspace",
+        "reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules",
+        "reviseCoordinatedDocuments/planCoordinatedRevision/policy",
+        "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"
+      ],
+      "types": [
+        "CoordinatedRevisionReport"
+      ]
+    },
+    "prepareContentProject": {
+      "mounts": [
+        "prepareContentProject/authorProjectDocuments/compose"
+      ],
+      "types": [
+        "ProjectEvidenceReview",
+        "ProjectEvidenceDecision",
+        "ProjectScopeLease",
+        "PreparedContentSnapshot",
+        "AuthoredProjectDraft",
+        "PrivateProjectFinish",
+        "PreparedContentProjectReport"
+      ]
+    },
+    "reviewRetainedMemory": {
+      "mounts": [
+        "reviewRetainedMemory/evidence",
+        "reviewRetainedMemory/chooseMemorySearch/provenance",
+        "reviewRetainedMemory/resolveMemoryEvidence/evidence"
+      ],
+      "types": [
+        "RetainedMemoryReport"
+      ]
+    },
+    "compareLiveLocalInventory": {
+      "mounts": [
+        "compareLiveLocalInventory/installed"
+      ],
+      "types": [
+        "LocalInventoryOutcome"
+      ]
+    },
+    "reconcileWorkspaceConfig": {
+      "mounts": [
+        "reconcileWorkspaceConfig/settings",
+        "reconcileWorkspaceConfig/collectConfigEvidence/settings"
+      ],
+      "types": [
+        "ConfigReport"
+      ]
+    },
+    "auditAndroidGoal": {
+      "mounts": [
+        "auditAndroidGoal/installed"
+      ],
+      "types": [
+        "AndroidGoalAuditReport"
+      ]
+    },
+    "verifyAndroidDelivery": {
+      "mounts": [
+        "verifyAndroidDelivery/mobile"
+      ],
+      "types": [
+        "AndroidDeliveryOutcome"
+      ]
+    },
+    "recoverCliRoute": {
+      "mounts": [
+        "recoverCliRoute/remote"
+      ],
+      "types": [
+        "CliRouteOutcome"
+      ]
+    },
+    "compareTestkitCloseouts": {
+      "mounts": [
+        "compareTestkitCloseouts/readAttempt/session"
+      ],
+      "types": [
+        "CloseoutReport"
+      ]
+    },
+    "workOnDemoPortfolio": {
+      "mounts": [
+        "workOnDemoPortfolio/portfolio",
+        "workOnDemoPortfolio/reviewPortfolioGarden/reviewer",
+        "workOnDemoPortfolio/reviewPortfolioRealm/reviewer"
       ],
       "types": [
         "PortfolioReport"
       ]
     },
-    "runUserGoal/workOnRegencyBriefing": {
+    "workOnRegencyBriefing": {
       "mounts": [
-        "runUserGoal/workOnRegencyBriefing/realm",
-        "runUserGoal/workOnRegencyBriefing/qualifyRegencyClaim/reviewer"
+        "workOnRegencyBriefing/realm",
+        "workOnRegencyBriefing/qualifyRegencyClaim/reviewer"
       ],
       "types": [
         "RegencyReport"
       ]
     },
-    "runUserGoal/workOnEditorialPacket": {
+    "workOnEditorialPacket": {
       "mounts": [
-        "runUserGoal/workOnEditorialPacket/packet",
-        "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet"
+        "workOnEditorialPacket/packet",
+        "workOnEditorialPacket/reviewPacketSource/packet"
       ],
       "types": [
         "PacketReport"
       ]
     },
-    "runUserGoal/reviewRetainedBuildIncident": {
+    "reviewRetainedBuildIncident": {
       "mounts": [
-        "runUserGoal/reviewRetainedBuildIncident/performance"
+        "reviewRetainedBuildIncident/performance"
       ],
       "types": [
         "BuildIncidentOutcome"
       ]
     },
-    "runUserGoal/reviewLocalExecutionWidth": {
+    "reviewLocalExecutionWidth": {
       "mounts": [
-        "runUserGoal/reviewLocalExecutionWidth/readiness"
+        "reviewLocalExecutionWidth/readiness"
       ],
       "types": [
         "LocalWidthOutcome"
       ]
     },
-    "runUserGoal/workOnNewsEvidenceGoal": {
+    "workOnNewsEvidenceGoal": {
       "mounts": [
-        "runUserGoal/workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed",
-        "runUserGoal/workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed",
-        "runUserGoal/workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed"
+        "workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed",
+        "workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed",
+        "workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed"
       ],
       "types": [
         "NewsEvidenceReport"
       ]
     },
-    "runUserGoal/workOnPersonalWelcomeGoal": {
+    "workOnPersonalWelcomeGoal": {
       "mounts": [
-        "runUserGoal/workOnPersonalWelcomeGoal/reviewWelcomeSetup/onboarding",
-        "runUserGoal/workOnPersonalWelcomeGoal/reviewWelcomeTour/tour",
-        "runUserGoal/workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer"
+        "workOnPersonalWelcomeGoal/reviewWelcomeSetup/onboarding",
+        "workOnPersonalWelcomeGoal/reviewWelcomeTour/tour",
+        "workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer"
       ],
       "types": [
         "WelcomeGoalReport"
       ]
     },
-    "runUserGoal/reviewDesktopReadiness": {
+    "reviewDesktopReadiness": {
       "mounts": [
-        "runUserGoal/reviewDesktopReadiness/clientDevelopment"
+        "reviewDesktopReadiness/clientDevelopment"
+      ]
+    },
+    "correctVaultFromPdf": {
+      "mounts": [
+        "correctVaultFromPdf/pdf",
+        "correctVaultFromPdf/vault"
+      ],
+      "types": [
+        "PdfVaultCorrection"
       ]
     }
   },
   "workspaceModules": {
-    "runUserGoal/answerFromAssignedPublicSources/webResearch": "skills/web-research/research",
-    "runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/planning": "skills/automations",
-    "runUserGoal/prepareNewsEditionReview/attributeBasis/installed": "skills/provenance-orientation",
-    "runUserGoal/reconcileGoogleRunbook/attributeBasis/installed": "skills/provenance-orientation",
-    "runUserGoal/reconcileGoogleRunbook/reviewCalendar/installed": "skills/open-calendar-goal/program",
-    "runUserGoal/reconcileGoogleRunbook/reviseRunbook/installed": "skills/workspace-document-revision",
-    "runUserGoal/prepareNewsEditionReview/designEditorPacket/installed": "skills/visualize",
-    "runUserGoal/prepareNewsEditionReview/reviewBriefing/installed": "skills/news-workflows",
-    "runUserGoal/reviewUnitHandoffGoal/reviewDesign/installed": "skills/workspace-unit-design",
-    "runUserGoal/reviewUnitHandoffGoal/reviewIdentity/installed": "skills/workspace-dev/natlang",
-    "runUserGoal/prepareContentProject/authorProjectDocuments/compose": "skills/vibestudio-workflows/runWorkflow/deliverProject",
-    "runUserGoal/compareLiveLocalInventory/installed": "skills/local-model-task",
-    "runUserGoal/auditAndroidGoal/installed": "skills/mobile-runtime-audit",
-    "runUserGoal/verifyAndroidDelivery/mobile": "skills/mobile-system-testing/scenario",
-    "runUserGoal/workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
-    "runUserGoal/recoverCliRoute/remote": "skills/remote-access",
-    "runUserGoal/coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
-    "runUserGoal/compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
-    "runUserGoal/workOnChatContinuity/workspace": "skills/open-chat-continuity",
-    "runUserGoal/workOnChatContinuity/reviewChatContinuity/policy": "skills/conversation-evidence-review",
-    "runUserGoal/workOnEditorialPacket/packet": "skills/open-editorial-packet",
-    "runUserGoal/workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
-    "runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
-    "runUserGoal/reconcileWorkspaceConfig/settings": "skills/open-workspace-config",
-    "runUserGoal/reconcileWorkspaceConfig/collectConfigEvidence/settings": "skills/open-workspace-config",
-    "runUserGoal/chooseAudienceResponse/workspace": "skills/open-audience-response",
-    "runUserGoal/chooseAudienceResponse/prepareAudienceVisual/visualize": "skills/visualize",
-    "runUserGoal/reviseCoordinatedDocuments/workspace": "skills/open-coordinated-revision",
-    "runUserGoal/reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules": "skills/vibestudio-workflows/evidence",
-    "runUserGoal/reviseCoordinatedDocuments/planCoordinatedRevision/policy": "skills/workspace-document-revision",
-    "runUserGoal/reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy": "skills/workspace-document-revision",
-    "runUserGoal/reviewRetainedMemory/evidence": "skills/open-retained-memory",
-    "runUserGoal/reviewRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
-    "runUserGoal/reviewRetainedMemory/resolveMemoryEvidence/evidence": "skills/open-retained-memory",
-    "runUserGoal/discoverScopedIntent/workspace": "skills/open-intent-discovery",
-    "runUserGoal/discoverScopedIntent/searchRelevantIntent/workspace": "skills/open-intent-discovery",
-    "runUserGoal/chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",
-    "runUserGoal/chooseAuthorizedEvidenceRoute/inspectExactRouteAuthority/authority": "skills/capabilities/natlang",
-    "runUserGoal/reconcilePanelLaunchState/workspace": "skills/open-panel-launch-state",
-    "runUserGoal/reconcilePanelLaunchState/reviewLaunchAuthority/authority": "skills/capabilities/natlang",
-    "runUserGoal/reviewWorkspaceClaims/workspace": "skills/open-workspace-claims",
-    "runUserGoal/reviewWorkspaceClaims/verifyClaimSupport/evidenceRules": "skills/vibestudio-workflows/evidence",
-    "runUserGoal/workOnBridgeDelivery/project": "skills/open-bridge-delivery",
-    "runUserGoal/workOnBridgeDelivery/inspectCurrentBridge/bridge": "skills/git-bridge-review",
-    "runUserGoal/workOnBridgeDelivery/reviewDeliveryFile/semantic": "skills/vibestudio-vcs/natlang",
-    "runUserGoal/workOnEditorialPacket/proposeEditorialRevision/policy": "skills/workspace-document-revision",
-    "runUserGoal/workOnEditorialPacket/reconcileEditorialRevision/policy": "skills/workspace-document-revision",
-    "runUserGoal/reviseWorkspaceDocument/policy": "skills/workspace-document-revision",
-    "runUserGoal/planPhoneFirstRun/phoneSetup": "skills/phone-setup/natlang",
-    "runUserGoal/workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
-    "runUserGoal/workOnDemoPortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
-    "runUserGoal/workOnDemoPortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
-    "runUserGoal/workOnRegencyBriefing/realm": "skills/open-regency-briefing",
-    "runUserGoal/workOnRegencyBriefing/qualifyRegencyClaim/reviewer": "skills/examples-review",
-    "runUserGoal/maintainWorkspaceSkill/authoring": "skills/natlang-authoring",
-    "runUserGoal/workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
-    "runUserGoal/reviewDesktopReadiness/clientDevelopment": "skills/clientdev/natlang",
-    "runUserGoal/workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
-    "runUserGoal/workOnApiReadinessGoal/reviewQuietCredentials/installed": "skills/api-integrations/natlang",
-    "runUserGoal/workOnNewsEvidenceGoal/workspace": "skills/open-news-evidence",
-    "runUserGoal/workOnNewsEvidenceGoal/groundNewsEdition/workspace": "skills/open-news-evidence",
-    "runUserGoal/workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed": "skills/news-workflows",
-    "runUserGoal/workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed": "skills/news-workflows",
-    "runUserGoal/workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed": "skills/news-workflows",
-    "runUserGoal/reviewLocalPresentation/visualize": "skills/visualize",
-    "runUserGoal/workOnPersonalWelcomeGoal/workspace": "skills/open-personal-welcome",
-    "runUserGoal/workOnPersonalWelcomeGoal/reviewWelcomeSetup/onboarding": "skills/onboarding/prepareSetup",
-    "runUserGoal/workOnPersonalWelcomeGoal/reviewWelcomeTour/tour": "skills/tour-rehearsal",
-    "runUserGoal/workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer": "skills/explorer-probe",
-    "runUserGoal/workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
-    "runUserGoal/workOnDictationHandoffGoal/reviewRetainedDictation/dictation": "skills/offline-dictation",
-    "runUserGoal/workOnSpecialistHandoffGoal/workspace": "skills/open-specialist-handoff",
-    "runUserGoal/workOnSpecialistHandoffGoal/agents": "skills/agents/channel-membership",
-    "runUserGoal/workOnSpecialistHandoffGoal/reviewSpecialistHistory/development": "skills/agentic-development/natlang",
-    "runUserGoal/workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
-    "runUserGoal/workOnProviderHandoffGoal/reviewRetainedApproval/authority": "skills/capabilities/natlang",
-    "runUserGoal/workOnProviderHandoffGoal/reviewRetainedDelivery/conversation": "skills/conversation-evidence-review",
-    "runUserGoal/reviewExtensionDossier/extensiondev": "skills/extensiondev/natlang",
-    "runUserGoal/workOnProblemReportGoal/reporter": "skills/problem-reporting/natlang",
-    "runUserGoal/workOnRecoveryHandoff/scratch": "skills/scratch-handoff",
-    "runUserGoal/workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",
-    "runUserGoal/templateMigration": "skills/template-candidate",
-    "runUserGoal/workOnCapabilityGoal/workspace": "skills/open-doc-plan",
-    "runUserGoal/workOnCapabilityGoal/help": "skills/sandbox/help",
-    "runUserGoal/workOnTerminalGoal/terminal": "skills/open-terminal-operator",
-    "runUserGoal/workOnTerminalGoal/reviewTransition/checklist": "skills/terminal-apps/checklist",
-    "runUserGoal/workOnTerminalGoal/checks": "skills/terminal/natlang",
-    "runUserGoal/reviewRetainedBuildIncident/performance": "skills/performance/build",
-    "runUserGoal/reviewLocalExecutionWidth/readiness": "skills/local-models",
-    "runUserGoal/reviewDeployedInterface/architecture": "skills/architecture/natlang",
-    "runUserGoal/browserMigration": "skills/browser-import-review",
-    "runUserGoal/workOnEvalHandoffGoal/journal": "skills/open-eval-handoff",
-    "runUserGoal/workOnEvalHandoffGoal/reviewer": "skills/sandbox/recovery",
-    "runUserGoal/workOnProgramRunGoal/runtime": "skills/open-program-run",
-    "runUserGoal/workOnProgramRunGoal/reviewer": "skills/runtime-evidence-review",
-    "runUserGoal/clients": "skills/gad-context/natlang",
-    "runUserGoal/visualRecovery": "skills/panel-health",
-    "runUserGoal/workOnAuthoringGoal/discovery": "skills/open-authoring-goal",
-    "runUserGoal/workOnAuthoringGoal/reviewer": "skills/natlang-authoring",
-    "runUserGoal/investigatePublicQuestion/sources": "skills/web-research/research",
-    "runUserGoal/reviewInstalledPackage/reviewVerification/nativeSuite": "skills/native-suite-review",
-    "runUserGoal/verifyWorkspaceSuite/suites": "skills/native-suite-review",
-    "runUserGoal/news": "skills/news-workflows",
-    "runUserGoal/adventureJourney": "skills/open-adventure-journey",
-    "runUserGoal/spectrolite": "skills/spectrolite-review",
-    "runUserGoal/googleSetup": "skills/google-drive/setupGoal",
-    "runUserGoal/google": "skills/google-drive/driveWorkflow",
-    "runUserGoal/gmail": "skills/open-gmail-goal/program",
-    "runUserGoal/googleHandoff": "skills/open-google-handoff-goal/program",
-    "runUserGoal/calendar": "skills/open-calendar-goal/program",
-    "runUserGoal/personalArtifacts": "skills/open-personal-artifacts",
-    "runUserGoal/githubWork": "skills/github/natlang",
-    "runUserGoal/personalHistory": "skills/open-personal-history",
-    "runUserGoal/scheduledRecovery": "skills/open-owned-scheduled-recovery",
-    "runUserGoal/personalAutomation": "skills/open-personal-automation",
-    "runUserGoal/personal": "skills/open-personal-goal/program",
-    "runUserGoal/workOnLocalReconciliationGoal/project": "skills/open-local-reconciliation",
-    "runUserGoal/workOnLocalReconciliationGoal/scratch": "skills/scratch-handoff",
-    "runUserGoal/diagnostics": "skills/open-system-diagnostics",
-    "runUserGoal/operator": "skills/open-system-operations",
-    "runUserGoal/unitRollout": "skills/open-unit-rollout",
-    "runUserGoal/ownedTaskRecovery": "skills/open-owned-task-recovery",
-    "runUserGoal/localDelivery": "skills/open-local-delivery",
-    "runUserGoal/recovery": "skills/open-session-recovery/program",
-    "runUserGoal/publication": "skills/publish-preflight",
-    "runUserGoal/pdf": "skills/pdf-intake"
+    "answerFromAssignedPublicSources/webResearch": "skills/web-research/research",
+    "activateOwnedAutomation/reviewLaunchEvidence/planning": "skills/automations",
+    "prepareNewsEditionReview/attributeBasis/installed": "skills/provenance-orientation",
+    "reconcileGoogleRunbook/attributeBasis/installed": "skills/provenance-orientation",
+    "reconcileGoogleRunbook/reviewCalendar/installed": "skills/open-calendar-goal/program",
+    "reconcileGoogleRunbook/reviseRunbook/installed": "skills/workspace-document-revision",
+    "prepareNewsEditionReview/designEditorPacket/installed": "skills/visualize",
+    "prepareNewsEditionReview/reviewBriefing/installed": "skills/news-workflows",
+    "reviewUnitHandoffGoal/reviewDesign/installed": "skills/workspace-unit-design",
+    "reviewUnitHandoffGoal/reviewIdentity/installed": "skills/workspace-dev/natlang",
+    "prepareContentProject/authorProjectDocuments/compose": "skills/vibestudio-workflows/runWorkflow/deliverProject",
+    "compareLiveLocalInventory/installed": "skills/local-model-task",
+    "auditAndroidGoal/installed": "skills/mobile-runtime-audit",
+    "verifyAndroidDelivery/mobile": "skills/mobile-system-testing/scenario",
+    "workOnLiveTendrilBoard/workflow": "skills/tendrils/workflow",
+    "recoverCliRoute/remote": "skills/remote-access",
+    "coordinateOwnedOperations/roles": "skills/vibestudio-workflows/runWorkflow/operate",
+    "compareTestkitCloseouts/readAttempt/session": "skills/session-test-review",
+    "workOnChatContinuity/workspace": "skills/open-chat-continuity",
+    "workOnChatContinuity/reviewChatContinuity/policy": "skills/conversation-evidence-review",
+    "workOnEditorialPacket/packet": "skills/open-editorial-packet",
+    "workOnEditorialPacket/reviewPacketSource/packet": "skills/open-editorial-packet",
+    "workOnEditorialPacket/reviewPacketSource/pdf": "skills/pdf-intake",
+    "reconcileWorkspaceConfig/settings": "skills/open-workspace-config",
+    "reconcileWorkspaceConfig/collectConfigEvidence/settings": "skills/open-workspace-config",
+    "chooseAudienceResponse/workspace": "skills/open-audience-response",
+    "chooseAudienceResponse/prepareAudienceVisual/visualize": "skills/visualize",
+    "reviseCoordinatedDocuments/workspace": "skills/open-coordinated-revision",
+    "reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules": "skills/vibestudio-workflows/evidence",
+    "reviseCoordinatedDocuments/planCoordinatedRevision/policy": "skills/workspace-document-revision",
+    "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy": "skills/workspace-document-revision",
+    "reviewRetainedMemory/evidence": "skills/open-retained-memory",
+    "reviewRetainedMemory/chooseMemorySearch/provenance": "skills/provenance-orientation",
+    "reviewRetainedMemory/resolveMemoryEvidence/evidence": "skills/open-retained-memory",
+    "discoverScopedIntent/workspace": "skills/open-intent-discovery",
+    "discoverScopedIntent/searchRelevantIntent/workspace": "skills/open-intent-discovery",
+    "chooseAuthorizedEvidenceRoute/workspace": "skills/open-route-authority",
+    "chooseAuthorizedEvidenceRoute/inspectExactRouteAuthority/authority": "skills/capabilities/natlang",
+    "reconcilePanelLaunchState/workspace": "skills/open-panel-launch-state",
+    "reconcilePanelLaunchState/reviewLaunchAuthority/authority": "skills/capabilities/natlang",
+    "reviewWorkspaceClaims/workspace": "skills/open-workspace-claims",
+    "reviewWorkspaceClaims/verifyClaimSupport/evidenceRules": "skills/vibestudio-workflows/evidence",
+    "workOnBridgeDelivery/project": "skills/open-bridge-delivery",
+    "workOnBridgeDelivery/inspectCurrentBridge/bridge": "skills/git-bridge-review",
+    "workOnBridgeDelivery/reviewDeliveryFile/semantic": "skills/vibestudio-vcs/natlang",
+    "workOnEditorialPacket/proposeEditorialRevision/policy": "skills/workspace-document-revision",
+    "workOnEditorialPacket/reconcileEditorialRevision/policy": "skills/workspace-document-revision",
+    "reviseWorkspaceDocument/policy": "skills/workspace-document-revision",
+    "planPhoneFirstRun/phoneSetup": "skills/phone-setup/natlang",
+    "workOnDemoPortfolio/portfolio": "skills/open-demo-portfolio",
+    "workOnDemoPortfolio/reviewPortfolioGarden/reviewer": "skills/examples-review",
+    "workOnDemoPortfolio/reviewPortfolioRealm/reviewer": "skills/examples-review",
+    "workOnRegencyBriefing/realm": "skills/open-regency-briefing",
+    "workOnRegencyBriefing/qualifyRegencyClaim/reviewer": "skills/examples-review",
+    "maintainWorkspaceSkill/authoring": "skills/natlang-authoring",
+    "workOnImageCandidateGoal/workspace": "skills/open-image-candidate",
+    "reviewDesktopReadiness/clientDevelopment": "skills/clientdev/natlang",
+    "workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
+    "workOnApiReadinessGoal/reviewQuietCredentials/installed": "skills/api-integrations/natlang",
+    "workOnNewsEvidenceGoal/workspace": "skills/open-news-evidence",
+    "workOnNewsEvidenceGoal/groundNewsEdition/workspace": "skills/open-news-evidence",
+    "workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed": "skills/news-workflows",
+    "workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed": "skills/news-workflows",
+    "workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed": "skills/news-workflows",
+    "reviewLocalPresentation/visualize": "skills/visualize",
+    "workOnPersonalWelcomeGoal/workspace": "skills/open-personal-welcome",
+    "workOnPersonalWelcomeGoal/reviewWelcomeSetup/onboarding": "skills/onboarding/prepareSetup",
+    "workOnPersonalWelcomeGoal/reviewWelcomeTour/tour": "skills/tour-rehearsal",
+    "workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer": "skills/explorer-probe",
+    "workOnDictationHandoffGoal/workspace": "skills/open-dictation-handoff",
+    "workOnDictationHandoffGoal/reviewRetainedDictation/dictation": "skills/offline-dictation",
+    "workOnSpecialistHandoffGoal/workspace": "skills/open-specialist-handoff",
+    "workOnSpecialistHandoffGoal/agents": "skills/agents/channel-membership",
+    "workOnSpecialistHandoffGoal/reviewSpecialistHistory/development": "skills/agentic-development/natlang",
+    "workOnProviderHandoffGoal/workspace": "skills/open-provider-handoff",
+    "workOnProviderHandoffGoal/reviewRetainedApproval/authority": "skills/capabilities/natlang",
+    "workOnProviderHandoffGoal/reviewRetainedDelivery/conversation": "skills/conversation-evidence-review",
+    "reviewExtensionDossier/extensiondev": "skills/extensiondev/natlang",
+    "workOnProblemReportGoal/reporter": "skills/problem-reporting/natlang",
+    "workOnRecoveryHandoff/scratch": "skills/scratch-handoff",
+    "workOnAssemblyGoal/workspace": "skills/open-workspace-assembly",
+    "templateMigration": "skills/template-candidate",
+    "workOnCapabilityGoal/workspace": "skills/open-doc-plan",
+    "workOnCapabilityGoal/help": "skills/sandbox/help",
+    "workOnTerminalGoal/terminal": "skills/open-terminal-operator",
+    "workOnTerminalGoal/reviewTransition/checklist": "skills/terminal-apps/checklist",
+    "workOnTerminalGoal/checks": "skills/terminal/natlang",
+    "reviewRetainedBuildIncident/performance": "skills/performance/build",
+    "reviewLocalExecutionWidth/readiness": "skills/local-models",
+    "reviewDeployedInterface/architecture": "skills/architecture/natlang",
+    "browserMigration": "skills/browser-import-review",
+    "workOnEvalHandoffGoal/journal": "skills/open-eval-handoff",
+    "workOnEvalHandoffGoal/reviewer": "skills/sandbox/recovery",
+    "workOnProgramRunGoal/runtime": "skills/open-program-run",
+    "workOnProgramRunGoal/reviewer": "skills/runtime-evidence-review",
+    "clients": "skills/gad-context/natlang",
+    "visualRecovery": "skills/panel-health",
+    "workOnAuthoringGoal/discovery": "skills/open-authoring-goal",
+    "workOnAuthoringGoal/reviewer": "skills/natlang-authoring",
+    "investigatePublicQuestion/sources": "skills/web-research/research",
+    "reviewInstalledPackage/reviewVerification/nativeSuite": "skills/native-suite-review",
+    "verifyWorkspaceSuite/suites": "skills/native-suite-review",
+    "news": "skills/news-workflows",
+    "adventureJourney": "skills/open-adventure-journey",
+    "spectrolite": "skills/spectrolite-review",
+    "googleSetup": "skills/google-drive/setupGoal",
+    "google": "skills/google-drive/driveWorkflow",
+    "gmail": "skills/open-gmail-goal/program",
+    "googleHandoff": "skills/open-google-handoff-goal/program",
+    "calendar": "skills/open-calendar-goal/program",
+    "personalArtifacts": "skills/open-personal-artifacts",
+    "githubWork": "skills/github/natlang",
+    "personalHistory": "skills/open-personal-history",
+    "scheduledRecovery": "skills/open-owned-scheduled-recovery",
+    "personalAutomation": "skills/open-personal-automation",
+    "personal": "skills/open-personal-goal/program",
+    "workOnLocalReconciliationGoal/project": "skills/open-local-reconciliation",
+    "workOnLocalReconciliationGoal/scratch": "skills/scratch-handoff",
+    "diagnostics": "skills/open-system-diagnostics",
+    "operator": "skills/open-system-operations",
+    "unitRollout": "skills/open-unit-rollout",
+    "ownedTaskRecovery": "skills/open-owned-task-recovery",
+    "localDelivery": "skills/open-local-delivery",
+    "recovery": "skills/open-session-recovery/program",
+    "publication": "skills/publish-preflight",
+    "pdf": "skills/pdf-intake",
+    "correctVaultFromPdf/pdf": "skills/pdf-intake",
+    "correctVaultFromPdf/vault": "skills/spectrolite-review"
   },
   "serviceScopes": {
-    "publicBrief": ["runUserGoal/answerFromAssignedPublicSources.nl"],
-    "automationActivationEvidence": ["runUserGoal/activateOwnedAutomation/reviewLaunchEvidence/readLaunchEvidence.nl"],
-    "automationActivationCommit": ["runUserGoal/activateOwnedAutomation/completeAutomationLaunch/submitOwnedLaunch.nl"],
-    "automationActivationReadback": ["runUserGoal/activateOwnedAutomation/completeAutomationLaunch/readActivatedSchedule.nl"],
+    "publicBrief": [
+      "answerFromAssignedPublicSources.nl"
+    ],
+    "automationActivationEvidence": [
+      "activateOwnedAutomation/reviewLaunchEvidence/readLaunchEvidence.nl"
+    ],
+    "automationActivationCommit": [
+      "activateOwnedAutomation/completeAutomationLaunch/submitOwnedLaunch.nl"
+    ],
+    "automationActivationReadback": [
+      "activateOwnedAutomation/completeAutomationLaunch/readActivatedSchedule.nl"
+    ],
     "googleRunbook": [
-      "runUserGoal/reconcileGoogleRunbook.nl",
-      "runUserGoal/reconcileGoogleRunbook/reviseRunbook.nl"
+      "reconcileGoogleRunbook.nl",
+      "reconcileGoogleRunbook/reviseRunbook.nl"
     ],
     "newsEditionReview": [
-      "runUserGoal/prepareNewsEditionReview.nl"
+      "prepareNewsEditionReview.nl"
     ],
-    "unitHandoff": ["runUserGoal/reviewUnitHandoffGoal.nl", "runUserGoal/reviewUnitHandoffGoal/reviewDesign.nl"],
-    "boardMigration": ["runUserGoal/reviewBoardMigration.nl", "runUserGoal/reviewBoardMigration/locateSource.nl", "runUserGoal/reviewBoardMigration/decideMigration.nl"],
-    "contentProjectSources": ["runUserGoal/prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.nl"],
-    "contentProjectScope": ["runUserGoal/prepareContentProject/confirmProjectScope.nl"],
-    "contentProjectDraft": ["runUserGoal/prepareContentProject/authorProjectDocuments/writeInitialProject.nl"],
-    "contentProjectCommit": ["runUserGoal/prepareContentProject/finishPrivateProject/commitReviewedProject.nl"],
-    "localInventoryDocket": ["runUserGoal/compareLiveLocalInventory/findLocalInventoryDocket.nl"],
-    "androidGoalAudit": ["runUserGoal/auditAndroidGoal/readAndroidAuditScope.nl"],
-    "androidDeliveryScope": ["runUserGoal/verifyAndroidDelivery/readAndroidDeliveryScope.nl"],
-    "terminalRepairCatalog": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"],
-    "terminalRepairObserve": ["runUserGoal/workOnTerminalApp/inspectTerminalApp/observeTerminalApp.nl"],
-    "terminalRepairApply": ["runUserGoal/workOnTerminalApp.nl"],
-    "terminalRepairFinal": ["runUserGoal/workOnTerminalApp/verifyTerminalOutput/checkFinalSource.nl"],
-    "terminalRepairArtifact": ["runUserGoal/workOnTerminalApp/verifyTerminalOutput/readTerminalArtifact.nl"],
-    "tendrilBoardDocket": ["runUserGoal/workOnLiveTendrilBoard/findLiveTendrilTicket.nl"],
-    "cliRouteDocket": ["runUserGoal/recoverCliRoute/selectCliDocket.nl"],
+    "unitHandoff": [
+      "reviewUnitHandoffGoal.nl",
+      "reviewUnitHandoffGoal/reviewDesign.nl"
+    ],
+    "boardMigration": [
+      "reviewBoardMigration.nl",
+      "reviewBoardMigration/locateSource.nl",
+      "reviewBoardMigration/decideMigration.nl"
+    ],
+    "contentProjectSources": [
+      "prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.nl"
+    ],
+    "contentProjectScope": [
+      "prepareContentProject/confirmProjectScope.nl"
+    ],
+    "contentProjectDraft": [
+      "prepareContentProject/authorProjectDocuments/writeInitialProject.nl"
+    ],
+    "contentProjectCommit": [
+      "prepareContentProject/finishPrivateProject/commitReviewedProject.nl"
+    ],
+    "localInventoryDocket": [
+      "compareLiveLocalInventory/findLocalInventoryDocket.nl"
+    ],
+    "androidGoalAudit": [
+      "auditAndroidGoal/readAndroidAuditScope.nl"
+    ],
+    "androidDeliveryScope": [
+      "verifyAndroidDelivery/readAndroidDeliveryScope.nl"
+    ],
+    "terminalRepairCatalog": [
+      "workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"
+    ],
+    "terminalRepairObserve": [
+      "workOnTerminalApp/inspectTerminalApp/observeTerminalApp.nl"
+    ],
+    "terminalRepairApply": [
+      "workOnTerminalApp.nl"
+    ],
+    "terminalRepairFinal": [
+      "workOnTerminalApp/verifyTerminalOutput/checkFinalSource.nl"
+    ],
+    "terminalRepairArtifact": [
+      "workOnTerminalApp/verifyTerminalOutput/readTerminalArtifact.nl"
+    ],
+    "tendrilBoardDocket": [
+      "workOnLiveTendrilBoard/findLiveTendrilTicket.nl"
+    ],
+    "cliRouteDocket": [
+      "recoverCliRoute/selectCliDocket.nl"
+    ],
     "scaffoldRead": [
-      "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl",
-      "runUserGoal/prepareOwnedScaffold/reviewScaffoldBrief/readInstalledScaffolds.nl",
-      "runUserGoal/prepareOwnedScaffold/rereadScaffoldDraft.nl"
+      "prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl",
+      "prepareOwnedScaffold/reviewScaffoldBrief/readInstalledScaffolds.nl",
+      "prepareOwnedScaffold/rereadScaffoldDraft.nl"
     ],
-    "scaffoldPrepare": ["runUserGoal/prepareOwnedScaffold/stageNativeScaffold.nl"],
+    "scaffoldPrepare": [
+      "prepareOwnedScaffold/stageNativeScaffold.nl"
+    ],
     "localMethodRead": [
-      "runUserGoal/reconcileOwnedMethodCall/readMethodLane/findOwnedMethodCard.nl",
-      "runUserGoal/reconcileOwnedMethodCall/readMethodLane/inspectOwnedMethodLane.nl",
-      "runUserGoal/reconcileOwnedMethodCall/readExactMethodTerminal.nl"
+      "reconcileOwnedMethodCall/readMethodLane/findOwnedMethodCard.nl",
+      "reconcileOwnedMethodCall/readMethodLane/inspectOwnedMethodLane.nl",
+      "reconcileOwnedMethodCall/readExactMethodTerminal.nl"
     ],
-    "localMethodDispatch": ["runUserGoal/reconcileOwnedMethodCall/dispatchOwnedLocalMethod.nl"],
+    "localMethodDispatch": [
+      "reconcileOwnedMethodCall/dispatchOwnedLocalMethod.nl"
+    ],
     "systemCandidateRead": [
-      "runUserGoal/triageSystemTemplate/findSystemCandidate.nl",
-      "runUserGoal/triageSystemTemplate/readCandidateEvidence/readDeltaFrontier.nl",
-      "runUserGoal/triageSystemTemplate/readCandidateEvidence/readFileTriplet.nl",
-      "runUserGoal/triageSystemTemplate/checkCandidateCurrent.nl",
-      "runUserGoal/triageSystemTemplate/verifyCandidateHandoff.nl"
+      "triageSystemTemplate/findSystemCandidate.nl",
+      "triageSystemTemplate/readCandidateEvidence/readDeltaFrontier.nl",
+      "triageSystemTemplate/readCandidateEvidence/readFileTriplet.nl",
+      "triageSystemTemplate/checkCandidateCurrent.nl",
+      "triageSystemTemplate/verifyCandidateHandoff.nl"
     ],
-    "systemCandidateHandoff": ["runUserGoal/triageSystemTemplate/recordCandidateHandoff.nl"],
-    "operationsDossier": ["runUserGoal/coordinateOwnedOperations/retainOperationsDossier.nl"],
-    "operationsDocket": ["runUserGoal/coordinateOwnedOperations/selectOperationsDocket.nl"],
-    "ownedOperations": ["runUserGoal/coordinateOwnedOperations.nl"],
+    "systemCandidateHandoff": [
+      "triageSystemTemplate/recordCandidateHandoff.nl"
+    ],
+    "operationsDossier": [
+      "coordinateOwnedOperations/retainOperationsDossier.nl"
+    ],
+    "operationsDocket": [
+      "coordinateOwnedOperations/selectOperationsDocket.nl"
+    ],
+    "ownedOperations": [
+      "coordinateOwnedOperations.nl"
+    ],
     "adoptionReview": [
-      "runUserGoal/reviewExamplesAdoption/findStagedComposition.nl",
-      "runUserGoal/reviewExamplesAdoption/inspectComposition/readInstalledExamples.nl",
-      "runUserGoal/reviewExamplesAdoption/inspectComposition/simulateOwnedComposition.nl",
-      "runUserGoal/reviewExamplesAdoption/confirmAdoptionFrontier.nl",
-      "runUserGoal/reviewExamplesAdoption/readAdoptionHandoff.nl"
+      "reviewExamplesAdoption/findStagedComposition.nl",
+      "reviewExamplesAdoption/inspectComposition/readInstalledExamples.nl",
+      "reviewExamplesAdoption/inspectComposition/simulateOwnedComposition.nl",
+      "reviewExamplesAdoption/confirmAdoptionFrontier.nl",
+      "reviewExamplesAdoption/readAdoptionHandoff.nl"
     ],
-    "adoptionHandoff": ["runUserGoal/reviewExamplesAdoption/recordPrivateAdoption.nl"],
+    "adoptionHandoff": [
+      "reviewExamplesAdoption/recordPrivateAdoption.nl"
+    ],
     "grimoireScene": [
-      "runUserGoal/careForGrimoireScene/findCaretakerDocket.nl",
-      "runUserGoal/careForGrimoireScene/readSceneEvidence/readOwnerView.nl",
-      "runUserGoal/careForGrimoireScene/readSceneEvidence/readCaretakerScope.nl",
-      "runUserGoal/careForGrimoireScene/confirmSceneFrontier.nl",
-      "runUserGoal/careForGrimoireScene/verifySceneHandoff/readSceneAndArtifact.nl"
+      "careForGrimoireScene/findCaretakerDocket.nl",
+      "careForGrimoireScene/readSceneEvidence/readOwnerView.nl",
+      "careForGrimoireScene/readSceneEvidence/readCaretakerScope.nl",
+      "careForGrimoireScene/confirmSceneFrontier.nl",
+      "careForGrimoireScene/verifySceneHandoff/readSceneAndArtifact.nl"
     ],
-    "grimoireHandoff": ["runUserGoal/careForGrimoireScene/stageCaretakerArtifact.nl"],
-    "testkitCloseout": ["runUserGoal/compareTestkitCloseouts/discoverCloseoutAttempts.nl", "runUserGoal/compareTestkitCloseouts/stageCloseoutEvidence.nl"],
+    "grimoireHandoff": [
+      "careForGrimoireScene/stageCaretakerArtifact.nl"
+    ],
+    "testkitCloseout": [
+      "compareTestkitCloseouts/discoverCloseoutAttempts.nl",
+      "compareTestkitCloseouts/stageCloseoutEvidence.nl"
+    ],
     "phoneFirstRun": [
-      "runUserGoal/planPhoneFirstRun/locatePhoneRehearsal.nl",
-      "runUserGoal/planPhoneFirstRun/readPhoneEvidence/readSetupAssignment.nl",
-      "runUserGoal/planPhoneFirstRun/readPhoneEvidence/readStartupPhases.nl",
-      "runUserGoal/planPhoneFirstRun/readPhoneEvidence/readBuildProvider.nl"
+      "planPhoneFirstRun/locatePhoneRehearsal.nl",
+      "planPhoneFirstRun/readPhoneEvidence/readSetupAssignment.nl",
+      "planPhoneFirstRun/readPhoneEvidence/readStartupPhases.nl",
+      "planPhoneFirstRun/readPhoneEvidence/readBuildProvider.nl"
     ],
     "skillMaintenanceEvidence": [
-      "runUserGoal/maintainWorkspaceSkill/locateMaintenanceSkill.nl",
-      "runUserGoal/maintainWorkspaceSkill/inspectMaintenanceEvidence/readScopedSkill.nl",
-      "runUserGoal/maintainWorkspaceSkill/confirmSkillFrontier.nl",
-      "runUserGoal/maintainWorkspaceSkill/checkSkillReadback.nl"
+      "maintainWorkspaceSkill/locateMaintenanceSkill.nl",
+      "maintainWorkspaceSkill/inspectMaintenanceEvidence/readScopedSkill.nl",
+      "maintainWorkspaceSkill/confirmSkillFrontier.nl",
+      "maintainWorkspaceSkill/checkSkillReadback.nl"
     ],
-    "skillMaintenanceEdit": ["runUserGoal/maintainWorkspaceSkill/prepareSkillRepair/stageSkillChanges.nl"],
+    "skillMaintenanceEdit": [
+      "maintainWorkspaceSkill/prepareSkillRepair/stageSkillChanges.nl"
+    ],
     "desktopReadiness": [
-      "runUserGoal/reviewDesktopReadiness/locateDesktopDesk.nl",
-      "runUserGoal/reviewDesktopReadiness/inspectDesktopWindow/readDesktopWindow.nl",
-      "runUserGoal/reviewDesktopReadiness/inspectDesktopUpdates/readDesktopOffers.nl"
+      "reviewDesktopReadiness/locateDesktopDesk.nl",
+      "reviewDesktopReadiness/inspectDesktopWindow/readDesktopWindow.nl",
+      "reviewDesktopReadiness/inspectDesktopUpdates/readDesktopOffers.nl"
     ],
     "notificationState": [
-      "runUserGoal/reviewNotificationState/locateNotificationLane.nl",
-      "runUserGoal/reviewNotificationState/readNotificationLifecycle.nl",
-      "runUserGoal/reviewNotificationState/finishNotificationReview.nl"
+      "reviewNotificationState/locateNotificationLane.nl",
+      "reviewNotificationState/readNotificationLifecycle.nl",
+      "reviewNotificationState/finishNotificationReview.nl"
     ],
     "mobileContinuity": [
-      "runUserGoal/reviewMobileContinuity/selectProfile/listProfiles.nl",
-      "runUserGoal/reviewMobileContinuity/selectProfile/readProfile.nl",
-      "runUserGoal/reviewMobileContinuity/auditContinuity/readBuild.nl",
-      "runUserGoal/reviewMobileContinuity/auditContinuity/readCache.nl",
-      "runUserGoal/reviewMobileContinuity/auditContinuity/readTransport.nl",
-      "runUserGoal/reviewMobileContinuity/auditContinuity/readRoutes.nl"
+      "reviewMobileContinuity/selectProfile/listProfiles.nl",
+      "reviewMobileContinuity/selectProfile/readProfile.nl",
+      "reviewMobileContinuity/auditContinuity/readBuild.nl",
+      "reviewMobileContinuity/auditContinuity/readCache.nl",
+      "reviewMobileContinuity/auditContinuity/readTransport.nl",
+      "reviewMobileContinuity/auditContinuity/readRoutes.nl"
     ],
     "assetHistory": [
-      "runUserGoal/reviewAssetIntegrity/discoverVersions.nl",
-      "runUserGoal/reviewAssetIntegrity/readVersion/listFiles.nl",
-      "runUserGoal/reviewAssetIntegrity/readVersion/inspectFile.nl"
+      "reviewAssetIntegrity/discoverVersions.nl",
+      "reviewAssetIntegrity/readVersion/listFiles.nl",
+      "reviewAssetIntegrity/readVersion/inspectFile.nl"
     ],
-    "assetRecovery": ["runUserGoal/reviewAssetIntegrity/stageRecovery.nl"],
+    "assetRecovery": [
+      "reviewAssetIntegrity/stageRecovery.nl"
+    ],
     "tendrilRouteRead": [
-      "runUserGoal/reviewTendrilRoute/identifyTendril/listBoards.nl",
-      "runUserGoal/reviewTendrilRoute/identifyTendril/readBoard.nl",
-      "runUserGoal/reviewTendrilRoute/reviewSlot/probeSlot.nl"
+      "reviewTendrilRoute/identifyTendril/listBoards.nl",
+      "reviewTendrilRoute/identifyTendril/readBoard.nl",
+      "reviewTendrilRoute/reviewSlot/probeSlot.nl"
     ],
-    "tendrilRouteRetention": ["runUserGoal/reviewTendrilRoute/retainRoute.nl"],
+    "tendrilRouteRetention": [
+      "reviewTendrilRoute/retainRoute.nl"
+    ],
     "presentationRecords": [
-      "runUserGoal/reviewLocalPresentation/selectSource/listRecords.nl",
-      "runUserGoal/reviewLocalPresentation/selectSource/readRecord.nl",
-      "runUserGoal/reviewLocalPresentation/previewRecord.nl"
+      "reviewLocalPresentation/selectSource/listRecords.nl",
+      "reviewLocalPresentation/selectSource/readRecord.nl",
+      "reviewLocalPresentation/previewRecord.nl"
     ],
-    "problemIncident": ["runUserGoal/workOnProblemReportGoal.nl"],
-    "recoveryHandoffLink": ["runUserGoal/workOnRecoveryHandoff/readDirective.nl", "runUserGoal/workOnRecoveryHandoff/acquireSources.nl"],
-    "buildIncidentCatalog": ["runUserGoal/reviewRetainedBuildIncident/discoverIncident.nl", "runUserGoal/reviewRetainedBuildIncident/selectCheckpoints/openCheckpoint.nl"],
-    "buildIncidentHandoff": ["runUserGoal/reviewRetainedBuildIncident/stageEvidence.nl"],
-    "localWidthEvidence": ["runUserGoal/reviewLocalExecutionWidth/discoverWidth.nl", "runUserGoal/reviewLocalExecutionWidth/assessExecution/readWitness.nl"],
-    "localWidthHandoff": ["runUserGoal/reviewLocalExecutionWidth/stageWidth.nl"],
-    "interfaceEvidence": ["runUserGoal/reviewDeployedInterface/discoverInterface.nl", "runUserGoal/reviewDeployedInterface/selectInterface/inspectInterface.nl"],
-    "interfaceReviewHandoff": ["runUserGoal/reviewDeployedInterface/stageReview.nl"],
-    "extensionDossierRead": ["runUserGoal/reviewExtensionDossier/discoverDossier.nl", "runUserGoal/reviewExtensionDossier/compareCandidate/readCandidate.nl", "runUserGoal/reviewExtensionDossier/inspectRelease/readHistory.nl"],
-    "extensionDossierWrite": ["runUserGoal/reviewExtensionDossier/stageDossier.nl"],
-    "installedPackageRead": ["runUserGoal/reviewInstalledPackage/discoverPackage.nl", "runUserGoal/reviewInstalledPackage/inspectPackage/readOwnedPackage.nl"],
-    "installedPackageChange": ["runUserGoal/reviewInstalledPackage/restorePackage.nl"],
-    "webhookAdmissionEvidence": ["runUserGoal/reviewWebhookAdmission/discoverWebhook.nl", "runUserGoal/reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"],
-    "webhookAdmissionHandoff": ["runUserGoal/reviewWebhookAdmission/stageWebhookAudit.nl"],
-    "transcriptApproval": ["runUserGoal/reviewTranscriptSurface/discoverTranscriptSurface.nl", "runUserGoal/reviewTranscriptSurface/reviewApprovals/readCurrentApprovals.nl"],
-    "transcriptObservation": ["runUserGoal/reviewTranscriptSurface/inspectNativeSurface/readChannelReplay.nl"],
-    "transcriptMutation": ["runUserGoal/reviewTranscriptSurface/materializeTranscriptEffect/mutateOwnedTranscript.nl"],
-    "illustrationEvidence": ["runUserGoal/generateOwnedIllustration/discoverIllustration.nl", "runUserGoal/generateOwnedIllustration/inspectIllustrationBasis/readCurrentImagePlan.nl"],
-    "illustrationJobs": ["runUserGoal/generateOwnedIllustration/runIllustrationJob/readNativeImageOutcome.nl"],
-    "illustrationOriginal": ["runUserGoal/generateOwnedIllustration/retainIllustrationOriginal/writeVerifiedOriginal.nl"],
-    "recordedQuestionDiscovery": ["runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/discoverRecordedQuestion.nl", "runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/findRecordedProposal/searchNativeRationale.nl"],
-    "recordedQuestionGraph": ["runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/collectRecordedEvidence/readWorkCohort.nl", "runUserGoal/reviewSourceAttribution/reviewRecordedQuestion/collectRecordedEvidence/readRejectionRecord.nl"],
-    "sourceOriginEvidence": ["runUserGoal/reviewSourceAttribution/discoverSourceAttribution.nl", "runUserGoal/reviewSourceAttribution/inspectCurrentSource/readOwnedFile.nl"],
-    "sourceOriginGraph": ["runUserGoal/reviewSourceAttribution/traceSelectedSource/content/traceOwnedRange.nl", "runUserGoal/reviewSourceAttribution/traceSelectedSource/intent/inspectOwnedRoot.nl"],
-    "sourceOriginReceipt": ["runUserGoal/reviewSourceAttribution/reviewAttributionHandoff/writeOwnedReceipt.nl"],
-    "workspaceSmokeEvidence": ["runUserGoal/reviewWorkspaceSmoke/discoverWorkspaceSmoke.nl", "runUserGoal/reviewWorkspaceSmoke/inspectSmokeFiles/readNativeSmokeFiles.nl"],
-    "workspaceSmokeRuntime": ["runUserGoal/reviewWorkspaceSmoke/exerciseInstalledSmoke/readActualSmokeResult.nl"],
-    "workspaceSmokeHandoff": ["runUserGoal/reviewWorkspaceSmoke/stageWorkspaceSmoke.nl"],
-    "sameTurnEvalEvidence": ["runUserGoal/recoverSameTurnEval/discoverSameTurnEval.nl", "runUserGoal/recoverSameTurnEval/inspectSameTurnEval/readNativeEvalState.nl"],
-    "sameTurnEvalRecovery": ["runUserGoal/recoverSameTurnEval/resolveSameTurnEval.nl"],
-    "deliveryWakeEvidence": ["runUserGoal/reviewDeliveryWake/discoverDeliveryWake.nl", "runUserGoal/reviewDeliveryWake/inspectDeliveryWake/readNativeWake.nl"],
-    "deliveryWakeAction": ["runUserGoal/reviewDeliveryWake/applyDeliveryWake.nl"],
-    "logFollowerEvidence": ["runUserGoal/reviewLogFollower/discoverLogFollower.nl", "runUserGoal/reviewLogFollower/observeLogFollower/readNativeFollow.nl"],
-    "logFollowerHandoff": ["runUserGoal/reviewLogFollower/stageLogFollower.nl"],
-    "ptyContinuityEvidence": ["runUserGoal/reviewPtyContinuity/discoverPtyReview.nl", "runUserGoal/reviewPtyContinuity/inspectPtyReceipts/readPtyAttempt.nl"],
-    "ptyContinuityHandoff": ["runUserGoal/reviewPtyContinuity/stagePtyReceipt.nl"],
-    "developmentAuditEvidence": ["runUserGoal/reviewDevelopmentAudit/discoverDevelopmentAudit.nl", "runUserGoal/reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl"],
-    "developmentAuditKeep": ["runUserGoal/reviewDevelopmentAudit/keepDevelopmentRepair.nl"],
-    "contentArchiveEvidence": ["runUserGoal/recoverContentArchive/discoverArchive.nl", "runUserGoal/recoverContentArchive/inspectArchive/readArchiveEvidence.nl"],
-    "contentArchiveChange": ["runUserGoal/recoverContentArchive/applyArchive.nl"],
-    "systemReleaseEvidence": ["runUserGoal/reviewSystemRelease/discoverRelease.nl", "runUserGoal/reviewSystemRelease/compareRuns/readRuns.nl", "runUserGoal/reviewSystemRelease/evaluateCases/readCase.nl"],
-    "systemReleaseHandoff": ["runUserGoal/reviewSystemRelease/stageRelease.nl"],
-    "panelMigrationEvidence": ["runUserGoal/migratePanelSource/discoverMigration.nl", "runUserGoal/migratePanelSource/inspectMigration/readMigration.nl"],
-    "panelMigrationChange": ["runUserGoal/migratePanelSource/moveSource.nl", "runUserGoal/migratePanelSource/alignBuildIdentity.nl", "runUserGoal/migratePanelSource/updateConsumers.nl"],
-    "workspaceShareEvidence": ["runUserGoal/reviewWorkspaceShare/discoverShare.nl", "runUserGoal/reviewWorkspaceShare/identifyShare/readShare.nl"],
-    "workspaceShareHandoff": ["runUserGoal/reviewWorkspaceShare/stageShare.nl"],
-    "agentCapabilityEvidence": ["runUserGoal/recoverAgentCapability/discoverAttempts.nl", "runUserGoal/recoverAgentCapability/inspectAttempt/readNativeAttempt.nl"],
-    "agentCapabilityContinue": ["runUserGoal/recoverAgentCapability/continueCapability.nl"],
-    "goalDiscovery": ["runUserGoal/investigatePublicQuestion.nl"],
-    "goalWorkspace": ["runUserGoal/reviseWorkspaceDocument.nl"],
-    "goalBrowser": ["runUserGoal/workInBrowser.nl"],
-    "goalSuite": ["runUserGoal/verifyWorkspaceSuite.nl"],
-    "pdfVaultBridge": ["runUserGoal/authorizePdfVaultHandoff.nl"]
+    "problemIncident": [
+      "workOnProblemReportGoal.nl"
+    ],
+    "recoveryHandoffLink": [
+      "workOnRecoveryHandoff/readDirective.nl",
+      "workOnRecoveryHandoff/acquireSources.nl"
+    ],
+    "buildIncidentCatalog": [
+      "reviewRetainedBuildIncident/discoverIncident.nl",
+      "reviewRetainedBuildIncident/selectCheckpoints/openCheckpoint.nl"
+    ],
+    "buildIncidentHandoff": [
+      "reviewRetainedBuildIncident/stageEvidence.nl"
+    ],
+    "localWidthEvidence": [
+      "reviewLocalExecutionWidth/discoverWidth.nl",
+      "reviewLocalExecutionWidth/assessExecution/readWitness.nl"
+    ],
+    "localWidthHandoff": [
+      "reviewLocalExecutionWidth/stageWidth.nl"
+    ],
+    "interfaceEvidence": [
+      "reviewDeployedInterface/discoverInterface.nl",
+      "reviewDeployedInterface/selectInterface/inspectInterface.nl"
+    ],
+    "interfaceReviewHandoff": [
+      "reviewDeployedInterface/stageReview.nl"
+    ],
+    "extensionDossierRead": [
+      "reviewExtensionDossier/discoverDossier.nl",
+      "reviewExtensionDossier/compareCandidate/readCandidate.nl",
+      "reviewExtensionDossier/inspectRelease/readHistory.nl"
+    ],
+    "extensionDossierWrite": [
+      "reviewExtensionDossier/stageDossier.nl"
+    ],
+    "installedPackageRead": [
+      "reviewInstalledPackage/discoverPackage.nl",
+      "reviewInstalledPackage/inspectPackage/readOwnedPackage.nl"
+    ],
+    "installedPackageChange": [
+      "reviewInstalledPackage/restorePackage.nl"
+    ],
+    "webhookAdmissionEvidence": [
+      "reviewWebhookAdmission/discoverWebhook.nl",
+      "reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"
+    ],
+    "webhookAdmissionHandoff": [
+      "reviewWebhookAdmission/stageWebhookAudit.nl"
+    ],
+    "transcriptApproval": [
+      "reviewTranscriptSurface/discoverTranscriptSurface.nl",
+      "reviewTranscriptSurface/reviewApprovals/readCurrentApprovals.nl"
+    ],
+    "transcriptObservation": [
+      "reviewTranscriptSurface/inspectNativeSurface/readChannelReplay.nl"
+    ],
+    "transcriptMutation": [
+      "reviewTranscriptSurface/materializeTranscriptEffect/mutateOwnedTranscript.nl"
+    ],
+    "illustrationEvidence": [
+      "generateOwnedIllustration/discoverIllustration.nl",
+      "generateOwnedIllustration/inspectIllustrationBasis/readCurrentImagePlan.nl"
+    ],
+    "illustrationJobs": [
+      "generateOwnedIllustration/runIllustrationJob/readNativeImageOutcome.nl"
+    ],
+    "illustrationOriginal": [
+      "generateOwnedIllustration/retainIllustrationOriginal/writeVerifiedOriginal.nl"
+    ],
+    "recordedQuestionDiscovery": [
+      "reviewRecordedQuestion/discoverRecordedQuestion.nl",
+      "reviewRecordedQuestion/findRecordedProposal/searchNativeRationale.nl"
+    ],
+    "recordedQuestionGraph": [
+      "reviewRecordedQuestion/collectRecordedEvidence/readWorkCohort.nl",
+      "reviewRecordedQuestion/collectRecordedEvidence/readRejectionRecord.nl"
+    ],
+    "sourceOriginEvidence": [
+      "reviewSourceAttribution/discoverSourceAttribution.nl",
+      "reviewSourceAttribution/inspectCurrentSource/readOwnedFile.nl"
+    ],
+    "sourceOriginGraph": [
+      "reviewSourceAttribution/traceSelectedSource/content/traceOwnedRange.nl",
+      "reviewSourceAttribution/traceSelectedSource/intent/inspectOwnedRoot.nl"
+    ],
+    "sourceOriginReceipt": [
+      "reviewSourceAttribution/reviewAttributionHandoff/writeOwnedReceipt.nl"
+    ],
+    "workspaceSmokeEvidence": [
+      "reviewWorkspaceSmoke/discoverWorkspaceSmoke.nl",
+      "reviewWorkspaceSmoke/inspectSmokeFiles/readNativeSmokeFiles.nl"
+    ],
+    "workspaceSmokeRuntime": [
+      "reviewWorkspaceSmoke/exerciseInstalledSmoke/readActualSmokeResult.nl"
+    ],
+    "workspaceSmokeHandoff": [
+      "reviewWorkspaceSmoke/stageWorkspaceSmoke.nl"
+    ],
+    "sameTurnEvalEvidence": [
+      "recoverSameTurnEval/discoverSameTurnEval.nl",
+      "recoverSameTurnEval/inspectSameTurnEval/readNativeEvalState.nl"
+    ],
+    "sameTurnEvalRecovery": [
+      "recoverSameTurnEval/resolveSameTurnEval.nl"
+    ],
+    "deliveryWakeEvidence": [
+      "reviewDeliveryWake/discoverDeliveryWake.nl",
+      "reviewDeliveryWake/inspectDeliveryWake/readNativeWake.nl"
+    ],
+    "deliveryWakeAction": [
+      "reviewDeliveryWake/applyDeliveryWake.nl"
+    ],
+    "logFollowerEvidence": [
+      "reviewLogFollower/discoverLogFollower.nl",
+      "reviewLogFollower/observeLogFollower/readNativeFollow.nl"
+    ],
+    "logFollowerHandoff": [
+      "reviewLogFollower/stageLogFollower.nl"
+    ],
+    "ptyContinuityEvidence": [
+      "reviewPtyContinuity/discoverPtyReview.nl",
+      "reviewPtyContinuity/inspectPtyReceipts/readPtyAttempt.nl"
+    ],
+    "ptyContinuityHandoff": [
+      "reviewPtyContinuity/stagePtyReceipt.nl"
+    ],
+    "developmentAuditEvidence": [
+      "reviewDevelopmentAudit/discoverDevelopmentAudit.nl",
+      "reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl"
+    ],
+    "developmentAuditKeep": [
+      "reviewDevelopmentAudit/keepDevelopmentRepair.nl"
+    ],
+    "contentArchiveEvidence": [
+      "recoverContentArchive/discoverArchive.nl",
+      "recoverContentArchive/inspectArchive/readArchiveEvidence.nl"
+    ],
+    "contentArchiveChange": [
+      "recoverContentArchive/applyArchive.nl"
+    ],
+    "systemReleaseEvidence": [
+      "reviewSystemRelease/discoverRelease.nl",
+      "reviewSystemRelease/compareRuns/readRuns.nl",
+      "reviewSystemRelease/evaluateCases/readCase.nl"
+    ],
+    "systemReleaseHandoff": [
+      "reviewSystemRelease/stageRelease.nl"
+    ],
+    "panelMigrationEvidence": [
+      "migratePanelSource/discoverMigration.nl",
+      "migratePanelSource/inspectMigration/readMigration.nl"
+    ],
+    "panelMigrationChange": [
+      "migratePanelSource/moveSource.nl",
+      "migratePanelSource/alignBuildIdentity.nl",
+      "migratePanelSource/updateConsumers.nl"
+    ],
+    "workspaceShareEvidence": [
+      "reviewWorkspaceShare/discoverShare.nl",
+      "reviewWorkspaceShare/identifyShare/readShare.nl"
+    ],
+    "workspaceShareHandoff": [
+      "reviewWorkspaceShare/stageShare.nl"
+    ],
+    "agentCapabilityEvidence": [
+      "recoverAgentCapability/discoverAttempts.nl",
+      "recoverAgentCapability/inspectAttempt/readNativeAttempt.nl"
+    ],
+    "agentCapabilityContinue": [
+      "recoverAgentCapability/continueCapability.nl"
+    ],
+    "goalDiscovery": [
+      "investigatePublicQuestion.nl"
+    ],
+    "goalWorkspace": [
+      "reviseWorkspaceDocument.nl",
+      "answerWorkspaceQuestion.nl"
+    ],
+    "goalBrowser": [
+      "workInBrowser.nl"
+    ],
+    "goalSuite": [
+      "verifyWorkspaceSuite.nl"
+    ],
+    "pdfVaultBridge": [
+      "authorizePdfVaultHandoff.nl"
+    ]
   }
 }

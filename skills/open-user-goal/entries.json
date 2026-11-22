@@ -1,0 +1,1165 @@
+{
+  "outcome-workspace": {
+    "program": "skills/open-user-goal/answerWorkspaceQuestion.nl",
+    "callable": "answerWorkspaceQuestion",
+    "resultType": "WorkspaceAnswer",
+    "skill": "outcome-workspace",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "android-audit": {
+    "program": "skills/open-user-goal/auditAndroidGoal.nl",
+    "callable": "auditAndroidGoal",
+    "resultType": "AndroidGoalAuditReport",
+    "skill": "androidGoalAudit",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "android-delivery": {
+    "program": "skills/open-user-goal/verifyAndroidDelivery.nl",
+    "callable": "verifyAndroidDelivery",
+    "resultType": "AndroidDeliveryOutcome",
+    "skill": "androidDelivery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "delivery-wake": {
+    "program": "skills/open-user-goal/reviewDeliveryWake.nl",
+    "callable": "reviewDeliveryWake",
+    "resultType": "DeliveryWakeReport",
+    "skill": "deliveryWake",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "live-local-inventory": {
+    "program": "skills/open-user-goal/compareLiveLocalInventory.nl",
+    "callable": "compareLiveLocalInventory",
+    "resultType": "LocalInventoryOutcome",
+    "skill": "liveLocalInventory",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "workspace-config": {
+    "program": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
+    "callable": "reconcileWorkspaceConfig",
+    "resultType": "ConfigReport | null",
+    "skill": "workspaceConfig",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "audience-response": {
+    "program": "skills/open-user-goal/chooseAudienceResponse.nl",
+    "callable": "chooseAudienceResponse",
+    "resultType": "AudienceReport",
+    "skill": "audienceResponse",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "coordinated-revision": {
+    "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+    "callable": "reviseCoordinatedDocuments",
+    "resultType": "CoordinatedRevisionReport",
+    "skill": "coordinatedRevision",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "retained-memory": {
+    "program": "skills/open-user-goal/reviewRetainedMemory.nl",
+    "callable": "reviewRetainedMemory",
+    "resultType": "RetainedMemoryReport",
+    "skill": "retainedMemory",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "intent-discovery": {
+    "program": "skills/open-user-goal/discoverScopedIntent.nl",
+    "callable": "discoverScopedIntent",
+    "resultType": "IntentReport",
+    "skill": "intentDiscovery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "board-migration": {
+    "program": "skills/open-user-goal/reviewBoardMigration.nl",
+    "callable": "reviewBoardMigration",
+    "resultType": "BoardMigrationOutcome",
+    "skill": "boardMigration",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "live-tendril-board": {
+    "program": "skills/open-user-goal/workOnLiveTendrilBoard.nl",
+    "callable": "workOnLiveTendrilBoard",
+    "resultType": "LiveTendrilOutcome",
+    "skill": "liveTendrilBoard",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "route-authority": {
+    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
+    "callable": "chooseAuthorizedEvidenceRoute",
+    "resultType": "OwnedRouteReview",
+    "skill": "ownedRouteAuthority",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "cli-route": {
+    "program": "skills/open-user-goal/recoverCliRoute.nl",
+    "callable": "recoverCliRoute",
+    "resultType": "CliRouteOutcome",
+    "skill": "cliRoute",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "scaffoldReview": {
+    "program": "skills/open-user-goal/prepareOwnedScaffold.nl",
+    "callable": "prepareOwnedScaffold",
+    "resultType": "ScaffoldOutcome",
+    "skill": "scaffoldReview",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "localMethodExchange": {
+    "program": "skills/open-user-goal/reconcileOwnedMethodCall.nl",
+    "callable": "reconcileOwnedMethodCall",
+    "resultType": "LocalMethodOutcome",
+    "skill": "localMethodExchange",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "systemCandidateTriage": {
+    "program": "skills/open-user-goal/triageSystemTemplate.nl",
+    "callable": "triageSystemTemplate",
+    "resultType": "SystemCandidateOutcome",
+    "skill": "systemCandidateTriage",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "owned-operations": {
+    "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
+    "callable": "coordinateOwnedOperations",
+    "resultType": "OperationsGoalOutcome",
+    "skill": "ownedOperations",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "examplesAdoption": {
+    "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
+    "callable": "reviewExamplesAdoption",
+    "resultType": "AdoptionOutcome",
+    "skill": "examplesAdoption",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "launch-state": {
+    "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+    "callable": "reconcilePanelLaunchState",
+    "resultType": "LaunchReport | null",
+    "skill": "panelLaunchState",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "workspace-claims": {
+    "program": "skills/open-user-goal/reviewWorkspaceClaims.nl",
+    "callable": "reviewWorkspaceClaims",
+    "resultType": "WorkspaceClaimReview | null",
+    "skill": "workspaceClaims",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "bridge-delivery": {
+    "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
+    "callable": "workOnBridgeDelivery",
+    "resultType": "BridgeDeliveryReport | null",
+    "skill": "bridgeDelivery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "chat-continuity": {
+    "program": "skills/open-user-goal/workOnChatContinuity.nl",
+    "callable": "workOnChatContinuity",
+    "resultType": "ChatContinuityReport",
+    "skill": "chatContinuity",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "grimoireScene": {
+    "program": "skills/open-user-goal/careForGrimoireScene.nl",
+    "callable": "careForGrimoireScene",
+    "resultType": "GrimoireSceneOutcome",
+    "skill": "grimoireScene",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "editorial-packet": {
+    "program": "skills/open-user-goal/workOnEditorialPacket.nl",
+    "callable": "workOnEditorialPacket",
+    "resultType": "PacketReport",
+    "skill": "editorialPacket",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "phoneFirstRun": {
+    "program": "skills/open-user-goal/planPhoneFirstRun.nl",
+    "callable": "planPhoneFirstRun",
+    "resultType": "PhoneFirstRunOutcome",
+    "skill": "phoneFirstRun",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "demo-portfolio": {
+    "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
+    "callable": "workOnDemoPortfolio",
+    "resultType": "PortfolioReport",
+    "skill": "demoPortfolio",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "regency-briefing": {
+    "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
+    "callable": "workOnRegencyBriefing",
+    "resultType": "RegencyReport",
+    "skill": "regencyBriefing",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "skillMaintenance": {
+    "program": "skills/open-user-goal/maintainWorkspaceSkill.nl",
+    "callable": "maintainWorkspaceSkill",
+    "resultType": "SkillMaintenanceOutcome",
+    "skill": "skillMaintenance",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "image-candidate": {
+    "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+    "callable": "workOnImageCandidateGoal",
+    "resultType": "ImageReport",
+    "skill": "imageCandidate",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "desktopReadiness": {
+    "program": "skills/open-user-goal/reviewDesktopReadiness.nl",
+    "callable": "reviewDesktopReadiness",
+    "resultType": "DesktopReadinessOutcome",
+    "skill": "desktopReadiness",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "notificationState": {
+    "program": "skills/open-user-goal/reviewNotificationState.nl",
+    "callable": "reviewNotificationState",
+    "resultType": "NotificationStateOutcome",
+    "skill": "notificationState",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "mobileContinuity": {
+    "program": "skills/open-user-goal/reviewMobileContinuity.nl",
+    "callable": "reviewMobileContinuity",
+    "resultType": "MobileContinuityOutcome",
+    "skill": "mobileContinuity",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "api-readiness": {
+    "program": "skills/open-user-goal/workOnApiReadinessGoal.nl",
+    "callable": "workOnApiReadinessGoal",
+    "resultType": "ApiReadinessReport",
+    "skill": "apiReadiness",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "news-evidence": {
+    "program": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+    "callable": "workOnNewsEvidenceGoal",
+    "resultType": "NewsEvidenceReport",
+    "skill": "newsEvidence",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "assetIntegrity": {
+    "program": "skills/open-user-goal/reviewAssetIntegrity.nl",
+    "callable": "reviewAssetIntegrity",
+    "resultType": "AssetIntegrityOutcome",
+    "skill": "assetIntegrity",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "tendrilRoute": {
+    "program": "skills/open-user-goal/reviewTendrilRoute.nl",
+    "callable": "reviewTendrilRoute",
+    "resultType": "TendrilRouteOutcome",
+    "skill": "tendrilRoute",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "localPresentation": {
+    "program": "skills/open-user-goal/reviewLocalPresentation.nl",
+    "callable": "reviewLocalPresentation",
+    "resultType": "LocalPresentationOutcome",
+    "skill": "localPresentation",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "deployed-interface": {
+    "program": "skills/open-user-goal/reviewDeployedInterface.nl",
+    "callable": "reviewDeployedInterface",
+    "resultType": "DeployedInterfaceOutcome",
+    "skill": "deployedInterface",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "personal-welcome": {
+    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+    "callable": "workOnPersonalWelcomeGoal",
+    "resultType": "WelcomeGoalReport",
+    "skill": "personalWelcome",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "installed-package": {
+    "program": "skills/open-user-goal/reviewInstalledPackage.nl",
+    "callable": "reviewInstalledPackage",
+    "resultType": "InstalledPackageOutcome",
+    "skill": "installedPackage",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "testkit-closeout": {
+    "program": "skills/open-user-goal/compareTestkitCloseouts.nl",
+    "callable": "compareTestkitCloseouts",
+    "resultType": "CloseoutReport",
+    "skill": "testkitCloseout",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "webhook-admission": {
+    "program": "skills/open-user-goal/reviewWebhookAdmission.nl",
+    "callable": "reviewWebhookAdmission",
+    "resultType": "WebhookAdmissionOutcome",
+    "skill": "webhookAdmission",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "native-image": {
+    "program": "skills/open-user-goal/generateOwnedIllustration.nl",
+    "callable": "generateOwnedIllustration",
+    "resultType": "OwnedIllustrationReport",
+    "skill": "nativeImage",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "provenance-question": {
+    "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
+    "callable": "reviewRecordedQuestion",
+    "resultType": "RecordedQuestionReport",
+    "skill": "provenanceQuestion",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "transcript-surface": {
+    "program": "skills/open-user-goal/reviewTranscriptSurface.nl",
+    "callable": "reviewTranscriptSurface",
+    "resultType": "TranscriptSurfaceReport",
+    "skill": "transcriptSurface",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "source-attribution": {
+    "program": "skills/open-user-goal/reviewSourceAttribution.nl",
+    "callable": "reviewSourceAttribution",
+    "resultType": "SourceAttributionReport",
+    "skill": "sourceAttribution",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "workspace-smoke": {
+    "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
+    "callable": "reviewWorkspaceSmoke",
+    "resultType": "WorkspaceSmokeReport",
+    "skill": "workspaceSmoke",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "same-turn-eval": {
+    "program": "skills/open-user-goal/recoverSameTurnEval.nl",
+    "callable": "recoverSameTurnEval",
+    "resultType": "SameTurnEvalOutcome",
+    "skill": "sameTurnEval",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "log-follower": {
+    "program": "skills/open-user-goal/reviewLogFollower.nl",
+    "callable": "reviewLogFollower",
+    "resultType": "LogFollowerOutcome",
+    "skill": "logFollower",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "pty-continuity": {
+    "program": "skills/open-user-goal/reviewPtyContinuity.nl",
+    "callable": "reviewPtyContinuity",
+    "resultType": "PtyContinuityOutcome",
+    "skill": "ptyContinuity",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "development-audit": {
+    "program": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+    "callable": "reviewDevelopmentAudit",
+    "resultType": "DevelopmentAuditOutcome",
+    "skill": "developmentAudit",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "content-archive": {
+    "program": "skills/open-user-goal/recoverContentArchive.nl",
+    "callable": "recoverContentArchive",
+    "resultType": "ContentArchiveOutcome",
+    "skill": "contentArchive",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "system-release": {
+    "program": "skills/open-user-goal/reviewSystemRelease.nl",
+    "callable": "reviewSystemRelease",
+    "resultType": "SystemReleaseOutcome",
+    "skill": "systemRelease",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "panel-source-migration": {
+    "program": "skills/open-user-goal/migratePanelSource.nl",
+    "callable": "migratePanelSource",
+    "resultType": "PanelSourceMigrationOutcome",
+    "skill": "panelSourceMigration",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "workspace-share": {
+    "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
+    "callable": "reviewWorkspaceShare",
+    "resultType": "WorkspaceShareOutcome",
+    "skill": "workspaceShare",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "agent-capability": {
+    "program": "skills/open-user-goal/recoverAgentCapability.nl",
+    "callable": "recoverAgentCapability",
+    "resultType": "AgentCapabilityOutcome",
+    "skill": "agentCapability",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "local-width": {
+    "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
+    "callable": "reviewLocalExecutionWidth",
+    "resultType": "LocalWidthOutcome",
+    "skill": "localWidth",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "assigned-public-brief": {
+    "program": "skills/open-user-goal/answerFromAssignedPublicSources.nl",
+    "callable": "answerFromAssignedPublicSources",
+    "resultType": "AssignedPublicGoalReport",
+    "skill": "publicBrief",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "google-runbook": {
+    "program": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+    "callable": "reconcileGoogleRunbook",
+    "resultType": "GoogleRunbookReport",
+    "skill": "googleRunbook",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "news-edition-review": {
+    "program": "skills/open-user-goal/prepareNewsEditionReview.nl",
+    "callable": "prepareNewsEditionReview",
+    "resultType": "NewsEditionReviewReport",
+    "skill": "newsEditionReview",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "unit-handoff": {
+    "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+    "callable": "reviewUnitHandoffGoal",
+    "resultType": "UnitHandoffReport",
+    "skill": "unitHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "extension-dossier": {
+    "program": "skills/open-user-goal/reviewExtensionDossier.nl",
+    "callable": "reviewExtensionDossier",
+    "resultType": "ExtensionDossierOutcome",
+    "skill": "extensionDossier",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "adventure-journey": {
+    "program": "skills/open-adventure-journey/reviewAdventureJourney.nl",
+    "callable": "reviewAdventureJourney",
+    "resultType": "JourneyOutcome",
+    "skill": "adventureJourney",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "specialist-handoff": {
+    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+    "callable": "workOnSpecialistHandoffGoal",
+    "resultType": "SpecialistGoalReport",
+    "skill": "specialistHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "build-incident": {
+    "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
+    "callable": "reviewRetainedBuildIncident",
+    "resultType": "BuildIncidentOutcome",
+    "skill": "buildIncident",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "dictation-handoff": {
+    "program": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
+    "callable": "workOnDictationHandoffGoal",
+    "resultType": "DictationGoalReport",
+    "skill": "dictationHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "provider-handoff": {
+    "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+    "callable": "workOnProviderHandoffGoal",
+    "resultType": "ProviderGoalReport",
+    "skill": "providerHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "problem-report": {
+    "program": "skills/open-user-goal/workOnProblemReportGoal.nl",
+    "callable": "workOnProblemReportGoal",
+    "resultType": "OpenProblemOutcome",
+    "skill": "problemReport",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "compound-recovery": {
+    "program": "skills/open-user-goal/recoverOperatingHandoff.nl",
+    "callable": "recoverOperatingHandoff",
+    "resultType": "RecoveryHandoffOutcome",
+    "skill": "compoundRecovery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "templateMigration": {
+    "program": "skills/template-candidate/reviewTemplateMigration.nl",
+    "callable": "reviewTemplateMigration",
+    "resultType": "MigrationReport",
+    "skill": "templateMigration",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "githubWork": {
+    "program": "skills/github/natlang/workOnGitHubGoal.nl",
+    "callable": "workOnGitHubGoal",
+    "resultType": "OpenGitHubReport",
+    "skill": "githubWork",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "terminal-handoff": {
+    "program": "skills/open-user-goal/workOnTerminalGoal.nl",
+    "callable": "workOnTerminalGoal",
+    "resultType": "TerminalGoalReport",
+    "skill": "terminalHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "local-reconciliation": {
+    "program": "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
+    "callable": "workOnLocalReconciliationGoal",
+    "resultType": "LocalReconciliationGoalReport",
+    "skill": "localReconciliation",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "vaultWork": {
+    "program": "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+    "callable": "workOnVaultKnowledgeGoal",
+    "resultType": "VaultKnowledgeReport",
+    "skill": "vaultWork",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "unit-rollout": {
+    "program": "skills/open-unit-rollout/repairWorkspaceUnit.nl",
+    "callable": "repairWorkspaceUnit",
+    "resultType": "UnitRolloutReport",
+    "skill": "unitRollout",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "googleSetup": {
+    "program": "skills/google-drive/setupGoal/workOnGoogleSetupGoal.nl",
+    "callable": "workOnGoogleSetupGoal",
+    "resultType": "OpenGoogleSetupReport",
+    "skill": "googleSetup",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "capability-plan": {
+    "program": "skills/open-user-goal/workOnCapabilityGoal.nl",
+    "callable": "workOnCapabilityGoal",
+    "resultType": "CapabilityGoalReport",
+    "skill": "capabilityPlan",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "owned-task": {
+    "program": "skills/open-owned-task-recovery/recoverOwnedTask.nl",
+    "callable": "recoverOwnedTask",
+    "resultType": "RecoveryReport",
+    "skill": "ownedTaskRecovery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "gadDurableQuestion": {
+    "program": "skills/gad-context/natlang/reviewDurableQuestion.nl",
+    "callable": "reviewDurableQuestion",
+    "resultType": "DurableQuestionReport",
+    "skill": "gadDurableQuestion",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "preparedContentProject": {
+    "program": "skills/open-user-goal/prepareContentProject.nl",
+    "callable": "prepareContentProject",
+    "resultType": "PreparedContentProjectReport",
+    "skill": "preparedContentProject",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "terminalAppRepair": {
+    "program": "skills/open-user-goal/workOnTerminalApp.nl",
+    "callable": "workOnTerminalApp",
+    "resultType": "TerminalRepairReport",
+    "skill": "terminalAppRepair",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "clientDiagnostics": {
+    "program": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
+    "callable": "workOnClientDiagnostics",
+    "resultType": "ClientDiagnosticsReport",
+    "skill": "clientDiagnostics",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "workspace-assembly": {
+    "program": "skills/open-user-goal/workOnAssemblyGoal.nl",
+    "callable": "workOnAssemblyGoal",
+    "resultType": "AssemblyReport",
+    "skill": "workspaceAssembly",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "automationActivation": {
+    "program": "skills/open-user-goal/activateOwnedAutomation.nl",
+    "callable": "activateOwnedAutomation",
+    "resultType": "OwnedAutomationActivationReport",
+    "skill": "automationActivation",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "scheduled-recovery": {
+    "program": "skills/open-owned-scheduled-recovery/recoverScheduledAutomation.nl",
+    "callable": "recoverScheduledAutomation",
+    "resultType": "ScheduledOutcome",
+    "skill": "scheduledRecovery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "eval-handoff": {
+    "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+    "callable": "workOnEvalHandoffGoal",
+    "resultType": "EvalHandoffGoalReport",
+    "skill": "evalHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "browserMigration": {
+    "program": "skills/browser-import-review/workOnBrowserMigrationGoal.nl",
+    "callable": "workOnBrowserMigrationGoal",
+    "resultType": "OpenMigrationReport",
+    "skill": "browserMigration",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "visualRecovery": {
+    "program": "skills/panel-health/recoverPanelGoal.nl",
+    "callable": "recoverPanelGoal",
+    "resultType": "RecoveryReport",
+    "skill": "visualRecovery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "program-run": {
+    "program": "skills/open-user-goal/workOnProgramRunGoal.nl",
+    "callable": "workOnProgramRunGoal",
+    "resultType": "ProgramRunReport",
+    "skill": "programRun",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "authoring": {
+    "program": "skills/open-user-goal/workOnAuthoringGoal.nl",
+    "callable": "workOnAuthoringGoal",
+    "resultType": "AuthoringOpenOutcome",
+    "skill": "authoring",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "ownedPreview": {
+    "program": "skills/publish-preflight/publishOwnedPreviewGoal.nl",
+    "callable": "publishOwnedPreviewGoal",
+    "resultType": "OwnedPreviewReport",
+    "skill": "ownedPreview",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "personal-automation": {
+    "program": "skills/open-personal-automation/coordinatePersonalAutomation.nl",
+    "callable": "coordinatePersonalAutomation",
+    "resultType": "Report",
+    "skill": "personalAutomation",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "google-handoff": {
+    "program": "skills/open-google-handoff-goal/program/reconcileGoogleHandoff.nl",
+    "callable": "reconcileGoogleHandoff",
+    "resultType": "HandoffOutcome",
+    "skill": "googleHandoff",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "system-diagnostics": {
+    "program": "skills/open-system-diagnostics/workTowardDiagnosticGoal.nl",
+    "callable": "workTowardDiagnosticGoal",
+    "resultType": "DiagnosticReport",
+    "skill": "diagnostics",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "local-delivery": {
+    "program": "skills/open-local-delivery/workTowardLocalDelivery.nl",
+    "callable": "workTowardLocalDelivery",
+    "resultType": "LocalDeliveryReport",
+    "skill": "localDelivery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "personal-history": {
+    "program": "skills/open-personal-history/reviewPersonalHistory.nl",
+    "callable": "reviewPersonalHistory",
+    "resultType": "Report",
+    "skill": "personalHistory",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "calendar": {
+    "program": "skills/open-calendar-goal/program/workOnCalendarGoal.nl",
+    "callable": "workOnCalendarGoal",
+    "resultType": "CalendarReport",
+    "skill": "calendar",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "personal-artifacts": {
+    "program": "skills/open-personal-artifacts/workOnPersonalArtifactsGoal.nl",
+    "callable": "workOnPersonalArtifactsGoal",
+    "resultType": "PersonalArtifactsReport",
+    "skill": "personalArtifacts",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "pdfVault": {
+    "program": "skills/open-user-goal/correctVaultFromPdf.nl",
+    "callable": "correctVaultFromPdf",
+    "resultType": "PdfVaultCorrection",
+    "skill": "pdfVault",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "gmail": {
+    "program": "skills/open-gmail-goal/program/recoverGmailGoal.nl",
+    "callable": "recoverGmailGoal",
+    "resultType": "GmailGoalReport",
+    "skill": "gmail",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "pdf": {
+    "program": "skills/pdf-intake/workOnPdfGoal.nl",
+    "callable": "workOnPdfGoal",
+    "resultType": "PdfGoalReport",
+    "skill": "pdf",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "publication": {
+    "program": "skills/publish-preflight/workTowardPublicationGoal.nl",
+    "callable": "workTowardPublicationGoal",
+    "resultType": "PublicationGoalReport",
+    "skill": "publication",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "recovery": {
+    "program": "skills/open-session-recovery/program/recoverSessionGoal.nl",
+    "callable": "recoverSessionGoal",
+    "resultType": "RecoveryReport",
+    "skill": "recovery",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "personal": {
+    "program": "skills/open-personal-goal/program/workOnMissionGoal.nl",
+    "callable": "workOnMissionGoal",
+    "resultType": "MissionGoalReport",
+    "skill": "personal",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "operator": {
+    "program": "skills/open-system-operations/workOnSystemGoal.nl",
+    "callable": "workOnSystemGoal",
+    "resultType": "OperatorReport",
+    "skill": "operator",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "news": {
+    "program": "skills/news-workflows/reviewUserNewsGoal.nl",
+    "callable": "reviewUserNewsGoal",
+    "resultType": "NewsUserGoalReport",
+    "skill": "news",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "spectrolite": {
+    "program": "skills/spectrolite-review/workTowardVaultGoal.nl",
+    "callable": "workTowardVaultGoal",
+    "resultType": "OpenVaultReport",
+    "skill": "spectrolite",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "google": {
+    "program": "skills/google-drive/driveWorkflow/workOnDriveGoal.nl",
+    "callable": "workOnDriveGoal",
+    "resultType": "GoogleWorkflowReport",
+    "skill": "google",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "research": {
+    "program": "skills/open-user-goal/investigatePublicQuestion.nl",
+    "callable": "investigatePublicQuestion",
+    "resultType": "ResearchGoalReport",
+    "skill": "research",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "workspace-edit": {
+    "program": "skills/open-user-goal/reviseWorkspaceDocument.nl",
+    "callable": "reviseWorkspaceDocument",
+    "resultType": "WorkspaceEditReport",
+    "skill": "workspace-edit",
+    "parameterNames": [
+      "goal",
+      "research"
+    ],
+    "additionalArguments": {
+      "research": null
+    }
+  },
+  "research-and-edit": {
+    "program": "skills/open-user-goal/reviseFromPublicResearch.nl",
+    "callable": "reviseFromPublicResearch",
+    "resultType": "ResearchRevision",
+    "skill": "research-and-edit",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "owned-research": {
+    "program": "skills/open-user-goal/investigatePublicQuestion.nl",
+    "callable": "investigatePublicQuestion",
+    "resultType": "ResearchGoalReport",
+    "skill": "owned-research",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "owned-research-and-edit": {
+    "program": "skills/open-user-goal/reviseFromPublicResearch.nl",
+    "callable": "reviseFromPublicResearch",
+    "resultType": "ResearchRevision",
+    "skill": "owned-research-and-edit",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "browser": {
+    "program": "skills/open-user-goal/workInBrowser.nl",
+    "callable": "workInBrowser",
+    "resultType": "BrowserGoalReport",
+    "skill": "browser",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  },
+  "suite": {
+    "program": "skills/open-user-goal/verifyWorkspaceSuite.nl",
+    "callable": "verifyWorkspaceSuite",
+    "resultType": "WorkspaceSuiteReport",
+    "skill": "suite",
+    "parameterNames": [
+      "goal"
+    ],
+    "additionalArguments": {}
+  }
+}

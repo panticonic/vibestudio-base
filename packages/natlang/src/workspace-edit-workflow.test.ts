@@ -11,7 +11,6 @@ it("passes real document records to the linked revision and reconciliation polic
   const root = fileURLToPath(new URL("../../..", import.meta.url));
   const platform = workerdPlatform({ realm: confinedRealm(testNewFunction()) });
   const scripts: Record<string, string> = {
-    runUserGoal: "return await reviseWorkspaceDocument(goal, null);",
     reviseWorkspaceDocument: `
       const original = await goalWorkspace.read("staff-guide.md");
       if (!original) throw new Error("Missing document");
@@ -50,7 +49,7 @@ it("passes real document records to the linked revision and reconciliation polic
   });
   const path = "staff-guide.md";
   let current = {path, version:"initial", text:"Doors open: 10:00\n"};
-  const run = await loader.load("skills/open-user-goal/runUserGoal.nl", { services: {
+  const run = await loader.load("skills/open-user-goal/reviseWorkspaceDocument.nl", { services: {
     goalWorkspace: {
       list: async () => [path],
       read: async (name: string) => name === path ? current : null,
@@ -64,8 +63,8 @@ it("passes real document records to the linked revision and reconciliation polic
         return {status:"written", version:current.version};
       },
     },
-  } }) as (goal: string) => Promise<unknown>;
-  await expect(run("Update the staff guide opening time.")).resolves.toEqual({status:"edited",path,version:"updated"});
+  } }) as (goal: string, research: unknown) => Promise<unknown>;
+  await expect(run("Update the staff guide opening time.", null)).resolves.toEqual({status:"edited",path,version:"updated"});
   expect(current.text).toBe("Doors open: 10:45\nKeep the accessible door clear.\n");
-  expect(steps).toEqual(["runUserGoal", "reviseWorkspaceDocument", "chooseRevision", "reconcileRevision"]);
+  expect(steps).toEqual(["reviseWorkspaceDocument", "chooseRevision", "reconcileRevision"]);
 });

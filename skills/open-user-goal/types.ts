@@ -21,51 +21,6 @@ export type WorkspaceWrite =
 export type WorkspaceEditReport =
   | { status: "edited"; path: string; version: string }
   | { status: "blocked"; reason: string };
-export type UserGoalReport =
-  | { status: "workspace-skill-reviewed"; skill: "automationActivation"; outcome: unknown }
-  | {
-      status: "workspace-skill-reviewed";
-      skill:
-        | "boardMigration" | "preparedContentProject" | "liveLocalInventory" | "androidDelivery" | "androidGoalAudit" | "terminalAppRepair"
-        | "liveTendrilBoard" | "cliRoute" | "ownedOperations" | "testkitCloseout" | "webhookAdmission"
-        | "provenanceQuestion" | "transcriptSurface" | "sourceAttribution" | "workspaceSmoke" | "sameTurnEval" | "deliveryWake"
-        | "logFollower" | "ptyContinuity" | "developmentAudit" | "contentArchive" | "systemRelease"
-        | "panelSourceMigration" | "workspaceShare" | "agentCapability" | "workspaceAssembly" | "capabilityPlan"
-        | "vaultWork" | "googleSetup" | "gadDurableQuestion" | "clientDiagnostics" | "githubWork"
-        | "news" | "adventureJourney" | "spectrolite" | "google" | "gmail"
-        | "googleHandoff" | "calendar" | "personal" | "personalArtifacts" | "personalHistory"
-        | "scheduledRecovery" | "personalAutomation" | "operator" | "localReconciliation" | "diagnostics"
-        | "ownedTaskRecovery" | "unitRollout" | "localDelivery" | "recovery" | "publication"
-        | "ownedPreview" | "visualRecovery" | "pdf" | "terminalHandoff" | "personalWelcome"
-        | "dictationHandoff" | "specialistHandoff" | "providerHandoff" | "problemReport" | "compoundRecovery"
-        | "buildIncident" | "deployedInterface" | "apiReadiness" | "chatContinuity" | "editorialPacket"
-        | "demoPortfolio" | "regencyBriefing" | "nativeImage" | "imageCandidate" | "newsEvidence" | "installedPackage"
-        | "extensionDossier" | "localWidth" | "evalHandoff" | "programRun" | "browserMigration"
-        | "templateMigration" | "authoring" | "bridgeDelivery" | "workspaceClaims" | "panelLaunchState"
-        | "ownedRouteAuthority" | "workspaceConfig" | "audienceResponse" | "coordinatedRevision" | "retainedMemory"
-        | "intentDiscovery" | "unitHandoff" | "googleRunbook" | "newsEditionReview" | "publicBrief";
-      outcome: unknown;
-    }
-  | { status: "workspace-skill-reviewed"; skill: "scaffoldReview"; outcome: ScaffoldOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "localMethodExchange"; outcome: LocalMethodOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "systemCandidateTriage"; outcome: SystemCandidateOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "examplesAdoption"; outcome: AdoptionOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "grimoireScene"; outcome: GrimoireSceneOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "phoneFirstRun"; outcome: PhoneFirstRunOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "skillMaintenance"; outcome: SkillMaintenanceOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "desktopReadiness"; outcome: DesktopReadinessOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "notificationState"; outcome: NotificationStateOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "mobileContinuity"; outcome: MobileContinuityOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "assetIntegrity"; outcome: AssetIntegrityOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "tendrilRoute"; outcome: TendrilRouteOutcome }
-  | { status: "workspace-skill-reviewed"; skill: "localPresentation"; outcome: LocalPresentationOutcome }
-  | { status: "answered" | "insufficient"; research: ResearchGoalReport }
-  | { status: "edited"; path: string; version: string; research: ResearchGoalReport }
-  | WorkspaceEditReport
-  | BrowserGoalReport
-  | WorkspaceSuiteReport
-  | { status: "workspace-skill-reviewed"; skill: "pdfVault"; outcome: PdfVaultOutcome };
-
 export type OpenSuiteRoute = { id: string; target: string; suite: string; purpose: string; runtime: "native" | "workerd" | "browser"; stateHash: string };
 export type OpenSuiteChoice = {
   routeId: string;
@@ -107,7 +62,7 @@ export type PdfVaultHandoff =
     directive: string;
   };
 
-export type PdfVaultOutcome = { pdf: unknown; handoff: PdfVaultHandoff; vault: unknown };
+export type { PdfGoalReport } from "./pdf/types.js";
 
 export type PresentationSourceCard = {
   id: string;
@@ -598,3 +553,65 @@ export type TerminalRepairReport = {
   outcome: "verified" | "already-ready" | "hold-edit" | "hold-test" | "hold-moved" | "blocked";
   explanation: string;
 };
+
+export type { IntentReport } from "./discoverScopedIntent/types.js";
+export type { BoardMigrationOutcome } from "./reviewBoardMigration/types.js";
+export type { LiveTendrilOutcome } from "./workOnLiveTendrilBoard/types.js";
+export type { OwnedRouteReview } from "./chooseAuthorizedEvidenceRoute/types.js";
+export type { LaunchReport } from "./reconcilePanelLaunchState/types.js";
+export type { WorkspaceClaimReview } from "./reviewWorkspaceClaims/types.js";
+export type { OperationsGoalOutcome } from "./coordinateOwnedOperations/types.js";
+export type { BridgeDeliveryReport } from "./workOnBridgeDelivery/types.js";
+export * from "./workOnAuthoringGoal/discovery/types.js";
+export type { ReadinessReport as ApiReadinessReport } from "./workOnApiReadinessGoal/types.js";
+export * from "./reviewWebhookAdmission/contract.js";
+export * from "./reviewTranscriptSurface/contract.js";
+export * from "./reviewRecordedQuestion/contract.js";
+export * from "./reviewSourceAttribution/contract.js";
+export * from "./reviewWorkspaceSmoke/contract.js";
+export * from "./recoverSameTurnEval/contract.js";
+export * from "./reviewDeliveryWake/contract.js";
+export * from "./reviewLogFollower/contract.js";
+export * from "./reviewPtyContinuity/contract.js";
+export * from "./reviewDevelopmentAudit/contract.js";
+export * from "./recoverContentArchive/contract.js";
+export * from "./reviewSystemRelease/contract.js";
+export type { PanelSourceMigrationOutcome } from "./migratePanelSource/types.js";
+export type { WorkspaceShareOutcome } from "./reviewWorkspaceShare/types.js";
+export type { AgentCapabilityOutcome } from "./recoverAgentCapability/types.js";
+export type { ChatContinuityReport } from "./workOnChatContinuity/types.js";
+export * from "./generateOwnedIllustration/contract.js";
+export type { ImageReport } from "./workOnImageCandidateGoal/types.js";
+export type { ExtensionDossierOutcome } from "./reviewExtensionDossier/types.js";
+export type { InstalledPackageOutcome } from "./reviewInstalledPackage/types.js";
+export type { DeployedInterfaceOutcome } from "./reviewDeployedInterface/types.js";
+export * from "./workOnEvalHandoffGoal/journal/types.js";
+export * from "./workOnProgramRunGoal/runtime/types.js";
+export * from "./workOnTerminalGoal/types.js";
+
+export type LocalReconciliationGoalReport = {
+  integration: { status: "integrated" | "held"; head: string; reason: string };
+  window: { title: string; window: "open" | "pending" | "closed"; note: string; head: string };
+  handoff: { status: "none" | "held" | "staged"; artifact: { path: string; bytes: number } | null };
+  archive?: {
+    prior: { id: string; title: string; revision: string; setting: string; key: string; value: unknown; sha256: string };
+    current: { exists: boolean; value: unknown };
+    relation: "matches" | "changed";
+  } | null;
+};
+
+export type { CapabilityGoalReport } from "./workOnCapabilityGoal/workspace/types.js";
+
+export * from "./workOnAssemblyGoal/workspace/types.js";
+
+export type { RecoveryHandoffOutcome, RecoveryHandoffDirective, RecoveryHandoffInput } from "./workOnRecoveryHandoff/types.js";
+
+export * from "./workOnProblemReportGoal/types.js";
+
+export type { DictationGoalReport } from "./workOnDictationHandoffGoal/types.js";
+export type { SpecialistGoalReport } from "./workOnSpecialistHandoffGoal/types.js";
+export * from "./workOnProviderHandoffGoal/types.js";
+
+
+export type ResearchRevision = { research: ResearchGoalReport; revision: WorkspaceEditReport | null };
+export type WorkspaceAnswer = { answer: string; citations: { path: string; version: string; quote: string }[]; unresolved: string[] };

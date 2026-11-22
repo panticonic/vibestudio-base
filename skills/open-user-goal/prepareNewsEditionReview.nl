@@ -3,7 +3,7 @@ description: Prepare a private visual editorial packet from the exact current re
 args:
   goal: string
 returns: NewsEditionReviewReport
-uses: [runUserGoal/workOnNewsEvidenceGoal]
+uses: [workOnNewsEvidenceGoal]
 budget: { maxTurns: 26 }
 ---
 1. Call newsEditionReview.readDesk to get the local editor brief for this audience.

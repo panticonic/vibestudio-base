@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { createNatlangRuntime, workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import {
@@ -586,6 +587,27 @@ it("links a typed callable branch only when every installed module is present", 
   expect(ready.serviceScopes.panelRepairEdit).toEqual(["brief/release/stage.nl"]);
 });
 
+it("loads a public typed branch and mounted TS effects without a generic parent lambda", async () => {
+  const files = {
+    "skills/library/natlang.json": JSON.stringify({
+      workspaceModules: { "release/input": "skills/release-input" },
+      workspaceBranches: { release: { mounts: ["release/input"], types: ["ReleaseReport"] } },
+    }),
+    "skills/library/release.nl": BRIEF.replace("returns: string", "returns: ReleaseReport"),
+    "skills/library/release/types.ts": 'export type { ReleaseReport } from "./input/types.js";',
+    "skills/release-input/types.ts": 'export type ReleaseReport = { version: string };',
+    "skills/release-input/read.nl": BRIEF,
+    "skills/release-input/readEffect.ts": 'import { panelRepairEdit } from "natlang:services"; export default async function readEffect(): Promise<string> { return String(!!panelRepairEdit); }',
+    "skills/release-input/services.d.ts": "declare module 'natlang:services' { export const panelRepairEdit: unknown; }",
+    "skills/release-input/natlang.json": JSON.stringify({ serviceScopes: { panelRepairEdit: ["read.nl"] } }),
+  };
+  const loader = new ProgramLoader({ platform: platform(), bindings: {}, runTask: run => run(), fs: memoryFs(files) });
+  const result = await loader.describe("skills/library/release.nl");
+  expect(result.functions.map(fn => fn.source)).toContain("release.nl");
+  expect(result.functions.find(fn => fn.source === "release.nl")?.returns).toBe("ReleaseReport");
+  expect(result.serviceScopes.panelRepairEdit).toEqual(["release/input/read.nl"]);
+});
+
 it("refuses a mounted package with an unscoped service or overlapping ownership", async () => {
   const fs = memoryFs({
     "skills/hub/brief.nl": BRIEF,
@@ -599,7 +621,7 @@ it("refuses a mounted package with an unscoped service or overlapping ownership"
   await expect(loader.describe("skills/hub/brief.nl")).rejects.toThrow("Scope service panelRepairEdit");
 });
 
-it("compiles the open goal program with its installed research skill and scoped services", async () => {
+it("compiles the semantic function library with its installed research skill and scoped services", async () => {
   const root = new URL("../../../", import.meta.url);
   const fs: WorkspaceFs = {
     async readdir(path) {
@@ -615,36 +637,36 @@ it("compiles the open goal program with its installed research skill and scoped 
   const loader = new ProgramLoader({
     platform: platform(), fs, bindings: {}, runTask: (run) => run(),
   });
-  const result = await loader.describe("skills/open-user-goal/runUserGoal.nl");
+  const result = await loader.describe("skills/open-user-goal");
   expect(result.serviceScopes).toMatchObject({
-    panelRecovery: ["runUserGoal/visualRecovery/recoverPanelGoal.nl", "runUserGoal/visualRecovery/recoverPanelGoal/recoverSurface.nl"],
-    panelHealth: ["runUserGoal/visualRecovery/reviewPanelHealth.nl", "runUserGoal/visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
-    goalBrowser: ["runUserGoal/workInBrowser.nl"],
-    goalDiscovery: ["runUserGoal/investigatePublicQuestion.nl"],
-    goalWorkspace: ["runUserGoal/reviseWorkspaceDocument.nl"],
-    goalSuite: ["runUserGoal/verifyWorkspaceSuite.nl"],
-    recoverySessions: ["runUserGoal/recovery/recoverSessionGoal.nl"],
-    recoveryReplay: ["runUserGoal/recovery/recoverSessionGoal/readRecoveryWindows.nl"],
-    recoveryHandoff: ["runUserGoal/recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
-    testSuitePlanRead: ["runUserGoal/reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
-    testSuiteVerificationRun: ["runUserGoal/reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "runUserGoal/verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
-    pdfVaultBridge: ["runUserGoal/authorizePdfVaultHandoff.nl"],
-    pdfGoalDocuments: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.nl", "runUserGoal/pdf/workOnPdfGoal.nl"],
-    pdfGoalVisual: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.nl", "runUserGoal/pdf/workOnPdfGoal/readRenderedPages.nl"],
-    pdfIntakeProbe: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/probeDocument.nl", "runUserGoal/pdf/extractPdfEvidence/probeDocument.nl"],
-    pdfIntakeRead: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/readBatch.nl", "runUserGoal/pdf/extractPdfEvidence/readBatch.nl"],
-    pdfLayoutRead: ["runUserGoal/workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl", "runUserGoal/pdf/reviewPdfLayout.nl"],
-    ownedPreviewPublication: ["runUserGoal/publication/publishOwnedPreviewGoal.nl", "runUserGoal/publication/publishOwnedPreviewGoal/deliverPreview.nl"],
-    publicationGoal: ["runUserGoal/publication/workTowardPublicationGoal.nl"],
-    publicationRevision: ["runUserGoal/publication/reviewPublicationRevision.nl"],
-    websiteReadback: ["runUserGoal/publication/preflightPublication.nl"],
+    panelRecovery: ["visualRecovery/recoverPanelGoal.nl", "visualRecovery/recoverPanelGoal/recoverSurface.nl"],
+    panelHealth: ["visualRecovery/reviewPanelHealth.nl", "visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
+    goalBrowser: ["workInBrowser.nl"],
+    goalDiscovery: ["investigatePublicQuestion.nl"],
+    goalWorkspace: ["reviseWorkspaceDocument.nl", "answerWorkspaceQuestion.nl"],
+    goalSuite: ["verifyWorkspaceSuite.nl"],
+    recoverySessions: ["recovery/recoverSessionGoal.nl"],
+    recoveryReplay: ["recovery/recoverSessionGoal/readRecoveryWindows.nl"],
+    recoveryHandoff: ["recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
+    testSuitePlanRead: ["reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    testSuiteVerificationRun: ["reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
+    pdfVaultBridge: ["authorizePdfVaultHandoff.nl"],
+    pdfGoalDocuments: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.nl", "pdf/workOnPdfGoal.nl"],
+    pdfGoalVisual: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.nl", "pdf/workOnPdfGoal/readRenderedPages.nl"],
+    pdfIntakeProbe: ["workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/probeDocument.nl", "pdf/extractPdfEvidence/probeDocument.nl"],
+    pdfIntakeRead: ["workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/readBatch.nl", "pdf/extractPdfEvidence/readBatch.nl"],
+    pdfLayoutRead: ["workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl", "pdf/reviewPdfLayout.nl"],
+    ownedPreviewPublication: ["publication/publishOwnedPreviewGoal.nl", "publication/publishOwnedPreviewGoal/deliverPreview.nl"],
+    publicationGoal: ["publication/workTowardPublicationGoal.nl"],
+    publicationRevision: ["publication/reviewPublicationRevision.nl"],
+    websiteReadback: ["publication/preflightPublication.nl"],
     web: [
-      "runUserGoal/answerFromAssignedPublicSources/webResearch/researchBrief.nl/**",
-      "runUserGoal/investigatePublicQuestion/sources/researchBrief.nl/**",
+      "answerFromAssignedPublicSources/webResearch/researchBrief.nl/**",
+      "investigatePublicQuestion/sources/researchBrief.nl/**",
     ],
   });
-  expect(result.functions.some(fn => fn.source === "runUserGoal/publication/workTowardPublicationGoal.nl")).toBe(true);
-  expect(result.functions.some(fn => fn.source === "runUserGoal/pdf/workOnPdfGoal.nl")).toBe(true);
+  expect(result.functions.some(fn => fn.source === "publication/workTowardPublicationGoal.nl")).toBe(true);
+  expect(result.functions.some(fn => fn.source === "pdf/workOnPdfGoal.nl")).toBe(true);
 }, OPEN_GOAL_COMPILE_TEST_MS);
 
 const installedOpenGoalSkills = [
@@ -664,7 +686,11 @@ const installedOpenGoalSkills = [
 it("mounts installed open-goal skills with their own service scopes", async () => {
   const base = new URL("../../../", import.meta.url);
   const installed = new Map(
-    installedOpenGoalSkills.map(([template, skill]) => [`skills/${skill}`, new URL(`../${template}/`, base)])
+    installedOpenGoalSkills.map(([template, skill]) => [`skills/${skill}`, JSON.parse(process.env.VIBESTUDIO_SEMANTIC_TEMPLATE_OVERRIDES ?? "{}")[template]
+      ? pathToFileURL(`${JSON.parse(process.env.VIBESTUDIO_SEMANTIC_TEMPLATE_OVERRIDES ?? "{}")[template]}/`)
+      : process.env.VIBESTUDIO_TEMPLATE_CHECKOUTS
+        ? pathToFileURL(`${process.env.VIBESTUDIO_TEMPLATE_CHECKOUTS}/${template}/`)
+        : new URL(`../${template}/`, base)])
   );
   const source = (path: string) => {
     const skill = [...installed.keys()].find(key => path === key || path.startsWith(key + "/"));
@@ -685,7 +711,7 @@ it("mounts installed open-goal skills with their own service scopes", async () =
     async stat(path) { return { isDirectory: () => !/\.[a-z]+$/u.test(path) }; },
   };
   const loader = new ProgramLoader({ platform: platform(), fs, bindings: {}, runTask: run => run() });
-  const program = await loader.describe("skills/open-user-goal/runUserGoal.nl");
+  const program = await loader.describe("skills/open-user-goal");
   const functions = program.functions.map(fn => fn.source);
   const manifest = JSON.parse(await fs.readFile("skills/open-user-goal/natlang.json", "utf8")) as {
     workspaceModules: Record<string, string>;
@@ -696,8 +722,8 @@ it("mounts installed open-goal skills with their own service scopes", async () =
       .filter(([, sourcePath]) => sourcePath === skillPath || sourcePath.startsWith(`${skillPath}/`))
       .map(([mount]) => mount);
     const scopes = program.serviceScopes[service] ?? [];
-    expect(functions).toContain(`runUserGoal/${namespace}/${callable}.nl`);
-    expect(scopes).toContain(`runUserGoal/${namespace}/${owner}.nl`);
+    expect(functions).toContain(`${namespace}/${callable}.nl`);
+    expect(scopes).toContain(`${namespace}/${owner}.nl`);
     if (template === "news") {
       const selectors = ["reviewUserNewsGoal.nl", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
       expect([...scopes].sort()).toEqual(mounts.flatMap(mount => selectors.map(selector => `${mount}/${selector}`)).sort());

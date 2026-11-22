@@ -2,7 +2,7 @@
 description: Decide whether the live PDF evidence authorizes a working vault correction and bind its provenance.
 args:
   goal: string
-  pdf: unknown
+  pdf: PdfGoalReport
 returns: PdfVaultHandoff
 ---
 1. Call choosePdfVaultEvidence(goal, pdf). If it holds, return its reason and retain the PDF report at the root.

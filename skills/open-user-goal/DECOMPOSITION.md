@@ -1,30 +1,19 @@
-# Open user goals
+# Workspace semantic functions
 
-The root receives the user's goal as its only argument. It selects installed
-skills based on the requested outcome and observations from this invocation.
-The caller supplies the current workspace and authorized services. Evaluation
-criteria, source coordinates, and expected tool calls stay in the harness.
+This package is a library of domain operations and composite functions. Each public natural-language function returns the value its application needs. Callable folders keep specialist decisions, reusable knowledge and exact TypeScript helpers beneath their owning operation. Installed domains enter through their own program packages.
 
-The root judges intent from the goal and chooses a route using the actual
-callable and service scopes rendered by Natlang. The route list documents
-entry point names and result labels. It supplies no authority to call them.
-After a scope failure, the root distinguishes an inapplicable route from
-unavailable capability and checks for any completed effects before continuing.
-The host remains responsible for binding and enforcing service authority.
-
-| Procedure | Owner |
+| Responsibility | Implementation |
 | --- | --- |
-| Choose between public research and a local document revision | The root Natlang lambda. |
-| Form search queries, assess candidate sources, and revise them after an unsuccessful attempt | The research Natlang lambda. |
-| Read actual pages and ground the answer in exact excerpts | The existing web research skill. Workspace RPC owns the fetch and cached bytes. |
-| Report success or what remains unresolved | The root retains the research result, including its citations and failures. |
-| Identify the document and reconcile it with authoritative workspace evidence | A judgment lambda scoped to document revision. |
-| Retry a revision against fresh state, preserving other edits | The document revision lambda rereads the current target and evidence. Its reconciliation child compares the original, proposed, and current text to decide whether the requested change still applies. The managed service handles exact version comparison and storage. |
-| Use verified public evidence as the basis for an authorized local revision | The root chooses the dependent call using the research outcome. The revision receives observed source evidence and current workspace contents. |
-| Interpret the current browser panel and choose an authorized unfinished action | The browser lambda owns the inspect, decide, act, and readback loop. Its decision child interprets observed row details and goal dependencies. |
-| Observe the owned renderer and activate a current visible control | The managed CDP service checks renderer identity and the observed revision. The independent verifier reads the final panel state and checks action order and untouched rows. |
-| Discover and verify the workspace test suite relevant to a user goal | A decision lambda selects a live declaration, an inspection or execution, and any requested filter. The existing suite-review Natlang subtree owns runtime interpretation and receipt assessment. |
-| Resolve declarations and run the authorized declared suite | Vibestudio's existing verifier binds the selected route to the observed workspace state and returns the native or Workerd receipt. The independent outcome check re-resolves the current declaration. |
-| Select an installed workspace skill for the user goal | The root Natlang lambda calls the News, Spectrolite, Drive, Mission Control, System operations, session recovery, or website publication subtree exposed in its current workspace. Each subtree interprets the same goal against the state it can observe. |
-| Bind template-specific services and check the completed outcome | The workspace supplies authorized services to its installed functions. The test runner keeps its starting-state setup and independent outcome checks outside the program. |
-| Recover Gmail compose work | The Gmail tree selects retained lineage, resolves ambiguous saves against authorized provider drafts, and checks retained delivery evidence. The service binds the exact compose and provider identities. |
+| Understand and execute a domain task | The domain's public typed natural-language function and its nested stages |
+| Read original PDF evidence and revise a vault | correctVaultFromPdf composes PDF inspection, authority interpretation and vault reconciliation |
+| Ground a document revision in public evidence | reviseFromPublicResearch composes research and document revision |
+| Recover native output for an operating handoff | recoverOperatingHandoff composes retained execution recovery and the local handoff |
+| Answer a factual workspace question | answerWorkspaceQuestion returns an answer, source citations and unresolved questions |
+| Bind a task to a public application function | entries.json supplies exact paths, callable names and parameter declarations |
+| Supply application arguments | semanticTaskEntry copies the declared input values in parameter order |
+| Enforce service authority and record events | The host services and Natlang runtime |
+| Assess task outcomes | Independent workspace state and requested application values |
+
+Task metadata declares an entry, rather than choosing a route in model context. Entry declarations prescribe no child-call sequence. The model interprets the goal using the actual scope of the function it runs. Call records retain execution history. A return contains application data that another function or the user needs.
+
+The library retains existing specialist stages and all explicit service scopes. The shared root dispatcher and its universal result union have been removed. Earlier captures remain bound to their original source revisions in the training archive.
