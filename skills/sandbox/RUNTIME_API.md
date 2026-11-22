@@ -173,9 +173,9 @@ console.log({ declared: units.slice(0, 5), live: live.slice(0, 5) });
 
 `workspace.getActive()` returns the id of the workspace the current runtime
 belongs to. `build.listUnits()` returns declared units and their immutable
-build status.
+build status. In agent eval, call it as `services.build.listUnits()`.
 
-Every supervision row carries its live entity `identity` and, for apps and
+Every supervision row carries its live entity `identity` and, for clients and
 extensions, its `release` key `{ kind, releaseId }`, where `releaseId` is the
 `name` returned by `build.listUnits()`, spelled exactly as returned (it looks
 like a package name). `describe` and `logs` accept either key: an identity
