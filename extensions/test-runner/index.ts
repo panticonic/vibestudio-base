@@ -61,6 +61,7 @@ const WORKSPACE_ROOTS = new Set([
   "projects",
   "skills",
   "templates",
+  "terminal-apps",
   "workers",
 ]);
 

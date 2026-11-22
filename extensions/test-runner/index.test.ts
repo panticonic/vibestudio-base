@@ -14,12 +14,15 @@ function sealed(overrides: Partial<TestRunRequest> = {}): TestRunRequest {
   return { ...request, artifactKey: `native:${executionDigest}`, executionDigest };
 }
 
-function fixture(runtime: "browser" | "native" = "native") {
+function fixture(
+  runtime: "browser" | "native" = "native",
+  section = "packages",
+) {
   const projections = fs.mkdtempSync(
     path.join(os.tmpdir(), "native-test-adapter-"),
   );
   cleanup.push(projections);
-  const target = path.join(projections, "ctx-1", "packages", "fixture");
+  const target = path.join(projections, "ctx-1", section, "fixture");
   fs.mkdirSync(target, { recursive: true });
   fs.writeFileSync(
     path.join(target, "package.json"),
@@ -81,8 +84,8 @@ describe("native test adapter boundary", () => {
     ).rejects.toThrow("Unknown declared test suite");
   });
 
-  it("executes selected modules in a child using the installed test-engine dependencies", async () => {
-    const { ctx, target } = fixture();
+  it.each(["packages", "terminal-apps"])("executes selected %s test modules in a child", async (section) => {
+    const { ctx, target } = fixture("native", section);
     fs.writeFileSync(
       path.join(target, "simple.test.ts"),
       'import { expect, it } from "vitest"; it("passes", () => expect(2 + 2).toBe(4));\n',
@@ -92,7 +95,10 @@ describe("native test adapter boundary", () => {
       'throw new Error("Unselected module must not execute");\n',
     );
     const api = await activate(ctx);
-    const result = await api.runNative(sealed({ fileFilter: "simple.test.ts" }));
+    const result = await api.runNative(sealed({
+      target: `${section}/fixture`,
+      fileFilter: "simple.test.ts",
+    }));
     expect(result).toMatchObject({
       status: "passed",
       passed: 1,
