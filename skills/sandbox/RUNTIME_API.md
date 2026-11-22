@@ -182,8 +182,16 @@ like a package name). `describe` and `logs` accept either key: an identity
 selects that entity, a release key fans out to every live entity of the
 release. `health(identity)` and `restart(identity)` take an entity identity;
 `versions(release)` and `rollback(release, options)` take a release key and
-work even when no process is running. Do not pass a source path as a release
-ID.
+work even when no process is running. Use the exact release name returned
+in the catalog. In eval, use the typed RPC descriptor for a version lookup:
+
+```ts
+const unit = (await services.build.listUnits()).find((entry) => entry.kind === "extension");
+if (!unit) throw new Error("No installed workspace extension");
+const versions = await rpc.call("main", mainRpcMethods["runtime.supervision.versions"], [
+  { kind: "extension", releaseId: unit.name },
+]);
+```
 
 Server-wide workspace selection and catalog operations belong to the human
 shell or the CLI's hub session, and are deliberately unavailable in runtime
