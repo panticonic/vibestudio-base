@@ -1,0 +1,13 @@
+{
+  "name": "@workspace-skills/open-user-goal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed application entries for the VibeStudio Natlang codebase",
+  "exports": {
+    ".": "./entrypoints.ts",
+    "./entrypoints": "./entrypoints.ts",
+    "./types": "./types.ts",
+    "./*/types": "./*/types.ts"
+  }
+}
