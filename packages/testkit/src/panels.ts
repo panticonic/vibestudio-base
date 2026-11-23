@@ -7,7 +7,10 @@
  * direct CDP is for input, viewport emulation and layout measurement.
  */
 import { openPanel as runtimeOpenPanel, panelTree } from "@workspace/runtime";
-import type { OpenPanelOptions as RuntimeOpenPanelOptions, PanelHandle } from "@workspace/runtime";
+import type {
+  OpenPanelOptions as RuntimeOpenPanelOptions,
+  PanelHandle,
+} from "@workspace/runtime";
 import { activeTestContext } from "./run.js";
 import { withCdpSession } from "./cdp.js";
 // Workspace-panel CDP must use the driver DO. Keep this registration anchored
@@ -29,20 +32,29 @@ function assertNotSelf(handle: PanelHandle | string): void {
   }
   if (id === selfId) {
     throw new Error(
-      `testkit refuses to automate the panel it is running in (${id}); open a separate target panel instead`
+      `testkit refuses to automate the panel it is running in (${id}); open a separate target panel instead`,
     );
   }
 }
 
-function assertNotAborted(signal: AbortSignal | undefined, label: string): void {
+function assertNotAborted(
+  signal: AbortSignal | undefined,
+  label: string,
+): void {
   if (!signal?.aborted) return;
-  const reason = signal.reason instanceof Error ? signal.reason.message : String(signal.reason);
-  throw new TestAssertionError(`${label} aborted${reason ? `: ${reason}` : ""}`);
+  const reason =
+    signal.reason instanceof Error
+      ? signal.reason.message
+      : String(signal.reason);
+  throw new TestAssertionError(
+    `${label} aborted${reason ? `: ${reason}` : ""}`,
+  );
 }
 
 function diagnosticErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (!error || typeof error !== "object" || Array.isArray(error)) return message;
+  if (!error || typeof error !== "object" || Array.isArray(error))
+    return message;
   const data = (error as { errorData?: unknown }).errorData;
   if (!data || typeof data !== "object" || Array.isArray(data)) return message;
   const diagnostic = data as Record<string, unknown>;
@@ -59,7 +71,11 @@ function diagnosticErrorMessage(error: unknown): string {
   return message;
 }
 
-function sleep(ms: number, signal: AbortSignal | undefined, label: string): Promise<void> {
+function sleep(
+  ms: number,
+  signal: AbortSignal | undefined,
+  label: string,
+): Promise<void> {
   assertNotAborted(signal, label);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -85,8 +101,13 @@ function sleep(ms: number, signal: AbortSignal | undefined, label: string): Prom
 
 /** Generic poll-until-defined helper. */
 export async function waitFor<T>(
-  probe: () => Promise<T | undefined | null | false> | T | undefined | null | false,
-  opts?: { timeoutMs?: number; intervalMs?: number; label?: string }
+  probe: () =>
+    | Promise<T | undefined | null | false>
+    | T
+    | undefined
+    | null
+    | false,
+  opts?: { timeoutMs?: number; intervalMs?: number; label?: string },
 ): Promise<T> {
   const signal = activeTestContext()?.signal;
   const label = `waitFor${opts?.label ? ` "${opts.label}"` : ""}`;
@@ -98,7 +119,8 @@ export async function waitFor<T>(
     assertNotAborted(signal, label);
     try {
       const value = await probe();
-      if (value !== undefined && value !== null && value !== false) return value as T;
+      if (value !== undefined && value !== null && value !== false)
+        return value as T;
     } catch (error) {
       lastError = error;
     }
@@ -106,16 +128,29 @@ export async function waitFor<T>(
       const suffix = lastError
         ? ` (last error: ${diagnosticErrorMessage(lastError)})`
         : "";
-      throw new TestAssertionError(`${label} timed out after ${timeoutMs}ms${suffix}`);
+      throw new TestAssertionError(
+        `${label} timed out after ${timeoutMs}ms${suffix}`,
+      );
     }
     await sleep(intervalMs, signal, label);
   }
 }
 
 /** Open a panel and auto-watch it. The runtime returns only after application boot-ready. */
-export async function openPanel(source: string, opts: OpenPanelOptions = {}): Promise<PanelHandle> {
-  const handle = await runtimeOpenPanel(source, opts);
-  activeTestContext()?.supervisor.watchPanel(handle);
+export async function openPanel(
+  source: string,
+  opts: OpenPanelOptions = {},
+): Promise<PanelHandle> {
+  const test = activeTestContext();
+  const handle = test
+    ? await test.acquire(
+        () => runtimeOpenPanel(source, opts),
+        async (handle) => {
+          if ((await panelTree.path(handle.id)) !== null) await handle.archive();
+        },
+      )
+    : await runtimeOpenPanel(source, opts);
+  test?.supervisor.watchPanel(handle);
   return handle;
 }
 
@@ -123,7 +158,7 @@ export async function openPanel(source: string, opts: OpenPanelOptions = {}): Pr
 export async function withPanel<T>(
   source: string,
   fn: (handle: PanelHandle) => Promise<T>,
-  opts?: OpenPanelOptions
+  opts?: OpenPanelOptions,
 ): Promise<T> {
   const handle = await openPanel(source, opts);
   try {
@@ -149,14 +184,16 @@ export async function panelText(handle: PanelHandle): Promise<string> {
 export async function waitForText(
   handle: PanelHandle,
   text: string | RegExp,
-  opts?: { timeoutMs?: number; intervalMs?: number }
+  opts?: { timeoutMs?: number; intervalMs?: number },
 ): Promise<void> {
   await waitFor(
     async () => {
       const current = await panelText(handle);
-      return typeof text === "string" ? current.includes(text) : text.test(current);
+      return typeof text === "string"
+        ? current.includes(text)
+        : text.test(current);
     },
-    { ...opts, label: `panel ${handle.id} shows ${String(text)}` }
+    { ...opts, label: `panel ${handle.id} shows ${String(text)}` },
   );
 }
 
@@ -168,7 +205,10 @@ export interface ViewportSpec {
 }
 
 /** Emulate a viewport on the panel via CDP Emulation.setDeviceMetricsOverride. */
-export async function setViewport(handle: PanelHandle, viewport: ViewportSpec): Promise<void> {
+export async function setViewport(
+  handle: PanelHandle,
+  viewport: ViewportSpec,
+): Promise<void> {
   assertNotSelf(handle);
   await withCdpSession(handle, async (session) => {
     await session.send("Emulation.setDeviceMetricsOverride", {
@@ -239,7 +279,10 @@ export async function audit(handle: PanelHandle): Promise<PanelAudit> {
       expression: PANEL_AUDIT_EXPRESSION,
       returnByValue: true,
     })) as { result?: { value?: string } };
-    return JSON.parse(result.result?.value ?? "{}") as Omit<PanelAudit, "consoleErrors">;
+    return JSON.parse(result.result?.value ?? "{}") as Omit<
+      PanelAudit,
+      "consoleErrors"
+    >;
   });
   let consoleErrors = 0;
   try {
@@ -252,19 +295,28 @@ export async function audit(handle: PanelHandle): Promise<PanelAudit> {
 }
 
 /** Evaluate an expression in the panel's page context, returning by value. */
-export async function evalInPanel<T = unknown>(handle: PanelHandle, expression: string): Promise<T> {
+export async function evalInPanel<T = unknown>(
+  handle: PanelHandle,
+  expression: string,
+): Promise<T> {
   assertNotSelf(handle);
   return withCdpSession(handle, async (session) => {
     const result = (await session.send("Runtime.evaluate", {
       expression,
       returnByValue: true,
       awaitPromise: true,
-    })) as { result?: { value?: unknown }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
+    })) as {
+      result?: { value?: unknown };
+      exceptionDetails?: {
+        text?: string;
+        exception?: { description?: string };
+      };
+    };
     if (result.exceptionDetails) {
       throw new Error(
         result.exceptionDetails.exception?.description ??
           result.exceptionDetails.text ??
-          "evalInPanel failed"
+          "evalInPanel failed",
       );
     }
     return result.result?.value as T;

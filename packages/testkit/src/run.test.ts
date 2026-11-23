@@ -150,3 +150,29 @@ describe("testkit runner", () => {
     vexpect(summary.failures[0]?.logsTail).toEqual(["some context"]);
   });
 });
+
+it("joins late owned acquisition and release before publishing a timeout", async () => {
+  let ready!: (resource: string) => void;
+  const created = new Promise<string>(resolve => { ready = resolve; });
+  const events: string[] = [];
+  let finished = false;
+  const run = runSuites(suite("owned acquisition", { failOnSupervision: false }).test("late native reply", async t => {
+    await t.acquire(() => created, async resource => { events.push("released:" + resource); });
+    events.push("body continued after cancellation");
+  }, { timeoutMs: 2 })).then(result => { finished = true; return result; });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  vexpect(finished).toBe(false);
+  ready("panel");
+  const result = await run;
+  vexpect(result.results[0]?.status).toBe("timeout");
+  vexpect(events).toEqual(["released:panel"]);
+});
+
+it("allows a trusted fixture to inherit its enclosing lifetime instead of an incidental acquisition deadline", async () => {
+  const events: string[] = [];
+  const result = await runSuites(suite("owned fixture", { timeoutMs: 1, failOnSupervision: false }).test("readiness", async t => {
+    await t.acquire(async () => { await new Promise(resolve => setTimeout(resolve, 5)); return "ready"; }, () => { events.push("released"); });
+  }, { timeoutMs: null }));
+  vexpect(result.results[0]?.status).toBe("passed");
+  vexpect(events).toEqual(["released"]);
+});

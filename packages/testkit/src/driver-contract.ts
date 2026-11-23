@@ -1,6 +1,11 @@
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import type { ProfileRef } from "./profile-core.js";
 
+export interface DriverEvents {
+  events: Array<{ seq: number; method: string; params: unknown }>;
+  cursor: number;
+}
+
 /** Structural RPC surface implemented by the workspace Testkit Driver DO. */
 export interface TestkitDriverReceiver {
   cdpOpen(panelId: string): Promise<{ sessionId: string }>;
@@ -10,14 +15,9 @@ export interface TestkitDriverReceiver {
     params?: Record<string, unknown>,
   ): Promise<unknown>;
   cdpSubscribe(sessionId: string, eventMethod: string): Promise<void>;
-  cdpDrainEvents(
-    sessionId: string,
-    cursor?: number,
-  ): Promise<{
-    events: Array<{ seq: number; method: string; params: unknown }>;
-    cursor: number;
-  }>;
-  cdpClose(sessionId: string): Promise<void>;
+  cdpDrainEvents(sessionId: string, cursor?: number): Promise<DriverEvents>;
+  /** Atomically retires the session and returns its final buffered events. */
+  cdpClose(sessionId: string): Promise<DriverEvents>;
   profilePanel(
     panelId: string,
     opts?: { durationMs?: number; samplingIntervalUs?: number },
@@ -26,15 +26,15 @@ export interface TestkitDriverReceiver {
   ping(): Promise<{ ok: true; sessions: number }>;
 }
 
-export const driverRpcMethods = createReceiverRpcMethods<
-  TestkitDriverReceiver
->([
-  "cdpOpen",
-  "cdpSend",
-  "cdpSubscribe",
-  "cdpDrainEvents",
-  "cdpClose",
-  "profilePanel",
-  "heapSnapshot",
-  "ping",
-]);
+export const driverRpcMethods = createReceiverRpcMethods<TestkitDriverReceiver>(
+  [
+    "cdpOpen",
+    "cdpSend",
+    "cdpSubscribe",
+    "cdpDrainEvents",
+    "cdpClose",
+    "profilePanel",
+    "heapSnapshot",
+    "ping",
+  ],
+);
