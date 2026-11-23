@@ -2579,15 +2579,11 @@ export abstract class DurableObjectBase {
             throw new Error("Cloned storage belongs to a different source");
           }
         }
-        if (receipt.target.objectKey !== input.source.objectKey) {
-          throw new Error("Cloned storage belongs to a different source");
-        }
-      }
-      this.initializeClonedStorage(input);
-      this.lifecyclePreparation.resumed();
-      // Readiness and worker claims belong to the source activation, not its copy.
-      this.sql
-        .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'
+        this.initializeClonedStorage(input);
+        this.lifecyclePreparation.resumed();
+        // Readiness and worker claims belong to the source activation, not its copy.
+        this.sql
+          .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'
         OR key LIKE 'durable-work-ack-generation:%'
         OR key IN ('durable-work-active-worker', 'durable-work-active-activation')`);
         this.setStateValue("__objectKey", this.objectKey);

@@ -29,6 +29,7 @@ interface FakeProvider {
   lowered: Array<{ source: string; options: Record<string, unknown> }>;
   runCells: Array<{ runId: string; signal: AbortSignal }>;
   closed: number;
+  settleCapture?: (host: NatlangProviderHost, runId: string) => Promise<void>;
   lower: (source: string) => NatlangLoweredCell;
 }
 
@@ -58,6 +59,7 @@ function fakeProvider(overrides: Partial<{ version: unknown }> = {}): FakeProvid
         runCell: async (execute, options) => {
           state.runCells.push(options);
           const value = await execute();
+          await state.settleCapture?.(host, options.runId);
           return {
             value,
             calls: [
@@ -86,6 +88,7 @@ function fakeProvider(overrides: Partial<{ version: unknown }> = {}): FakeProvid
 
 interface Harness {
   instance: EvalKernel;
+  sql: Awaited<ReturnType<typeof createTestDO>>["sql"];
   provider: FakeProvider;
   loadLibraryModule: ReturnType<typeof vi.fn>;
   executed: Array<{ code: string; options: Record<string, unknown> }>;
@@ -95,7 +98,7 @@ interface Harness {
 }
 
 async function harness(options: { declared?: boolean; version?: unknown } = {}): Promise<Harness> {
-  const { instance } = await createTestDO(EvalKernel);
+  const { instance, sql } = await createTestDO(EvalKernel);
   const env = (instance as unknown as { env: Record<string, unknown> }).env;
   env["EVAL_RUNTIME_SOURCE"] = "packages/runtime";
   // An empty binding turns the provider off; the kernel otherwise defaults to its template's own.
@@ -149,6 +152,7 @@ async function harness(options: { declared?: boolean; version?: unknown } = {}):
   setPriv(instance, "makeLoadImport", () => ({}));
   return {
     instance,
+    sql,
     provider,
     loadLibraryModule,
     executed,
@@ -184,6 +188,26 @@ describe("EvalKernel natlang provider", () => {
     for (const code of ["const final = 1", "snl + nlx", "await fs.readFile('a')"]) {
       expect(cellMayReferenceNatlang(code), code).toBe(false);
     }
+  });
+
+  it("retains original provider evidence when capture settles after the eval returns", async () => {
+    const h = await harness();
+    const reply = "👋".repeat(40000);
+    h.provider.settleCapture = async (host, runId) => {
+      const evidence = { schema: "natlang.pending-model-exchanges/1", owner: host.owner, runId, reply };
+      await expect(host.retainCaptureEvidence!({ ...evidence, runId: "foreign" }))
+        .rejects.toThrow("another owner or run");
+      await host.retainCaptureEvidence!(evidence);
+    };
+    await h.run("await nl`x`()", undefined, "paid-run");
+    const rows = h.sql.exec(
+      "SELECT value FROM state WHERE key LIKE 'natlang_pending_capture:%' ORDER BY key"
+    ).toArray();
+    expect(rows.length).toBeGreaterThan(2);
+    expect(JSON.parse(String(rows[0]!["value"]))).toMatchObject({
+      runId: "paid-run", contextId: "ctx", chunks: rows.length - 1,
+    });
+    expect(JSON.parse(rows.slice(1).map(row => row["value"]).join(""))).toMatchObject({ reply });
   });
 
   it("never loads the provider for a cell that cannot reference it", async () => {

@@ -5,6 +5,8 @@ import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
  */
 import { describe, expect, it, vi } from "vitest";
 import { buildOwnerBindings, ownerIngestionRecorder } from "./evalOwnerBindings.js";
+import { createTestDO } from "@workspace/runtime/worker/test-utils";
+import { EvalKernel } from "./EvalKernel.js";
 
 describe("buildOwnerBindings", () => {
   it("injects no owner bindings for a non-agent eval (no channelId/agentRef → CLI/panel)", () => {
@@ -105,5 +107,32 @@ describe("ownerIngestionRecorder", () => {
     const call = vi.fn();
     expect(ownerIngestionRecorder({}, call)).toBeUndefined();
     expect(ownerIngestionRecorder({ channelId: "chan-1" }, call)).toBeUndefined();
+  });
+});
+
+it("scopes an inspector endpoint grant to the execution that requested it", async () => {
+  const { instance } = await createTestDO(EvalKernel);
+  const endpoint = { wsEndpoint: "ws://127.0.0.1:8787/inspector", token: "issued" };
+  const execution = { rpc: { call: async () => endpoint }, signal: new AbortController().signal };
+  const kernel = instance as unknown as {
+    activeEvalExecution: { run<T>(execution: object, callback: () => T): T };
+    closedInspectionExecutions: WeakSet<object>;
+    createActiveRuntimeRpc(): { call(target: string, method: string, args: unknown[]): Promise<unknown> };
+    createEvalCdpSocketBinder(): (endpoint: { wsEndpoint: string; token: string }) => unknown;
+  };
+  const rpc = kernel.createActiveRuntimeRpc();
+  const bind = kernel.createEvalCdpSocketBinder();
+  await kernel.activeEvalExecution.run(execution, async () => {
+    expect(() => bind(endpoint)).toThrow("issued endpoint grant");
+    await rpc.call("main", "workerdInspector.getEndpoint", []);
+    expect(bind(endpoint)).toEqual(expect.any(Function));
+    expect(() => bind({ ...endpoint, token: "wrong" })).toThrow("issued endpoint grant");
+  });
+  kernel.activeEvalExecution.run({ ...execution }, () => {
+    expect(() => bind(endpoint)).toThrow("issued endpoint grant");
+  });
+  kernel.closedInspectionExecutions.add(execution);
+  kernel.activeEvalExecution.run(execution, () => {
+    expect(() => bind(endpoint)).toThrow("issued endpoint grant");
   });
 });

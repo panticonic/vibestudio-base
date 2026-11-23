@@ -1,3 +1,4 @@
+import { bindCdpSocket, type CdpSocketOpener } from "@vibestudio/rpc/protocol/cdpSocket";
 import {
   assertChannelDeliverySource,
   residentChannelRpcMethods,
@@ -82,6 +83,7 @@ import {
 } from "@vibestudio/service-schemas/progressSemantics";
 import { EVAL_AMBIENT_ONLY } from "@vibestudio/service-schemas/runtime/runtimeSurface.eval";
 import { canonicalJson } from "@vibestudio/shared/canonicalJson";
+import type { NatlangProviderHost } from "@vibestudio/service-schemas/evalNatlang";
 import type {
   ResidentSessionReceiver,
   ResidentSessionRegistrar,
@@ -362,7 +364,7 @@ interface RuntimeSupportModule {
     parentEntityId: string,
     parentKind?: "panel" | "worker" | "do"
   ): unknown;
-  createWorkerdClient(rpc: unknown): unknown;
+  createWorkerdClient(rpc: unknown, options?: Record<string, unknown>): unknown;
   createPanelRuntime(options: Record<string, unknown>): PanelRuntimeApiLike;
   createRuntimeSelfHandle(options: { id: string }): unknown;
   createRuntimeScopeRehydrators(
@@ -610,6 +612,8 @@ export class EvalKernel extends DurableObjectBase {
    * keeps a force-reset overlap from borrowing a newer run's execution session.
    */
   private readonly activeEvalExecution = new asyncHooks.AsyncLocalStorage<EvalExecutionContext>();
+  private readonly issuedInspectionEndpoints = new WeakMap<EvalExecutionContext, Map<string, string>>();
+  private readonly closedInspectionExecutions = new WeakSet<EvalExecutionContext>();
   /** Run-scoped cleanup registered by evaluated orchestration code. Cancel
    *  executes these BEFORE aborting outbound RPC so child runtimes can retire
    *  through the normal authority path instead of becoming orphans. */
@@ -3403,7 +3407,9 @@ export class EvalKernel extends DurableObjectBase {
       const settled: { value: SandboxResult; calls: EvalNatlangCallSummary[] } = loweringFailure
         ? { value: loweringFailure, calls: [] }
         : natlang
-          ? await natlang.runCell(execute, { runId: runId ?? crypto.randomUUID(), signal })
+          ? await this.activeEvalExecution.run(execution, () =>
+              natlang.runCell(execute, { runId: runId ?? crypto.randomUUID(), signal })
+            )
           : { value: await execute(), calls: [] };
       const result = settled.value;
       // Live progress is incidental. The terminal result below is canonical and
@@ -3435,6 +3441,7 @@ export class EvalKernel extends DurableObjectBase {
         ...(natlangSummary ? { natlang: natlangSummary } : {}),
       };
     } finally {
+      this.closedInspectionExecutions.add(execution);
       execution.operationJournal.close();
       evalNodeCallbackOwnerOpen = false;
       flushLiveConsole();
@@ -3757,21 +3764,57 @@ export class EvalKernel extends DurableObjectBase {
         externals: Object.keys(this.isolateModuleMap),
       })
     );
+    const owner: NatlangProviderHost["owner"] = {
+      kind: args.agentRef
+        ? "agent"
+        : args.parent?.parentKind === "panel"
+          ? "panel"
+          : args.parent
+            ? "headless"
+            : "user",
+      objectKey: this.objectKey,
+      ...(args.agentRef ? { agentRef: args.agentRef } : {}),
+      ...(args.channelId ? { channelId: args.channelId } : {}),
+    };
     return this.ownerNatlang.ensure(module, {
       newFunction: (body, name, ...argNames) => this.compileFunction(argNames, body, name),
       bindings,
-      owner: {
-        kind: args.agentRef
-          ? "agent"
-          : args.parent?.parentKind === "panel"
-            ? "panel"
-            : args.parent
-              ? "headless"
-              : "user",
-        objectKey: this.objectKey,
-        ...(args.agentRef ? { agentRef: args.agentRef } : {}),
-        ...(args.channelId ? { channelId: args.channelId } : {}),
-      },
+      owner,
+      retainCaptureEvidence: async (evidence) => this.retainNatlangCaptureEvidence(source, owner, evidence),
+    });
+  }
+
+  private retainNatlangCaptureEvidence(
+    source: string,
+    owner: NatlangProviderHost["owner"],
+    evidence: unknown
+  ): void {
+    const execution = this.requireActiveEvalExecution();
+    if (this.closedInspectionExecutions.has(execution) || !execution.runId)
+      throw new Error("eval: capture retention requires its active owning run");
+    const value = evidence as Record<string, unknown> | null;
+    if (!value || value["schema"] !== "natlang.pending-model-exchanges/1" ||
+        value["runId"] !== execution.runId || canonicalJson(value["owner"]) !== canonicalJson(owner))
+      throw new Error("eval: pending capture evidence belongs to another owner or run");
+
+    const json = JSON.stringify(evidence);
+    const sha256 = createHash("sha256").update(json).digest("hex");
+    const key = `natlang_pending_capture:${execution.runId}:${sha256}`;
+    this.ctx.storage.transactionSync(() => {
+      let chunks = 0;
+      for (let offset = 0; offset < json.length;) {
+        let end = Math.min(offset + 65536, json.length);
+        // Keep a surrogate pair in the same row when encoding it as UTF-8.
+        if (end < json.length && /[\uD800-\uDBFF]/u.test(json[end - 1]!)) end -= 1;
+        this.setStateValue(`${key}:${String(chunks++).padStart(8, "0")}`, json.slice(offset, end));
+        offset = end;
+      }
+      this.setStateValue(key, JSON.stringify({
+        schema: "eval.retained-provider-evidence/1", source,
+        owner, runId: execution.runId, contextId: execution.contextId,
+        incarnationId: this.kernelIncarnationId,
+        sha256, chars: json.length, bytes: new TextEncoder().encode(json).byteLength, chunks,
+      }));
     });
   }
 
@@ -3992,8 +4035,19 @@ export class EvalKernel extends DurableObjectBase {
     // through this transport, so it is the one place that sees all the egress
     // that brings outside content into an agent's task.
     const call = guardOutsideContentCall(
-      (targetId: string, method: string, args: unknown[], options?: RpcCallOptions) =>
-        this.requireActiveEvalExecution().rpc.call(targetId, method, args, options),
+      async (targetId: string, method: string, args: unknown[], options?: RpcCallOptions) => {
+        const execution = this.requireActiveEvalExecution();
+        const result = await execution.rpc.call(targetId, method, args, options);
+        if (targetId === "main" && (method === "workerdInspector.getEndpoint" || method === "panelCdp.getCdpEndpoint")) {
+          const endpoint = result as { wsEndpoint?: unknown; token?: unknown } | null;
+          if (typeof endpoint?.wsEndpoint === "string" && typeof endpoint.token === "string") {
+            const issued = this.issuedInspectionEndpoints.get(execution) ?? new Map<string, string>();
+            this.issuedInspectionEndpoints.set(execution, issued);
+            issued.set(endpoint.token, endpoint.wsEndpoint);
+          }
+        }
+        return result;
+      },
       outsideContent
     );
     const emit = (targetId: string, event: string, payload: unknown, options?: RpcCallOptions) =>
@@ -4161,6 +4215,44 @@ export class EvalKernel extends DurableObjectBase {
     }
   }
 
+  private createEvalCdpSocketBinder() {
+    return (requestedEndpoint: { wsEndpoint: string; token?: string }, preferFetchUpgrade = false): CdpSocketOpener => {
+      const { wsEndpoint, token } = requestedEndpoint;
+      const execution = this.requireActiveEvalExecution();
+      const assertActive = () => {
+        if (this.requireActiveEvalExecution() !== execution || this.closedInspectionExecutions.has(execution) ||
+            !token || this.issuedInspectionEndpoints.get(execution)?.get(token) !== wsEndpoint)
+          throw new Error("eval: CDP socket requires its exact active execution and issued endpoint grant");
+      };
+      assertActive();
+      const opener = bindCdpSocket({ wsEndpoint, token }, {
+        platform: globalThis,
+        assertActive,
+        signal: execution.signal,
+        dispatch: (deliver) => {
+          if (!this.closedInspectionExecutions.has(execution))
+            this.activeEvalExecution.run(execution, deliver);
+        },
+        onSocket: (socket) => {
+          const forget = () => {
+            execution.residentSessionCleanups.delete(cleanup);
+            execution.signal?.removeEventListener("abort", onAbort);
+            socket.removeEventListener("close", forget);
+          };
+          const cleanup = async () => {
+            forget();
+            socket.close();
+          };
+          const onAbort = () => { void cleanup(); };
+          execution.residentSessionCleanups.add(cleanup);
+          socket.addEventListener("close", forget, { once: true });
+          execution.signal?.addEventListener("abort", onAbort, { once: true });
+        },
+      });
+      return (url, token, prefer, signal) => opener(url, token, preferFetchUpgrade || prefer, signal);
+    };
+  }
+
   /** Identity factories are inert; restored handles borrow the active eval
    * invocation only when used, including after cold maintenance hydration. */
   private createEvalPanelRuntime(
@@ -4175,6 +4267,7 @@ export class EvalKernel extends DurableObjectBase {
     return support.createPanelRuntime({
       rpc,
       operationSignal: () => this.requireActiveEvalExecution().signal,
+      bindCdpSocket: this.createEvalCdpSocketBinder(),
       contextId,
       recordOperation,
       selfHandle: () => support.createRuntimeSelfHandle({ id: this.rpcSelfId }),
@@ -4318,7 +4411,7 @@ export class EvalKernel extends DurableObjectBase {
         serverUrl: gatewayConfig.serverUrl,
       }),
       panelRuntime,
-      workers: support.createWorkerdClient(rpc),
+      workers: support.createWorkerdClient(rpc, { bindCdpSocket: this.createEvalCdpSocketBinder() }),
       openExternal: (url: string, options?: unknown) =>
         this.requireActiveEvalExecution().externalOpen.openExternal(
           url,
