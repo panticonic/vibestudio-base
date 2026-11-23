@@ -1,4 +1,5 @@
-import {it,expect} from "vitest";
+import {it,expect,vi} from "vitest";
+vi.mock("@workspace/natlang-services",async original=>{const actual=await original<Record<string,unknown>>();return {...actual,selectServices(_bindings:unknown,names:readonly string[]){if(names.length)throw new Error("This pure compiler fixture does not provide native services");return {};}};});
 import * as core from "../vendor/workerd/natlang-workerd.js";
 import {linkWorkspaceModules} from "./workspaceModules.js";
 import {ProgramLoader,compileProgram,programProductInput,type WorkspaceFs} from "./programs.js";
@@ -21,7 +22,7 @@ it("does not reach undeclared, unexported, excluded or escaping private type fil
   if(mode==="excluded")files["natlang.json"]=JSON.stringify({include:["package.json"]});
   if(mode==="escape")files["package.json"]=JSON.stringify({name:"@workspace-skills/reviewer",exports:{"./types":"../private.ts"}});
   const source=local();if(mode==="ambiguous")source["natlang.json"]=JSON.stringify({workspaceModules:{"discovery":"skills/discovery","a":"skills/reviewer","b":"skills/reviewer"}});
-  await expect(linkWorkspaceModules("skills/app",source,async()=>projects)).rejects.toThrow(/does not export|not included|escapes|ambiguous/);
+  await expect(linkWorkspaceModules("skills/app",source,async()=>projects)).rejects.toThrow(/does not export|not included|escapes|non-relative|ambiguous/);
  }
 });
 function fsOf(files:Record<string,string>):WorkspaceFs{return {
