@@ -8,5 +8,8 @@
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/speech": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace-skills/offline-dictation": "workspace:*"
   }
 }

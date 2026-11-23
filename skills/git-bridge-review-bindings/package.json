@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "exports": { ".": "./index.ts" },
-  "dependencies": { "@workspace/runtime": "workspace:*" }
+  "dependencies": { "@workspace/runtime": "workspace:*" },
+  "devDependencies": {
+    "@workspace-skills/git-bridge-review": "workspace:*"
+  }
 }

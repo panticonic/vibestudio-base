@@ -566,11 +566,12 @@ export function createTemplateLifecycle(
           ]);
         }
         let state = await status(update);
-        if (!state.clean) {
+        if (!update.steps["commit"]) {
           await step(update, "commit", "vcs.commit", [
             {
               ...(await envelope(update, "commit")),
               message: `Update template ${update.target.url}`,
+              templateInstallation: update.after.installation,
             },
           ]);
           state = await status(update);

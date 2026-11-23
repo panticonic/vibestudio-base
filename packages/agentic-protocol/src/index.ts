@@ -3,7 +3,6 @@ export {
   AGENTIC_EVENT_PAYLOAD_KIND,
   AGENTIC_PROTOCOL_VERSION,
   CREDENTIAL_CONNECT_PAYLOAD_KIND,
-  GENESIS_EVENT_HASH,
   INVOCATION_OUTCOMES,
   LIFECYCLE_MESSAGE_REASON_CODES,
   LIFECYCLE_RECOVERY_NOTICES,
@@ -329,7 +328,6 @@ export type {
 
 export { jsonSchemaToZod, jsonSchemaToZodRawShape, isRecord } from "./json-schema-to-zod.js";
 
-export { checkTrajectoryIntegrity, computeEventHash, verifyEventHash } from "./hash.js";
 
 export * from "./log-envelope.js";
 export * from "./append-errors.js";

@@ -4,8 +4,9 @@
 
 Every persistent structure is one of:
 
-- **Log**: an append-only hash-chained sequence for trajectory and channel
-  delivery.
+- **Log**: an append-only sequence for trajectory and channel delivery. A
+  channel's log is a versioned table of its own cell, so its commit history is
+  its integrity; there is no hash chain over events.
 - **Semantic graph fact**: an immutable typed node or direct edge: command,
   work unit, change, application, decision, content mapping, workspace event,
   or event parent.
@@ -23,7 +24,7 @@ dispatching it, and create a semantic ID before materializing its content.
 ## Linking the trajectory to semantic work
 
 The unified log envelope carries log/head coordinates, ordering, causality,
-actor, payload identity, and hash-chain integrity. A model-visible trajectory
+actor, and payload identity. A model-visible trajectory
 holds messages, turns, tool invocations, model changes, compactions, and
 summaries. Semantic file mutations aren't copied into it; the workspace graph
 holds commands, work units, changes, applications, and events. The

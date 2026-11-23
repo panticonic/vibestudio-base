@@ -404,6 +404,8 @@ export interface CdpPage {
   setDefaultTimeout(timeoutMs: number): void;
   /** Emulate a CSS viewport on the current target. */
   setViewportSize(viewportSize: CdpViewportSize): Promise<void>;
+  /** Clear the current target's emulated viewport. */
+  resetViewportSize(): Promise<void>;
   /** Current configured or observed CSS viewport. */
   viewportSize(): CdpViewportSize | null;
   /**
@@ -619,7 +621,7 @@ export const BrowserImpl: {
     wsEndpoint: string,
     options?: {
       transportOptions?: { authToken?: string };
-      /** Hosted EvalDO runtimes must use the egress-aware fetch upgrade. */
+      /** Hosted eval kernel runtimes must use the egress-aware fetch upgrade. */
       preferFetchUpgrade?: boolean;
       /** Cancels connection acquisition; the connected browser owns its lifetime. */
       signal?: AbortSignal;

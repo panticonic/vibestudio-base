@@ -33,7 +33,9 @@ export function assertExactSqlTableSchema(sql: SqlStorage, expected: ExactSqlTab
         column !== undefined &&
         row.name === column[0] &&
         row.type === column[1] &&
-        Number(row.notnull) === (column[2] ? 1 : 0) &&
+        // A Dolt store reports a primary-key column as NOT NULL (it is), where SQLite
+        // reports 0 for a non-integer key: the key's nullability is not a difference.
+        (expected.primaryKey.includes(column[0]) || Number(row.notnull) === (column[2] ? 1 : 0)) &&
         row.dflt_value === (column[3] ?? null)
       );
     });

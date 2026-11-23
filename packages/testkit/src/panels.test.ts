@@ -12,11 +12,6 @@ vi.mock("@workspace/runtime", () => ({
     },
   },
 }));
-vi.mock("./cdp.js", () => ({
-  withCdpSession: vi.fn(),
-  _registerDriverRoute: vi.fn(),
-}));
-
 describe("testkit panel helpers", () => {
   beforeEach(() => {
     mocks.runtimeOpenPanel.mockReset();
@@ -31,6 +26,29 @@ describe("testkit panel helpers", () => {
     await openPanel("about/testbench");
 
     expect(mocks.runtimeOpenPanel).toHaveBeenCalledOnce();
+  });
+
+  it("uses the panel's current automation session for viewport changes and evaluation", async () => {
+    const page = {
+      setViewportSize: vi.fn(),
+      resetViewportSize: vi.fn(),
+      evaluate: vi.fn().mockResolvedValue(42),
+    };
+    mocks.runtimeOpenPanel.mockResolvedValue({
+      id: "panel:test",
+      cdp: { session: vi.fn().mockResolvedValue({ page }) },
+    });
+    const { openPanel, clearViewport, evalInPanel, setViewport } = await import("./panels.js");
+    const panel = await openPanel("about/testbench");
+    const viewport = { width: 390, height: 844, mobile: true, deviceScaleFactor: 2 };
+
+    await setViewport(panel, viewport);
+    await expect(evalInPanel(panel, "21 * 2")).resolves.toBe(42);
+    await clearViewport(panel);
+
+    expect(page.setViewportSize).toHaveBeenCalledWith(viewport);
+    expect(page.evaluate).toHaveBeenCalledWith("21 * 2");
+    expect(page.resetViewportSize).toHaveBeenCalledOnce();
   });
 
   it("keeps canonical RPC endpoint identity in polling diagnostics", async () => {

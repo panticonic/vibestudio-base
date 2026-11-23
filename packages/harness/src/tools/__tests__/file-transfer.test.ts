@@ -283,6 +283,28 @@ describe("stable-identity file transfer tools", () => {
     expect(move).not.toHaveBeenCalled();
   });
 
+  it("retains the typed cause when the destination is occupied", async () => {
+    const { vcs, move } = fixture();
+    const data = { code: "DestinationOccupied", path: "src/moved.ts" };
+    move.mockRejectedValueOnce(Object.assign(new Error("Destination is occupied"), {
+      errorData: data,
+    }));
+    const tool = createMoveFileTool("/", vcs, {
+      contextId: "context:1",
+      commandId: "command:occupied",
+    });
+
+    await expect(executeTool(tool, {
+      source: "packages/source/src/a.ts",
+      destination: "panels/target/src/moved.ts",
+    }, { callId: "call:occupied" })).rejects.toMatchObject({
+      code: "DestinationOccupied",
+      cause: data,
+      errorData: data,
+      message: expect.stringContaining("typed recovery"),
+    });
+  });
+
   it("fails closed when a transfer violates its identity contract", async () => {
     const { vcs } = fixture({ producedFileId: "file:changed" });
     const tool = createMoveFileTool("/", vcs, {

@@ -11,7 +11,6 @@ import {
   type AgenticEvent,
   type ParticipantRef,
 } from "@workspace/agentic-protocol";
-import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import type { ChannelEvent, ParticipantDescriptor } from "@workspace/harness";
 import type { ServerLogEvent } from "@workspace/pubsub";
 import type { VcsCompareResult, VcsStatusResult } from "@vibestudio/service-schemas/vcs";
@@ -740,9 +739,9 @@ function customChannelEvent(type: string, overrides: Partial<ServerLogEvent> = {
     ...overrides,
   };
 }
+// The kernel an agent hosts acts as the agent itself (docs/dolt-redesign.md §6.11.6).
 async function expectedEvalCaller(): Promise<string> {
-  const key = sha256HexSyncText(`${AGENT_ID}\0${CHANNEL}`).slice(0, 40);
-  return `do:vibestudio/internal:EvalDO:${key}`;
+  return AGENT_ID;
 }
 describe("canonical channel endpoint admission", () => {
   it.each(["before", "after"] as const)(
@@ -980,12 +979,61 @@ describe("AgentVesselBase activation-local inspection", () => {
     );
   });
 });
-describe("AgentVesselBase.chatOp", () => {
-  it("rejects a caller that is not this agent's own EvalDO", async () => {
+describe("AgentVesselBase: the kernel it hosts (docs/dolt-redesign.md §6.11.6)", () => {
+  it("serves the agent itself and the host for the run controls, and nobody else", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    for (const caller of [
+      { id: "panel:other", kind: "panel" },
+      { id: "do:workers/session:SessionDO:someoneelse", kind: "do" },
+    ]) {
+      vessel.callerIdForTest = caller.id;
+      vessel.callerKindForTest = caller.kind;
+      await expect(vessel.await("run-1", { waitMs: 1 })).rejects.toThrow(
+        /serves only the agent itself/
+      );
+      await expect(vessel.cancel("run-1")).rejects.toThrow(/serves only the agent itself/);
+      await expect(vessel.acknowledge("run-1", { runDigest: "a", resultDigest: "b" })).rejects.toThrow(
+        /serves only the agent itself/
+      );
+    }
+  });
+
+  it("serves a call the agent makes to itself in-process (no verified caller)", async () => {
+    const vessel = await makeVessel();
+    vessel.callerIdForTest = null;
+    vessel.callerKindForTest = null;
+    // The call reaches the relay (and fails there, for lack of a hosting root), not the caller check.
+    await expect(vessel.await("run-1", { waitMs: 1 })).rejects.not.toThrow(
+      /serves only the agent itself/
+    );
+  });
+
+  it("keeps the scope reset and the host's interlocks for the host alone, the agent included", async () => {
+    const vessel = await makeVessel();
+    vessel.callerIdForTest = AGENT_ID;
+    vessel.callerKindForTest = "do";
+    await expect(vessel.reset()).rejects.toThrow(/for the host/);
+    await expect(vessel.executionRoots()).rejects.toThrow(/for the host/);
+    await expect(
+      vessel.recordAuthorityEvent("run-1", "authority-requested", {})
+    ).rejects.toThrow(/for the host/);
+    await expect(vessel.retainExecutionRoot("run-1", "@workspace/x", {})).rejects.toThrow(
+      /for the host/
+    );
+    // The host reaches them; an agent that never started a kernel has no roots and nothing to reset.
+    vessel.callerIdForTest = "server";
+    vessel.callerKindForTest = "server";
+    expect(await vessel.executionRoots()).toEqual([]);
+    expect(await vessel.reset()).toEqual({ ok: true });
+  });
+});
+
+describe("AgentVesselBase.chatOp", () => {
+  it("rejects a caller that is not this agent's own eval kernel", async () => {
+    const vessel = await makeVessel();
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.chatOp(CHANNEL, "getMessageTypes", [])).rejects.toThrow(
-      /only this agent's own EvalDO/
+      /only this agent's own eval kernel/
     );
   });
 
@@ -1007,15 +1055,15 @@ describe("AgentVesselBase.chatOp", () => {
       throw new Error(`unexpected ${target}.${method}`);
     };
 
-    // Only this agent's own EvalDO may report ingestion (the open DO relay would
+    // Only this agent's own eval kernel may report ingestion (the open DO relay would
     // otherwise let any caller wipe an agent's grants).
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.observeOutsideContent(CHANNEL, "web:example.com")).rejects.toThrow(
-      /only this agent's own EvalDO/
+      /only this agent's own eval kernel/
     );
     expect(resets).toEqual([]);
 
-    // The owning EvalDO reports a source; the agent drops its task grants once
+    // The owning eval kernel reports a source; the agent drops its task grants once
     // through the same reset its web tools use.
     vessel.callerIdForTest = await expectedEvalCaller();
     await vessel.observeOutsideContent(CHANNEL, "web:example.com");
@@ -1028,11 +1076,11 @@ describe("AgentVesselBase.chatOp", () => {
     expect(resets).toHaveLength(2);
   });
 
-  it("lists the addressees the list_addressees tool lists, only to this agent's own EvalDO", async () => {
+  it("lists the addressees the list_addressees tool lists, only to this agent's own eval kernel", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
+    vessel.callerIdForTest = "do:workers/session:SessionDO:someoneelse";
     await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(
-      /only this agent's own EvalDO/
+      /only this agent's own eval kernel/
     );
     vessel.callerIdForTest = null;
     await expect(vessel.listEvalAddressees(CHANNEL)).rejects.toThrow(/refusing caller/);
@@ -1043,7 +1091,7 @@ describe("AgentVesselBase.chatOp", () => {
     ]);
   });
 
-  it("accepts the agent's own EvalDO (key matches the eval service formula)", async () => {
+  it("accepts the agent's own eval kernel (key matches the eval service formula)", async () => {
     const vessel = await makeVessel();
     vessel.callerIdForTest = await expectedEvalCaller();
     vessel.channelStub.messageTypes.set("weather", WEATHER_TYPE);
@@ -1472,70 +1520,74 @@ describe("AgentVesselBase.chatOp", () => {
     expect(vessel.channelStub.calls).toHaveLength(0);
   });
 });
-describe("AgentVesselBase.onEvalProgress (live eval console streaming)", () => {
-  it("publishes output against the parent invocation, not the eval effect runId", async () => {
+/** What the owner's await task hands over for a run it pulls: the run's events, in order. */
+async function pulled(
+  vessel: Awaited<ReturnType<typeof makeVessel>>,
+  runId: string,
+  events: Array<{ kind: string; payload: unknown }>
+) {
+  await (
+    vessel as unknown as {
+      publishEvalEvents: (
+        input: { route: { runId: string; scopeKey: string } },
+        events: unknown[],
+        context: unknown
+      ) => Promise<void>;
+    }
+  ).publishEvalEvents(
+    { route: { runId, scopeKey: CHANNEL } },
+    events.map((event, index) => ({ sequence: index + 1, at: index + 1, ...event })),
+    {}
+  );
+}
+describe("AgentVesselBase.publishEvalEvents (live eval console streaming, pulled from the kernel's event log)", () => {
+  it("publishes output against the parent invocation, which is the run id", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = await expectedEvalCaller();
 
-    await vessel.onEvalProgress({
-      runId: "inv:inv-5",
-      agentInvocationId: "inv-5",
-      channelId: CHANNEL,
-      output: "hello\nworld",
-    });
+    await pulled(vessel, "inv-5", [
+      { kind: "console", payload: { text: "hello\n" } },
+      { kind: "console", payload: { text: "world" } },
+    ]);
 
-    const published = vessel.channelStub.published.find(
+    const published = vessel.channelStub.published.filter(
       (p) => p.event.kind === "invocation.output"
     );
-    expect(published?.event).toMatchObject({
+    // One page is one chunk.
+    expect(published).toHaveLength(1);
+    expect(published[0]?.event).toMatchObject({
       kind: "invocation.output",
       causality: { invocationId: "inv-5" },
       payload: { output: "hello\nworld", channel: "stdout" },
     });
   });
 
-  it("refuses a caller that is not the agent's own EvalDO (same gate as chatOp)", async () => {
+  it("is a no-op for events that carry no output (no event published)", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = "do:vibestudio/internal:EvalDO:someoneelse";
-    await expect(
-      vessel.onEvalProgress({
-        runId: "inv:inv-6",
-        agentInvocationId: "inv-6",
-        channelId: CHANNEL,
-        output: "x",
-      })
-    ).rejects.toThrow(/only this agent's own EvalDO/);
-  });
-
-  it("is a no-op for empty output (no event published)", async () => {
-    const vessel = await makeVessel();
-    vessel.callerIdForTest = await expectedEvalCaller();
-    await vessel.onEvalProgress({
-      runId: "inv:inv-7",
-      agentInvocationId: "inv-7",
-      channelId: CHANNEL,
-      output: "",
-    });
+    await pulled(vessel, "inv-7", [
+      { kind: "console", payload: { text: "" } },
+      { kind: "state", payload: { status: "succeeded" } },
+      { kind: "checkpoint", payload: {} },
+    ]);
     expect(vessel.channelStub.published.some((p) => p.event.kind === "invocation.output")).toBe(
       false
     );
   });
-});
-describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
-  it("publishes authority suspension as structured parent-invocation progress", async () => {
+
+  it("publishes authority suspension as structured parent-invocation progress, after the output before it", async () => {
     const vessel = await makeVessel();
-    vessel.callerIdForTest = await expectedEvalCaller();
 
-    await vessel.onEvalProgress({
-      runId: "inv:inv-authority",
-      agentInvocationId: "inv-authority",
-      channelId: CHANNEL,
-      activity: {
+    await pulled(vessel, "inv-authority", [
+      { kind: "console", payload: { text: "before" } },
+      {
         kind: "authority-requested",
-        detail: { capability: "vcs.edit", resourceKey: "repo:panels/taskflow" },
+        payload: { capability: "vcs.edit", resourceKey: "repo:panels/taskflow" },
       },
-    });
+    ]);
 
+    expect(vessel.channelStub.published.map((entry) => entry.event.kind)).toEqual([
+      "invocation.output",
+      "invocation.progress",
+    ]);
     expect(
       vessel.channelStub.published.find((entry) => entry.event.kind === "invocation.progress")
         ?.event
@@ -1546,11 +1598,22 @@ describe("AgentVesselBase.onEvalProgress authority lifecycle", () => {
         message: "Waiting for approval to use vcs.edit on repo:panels/taskflow",
         data: {
           eval: {
-            runId: "inv:inv-authority",
+            runId: "inv-authority",
             activity: "authority-pending",
           },
         },
       },
+    });
+  });
+
+  it("says the decision was received when authority is decided", async () => {
+    const vessel = await makeVessel();
+    await pulled(vessel, "inv-decided", [{ kind: "authority-decided", payload: {} }]);
+    expect(
+      vessel.channelStub.published.find((entry) => entry.event.kind === "invocation.progress")
+        ?.event
+    ).toMatchObject({
+      payload: { message: "Approval decision received; resuming eval" },
     });
   });
 });

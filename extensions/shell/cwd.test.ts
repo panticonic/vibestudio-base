@@ -36,7 +36,7 @@ describe("shell execution location", () => {
       const ensureContextFolder = vi.fn(async (contextId: string) => {
         const scratch = join(root, contextId);
         await mkdir(scratch);
-        return { source: join(root, "source"), scratch };
+        return { scratch };
       });
       const rpc = schemaRpcClientMock(
         {

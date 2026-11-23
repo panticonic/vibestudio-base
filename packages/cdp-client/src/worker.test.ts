@@ -1758,6 +1758,22 @@ describe("worker CDP client", () => {
     await expect(
       page.setViewportSize({ width: 0, height: 844 }),
     ).rejects.toThrow("positive integer width and height");
+    await page.setViewportSize({
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true,
+    });
+    expect(FakeWebSocket.sent).toContainEqual({
+      method: "Emulation.setDeviceMetricsOverride",
+      params: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true },
+    });
+    await page.resetViewportSize();
+    expect(page.viewportSize()).toBeNull();
+    expect(FakeWebSocket.sent).toContainEqual({
+      method: "Emulation.clearDeviceMetricsOverride",
+      params: undefined,
+    });
   });
 
   it("dispatches a real CDP mouse sequence for click (auto-waited)", async () => {

@@ -382,6 +382,9 @@ export async function activate(ctx: ExtensionContextLike): Promise<NativeTestRun
           root,
           {
             NODE_ENV: "test",
+            // Node's require.resolve in projected test sources uses this
+            // admitted package directory for CommonJS lookups.
+            NODE_PATH: path.join(scratch, "node_modules"),
             FORCE_COLOR: "0",
             TMPDIR: scratch,
             TMP: scratch,

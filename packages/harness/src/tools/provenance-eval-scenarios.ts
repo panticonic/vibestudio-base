@@ -193,9 +193,7 @@ export const PROVENANCE_EVAL_SCENARIOS: readonly ProvenanceEvalScenario[] = [
     mechanism: "provenance({ query }) and provenance({ walk })",
     fixture: ["a subject inside and a subject outside the caller's visible basis"],
     grading: ["the walk renders a labeled boundary exactly when the query returns no row"],
-    status: "covered-by-unit-test",
-    coveringTest:
-      "workers/workspace-source/semanticWorkspace.provenanceQuery.test.ts › holds the visibility parity property",
+    status: "scaffolded",
   },
   {
     question: "adversarial/id-hygiene",
@@ -210,6 +208,6 @@ export const PROVENANCE_EVAL_SCENARIOS: readonly ProvenanceEvalScenario[] = [
     ],
     status: "covered-by-unit-test",
     coveringTest:
-      "workers/workspace-source/semanticWorkspace.provenanceQuery.test.ts › never renders a raw content-addressed identity",
+      "packages/harness/src/tools/__tests__/provenance-format.test.ts › renders an applied change as a reusable basis-specific graph node",
   },
 ];

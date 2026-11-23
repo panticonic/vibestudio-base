@@ -1,0 +1,260 @@
+import { describe, expect, it } from "vitest";
+import { decodeRpcJson } from "@vibestudio/rpc";
+import { LEGACY_PROOF_HEADER } from "@vibestudio/durable/legacyImport";
+import { createTestDO } from "@workspace/runtime/worker/test-utils";
+import { PubSubChannel } from "./channel-do.js";
+import { CHANNEL_SCHEMA_V125_SHAPE, CHANNEL_SCHEMA_V126_SHAPE } from "./channel-schema-history.js";
+import { newChannelFake } from "./channel-test-support.js";
+
+type Fixture = Awaited<ReturnType<typeof createTestDO<typeof PubSubChannel>>>;
+
+/** The trusted descriptor of the current build: what the host's schema probe hands an admitted object. */
+async function currentDescriptor(): Promise<Record<string, unknown>> {
+  const fresh = await createTestDO(PubSubChannel, { __objectKey: "probe" });
+  const response = (
+    fresh.instance as unknown as { schemaDescriptorResponse(): Response }
+  ).schemaDescriptorResponse();
+  return (await response.json()) as Record<string, unknown>;
+}
+
+/** The DDL of the four tables as the version-125 class wrote it: with the `--` comments a Dolt store cannot fingerprint. */
+const V125_DDL: Record<string, string> = {
+  "participants": "CREATE TABLE IF NOT EXISTS participants (\n        id TEXT PRIMARY KEY,\n        metadata TEXT NOT NULL,\n        transport TEXT NOT NULL CHECK (transport IN ('rpc','do')),\n        -- Freshest real client activity across a user's subscriptions.\n        last_active_at INTEGER,\n        presence_status TEXT CHECK (presence_status IN ('online','idle','away')),\n        handle TEXT\n      )\n    ",
+  "channel_members": "CREATE TABLE IF NOT EXISTS channel_members (\n        user_id  TEXT PRIMARY KEY,   -- user:<userId>\n        handle   TEXT NOT NULL,\n        added_by TEXT NOT NULL,      -- user:<userId> (or raw callerId)\n        added_at INTEGER NOT NULL\n      )\n    ",
+  "invite_index_ops": "CREATE TABLE IF NOT EXISTS invite_index_ops (\n        user_id    TEXT PRIMARY KEY,   -- user:<userId>\n        op_id      TEXT NOT NULL UNIQUE,\n        revision   INTEGER NOT NULL CHECK (revision > 0),\n        action     TEXT NOT NULL CHECK (action IN ('put', 'delete')),\n        handle     TEXT,\n        added_by   TEXT,\n        added_at   INTEGER,\n        updated_at INTEGER NOT NULL,\n        CHECK (\n          action = 'delete' OR\n          (handle IS NOT NULL AND added_by IS NOT NULL AND added_at IS NOT NULL)\n        )\n      )\n    ",
+  "presence_last_seen": "CREATE TABLE IF NOT EXISTS presence_last_seen (\n        participant_id TEXT PRIMARY KEY,    -- user:<userId>\n        last_seen      INTEGER NOT NULL\n      )\n    "
+};
+
+/**
+ * An object as the version-125 class left it: the current tables with the old
+ * DDL of the four commented ones and without `channel_facts`, its identity row at 125 with the
+ * 125 shape (the test fails if that shape is not exactly what those tables are),
+ * and its facts in `state`.
+ */
+async function version125Object(): Promise<Fixture> {
+  const object = await createTestDO(PubSubChannel, { __objectKey: "legacy" });
+  await (object.instance as unknown as { initializeSchema(): Promise<void> }).initializeSchema();
+  const db = object.db;
+  db.run("DROP TABLE channel_facts");
+  restoreHashChainTables(db);
+  db.run(
+    "INSERT INTO channel_ledger_state (singleton, head_sequence, head_hash, observed_sequence) VALUES (1, 0, ?, 0)",
+    ["0".repeat(64)],
+  );
+  for (const [table, ddl] of Object.entries(V125_DDL)) {
+    db.run(`DROP TABLE ${table}`);
+    db.run(ddl);
+  }
+  db.run(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_handle ON participants(handle) WHERE handle IS NOT NULL",
+  );
+  db.run("CREATE INDEX IF NOT EXISTS idx_invite_index_ops_updated ON invite_index_ops(updated_at)");
+  db.run(
+    "INSERT INTO channel_members (user_id, handle, added_by, added_at) VALUES ('user:usr_bob', 'bob', 'user:usr_alice', 5)",
+  );
+  db.run("UPDATE _vibestudio_schema SET version = 125, shape_json = ?", [CHANNEL_SCHEMA_V125_SHAPE]);
+  for (const [key, value] of [
+    ["contextId", "ctx-legacy"],
+    ["config", '{"name":"legacy"}'],
+    ["conversationSeed", '{"messages":[]}'],
+    ["conversationSeedInstalled", "true"],
+    ["createdAt", "1700000000000"],
+    ["openingRequestOutcome", "cancel"],
+    ["inviteIndexRevision", "4"],
+  ] as const)
+    db.run("INSERT INTO state (key, value) VALUES (?, ?)", [key, value]);
+  db.run(
+    "UPDATE channel_delivery_context SET initial_config_json = ?, current_config_json = ? WHERE singleton = 1",
+    ['{"name":"legacy"}', '{"name":"legacy"}'],
+  );
+  return object;
+}
+
+/**
+ * An object as the version-126 class left it: the ledger's `hash` column and the state row's
+ * two hash columns are back (the table text is the old DDL; the test fails if the pinned 126 shape is not exactly what
+ * these tables are), with two events whose stored bodies still carry the chain's fields.
+ */
+function restoreHashChainTables(db: Fixture["db"]): void {
+  db.run("DROP TABLE channel_ledger_events");
+  db.run(
+    "CREATE TABLE IF NOT EXISTS channel_ledger_events ( sequence INTEGER PRIMARY KEY, envelope_id TEXT NOT NULL UNIQUE, payload_kind TEXT NOT NULL, opened_turn_id TEXT, hash TEXT NOT NULL )",
+  );
+  db.run(
+    "CREATE UNIQUE INDEX IF NOT EXISTS channel_ledger_opened_turn ON channel_ledger_events (opened_turn_id) WHERE opened_turn_id IS NOT NULL",
+  );
+  db.run(
+    "CREATE INDEX IF NOT EXISTS channel_ledger_kind_sequence ON channel_ledger_events (payload_kind, sequence)",
+  );
+  db.run("DROP TABLE channel_ledger_state");
+  db.run(
+    "CREATE TABLE IF NOT EXISTS channel_ledger_state ( singleton INTEGER PRIMARY KEY CHECK (singleton = 1), head_sequence INTEGER NOT NULL, head_hash TEXT NOT NULL, observed_sequence INTEGER NOT NULL, parent_channel_id TEXT, parent_sequence INTEGER, parent_hash TEXT, root_observed INTEGER NOT NULL DEFAULT 0, parent_observed INTEGER NOT NULL DEFAULT 1 )",
+  );
+}
+
+async function version126Object(): Promise<Fixture> {
+  const object = await createTestDO(PubSubChannel, { __objectKey: "chained" });
+  await (object.instance as unknown as { initializeSchema(): Promise<void> }).initializeSchema();
+  const db = object.db;
+  restoreHashChainTables(db);
+  const zero = "0".repeat(64);
+  const bodies = [1, 2].map((seq) => ({
+    logId: "chained",
+    head: "main",
+    seq,
+    envelopeId: `env-${seq}`,
+    actor: { kind: "user", id: "user:alice" },
+    payloadKind: "message",
+    payload: { content: `hello ${seq}` },
+    appendedAt: "2026-10-10T00:00:00.000Z",
+    prevHash: seq === 1 ? zero : "h".repeat(64),
+    hash: "h".repeat(64),
+  }));
+  for (const body of bodies) {
+    db.run(
+      "INSERT INTO channel_ledger_events (sequence, envelope_id, payload_kind, opened_turn_id, hash) VALUES (?, ?, 'message', NULL, ?)",
+      [body.seq, body.envelopeId, body.hash],
+    );
+    db.run("INSERT INTO channel_ledger_chunks (sequence, chunk, body) VALUES (?, 0, ?)", [
+      body.seq,
+      JSON.stringify(body),
+    ]);
+  }
+  db.run(
+    "INSERT INTO channel_ledger_state (singleton, head_sequence, head_hash, observed_sequence, root_observed) VALUES (1, 2, ?, 1, 1)",
+    ["h".repeat(64)],
+  );
+  db.run("UPDATE _vibestudio_schema SET version = 126, shape_json = ?", [CHANNEL_SCHEMA_V126_SHAPE]);
+  return object;
+}
+
+describe("a channel's schema 126 to 127: the hash chain is gone", () => {
+  it("drops the hash columns, keeps the events and the observation cursor, and reads a stored event without its chain fields", async () => {
+    const old = await version126Object();
+    const upgraded = await createTestDO(
+      PubSubChannel,
+      { __objectKey: "chained", VIBESTUDIO_SCHEMA_DESCRIPTOR: await currentDescriptor() },
+      { db: old.db },
+    );
+    await (upgraded.instance as unknown as { initializeSchema(): Promise<void> }).initializeSchema();
+    expect(
+      upgraded.sql.exec("SELECT version FROM _vibestudio_schema").toArray()[0]!["version"],
+    ).toBe(127);
+    const columns = (table: string) =>
+      upgraded.sql
+        .exec(`PRAGMA table_info(${table})`)
+        .toArray()
+        .map((row) => row["name"]);
+    expect(columns("channel_ledger_events")).toEqual(["sequence", "envelope_id", "payload_kind", "opened_turn_id"]);
+    expect(columns("channel_ledger_state")).not.toContain("head_hash");
+    expect(columns("channel_ledger_state")).not.toContain("parent_hash");
+    expect(
+      upgraded.sql.exec("SELECT head_sequence, observed_sequence, root_observed FROM channel_ledger_state").one(),
+    ).toEqual({ head_sequence: 2, observed_sequence: 1, root_observed: 1 });
+    const ledger = (upgraded.instance as unknown as {
+      channelLog: { ledger: { at(sequence: number): Record<string, unknown> | null; boundaryEnvelopeId(sequence: number): string | null } };
+    }).channelLog.ledger;
+    const event = ledger.at(2)!;
+    expect(event["envelopeId"]).toBe("env-2");
+    expect(Object.keys(event)).not.toContain("hash");
+    expect(Object.keys(event)).not.toContain("prevHash");
+    expect(ledger.boundaryEnvelopeId(2)).toBe("env-2");
+    expect(ledger.boundaryEnvelopeId(0)).toBeNull();
+  });
+});
+
+describe("a channel's schema 125 to 127 and the import of its SQLite state", () => {
+  it("upgrades a version 125 object: its facts move from `state` into the versioned `channel_facts`", async () => {
+    const old = await version125Object();
+    const legacy = await createTestDO(
+      PubSubChannel,
+      { __objectKey: "legacy", VIBESTUDIO_SCHEMA_DESCRIPTOR: await currentDescriptor() },
+      { db: old.db },
+    );
+    await (legacy.instance as unknown as { initializeSchema(): Promise<void> }).initializeSchema();
+    const facts = Object.fromEntries(
+      legacy.sql
+        .exec("SELECT key, value FROM channel_facts ORDER BY key")
+        .toArray()
+        .map((row) => [row["key"], row["value"]]),
+    );
+    expect(facts).toEqual({
+      config: '{"name":"legacy"}',
+      conversationSeed: '{"messages":[]}',
+      conversationSeedInstalled: "true",
+      createdAt: "1700000000000",
+      initialConfig: '{"name":"legacy"}',
+      openingRequestOutcome: "cancel",
+    });
+    expect(
+      legacy.sql.exec("SELECT version FROM _vibestudio_schema").toArray()[0]!["version"],
+    ).toBe(127);
+    // The recreated tables kept their rows and now carry the comment-free text.
+    expect(legacy.sql.exec("SELECT user_id, handle FROM channel_members").toArray()).toEqual([
+      { user_id: "user:usr_bob", handle: "bob" },
+    ]);
+    expect(
+      String(legacy.sql.exec("SELECT sql FROM sqlite_master WHERE name = 'channel_members'").one()["sql"]),
+    ).not.toContain("--");
+  });
+
+  it("copies a legacy object into the Dolt cell through the class's own import calls, ledger and facts and identity alike", async () => {
+    const proof = "root-proof-abcdef";
+    const props = { nativeOwner: null, stateArgs: null, image: null, codeHost: { name: "root", proof } };
+    const source = await createTestDO(PubSubChannel, { __objectKey: "migrating" }, { props });
+    const sourceInstance = source.instance as unknown as { initializeSchema(): Promise<void>; initChannel(c: string, cfg: object): void };
+    await sourceInstance.initializeSchema();
+    sourceInstance.initChannel("ctx-migrating", { name: "kept" });
+    source.sql.exec(
+      `INSERT INTO channel_members (user_id, handle, added_by, added_at) VALUES ('user:usr_bob', 'bob', 'user:usr_alice', 5)`,
+    );
+    const target = await createTestDO(
+      PubSubChannel,
+      { __objectKey: "migrating" },
+      { props, storage: (await newChannelFake()).storage as never },
+    );
+    await (target.instance as unknown as { initializeSchema(): Promise<void> }).initializeSchema();
+    const call = async (
+      fixture: Fixture,
+      method: string,
+      body: unknown,
+    ): Promise<any> => {
+      const response = await fixture.instance.fetch(
+        new Request(`http://do/migrating/__legacy/${method}`, {
+          method: "POST",
+          headers: { [LEGACY_PROOF_HEADER]: proof, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      const decoded = decodeRpcJson(await response.text()) as { result?: unknown; error?: unknown };
+      expect(decoded.error, method).toBeUndefined();
+      return decoded.result;
+    };
+    const tables = (await call(source, "tables", {})) as Array<{ name: string; columns: string[] }>;
+    for (const table of tables) {
+      let after: number | null = null;
+      for (;;) {
+        const page = await call(source, "rows", { table: table.name, after });
+        if (page.rows.length > 0)
+          await call(target, "load", { table: table.name, columns: page.columns, rows: page.rows });
+        if (page.next === null) break;
+        after = page.next;
+      }
+    }
+    await call(target, "commit", { message: "import: migrating from sqlite" });
+    expect(target.sql.exec("SELECT user_id, handle FROM channel_members").toArray()).toEqual([
+      { user_id: "user:usr_bob", handle: "bob" },
+    ]);
+    expect(target.sql.exec("SELECT value FROM channel_facts WHERE key = 'config'").toArray()).toEqual([
+      { value: '{"name":"kept"}' },
+    ]);
+    // The identity (a local `state` row) moved too, and the cell answers as the same conversation.
+    expect(await (target.instance as unknown as { getContextId(): Promise<string> }).getContextId()).toBe("ctx-migrating");
+    (target.instance as unknown as { assertCleanWorkingSet(): void }).assertCleanWorkingSet();
+    // Only the object's own root can ask.
+    const refused = await target.instance.fetch(
+      new Request("http://do/migrating/__legacy/tables", { method: "POST" }),
+    );
+    expect(refused.status).toBe(403);
+  });
+});

@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import type { FakeDoltStorage } from "@vibestudio/durable/test-dolt";
+import {
+  clonedChannelFake,
+  newChannelFake,
+} from "./channel-test-support.js";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
 import { rpcMethodAuthority, serializeRpcFailure } from "@vibestudio/rpc";
 import {
@@ -59,6 +64,10 @@ function profileFixture(userId: string) {
     displayName: userId,
     role: "member",
   });
+}
+/** The base's drift check: versioned rows written outside a commit would show here (R7). */
+function assertCleanWorkingSet(instance: PubSubChannel): void {
+  (instance as unknown as { assertCleanWorkingSet(): void }).assertCleanWorkingSet();
 }
 function canonicalLedger(instance: PubSubChannel) {
   return (instance as unknown as { channelLog: ChannelLog }).channelLog.ledger;
@@ -374,14 +383,6 @@ async function initializeChannelClone(
   expect(response.status, await response.text()).toBe(200);
 }
 
-/** Copy the actual owner-local SQLite snapshot, as runtime.cloneContext does. */
-function clonedChannelDatabase(parent: TestDO<typeof PubSubChannel>) {
-  const Database = parent.db.constructor as new (
-    data: Uint8Array,
-  ) => TestDO<typeof PubSubChannel>["db"];
-  return new Database(parent.db.export());
-}
-
 const workspaceBlobs = new WeakMap<object, Map<string, string>>();
 
 async function createGadBackedChannel(
@@ -390,10 +391,8 @@ async function createGadBackedChannel(
     emittedTargets?: string[];
     channelKey?: string;
     gad?: TestDO<typeof GadWorkspaceDO>;
-    db?: TestDO<typeof PubSubChannel>["db"];
-    blobstorePutText?: (
-      value: string,
-    ) => Promise<{ digest: string; size: number }>;
+    /** The cell the channel runs on; a new Dolt cell when absent. Reusing one reactivates the object over its durable state. */
+    fake?: FakeDoltStorage;
     rpcCall?: (
       target: string,
       method: string,
@@ -408,12 +407,13 @@ async function createGadBackedChannel(
       __objectKey: "workspace",
       RPC_FETCH: channelTestRpcFetch,
     }));
+  const fake = options.fake ?? (await newChannelFake());
   const channel = await createTestDO(
     PubSubChannel,
     {
       __objectKey: options.channelKey ?? "channel-1",
     },
-    options.db ? { db: options.db } : undefined,
+    { storage: fake.storage as never },
   );
   subscriptionSinks.set(channel.instance, {
     emitted: options.emitted,
@@ -471,12 +471,7 @@ async function createGadBackedChannel(
         }
         if (target === "main" && method === "blobstore.putText") {
           const value = String(args[0] ?? "");
-          const blob = options.blobstorePutText
-            ? await options.blobstorePutText(value)
-            : {
-                digest: sha256HexSyncText(value),
-                size: value.length,
-              };
+          const blob = { digest: sha256HexSyncText(value), size: value.length };
           blobs.set(blob.digest, value);
           return blob;
         }
@@ -505,7 +500,7 @@ async function createGadBackedChannel(
     }
   )._connectionless;
   Object.assign(connectionless.client, mockClient);
-  return { gad, blobs, ...channel };
+  return { gad, blobs, fake, ...channel };
 }
 
 describe("PubSubChannel", () => {
@@ -651,7 +646,7 @@ describe("PubSubChannel", () => {
           mode === "activation loss"
             ? await createGadBackedChannel({
                 gad: channel.gad,
-                db: clonedChannelDatabase(channel),
+                fake: await channel.fake.restart(),
               })
             : null;
         release.resolve();
@@ -861,7 +856,7 @@ describe("PubSubChannel", () => {
       const child = await createGadBackedChannel({
         channelKey: "observation-child",
         gad: parent.gad,
-        db: clonedChannelDatabase(parent),
+        fake: await clonedChannelFake(parent, parentHead),
         rpcCall: async (target, method, args) => {
           if (
             target === "main" &&
@@ -929,7 +924,7 @@ describe("PubSubChannel", () => {
           {
             kind: "fork",
             throughSequence: parentHead,
-            expectedParentHash: boundary.hash,
+            parentEnvelopeId: String(boundary.envelopeId),
           },
         );
         expect(
@@ -970,7 +965,7 @@ describe("PubSubChannel", () => {
         });
         expect(fork).toEqual({
           observedSequence: parentHead,
-          hash: boundary.hash,
+          envelopeId: String(boundary.envelopeId),
         });
         expect(
           child.instance.settleReadyWork("channel-observation", {
@@ -1163,7 +1158,6 @@ describe("PubSubChannel", () => {
         { value: 2 },
       );
       expect(requests[0]!.events).toHaveLength(2);
-      const prefix = canonicalLedger(channel.instance).at(1)!;
       expect(() =>
         channel.instance.settleReadyWork("channel-observation", {
           workerId,
@@ -1171,8 +1165,7 @@ describe("PubSubChannel", () => {
           generation: first!.generation,
           outcome: {
             observedSequence: 1,
-            envelopeId: String(prefix.envelopeId),
-            hash: prefix.hash,
+            envelopeId: "not-the-prefix",
           },
         }),
       ).toThrow("changed its canonical event");
@@ -1429,7 +1422,7 @@ describe("PubSubChannel", () => {
     });
     const reopened = await createGadBackedChannel({
       gad: channel.gad,
-      db: channel.db,
+      fake: channel.fake,
     });
     const recoveredCapture =
       await reopened.instance.prepareDurableWorkRelease("delivery");
@@ -1589,7 +1582,7 @@ describe("PubSubChannel", () => {
     const channel = await createGadBackedChannel();
     await joinResidentSession(
       channel.instance,
-      "do:vibestudio/internal:EvalDO:cancel-delivery",
+      "do:workers/session:SessionDO:cancel-delivery",
     );
     setRpcCaller(channel.instance, "panel:user", "panel");
     await channel.instance.subscribe("panel:user", {
@@ -1678,7 +1671,7 @@ describe("PubSubChannel", () => {
     "retains the %s channel role independently of its verified DO principal",
     async (type) => {
       const { instance } = await createGadBackedChannel();
-      const senderId = "do:vibestudio/internal:EvalDO:input-client";
+      const senderId = "do:workers/session:SessionDO:input-client";
       await joinResidentSession(instance, senderId, {
         name: "Programmatic participant",
         type,
@@ -2715,7 +2708,7 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const evalDoId = "do:vibestudio/internal:EvalDO:eval-1";
+    const evalDoId = "do:workers/session:SessionDO:eval-1";
     const arbitraryLabel = "headless-diagnose-123";
     setRpcCaller(instance, evalDoId, "durable-object");
 
@@ -2752,7 +2745,7 @@ describe("PubSubChannel", () => {
   });
 
   it("establishes exact admitted self-membership without another entity lookup", async () => {
-    const participantId = "do:vibestudio/internal:EvalDO:admitted-eval";
+    const participantId = "do:workers/session:SessionDO:admitted-eval";
     const lookups: unknown[][] = [];
     const { instance } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
@@ -2797,7 +2790,7 @@ describe("PubSubChannel", () => {
         ...input,
         endpoint: {
           ...input.endpoint,
-          entityId: "do:vibestudio/internal:EvalDO:other",
+          entityId: "do:workers/session:SessionDO:other",
         },
       }),
     ).rejects.toThrow(
@@ -2807,7 +2800,7 @@ describe("PubSubChannel", () => {
 
   it("closes its owned join once and never closes a concurrently replaced membership", async () => {
     const { instance } = await createGadBackedChannel();
-    const participantId = "do:vibestudio/internal:EvalDO:finite-owner";
+    const participantId = "do:workers/session:SessionDO:finite-owner";
     setRpcCaller(instance, participantId, "do");
     const input = {
       participantId,
@@ -3061,7 +3054,7 @@ describe("PubSubChannel", () => {
     });
     expect(newer.revision).toBe(original.revision! + 1);
     const reopened = await createGadBackedChannel({
-      db: channel.db,
+      fake: channel.fake,
       gad: channel.gad,
     });
     setRpcCaller(reopened.instance, participantId, "durable-object");
@@ -3382,7 +3375,7 @@ describe("PubSubChannel", () => {
       channel.instance.getEnvelope(receipt.messageId),
     ).resolves.toMatchObject({ id: receipt.id });
     const reopened = await createGadBackedChannel({
-      db: channel.db,
+      fake: channel.fake,
       gad: channel.gad,
     });
     expect(
@@ -3404,15 +3397,8 @@ describe("PubSubChannel", () => {
     ).toBe(true);
   });
 
-  it("fails durable publishes when blobstore storage fails", async () => {
-    const { instance } = await createGadBackedChannel({
-      blobstorePutText: async (value) => {
-        if (!value.includes("must be stored")) {
-          return { digest: sha256HexSyncText(value), size: value.length };
-        }
-        throw new Error("blobstore unavailable");
-      },
-    });
+  it("rolls back a durable publish if its stored bytes cannot be committed", async () => {
+    const { instance, sql } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
 
     await instance.subscribe("panel:user", {
@@ -3420,27 +3406,22 @@ describe("PubSubChannel", () => {
       name: "User",
       type: "panel",
     });
-    let error: unknown;
-    try {
-      await instance.publish("panel:user", "custom.large", {
+    const before = await instance.getReplayAfter({ after: 0 });
+    sql.exec(`
+      CREATE TEMP TRIGGER fail_stored_value BEFORE INSERT ON channel_ledger_chunks
+      WHEN NEW.chunk = 1 BEGIN SELECT RAISE(ABORT, 'stored bytes unavailable'); END
+    `);
+    await expect(
+      instance.publish("panel:user", "custom.large", {
         value: `must be stored ${"x".repeat(160 * 1024)}`,
-      });
-    } catch (err) {
-      error = err;
-    }
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("blobstore unavailable");
+      }),
+    ).rejects.toThrow("stored bytes unavailable");
+    const after = await instance.getReplayAfter({ after: 0 });
+    expect(after.logEvents).toEqual(before.logEvents);
   });
 
-  it("spills large durable payloads to blobstore and replays hydrated payloads", async () => {
-    const blobs = new Map<string, string>();
-    const { instance } = await createGadBackedChannel({
-      blobstorePutText: async (value) => {
-        const digest = sha256HexSyncText(value);
-        blobs.set(digest, value);
-        return { digest, size: value.length };
-      },
-    });
+  it("replays large durable payloads from the channel's committed bytes", async () => {
+    const { instance, blobs } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     const largeResult = "x".repeat(140 * 1024);
 
@@ -3470,7 +3451,7 @@ describe("PubSubChannel", () => {
     );
     const payload = ((event?.payload as { payload?: unknown })?.payload ??
       {}) as Record<string, unknown>;
-    expect(blobs.size).toBeGreaterThan(0);
+    expect(blobs.size).toBe(0);
     expect(payload["result"]).toEqual({ text: largeResult });
   });
 
@@ -3649,7 +3630,7 @@ describe("PubSubChannel", () => {
   });
 
   it("does not let an unavailable failure from an old claim detach a replacement receiver", async () => {
-    const residentId = "do:vibestudio/internal:EvalDO:resident-generation";
+    const residentId = "do:workers/session:SessionDO:resident-generation";
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
@@ -3724,7 +3705,7 @@ describe("PubSubChannel", () => {
   });
 
   it("terminalizes permanent delivery poison and unblocks the ordered lane", async () => {
-    const residentId = "do:vibestudio/internal:EvalDO:permanent-poison";
+    const residentId = "do:workers/session:SessionDO:permanent-poison";
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
@@ -3875,7 +3856,7 @@ describe("PubSubChannel", () => {
 
   it("derives every executable recipient through the same entity endpoint", async () => {
     const agentDoId = "do:workers/agent-worker:AiChatWorker:agent-x";
-    const clientDoId = "do:vibestudio/internal:EvalDO:client-x";
+    const clientDoId = "do:workers/session:SessionDO:client-x";
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: async (target, method, args) => {
         if (
@@ -4117,7 +4098,7 @@ describe("PubSubChannel", () => {
 
     const restarted = await createGadBackedChannel({
       gad: first.gad,
-      db: first.db,
+      fake: first.fake,
     });
     await restarted.instance.adoptDurableWorkWorker("driver-after-restart");
     setRpcCaller(restarted.instance, agentId, "durable-object");
@@ -4249,7 +4230,7 @@ describe("PubSubChannel", () => {
   });
 
   it("routes resident-session method calls through the durable event path", async () => {
-    const evalPid = "do:vibestudio/internal:EvalDO:eval-1";
+    const evalPid = "do:workers/session:SessionDO:eval-1";
     const rpcCalls: Array<{ target: string; method: string }> = [];
     const { instance, sql } = await createGadBackedChannel({
       rpcCall: (target, method, args) => {
@@ -4424,12 +4405,12 @@ describe("PubSubChannel", () => {
     },
     {
       name: "resident",
-      target: "do:vibestudio/internal:EvalDO:matrix-live",
+      target: "do:workers/session:SessionDO:matrix-live",
       route: "mailbox",
     },
     {
       name: "disconnected resident",
-      target: "do:vibestudio/internal:EvalDO:matrix-disconnected",
+      target: "do:workers/session:SessionDO:matrix-disconnected",
       route: "mailbox-refused",
     },
     { name: "live session", target: "panel:matrix-provider", route: "session" },
@@ -4894,7 +4875,7 @@ describe("PubSubChannel", () => {
       },
     });
 
-    setRpcCaller(instance, "do:vibestudio/internal:EvalDO:agent-eval", "do");
+    setRpcCaller(instance, "do:workers/session:SessionDO:agent-eval", "do");
     await expect(
       instance.inspectAgent({
         participantId: targetPid,
@@ -5083,7 +5064,7 @@ describe("PubSubChannel", () => {
     const fork = await createGadBackedChannel({
       channelKey: "channel-fork",
       gad: parent.gad,
-      db: clonedChannelDatabase(parent),
+      fake: await clonedChannelFake(parent, 3),
     });
     await initializeChannelClone(fork, "channel-parent", "ctx-forked", "ctx-1");
     await fork.instance.postClone("channel-parent", 3, "ctx-forked");
@@ -5200,7 +5181,7 @@ describe("PubSubChannel", () => {
     const child = await createGadBackedChannel({
       channelKey: "knowledge-child",
       gad: parent.gad,
-      db: clonedChannelDatabase(parent),
+      fake: await clonedChannelFake(parent, before.ready.snapshotLastSeq!),
       rpcCall: (target, method) => {
         if (
           target === targetPid &&
@@ -5270,6 +5251,7 @@ describe("PubSubChannel", () => {
     const clonedAgentTarget =
       "do:workers/agent-worker:AiChatWorker:agent-lf-child";
     let cloneCalls = 0;
+    const cloneRequests: unknown[] = [];
     const lifecycleCalls: Array<{
       target: string;
       method: string;
@@ -5300,7 +5282,7 @@ describe("PubSubChannel", () => {
         ) {
           return activeEntityFixture(args[0]);
         }
-        if (target === agentTarget && method === "exportChannelKnowledge") {
+        if (target === agentTarget && method === "forkFrontier") {
           lifecycleCalls.push({ target, method, args });
           const request = args[0] as {
             channelId: string;
@@ -5309,17 +5291,16 @@ describe("PubSubChannel", () => {
           return {
             channelId: request.channelId,
             throughSequence: request.throughSequence,
-            history: {
-              source: { conversationId: 1, at: null },
-              agent: {},
-              entries: [],
-            },
+            conversationId: 1,
+            commit: "agent-turn-commit",
+            entryHigh: 7,
             anchors: [],
           };
         }
         // Clone the channel and its subscribed agent into a fresh context.
         if (target === "main" && method === "runtime.cloneContext") {
           cloneCalls += 1;
+          cloneRequests.push(args[0]);
           return {
             contextId: "ctx-lf-fork",
             contexts: [],
@@ -5353,7 +5334,7 @@ describe("PubSubChannel", () => {
         // The cloned child's postClone is driven over RPC; ack it.
         if (
           method === "postClone" ||
-          method === "importChannelKnowledge" ||
+          method === "adoptChannelKnowledge" ||
           method === "runtime.rebindAgentChannel"
         ) {
           lifecycleCalls.push({ target, method, args });
@@ -5396,10 +5377,14 @@ describe("PubSubChannel", () => {
     expect(result.forkedChannelId).toBe("channel-lf-child");
     await expect(parent.instance.fork(forkInput)).resolves.toEqual(result);
     expect(cloneCalls).toBe(1);
+    // The agent's cell is forked where its own frontier says, beside the channel's cell at the fork point.
+    expect(
+      (cloneRequests[0] as { storageAt: Record<string, string> }).storageAt[agentTarget],
+    ).toBe("agent-turn-commit");
     expect(lifecycleCalls).toEqual([
       {
         target: agentTarget,
-        method: "exportChannelKnowledge",
+        method: "forkFrontier",
         args: [
           {
             operationId: `fork:fork-operation-1:${agentTarget}`,
@@ -5419,13 +5404,16 @@ describe("PubSubChannel", () => {
       },
       expect.objectContaining({
         target: clonedAgentTarget,
-        method: "importChannelKnowledge",
+        method: "adoptChannelKnowledge",
         args: [
           expect.objectContaining({
             parentChannelId: "channel-lf-parent",
             channelId: "channel-lf-child",
             contextId: "ctx-lf-fork",
-            knowledge: expect.objectContaining({ throughSequence: 2 }),
+            frontier: expect.objectContaining({
+              throughSequence: 2,
+              commit: "agent-turn-commit",
+            }),
           }),
         ],
       }),
@@ -5510,6 +5498,136 @@ describe("PubSubChannel", () => {
     ).rejects.toThrow(/cannot fork after unfinished message streaming-1/);
   });
 
+  it("forks every kept agent's cell at its own commit, and a crash between phases resumes from the journaled frontiers", async () => {
+    const self = "do:workers/pubsub-channel:PubSubChannel:channel-ma-parent";
+    const agents = [
+      { parent: "do:workers/agent-worker:AiChatWorker:agent-ma-a", child: "agent-ma-a-child", commit: "commit-a" },
+      { parent: "do:workers/agent-worker:AiChatWorker:agent-ma-b", child: "agent-ma-b-child", commit: "commit-b" },
+    ];
+    const frontierCalls = new Map<string, number>();
+    const adoptCalls: string[] = [];
+    const cloneRequests: Array<{ storageAt: Record<string, string> }> = [];
+    let hangOnSecondAgent = true;
+    const rpcCall = (target: string, method: string, args: unknown[]) => {
+      if (target === "main" && method === "workers.resolveService" && args[0] === "vibestudio.channel.v1")
+        return durableObjectServiceFixture(
+          `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+          {
+            source: "workers/pubsub-channel",
+            name: "PubSubChannel",
+            className: "PubSubChannel",
+            objectKey: String(args[1]),
+          },
+        );
+      if (target === "main" && method === "workspace-state.entity.resolveActive") return activeEntityFixture(args[0]);
+      const agent = agents.find((candidate) => candidate.parent === target);
+      if (agent && method === "forkFrontier") {
+        frontierCalls.set(target, (frontierCalls.get(target) ?? 0) + 1);
+        const request = args[0] as { channelId: string; throughSequence: number };
+        return {
+          channelId: request.channelId,
+          throughSequence: request.throughSequence,
+          conversationId: 1,
+          commit: agent.commit,
+          entryHigh: 3,
+          anchors: [],
+        };
+      }
+      if (target === "main" && method === "runtime.cloneContext") {
+        cloneRequests.push(args[0] as { storageAt: Record<string, string> });
+        return {
+          contextId: "ctx-ma-fork",
+          contexts: [],
+          rewired: [],
+          entities: [
+            {
+              sourceId: self,
+              newId: "do:workers/pubsub-channel:PubSubChannel:channel-ma-child",
+              kind: "do",
+              source: "workers/pubsub-channel",
+              className: "PubSubChannel",
+              sourceKey: "channel-ma-parent",
+              newKey: "channel-ma-child",
+              targetId: "do:workers/pubsub-channel:PubSubChannel:channel-ma-child",
+            },
+            ...agents.map((agent) => ({
+              sourceId: agent.parent,
+              newId: `do:workers/agent-worker:AiChatWorker:${agent.child}`,
+              kind: "do",
+              source: "workers/agent-worker",
+              className: "AiChatWorker",
+              sourceKey: agent.parent.split(":").at(-1)!,
+              newKey: agent.child,
+              targetId: `do:workers/agent-worker:AiChatWorker:${agent.child}`,
+            })),
+          ],
+        };
+      }
+      if (method === "adoptChannelKnowledge") {
+        adoptCalls.push(target);
+        // The first life never gets an answer from the second agent: it is killed there.
+        if (hangOnSecondAgent && target.endsWith(agents[1]!.child)) return new Promise(() => {});
+        return null;
+      }
+      if (method === "postClone" || method === "runtime.rebindAgentChannel") return null;
+      return undefined;
+    };
+    const fake = await newChannelFake();
+    const input = { operationId: "multi-agent-fork-1", locus: { kind: "head" as const }, reason: "deep dive" };
+    const first = await createGadBackedChannel({ channelKey: "channel-ma-parent", fake, rpcCall });
+    setRpcCaller(first.instance, "panel:user", "panel");
+    await first.instance.subscribe("panel:user", { contextId: "ctx-ma", name: "User", type: "panel" });
+    for (const [index, agent] of agents.entries()) {
+      setRpcCaller(first.instance, agent.parent, "durable-object");
+      await first.instance.join({
+        participantId: agent.parent,
+        operationId: `join-${index}`,
+        contextId: "ctx-ma",
+        metadata: { name: `Agent ${index}`, type: "agent" },
+        delivery: "all",
+        endpoint: { kind: "entity", entityId: agent.parent, invocation: "direct" },
+        applicationConfig: null,
+        replay: true,
+      });
+    }
+    // A headless client is an entity in the channel too; it has no cell to fork and is never asked for a frontier.
+    const headless = "do:workers/session:SessionDO:headless-client";
+    setRpcCaller(first.instance, headless, "durable-object");
+    await first.instance.join({
+      participantId: headless,
+      operationId: "join-headless",
+      contextId: "ctx-ma",
+      metadata: { name: "Headless", type: "headless" },
+      delivery: "all",
+      endpoint: { kind: "entity", entityId: headless, invocation: "direct" },
+      applicationConfig: null,
+      replay: true,
+    });
+    setRpcCaller(first.instance, "panel:user", "panel");
+    void first.instance.fork(input).catch(() => undefined);
+    await vi.waitFor(() => expect(adoptCalls).toHaveLength(2), { timeout: 10_000 });
+    expect(frontierCalls.has(headless)).toBe(false);
+    // The first life is gone with the second adoption unanswered. A second life over the same cell resumes the operation.
+    hangOnSecondAgent = false;
+    const second = await createGadBackedChannel({ channelKey: "channel-ma-parent", fake, rpcCall });
+    setRpcCaller(second.instance, "panel:user", "panel");
+    const result = await second.instance.fork(input);
+    expect(result.clonedAgents.map((agent) => agent.objectKey).sort()).toEqual(
+      agents.map((agent) => agent.child).sort(),
+    );
+    // Each agent named its commit once: the resumed operation used the journaled frontiers.
+    for (const agent of agents) expect(frontierCalls.get(agent.parent)).toBe(1);
+    // Every cell was forked at its own commit, the channel's beside them.
+    for (const request of cloneRequests) {
+      expect(request.storageAt[agents[0]!.parent]).toBe("commit-a");
+      expect(request.storageAt[agents[1]!.parent]).toBe("commit-b");
+      expect(typeof request.storageAt[self]).toBe("string");
+    }
+    expect(cloneRequests.length).toBeGreaterThanOrEqual(2);
+    // Both agents were adopted in the second life, the first one again (an adoption is idempotent by operation).
+    expect(adoptCalls.filter((target) => target.endsWith(agents[1]!.child))).toHaveLength(2);
+  });
+
   it("keeps failed fork cleanup retryable until context destruction succeeds", async () => {
     let destroyAttempts = 0;
     const { instance, sql } = await createGadBackedChannel({
@@ -5579,7 +5697,7 @@ describe("PubSubChannel", () => {
     const fork = await createGadBackedChannel({
       channelKey: "channel-ctx-fork",
       gad: parent.gad,
-      db: clonedChannelDatabase(parent),
+      fake: await clonedChannelFake(parent, 2),
     });
     await initializeChannelClone(fork, "channel-ctx-parent", "ctx-forked");
     await fork.instance.postClone("channel-ctx-parent", 2, "ctx-forked");
@@ -5671,7 +5789,7 @@ describe("PubSubChannel", () => {
         return undefined;
       },
     });
-    const caller = "do:vibestudio/internal:EvalDO:system-tests";
+    const caller = "do:workers/session:SessionDO:system-tests";
 
     await joinResidentSession(instance, caller, {
       name: "System tests",
@@ -7568,7 +7686,7 @@ describe("PubSubChannel", () => {
   });
 
   it("spills oversized method results to a blob ref on the durable terminal", async () => {
-    const { instance, blobs } = await createGadBackedChannel();
+    const { instance } = await createGadBackedChannel();
 
     setRpcCaller(instance, "panel:caller", "panel");
     await instance.subscribe("panel:caller", {
@@ -7609,9 +7727,7 @@ describe("PubSubChannel", () => {
         event.kind === "invocation.completed" &&
         event.causality?.invocationId === "invocation-large",
     );
-    // The channel-log store's generic encoder spills the oversized result to a
-    // blob ref on the durable event; the blob holds the real content (no
-    // method-specific "capped/omitted" wrapper).
+    // The observed event stays compact while channel replay returns the full result.
     const resultRef = eventKindSchemas["invocation.completed"].parse(completed)
       .payload.result as { digest?: string } | undefined;
     expect(resultRef).toMatchObject({
@@ -7619,8 +7735,12 @@ describe("PubSubChannel", () => {
       digest: expect.any(String),
       encoding: "json",
     });
-    const storedResult = JSON.parse(blobs.get(resultRef!.digest!)!);
-    expect(storedResult).toMatchObject({ text: "x".repeat(80 * 1024) });
+    const replay = await instance.getReplayAfter({ after: 0 });
+    const result = replay.logEvents.find(({ payload }) => {
+      const event = eventKindSchemas["invocation.completed"].safeParse(payload);
+      return event.success && event.data.causality?.invocationId === "invocation-large";
+    });
+    expect(result?.payload).toMatchObject({ payload: { result: { text: "x".repeat(80 * 1024) } } });
     expect(JSON.stringify(completed).length).toBeLessThan(1_000);
   });
 
@@ -7911,7 +8031,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
     const fork = await createGadBackedChannel({
       channelKey: "channel-policy-fork",
       gad: parent.gad,
-      db: clonedChannelDatabase(parent),
+      fake: await clonedChannelFake(parent, parentState.foldedThroughSeq),
     });
     await initializeChannelClone(
       fork,
@@ -7956,7 +8076,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
   });
 
   it("returns the original accepted payload on idempotent retries and owner restart", async () => {
-    const { instance, gad, db } = await createGadBackedChannel();
+    const { instance, gad, fake } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -7979,7 +8099,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
       causality: { messageId: "unaccepted-retry-id" },
       createdAt: new Date(Date.now() + 1).toISOString(),
     };
-    const restarted = await createGadBackedChannel({ gad, db });
+    const restarted = await createGadBackedChannel({ gad, fake });
     setRpcCaller(restarted.instance, "panel:user", "panel");
     for (const owner of [instance, restarted.instance]) {
       const second = await owner.publish(
@@ -8042,7 +8162,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
   });
 
   it("rejects a retry key owned by another publisher or payload type", async () => {
-    const { instance, gad, db } = await createGadBackedChannel();
+    const { instance, gad, fake } = await createGadBackedChannel();
     setRpcCaller(instance, "panel:user", "panel");
     await instance.subscribe("panel:user", {
       contextId: "ctx-1",
@@ -8057,7 +8177,7 @@ describe("PubSubChannel policy folds and cache amnesia (WS2)", () => {
         idempotencyKey: "private-key",
       },
     );
-    const restarted = await createGadBackedChannel({ gad, db });
+    const restarted = await createGadBackedChannel({ gad, fake });
     for (const owner of [instance, restarted.instance]) {
       setRpcCaller(owner, "panel:other", "panel");
       await owner.subscribe("panel:other", {
@@ -8427,7 +8547,7 @@ describe("PubSubChannel fork lineage delivery", () => {
     const child = await createGadBackedChannel({
       channelKey: "lineage-leaf",
       gad: parent.gad,
-      db: clonedChannelDatabase(parent),
+      fake: await clonedChannelFake(parent, 1),
       rpcCall: (target, method, args) => {
         if (
           target === "main" &&
@@ -8520,7 +8640,7 @@ describe("PubSubChannel appendSeed fork plumbing", () => {
     const child = await createGadBackedChannel({
       channelKey: "channel-child",
       gad: parent.gad,
-      db: clonedChannelDatabase(parent),
+      fake: await clonedChannelFake(parent, 2),
       rpcCall: (target, method, args) => {
         if (
           target === "main" &&
@@ -8749,7 +8869,7 @@ describe("conversation creation seed", () => {
       },
     });
     const remount = await createGadBackedChannel({
-      db: channel.db,
+      fake: channel.fake,
       gad: channel.gad,
     });
     setRpcCaller(remount.instance, "panel:user", "panel");
@@ -8843,7 +8963,7 @@ describe("conversation creation seed", () => {
       setRpcCaller(channel.instance, agentId, "do");
       await channel.instance.leave({ participantId: agentId, revision: 1 });
       const restored = await createGadBackedChannel({
-        db: channel.db,
+        fake: channel.fake,
         gad: channel.gad,
       });
       setRpcCaller(restored.instance, "panel:user", "panel");
@@ -8903,13 +9023,13 @@ describe("conversation creation seed", () => {
       await expect(
         channel.instance.resolveOpeningRequest("panel:user", "deliver"),
       ).rejects.toThrow("Accepted append reply lost");
-      const reopened = await createGadBackedChannel({ db: channel.db, gad });
+      const reopened = await createGadBackedChannel({ fake: channel.fake, gad });
       expect(
         (await reopened.instance.getConfig())?.initialization?.openingRequest,
       ).toBe(phase === "resolution" ? undefined : seed.openingRequest);
       setRpcCaller(channel.instance, agentId, "do");
       await channel.instance.leave({ participantId: agentId, revision: 1 });
-      const restored = await createGadBackedChannel({ db: channel.db, gad });
+      const restored = await createGadBackedChannel({ fake: channel.fake, gad });
       setRpcCaller(restored.instance, "panel:another", "panel");
       await restored.instance.subscribe("panel:another", {
         contextId: "ctx-1",
@@ -8953,7 +9073,7 @@ describe("conversation creation seed", () => {
       "UPDATE channel_delivery_projection_cursor SET projection_version = 0",
     );
     const restored = await createGadBackedChannel({
-      db: channel.db,
+      fake: channel.fake,
       gad: channel.gad,
     });
     expect(
@@ -9044,18 +9164,45 @@ describe("conversation image ownership", () => {
 });
 
 describe("channel fork lifetime ownership", () => {
-  it("initializes copied operational state before any child maintenance admission", async () => {
+  it("initializes a fork before any child maintenance admission: its local tables came empty, its versioned conversation came whole", async () => {
+    const parent = await createGadBackedChannel({ channelKey: "source-channel" });
+    setRpcCaller(parent.instance, "panel:owner", "panel");
+    await parent.instance.subscribe("panel:owner", {
+      contextId: "source-context",
+      type: "panel",
+    });
+    parent.sql.exec(
+      `INSERT INTO fork_ops (fork_id, fork_point_id, opts, phase, created_at, updated_at)
+       VALUES ('source-operation', 0, '{}', 'journaled', 1, 1)`,
+    );
+    parent.sql.exec(
+      `INSERT OR REPLACE INTO state (key, value) VALUES ('forkSeedMarker', '{}')`,
+    );
+    parent.sql.exec(
+      `INSERT OR REPLACE INTO channel_facts (key, value) VALUES
+         ('openingRequestResolution', 'deliver'),
+         ('conversationSeed', '{"openingRequest":{"blocks":[]}}')`,
+    );
+    const through = canonicalLedger(parent.instance).headSequence();
     const child = await createGadBackedChannel({
       channelKey: "initialized-child",
+      gad: parent.gad,
+      fake: await clonedChannelFake(parent, through),
     });
-    child.sql
-      .exec(`INSERT INTO state (key, value) VALUES ('contextId', 'source-context'),
-      ('forkSeedMarker', '{}'), ('openingRequestResolution', 'deliver'),
-      ('conversationSeed', '{"openingRequest":{"blocks":[]}}')`);
-    child.sql
-      .exec(`INSERT INTO fork_ops (fork_id, fork_point_id, opts, phase, created_at, updated_at)
-      VALUES ('source-operation', 0, '{}', 'journaled', 1, 1)`);
+    // What the fork did not take: the parent's operations, sessions and caches.
+    for (const table of [
+      "fork_ops",
+      "participants",
+      "channel_maintenance_queue",
+      "channel_delivery_mailbox",
+      "channel_relationships",
+    ])
+      expect(child.sql.exec(`SELECT * FROM ${table}`).toArray(), table).toEqual([]);
+    expect(child.sql.exec(`SELECT * FROM state`).toArray()).toEqual([]);
+    // What it did: the ledger, through the fork point.
+    expect(canonicalLedger(child.instance).headSequence).toBeTypeOf("function");
     await initializeChannelClone(child, "source-channel", "child-context");
+    expect(canonicalLedger(child.instance).headSequence()).toBe(through);
     expect(child.sql.exec(`SELECT * FROM fork_ops`).toArray()).toEqual([]);
     expect(
       child.sql.exec(`SELECT * FROM channel_maintenance_queue`).toArray(),
@@ -9068,9 +9215,19 @@ describe("channel fork lifetime ownership", () => {
     expect(await child.instance.getContextId()).toBe("child-context");
     expect(
       child.sql
-        .exec(`SELECT value FROM state WHERE key = 'openingRequestOutcome'`)
+        .exec(`SELECT value FROM channel_facts WHERE key = 'openingRequestOutcome'`)
         .toArray(),
     ).toEqual([{ value: "cancel" }]);
+    expect(
+      child.sql
+        .exec(`SELECT value FROM channel_facts WHERE key = 'openingRequestResolution'`)
+        .toArray(),
+    ).toEqual([]);
+    // The initialization is the fork's first commit, on top of the parent's history.
+    expect(child.fake.dolt.log({ limit: 1 })[0]!.message).toMatch(
+      /^fork: initialized initialized-child from source-channel$/,
+    );
+    assertCleanWorkingSet(child.instance);
   });
 
   it("never starts a second fork driver because its live owner is slow", async () => {
@@ -9278,5 +9435,201 @@ describe("channel fork lifetime ownership", () => {
       releaseCleanup();
       baseRelease.mockRestore();
     }
+  });
+});
+
+describe("a channel on a Dolt cell (docs/dolt-redesign.md §6.2, §6.4)", () => {
+  const message = (id: string) => ({
+    ...agenticEvent(),
+    causality: { messageId: id },
+    payload: {
+      ...agenticEvent().payload,
+      blocks: [{ blockId: `${id}:block:0`, type: "text", content: id }],
+    },
+  });
+  async function parentWithHistory() {
+    const parent = await createGadBackedChannel({
+      channelKey: "dolt-parent",
+      rpcCall: (_target, method, args) => {
+        if (method === "account.isMember") return true;
+        if (method === "account.resolveProfiles")
+          return Object.fromEntries(
+            (args[0] as string[]).map((id) => [id, profileFixture(id)]),
+          );
+        return undefined;
+      },
+    });
+    setRpcCaller(parent.instance, "panel:alice", "panel", "panel:alice", "usr_alice");
+    await parent.instance.subscribe("panel:alice", {
+      contextId: "ctx-1",
+      name: "Alice",
+      type: "panel",
+    });
+    const head = () => canonicalLedger(parent.instance).headSequence();
+    const publish = async (id: string) => {
+      await parent.instance.publish("panel:alice", AGENTIC_EVENT_PAYLOAD_KIND, message(id));
+      return head();
+    };
+    await publish("m1");
+    await publish("m2");
+    await parent.instance.addMember({ userId: "usr_bob" });
+    const atThree = await publish("m3");
+    await publish("m4");
+    await parent.instance.addMember({ userId: "usr_carol" });
+    await publish("m5");
+    return { parent, atThree, head: head() };
+  }
+
+  it("commits each ledger append and each membership change, and nothing of the local state", async () => {
+    const { parent, head } = await parentWithHistory();
+    const messages = parent.fake.dolt.log({ limit: 10_000 }).map((entry) => entry.message);
+    const appends = messages.filter((m) => m.startsWith("channel: append "));
+    expect(appends).toHaveLength(head);
+    expect(appends.map((m) => Number(m.split(" ")[2])).reverse()).toEqual(
+      Array.from({ length: head }, (_, index) => index + 1),
+    );
+    expect(messages).toEqual(
+      expect.arrayContaining(["channel: member add user:usr_bob", "channel: member add user:usr_carol"]),
+    );
+    assertCleanWorkingSet(parent.instance);
+    // The versioned tables are the history; the sessions, mailbox and caches are not in any commit.
+    const tables = new Set(
+      parent.fake.dolt
+        .diff({ from: parent.fake.dolt.log({ limit: 10_000 }).at(-1)!.hash, to: "HEAD" })
+        .summary.map((entry) => entry.toTable ?? entry.fromTable),
+    );
+    for (const local of ["participants", "channel_delivery_mailbox", "channel_receipts", "state", "channel_ledger_state"])
+      expect(tables.has(local), local).toBe(false);
+    expect(tables.has("channel_ledger_events")).toBe(true);
+  });
+
+  it("forks at the commit that appended the fork point: the child's ledger, members and facts are the parent's as of that event", async () => {
+    const { parent, atThree, head } = await parentWithHistory();
+    expect(head).toBeGreaterThan(atThree);
+    const atCommit = (
+      parent.instance as unknown as { commitAtSequence(sequence: number): string }
+    ).commitAtSequence(atThree);
+    const child = await createGadBackedChannel({
+      channelKey: "dolt-child",
+      gad: parent.gad,
+      fake: await parent.fake.fork({ at: atCommit }),
+    });
+    await initializeChannelClone(child, "dolt-parent", "child-context");
+    await child.instance.postClone("dolt-parent", atThree, "child-context", {
+      forkId: "fork-equal",
+      rootChannelId: "dolt-parent",
+    });
+    // Ledger: every envelope through the fork point, identical, and none after.
+    const parentThrough = canonicalLedger(parent.instance).read({ limit: 10_000 }).filter((e) => e.seq <= atThree);
+    expect(canonicalLedger(child.instance).read({ limit: 10_000 })).toEqual(parentThrough);
+    expect(canonicalLedger(child.instance).headSequence()).toBe(atThree);
+    // Members: bob was added before the fork point, carol after it.
+    expect(child.sql.exec(`SELECT user_id FROM channel_members ORDER BY user_id`).toArray()).toEqual([
+      { user_id: "user:usr_bob" },
+    ]);
+    expect(parent.sql.exec(`SELECT user_id FROM channel_members ORDER BY user_id`).toArray()).toHaveLength(2);
+    // Facts: the conversation's configuration came with the commit.
+    expect(child.sql.exec(`SELECT value FROM channel_facts WHERE key = 'config'`).toArray()).toEqual(
+      parent.sql.exec(`SELECT value FROM channel_facts WHERE key = 'config'`).toArray(),
+    );
+    // The child is its own object: provenance, an empty roster, and a clean working set.
+    expect(await child.instance.getContextId()).toBe("child-context");
+    expect(child.sql.exec(`SELECT * FROM participants`).toArray()).toEqual([]);
+    expect(child.sql.exec(`SELECT parent_channel_id, parent_sequence FROM channel_ledger_state`).toArray()).toEqual([
+      { parent_channel_id: "dolt-parent", parent_sequence: atThree },
+    ]);
+    assertCleanWorkingSet(child.instance);
+    // The history the child holds ends at the fork point (plus its own initialization).
+    const childLog = child.fake.dolt.log({ limit: 10_000 }).map((entry) => entry.message);
+    expect(childLog.some((m) => m.startsWith(`channel: append ${atThree + 1} `))).toBe(false);
+    expect(childLog.some((m) => m.startsWith(`channel: append ${atThree} `))).toBe(true);
+    // The parent did not move, and a retried postClone changes nothing.
+    expect(canonicalLedger(parent.instance).headSequence()).toBe(head);
+    await child.instance.postClone("dolt-parent", atThree, "child-context", {
+      forkId: "fork-equal",
+      rootChannelId: "dolt-parent",
+    });
+    // The child appends its own events from the fork point on.
+    setRpcCaller(child.instance, "panel:alice", "panel", "panel:alice", "usr_alice");
+    await child.instance.subscribe("panel:alice", { contextId: "child-context", name: "Alice", type: "panel" });
+    await child.instance.publish("panel:alice", AGENTIC_EVENT_PAYLOAD_KIND, message("child-1"));
+    expect(canonicalLedger(child.instance).headSequence()).toBeGreaterThan(atThree);
+    assertCleanWorkingSet(child.instance);
+  });
+
+  it("asks the host to fork its own cell at the commit that appended the fork point, and journals that commit for a retry", async () => {
+    const clone = vi.fn(async (_input: Record<string, unknown>) => ({
+      contextId: "forked-context",
+      contexts: [],
+      rewired: [],
+      entities: [
+        {
+          sourceId: "do:workers/pubsub-channel:PubSubChannel:dolt-parent",
+          newId: "do:workers/pubsub-channel:PubSubChannel:forked-child",
+          kind: "do",
+          source: "workers/pubsub-channel",
+          className: "PubSubChannel",
+          sourceKey: "dolt-parent",
+          newKey: "forked-child",
+          targetId: "do:workers/pubsub-channel:PubSubChannel:forked-child",
+        },
+      ],
+    }));
+    const parent = await createGadBackedChannel({
+      channelKey: "dolt-parent",
+      rpcCall: (_target, method, args) => {
+        if (method === "workers.resolveService" && args[0] === "vibestudio.channel.v1")
+          return durableObjectServiceFixture(
+            `do:workers/pubsub-channel:PubSubChannel:${String(args[1])}`,
+            {
+              source: "workers/pubsub-channel",
+              name: "PubSubChannel",
+              className: "PubSubChannel",
+              objectKey: String(args[1]),
+            },
+          );
+        if (method === "runtime.cloneContext") return clone(args[0] as Record<string, unknown>);
+        if (method === "postClone") return null;
+        return undefined;
+      },
+    });
+    setRpcCaller(parent.instance, "panel:user", "panel");
+    await parent.instance.subscribe("panel:user", { contextId: "source-context", name: "User", type: "panel" });
+    for (const id of ["a", "b", "c"])
+      await parent.instance.publish("panel:user", AGENTIC_EVENT_PAYLOAD_KIND, {
+        ...agenticEvent(),
+        causality: { messageId: id },
+        payload: { ...agenticEvent().payload, blocks: [{ blockId: `${id}:b`, type: "text", content: id }] },
+      });
+    const head = canonicalLedger(parent.instance).headSequence();
+    const input = { operationId: "dolt-fork-op", locus: { kind: "head" as const }, reason: "history" };
+    await parent.instance.fork(input);
+    const commit = (
+      parent.instance as unknown as { commitAtSequence(sequence: number): string }
+    ).commitAtSequence(head);
+    expect(clone).toHaveBeenCalledOnce();
+    expect(clone.mock.calls[0]![0]).toMatchObject({
+      sourceContextId: "source-context",
+      targetKey: "fork:dolt-fork-op",
+      storageAt: { "do:workers/pubsub-channel:PubSubChannel:dolt-parent": commit },
+    });
+    const journaled = JSON.parse(
+      String(parent.sql.exec(`SELECT opts FROM fork_ops WHERE fork_id = 'dolt-fork-op'`).one()["opts"]),
+    ) as { channelCommit?: string };
+    expect(journaled.channelCommit).toBe(commit);
+    // The same operation again is answered from its journal: the host is not asked twice.
+    await parent.instance.fork(input);
+    expect(clone).toHaveBeenCalledOnce();
+  });
+
+  it("a fork at sequence 0 is the state before the first event; a sequence the ledger lacks is refused", async () => {
+    const { parent, head } = await parentWithHistory();
+    const find = (sequence: number) =>
+      (parent.instance as unknown as { commitAtSequence(sequence: number): string }).commitAtSequence(sequence);
+    const zero = find(0);
+    expect(
+      Number(parent.sql.exec(`SELECT COALESCE(MAX(sequence), 0) AS head FROM dolt_at_channel_ledger_events('${zero}')`).one()["head"]),
+    ).toBe(0);
+    expect(() => find(head + 1)).toThrow(/no commit that appended event/);
   });
 });

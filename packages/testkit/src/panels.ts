@@ -12,12 +12,6 @@ import type {
   PanelHandle,
 } from "@workspace/runtime";
 import { activeTestContext } from "./run.js";
-import { withCdpSession } from "./cdp.js";
-// Workspace-panel CDP must use the driver DO. Keep this registration anchored
-// to the panel helper itself: eval callers commonly import only runSuites and
-// summarize from the package entry, which lets an entry-point-only side effect
-// be tree-shaken before this helper is used.
-import "./driver.js";
 import { TestAssertionError } from "./expect.js";
 
 export type OpenPanelOptions = RuntimeOpenPanelOptions;
@@ -210,21 +204,14 @@ export async function setViewport(
   viewport: ViewportSpec,
 ): Promise<void> {
   assertNotSelf(handle);
-  await withCdpSession(handle, async (session) => {
-    await session.send("Emulation.setDeviceMetricsOverride", {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
-      mobile: viewport.mobile ?? false,
-    });
-  });
+  const { page } = await handle.cdp.session();
+  await page.setViewportSize(viewport);
 }
 
 export async function clearViewport(handle: PanelHandle): Promise<void> {
   assertNotSelf(handle);
-  await withCdpSession(handle, async (session) => {
-    await session.send("Emulation.clearDeviceMetricsOverride");
-  });
+  const { page } = await handle.cdp.session();
+  await page.resetViewportSize();
 }
 
 export interface PanelAudit {

@@ -4,5 +4,8 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./index.ts", "./layout": "./layout.ts" },
-  "dependencies": { "@vibestudio/content-addressing": "workspace:*", "@workspace-skills/pdf-intake": "workspace:*" }
+  "dependencies": { "@vibestudio/content-addressing": "workspace:*", "@workspace-skills/pdf-intake": "workspace:*" },
+  "devDependencies": {
+    "@workspace-extensions/pdf-ingest": "workspace:*"
+  }
 }

@@ -61,6 +61,8 @@ export interface AgentEntityCreateInput {
     config?: Record<string, unknown>;
     replay?: boolean;
   };
+  /** Start from a fork of the calling agent's own cell at this commit of its history (a subagent that forks its parent). */
+  forkStorage?: { at: string };
 }
 
 export interface AgentChannelSubscriptionInput {
@@ -125,7 +127,7 @@ export function targetIdFor(
 }
 
 export function requireAgentSubscriptionResult(
-  operation: "subscribeChannel" | "importChannelKnowledge",
+  operation: "subscribeChannel" | "adoptChannelKnowledge",
   result: unknown,
 ): AgentSubscriptionResult {
   if (
@@ -177,6 +179,7 @@ export function buildAgentEntityCreateSpec(
     ...(input.agentInitialization
       ? { agentInitialization: input.agentInitialization }
       : {}),
+    ...(input.forkStorage ? { forkStorage: input.forkStorage } : {}),
   };
 }
 

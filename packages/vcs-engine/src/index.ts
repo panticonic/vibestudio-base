@@ -7,3 +7,4 @@ export { boundedTemplateUpdatePreview } from "./semantic/templateUpdatePreview.j
 export * from "./semantic/workspaceFactChangeSet.js";
 export * from "./semantic/persistentRadix.js";
 export * from "./semantic/workspaceFactMap.js";
+export * from "./semantic/workspacePlacement.js";

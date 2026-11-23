@@ -52,6 +52,7 @@ import {
   createCredentialClient,
   type CredentialClient,
 } from "./credentials.js";
+import { createChronologClient, type ChronologClient } from "./chronologClient.js";
 import { createVcsClient, type VcsClient } from "./vcsClient.js";
 import {
   createWebhookIngressClient,
@@ -158,6 +159,7 @@ export interface WorkspaceRuntime {
   readonly browserData: BrowserDataClient;
   readonly git: GitClient;
   readonly vcs: VcsClient;
+  readonly chronolog: ChronologClient;
   readonly webhooks: WebhookIngressClient;
   readonly extensions: ExtensionsClient;
   readonly templates: TemplateManagementClient;
@@ -189,7 +191,7 @@ export interface WorkspaceRuntime {
   readonly hosts: AttachedHostsApi;
 }
 
-// DO-safe host helpers — re-exported so a connectionless host (EvalDO) can build
+// DO-safe host helpers — re-exported so a connectionless host (eval kernel) can build
 // its `RuntimeHost` ports from one import without pulling panel/worker bootstrap.
 export { createGatewayFetch } from "./gatewayFetch.js";
 export { createWorkerdClient } from "./workerd.js";
@@ -354,7 +356,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
   const gad = helpfulNamespace("gad", createGadClient(rpc));
   const blobstore = helpfulNamespace(
     "blobstore",
-    createBlobstoreClient(rpc, host.fs, host.recordOperation),
+    createBlobstoreClient(rpc, host.fs),
   );
   const workspace = helpfulNamespace("workspace", createWorkspaceClient(rpc));
   const workspaces = helpfulNamespace(
@@ -421,6 +423,7 @@ export function createHostedRuntime(host: RuntimeHost): WorkspaceRuntime {
     browserData,
     git,
     vcs,
+    chronolog: helpfulNamespace("chronolog", createChronologClient(rpc)),
     webhooks,
     extensions,
     templates,

@@ -13,6 +13,12 @@
         {
           "className": "GadWorkspaceDO",
           "rpcSchema": "vibestudio.gad.workspace.v1"
+        },
+        {
+          "className": "GadHistoryDO",
+          "storage": "dolt",
+          "doltRemotes": true,
+          "doltLocal": ["gad_history_allocations", "content_roots", "content_root_basis", "commit_index"]
         }
       ]
     },
@@ -105,9 +111,6 @@
   },
   "exports": {
     ".": "./index.ts",
-    "./semanticVcsSchema": "./semanticVcsSchema.ts",
-    "./semanticVcsStore": "./semanticVcsStore.ts",
-    "./semanticWorkspace": "./semanticWorkspace.ts",
     "./userNotificationStore": "./userNotificationStore.ts"
   }
 }

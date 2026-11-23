@@ -1,0 +1,1213 @@
+import { canonicalJson, compareUtf16CodeUnits } from "@vibestudio/content-addressing";
+import type { SqlStorage } from "@vibestudio/durable";
+import type { VcsReadFilesInput } from "@vibestudio/service-schemas/vcs";
+import { semanticFileHostReadSchema } from "@vibestudio/service-schemas/workspaceSource";
+import type { WorkspaceMaterializationRepository } from "@vibestudio/shared/vcs/workspaceProjection";
+import { WorkspaceTemplateInstallationSchema } from "@vibestudio/workspace-contracts/workspaceConfigSchema";
+import {
+  compactId,
+  workspaceFileStateIdentity,
+  workspaceRepositoryStateIdentity,
+  type StateNodeRef,
+  type WorkspaceFileStateChange,
+  type WorkspaceRepositoryChange,
+} from "@workspace/vcs-engine";
+import type {
+  ApplicationRecord,
+  IntegrationDecisionRecord,
+  WorkspaceEventRecord,
+} from "./semanticHistoryRecords.js";
+import { createSemanticHistoryTables } from "./semanticHistorySchema.js";
+import { SemanticVcsError } from "./semanticVcsErrors.js";
+import { type FileContentOrigin, readAppliedFileChanges } from "./workspaceHistoryReads.js";
+import {
+  type FileTransition,
+  type RepositoryTransition,
+  type WorkspaceEditBasis,
+  type WorkspaceSnapshotImportBasis,
+  type WorkspaceTransferBasis,
+} from "./workspaceMutation.js";
+import { execBatchedInsert } from "./sqlBatch.js";
+import { indexedWorkspaceCommit } from "./workspaceCommitIndex.js";
+
+const repositoryColumns = [
+  "repository_id",
+  "repo_path",
+  "presence",
+  "tombstone_change_id",
+] as const;
+const fileColumns = [
+  "file_id",
+  "repository_id",
+  "path",
+  "content_hash",
+  "mode",
+  "content_kind",
+  "byte_length",
+  "coordinate_extent",
+  "presence",
+  "tombstone_change_id",
+] as const;
+
+export function restoreDoltFileRow(sql: SqlStorage, at: string, fileId: string): void {
+  const columns = fileColumns.join(", ");
+  sql.exec("DELETE FROM files WHERE file_id = ?", fileId);
+  sql.exec(
+    `INSERT INTO files (${columns}) SELECT ${columns} FROM dolt_at_files(?) WHERE file_id = ?`,
+    at,
+    fileId,
+  );
+}
+export interface WorkspacePlacementChange {
+  repositoryUpdates: readonly WorkspaceRepositoryChange[];
+  fileUpdates: readonly WorkspaceFileStateChange[];
+}
+
+/** Resolve a public state identity against one reachable history. */
+export function workspaceCommitForRef(
+  sql: SqlStorage,
+  at: string,
+  ref: StateNodeRef
+): string | null {
+  return indexedWorkspaceCommit(sql, at, ref, () => resolveWorkspaceCommit(sql, at, ref));
+}
+
+function resolveWorkspaceCommit(sql: SqlStorage, at: string, ref: StateNodeRef): string | null {
+  const event = ref.kind === "event";
+  const table = event ? "events" : "applications";
+  const key = event ? "event_id" : "application_id";
+  const value = ref.kind === "event" ? ref.eventId : ref.applicationId;
+  const origins = sql
+    .exec(
+      `WITH RECURSIVE containing(hash) AS (
+       SELECT ?1 WHERE EXISTS (SELECT 1 FROM dolt_at_${table}(?1) WHERE ${key} = ?2)
+       UNION
+       SELECT parent.parent_hash FROM containing AS current
+       JOIN dolt_commit_ancestors AS parent ON parent.commit_hash = current.hash
+       WHERE parent.parent_hash IS NOT NULL AND EXISTS (
+         SELECT 1 FROM dolt_at_${table}(parent.parent_hash) WHERE ${key} = ?2
+       )
+     )
+     SELECT current.hash FROM containing AS current WHERE NOT EXISTS (
+       SELECT 1 FROM dolt_commit_ancestors AS parent
+       JOIN containing AS seen ON seen.hash = parent.parent_hash
+       WHERE parent.commit_hash = current.hash
+     ) LIMIT 2`,
+      at,
+      value
+    )
+    .toArray();
+  if (origins.length > 1) throw new Error(`Workspace state ${value} has multiple origins`);
+  const origin = origins[0]?.["hash"];
+  if (origin === undefined) return null;
+  if (typeof origin !== "string") throw new Error("Invalid workspace commit identity");
+  return origin;
+}
+
+/** Project a committed revision into the host's existing materialization protocol. */
+export function workspaceRepositoriesAt(
+  sql: SqlStorage,
+  commit: string
+): WorkspaceMaterializationRepository[] {
+  const repositories = new Map<
+    string,
+    {
+      repoPath: string;
+      files: Array<{ path: string; contentHash: string; mode: number }>;
+    }
+  >();
+  for (const row of sql
+    .exec(
+      `SELECT repository_id, repo_path FROM dolt_at_repositories(?) WHERE presence = 'present'`,
+      commit
+    )
+    .toArray()) {
+    const { repository_id, repo_path } = row;
+    if (typeof repository_id !== "string" || typeof repo_path !== "string") {
+      throw new Error(`Invalid repository placement at ${commit}`);
+    }
+    repositories.set(repository_id, { repoPath: repo_path, files: [] });
+  }
+  for (const row of sql
+    .exec(
+      `SELECT repository_id, path, content_hash, mode FROM dolt_at_files(?) WHERE presence = 'placed'`,
+      commit
+    )
+    .toArray()) {
+    const { repository_id, path, content_hash, mode } = row;
+    const entry = typeof repository_id === "string" ? repositories.get(repository_id) : undefined;
+    if (
+      !entry ||
+      typeof path !== "string" ||
+      typeof content_hash !== "string" ||
+      typeof mode !== "number" ||
+      !Number.isSafeInteger(mode) ||
+      mode < 0
+    ) {
+      throw new Error(`Invalid file placement at ${commit}`);
+    }
+    entry.files.push({ path, contentHash: content_hash, mode });
+  }
+  return [...repositories]
+    .map(([repositoryId, { repoPath, files }]) => {
+      files.sort((left, right) => compareUtf16CodeUnits(left.path, right.path));
+      return {
+        repositoryId,
+        repoPath,
+        presence: "present" as const,
+        fileManifestId: compactId("dolt-file-manifest", files),
+        source: { kind: "snapshot" as const, files },
+      };
+    })
+    .sort((left, right) => compareUtf16CodeUnits(left.repoPath, right.repoPath));
+}
+
+function placedWorkspaceFile(row: Record<string, unknown>, fileId: string, commit: string) {
+  const {
+    repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent,
+  } = row;
+  if (
+    typeof repository_id !== "string" ||
+    typeof path !== "string" ||
+    typeof content_hash !== "string" ||
+    typeof mode !== "number" ||
+    (content_kind !== "text" && content_kind !== "bytes") ||
+    typeof byte_length !== "number" ||
+    typeof coordinate_extent !== "number"
+  ) {
+    throw new Error(`Invalid file placement at ${commit}`);
+  }
+  const file = workspaceFileStateIdentity({
+    fileId,
+    presence: "placed",
+    repositoryId: repository_id,
+    path,
+    contentHash: content_hash,
+    mode,
+    contentKind: content_kind,
+    byteLength: byte_length,
+    coordinateExtent: coordinate_extent,
+  });
+  if (file.presence !== "placed") throw new Error(`Invalid placed file identity at ${commit}`);
+  return file;
+}
+
+/** Read a replacement repository and its exact file descriptors in versioned storage. */
+export function workspaceSnapshotImportBasisAt(sql: SqlStorage, commit: string): WorkspaceSnapshotImportBasis {
+  const edit = workspaceEditBasisAt(sql, commit);
+  const transfer = workspaceTransferBasisAt(sql, commit);
+  return {
+    repository(repositoryId) {
+      return edit.repository(repositoryId) ? transfer.presentRepository(repositoryId) : null;
+    },
+    files(repository) {
+      const files = new Map<string, ReturnType<typeof placedWorkspaceFile>>();
+      for (const row of sql.exec(
+        `SELECT file_id, repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent
+           FROM dolt_at_files(?) WHERE repository_id = ? AND presence = 'placed' ORDER BY path`,
+        commit, repository.repositoryId,
+      ).toArray()) {
+        const id = row["file_id"];
+        if (typeof id !== "string") throw new Error(`Invalid imported file identity at ${commit}`);
+        const file = placedWorkspaceFile(row, id, commit);
+        files.set(file.path, file);
+      }
+      return files;
+    },
+  };
+}
+
+/** Read the edit planner's placement coordinates without checking out a branch. */
+export function workspaceEditBasisAt(sql: SqlStorage, commit: string): WorkspaceEditBasis {
+  const repository = (column: "repository_id" | "repo_path", value: string) => {
+    const row = sql.exec(
+      `SELECT repository_id, repo_path FROM dolt_at_repositories(?)
+        WHERE ${column} = ? AND presence = 'present'`,
+      commit,
+      value,
+    ).toArray()[0];
+    if (!row) return null;
+    if (typeof row["repository_id"] !== "string" || typeof row["repo_path"] !== "string") {
+      throw new Error(`Invalid repository placement at ${commit}`);
+    }
+    return { repositoryId: row["repository_id"], repoPath: row["repo_path"] };
+  };
+  const hasFile = (
+    condition: "repository_id = ?" | "repository_id = ? AND path = ?",
+    ...bindings: string[]
+  ) =>
+    sql.exec(
+      `SELECT 1 FROM dolt_at_files(?)
+        WHERE presence = 'placed' AND ${condition} LIMIT 1`,
+      commit,
+      ...bindings,
+    ).toArray().length > 0;
+  return {
+    file(fileId) {
+      const row = sql.exec(
+        `SELECT repository_id, path, content_hash, mode, content_kind, byte_length, coordinate_extent
+           FROM dolt_at_files(?) WHERE file_id = ? AND presence = 'placed'`,
+        commit,
+        fileId,
+      ).toArray()[0];
+      if (!row) return null;
+      return placedWorkspaceFile(row, fileId, commit);
+    },
+    repository: (id) => repository("repository_id", id),
+    repositoryAtPath: (path) => repository("repo_path", path),
+    emptyRepository(placement) {
+      if (hasFile("repository_id = ?", placement.repositoryId)) return null;
+      const state = workspaceRepositoryStateIdentity({
+        ...placement,
+        presence: "present",
+        fileManifestId: compactId("dolt-file-manifest", []),
+      });
+      if (state.presence !== "present")
+        throw new Error(`Invalid present repository identity at ${commit}`);
+      return state;
+    },
+    hasFileAtPath: (id, path) => hasFile("repository_id = ? AND path = ?", id, path),
+  };
+}
+
+export function workspaceTransferBasisAt(sql: SqlStorage, commit: string): WorkspaceTransferBasis {
+  const basis = workspaceEditBasisAt(sql, commit);
+  const repositoryPlacement = (repositoryId: string) => {
+    const repository = basis.repository(repositoryId);
+    if (!repository) throw new SemanticVcsError("InvalidReference", `Repository ${repositoryId} is not present`);
+    return repository;
+  };
+  return {
+    repositoryPlacement,
+    repositoryAtPath: basis.repositoryAtPath,
+    placedFile(repositoryId, fileId) {
+      const state = basis.file(fileId);
+      if (!state || state.repositoryId !== repositoryId) {
+        throw new SemanticVcsError("InvalidReference", `File ${fileId} is not placed in repository ${repositoryId}`);
+      }
+      return { state, repository: repositoryPlacement(repositoryId) };
+    },
+    fileAtPath(repositoryId, path) {
+      const id = sql.exec(
+        "SELECT file_id FROM dolt_at_files(?) WHERE repository_id = ? AND path = ? AND presence = 'placed'",
+        commit, repositoryId, path,
+      ).toArray()[0]?.["file_id"];
+      return typeof id === "string" ? basis.file(id) : null;
+    },
+    presentRepository(repositoryId) {
+      const repository = repositoryPlacement(repositoryId);
+      const files = sql.exec(
+        "SELECT path, content_hash, mode FROM dolt_at_files(?) WHERE repository_id = ? AND presence = 'placed'",
+        commit, repositoryId,
+      ).toArray().map(({ path, content_hash, mode }) => {
+        if (typeof path !== "string" || typeof content_hash !== "string" || typeof mode !== "number") {
+          throw new SemanticVcsError("IntegrityFailure", "Workspace repository has an invalid file placement");
+        }
+        return { path, contentHash: content_hash, mode };
+      }).sort((left, right) => compareUtf16CodeUnits(left.path, right.path));
+      const state = workspaceRepositoryStateIdentity({
+        ...repository,
+        presence: "present",
+        fileManifestId: compactId("dolt-file-manifest", files),
+      });
+      if (state.presence !== "present") throw new Error("Workspace repository has no present state");
+      return state;
+    },
+  };
+}
+
+/** Resolve a batch of exact file coordinates with their content lineage. */
+export function workspaceFileReadsAt(sql: SqlStorage, commit: string, input: VcsReadFilesInput) {
+  if (input.files.length === 0) return [];
+  const rows = sql.exec(
+    `WITH selectors AS (
+       SELECT CAST(key AS INTEGER) AS ordinal,
+              json_extract(value, '$.repositoryId') AS repository_id,
+              json_extract(value, '$.file.fileId') AS file_id,
+              json_extract(value, '$.file.path') AS path
+         FROM json_each(?2)
+     )
+     SELECT selector.ordinal, file.file_id, file.repository_id, repo.repo_path, file.path,
+            file.content_hash, file.content_kind, file.byte_length, file.coordinate_extent, file.mode
+       FROM selectors AS selector
+       JOIN dolt_at_repositories(?1) AS repo
+         ON repo.repository_id = selector.repository_id AND repo.presence = 'present'
+       JOIN dolt_at_files(?1) AS file
+         ON file.repository_id = repo.repository_id AND file.presence = 'placed'
+        AND (file.file_id = selector.file_id OR file.path = selector.path)
+      ORDER BY selector.ordinal`,
+    commit,
+    JSON.stringify(input.files),
+  ).toArray();
+  const fileIds = rows.map((row) => {
+    const id = row["file_id"];
+    if (typeof id !== "string") throw new SemanticVcsError("IntegrityFailure", "Invalid workspace file identity");
+    return id;
+  });
+  const origins = workspaceContentOriginsAt(sql, commit, fileIds);
+  const result: Array<ReturnType<typeof semanticFileHostReadSchema.parse> | null> =
+    input.files.map(() => null);
+  for (const row of rows) {
+    const { ordinal, file_id, repository_id, repo_path, path, content_hash, content_kind,
+      byte_length, coordinate_extent, mode } = row;
+    if (typeof ordinal !== "number" || !Number.isInteger(ordinal) || result[ordinal] !== null) {
+      throw new SemanticVcsError("IntegrityFailure", "Invalid workspace file selector match");
+    }
+    const origin = origins.get(String(file_id));
+    if (!origin?.content || origin.content.contentHash !== content_hash ||
+        origin.content.coordinateExtent !== coordinate_extent ||
+        origin.content.coordinateKind !== (content_kind === "text" ? "utf16" : "byte")) {
+      throw new SemanticVcsError("IntegrityFailure", `File ${String(file_id)} has no matching content origin`);
+    }
+    const { authoredChangeId, authoredByWorkUnitId, contentClass, externalKeys } = origin;
+    result[ordinal] = semanticFileHostReadSchema.parse({
+      kind: "read-semantic-blob",
+      state: input.state,
+      repositoryId: repository_id,
+      fileId: file_id,
+      repoPath: repo_path,
+      path,
+      contentHash: content_hash,
+      contentKind: content_kind,
+      byteLength: byte_length,
+      coordinateExtent: coordinate_extent,
+      authoredChangeId,
+      authoredByWorkUnitId,
+      contentClass,
+      externalKeys,
+      mode,
+    });
+  }
+  return result;
+}
+
+/** Turn authored transitions into the exact rows the participant transaction compares and writes. */
+export function prepareDoltEditPlacement(
+  commit: string,
+  files: readonly FileTransition[],
+  repositories: readonly RepositoryTransition[],
+) {
+  const repositoryUpdates: Array<WorkspacePlacementChange["repositoryUpdates"][number]> = [];
+  for (const { repositoryId, resultPath, expected, tombstoneChangeId } of repositories) {
+    if (resultPath === undefined) continue;
+    if (resultPath === null) {
+      if (!expected || !tombstoneChangeId) {
+        throw new Error("A deleted repository requires its prior placement and authored change");
+      }
+      repositoryUpdates.push({
+        repositoryId,
+        expected,
+        result: workspaceRepositoryStateIdentity({
+          repositoryId,
+          presence: "deleted",
+          priorRepositoryStateId: expected.repositoryStateId,
+          tombstoneChangeId,
+        }),
+      });
+      continue;
+    }
+    const entries = files.flatMap(({ result }) =>
+      result.presence === "placed" && result.repositoryId === repositoryId
+        ? [{ path: result.path, contentHash: result.contentHash, mode: result.mode }]
+        : [],
+    );
+    entries.sort((left, right) => compareUtf16CodeUnits(left.path, right.path));
+    repositoryUpdates.push({
+      repositoryId,
+      expected,
+      result: workspaceRepositoryStateIdentity({
+        repositoryId,
+        presence: "present",
+        repoPath: resultPath,
+        fileManifestId: compactId("dolt-file-manifest", entries),
+      }),
+    });
+  }
+  const fileUpdates = files.map(({ fileId, expected, result }) => ({ fileId, expected, result }));
+  const placement = repositoryUpdates.length || fileUpdates.length
+    ? { repositoryUpdates, fileUpdates }
+    : null;
+  return {
+    placement,
+    resultRoot: placement ? compactId("dolt-workspace-transition", { commit, placement }) : commit,
+    workspacePlanCompletedAt: Date.now(),
+  };
+}
+
+const firstParents = `WITH RECURSIVE lineage(hash, parent, depth) AS (
+       SELECT commit_hash, parent_hash, 0 FROM dolt_commit_ancestors
+        WHERE commit_hash = ?1 AND parent_index = 0 AND parent_hash IS NOT NULL
+          AND (?2 IS NULL OR commit_hash <> ?2)
+       UNION ALL
+       SELECT parent.commit_hash, parent.parent_hash, child.depth + 1
+         FROM lineage AS child JOIN dolt_commit_ancestors AS parent
+           ON parent.commit_hash = child.parent
+        WHERE parent.parent_index = 0 AND parent.parent_hash IS NOT NULL
+          AND (?2 IS NULL OR parent.commit_hash <> ?2)
+     )`;
+
+/** Template installations follow the first-parent source history of a saved event. */
+export function workspaceTemplateInstallationAt(sql: SqlStorage, revision: string) {
+  const row = sql.exec(
+    `${firstParents}
+     SELECT diff.to_installation_json AS installation
+       FROM lineage CROSS JOIN dolt_diff_workspace_template_installations(lineage.parent, lineage.hash) AS diff
+      WHERE diff.diff_type = 'added' AND NOT EXISTS (
+        SELECT 1 FROM dolt_commit_ancestors AS parent
+        CROSS JOIN dolt_at_workspace_template_installations(parent.parent_hash) AS inherited
+        WHERE parent.commit_hash = lineage.hash AND parent.parent_index > 0
+          AND inherited.event_id = diff.to_event_id
+      )
+      ORDER BY lineage.depth LIMIT 1`,
+    revision,
+    null,
+  ).toArray()[0];
+  if (!row) return null;
+  if (typeof row["installation"] !== "string")
+    throw new SemanticVcsError("IntegrityFailure", "Workspace template installation is incomplete");
+  return WorkspaceTemplateInstallationSchema.parse(JSON.parse(row["installation"]));
+}
+
+/** A publication may introduce only the installation saved by its exact event. */
+export function verifyWorkspaceTemplatePublication(
+  sql: SqlStorage,
+  transition: {
+    previousHead: string;
+    proposedHead: string;
+    eventId: string;
+    installation?: import("@vibestudio/service-schemas/vcs").VcsPushInput["templateInstallation"];
+  },
+): void {
+  const changes = sql.exec(
+    `SELECT diff_type, to_event_id, to_installation_json
+       FROM dolt_diff_workspace_template_installations(?, ?) LIMIT 2`,
+    transition.previousHead,
+    transition.proposedHead,
+  ).toArray();
+  if (!transition.installation && changes.length === 0) return;
+  const [change] = changes;
+  if (transition.installation && changes.length === 1 &&
+      change?.["diff_type"] === "added" &&
+      change["to_event_id"] === transition.eventId &&
+      change["to_installation_json"] === canonicalJson(transition.installation)) return;
+  throw new SemanticVcsError("RevisionChanged", "Publication must match the saved template installation");
+}
+
+/** List applications introduced on the first-parent lineage, oldest first. */
+export function workspaceApplicationsAt(
+  sql: SqlStorage,
+  commit: string,
+  after: string | null = null,
+): string[] {
+  const rows = sql.exec(
+    `${firstParents}
+     SELECT diff.to_application_id AS application_id, lineage.depth
+       FROM lineage CROSS JOIN dolt_diff_applications(lineage.parent, lineage.hash) AS diff
+      WHERE diff.diff_type = 'added' AND NOT EXISTS (
+        SELECT 1 FROM dolt_commit_ancestors AS parent
+         CROSS JOIN dolt_at_applications(parent.parent_hash) AS inherited
+         WHERE parent.commit_hash = lineage.hash AND parent.parent_index > 0
+           AND inherited.application_id = diff.to_application_id
+      ) ORDER BY lineage.depth DESC`,
+    commit,
+    after,
+  ).toArray();
+  const depths = new Set<number>();
+  return rows.map((row) => {
+    const { application_id, depth } = row;
+    if (typeof application_id !== "string" || typeof depth !== "number" || depths.has(depth)) {
+      throw new Error(`Invalid application lineage at ${commit}`);
+    }
+    depths.add(depth);
+    return application_id;
+  });
+}
+
+/** Verify that every reported integration names the saved revision on its second parent. */
+export function workspaceMergeSourcesAt(
+  sql: SqlStorage,
+  commit: string,
+  after: string,
+  applications: readonly string[],
+) {
+  const lineage = sql.exec(
+    `${firstParents}
+     SELECT hash, parent AS ours FROM lineage ORDER BY depth DESC`,
+    commit,
+    after,
+  ).toArray();
+  const decisions = sql.exec(
+    `SELECT app.application_id, work.author_context_id, decision.source_event_id, decision.source_delta_id,
+            decision.target_state_kind, decision.target_state_id
+       FROM dolt_at_applications(?1) AS app
+       JOIN json_each(?2) AS selected ON selected.value = app.application_id
+       JOIN dolt_at_gad_work_units(?1) AS work USING (work_unit_id)
+       LEFT JOIN dolt_at_gad_integration_decisions(?1) AS decision USING (work_unit_id)
+      WHERE work.kind = 'merge'`,
+    commit,
+    JSON.stringify(applications),
+  ).toArray();
+  const byApplication = new Map(decisions.map((row) => [row["application_id"], row]));
+  const eventIds = new Set<string>();
+  const deltaIds = new Set<string>();
+  const incomplete = () => new SemanticVcsError(
+    "IntegrationIncomplete",
+    "Workspace integration has no decision for its exact native parents",
+  );
+  for (const { hash, ours } of lineage) {
+    if (typeof hash !== "string" || typeof ours !== "string") throw incomplete();
+    // Bind the exact revision so fetched commits participate even when the
+    // current checkout does not contain them.
+    const secondary = sql.exec(
+      `SELECT parent_hash, parent_index FROM dolt_commit_ancestors
+        WHERE commit_hash = ? AND parent_index > 0 ORDER BY parent_index`,
+      hash,
+    ).toArray();
+    if (secondary.length === 0) continue;
+    const theirs = secondary[0]?.["parent_hash"];
+    if (secondary.length !== 1 || typeof theirs !== "string" || secondary[0]?.["parent_index"] !== 1) {
+      throw incomplete();
+    }
+    const introduced = workspaceApplicationsAt(sql, hash, ours);
+    const decision = byApplication.get(introduced[0]);
+    if (introduced.length !== 1 || !decision || decision["source_delta_id"] !== null) {
+      throw incomplete();
+    }
+    const source = decision["source_event_id"];
+    const target = decision["target_state_id"];
+    const kind = decision["target_state_kind"];
+    let basis: StateNodeRef | null = null;
+    if (typeof target === "string") {
+      if (kind === "event") basis = { kind, eventId: target };
+      if (kind === "application") basis = { kind, applicationId: target };
+    }
+    const savedSource = committedWorkspaceEvent(sql, theirs);
+    if (savedSource?.head !== theirs) throw incomplete();
+    if (source !== null && (source !== savedSource.eventId ||
+        !basis || workspaceCommitForRef(sql, ours, basis) !== ours)) throw incomplete();
+    byApplication.delete(introduced[0]);
+    eventIds.add(savedSource.eventId);
+  }
+  const parentByCommit = new Map(lineage.map(({ hash, ours }) => [hash, ours]));
+  for (const [applicationId, decision] of byApplication) {
+    const { source_event_id, source_delta_id, target_state_id, target_state_kind, author_context_id } = decision;
+    if (typeof applicationId !== "string" || source_event_id !== null || typeof source_delta_id !== "string" ||
+        typeof target_state_id !== "string" || typeof author_context_id !== "string") throw incomplete();
+    const application = workspaceCommitForRef(sql, commit, { kind: "application", applicationId });
+    const parent = parentByCommit.get(application);
+    const basis = target_state_kind === "event" ? { kind: "event" as const, eventId: target_state_id }
+      : target_state_kind === "application" ? { kind: "application" as const, applicationId: target_state_id } : null;
+    if (!application || typeof parent !== "string" || !basis || workspaceCommitForRef(sql, parent, basis) !== parent ||
+        sql.exec(`SELECT 1 FROM dolt_at_gad_external_deltas(?) WHERE delta_id = ? AND owner_context_id = ?`,
+          application, source_delta_id, author_context_id).toArray().length !== 1) throw incomplete();
+    deltaIds.add(source_delta_id);
+  }
+  return { eventIds: [...eventIds], deltaIds: [...deltaIds] };
+}
+
+/** The changed placements and the incoming applications that account for them. */
+export interface WorkspaceMergeScopeEntry {
+  coordinate: IntegrationDecisionRecord["entries"][number]["coordinate"];
+  changeIds: string[];
+}
+
+export function workspaceMergeScope(sql: SqlStorage, base: string, source: string) {
+  const rows = sql.exec(
+    `WITH changed(kind, id) AS (
+       SELECT 'file', COALESCE(to_file_id, from_file_id) FROM dolt_diff_files(?1, ?2)
+       UNION
+       SELECT 'repository', COALESCE(to_repository_id, from_repository_id)
+         FROM dolt_diff_repositories(?1, ?2)
+     ), incoming_changes AS (
+       SELECT DISTINCT applied.change_id,
+              CASE WHEN coord.file_id IS NOT NULL THEN 'file' ELSE 'repository' END AS kind,
+              COALESCE(coord.file_id, coord.repository_id) AS id
+         FROM dolt_at_applications(?2) AS app
+         LEFT JOIN dolt_at_applications(?1) AS common USING (application_id)
+         JOIN dolt_at_gad_applied_changes(?2) AS applied ON applied.application_id = app.application_id
+         JOIN dolt_at_gad_change_coordinates(?2) AS coord ON coord.change_id = applied.change_id
+        WHERE common.application_id IS NULL
+     )
+     SELECT placement.kind, placement.id, effect.change_id
+       FROM changed AS placement LEFT JOIN incoming_changes AS effect USING (kind, id)
+      ORDER BY placement.kind, placement.id, effect.change_id`,
+    base,
+    source,
+  ).toArray();
+  const scope = new Map<string, WorkspaceMergeScopeEntry>();
+  for (const { kind, id, change_id } of rows) {
+    if ((kind !== "file" && kind !== "repository") || typeof id !== "string") {
+      throw new Error("Workspace merge encountered an invalid placement coordinate");
+    }
+    const key = canonicalJson([kind, id]);
+    let entry = scope.get(key);
+    if (!entry) {
+      entry = { coordinate: { kind, id }, changeIds: [] };
+      scope.set(key, entry);
+    }
+    if (typeof change_id === "string") entry.changeIds.push(change_id);
+  }
+  return scope;
+}
+
+/** Exact workspace-rooted paths touched between two immutable placements. */
+export function workspaceChangedLocations(sql: SqlStorage, before: string, after: string) {
+  if (before === after) return [];
+  return sql.exec(
+    `WITH file_changes AS (SELECT * FROM dolt_diff_files(?1, ?2)),
+      repository_changes AS (SELECT * FROM dolt_diff_repositories(?1, ?2))
+     SELECT 'folder' AS kind, from_repo_path AS path FROM repository_changes WHERE from_presence = 'present'
+     UNION
+     SELECT 'folder', to_repo_path FROM repository_changes WHERE to_presence = 'present'
+     UNION
+     SELECT 'file', CASE WHEN repo.repo_path = '' THEN file.from_path ELSE repo.repo_path || '/' || file.from_path END
+       FROM file_changes AS file LEFT JOIN dolt_at_repositories(?1) AS repo
+         ON repo.repository_id = file.from_repository_id AND repo.presence = 'present'
+      WHERE file.from_presence = 'placed'
+     UNION
+     SELECT 'file', CASE WHEN repo.repo_path = '' THEN file.to_path ELSE repo.repo_path || '/' || file.to_path END
+       FROM file_changes AS file LEFT JOIN dolt_at_repositories(?2) AS repo
+         ON repo.repository_id = file.to_repository_id AND repo.presence = 'present'
+      WHERE file.to_presence = 'placed'
+     ORDER BY kind, path`,
+    before,
+    after,
+  ).toArray().map(({ kind, path }) => {
+    if ((kind !== "file" && kind !== "folder") || typeof path !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Workspace change has an invalid placement");
+    }
+    return { kind, path };
+  });
+}
+
+/** Resolve the latest applied change or the original snapshot of each selected file. */
+export function workspaceContentOriginsAt(
+  sql: SqlStorage,
+  commit: string,
+  fileIds: readonly string[],
+): Map<string, FileContentOrigin> {
+  const origins = new Map<string, FileContentOrigin>();
+  if (fileIds.length === 0) return origins;
+  const pending = new Map([[commit, new Set(fileIds)]]);
+  for (const [at, selected] of pending) {
+    pending.delete(at);
+    const merge = nearestPlacementMerge(sql, at);
+    const applied = readAppliedFileChanges(
+      sql,
+      workspaceApplicationsAt(sql, at, merge?.ours),
+      [...selected],
+      at,
+    );
+    for (const [fileId, change] of applied) {
+      origins.set(fileId, {
+        ref: { kind: "applied-change", appliedChangeId: change.appliedChangeId },
+        content: change.content,
+        authoredChangeId: change.changeId,
+        authoredByWorkUnitId: change.workUnitId,
+        contentClass: change.contentClass,
+        externalKeys: change.externalKeys,
+      });
+      selected.delete(fileId);
+    }
+    if (selected.size === 0) continue;
+    if (!merge) {
+      addSnapshotOrigins(sql, at, selected, origins);
+      continue;
+    }
+    for (const [fileId, parent] of placementMergeParents(sql, merge, [...selected])) {
+      const group = pending.get(parent);
+      if (group) group.add(fileId);
+      else pending.set(parent, new Set([fileId]));
+    }
+  }
+  return origins;
+}
+
+function nearestPlacementMerge(sql: SqlStorage, commit: string) {
+  // Bind each commit before scanning its parents. An unconstrained Dolt
+  // ancestry scan starts from local refs and can miss a fetched revision.
+  const rows = sql.exec(
+    `WITH RECURSIVE lineage(hash, ours) AS (
+       SELECT commit_hash, parent_hash FROM dolt_commit_ancestors
+        WHERE commit_hash = ? AND parent_index = 0 AND parent_hash IS NOT NULL
+       UNION ALL
+       SELECT parent.commit_hash, parent.parent_hash
+         FROM lineage AS child JOIN dolt_commit_ancestors AS parent ON parent.commit_hash = child.ours
+        WHERE parent.parent_index = 0 AND parent.parent_hash IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM dolt_commit_ancestors AS extra
+             WHERE extra.commit_hash = child.hash AND extra.parent_index > 0
+          )
+     )
+     SELECT lineage.hash, lineage.ours, extra.parent_hash AS theirs
+       FROM lineage CROSS JOIN dolt_commit_ancestors AS extra
+      WHERE extra.commit_hash = lineage.hash AND extra.parent_index > 0 LIMIT 2`,
+    commit,
+  ).toArray();
+  if (rows.length === 0) return null;
+  const { hash, ours, theirs } = rows[0]!;
+  if (rows.length !== 1 || typeof hash !== "string" || typeof ours !== "string" || typeof theirs !== "string") {
+    throw new SemanticVcsError("IntegrityFailure", "Workspace merge has invalid placement parents");
+  }
+  return { hash, ours, theirs };
+}
+
+/** Prefer a matching placement, then the parent whose content survives a combined row. */
+export function placementMergeParents(
+  sql: SqlStorage,
+  merge: { hash: string; ours: string; theirs: string },
+  fileIds: readonly string[],
+): Array<[string, string]> {
+  const rows = sql.exec(
+    `WITH revisions(side, head) AS (VALUES ('merge', ?1), ('ours', ?2), ('theirs', ?3)),
+          placements AS MATERIALIZED (
+            SELECT selected.value AS id, revisions.side,
+                   json_array(file.repository_id, file.path, file.mode, file.presence, file.tombstone_change_id,
+                              file.content_hash, file.content_kind, file.byte_length, file.coordinate_extent) AS placement,
+                   json_array(file.content_hash, file.content_kind, file.byte_length, file.coordinate_extent) AS content
+              FROM revisions CROSS JOIN json_each(?4) AS selected
+              LEFT JOIN dolt_at_files(revisions.head) AS file ON file.file_id = selected.value
+          )
+     SELECT merged.id, CASE
+              WHEN merged.placement = ours.placement THEN ?2
+              WHEN merged.placement = theirs.placement THEN ?3
+              WHEN merged.content = ours.content THEN ?2
+              WHEN merged.content = theirs.content THEN ?3
+            END AS parent
+       FROM placements AS merged
+       JOIN placements AS ours ON ours.id = merged.id AND ours.side = 'ours'
+       JOIN placements AS theirs ON theirs.id = merged.id AND theirs.side = 'theirs'
+      WHERE merged.side = 'merge'`,
+    merge.hash,
+    merge.ours,
+    merge.theirs,
+    JSON.stringify(fileIds),
+  ).toArray();
+  if (rows.length !== fileIds.length) {
+    throw new SemanticVcsError("IntegrityFailure", "Workspace merge could not locate all file origins");
+  }
+  return rows.map(({ id, parent }) => {
+    if (typeof id !== "string" || typeof parent !== "string") {
+      throw new SemanticVcsError("IntegrityFailure", "Workspace merge content has no recorded origin");
+    }
+    return [id, parent];
+  });
+}
+
+function addSnapshotOrigins(
+  sql: SqlStorage,
+  commit: string,
+  missing: Set<string>,
+  origins: Map<string, FileContentOrigin>,
+): void {
+  for (const { at, state, externalKeys } of workspaceSnapshotOriginsAt(sql, commit)) {
+    const basis = workspaceEditBasisAt(sql, at);
+    for (const fileId of missing) {
+      const file = basis.file(fileId);
+      if (!file) continue;
+      origins.set(fileId, {
+        ref: { kind: "file", state, repositoryId: file.repositoryId, fileId },
+        content: {
+          fileId,
+          contentHash: file.contentHash,
+          coordinateKind: file.contentKind === "text" ? "utf16" : "byte",
+          coordinateExtent: file.coordinateExtent,
+        },
+        authoredChangeId: null,
+        authoredByWorkUnitId: null,
+        contentClass: "external",
+        externalKeys,
+      });
+      missing.delete(fileId);
+    }
+  }
+}
+
+export function workspaceSnapshotOriginsAt(sql: SqlStorage, commit: string) {
+  const snapshots = sql.exec(
+    `SELECT event_id, snapshot_source FROM dolt_at_events(?)
+      WHERE kind = 'genesis' AND snapshot_source IS NOT NULL`,
+    commit,
+  ).toArray();
+  return snapshots.map(({ event_id, snapshot_source }) => {
+    if (typeof event_id !== "string" || typeof snapshot_source !== "string")
+      throw new Error(`Invalid workspace snapshot at ${commit}`);
+    const state = { kind: "event" as const, eventId: event_id };
+    const at = workspaceCommitForRef(sql, commit, state);
+    if (!at) throw new Error(`Workspace snapshot ${event_id} has no origin`);
+    const snapshot = JSON.parse(snapshot_source) as Record<string, unknown>;
+    if (typeof snapshot["sourceUri"] !== "string" || typeof snapshot["snapshotRevision"] !== "string")
+      throw new Error(`Invalid workspace snapshot source at ${at}`);
+    return {
+      at, state, externalKeys: [`repo:${snapshot["sourceUri"]}@${snapshot["snapshotRevision"]}`],
+    };
+  });
+}
+
+/** Check bytes reachable through exactly one admitted, versioned placement history. */
+export function workspaceHasFileContent(sql: SqlStorage, revision: string, contentHash: string): boolean {
+  return sql.exec(
+    `SELECT 1 FROM dolt_history_files(?) WHERE content_hash = ? LIMIT 1`,
+    revision, contentHash,
+  ).toArray().length === 1;
+}
+
+/** Rebuild the placement roots directly from the retained commit graph. */
+export function workspacePlacementRoots(sql: SqlStorage, retained: readonly string[]): string[] {
+  const rows = sql.exec(
+    `SELECT DISTINCT files.content_hash
+       FROM json_each(?) AS tips CROSS JOIN dolt_history_files(tips.value) AS files
+      WHERE files.content_hash IS NOT NULL ORDER BY files.content_hash`,
+    JSON.stringify([...new Set(retained)]),
+  ).toArray();
+  return rows.map((row) => {
+    const hash = row["content_hash"];
+    if (typeof hash !== "string" || !hash) throw new Error("Invalid workspace content identity");
+    return hash;
+  });
+}
+
+/** Retain both versions of privately staged external changes until the draft is retired. */
+export function workspaceExternalDeltaRoots(sql: SqlStorage, retained: readonly string[]): string[] {
+  if (retained.length === 0) return [];
+  return sql.exec(
+    `WITH endpoints AS (
+        SELECT change.base_json, change.result_json
+          FROM json_each(?) AS tips
+          CROSS JOIN dolt_at_gad_external_deltas(tips.value) AS delta
+          CROSS JOIN dolt_at_gad_changes(tips.value) AS change
+         WHERE delta.work_unit_id = change.work_unit_id
+      ), hashes AS (
+        SELECT json_extract(base_json, '$.contentHash') AS content_hash FROM endpoints
+        UNION
+        SELECT json_extract(result_json, '$.contentHash') AS content_hash FROM endpoints
+      )
+      SELECT content_hash FROM hashes WHERE content_hash IS NOT NULL ORDER BY content_hash`,
+    JSON.stringify([...new Set(retained)]),
+  ).toArray().map(({ content_hash }) => {
+    if (typeof content_hash !== "string" || !/^[0-9a-f]{64}$/u.test(content_hash)) {
+      throw new Error("Invalid external workspace content identity");
+    }
+    return content_hash;
+  });
+}
+
+/** Locate the most recent committed event on a context's first-parent chain. */
+export function committedWorkspaceEvent(
+  sql: SqlStorage,
+  head: string
+): { head: string; eventId: string } | null {
+  let cursor = head;
+  for (;;) {
+    const parents: string[] = sql
+      .exec(
+        `SELECT parent_hash FROM dolt_commit_ancestors
+          WHERE commit_hash = ? AND parent_hash IS NOT NULL
+          ORDER BY parent_index`,
+        cursor
+      )
+      .toArray()
+      .map((row) => String(row["parent_hash"]));
+    const [first, second] = parents;
+    if (!first) return null;
+    if (parents.length > 2) throw new Error("A workspace event has too many parents");
+    // A merge brings the second parent's existing event rows with it. Only
+    // rows absent on both sides were introduced by the merge itself.
+    const introduced = second
+      ? sql
+          .exec(
+            `SELECT diff.to_event_id FROM dolt_diff_events(?, ?) AS diff
+            WHERE diff.diff_type = 'added' AND NOT EXISTS (
+              SELECT 1 FROM dolt_at_events(?) AS other
+               WHERE other.event_id = diff.to_event_id
+            ) LIMIT 2`,
+            first,
+            cursor,
+            second
+          )
+          .toArray()
+      : sql
+          .exec(
+            `SELECT to_event_id FROM dolt_diff_events(?, ?)
+            WHERE diff_type = 'added' LIMIT 2`,
+            first,
+            cursor
+          )
+          .toArray();
+    if (introduced.length > 1) throw new Error("A workspace commit introduced multiple events");
+    if (introduced.length === 1) {
+      const eventId = introduced[0]?.["to_event_id"];
+      if (typeof eventId !== "string" || !eventId)
+        throw new Error("A workspace commit introduced an invalid event identity");
+      return { head: cursor, eventId };
+    }
+    cursor = first;
+  }
+}
+
+export function createDoltWorkspaceState(sql: SqlStorage): void {
+  createSemanticHistoryTables(sql, "dolt");
+  sql.exec(`
+    CREATE TABLE IF NOT EXISTS repositories (
+      repository_id TEXT PRIMARY KEY,
+      repo_path TEXT,
+      presence TEXT NOT NULL CHECK (presence IN ('present', 'deleted')),
+      tombstone_change_id TEXT,
+      CHECK (
+        (presence = 'present' AND repo_path IS NOT NULL AND tombstone_change_id IS NULL)
+        OR (presence = 'deleted' AND repo_path IS NULL AND tombstone_change_id IS NOT NULL)
+      )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS repositories_path ON repositories(repo_path);
+
+    CREATE TABLE IF NOT EXISTS files (
+      file_id TEXT PRIMARY KEY,
+      repository_id TEXT,
+      path TEXT,
+      content_hash TEXT,
+      mode INTEGER,
+      content_kind TEXT CHECK (content_kind IN ('text', 'bytes')),
+      byte_length INTEGER CHECK (byte_length >= 0),
+      coordinate_extent INTEGER CHECK (coordinate_extent >= 0),
+      presence TEXT NOT NULL CHECK (presence IN ('placed', 'deleted')),
+      tombstone_change_id TEXT,
+      CHECK (
+        (presence = 'placed' AND repository_id IS NOT NULL AND path IS NOT NULL
+          AND content_hash IS NOT NULL AND mode IS NOT NULL AND content_kind IS NOT NULL
+          AND byte_length IS NOT NULL AND coordinate_extent IS NOT NULL
+          AND (content_kind = 'text' OR coordinate_extent = byte_length)
+          AND tombstone_change_id IS NULL)
+        OR (presence = 'deleted' AND repository_id IS NULL AND path IS NULL
+          AND content_hash IS NULL AND mode IS NULL AND content_kind IS NULL
+          AND byte_length IS NULL AND coordinate_extent IS NULL AND tombstone_change_id IS NOT NULL)
+      )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS files_placement ON files(repository_id, path);
+
+    CREATE TABLE IF NOT EXISTS events (
+      event_id TEXT PRIMARY KEY,
+      command_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('genesis', 'commit', 'integration-commit')),
+      message TEXT,
+      created_at TEXT NOT NULL,
+      snapshot_source TEXT CHECK (snapshot_source IS NULL OR json_valid(snapshot_source) = 1)
+    );
+
+    CREATE TABLE IF NOT EXISTS applications (
+      application_id TEXT NOT NULL PRIMARY KEY,
+      work_unit_id TEXT NOT NULL,
+      semantic_protocol TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS commands (
+      command_id TEXT PRIMARY KEY,
+      scope_kind TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      method TEXT NOT NULL,
+      request_digest TEXT NOT NULL,
+      cause_log_id TEXT,
+      cause_head TEXT,
+      cause_invocation_id TEXT,
+      created_at TEXT NOT NULL
+    );
+  `);
+}
+
+export function recordDoltWorkspaceApplication(
+  sql: SqlStorage,
+  application: Pick<ApplicationRecord, "applicationId" | "workUnitId" | "semanticProtocol">
+): void {
+  sql.exec(
+    "INSERT INTO applications (application_id, work_unit_id, semantic_protocol) VALUES (?, ?, ?)",
+    application.applicationId,
+    application.workUnitId,
+    application.semanticProtocol
+  );
+}
+
+export function recordDoltWorkspaceEvent(
+  sql: SqlStorage,
+  event: Pick<
+    WorkspaceEventRecord,
+    "eventId" | "commandId" | "kind" | "message" | "createdAt" | "snapshotSource"
+  >
+): void {
+  sql.exec(
+    "INSERT INTO events (event_id, command_id, kind, message, created_at, snapshot_source) VALUES (?, ?, ?, ?, ?, ?)",
+    event.eventId,
+    event.commandId,
+    event.kind,
+    event.message,
+    event.createdAt,
+    event.snapshotSource === null ? null : JSON.stringify(event.snapshotSource)
+  );
+}
+
+/** Apply a prepared semantic change inside the context's committed transaction. */
+export function applyDoltWorkspaceState(sql: SqlStorage, change: WorkspacePlacementChange): void {
+  const expected = placementRows(change, "expected");
+  assertWorkspaceRows(
+    sql,
+    "repositories",
+    repositoryColumns,
+    change.repositoryUpdates.map(({ repositoryId }) => repositoryId),
+    expected.repositories
+  );
+  assertWorkspaceRows(
+    sql,
+    "files",
+    fileColumns,
+    change.fileUpdates.map(({ fileId }) => fileId),
+    expected.files
+  );
+  // Remove every changed placement before installing the new ones. A single
+  // change can exchange two paths and both final placements are valid.
+  if (change.repositoryUpdates.length) {
+    sql.exec(
+      "DELETE FROM repositories WHERE repository_id IN (SELECT value FROM json_each(?))",
+      JSON.stringify(change.repositoryUpdates.map(({ repositoryId }) => repositoryId))
+    );
+  }
+  if (change.fileUpdates.length) {
+    sql.exec(
+      "DELETE FROM files WHERE file_id IN (SELECT value FROM json_each(?))",
+      JSON.stringify(change.fileUpdates.map(({ fileId }) => fileId))
+    );
+  }
+  const { repositories, files } = placementRows(change);
+  execBatchedInsert(
+    sql,
+    `INSERT INTO repositories (${repositoryColumns.join(", ")})`,
+    repositoryColumns.length,
+    repositories
+  );
+  execBatchedInsert(
+    sql,
+    `INSERT INTO files (${fileColumns.join(", ")})`,
+    fileColumns.length,
+    files
+  );
+}
+
+function assertWorkspaceRows(
+  sql: SqlStorage,
+  table: "files" | "repositories",
+  columns: readonly string[],
+  ids: readonly string[],
+  expected: readonly (readonly unknown[])[]
+): void {
+  if (ids.length === 0) return;
+  const rows = sql
+    .exec(
+      `SELECT ${columns.join(", ")} FROM ${table} WHERE ${columns[0]} IN (SELECT value FROM json_each(?))`,
+      JSON.stringify(ids)
+    )
+    .toArray();
+  const byId = new Map(expected.map((row) => [row[0], canonicalJson(row)]));
+  if (
+    rows.length !== byId.size ||
+    rows.some(
+      (row) => byId.get(row[columns[0]!]) !== canonicalJson(columns.map((column) => row[column]))
+    )
+  ) {
+    throw new Error(`Workspace ${table} changed before applying the prepared revision`);
+  }
+}
+
+export function verifyDoltWorkspaceState(
+  sql: SqlStorage,
+  hash: string,
+  expected: WorkspacePlacementChange
+): void {
+  if (!/^[0-9a-z]+$/u.test(hash)) throw new Error("Invalid workspace commit hash");
+  const { repositories, files } = placementRows(expected);
+  verify("repositories", repositoryColumns, repositories);
+  verify("files", fileColumns, files);
+
+  function verify(
+    table: "repositories" | "files",
+    columns: readonly string[],
+    rows: readonly (readonly unknown[])[]
+  ) {
+    const actual = sql
+      .exec(`SELECT ${columns.join(", ")} FROM dolt_at_${table}('${hash}')`)
+      .toArray()
+      .map((row) => columns.map((column) => row[column]));
+    const sort = (input: readonly (readonly unknown[])[]) =>
+      [...input].sort((a, b) =>
+        String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0
+      );
+    if (canonicalJson(sort(actual)) !== canonicalJson(sort(rows))) {
+      throw new Error(`Workspace replay has different ${table} at ${hash}`);
+    }
+  }
+}
+
+function canonicalPlacementRows(rows: {
+  repositories: readonly (readonly unknown[])[];
+  files: readonly (readonly unknown[])[];
+}): string {
+  const byIdentity = (left: readonly unknown[], right: readonly unknown[]) =>
+    compareUtf16CodeUnits(String(left[0]), String(right[0]));
+  return compactId("workspace-placement-proof", {
+    repositories: [...rows.repositories].sort(byIdentity),
+    files: [...rows.files].sort(byIdentity),
+  });
+}
+
+export function expectedPlacementProof(change: WorkspacePlacementChange): string {
+  return canonicalPlacementRows(placementRows(change));
+}
+
+export function workspacePlacementProof(sql: SqlStorage, at?: string): string {
+  function rows(table: "repositories" | "files", columns: readonly string[]) {
+    const target = at === undefined ? table : `dolt_at_${table}(?)`;
+    return sql.exec(`SELECT ${columns.join(", ")} FROM ${target}`, ...(at === undefined ? [] : [at]))
+      .toArray().map((row) => columns.map((key) => row[key]));
+  }
+  return canonicalPlacementRows({
+    repositories: rows("repositories", repositoryColumns),
+    files: rows("files", fileColumns),
+  });
+}
+
+function placementRows(change: WorkspacePlacementChange, side: "result" | "expected" = "result") {
+  return {
+    repositories: change.repositoryUpdates
+      .flatMap((row) => row[side] ?? [])
+      .map((result) =>
+        result.presence === "present"
+          ? [result.repositoryId, result.repoPath, result.presence, null]
+          : [result.repositoryId, null, result.presence, result.tombstoneChangeId]
+      ),
+    files: change.fileUpdates
+      .flatMap((row) => row[side] ?? [])
+      .map((result) =>
+        result.presence === "placed"
+          ? [
+              result.fileId,
+              result.repositoryId,
+              result.path,
+              result.contentHash,
+              result.mode,
+              result.contentKind,
+              result.byteLength,
+              result.coordinateExtent,
+              result.presence,
+              null,
+            ]
+          : [
+              result.fileId,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              result.presence,
+              result.tombstoneChangeId,
+            ]
+      ),
+  };
+}

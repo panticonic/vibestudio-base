@@ -5,7 +5,7 @@ description: Run server-side eval, build interactive chat UI (inline UI, action 
 
 # Sandbox execution
 
-`eval` runs server-side in the caller's per-agent EvalDO. Inline UI, action
+`eval` runs server-side in the caller's per-agent eval kernel. Inline UI, action
 bars, and feedback components render in a connected chat panel.
 
 ## Read by task
@@ -35,7 +35,7 @@ Inside eval, `help()` lists the injected and importable runtime surface and
 
 | Surface                             | Runs in            | Use for                                                  |
 | ----------------------------------- | ------------------ | -------------------------------------------------------- |
-| `eval`                              | server-side EvalDO | imperative code, services, files, persistent agent scope |
+| `eval`                              | server-side eval kernel | imperative code, services, files, persistent agent scope |
 | `client_eval`                       | chat panel         | chat-panel UI and state (fixed authority)                |
 | `inline_ui`                         | chat panel         | persistent interactive transcript content                |
 | `load_action_bar`                   | chat panel         | compact controls pinned above history                    |
@@ -56,7 +56,7 @@ Workspace and platform packages resolve on first use. Inline code declares npm
 packages in the eval `imports` map; code loaded from a file infers them from the
 nearest `package.json`. Use static relative imports. See [EVAL.md](EVAL.md).
 
-Eval `db` and `scope` belong to the agent's EvalDO. Scope keeps serializable
+Eval `db` and `scope` belong to the agent's eval kernel. Scope keeps serializable
 values and runtime handles (panel, worker, DO, CDP session) across reloads but
 cannot restore other functions or live objects. Do not use
 eval storage as an app database: put shared application data behind a
@@ -68,7 +68,7 @@ driving other panels or browser tabs (`panelTree` handles, `snapshot`/`observe`,
 CDP, `panel.inspect`) must use server-side `eval`, where you can request that
 authority and the user can approve it.
 
-`panelTree.self()` returns the EvalDO runtime, not the visible chat panel. To
+`panelTree.self()` returns the eval kernel runtime, not the visible chat panel. To
 find the visible parent, siblings, or children, use bounded panel-tree reads,
 then read the target panel's state args for its channel id.
 

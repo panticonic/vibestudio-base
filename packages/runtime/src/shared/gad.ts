@@ -200,7 +200,7 @@ export function createGadClient(rpc: RpcCaller): GadClient {
     listAgentDirectory: (input) => call("listAgentDirectory", input ?? {}),
     searchAgentDirectory: (input) => call("searchAgentDirectory", input),
     describeChannels: (input) => call("describeChannels", input ?? {}),
-    validateGadHashes: (input) => call("validateGadHashes", input),
+    validateGadIntegrity: (input) => call("validateGadIntegrity", input),
     clearDirtyAfterValidation: (input) =>
       call("clearDirtyAfterValidation", input),
     checkGadIntegrity: (input) => call("checkGadIntegrity", input),

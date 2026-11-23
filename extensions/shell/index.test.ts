@@ -23,7 +23,7 @@ async function makeApi(
   const ensureContextFolder = vi.fn(async (contextId: string) => {
     const dir = join(root, ".context-projections", "v5", contextId);
     await mkdir(dir, { recursive: true });
-    return { source: `${dir}-source`, scratch: dir };
+    return { scratch: dir };
   });
   const rpcCall = vi.fn(
     async (_target: string, _method: string, ..._args: unknown[]) =>

@@ -1,5 +1,6 @@
 /** Headless PubSub connection and its owned replay/event delivery lifecycle. */
-import { connectViaRpc, resolveRpcChannelTarget } from "@workspace/pubsub";
+import { connectViaRpc, PubSubError, resolveRpcChannelTarget } from "@workspace/pubsub";
+import { channelClientRpcMethods } from "@workspace/pubsub/rpc-contract";
 import type {
   PubSubClient,
   RosterUpdate,
@@ -65,6 +66,11 @@ function throwFailures(failures: unknown[], message: string): void {
 }
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
+
+function isConnectionAbortedBy(error: unknown, reason: unknown): boolean {
+  const transportFailure = error instanceof PubSubError ? error.cause : error;
+  return isRpcAbortedBy(transportFailure, reason);
+}
 
 export class ConnectionManager {
   private _client: PubSubClient<ChatParticipantMetadata> | null = null;
@@ -172,12 +178,29 @@ export class ConnectionManager {
           signal,
         }));
       signal.throwIfAborted();
+      let channelConfig = options.channelConfig;
+      if (
+        channelConfig?.seed &&
+        options.contextId &&
+        this.config.deliveryMode !== "resident"
+      ) {
+        // Commit the creation input before opening the response-owned
+        // subscription. Replay reads the retained configuration on every join.
+        await this.config.rpc.call(
+          channelTargetId,
+          channelClientRpcMethods.initializeConversation,
+          [options.contextId, channelConfig],
+          { signal },
+        );
+        signal.throwIfAborted();
+        channelConfig = undefined;
+      }
       const client = connectViaRpc<ChatParticipantMetadata>({
         rpc: this.config.rpc,
         channel: options.channelId,
         channelTargetId,
         contextId: options.contextId,
-        channelConfig: options.channelConfig,
+        channelConfig,
         ...(this.metadata.handle !== undefined
           ? { handle: this.metadata.handle }
           : {}),
@@ -245,7 +268,7 @@ export class ConnectionManager {
         void scope.eventLoop.catch((error) => {
           if (
             this._client === client &&
-            !isRpcAbortedBy(error, signal.reason)
+            !isConnectionAbortedBy(error, signal.reason)
           ) {
             scope.failures.push(error);
             scope.abort.abort(error);
@@ -287,7 +310,7 @@ export class ConnectionManager {
       this.setStatus("connected");
       return client;
     } catch (error) {
-      const ownedCancellation = isRpcAbortedBy(error, signal.reason);
+      const ownedCancellation = isConnectionAbortedBy(error, signal.reason);
       scope.connectionFailure = { reason: error };
       scope.abort.abort(error);
       if (this.scope === scope) {
@@ -335,7 +358,7 @@ export class ConnectionManager {
               scope.connectionFailure &&
               result.reason === scope.connectionFailure.reason
             ) &&
-            !isRpcAbortedBy(result.reason, scope.abort.signal.reason)
+            !isConnectionAbortedBy(result.reason, scope.abort.signal.reason)
               ? [result.reason]
               : [],
           ),
@@ -370,7 +393,7 @@ export class ConnectionManager {
               .slice(0, 2)
               .flatMap((result) =>
                 result.status === "rejected" &&
-                !isRpcAbortedBy(result.reason, ownedReason)
+                !isConnectionAbortedBy(result.reason, ownedReason)
                   ? [result.reason]
                   : [],
               ),

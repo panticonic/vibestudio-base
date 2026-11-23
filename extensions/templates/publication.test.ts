@@ -190,6 +190,8 @@ it("records its own upstream and overrides, and retries an uncertain main push w
     const recorded = parseTemplateManifestContent(text, 0);
     expect((pushes[0] as { templateInstallation: { upstream: { url: string } } }).templateInstallation.upstream.url).toBe(published.templateUrl);
     expect((pushes[0] as { templateInstallation: { upstream: { credential: string } } }).templateInstallation.upstream.credential).toBe("Publish account");
+    expect(call.mock.calls.find(([, method]) => method === "vcs.commit")?.[2]?.[0])
+      .toMatchObject({ templateInstallation: (pushes[0] as { templateInstallation: unknown }).templateInstallation });
     expect(recorded.dependencies).toEqual([{ url: pin.url }]);
     expect(recorded.overrides).toEqual([
       { repoPath: "projects/example", source: pin.url },

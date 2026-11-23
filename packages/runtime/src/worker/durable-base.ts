@@ -53,7 +53,12 @@ import {
 } from "@vibestudio/rpc";
 import type { AuthorizationContext } from "@vibestudio/rpc";
 import {
+  ATTESTATION_STALE_CODE,
+  DIRECT_RPC_NONCE_LOCAL_TABLE,
+  DIRECT_RPC_NONCE_TABLE,
+  DirectCallNonceGate,
   DurableDirectRpcNonceLedger,
+  type PendingCallNonce,
   directRpcInvalidAttestationFailure,
   directRpcDenial,
   directRpcInvocationResourceKey,
@@ -113,6 +118,41 @@ import {
   validateDurableObjectSchemaIndexes,
 } from "@vibestudio/durable/schema";
 import { DurableWorkReadiness, InvocationContext } from "@vibestudio/durable";
+import {
+  isLegacyCall,
+  serveLegacyCall,
+} from "@vibestudio/durable/legacyImport";
+import {
+  assertCleanWorkingSet,
+  collectDoltGarbage,
+  committedTransactionSync,
+  DEFAULT_DOLT_GC_POLICY,
+  doltStorageOf,
+  readDoltGcState,
+  type DoltGcPolicy,
+  type DoltStorage,
+  type DoltTransactionCommit,
+  type DoltTransactionOptions,
+} from "@vibestudio/durable/dolt";
+import {
+  createCodeHostClient,
+  isHostedCall,
+  serveHostedCall,
+  type CodeHostProps,
+  type HostCodeSpec,
+  type HostedCode,
+} from "@vibestudio/durable/codeHost";
+export type {
+  CodeHostProps,
+  HostCodeSpec,
+  HostedCode,
+  HostedExecutable,
+} from "@vibestudio/durable/codeHost";
+export type {
+  DoltStorage,
+  DoltTransactionCommit,
+  DoltTransactionOptions,
+} from "@vibestudio/durable/dolt";
 
 interface RpcInvocationContext {
   requestSignal?: AbortSignal;
@@ -127,6 +167,8 @@ interface RpcInvocationContext {
   idempotencyKey: string | null;
   readyQueues: Set<DurableWorkQueue>;
   alarmRpcs?: Set<Promise<void>>;
+  /** A mutating call on a Dolt object: its durable nonce, recorded by the call's first transaction. */
+  pendingNonce?: PendingCallNonce;
 }
 
 function directAuthorityAcceptedAt(request: Request): number {
@@ -142,13 +184,18 @@ function directAuthorityAcceptedAt(request: Request): number {
 
 // Minimal types for workerd DurableObject context (cannot import cloudflare:workers in Node)
 
+/** How long after a commit the compaction check waits, so the event that committed finishes first. */
+const DOLT_GC_IDLE_MS = 250;
+
 export interface DurableObjectContext {
   /** Per-object creation configuration, independent of the shared executable. */
   props: {
-    nativeOwner: import("@vibestudio/shared/runtime/entitySpec").NativeOwnerAdmission | null;
+    nativeOwner:
+      | import("@vibestudio/shared/runtime/entitySpec").NativeOwnerAdmission
+      | null;
     stateArgs: Record<string, unknown> | null;
     image: { effectiveVersion: string; sourceRef: string } | null;
-  };
+  } & CodeHostProps;
   id: { toString(): string; name?: string };
   storage: {
     sql: SqlStorage;
@@ -161,11 +208,21 @@ export interface DurableObjectContext {
      * auto-rolls-back on thrown exceptions and coalesces with the DO's
      * atomic-write semantics. The callback must be synchronous.
      */
-    transactionSync<T>(callback: () => T): T;
-    transaction<T>(callback: () => Promise<T>): Promise<T>;
+    transactionSync<T>(
+      callback: () => T,
+      options?: DoltTransactionOptions<T>,
+    ): T;
+    transaction<T>(
+      callback: () => Promise<T>,
+      options?: DoltTransactionOptions<T>,
+    ): Promise<T>;
     /** Join native storage durability before releasing an owned connection. */
     sync(): Promise<void>;
+    /** celld `ctx.storage.dolt`: present only on a Dolt cell or a Dolt facet. */
+    dolt?: DoltStorage;
   };
+  /** celld `ctx.residency`: present on a class the deployment declares residency for. */
+  residency?: import("@vibestudio/durable").ResidencyContext;
   // Tagged accept: tags survive hibernation, retrievable via getWebSockets(tag)
   acceptWebSocket(ws: WebSocket, tags?: string[]): void;
   // Retrieve by tag, or all if no tag
@@ -231,6 +288,7 @@ export abstract class DurableObjectBase {
 
   private _connectionless: InternalConnectionlessRpcClient | null = null;
   private readonly _directRpcNonces: DurableDirectRpcNonceLedger;
+  private readonly _directCalls: DirectCallNonceGate;
   protected _currentRpcCallerId: string | null = null;
   protected _currentRpcCallerKind: string | null = null;
   protected _currentRpcCallerPanelId: string | null = null;
@@ -251,9 +309,24 @@ export abstract class DurableObjectBase {
   constructor(ctx: DurableObjectContext, env: unknown) {
     this.ctx = ctx;
     this.sql = ctx.storage.sql as TypedSqlStorage;
-    this._directRpcNonces = new DurableDirectRpcNonceLedger({
-      exec: (query, ...bindings) => this.sql.exec(query, ...bindings),
-      transactionSync: (callback) => this.ctx.storage.transactionSync(callback),
+    this._directRpcNonces = new DurableDirectRpcNonceLedger(
+      {
+        exec: (query, ...bindings) => this.sql.exec(query, ...bindings),
+        transactionSync: (callback) =>
+          this.ctx.storage.transactionSync(callback),
+      },
+      // The ledger is identity-bound: on a Dolt store it lives in a table a
+      // `doltLocal` pattern matches, so no commit, fork or reset carries it.
+      {
+        table: ctx.storage.dolt
+          ? DIRECT_RPC_NONCE_LOCAL_TABLE
+          : DIRECT_RPC_NONCE_TABLE,
+      },
+    );
+    // A Dolt object admits a call from memory and records a mutating call's
+    // nonce in the call's own transaction: see `DirectCallNonceGate`.
+    this._directCalls = new DirectCallNonceGate(this._directRpcNonces, {
+      dolt: Boolean(ctx.storage.dolt),
     });
     this.env = env as Record<string, unknown>;
     this._durableWorkReadiness = new DurableWorkReadiness(
@@ -268,6 +341,180 @@ export abstract class DurableObjectBase {
     // This avoids the init-order bug where createTables() would be called
     // during super() before subclass fields are initialized.
   }
+
+  /** `ctx.storage.dolt`, or `null` on a SQLite cell. */
+  protected get dolt(): DoltStorage | null {
+    return doltStorageOf(this.ctx.storage);
+  }
+
+  /**
+   * Write versioned state and commit it in one durable step: the writes and the
+   * Dolt commit are one root record, so no crash leaves them apart. `describe`
+   * renders the commit message from the facts `fn` wrote and may return `null`
+   * to leave the writes uncommitted. On a SQLite cell this is a plain
+   * `transactionSync`. Not for a nested transaction on a Dolt cell.
+   */
+  protected committedTransaction<T>(
+    describe: DoltTransactionCommit<T>,
+    fn: () => T,
+  ): T {
+    const result = this.withCallNonce(
+      (body) => committedTransactionSync(this.ctx.storage, describe, body),
+      fn,
+    );
+    this.scheduleDoltGc(8);
+    return result;
+  }
+
+  /**
+   * When this cell is compacted (docs/dolt-redesign.md §6.11.8), or `null` to
+   * never compact it. Every Dolt class is collected on the default schedule:
+   * nothing else frees what a commit supersedes.
+   */
+  protected doltGcPolicy(): DoltGcPolicy | null {
+    return DEFAULT_DOLT_GC_POLICY;
+  }
+
+  /** Read compaction metadata without scanning history or starting a collection. */
+  protected doltGcState() {
+    return readDoltGcState(this.dolt, { get: (key) => this.getStateValue(key) });
+  }
+
+  private doltGcTicks = 0;
+  private doltGcScheduled = false;
+
+  /**
+   * Ask for a compaction check after a commit. The check runs later, in the
+   * object's own idle time: after the event that committed has had a moment to
+   * finish, inside a block of the object (no other event runs, no transaction is
+   * open), and only when the working set holds nothing uncommitted. `every`
+   * thins the check for a cell that commits per event.
+   */
+  protected scheduleDoltGc(every = 1): void {
+    if (!this.dolt || typeof this.ctx.waitUntil !== "function") return;
+    // A queued check covers overlapping commits, but they still count toward the next cadence.
+    if (++this.doltGcTicks % every !== 0 || this.doltGcScheduled) return;
+    const policy = this.doltGcPolicy();
+    if (!policy) return;
+    this.doltGcScheduled = true;
+    this.ctx.waitUntil(
+      new Promise<void>((resolve) => setTimeout(resolve, DOLT_GC_IDLE_MS))
+        .then(() => this.collectGarbageIfDue(policy))
+        .catch((error) => {
+          console.warn(
+            "[DurableObjectBase] compaction failed:",
+            error instanceof Error ? error.message : String(error),
+          );
+        })
+        .finally(() => {
+          this.doltGcScheduled = false;
+        }),
+    );
+  }
+
+  /** Compact the cell now if it is due (a block of the object, so no transaction is open). */
+  protected collectGarbageIfDue(policy: DoltGcPolicy | null = this.doltGcPolicy()) {
+    const dolt = this.dolt;
+    if (!dolt || !policy)
+      return Promise.resolve({ ran: false, reason: "not-due" } as const);
+    return this.ctx.blockConcurrencyWhile(async () =>
+      collectDoltGarbage(
+        dolt,
+        {
+          get: (key) => this.getStateValue(key),
+          set: (key, value) => this.setStateValue(key, value),
+        },
+        policy,
+      ),
+    );
+  }
+
+  /**
+   * A plain transaction (no Dolt commit point) for state the class keeps local
+   * or does not version. A class uses this instead of
+   * `ctx.storage.transactionSync` so the call's durable nonce can ride in it.
+   */
+  protected transactionSync<T>(fn: () => T): T {
+    return this.withCallNonce(
+      (body) => this.ctx.storage.transactionSync(body),
+      fn,
+    );
+  }
+
+  /**
+   * The call's durable nonce (a mutating call on a Dolt object) rides in the
+   * call's first transaction: same root record, so no flush of its own. A call
+   * that never opens a transaction through the base records it when it ends.
+   */
+  private withCallNonce<T>(run: (body: () => T) => T, fn: () => T): T {
+    const pending = this._invocationContext.current()?.pendingNonce;
+    if (!pending || pending.persisted || pending.recording) return run(fn);
+    pending.recording = true;
+    try {
+      let recorded = false;
+      const result = run(() => {
+        const value = fn();
+        if (this.changedSince(pending)) {
+          this._directCalls.recordInTransaction(pending);
+          recorded = true;
+        }
+        return value;
+      });
+      if (recorded) pending.persisted = true;
+      return result;
+    } finally {
+      pending.recording = false;
+    }
+  }
+
+  /** Whether this object's storage changed since the call was admitted (unknown counts as changed). */
+  private changedSince(pending: PendingCallNonce): boolean {
+    if (pending.baseline === null) return true;
+    try {
+      return this.totalChanges() !== pending.baseline;
+    } catch {
+      return true;
+    }
+  }
+
+  private totalChanges(): number {
+    return Number(this.sql.exec("SELECT total_changes() AS n").one()["n"]);
+  }
+
+  /** Throws if versioned rows were written outside `committedTransaction`. */
+  protected assertCleanWorkingSet(): void {
+    const dolt = this.dolt;
+    if (dolt) assertCleanWorkingSet(dolt);
+  }
+
+  /** A product class has no per-object props (`ctx.props` is absent there). */
+  private codeHostProps(): CodeHostProps {
+    return (this.ctx.props ?? {}) as CodeHostProps;
+  }
+
+  private _codeHostClient:
+    | ((spec: HostCodeSpec) => Promise<HostedCode>)
+    | null = null;
+
+  /**
+   * Host a class of dynamic code in this object's own cell: a facet with the
+   * Dolt store, `codegen` and `residency` the manifests permit, which acts as
+   * this object on outbound calls. The object does not choose the grants; this
+   * class's manifest entry must declare `hosts` for the class.
+   */
+  protected hostCode(spec: HostCodeSpec): Promise<HostedCode> {
+    this._codeHostClient ??= createCodeHostClient({
+      env: this.env,
+      props: this.codeHostProps(),
+    });
+    return this._codeHostClient(spec);
+  }
+
+  /**
+   * A hosted class is told before the node takes it away (a drain or a swap):
+   * persist what must survive. Only a hosted class receives this.
+   */
+  protected async onHostedRevoked(_reason: string): Promise<void> {}
 
   // --- Schema (lazy init, enforced automatically) ---
 
@@ -563,7 +810,13 @@ export abstract class DurableObjectBase {
       [...rpcExposedMethodNames(this)].flatMap((name) => {
         const wireMethod = table?.[name];
         return wireMethod
-          ? [{ name, wireMethod, codeSource: this.rpcSchemaCodeSource(name, wireMethod) }]
+          ? [
+              {
+                name,
+                wireMethod,
+                codeSource: this.rpcSchemaCodeSource(name, wireMethod),
+              },
+            ]
           : [];
       }),
     );
@@ -571,7 +824,9 @@ export abstract class DurableObjectBase {
 
   private connectionlessClient(): InternalConnectionlessRpcClient {
     if (!this._connectionless) {
-      const token = this.env["RPC_AUTH_TOKEN"];
+      // A hosted class acts as the entity that hosts it.
+      const hostIdentity = this.codeHostProps().host ?? null;
+      const token = hostIdentity?.token ?? this.env["RPC_AUTH_TOKEN"];
       if (typeof token !== "string" || token.length === 0) {
         throw new Error("RPC not available: RPC_AUTH_TOKEN not configured");
       }
@@ -591,7 +846,13 @@ export abstract class DurableObjectBase {
       if (typeof workspaceId !== "string" || !workspaceId)
         throw new Error("RPC not available: WORKSPACE_ID not configured");
       const connectionless = createInternalConnectionlessRpcClient({
-        selfId: `do:${source}:${className}:${this.objectKey}`,
+        selfId:
+          hostIdentity?.entityId ??
+          `do:${source}:${className}:${this.objectKey}`,
+        // A hosted class presents its entity's id without being the entity: a call it makes to the
+        // entity (an agent's kernel calling `chatOp` on the agent) must leave the process, not be
+        // answered by the hosted class itself (docs/dolt-redesign.md §7.2).
+        ...(hostIdentity ? { loopback: false } : {}),
         serverUrl,
         authToken: token,
         callerKind: "do",
@@ -971,6 +1232,8 @@ export abstract class DurableObjectBase {
 
   /** Concrete immutable runtime identity presented by this object on outbound RPC. */
   protected get rpcSelfId(): string {
+    const host = this.codeHostProps().host;
+    if (host) return host.entityId;
     return `do:${String(this.env["WORKER_SOURCE"] ?? "")}:${String(
       this.env["WORKER_CLASS_NAME"] ?? this.constructor.name,
     )}:${this.objectKey}`;
@@ -1002,15 +1265,22 @@ export abstract class DurableObjectBase {
 
   /** Persist an exact alarm projection from activation-owned work which has
    * no later fetch-finally drain boundary. */
-  private readonly alarmProjection = new AlarmProjectionPublisher(async (wakeAt) => {
-    if (wakeAt !== null) {
-      await this.workspaceStateService.alarmSet({ ...this.lifecycleKey(), wakeAt });
-    } else {
-      await this.workspaceStateService.alarmClear(this.lifecycleKey());
-    }
-  });
+  private readonly alarmProjection = new AlarmProjectionPublisher(
+    async (wakeAt) => {
+      if (wakeAt !== null) {
+        await this.workspaceStateService.alarmSet({
+          ...this.lifecycleKey(),
+          wakeAt,
+        });
+      } else {
+        await this.workspaceStateService.alarmClear(this.lifecycleKey());
+      }
+    },
+  );
 
-  protected persistAlarmSchedule(schedule: DoAlarmSchedule | null): Promise<void> {
+  protected persistAlarmSchedule(
+    schedule: DoAlarmSchedule | null,
+  ): Promise<void> {
     return this.alarmProjection.publish(schedule?.wakeAt ?? null);
   }
 
@@ -1217,6 +1487,27 @@ export abstract class DurableObjectBase {
         : new Response("Schema probes refuse application dispatch", {
             status: 403,
           });
+    }
+    if (isHostedCall(method)) {
+      // Only the hosting root can name this facet: no caller check applies.
+      return serveHostedCall({
+        instance: this,
+        props: this.codeHostProps(),
+        method,
+        body: await request.text(),
+        onRevoked: (reason) => this.onHostedRevoked(reason),
+      });
+    }
+    if (isLegacyCall(method)) {
+      // The object's own root copies a legacy SQLite facet into this Dolt facet
+      // (once); only it holds the proof the call carries.
+      return serveLegacyCall({
+        storage: this.ctx.storage,
+        props: this.codeHostProps(),
+        request,
+        method,
+        body: await request.text(),
+      });
     }
     const authorityAcceptedAt = directAuthorityAcceptedAt(request);
 
@@ -1795,18 +2086,23 @@ export abstract class DurableObjectBase {
       };
     }
     const attestation = caller?.authorization;
-    if (
-      !hostControl &&
-      attestation &&
-      !this._directRpcNonces.consume(
-        attestation.nonce,
-        attestation.expiresAt,
-        authorityAcceptedAt,
-      )
-    ) {
-      const reason =
-        `${message?.method ?? "<unknown>"}: host authority attestation nonce was replayed ` +
-        "or is outside the receiver's retention bound";
+    let pendingNonce: PendingCallNonce | undefined;
+    const admission =
+      !hostControl && attestation
+        ? this._directCalls.admit(
+            attestation,
+            this.rpcAuthorityDeclaration(method ?? "", wireMethod)
+              ?.sensitivity !== "read",
+            authorityAcceptedAt,
+          )
+        : null;
+    if (admission && !admission.ok) {
+      const stale = admission.reason === "stale";
+      const reason = stale
+        ? `${message?.method ?? "<unknown>"}: host authority attestation predates this object's activation; ` +
+          "it was not executed and must be re-issued"
+        : `${message?.method ?? "<unknown>"}: host authority attestation nonce was replayed ` +
+          "or is outside the receiver's retention bound";
       return {
         result: {
           from: envelope.target,
@@ -1820,7 +2116,7 @@ export abstract class DurableObjectBase {
             requestId: message?.requestId ?? "",
             error: {
               message: reason,
-              code: "EACCES",
+              code: stale ? ATTESTATION_STALE_CODE : "EACCES",
               errorKind: "access",
               errorData: {
                 authorityFailure: directRpcInvalidAttestationFailure(reason),
@@ -1831,11 +2127,20 @@ export abstract class DurableObjectBase {
         readyQueues: [],
       };
     }
+    if (admission?.ok && admission.pending) {
+      pendingNonce = admission.pending;
+      try {
+        pendingNonce.baseline = this.totalChanges();
+      } catch {
+        pendingNonce.baseline = null;
+      }
+    }
     const dispatched = await this.withRpcCaller(
       caller,
       message,
       envelope,
       ownedAlarmRpcs,
+      pendingNonce,
       async () => {
         // Constructor-time title writes are held until the first authenticated
         // ordinary request. Lifecycle probes happen before the host commits the
@@ -1945,6 +2250,7 @@ export abstract class DurableObjectBase {
     message: RpcRequest,
     envelope: RpcEnvelope,
     alarmRpcs: Set<Promise<void>> | undefined,
+    pendingNonce: PendingCallNonce | undefined,
     callback: () => Promise<T>,
   ): Promise<{ result: T; readyQueues: DurableWorkQueue[] }> {
     const context: RpcInvocationContext = {
@@ -1957,6 +2263,7 @@ export abstract class DurableObjectBase {
       idempotencyKey: envelope.delivery.idempotencyKey ?? null,
       readyQueues: new Set(),
       alarmRpcs,
+      ...(pendingNonce ? { pendingNonce } : {}),
     };
     try {
       const result = await this._invocationContext.run(context, async () => {
@@ -1972,6 +2279,22 @@ export abstract class DurableObjectBase {
           // Derived wake publication belongs to this invocation too. Join it
           // before retiring the authority which admitted the request.
           await this._causalRpcOperations.drain(context);
+          // A call that committed no transaction of its own still records its
+          // nonce, so a replay after a restart is refused whether or not it wrote.
+          if (
+            pendingNonce &&
+            !pendingNonce.persisted &&
+            this.changedSince(pendingNonce)
+          ) {
+            try {
+              this._directCalls.recordStandalone(pendingNonce);
+            } catch (error) {
+              console.error(
+                `[${this.constructor.name}] could not record a call nonce`,
+                error,
+              );
+            }
+          }
         }
       });
       return { result, readyQueues: [...context.readyQueues] };
@@ -2229,16 +2552,32 @@ export abstract class DurableObjectBase {
     )
       throw new Error("Clone initialization does not match this incarnation");
     const encoded = canonicalJson(input);
-    this.ctx.storage.transactionSync(() => {
-      const previous = this.getStateValue("__clonePreparation");
-      if (previous) {
-        const receipt = JSON.parse(previous) as LifecycleCloneInput;
-        if (receipt.target.objectKey === this.objectKey) {
-          if (previous !== encoded)
-            throw new Error(
-              `Clone initialization incarnation changed: expected ${previous}, received ${encoded}`,
-            );
-          return;
+    let initialized = false;
+    // On a Dolt store the fork's own first commit: what a class changes in its
+    // versioned rows to become a new identity, recorded as one commit on top of
+    // the parent's history. A SQLite store runs a plain transaction.
+    this.committedTransaction(
+      () =>
+        initialized
+          ? {
+              message: `fork: initialized ${this.objectKey} from ${input.source.objectKey}`,
+              allowEmpty: true,
+            }
+          : null,
+      () => {
+        const previous = this.getStateValue("__clonePreparation");
+        if (previous) {
+          const receipt = JSON.parse(previous) as LifecycleCloneInput;
+          if (receipt.target.objectKey === this.objectKey) {
+            if (previous !== encoded)
+              throw new Error(
+                `Clone initialization incarnation changed: expected ${previous}, received ${encoded}`,
+              );
+            return;
+          }
+          if (receipt.target.objectKey !== input.source.objectKey) {
+            throw new Error("Cloned storage belongs to a different source");
+          }
         }
         if (receipt.target.objectKey !== input.source.objectKey) {
           throw new Error("Cloned storage belongs to a different source");
@@ -2251,9 +2590,11 @@ export abstract class DurableObjectBase {
         .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'
         OR key LIKE 'durable-work-ack-generation:%'
         OR key IN ('durable-work-active-worker', 'durable-work-active-activation')`);
-      this.setStateValue("__objectKey", this.objectKey);
-      this.setStateValue("__clonePreparation", encoded);
-    });
+        this.setStateValue("__objectKey", this.objectKey);
+        this.setStateValue("__clonePreparation", encoded);
+        initialized = true;
+      },
+    );
   }
 
   protected async registerLifecycleRelease(detail?: unknown): Promise<void> {

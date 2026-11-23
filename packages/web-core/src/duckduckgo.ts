@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "linkedom/worker";
 import type { SearchResult } from "./types.js";
 
 const DDG_LITE_URL = "https://lite.duckduckgo.com/lite/";

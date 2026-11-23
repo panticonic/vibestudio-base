@@ -349,6 +349,9 @@ function ChatPanelInContext({
       // source conversation's installed-agent keys (Identity collision).
       const conversation = await controller.conversationState(forkChannelId);
       await panel.switchContext(forkContextId, {
+        // The destination owns the conversation. The current working copy
+        // supplies the code for the chat surface.
+        ref: `ctx:${resolvedContextId}`,
         stateArgs: { ...panelState, ...conversation },
       });
     },
@@ -367,6 +370,7 @@ function ChatPanelInContext({
       await openPanel("panels/chat", {
         focus: true,
         contextId: forkContextId,
+        ref: `ctx:${resolvedContextId}`,
         stateArgs: { channelName: forkChannelId },
       });
     },

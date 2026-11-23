@@ -25,7 +25,6 @@ import { type TypedServiceClient } from "@vibestudio/shared/typedServiceClient";
 import type { blobstoreMethods } from "@vibestudio/service-schemas/blobstore";
 import { BLOBSTORE_METHOD_NAMES } from "@vibestudio/service-schemas/clients/generated/runtimeClientMethods";
 import type { RuntimeFs } from "../types.js";
-import { currentJournal, type OperationJournalEntry } from "./journal.js";
 
 export const BLOBSTORE_MEMBERS = [
   ...BLOBSTORE_METHOD_NAMES,
@@ -91,8 +90,6 @@ export type BlobstoreClient = Omit<
 export function createBlobstoreClient(
   rpc: RpcCaller,
   fs?: RuntimeFs,
-  recordOperation: (entry: OperationJournalEntry) => void = (entry) =>
-    currentJournal()?.append(entry),
 ): BlobstoreClient {
   const serviceClient = createLazyTypedRpcServiceClient(rpc, { targetId: "main", namespace: "blobstore" }, BLOBSTORE_METHOD_NAMES, async () =>
       (await import("@vibestudio/service-schemas/blobstore")).blobstoreMethods);
@@ -213,16 +210,6 @@ export function createBlobstoreClient(
       cursor = page.nextCursor;
     }
 
-    recordOperation({
-      type: "blob-tree.observation",
-      receipt: {
-        protocol: "blob-tree-observation.v1",
-        method: "materializeTree",
-        ref: treeRef,
-        written,
-        unchanged,
-      },
-    });
     return { written, unchanged };
   };
 

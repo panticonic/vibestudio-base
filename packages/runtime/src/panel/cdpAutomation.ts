@@ -151,7 +151,7 @@ export function createCdpAutomation(
       ) => Promise<unknown>;
     } = {
       isElectronWebview: true,
-      // Hosted EvalDO runtimes receive a closure-held loader and must route
+      // Hosted eval kernel runtimes receive a closure-held loader and must route
       // CDP through the egress-aware fetch-upgrade transport. Browser panels
       // use their native WebSocket implementation instead.
       preferFetchUpgrade: Boolean(options.loadModule),

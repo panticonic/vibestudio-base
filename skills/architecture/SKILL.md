@@ -11,6 +11,7 @@ the task skills for implementation details.
 Use `architecture/reviewArchitectureBoundary` through the shared Natlang
 workflow to compare an assigned state owner with the actual local provider.
 Bind the exact context and service using `@workspace-skills/architecture/workflow`.
+Supply a provider resolver whose service query names the assigned protocol.
 It reads the provider resolution and its authored declaration without invoking
 the service's domain methods.
 

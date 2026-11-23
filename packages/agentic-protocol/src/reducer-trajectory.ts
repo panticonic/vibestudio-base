@@ -17,7 +17,6 @@ import {
 export interface BranchProjection {
   branchId: string;
   headEventId?: EventId;
-  headEventHash?: string;
   seq: number;
   parentBranchId?: string;
   forkEventId?: EventId;
@@ -56,7 +55,6 @@ export function reduceTrajectory(state: TrajectoryState, event: TrajectoryEvent)
   const branch: BranchProjection = {
     ...(state.branches[branchId] ?? { branchId, seq: -1 }),
     headEventId: event.eventId,
-    headEventHash: event.eventHash,
     seq: event.seq,
   };
 

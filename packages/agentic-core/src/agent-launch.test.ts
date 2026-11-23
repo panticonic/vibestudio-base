@@ -14,8 +14,7 @@ import {
   unsubscribeAgentFromChannel,
 } from "./agent-launch.js";
 import type { AgentLaunchRpc } from "./agent-launch.js";
-import { importAgentChannelKnowledge } from "./native-channel-knowledge.js";
-import type { ConversationId } from "@panticonic/pi-durable";
+import { adoptAgentChannelKnowledge } from "./native-channel-knowledge.js";
 
 function makeRpc(
   impl?: (target: string, method: string, args: unknown[]) => Promise<unknown>,
@@ -283,25 +282,23 @@ describe("agent launch primitive", () => {
     expect(rpc.wireCall).toHaveBeenCalledTimes(3);
   });
 
-  it("imports native knowledge through the same stripped subscription config contract", async () => {
+  it("adopts a forked cell's conversation through the same stripped subscription config contract", async () => {
     const rpc = makeRpc();
 
-    const knowledge = {
+    const frontier = {
       channelId: "parent",
       throughSequence: 42,
-      history: {
-        source: { conversationId: 1 as ConversationId, at: null },
-        agent: {},
-        entries: [],
-      },
+      conversationId: 1,
+      commit: "0123456789abcdef0123456789abcdef",
+      entryHigh: 9,
       anchors: [],
     };
-    await importAgentChannelKnowledge(rpc, "target-1", {
+    await adoptAgentChannelKnowledge(rpc, "target-1", {
       operationId: "native-fork-1",
       parentChannelId: "parent",
       channelId: "task-1",
       contextId: "ctx-child",
-      knowledge,
+      frontier,
       config: {
         model: "openai:gpt-5.3",
         handle: "child",
@@ -311,7 +308,7 @@ describe("agent launch primitive", () => {
 
     expect(rpc.wireCall).toHaveBeenCalledWith(
       "target-1",
-      "importChannelKnowledge",
+      "adoptChannelKnowledge",
       [
         {
           operationId: "native-fork-1",
@@ -323,7 +320,7 @@ describe("agent launch primitive", () => {
             objectKey: "task-1",
           },
           contextId: "ctx-child",
-          knowledge,
+          frontier,
           config: { handle: "child", wakePolicy: "explicit" },
         },
       ],
@@ -344,9 +341,9 @@ describe("agent launch primitive", () => {
         ),
     ],
     [
-      "importChannelKnowledge",
+      "adoptChannelKnowledge",
       () =>
-        importAgentChannelKnowledge(
+        adoptAgentChannelKnowledge(
           makeRpc(async () => ({ ok: true, participantId: "" })),
           "target-1",
           {
@@ -354,14 +351,12 @@ describe("agent launch primitive", () => {
             parentChannelId: "parent",
             channelId: "task-1",
             contextId: "ctx-child",
-            knowledge: {
+            frontier: {
               channelId: "parent",
               throughSequence: 42,
-              history: {
-                source: { conversationId: 1 as ConversationId, at: null },
-                agent: {},
-                entries: [],
-              },
+              conversationId: 1,
+              commit: "0123456789abcdef0123456789abcdef",
+              entryHigh: 9,
               anchors: [],
             },
           },

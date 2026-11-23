@@ -117,7 +117,7 @@ class SpawnVessel extends AgentVesselBase {
   }
   testHarness: Harness | null = null;
   activeEntity: JsonRepresentation<typeof entity> = detached(entity);
-  readonly events = new Map<string, ChannelEvent[]>();
+  readonly channelEvents = new Map<string, ChannelEvent[]>();
   readonly calls: Array<{
     target: string;
     method: string;
@@ -194,6 +194,17 @@ class SpawnVessel extends AgentVesselBase {
       api,
       ctx,
     );
+  }
+  /** A cell's commit history: a turn commit for each entry the conversation could hold, newest first. */
+  protected override get dolt(): never {
+    return {
+      log: () =>
+        Array.from({ length: 200 }, (_, index) => ({
+          hash: `turn-commit-${200 - index}`,
+          message: `agent: turn closed t${200 - index} entries<=${200 - index}`,
+        })),
+      hashOf: (ref: string) => `resolved:${ref}`,
+    } as never;
   }
   protected override get rpc(): RpcClient {
     const base = super.rpc;
@@ -323,7 +334,7 @@ class SpawnVessel extends AgentVesselBase {
           return undefined;
         if (child && method === "subscribeChannel")
           return { ok: true, participantId: child.id };
-        if (child && method === "importChannelKnowledge")
+        if (child && method === "adoptChannelKnowledge")
           return { ok: true, participantId: child.id };
         if (child && method === "getAgentSettings")
           return {
@@ -353,7 +364,7 @@ class SpawnVessel extends AgentVesselBase {
     return base;
   }
   protected override createChannelClient(id: string): ChannelClient {
-    const list = () => this.events.get(id) ?? [];
+    const list = () => this.channelEvents.get(id) ?? [];
     const replay = async (request: { after: number; throughSeq?: number }) => {
       const through =
         request.throughSeq ?? Math.max(0, ...list().map((e) => e.id));
@@ -428,7 +439,7 @@ class SpawnVessel extends AgentVesselBase {
           senderId: pid,
           ts: sequence,
         };
-        this.events.set(id, [...list(), envelope]);
+        this.channelEvents.set(id, [...list(), envelope]);
         const lostReply = this.losePublicationReply?.(event, key);
         if (lostReply) throw lostReply;
         return { id: sequence };
@@ -455,9 +466,9 @@ class SpawnVessel extends AgentVesselBase {
       .listStored()
       .find((row) => row.channelId === sourceChannelId);
     if (!subscription) throw new Error("No actual source membership");
-    const events = this.events.get(sourceChannelId) ?? [];
+    const events = this.channelEvents.get(sourceChannelId) ?? [];
     if (!events.some((original) => original.messageId === event.messageId))
-      this.events.set(sourceChannelId, [...events, event]);
+      this.channelEvents.set(sourceChannelId, [...events, event]);
     return {
       deliveryId: "delivery:" + sourceChannelId + ":" + event.messageId,
       channelId: sourceChannelId,
@@ -517,7 +528,7 @@ class SpawnVessel extends AgentVesselBase {
   execute(...args: Parameters<SpawnVessel["executeNativeSpawn"]>) {
     return this.executeNativeSpawn(...args);
   }
-  cancel(...args: Parameters<SpawnVessel["cancelNativeSpawn"]>) {
+  cancelSpawn(...args: Parameters<SpawnVessel["cancelNativeSpawn"]>) {
     return this.cancelNativeSpawn(...args);
   }
   async executeCancellation(
@@ -587,7 +598,7 @@ async function fixture(
     }),
     executionData: vessel.offer(),
     execute: (args, api, ctx) => vessel.execute(args, api, ctx),
-    cancel: (args, api, ctx) => vessel.cancel(args, api, ctx),
+    cancel: (args, api, ctx) => vessel.cancelSpawn(args, api, ctx),
   });
   const cancellation = defineTool({
     name: "cancel_subagent",
@@ -929,7 +940,7 @@ describe("native shipping subagent launch", () => {
     expect(started).toHaveLength(2);
     expect(started[1]).toEqual(started[0]);
     expect(
-      (f.vessel.events.get(channelId) ?? []).filter(
+      (f.vessel.channelEvents.get(channelId) ?? []).filter(
         (event) => (event.payload as AgenticEvent).kind === "task.started",
       ),
     ).toHaveLength(1);
@@ -1061,7 +1072,7 @@ describe("native shipping subagent launch", () => {
     expect(f.vessel.activeChildren.has(run.childEntityId)).toBe(false);
     expect([...f.vessel.created.entries()]).toEqual(retainedResources);
     expect(f.vessel.admittedContexts.has(run.childContextId)).toBe(true);
-    const terminal = (f.vessel.events.get(channelId) ?? []).filter(
+    const terminal = (f.vessel.channelEvents.get(channelId) ?? []).filter(
       (event) => (event.payload as AgenticEvent).kind === "task.cancelled",
     );
     expect(terminal).toHaveLength(2);
@@ -1109,7 +1120,7 @@ describe("native shipping subagent launch", () => {
     const task = await f.cancelRun(run.runId, "cancel-first-winner");
     await expect(f.terminal(task)).rejects.toThrow("original reply lost");
     const winner = copyJson(
-      (f.vessel.events.get(channelId) ?? []).find(
+      (f.vessel.channelEvents.get(channelId) ?? []).find(
         (event) => (event.payload as AgenticEvent).kind === "task.cancelled",
       )!,
     );
@@ -1122,7 +1133,7 @@ describe("native shipping subagent launch", () => {
       ),
     ).toHaveLength(1);
     expect(
-      (f.vessel.events.get(channelId) ?? []).filter(
+      (f.vessel.channelEvents.get(channelId) ?? []).filter(
         (event) => (event.payload as AgenticEvent).kind === "task.cancelled",
       ),
     ).toEqual([winner]);
@@ -1476,13 +1487,13 @@ describe("native shipping subagent launch", () => {
     expect(attempts[1]).toEqual(attempts[0]);
     expect(attempts[2]!.key).not.toBe(attempts[0]!.key);
     expect(
-      (f.vessel.events.get(channelId) ?? []).filter(
+      (f.vessel.channelEvents.get(channelId) ?? []).filter(
         (event) => (event.payload as AgenticEvent).kind === "task.failed",
       ),
     ).toHaveLength(2);
   });
 
-  it("exports genuine original native input knowledge before child import, membership and task seed", async () => {
+  it("forks the parent's cell at the last closed turn before the child adopts it, subscribes and gets its task seed", async () => {
     const f = await fixture();
     const event: ChannelEvent = {
       id: 1,
@@ -1503,7 +1514,7 @@ describe("native shipping subagent launch", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       },
     };
-    f.vessel.events.set(channelId, [event]);
+    f.vessel.channelEvents.set(channelId, [event]);
     f.faux.setResponses([
       fauxAssistantMessage("Original native parent answer"),
     ]);
@@ -1569,25 +1580,27 @@ describe("native shipping subagent launch", () => {
     await f.terminal(task);
     const operations = f.vessel.calls.map((call) => call.method);
     expect(operations.indexOf("runtime.createEntity")).toBeLessThan(
-      operations.indexOf("importChannelKnowledge"),
+      operations.indexOf("adoptChannelKnowledge"),
     );
-    expect(operations.indexOf("importChannelKnowledge")).toBeLessThan(
+    expect(operations.indexOf("adoptChannelKnowledge")).toBeLessThan(
       operations.indexOf("recordTaskProvenance"),
     );
     expect(operations).not.toContain("subscribeChannel");
     const imported = f.vessel.calls.find(
-      (call) => call.method === "importChannelKnowledge",
+      (call) => call.method === "adoptChannelKnowledge",
     )!.args[0] as {
-      knowledge: { history: unknown; anchors: unknown[] };
+      frontier: { commit: string; entryHigh: number; anchors: unknown[]; conversationId: number };
       contextId: string;
       channelId: string;
     };
-    expect(JSON.stringify(imported.knowledge.history)).toContain(
-      "Original parent knowledge",
-    );
-    expect(imported.knowledge.anchors).toHaveLength(1);
-    expect(imported.knowledge.history).not.toHaveProperty("tasks");
-    expect(imported.knowledge.history).not.toHaveProperty("documents");
+    // The child is created as a fork of the parent's own cell at the commit its frontier names.
+    const created = f.vessel.calls.find(
+      (call) => call.method === "runtime.createEntity",
+    )!.args[0] as { forkStorage?: { at: string } };
+    expect(created.forkStorage).toEqual({ at: imported.frontier.commit });
+    expect(imported.frontier.commit).toBe(`turn-commit-${imported.frontier.entryHigh}`);
+    expect(imported.frontier.anchors).toHaveLength(1);
+    expect(imported.frontier).not.toHaveProperty("history");
     const run = f.vessel.runs()[0]!;
     expect(imported.contextId).toBe(run.childContextId);
     expect(imported.channelId).toBe(run.taskChannelId);

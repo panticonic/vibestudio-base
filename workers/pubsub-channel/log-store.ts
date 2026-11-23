@@ -1,16 +1,16 @@
 import type { StoredChannelMessageTypeDefinition } from "@vibestudio/service-schemas/workspaceSource";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
+import { sha256HexSyncText } from "@vibestudio/content-addressing";
 /** Canonical channel-owner history; global graph observation is trailing debt. */
 
 import type { ServerLogEvent as ChannelEvent } from "@workspace/pubsub";
 
 import {
   collectChannelEnvelopePages,
-  type ChannelEnvelopePage,
   type ChannelEnvelopePageInfo,
   type ChannelEnvelopeWindow,
 } from "@vibestudio/shared/channelEnvelopePaging";
-import { ChannelLedger } from "./channel-ledger.js";
+import { ChannelLedger, type ChannelCommitted } from "./channel-ledger.js";
 import type { SqlStorage } from "@workspace/runtime/worker";
 import {
   DEFAULT_CHANNEL_REPLAY_PAGE_LIMIT,
@@ -73,7 +73,7 @@ interface RpcCallerLike {
   call: import("@vibestudio/rpc").RpcCaller["call"];
 }
 
-type OwnerReplayPage = ChannelEnvelopePage<OwnerChannelEnvelopeView>;
+type RegistryEntry = { row: StoredChannelMessageTypeDefinition; envelope: LogEnvelope };
 type ReplayWindowPageInfo = Pick<
   ChannelEnvelopePageInfo,
   | "totalCount"
@@ -148,18 +148,27 @@ function contentIntegrityFromAnnotations(
 
 export class ChannelLog {
   readonly ledger: ChannelLedger;
-  private registryCache?: { head: number; types: Map<string, StoredChannelMessageTypeDefinition> };
+  private registryCache?: { head: number; types: Map<string, RegistryEntry> };
   constructor(
     private readonly rpc: RpcCallerLike,
     private readonly channelId: string,
     sql: SqlStorage,
     transaction: <T>(operation: () => T) => T,
+    committed?: ChannelCommitted,
   ) {
-    this.ledger = new ChannelLedger(sql, transaction, channelId);
+    this.ledger = new ChannelLedger(sql, transaction, channelId, committed);
   }
 
   async append(input: ChannelAppendInput): Promise<ChannelEvent> {
-    const payload = await this.encodePayload(input.payload);
+    const values: Record<string, string> = {};
+    const payload = await encodeChannelPayloadStoredValues(input.payload, {
+      putText: async (text) => {
+        const bytes = new TextEncoder().encode(text);
+        const digest = sha256HexSyncText(text);
+        values[digest] = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+        return { digest, size: bytes.length };
+      },
+    });
     const annotations: Record<string, unknown> = {
       ...(input.annotations ?? {}),
     };
@@ -179,8 +188,10 @@ export class ChannelLog {
       annotations,
     });
     const { publish: _publish, appendedAtExplicit: _explicit, ...semantic } = prepared;
-    const envelope = this.ledger.append(semantic, input.idempotency ?? "exact");
-    return this.eventFromLogEnvelope(await this.hydrate(envelope));
+    const envelope = this.ledger.append(
+      semantic, input.idempotency ?? "exact", Object.keys(values).length ? values : undefined,
+    );
+    return this.eventFromLogEnvelope(await this.hydrateEnvelope(envelope));
   }
 
   /** Admit an immutable workspace publication using its original actor and causality. */
@@ -192,41 +203,47 @@ export class ChannelLog {
     }
     const { publish: _publish, appendedAtExplicit: _explicit, ...semantic } = prepared;
     const envelope = this.ledger.append(semantic, "exact");
-    return this.eventFromLogEnvelope(await this.hydrate(envelope));
+    return this.eventFromLogEnvelope(await this.hydrateEnvelope(envelope));
   }
 
-  async forkFrom(
+  async adoptParent(
     parentChannelId: string,
-    throughSeq: number | null,
+    throughSeq: number,
   ): Promise<void> {
-    this.ledger.forkFrom(parentChannelId, throughSeq);
+    this.ledger.adoptParent(parentChannelId, throughSeq);
   }
 
   async headSeq(): Promise<number> {
     return this.ledger.headSequence();
   }
 
-  private messageTypes(): Map<string, StoredChannelMessageTypeDefinition> {
+  private messageTypes(): Map<string, RegistryEntry> {
     const head = this.ledger.registrySequence();
     if (this.registryCache?.head === head) return this.registryCache.types;
-    const types = new Map<string, StoredChannelMessageTypeDefinition>();
+    const types = new Map<string, RegistryEntry>();
     for (const envelope of this.ledger.registryEvents()) {
       const mutation = registryMutationFromLogEnvelope(envelope)!;
       if (mutation.kind === "clearMessageType") types.delete(mutation.typeId);
-      else types.set(mutation.typeId, { ...mutation.row, typeId: mutation.typeId, updatedAtSeq: envelope.seq });
+      else types.set(mutation.typeId, {
+        row: { ...mutation.row, typeId: mutation.typeId, updatedAtSeq: envelope.seq },
+        envelope,
+      });
     }
     this.registryCache = { head, types };
     return types;
   }
 
   async listMessageTypes(): Promise<MessageTypeDefinition[]> {
-    const rows = [...this.messageTypes().values()].sort((a, b) => a.typeId < b.typeId ? -1 : a.typeId > b.typeId ? 1 : 0);
-    return Promise.all(rows.map(async (row) => MessageTypeDefinitionSchema.parse(await this.hydrate(structuredClone(row)))));
+    const entries = [...this.messageTypes().entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    return Promise.all(entries.map(async ([, { row, envelope }]) =>
+      MessageTypeDefinitionSchema.parse(await this.hydrate(structuredClone(row), envelope))));
   }
 
   async getMessageType(typeId: string): Promise<MessageTypeDefinition | null> {
-    const row = this.messageTypes().get(typeId);
-    return row ? MessageTypeDefinitionSchema.parse(await this.hydrate(structuredClone(row))) : null;
+    const entry = this.messageTypes().get(typeId);
+    return entry
+      ? MessageTypeDefinitionSchema.parse(await this.hydrate(structuredClone(entry.row), entry.envelope))
+      : null;
   }
 
   async hasEnvelope(envelopeId: string): Promise<boolean> {
@@ -239,7 +256,7 @@ export class ChannelLog {
 
   async getEventByEnvelopeId(envelopeId: string): Promise<ChannelEvent | null> {
     const envelope = this.ledger.envelope(envelopeId);
-    return envelope ? this.eventFromLogEnvelope(await this.hydrate(envelope)) : null;
+    return envelope ? this.eventFromLogEnvelope(await this.hydrateEnvelope(envelope)) : null;
   }
 
   /** Lineage-aware ascending page over durable envelopes (policy folds,
@@ -265,7 +282,7 @@ export class ChannelLog {
     });
     return Promise.all(
       rows.map(async (row) =>
-        this.eventFromLogEnvelope(await this.hydrate(row)),
+        this.eventFromLogEnvelope(await this.hydrateEnvelope(row)),
       ),
     );
   }
@@ -500,24 +517,6 @@ export class ChannelLog {
     );
   }
 
-  private async encodePayload(payload: unknown): Promise<unknown> {
-    return encodeChannelPayloadStoredValues(payload, {
-      putText: (value) =>
-        this.rpc.call("main", mainRpcMethods["blobstore.putText"], [value]),
-    });
-  }
-
-  private async hydrateReplayPage(
-    window: OwnerReplayPage,
-  ): Promise<OwnerReplayPage> {
-    return {
-      ...window,
-      items: await Promise.all(
-        window.items.map((envelope) => this.hydrate(envelope)),
-      ),
-    };
-  }
-
   private async readReplayWindow(
     window: ChannelEnvelopeWindow,
     maximumItems: number | "all",
@@ -528,8 +527,10 @@ export class ChannelLog {
       { maximumItems },
       async (request) => {
         const local = this.ledger.page(request);
-        const page: OwnerReplayPage = { ...local, items: local.items.map((envelope) => this.channelView(envelope)) };
-        return hydrate ? this.hydrateReplayPage(page) : page;
+        const envelopes = hydrate
+          ? await Promise.all(local.items.map((envelope) => this.hydrateEnvelope(envelope)))
+          : local.items;
+        return { ...local, items: envelopes.map((envelope) => this.channelView(envelope)) };
       },
     );
     const firstPage = pages[0]!;
@@ -560,10 +561,14 @@ export class ChannelLog {
     };
   }
 
-  private async hydrate<T>(value: T): Promise<T> {
+  private async hydrateEnvelope(envelope: LogEnvelope): Promise<LogEnvelope> {
+    return this.hydrate(envelope, envelope);
+  }
+
+  private async hydrate<T>(value: T, envelope: LogEnvelope): Promise<T> {
     return hydrateStoredValueRefs(value, {
-      getText: (digest) =>
-        this.rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
+      getText: async (digest) => this.ledger.storedText(envelope, digest) ??
+        await this.rpc.call("main", mainRpcMethods["blobstore.getText"], [digest]),
     }) as Promise<T>;
   }
 }

@@ -1,4 +1,3 @@
-import type { NativeBlobTreeObservation } from "@vibestudio/service-schemas/blobstore";
 import {
   EVAL_OPERATION_JOURNAL_MAX_ENTRIES,
   EVAL_RESULT_RETURN_PREVIEW_CHARS,
@@ -74,13 +73,6 @@ export function cdpProfileReceipt(
 }
 
 export type OperationJournalEntry =
-  | {
-      type: "blob-tree.observation";
-      receipt: Extract<
-        NativeBlobTreeObservation,
-        { method: "materializeTree" }
-      >;
-    }
   | { type: "open"; source: string; id: string; kind: "workspace" | "browser" }
   | { type: "reload"; id: string }
   | { type: "close"; id: string }

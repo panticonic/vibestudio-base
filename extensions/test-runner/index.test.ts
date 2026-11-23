@@ -105,7 +105,10 @@ describe("native test adapter boundary", () => {
       'throw new Error("Unselected module must not execute");\n',
     );
     const api = await activate(ctx);
-    const result = await api.runNative(sealed({ fileFilter: "simple.test.ts" }));
+    const result = await api.runNative(sealed({
+      target: `${section}/fixture`,
+      fileFilter: "simple.test.ts",
+    }));
     expect(result).toMatchObject({
       status: "passed",
       passed: 1,

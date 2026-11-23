@@ -17,7 +17,8 @@ import type { RpcMethodArgs, RpcMethodResult } from "@vibestudio/shared/rpcMetho
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import { evalOwnerCallbackMethods } from "@vibestudio/service-schemas/eval";
+import type { EvalRunEvent } from "@vibestudio/service-schemas/eval";
+import { createDynamicCodeRunObserver } from "@vibestudio/service-schemas/dynamicCode";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import { reconcileDefaultAutomationHost } from "./default-automation-host.js";
 import { Type, type Api, type Model } from "@panticonic/pi-ai";
@@ -50,18 +51,21 @@ import type { NativeEvalExecution } from "@workspace/harness/tools/eval";
 import { NativeChannelOwner, type NativeChannelConfiguration } from "./native-channel-owner.js";
 import { parseDoTargetId } from "@vibestudio/shared/workspaceServiceRpc";
 import {
-  importAgentChannelKnowledge,
+  adoptAgentChannelKnowledge,
+  type AdoptChannelKnowledgeInput,
   type ExportChannelKnowledgeInput,
-  type ImportChannelKnowledgeInput,
-  type NativeChannelKnowledge,
+  type NativeForkFrontier,
 } from "@workspace/agentic-core/native-channel-knowledge";
 import {
+  adoptNativeChannelKnowledge,
+  nativeForkFrontier,
   retainedNativeChannelKnowledgeConfiguration,
-  exportNativeChannelKnowledge,
-  importNativeChannelKnowledge,
 } from "./native-channel-knowledge.js";
+import { lastTurnCommitThrough } from "./native-agent-commits.js";
+import { FORK_ADOPTION_KEY } from "./native-agent-owner.js";
 import { createNativeAutomationRuns } from "./native-automation-runs.js";
 import { createNativeEvalExecution } from "./native-eval-tool.js";
+import { evalHostId, type EvalAwaitInput } from "./native-eval-receipts.js";
 import { createNativeChannelMethodTools } from "./native-channel-method-tools.js";
 import { createNativeSuspendExecution } from "./native-suspend-tool.js";
 import {
@@ -174,6 +178,11 @@ import {
   type ObservationsWithheldSignal,
 } from "@workspace/agentic-protocol";
 import { canonicalJson, sha256HexSyncText, stableSha256Hex } from "@vibestudio/content-addressing";
+import {
+  HostedEvalKernel,
+  type EvalLifecycleInput,
+} from "./hosted-eval-kernel.js";
+import type { LifecyclePrepareResult } from "@workspace/runtime/worker/durable-base";
 
 import {
   createAgentEntity,
@@ -281,7 +290,7 @@ import {
 const CHANNEL_STATE_CACHE_MS = 5_000;
 /** Final backstop cadence for undelivered deferred-eval cancel intents. The
  * primary triggers are lifecycle events (resume, retire); this alarm only
- * covers an EvalDO outage that outlives them. */
+ * covers an eval kernel outage that outlives them. */
 
 /** ~256KB of serialized session entries before compaction — comfortably
  *  under modern model context windows while keeping plenty of recent
@@ -641,6 +650,28 @@ export interface ChannelDeliveryOutcome {
 const HOT_PATH_TRACE_RETENTION_LIMIT = 500;
 const HOT_PATH_TRACE_SWEEP_INTERVAL = 64;
 
+/** The rpc authority of the calls an agent's kernel serves: the caller is checked in the class. */
+const HOSTED_KERNEL_METHOD = {
+  website: {
+    kind: "closed",
+    reason: "An agent's eval kernel is reached by the agent itself and the host, never by a website.",
+  },
+  principals: ["host", "code"],
+  effect: { kind: "open" },
+  tier: "open",
+} as const;
+
+/** Host-only calls: the interlocks and the scope reset no principal reaches. */
+const HOSTED_KERNEL_HOST_METHOD = {
+  website: {
+    kind: "closed",
+    reason: "An agent's eval kernel is reached by the agent itself and the host, never by a website.",
+  },
+  principals: ["host"],
+  effect: { kind: "open" },
+  tier: "open",
+} as const;
+
 /** Result of the deferred-eval gate: parked, or a settled tool result whose
  * typed terminal fields flow unchanged into the trajectory invocation event. */
 
@@ -722,8 +753,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     SubscriptionManager.createTables(this.sql);
     SubagentRunStore.createTables(this.sql);
     CardManager.createTables(this.sql);
+    // A local table of a Dolt cell: no AUTOINCREMENT (its counter would be a tracked table). The newest rows are
+    // never deleted, so the rowid still only grows.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS agent_hot_path_trace (
-      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      sequence INTEGER PRIMARY KEY,
       channel_id TEXT NOT NULL, phase TEXT NOT NULL, source TEXT, item_id TEXT,
       generation INTEGER, started_at INTEGER NOT NULL, duration_ms INTEGER,
       details_json TEXT NOT NULL
@@ -2001,7 +2034,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   /**
    * Canonical model-free automation ingress. The exact revision source is
    * journaled as an ordinary eval invocation and runs in this agent/channel's
-   * EvalDO, so ambient `chat` publishes with this agent's durable identity.
+   * eval kernel, so ambient `chat` publishes with this agent's durable identity.
    */
   @rpc({
     website: {
@@ -3072,11 +3105,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       }
       case "cancelEval": {
         // The chat-panel pill cancels a SERVER-SIDE eval run by asking THIS agent
-        // (the eval's owner, subKey = channelId) to cancel it. The agent calls
-        // eval.cancel for itself — the eval service resolves the owner from the
-        // caller, so the panel cannot address another owner's EvalDO. The UI
-        // supplies the journaled invocation coordinate; this trusted owner
-        // derives the distinct eval-effect coordinate used as the run id.
+        // (the eval's owner) to cancel it. The agent cancels on the kernel it hosts
+        // itself, so the panel cannot address another owner's kernel. The UI supplies the
+        // journaled invocation coordinate, which is the run id.
         const invocationId = (args as { invocationId?: unknown } | null)?.invocationId;
         if (typeof invocationId !== "string" || invocationId.length === 0) {
           return {
@@ -3086,12 +3117,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         }
         const runId = invocationId;
         try {
-          const result = await this.rpc.call(
-            "main",
-            mainRpcMethods["eval.cancel"],
-            [{ scopeKey: channelId, runId }],
-            { signal }
-          );
+          const result = await createDynamicCodeRunObserver(this.rpc, {
+            hostId: evalHostId(this.rpcSelfId),
+            runId,
+          }).cancel({ signal });
           return { result };
         } catch (err) {
           return {
@@ -3289,17 +3318,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   // ── chat proxy for server-side eval (chatOp) ─────────────────────────────
 
   /**
-   * Forwarded channel operation from THIS agent's own EvalDO sandbox `chat`
-   * binding. The EvalDO can only publish as its own non-agent identity and
+   * Forwarded channel operation from THIS agent's own eval kernel sandbox `chat`
+   * binding. The eval kernel can only publish as its own non-agent identity and
    * cannot receive a delivered method result, so it relays every
    * `ChatSandboxValue` op here and we perform it AS the agent (correct @agent
    * attribution) using our existing channel machinery. Return values mirror
    * `ChatSandboxValue`'s.
    *
-   * Auth: the caller MUST be this agent's own EvalDO. We re-derive that DO's
-   * objectKey the SAME way evalService does — sha256(ownerId + "\\0" + subKey),
-   * hex, first 40 chars — and require the verified caller id to be
-   * `do:vibestudio/internal:EvalDO:<key>`. Any other caller is rejected; the
+   * Auth: the caller MUST be this agent's own eval kernel, which acts as the agent
+   * (the verified caller id is this agent's own runtime id). Any other caller is rejected; the
    * generic DO relay is open, so a sensitive receiver gates on receipt.
    */
   @rpc({
@@ -3470,7 +3497,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   /** Read-only half of the eval owner surface. Keeping this outside chatOp is
    * intentional: chatOp contains mutations and is therefore correctly
    * classified as write, while a self snapshot must remain usable from a
-   * read-only eval. The same own-EvalDO receiver check protects both routes. */
+   * read-only eval. The same own-eval kernel receiver check protects both routes. */
   @rpc({
     website: {
       kind: "closed",
@@ -3881,17 +3908,160 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     };
   }
 
-  /** Re-derive this agent's own EvalDO objectKey (matching evalService's
-   *  formula EXACTLY: sha256(`${ownerId}\0${subKey}`) hex, first 40 chars; owner
-   *  = this agent's runtime id, subKey = channelId) and require the verified
-   *  caller to be that EvalDO. */
-  private async assertOwnEvalCaller(channelId: string): Promise<void> {
+  // ── The kernel this agent hosts (docs/dolt-redesign.md §6.11.6, §7.5.1) ──────────────
+  //
+  // The agent is the hosting entity of its own eval kernel: the host admits a run on it
+  // (`dynamicCode.admit`) and the agent starts, pulls and cancels the run here, through its own
+  // methods, which relay to the hosted class. The only principals are the agent itself and the
+  // host: the agent's tool pulls through its own rpc, and the host reaches the three host-only
+  // interlocks and the scope reset.
+
+  /**
+   * The agent itself (its tools and the pill's cancel) or the host acting for the agent. A call the agent
+   * makes to its own id never leaves its rpc client: it is delivered in-process with no verified caller
+   * (neither an id nor a kind), which only the agent's own code can produce; every call that arrives from
+   * outside carries the caller the host verified.
+   */
+  private authorizeKernelCaller(): void {
+    if (this.rpcCallerKind === "server") return;
+    if (this.rpcCallerId === this.participantId()) return;
+    if (this.rpcCallerId === null && this.rpcCallerKind === null) return;
+    throw Object.assign(
+      new Error(
+        `This agent's kernel serves only the agent itself (caller ${this.rpcCallerKind ?? "none"} ${this.rpcCallerId ?? "unknown"})`
+      ),
+      { code: "EACCES" }
+    );
+  }
+
+  private requireKernelHost(): void {
+    if (this.rpcCallerKind !== "server")
+      throw Object.assign(new Error("This call is for the host"), { code: "EACCES" });
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
+  async start(
+    input: { runId: string } & Record<string, unknown>,
+    admissionNonce: string
+  ): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.start(input, admissionNonce);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
+  async await(runId: string, options?: { waitMs?: number }): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.await(runId, options);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
+  async events(runId: string, options?: { after?: number; limit?: number }): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.events(runId, options);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
+  async cancel(runId: string): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.cancel(runId);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
+  async get(runId: string): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.get(runId);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
+  async receipt(runId: string): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.receipt(runId);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
+  async acknowledge(
+    runId: string,
+    identity: { runDigest: string; resultDigest: string }
+  ): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.acknowledge(runId, identity);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "read" })
+  async readScopeTextPage(key: string, offset?: number, limit?: number): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.readScopeTextPage(key, offset, limit);
+  }
+
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
+  async deleteScopeValue(key: string): Promise<unknown> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.deleteScopeValue(key);
+  }
+
+  /** Ends the notebook heap's residency hold; the committed state stays with the agent. */
+  @rpc({ ...HOSTED_KERNEL_METHOD, sensitivity: "write" })
+  async end(): Promise<{ ok: true }> {
+    this.authorizeKernelCaller();
+    return this.hostedEvalKernel.end();
+  }
+
+  /** Host only: the host gates a scope reset with its own approval before it calls this. */
+  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "write" })
+  async reset(): Promise<unknown> {
+    this.requireKernelHost();
+    return this.hostedEvalKernel.reset();
+  }
+
+  /** Host only: facts only the host observes, recorded in the run's event log. */
+  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "write" })
+  async recordAuthorityEvent(
+    runId: string,
+    kind: "authority-requested" | "authority-decided",
+    payload: unknown
+  ): Promise<void> {
+    this.requireKernelHost();
+    await this.hostedEvalKernel.recordAuthorityEvent(runId, kind, payload);
+  }
+
+  /** Host only: the publication interlock for a workspace bundle a notebook imports. */
+  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "write" })
+  async retainExecutionRoot(
+    runId: string,
+    moduleSpecifier: string,
+    artifact: unknown
+  ): Promise<void> {
+    this.requireKernelHost();
+    await this.hostedEvalKernel.retainExecutionRoot(runId, moduleSpecifier, artifact);
+  }
+
+  /** Host only: the workspace bundles this agent's kernel retains, for the execution-root census. */
+  @rpc({ ...HOSTED_KERNEL_HOST_METHOD, sensitivity: "read" })
+  async executionRoots(): Promise<unknown[]> {
+    this.requireKernelHost();
+    return this.hostedEvalKernel.executionRoots();
+  }
+
+  /**
+   * Retirement and suspension reach the kernel through this agent: its runs are cancelled and the
+   * panels it opened retired before the agent goes (a hosted class has no lifecycle of its own),
+   * then the heap's hold ends.
+   */
+  override async releaseForLifecycle(
+    input: LifecyclePrepareInput
+  ): Promise<LifecyclePrepareResult> {
+    await this.hostedEvalKernel.lifecycle(input as unknown as EvalLifecycleInput);
+    return super.releaseForLifecycle(input);
+  }
+
+  /** The kernel this agent hosts acts as the agent (docs/dolt-redesign.md §6.11.6), so the verified
+   *  caller of a chat or describe relay is the agent's own runtime id. The kernel is the only code
+   *  of this agent that relays these operations; any other caller is refused. */
+  private async assertOwnEvalCaller(_channelId: string): Promise<void> {
     const callerId = this.rpcCallerId;
-    const expectedKey = sha256HexSyncText(`${this.participantId()}\0${channelId}`);
-    const expectedCaller = `do:vibestudio/internal:EvalDO:${expectedKey.slice(0, 40)}`;
-    if (callerId !== expectedCaller) {
+    if (callerId !== this.participantId()) {
       throw new Error(
-        `chatOp: refusing caller ${callerId ?? "unknown"} — only this agent's own EvalDO may forward chat ops`
+        `chatOp: refusing caller ${callerId ?? "unknown"} — only this agent's own eval kernel may forward chat ops`
       );
     }
   }
@@ -3940,7 +4110,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   ): Promise<number | undefined> {
     // Self-gate: this helper is independently RPC-exposed (collectExposableMethods
     // reflects every method) over the open DO relay, so chatOp's assertOwnEvalCaller
-    // is bypassable by addressing it directly. Only this agent's own EvalDO may act
+    // is bypassable by addressing it directly. Only this agent's own eval kernel may act
     // as the agent.
     await this.assertOwnEvalCaller(channelId);
     const actor = this.cardActor(channelId, participantId);
@@ -4162,106 +4332,111 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   }
 
   /**
-   * Streamed eval console — the rolling-output sibling of `onEvalComplete`. The agent's eval runs in
-   * a server-side EvalDO; during the run the EvalDO forwards buffered console chunks here (gated
-   * by `assertOwnEvalCaller`, exactly like the `chat` binding's `chatOp` — only this agent's own
-   * EvalDO may act as it). Each chunk is published as an `invocation.output` event keyed to the eval
-   * parent tool invocation (`agentInvocationId`), independently of the eval effect's `runId`, so the
-   * chat panel renders the console live AND persists it for the card's details view. Best-effort: a
-   * dropped chunk is just a gap in the live console — the
-   * final result still carries the full console text. Ordering: the EvalDO awaits its final flush
-   * before completing, so every output precedes the `invocation.completed` terminal (the reducer drops
-   * output after terminal).
+   * The eval run's console and authority events, as the owner's await task pulls them from the
+   * kernel's event log. Each console chunk is published as an `invocation.output` event keyed to
+   * the eval parent tool invocation (`agentInvocationId`, which is the run id), independently of the
+   * eval effect's result, so the chat panel renders the console live AND persists it for the card's
+   * details view; an authority event becomes an `invocation.progress` ("waiting for approval").
+   * Best-effort: a dropped chunk is just a gap in the live console, the final result still carries
+   * the full console text. The await task hands over every event before the terminal receipt is
+   * accepted, so output precedes the `invocation.completed` terminal (the reducer drops output
+   * after terminal).
    */
-  @rpc({
-    website: {
-      kind: "closed",
-      reason:
-        "This receiver owns workspace orchestration or retained workspace data; websites require a reviewed bounded operation.",
-    },
-    principals: ["code"],
-    effect: { kind: "open" },
-    tier: "open",
-    sensitivity: "write",
-  })
-  async onEvalProgress(payload: {
-    runId: string;
-    agentInvocationId: string;
-    channelId: string;
-    output?: string;
-    activity?: {
-      kind: "authority-requested" | "authority-decided";
-      detail?: unknown;
+  protected override async publishEvalEvents(
+    input: EvalAwaitInput,
+    events: readonly EvalRunEvent[],
+    _context: Context
+  ): Promise<void> {
+    const channelId = input.route.scopeKey;
+    if (!channelId) return;
+    const agentInvocationId = input.route.runId;
+    const runId = input.route.runId;
+    let output = "";
+    const flushOutput = async () => {
+      if (!output) return;
+      const text = output;
+      output = "";
+      await this.publishEvalOutput(channelId, agentInvocationId, text);
     };
-  }): Promise<void> {
-    const [validatedPayload] = evalOwnerCallbackMethods.onEvalProgress.args.parse([payload]);
-    await this.assertOwnEvalCaller(validatedPayload.channelId);
-    if (validatedPayload.activity) {
-      const detail =
-        validatedPayload.activity.detail && typeof validatedPayload.activity.detail === "object"
-          ? (validatedPayload.activity.detail as Record<string, unknown>)
-          : {};
-      const capability =
-        typeof detail["capability"] === "string" ? detail["capability"] : undefined;
-      const resourceKey =
-        typeof detail["resourceKey"] === "string" ? detail["resourceKey"] : undefined;
-      const waiting = validatedPayload.activity.kind === "authority-requested";
-      const message = waiting
-        ? `Waiting for approval${capability ? ` to use ${capability}` : ""}${resourceKey ? ` on ${resourceKey}` : ""}`
-        : "Approval decision received; resuming eval";
-      const participantId =
-        this.subscriptions.getParticipantId(payload.channelId) ?? this.participantId();
-      const actor = this.cardActor(payload.channelId, participantId);
-      const event: AgenticEvent<"invocation.progress"> = {
-        kind: "invocation.progress",
-        actor,
-        causality: {
-          invocationId: validatedPayload.agentInvocationId as never,
-        },
-        payload: {
-          protocol: AGENTIC_PROTOCOL_VERSION,
-          message,
-          data: {
-            eval: {
-              runId: validatedPayload.runId,
-              activity: waiting ? "authority-pending" : "executing",
-              detail: validatedPayload.activity.detail,
-            },
+    for (const event of events) {
+      if (event.kind === "console") {
+        const text = (event.payload as { text?: unknown } | null)?.text;
+        if (typeof text === "string") output += text;
+        continue;
+      }
+      if (event.kind === "authority-requested" || event.kind === "authority-decided") {
+        await flushOutput();
+        await this.publishEvalActivity(channelId, agentInvocationId, runId, {
+          kind: event.kind,
+          detail: event.payload,
+        });
+      }
+    }
+    await flushOutput();
+  }
+
+  private async publishEvalActivity(
+    channelId: string,
+    agentInvocationId: string,
+    runId: string,
+    activity: { kind: "authority-requested" | "authority-decided"; detail?: unknown }
+  ): Promise<void> {
+    const detail =
+      activity.detail && typeof activity.detail === "object"
+        ? (activity.detail as Record<string, unknown>)
+        : {};
+    const capability = typeof detail["capability"] === "string" ? detail["capability"] : undefined;
+    const resourceKey =
+      typeof detail["resourceKey"] === "string" ? detail["resourceKey"] : undefined;
+    const waiting = activity.kind === "authority-requested";
+    const message = waiting
+      ? `Waiting for approval${capability ? ` to use ${capability}` : ""}${resourceKey ? ` on ${resourceKey}` : ""}`
+      : "Approval decision received; resuming eval";
+    const participantId = this.subscriptions.getParticipantId(channelId) ?? this.participantId();
+    const actor = this.cardActor(channelId, participantId);
+    const event: AgenticEvent<"invocation.progress"> = {
+      kind: "invocation.progress",
+      actor,
+      causality: { invocationId: agentInvocationId as never },
+      payload: {
+        protocol: AGENTIC_PROTOCOL_VERSION,
+        message,
+        data: {
+          eval: {
+            runId,
+            activity: waiting ? "authority-pending" : "executing",
+            detail: activity.detail,
           },
         },
-        createdAt: new Date().toISOString(),
-      };
-      await this.createChannelClient(validatedPayload.channelId).publishAgenticEvent(
-        participantId,
-        event,
-        {
-          senderMetadata: actor.metadata,
-        }
-      );
-      return;
-    }
-    if (!validatedPayload.output) return;
-    const participantId =
-      this.subscriptions.getParticipantId(validatedPayload.channelId) ?? this.participantId();
-    const actor = this.cardActor(validatedPayload.channelId, participantId);
+      },
+      createdAt: new Date().toISOString(),
+    };
+    await this.createChannelClient(channelId).publishAgenticEvent(participantId, event, {
+      senderMetadata: actor.metadata,
+    });
+  }
+
+  private async publishEvalOutput(
+    channelId: string,
+    agentInvocationId: string,
+    output: string
+  ): Promise<void> {
+    const participantId = this.subscriptions.getParticipantId(channelId) ?? this.participantId();
+    const actor = this.cardActor(channelId, participantId);
     const event: AgenticEvent<"invocation.output"> = {
       kind: "invocation.output",
       actor,
-      causality: { invocationId: validatedPayload.agentInvocationId as never },
+      causality: { invocationId: agentInvocationId as never },
       payload: {
         protocol: AGENTIC_PROTOCOL_VERSION,
-        output: validatedPayload.output,
+        output,
         channel: "stdout",
       },
       createdAt: new Date().toISOString(),
     };
-    await this.createChannelClient(validatedPayload.channelId).publishAgenticEvent(
-      participantId,
-      event,
-      {
-        senderMetadata: actor.metadata,
-      }
-    );
+    await this.createChannelClient(channelId).publishAgenticEvent(participantId, event, {
+      senderMetadata: actor.metadata,
+    });
   }
 
   /**
@@ -4621,21 +4796,28 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     }
   }
 
+  /**
+   * The commit of this agent's cell a fork for `channelId` through `throughSequence` is taken at: the last closed turn
+   * that holds no entry beyond what that channel prefix accounts for (§6.4), with what the fork needs to adopt it.
+   * Pure of the cell's state apart from a receipt-free read: the same question asked again gets the same commit.
+   */
   @rpc({
     website: {
       kind: "closed",
-      reason: "Knowledge export belongs to the owned channel fork operation.",
+      reason: "The fork frontier belongs to the owned channel fork operation.",
     },
     principals: ["host", "code"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "read",
   })
-  async exportChannelKnowledge(
+  async forkFrontier(
     input: ExportChannelKnowledgeInput
-  ): Promise<NativeChannelKnowledge> {
+  ): Promise<NativeForkFrontier> {
     if (!this.subscriptions.ownsReasoningLoop(input.channelId))
-      throw new Error("Knowledge export requires owned reasoning membership");
+      throw new Error("A fork frontier requires owned reasoning membership");
+    const dolt = this.dolt;
+    if (!dolt) throw new Error("An agent fork needs the Dolt history of its cell");
     const conversation = await this.nativeChannelConversation(input.channelId);
     const harness = this.admittedAgentSession();
     const binding = await retainedNativeConversationChannel(
@@ -4646,8 +4828,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const channel = this.createChannelClient(input.channelId, this.agentRpc);
     const channelRef = parseDoTargetId(await channel.resolveTarget());
     if (!channelRef || channelRef.objectKey !== input.channelId)
-      throw new Error("Knowledge export resolved a different canonical channel");
-    return exportNativeChannelKnowledge(
+      throw new Error("A fork frontier resolved a different canonical channel");
+    return nativeForkFrontier(
       {
         harness,
         conversation,
@@ -4658,29 +4840,49 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         configuration: () => this.exportNativeAgentKnowledgeConfiguration(input.channelId),
       },
       input,
+      (at) => lastTurnCommitThrough(dolt, at),
       BACKGROUND_CONTEXT
     );
   }
 
+  /**
+   * The first activation of a cell forked from another agent's: it holds the conversation and none of the source's
+   * local state. Bind it to the channel it was forked for, subscribe, and carry on as a new agent of its own.
+   */
   @rpc({
     website: {
       kind: "closed",
-      reason: "Knowledge import belongs to the owned channel fork operation.",
+      reason: "Fork adoption belongs to the owned channel fork operation.",
     },
     principals: ["host", "code"],
     effect: { kind: "open" },
     tier: "open",
     sensitivity: "write",
   })
-  async importChannelKnowledge(
-    input: ImportChannelKnowledgeInput
+  async adoptChannelKnowledge(
+    input: AdoptChannelKnowledgeInput
   ): Promise<{ ok: boolean; participantId: string }> {
     this.admitChannelEndpoint(input.channelId, input.channelRef);
     this.ensureIdentity();
+    // The cell is a fork until this adoption says otherwise: its first session binds the new owner to it.
+    this.setStateValue(FORK_ADOPTION_KEY, "pending");
+    if (input.frontier.entryHigh === 0) {
+      // The fork was taken before any turn of the source closed: nothing of its conversation survives in the cell,
+      // so the agent joins the fork channel as a new agent would, with the channel's history as its context.
+      const joined = await this.subscribeChannel({
+        channelId: input.channelId,
+        channelRef: input.channelRef,
+        contextId: input.contextId,
+        config: input.config,
+        replay: true,
+      });
+      this.deleteStateValue(FORK_ADOPTION_KEY);
+      return joined;
+    }
     const harness = await this.agentSession(BACKGROUND_CONTEXT);
     const owner = await retainedAgentExecutionOwner(harness, BACKGROUND_CONTEXT);
     if (owner.contextId !== input.contextId)
-      throw new Error("Knowledge import changed its receiving host context");
+      throw new Error("Fork adoption changed its receiving host context");
     const descriptor = this.getEffectiveParticipantInfo(input.channelId, input.config);
     const prepared = await this.subscriptions.prepareSubscription({
       channelId: input.channelId,
@@ -4691,7 +4893,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       replay: false,
     });
     const intent = copyJson(prepared, { omitUndefinedProperties: true });
-    await importNativeChannelKnowledge(
+    await adoptNativeChannelKnowledge(
       harness,
       input,
       {
@@ -4708,8 +4910,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             {
               operationId: input.operationId,
               parentChannelId: input.parentChannelId,
-              throughSequence: input.knowledge.throughSequence,
-              knowledgeDigest: sha256HexSyncText(canonicalJson(input.knowledge)),
+              throughSequence: input.frontier.throughSequence,
+              knowledgeDigest: sha256HexSyncText(canonicalJson(input.frontier)),
             }
           );
           await this.bindNativeChannelPublication(tx, id, {
@@ -4722,6 +4924,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
               displayName: descriptor.name,
             },
             policy: this.getPublishPolicy(input.channelId) ?? "all",
+            ...this.nativeReportTo(input.channelId),
           });
         },
       },
@@ -4736,6 +4939,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       },
       BACKGROUND_CONTEXT
     );
+    this.deleteStateValue(FORK_ADOPTION_KEY);
     return { ok: true, participantId: this.participantId() };
   }
 
@@ -4893,7 +5097,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       )
         throw new Error("Child fallback model cannot be materialized: " + String(fallback));
       const targetKey = `subagent:${execution.invocationId}`;
-      let knowledge: NativeChannelKnowledge | null = null;
+      let frontier: NativeForkFrontier | null = null;
       if (p.mode === "fork") {
         const snapshot = await this.createChannelClient(
           binding.channelId,
@@ -4902,7 +5106,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         const throughSequence = snapshot.ready.snapshotLastSeq;
         if (typeof throughSequence !== "number")
           throw new Error("Child fork has no canonical channel frontier");
-        knowledge = await this.exportChannelKnowledge({
+        // The child is a fork of this agent's cell at the last closed turn that holds nothing beyond
+        // the channel's present frontier; it adopts that conversation for its own task channel.
+        frontier = await this.forkFrontier({
           operationId: targetKey,
           channelId: binding.channelId,
           throughSequence,
@@ -4936,7 +5142,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
             depth: offer["depth"],
             lineageParticipantIds: p.mode === "fork" ? offer["lineageParticipantIds"] : [],
             requestedConfig: overrides,
-            knowledge,
+            frontier,
             startedAt: Date.now(),
           },
           { omitUndefinedProperties: true }
@@ -5017,12 +5223,15 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     });
     if (contextId !== intent.childContextId)
       throw new Error("Child provisioning changed its admitted resource identity");
+    const frontier =
+      p["mode"] === "fork" ? (p["frontier"] as unknown as NativeForkFrontier) : null;
     const child = await createAgentEntity(invocationRpc, {
       source: p["source"],
       className: p["className"],
       key: intent.targetKey,
       contextId,
       agentChannelId: intent.taskChannelId,
+      ...(frontier ? { forkStorage: { at: frontier.commit } } : {}),
       config,
       stateArgs: {
         subagent: {
@@ -5066,13 +5275,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       throw new Error("Child launch record changed its actual resource owner");
     this.subagentRuns.insert(run);
     const subscription =
-      p["mode"] === "fork"
-        ? await importAgentChannelKnowledge(invocationRpc, child, {
+      frontier
+        ? await adoptAgentChannelKnowledge(invocationRpc, child, {
             operationId: intent.targetKey,
             parentChannelId: intent.channelId,
             channelId: intent.taskChannelId,
             contextId,
-            knowledge: p["knowledge"] as unknown as NativeChannelKnowledge,
+            frontier,
             config,
           })
         : await subscribeAgentToChannel(invocationRpc, child, {
@@ -5247,7 +5456,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     runId: string,
     query: string,
     parentChannelId?: string,
-    page: { limit: number; cursor?: string } = { limit: 20 }
+    page: { limit: number; cursor?: string } = { limit: 20 },
+    toolRpc: RpcClient = this.rpc
   ): Promise<ToolExecutionResult> {
     const wrapperStartedAt = performance.now();
     const wrapperWallStartedAt = Date.now();
@@ -5270,7 +5480,7 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         }
       );
     }
-    const vcs = createSubagentVcsClient(this.rpc);
+    const vcs = createSubagentVcsClient(toolRpc);
     const childStatusStartedAt = performance.now();
     const childStatus = vcs.status({ contextId: run.childContextId });
     let statusFetchMs = 0;
@@ -5828,7 +6038,9 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     ) {
       throw new Error("retireSubagentExecution: caller does not own this subagent run");
     }
-    await this.interruptChannelAndCancelDeferredEvals(input.taskChannelId, true);
+    // Retirement owns background tools too. Flushing only the current input
+    // can acknowledge retirement while a separately owned tool still waits.
+    await this.interruptChannelAndCancelDeferredEvals(input.taskChannelId, false);
     return { retired: true };
   }
 
@@ -6243,6 +6455,10 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
       config: this.getAgentSettings(),
       channels: this.subscriptions.listAll(),
       tools: { active: activeTools },
+      storage: {
+        engine: this.dolt ? "dolt" : "sqlite",
+        compaction: this.doltGcState(),
+      },
       execution,
     };
   }
@@ -6580,11 +6796,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
           displayName: descriptor.name,
         },
         policy: this.getPublishPolicy(channelId) ?? "all",
-        ...(this.subagentIdentity()?.taskChannelId === channelId
-          ? { reportTo: this.subagentIdentity()!.parentParticipantId }
-          : {}),
+        ...this.nativeReportTo(channelId),
       },
     };
+  }
+
+  /** A subagent reports to its parent on its task channel; the projection's binding is immutable, so every path that
+   *  binds it (a fresh open, a fork's adoption) names the same recipient. */
+  private nativeReportTo(channelId: string): { reportTo: string } | Record<string, never> {
+    const subagent = this.subagentIdentity();
+    return subagent?.taskChannelId === channelId ? { reportTo: subagent.parentParticipantId } : {};
   }
 
   override async resumeAfterRestart(input: LifecycleResumeInput): Promise<void> {
@@ -6722,6 +6943,8 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
   private readonly nativeEvalExecution = createNativeEvalExecution({
     harness: () => this.admittedAgentSession(),
     acknowledgements: this.agentEvalAcknowledgements,
+    awaiting: this.agentEvalAwait,
+    ownerId: () => this.rpcSelfId,
     scopeForConversation: async (conversationId, context) =>
       (
         await retainedNativeConversationChannel(
@@ -6731,6 +6954,13 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
         )
       ).channelId,
     bindExecution: (api, context) => this.bindNativeToolExecution(api, context),
+  });
+
+  /** The eval kernel this agent hosts in its own cell (docs/dolt-redesign.md §6.11.6). */
+  private readonly hostedEvalKernel = new HostedEvalKernel({
+    hostCode: (spec) => this.hostCode(spec),
+    getStateValue: (key) => this.getStateValue(key),
+    setStateValue: (key, value) => this.setStateValue(key, value),
   });
 
   protected executeNativeEval(...args: Parameters<NativeEvalExecution["execute"]>) {

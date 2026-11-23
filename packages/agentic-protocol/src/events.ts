@@ -987,8 +987,6 @@ export interface TrajectoryEvent<
   trajectoryId: TrajectoryId;
   branchId: BranchId;
   seq: number;
-  prevEventHash: string;
-  eventHash: string;
 }
 
 export function agenticSlice<K extends EventKind>(

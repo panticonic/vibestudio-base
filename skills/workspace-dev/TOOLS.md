@@ -213,9 +213,9 @@ policy and receipts. There is no scaffold-specific publication recovery API.
 ## eval
 
 Runs TypeScript/JavaScript server-side in your own notebook sandbox (a
-per-agent EvalDO), even when no panel is open. The live heap persists while
-execution or cancellation is in progress and for 30 minutes of inactivity
-afterwards; every cell renews this idle lease. After an unavoidable restart,
+per-agent eval kernel), even when no panel is open. The live heap persists from the
+first cell until the notebook is reset or retired (no idle timeout); a server
+drain or restart ends it. After an unavoidable restart,
 `[kernel] Restarted` lists which scope keys were restored and which were lost.
 In eval, `rpc`, `services`, `fs`, `ctx`, `scope`, `scopes`, `db`, `help` (and,
 in agent eval, `chat`) are injected free variables. Public `rpc.call` requires
@@ -759,8 +759,8 @@ When iterating on an open panel after code changes, keep its handle in
 const observation = await scope.panel.rebuild();
 ```
 
-The notebook heap is not replaced between evals; its idle lease lasts 30
-minutes after execution and cancellation settle. A panel handle in scope also
+The notebook heap is not replaced between evals; it stays resident until a
+reset, retirement, drain, or restart (no idle timeout). A panel handle in scope also
 survives a kernel restart: the recovery snapshot stores its id and reacquires
 it by id. Reopening the source instead creates duplicates and can evict the
 panel you meant to inspect.

@@ -11,7 +11,7 @@
  *                     DIFFERENT semantic content. Under intent "exact" this
  *                     is an integrity violation (a divergent duplicate —
  *                     surface it). It never means "safe to ignore".
- * - "head-conflict":  expectedHeadHash did not match the current head and
+ * - "head-conflict":  expectedHead did not match the current head and
  *                     none of the batch was an already-applied replay. The
  *                     caller's fold is stale; the events are NEW — reload
  *                     and retry the append.

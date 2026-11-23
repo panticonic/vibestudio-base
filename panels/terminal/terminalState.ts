@@ -1,3 +1,4 @@
+import { createJsonMergePatch } from "@vibestudio/shared/panelStateArgs";
 import type {
   PerSessionState,
   ScratchBuffer,
@@ -11,6 +12,7 @@ import {
   type KeybindingAction,
   type KeybindingOverrides,
 } from "./keybindings.js";
+import { clampSplitRatio } from "./splitPaneModel.js";
 
 export const TERMINAL_STATE_SCHEMA_VERSION = 3;
 export const SCRATCH_BUFFER_MAX_COUNT = 50;
@@ -38,6 +40,20 @@ export function defaultTerminalState(): TerminalState {
     scratchOpen: false,
     schemaVersion: TERMINAL_STATE_SCHEMA_VERSION,
   };
+}
+
+/** Persist a complete terminal snapshot through the state's JSON merge-patch API. */
+export function terminalStatePatch(
+  previous: Record<string, unknown>,
+  state: TerminalState
+): Record<string, unknown> {
+  // Live updates can contain transient values, such as a new session's
+  // empty working directory. Save the same representation we can reopen.
+  const normalized = normalizeTerminalState({ ...state });
+  const snapshot = JSON.parse(
+    JSON.stringify({ ...normalized, scratchOpen: state.scratchOpen })
+  ) as Record<string, unknown>;
+  return createJsonMergePatch(previous, snapshot) as Record<string, unknown>;
 }
 
 export function loadTerminalState(raw: unknown): TerminalState {
@@ -261,7 +277,7 @@ function normalizeSplitNode(value: unknown): SplitNode | undefined {
   return {
     kind: "split",
     direction: value["direction"] === "column" ? "column" : "row",
-    ratio: clampNumber(value["ratio"], 0.15, 0.85, 0.5),
+    ratio: clampSplitRatio(clampNumber(value["ratio"], 0, 1, 0.5)),
     a,
     b,
   };

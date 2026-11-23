@@ -39,8 +39,8 @@ throw cleanup in place of the original operation error.
 
 ## One bounded causal packet
 
-Use the public runtime GAD client to join one invocation to its durable turn,
-events, semantic commands, effect intents, and receipts:
+Use the runtime GAD client to read one invocation, its durable turn, and its
+recorded events.
 
 ```ts
 import { gad } from "@workspace/runtime";
@@ -50,16 +50,15 @@ const packet = await gad.diagnoseInvocation({
   branchId,
   invocationId,
   eventLimit: 20,
-  commandLimit: 20,
-  effectLimit: 50,
 });
 ```
 
 The packet is read-only and exact-coordinate scoped. `summary.truncated`
 reports whether any bounded section has more evidence. A missing coordinate
-returns the requested coordinate with null invocation/turn and empty joined
-collections; it is not guessed from a similarly named call. Use the full
-trajectory only when this packet is insufficient.
+returns the requested coordinate with a null invocation and turn and an empty
+event list. Use the full trajectory when this packet is insufficient.
+Workspace commands and their causal links are available through the VCS
+provenance API for the history the caller can read.
 
 For an outside-lineage authority refusal, `contextIntegrity.fact()` gives the
 session latch and `contextIntegrity.explain({ key, cursor, limit })` pages the

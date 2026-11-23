@@ -162,7 +162,7 @@ function runtimeHarness(
           return {
             id: currentEntityId,
             kind: "panel",
-            contextId: "ctx:test",
+            contextId: (args[0] as { contextId?: string }).contextId ?? "ctx:test",
             targetId: currentEntityId,
             source: { repoPath: "panels/new", effectiveVersion: "" },
             created: true,
@@ -748,6 +748,28 @@ describe("panel runtime topology composition", () => {
     );
   });
 
+  it.each([
+    [undefined, undefined, "ctx:ctx:test"],
+    ["feature", undefined, "ctx:feature"],
+    ["feature", "main", "main"],
+  ])("retains the source ref for a code panel in context %s with ref %s", async (contextId, ref, sourceRef) => {
+    const { runtime, call } = runtimeHarness();
+    await runtime.createPanelSlot("panels/new", {
+      ...(contextId ? { contextId } : {}),
+      ...(ref ? { ref } : {}),
+    });
+    expect(call).toHaveBeenCalledWith(
+      "main",
+      "workspace-state.slot.create",
+      [expect.objectContaining({
+        initialEntry: expect.objectContaining({
+          options: expect.objectContaining({ ref: sourceRef }),
+        }),
+      })],
+      undefined,
+    );
+  });
+
   it("reports an unassigned presentation as explicit pending state", async () => {
     const { runtime } = runtimeHarness({ hostAvailable: false });
 
@@ -1137,6 +1159,36 @@ describe("panel runtime topology composition", () => {
         .filter((entry) => entry[1] === "_agent.tree")
         .map((entry) => entry[0]),
     ).toEqual(["panel:nav-new", "panel:nav-replacement"]);
+  });
+
+  it("answers agent calls on a browser panel from the host instead of routing to a runtime that cannot exist", async () => {
+    const document = {
+      kind: "synth",
+      text: "Northern harbour",
+      structure: { tag: "BODY", children: [{ tag: "H1", text: "Northern harbour" }] },
+    };
+    const evaluate = vi.fn(async () => document);
+    const close = vi.fn(async () => undefined);
+    const { runtime, call } = runtimeHarness({
+      browserReady: true,
+      browserSource: "browser:https://example.test/a/b?q=1#top",
+      createCdp: () =>
+        ({ session: async () => ({ page: { evaluate }, close }) }) as never,
+    });
+    const handle = runtime.getPanelHandle("panel:tree/new");
+
+    await expect(handle.state()).resolves.toEqual({});
+    await expect(handle.routes()).resolves.toEqual({
+      href: "https://example.test/a/b?q=1#top",
+      pathname: "/a/b",
+      search: "?q=1",
+      hash: "#top",
+    });
+    await expect(handle.tree()).resolves.toEqual(document.structure);
+    await expect(handle.setMode("fixture")).resolves.toBeUndefined();
+    expect(
+      call.mock.calls.filter((entry) => String(entry[1]).startsWith("_agent.")),
+    ).toEqual([]);
   });
 
   it("returns a code slot at durable commit without waiting for activation", async () => {

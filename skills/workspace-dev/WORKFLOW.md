@@ -317,7 +317,7 @@ return {
 ```
 
 `scope.myAppPanel` stays the same live `PanelHandle` across cells while the
-notebook is warm (a 30-minute lease). A kernel restart restores it too: the
+notebook is warm (resident until reset, retirement, or a restart). A kernel restart restores it too: the
 recovery snapshot keeps the handle's id and reacquires it by id, so never open
 a duplicate to get it back.
 

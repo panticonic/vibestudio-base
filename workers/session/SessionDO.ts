@@ -1,0 +1,409 @@
+import {
+  DurableObjectBase,
+  rpc,
+  type DurableObjectContext,
+} from "@workspace/runtime/worker/kernel";
+import { callOrRestart, cpuLimitForTimeout, type HostedCode } from "@vibestudio/durable/codeHost";
+import type { LifecyclePrepareInput } from "@workspace/runtime/worker/kernel";
+import type {
+  ResidentChannelCancellationInput,
+  ResidentChannelDeliveryInput,
+  ResidentChannelInvocationInput,
+} from "@vibestudio/shared/residentSession";
+import type {
+  KernelCaller,
+  KernelEventPage,
+  KernelRunSnapshot,
+  KernelStartAck,
+} from "../eval-kernel/contract.js";
+
+/** The class of dynamic code a session entity hosts (the manifest's `hosts` entry names the same). */
+export const SESSION_KERNEL_SOURCE = "workers/eval-kernel";
+export const SESSION_KERNEL_CLASS = "EvalKernel";
+const KERNEL_NAME = "kernel";
+const KERNEL_HOSTED_KEY = "kernel_hosted";
+
+/**
+ * How long a call to the kernel may take before the kernel is treated as not answering and
+ * restarted (docs/dolt-redesign.md §7.8; `callOrRestart`). Generous: a restart discards the heap.
+ * `await` blocks for the `waitMs` the caller chose, so its budget is that plus this.
+ */
+const KERNEL_CALL_BUDGET_MS = 60_000;
+/** Cancellation may wait for an owner's cleanup handlers, and a reset for a stuck run's grace. */
+const KERNEL_CONTROL_BUDGET_MS = 180_000;
+
+const WEBSITE_CLOSED = {
+  kind: "closed",
+  reason: "A session's host controls and channel traffic are not exposed to websites.",
+} as const;
+
+/**
+ * A caller's own runs: the principal the session serves may be a website, which acts through its
+ * authenticated launch scope. Every call is still checked in the class (`authorizeCaller`).
+ */
+const WEBSITE_OWN_RUNS = {
+  kind: "eligible",
+  rationale:
+    "A session serves exactly one authenticated principal; it accepts only that principal (or the host acting for it).",
+} as const;
+
+/** The rpc authority of a run's own calls: callers are checked in the class (`authorizeCaller`). */
+const SESSION_METHOD = {
+  website: WEBSITE_OWN_RUNS,
+  principals: ["host", "user", "code", "session", "website"],
+  effect: { kind: "open" },
+  tier: "open",
+} as const;
+
+/** Host-only calls: the lifecycle and settlement paths no principal reaches. */
+const SESSION_HOST_METHOD = {
+  website: WEBSITE_CLOSED,
+  principals: ["host"],
+  effect: { kind: "open" },
+  tier: "open",
+} as const;
+
+function refuse(message: string, code: string): never {
+  throw Object.assign(new Error(message), { code });
+}
+
+/**
+ * A session entity (docs/dolt-redesign.md §7.2 and §7.5.1).
+ *
+ * Panels, the CLI and the system-test runner have no root of their own, so
+ * they cannot host code. A session entity is the entity that does: it is created
+ * through `runtime.createEntity` with the initiating caller as its parent (the
+ * lineage `resolveParentPanel` walks), keyed `session:<principal>:<scope>`, and
+ * it hosts one kernel (a class of dynamic code) with `hostCode`.
+ *
+ * The host does not check "may this caller reach that kernel": only this entity
+ * can. This class therefore does two things and nothing else:
+ *
+ *  - it authenticates its caller. It serves exactly one principal (named in its
+ *    `stateArgs`); a caller is accepted if it is that principal or the host
+ *    service acting for it (a call the host has verified and admitted);
+ *  - it relays the kernel's call contract (`start`, `await`, `events`,
+ *    `cancel`, ...) with the admission nonce of the run it names, which the
+ *    kernel checks again (§7.5.1). It keeps `(runId, nonce)` in its own table
+ *    so a principal that returns after a restart can pull.
+ */
+export class SessionDO extends DurableObjectBase {
+  static override schemaVersion = 1;
+
+  constructor(ctx: DurableObjectContext, env: unknown) {
+    super(ctx, env);
+  }
+
+  protected createTables(): void {
+    this.sql.exec(`
+      CREATE TABLE session_runs (
+        run_id TEXT PRIMARY KEY,
+        nonce TEXT NOT NULL,
+        admitted_at INTEGER NOT NULL
+      )
+    `);
+  }
+
+  protected override requiredTables(): readonly string[] {
+    return ["session_runs"];
+  }
+
+  /** The one principal this session serves, from the creation `stateArgs`. */
+  private principalId(): string {
+    const principal = this.ctx.props?.stateArgs?.["principalId"];
+    if (typeof principal !== "string" || principal.length === 0)
+      refuse("This session has no principal", "EINVAL");
+    return principal;
+  }
+
+  /**
+   * The principal itself, the host acting for it, or the user's own shell (a CLI or desktop
+   * shell is the user, who owns every session of the workspace; the host applies the same rule
+   * when a shell selects a live session owner at admission).
+   */
+  private authorizeCaller(): void {
+    const caller = this.caller;
+    if (!caller) refuse("A session call needs an authenticated caller", "EACCES");
+    if (caller.callerKind === "server" || caller.callerKind === "shell") return;
+    if (caller.callerId !== this.principalId())
+      refuse("This session serves another principal", "EACCES");
+  }
+
+  private requireHost(): void {
+    if (this.caller?.callerKind !== "server") refuse("This call is for the host", "EACCES");
+  }
+
+  private kernel(): Promise<HostedCode> {
+    this.setStateValue(KERNEL_HOSTED_KEY, "1");
+    return this.hostCode({
+      name: KERNEL_NAME,
+      executable: { source: SESSION_KERNEL_SOURCE, className: SESSION_KERNEL_CLASS },
+    });
+  }
+
+  private nonceOf(runId: string): string {
+    const row = this.sql
+      .exec(`SELECT nonce FROM session_runs WHERE run_id = ?`, runId)
+      .toArray()[0];
+    if (!row) refuse(`Run ${runId} was not admitted by this session`, "ENOTFOUND");
+    return String(row["nonce"]);
+  }
+
+  /** Scope-level calls name no run: the newest admission's nonce, or none when there is no run yet. */
+  private scopeCaller(): KernelCaller {
+    const row = this.sql
+      .exec(`SELECT nonce FROM session_runs ORDER BY admitted_at DESC, rowid DESC LIMIT 1`)
+      .toArray()[0];
+    return { kind: "session", admissionNonce: row ? String(row["nonce"]) : "" };
+  }
+
+  private runCaller(runId: string): KernelCaller {
+    return { kind: "session", admissionNonce: this.nonceOf(runId) };
+  }
+
+  /** Accept a run the host has admitted (§7.3): `admissionNonce` is the one the admission returned. */
+  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  async start(
+    input: { runId: string } & Record<string, unknown>,
+    admissionNonce: string
+  ): Promise<KernelStartAck> {
+    this.authorizeCaller();
+    if (typeof input?.runId !== "string" || input.runId.length === 0)
+      refuse("start needs a run id", "EINVAL");
+    if (typeof admissionNonce !== "string" || admissionNonce.length === 0)
+      refuse("start needs the admission nonce", "EINVAL");
+    // Recorded before the kernel hears of it: a start whose answer is lost is retried
+    // with a fresh admission, and the retry replaces the nonce the kernel refreshes.
+    this.sql.exec(
+      `INSERT INTO session_runs (run_id, nonce, admitted_at) VALUES (?, ?, ?)
+       ON CONFLICT(run_id) DO UPDATE SET nonce = excluded.nonce`,
+      input.runId,
+      admissionNonce,
+      Date.now()
+    );
+    const hosted = await this.kernel();
+    // The run's timeoutMs bounds its CPU: the limit rides on this one call (§7.8).
+    const limits = cpuLimitForTimeout(input["timeoutMs"]);
+    const kernel = limits ? hosted.limited(limits) : hosted;
+    try {
+      return await callOrRestart<KernelStartAck>(
+        kernel,
+        KERNEL_CALL_BUDGET_MS,
+        "start",
+        { ...input, executionSessionNonce: admissionNonce },
+        {
+          kind: "session",
+          admissionNonce,
+        } satisfies KernelCaller
+      );
+    } catch (error) {
+      // A refused start leaves no run behind to pull.
+      this.sql.exec(
+        `DELETE FROM session_runs WHERE run_id = ? AND nonce = ?`,
+        input.runId,
+        admissionNonce
+      );
+      throw error;
+    }
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "read" })
+  async await(runId: string, options?: { waitMs?: number }): Promise<KernelRunSnapshot> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      Math.min(Math.max(options?.waitMs ?? 30_000, 0), 120_000) + KERNEL_CALL_BUDGET_MS,
+      "await",
+      runId,
+      options ?? {},
+      this.runCaller(runId)
+    );
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "read" })
+  async events(
+    runId: string,
+    options?: { after?: number; limit?: number }
+  ): Promise<KernelEventPage> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "events",
+      runId,
+      options ?? {},
+      this.runCaller(runId)
+    );
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  async cancel(runId: string): Promise<{ ok: true; forcedReset: boolean }> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CONTROL_BUDGET_MS,
+      "cancel",
+      runId,
+      this.runCaller(runId)
+    );
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "read" })
+  async get(runId: string): Promise<KernelRunSnapshot> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "get",
+      runId,
+      this.runCaller(runId)
+    );
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "read" })
+  async receipt(runId: string): Promise<unknown> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "receipt",
+      runId,
+      this.runCaller(runId)
+    );
+  }
+
+  /**
+   * The principal's durable acknowledgement that it consumed the run's exact terminal result.
+   * The kernel records the digests and from then on refuses a result that differs from them.
+   */
+  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  async acknowledge(
+    runId: string,
+    identity: { runDigest: string; resultDigest: string }
+  ): Promise<{ acknowledged: true; duplicate: boolean }> {
+    this.authorizeCaller();
+    return callOrRestart(
+      await this.kernel(),
+      KERNEL_CALL_BUDGET_MS,
+      "acknowledgeRunResult",
+      runId,
+      identity,
+      this.runCaller(runId)
+    );
+  }
+
+  /** Host only: the host gates a scope reset with its own approval before it calls this. */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
+  async reset(): Promise<{ ok: boolean }> {
+    this.requireHost();
+    const result = await callOrRestart<{ ok: boolean }>(
+      await this.kernel(),
+      KERNEL_CONTROL_BUDGET_MS,
+      "reset",
+      this.scopeCaller()
+    );
+    // The kernel kept no run, so the session keeps no nonce for one.
+    this.sql.exec(`DELETE FROM session_runs`);
+    return result;
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "read" })
+  async readScopeTextPage(key: string, offset?: number, limit?: number): Promise<unknown> {
+    this.authorizeCaller();
+    return (await this.kernel()).call("readScopeTextPage", key, offset, limit, this.scopeCaller());
+  }
+
+  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  async deleteScopeValue(key: string): Promise<{ ok: boolean; existed: boolean }> {
+    this.authorizeCaller();
+    return (await this.kernel()).call("deleteScopeValue", key, this.scopeCaller());
+  }
+
+  /**
+   * Channel traffic for the resident sessions a notebook registered. The channel
+   * addresses this entity (the kernel acts as it), but the receivers live in the
+   * hosted kernel: this entity relays, and the kernel checks the sender against the
+   * channel it registered (docs/dolt-redesign.md §7.2).
+   */
+  @rpc({ ...SESSION_HOST_METHOD, principals: ["host", "code"], sensitivity: "write" })
+  override async acceptChannelDelivery(input: ResidentChannelDeliveryInput): Promise<unknown> {
+    return (await this.kernel()).call("relayChannelDelivery", input, {
+      id: this.rpcCallerId,
+      kind: this.rpcCallerKind,
+    });
+  }
+
+  @rpc({ ...SESSION_HOST_METHOD, principals: ["code"], sensitivity: "write" })
+  override async acceptChannelInvocation(input: ResidentChannelInvocationInput): Promise<unknown> {
+    return (await this.kernel()).call("relayChannelInvocation", input);
+  }
+
+  @rpc({ ...SESSION_HOST_METHOD, principals: ["code"], sensitivity: "write" })
+  override async cancelChannelInvocation(
+    input: ResidentChannelCancellationInput
+  ): Promise<unknown> {
+    return (await this.kernel()).call("relayChannelCancellation", input);
+  }
+
+  /**
+   * Facts only the host observes, recorded in the run's event log so a puller sees them in
+   * `events` (docs/dolt-redesign.md §7.5.2). The host calls these; no principal does.
+   */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
+  async recordAuthorityEvent(
+    runId: string,
+    kind: "authority-requested" | "authority-decided",
+    payload: unknown
+  ): Promise<void> {
+    this.requireHost();
+    await (await this.kernel()).call("appendAuthorityEvent", runId, kind, payload);
+  }
+
+  /**
+   * The host's publication interlock for a workspace bundle a notebook imports: the host reserves
+   * the artifact, this entity's kernel commits its owner row, the host finalizes.
+   */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "write" })
+  async retainExecutionRoot(
+    runId: string,
+    moduleSpecifier: string,
+    artifact: unknown
+  ): Promise<void> {
+    this.requireHost();
+    await (await this.kernel()).call("retainExecutionRoot", runId, moduleSpecifier, artifact);
+  }
+
+  /** The workspace bundles this notebook retains, for the host's execution-root census. */
+  @rpc({ ...SESSION_HOST_METHOD, sensitivity: "read" })
+  async executionRoots(): Promise<unknown[]> {
+    this.requireHost();
+    // A session that never hosted a kernel has no roots to list, and listing is not a reason to start one.
+    if (this.getStateValue(KERNEL_HOSTED_KEY) !== "1") return [];
+    return (await this.kernel()).call("listRetainedExecutionRoots") as Promise<unknown[]>;
+  }
+
+  /**
+   * Retirement and suspension reach the kernel through this entity: its runs are
+   * cancelled and the panels it opened retired before the entity goes (a hosted
+   * class has no lifecycle of its own), then the heap's hold ends.
+   */
+  override async releaseForLifecycle(input: LifecyclePrepareInput): Promise<{ status: "ready" }> {
+    if (this.getStateValue(KERNEL_HOSTED_KEY) === "1") {
+      const kernel = await this.kernel();
+      await kernel.call("lifecycle", input);
+      if (input.phase === "release") await kernel.release();
+    }
+    return super.releaseForLifecycle(input) as Promise<{ status: "ready" }>;
+  }
+
+  /**
+   * Ends the notebook heap's residency hold. The kernel's committed state stays
+   * until the session entity is retired; the heap may now be evicted.
+   */
+  @rpc({ ...SESSION_METHOD, sensitivity: "write" })
+  async end(): Promise<{ ok: true }> {
+    this.authorizeCaller();
+    await (await this.kernel()).release();
+    return { ok: true };
+  }
+}

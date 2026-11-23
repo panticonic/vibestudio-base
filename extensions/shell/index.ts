@@ -199,8 +199,7 @@ export async function activate(ctx: ExtensionContext) {
         contextRevisionDisplay(ctx, contextId),
     },
   );
-  // Resolve the cwd-confinement root for a request: the context's materialized
-  // working folder when contextId is set (§4.1), else the workspace root.
+  // Terminals with a context use its writable scratch as their confinement root.
   const confinementRoot = async (contextId?: string): Promise<string> => {
     if (!contextId) return (await ctx.workspace.getInfo()).path;
     const { scratch } = await ctx.workspace.ensureContextFolder(contextId);

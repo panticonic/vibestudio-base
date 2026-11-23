@@ -104,7 +104,7 @@
     },
     {
       "path": "natlang/reviewVcsDelivery.d.nl.ts",
-      "sha256": "d49c8f2d10134b73da49b7d7d3c56d66f94d4061798a81af5ef8d65999ba0029"
+      "sha256": "c7b9328cd7091126189f5fc09097b4a69e5b4b4f46e95cb4d84e9254af00d7d1"
     },
     {
       "path": "natlang/reviewVcsDelivery.nl",
@@ -180,7 +180,7 @@
     },
     {
       "path": "references/public-contract.json",
-      "sha256": "4fca4832572ed670ef5667f9f6a8e3098b51daf6a7aade500eb5cee7304a5385"
+      "sha256": "5b5c718aeffaa1e2f8e1b4b3ac48b6c640fe4ab451d397cb568febeb423dfd12"
     },
     {
       "path": "references/public-contract.md",
@@ -215,5 +215,5 @@
       "sha256": "81d18bf544324c35356d6e3ab9dc55271f5e9448d6aabf5ba01a8521430a2877"
     }
   ],
-  "packageDigest": "0a4b5a305acf009025ee10a723f645b2a07e4162d9e51ebd12cad772ad963729"
+  "packageDigest": "a3783a44f4497dba603fb6675554412bdff35da2ed61a7d456620c595fedb189"
 }

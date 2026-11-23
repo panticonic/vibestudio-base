@@ -1,5 +1,7 @@
 import type { ResidentChannelLifecycle } from "@vibestudio/shared/residentSession";
 import { durableRpcMethods } from "@vibestudio/durable/rpcMethods";
+import type { DurableObjectSchemaUpgrade } from "@vibestudio/durable/schema";
+import { CHANNEL_SCHEMA_V125_SHAPE, CHANNEL_SCHEMA_V126_SHAPE } from "./channel-schema-history.js";
 import { agentRpcMethods } from "@workspace/agentic-do/rpc-contract";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import { resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
@@ -40,7 +42,7 @@ import {
   ENVELOPE_ORIGIN_ANNOTATION,
   type EnvelopeOrigin,
 } from "@workspace/agentic-protocol";
-import { ChannelLedger } from "./channel-ledger.js";
+import { CHANNEL_LEDGER_DDL, ChannelLedger } from "./channel-ledger.js";
 import {
   observeChannelEvent,
   type ChannelObservationOutcome,
@@ -54,7 +56,7 @@ import type {
   ServerLogEvent as ChannelEvent,
   PublishReceipt,
 } from "@workspace/pubsub";
-import type { NativeChannelKnowledge } from "@workspace/agentic-core/native-channel-knowledge";
+import type { NativeForkFrontier } from "@workspace/agentic-core/native-channel-knowledge";
 import {
   channelSubscriptionQueuingStrategy,
   encodeChannelSubscriptionRecord,
@@ -71,7 +73,81 @@ import type {
   ServerLogEvent,
 } from "@workspace/pubsub";
 
-const PUBSUB_CHANNEL_SCHEMA_BASELINE = 125;
+const PUBSUB_CHANNEL_SCHEMA_BASELINE = 127;
+/**
+ * The DDL of the tables that carried `--` comments before schema 126. A Dolt store drops
+ * comments from the DDL it keeps and the shape fingerprint cannot represent them
+ * (`installDurableObjectSchema` refuses them), so the notes are here. `participants.last_active_at`
+ * is the freshest real client activity across a user's subscriptions; `channel_members` is the
+ * durable membership (WP7 section 3), separate from the ephemeral `participants` roster, with the
+ * workspace-wide pending-invite index in GAD; `invite_index_ops` is a crash-safe membership to
+ * workspace-inbox projection (a row is replaced whenever the desired state changes and removed only
+ * when GAD confirms its op_id); `presence_last_seen` outlives the `participants` row so an offline
+ * member renders "last seen"; member ids are `user:<userId>`.
+ */
+const CHANNEL_TABLE_DDL = {
+  participants: `
+      CREATE TABLE IF NOT EXISTS participants (
+        id TEXT PRIMARY KEY,
+        metadata TEXT NOT NULL,
+        transport TEXT NOT NULL CHECK (transport IN ('rpc','do')),
+        last_active_at INTEGER,
+        presence_status TEXT CHECK (presence_status IN ('online','idle','away')),
+        handle TEXT
+      )
+    `,
+  participantsHandleIndex: `CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_handle
+         ON participants(handle) WHERE handle IS NOT NULL`,
+  channelMembers: `
+      CREATE TABLE IF NOT EXISTS channel_members (
+        user_id  TEXT PRIMARY KEY,
+        handle   TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at INTEGER NOT NULL
+      )
+    `,
+  inviteIndexOps: `
+      CREATE TABLE IF NOT EXISTS invite_index_ops (
+        user_id    TEXT PRIMARY KEY,
+        op_id      TEXT NOT NULL UNIQUE,
+        revision   INTEGER NOT NULL CHECK (revision > 0),
+        action     TEXT NOT NULL CHECK (action IN ('put', 'delete')),
+        handle     TEXT,
+        added_by   TEXT,
+        added_at   INTEGER,
+        updated_at INTEGER NOT NULL,
+        CHECK (
+          action = 'delete' OR
+          (handle IS NOT NULL AND added_by IS NOT NULL AND added_at IS NOT NULL)
+        )
+      )
+    `,
+  inviteIndexOpsUpdatedIndex: `CREATE INDEX IF NOT EXISTS idx_invite_index_ops_updated ON invite_index_ops(updated_at)`,
+  presenceLastSeen: `
+      CREATE TABLE IF NOT EXISTS presence_last_seen (
+        participant_id TEXT PRIMARY KEY,
+        last_seen      INTEGER NOT NULL
+      )
+    `,
+} as const;
+/** The tables of CHANNEL_TABLE_DDL with their indexes, in the order the 125 upgrade recreates them. */
+const CHANNEL_RECREATED_TABLES = [
+  ["participants", [CHANNEL_TABLE_DDL.participants, CHANNEL_TABLE_DDL.participantsHandleIndex]],
+  ["channel_members", [CHANNEL_TABLE_DDL.channelMembers]],
+  ["invite_index_ops", [CHANNEL_TABLE_DDL.inviteIndexOps, CHANNEL_TABLE_DDL.inviteIndexOpsUpdatedIndex]],
+  ["presence_last_seen", [CHANNEL_TABLE_DDL.presenceLastSeen]],
+] as const;
+/** The conversation's facts (versioned): everything else a channel keeps in `state` is identity or cache. */
+const CHANNEL_FACT_KEYS = [
+  "config",
+  "initialConfig",
+  "conversationSeed",
+  "conversationSeedInstalled",
+  "createdAt",
+  "openingRequestResolution",
+  "openingRequestAuthor",
+  "openingRequestOutcome",
+] as const;
 const STRUCTURED_DELIVERY_RETRY_MS = 1_000;
 const STRUCTURED_DELIVERY_MAX_RETRY_MS = 30_000;
 import type {
@@ -98,7 +174,6 @@ import type {
 } from "@vibestudio/shared/durableWork";
 import {
   AGENTIC_EVENT_PAYLOAD_KIND,
-  LOG_GENESIS_HASH,
   agenticEventFromLogEnvelope,
   isAgenticLogEventKind,
   AGENTIC_PROTOCOL_VERSION,
@@ -249,10 +324,12 @@ interface ForkOpts extends Omit<ForkRequest, "seed"> {
   request: ForkRequest;
   forkPointPubsubId: number;
   seed?: ResolvedForkSeed;
+  /** The commit of this channel's store that appended the fork point, chosen once: a retry forks the same state. */
+  channelCommit?: string;
   agents?: Array<{
     participantId: string;
     ref: DORef;
-    knowledge: NativeChannelKnowledge | null;
+    frontier: NativeForkFrontier | null;
   }>;
 }
 
@@ -381,7 +458,7 @@ interface ChannelDeliveryInput {
 
 type ChannelObservationReceipt =
   | ChannelObservationOutcome
-  | { observedSequence: number; hash: string };
+  | { observedSequence: number; envelopeId: string | null };
 
 export interface ChannelDeliveryOutcome {
   deliveryId: string;
@@ -470,7 +547,7 @@ export class PubSubChannel
     // user's retained last-seen summary before dropping the session rows so a
     // user connected across a restart shows "last seen at restart" instead of
     // vanishing from presence history entirely.
-    this.ctx.storage.transactionSync(() => {
+    this.transactionSync(() => {
       this.sql.exec(
         `INSERT INTO presence_last_seen (participant_id, last_seen)
            SELECT id, COALESCE(last_active_at, ?) FROM participants WHERE id LIKE 'user:%'
@@ -485,42 +562,16 @@ export class PubSubChannel
     this.setStateValue("contextId", input.targetContextId);
     this.setStateValue("forkedFromContextId", input.sourceContextId);
     this.channelLog.ledger.initializeClone();
-    // These rows describe source-owned operations, not inherited knowledge.
-    for (const table of [
-      "fork_ops",
-      "fork_projection",
-      "lineage_head_outbox",
-      "lineage_heads",
-      "channel_maintenance_queue",
-      "participants",
-      "pending_calls",
-      "provider_call_claims",
-      "invite_index_ops",
-      "channel_delivery_latency_histogram",
-      "channel_delivery_mailbox",
-      "channel_relationships",
-      "channel_receipts",
-      "channel_observation_claim",
-    ])
-      this.sql.exec(`DELETE FROM ${table}`);
-    for (const key of [
-      "deliveryReadyEdgeAlarmSpins",
-      "forkSeedMarker",
-      "openingRequestResolution",
-      "openingRequestAuthor",
-      "taskParentChannelId",
-      "taskParentContextId",
-      "taskRunId",
-      "forkedFrom",
-      "forkPointId",
-      "rootChannelId",
-      "forkId",
-      "forkInitialization",
-    ])
-      this.deleteStateValue(key);
-    this.setStateValue("conversationSeed", "{}");
-    this.setStateValue("conversationSeedInstalled", "true");
-    this.setStateValue("openingRequestOutcome", "cancel");
+    // The fork's local tables (its operations, mailbox, sessions and caches)
+    // started empty and its `state` holds only what is written here: nothing of
+    // the source's operations came with it. What it inherited is the versioned
+    // conversation, and the opening request is not the child's to answer.
+    this.sql.exec(
+      `DELETE FROM channel_facts WHERE key IN ('openingRequestResolution', 'openingRequestAuthor')`,
+    );
+    this.writeFact("conversationSeed", "{}");
+    this.writeFact("conversationSeedInstalled", "true");
+    this.writeFact("openingRequestOutcome", "cancel");
     this.invalidateBroadcastParticipants();
   }
 
@@ -567,7 +618,7 @@ export class PubSubChannel
   private observationReleaseBarrier: {
     channelId: string;
     headSequence: number;
-    headHash: string;
+    headEnvelopeId: string | null;
   } | null = null;
 
   @rpc({
@@ -589,18 +640,14 @@ export class PubSubChannel
     if (stage === "delivery") {
       await this.publicationQueue.commitBarrier(this.rpcAbortSignal);
       const headSequence = this.channelLog.ledger.headSequence();
-      const headHash =
-        headSequence === 0
-          ? LOG_GENESIS_HASH
-          : this.channelLog.ledger.at(headSequence)?.hash;
-      if (!headHash)
-        throw new Error("Channel delivery release lost its canonical boundary");
+      const headEnvelopeId =
+        this.channelLog.ledger.boundaryEnvelopeId(headSequence);
       return {
         queues: ["channel-delivery"],
         barrier: {
           channelId: this.objectKey,
           headSequence,
-          headHash,
+          headEnvelopeId,
           admissionRevision: this.publicationQueue.admissionRevision,
         },
       };
@@ -609,16 +656,10 @@ export class PubSubChannel
     this.publicationQueue.seal();
     await this.publicationQueue.commitBarrier(this.rpcAbortSignal);
     const headSequence = this.channelLog.ledger.headSequence();
-    const headHash =
-      headSequence === 0
-        ? LOG_GENESIS_HASH
-        : this.channelLog.ledger.at(headSequence)?.hash;
-    if (!headHash)
-      throw new Error("Channel release lost its canonical retained boundary");
     this.observationReleaseBarrier = {
       channelId: this.objectKey,
       headSequence,
-      headHash,
+      headEnvelopeId: this.channelLog.ledger.boundaryEnvelopeId(headSequence),
     };
     return {
       queues: ["channel-observation"],
@@ -658,11 +699,10 @@ export class PubSubChannel
       )
         throw new Error("Channel release does not own this delivery boundary");
       const sequence = Number(barrier["headSequence"]);
-      const hash =
-        sequence === 0
-          ? LOG_GENESIS_HASH
-          : this.channelLog.ledger.at(sequence)?.hash;
-      if (!hash || hash !== barrier["headHash"])
+      if (
+        this.channelLog.ledger.boundaryEnvelopeId(sequence) !==
+        barrier["headEnvelopeId"]
+      )
         throw new Error(
           "Channel delivery release changed its canonical boundary",
         );
@@ -676,7 +716,7 @@ export class PubSubChannel
     if (!owned || canonicalJson(owned) !== canonicalJson(barrier))
       throw new Error("Channel release does not own this observation boundary");
     const observed = await this.waitObservedThrough(owned.headSequence);
-    if (observed.hash !== owned.headHash)
+    if (observed.envelopeId !== owned.headEnvelopeId)
       throw new Error(
         "Channel release observation changed its retained boundary",
       );
@@ -753,21 +793,8 @@ export class PubSubChannel
   }
 
   protected createTables(): void {
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS participants (
-        id TEXT PRIMARY KEY,
-        metadata TEXT NOT NULL,
-        transport TEXT NOT NULL CHECK (transport IN ('rpc','do')),
-        -- Freshest real client activity across a user's subscriptions.
-        last_active_at INTEGER,
-        presence_status TEXT CHECK (presence_status IN ('online','idle','away')),
-        handle TEXT
-      )
-    `);
-    this.sql.exec(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_participants_handle
-         ON participants(handle) WHERE handle IS NOT NULL`,
-    );
+    this.sql.exec(CHANNEL_TABLE_DDL.participants);
+    this.sql.exec(CHANNEL_TABLE_DDL.participantsHandleIndex);
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS pending_calls (
         transport_call_id TEXT PRIMARY KEY,
@@ -953,52 +980,103 @@ export class PubSubChannel
     // the ephemeral `participants` roster, which is rebuilt on reconnect. The
     // workspace-wide pending-invite index lives in GAD; membership carries no
     // duplicate acknowledgement state.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS channel_members (
-        user_id  TEXT PRIMARY KEY,   -- user:<userId>
-        handle   TEXT NOT NULL,
-        added_by TEXT NOT NULL,      -- user:<userId> (or raw callerId)
-        added_at INTEGER NOT NULL
-      )
-    `);
+    this.sql.exec(CHANNEL_TABLE_DDL.channelMembers);
     // Crash-safe membership → workspace-inbox projection. A row is replaced
     // atomically whenever the desired state changes, and removed only when the
     // matching op_id is confirmed by GAD, so an interleaved add/remove cannot
     // let an older response erase the newer intent.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS invite_index_ops (
-        user_id    TEXT PRIMARY KEY,   -- user:<userId>
-        op_id      TEXT NOT NULL UNIQUE,
-        revision   INTEGER NOT NULL CHECK (revision > 0),
-        action     TEXT NOT NULL CHECK (action IN ('put', 'delete')),
-        handle     TEXT,
-        added_by   TEXT,
-        added_at   INTEGER,
-        updated_at INTEGER NOT NULL,
-        CHECK (
-          action = 'delete' OR
-          (handle IS NOT NULL AND added_by IS NOT NULL AND added_at IS NOT NULL)
-        )
-      )
-    `);
-    this.sql.exec(
-      `CREATE INDEX IF NOT EXISTS idx_invite_index_ops_updated ON invite_index_ops(updated_at)`,
-    );
+    this.sql.exec(CHANNEL_TABLE_DDL.inviteIndexOps);
+    this.sql.exec(CHANNEL_TABLE_DDL.inviteIndexOpsUpdatedIndex);
+    // The conversation's own facts, versioned with its ledger so a fork at a
+    // sequence carries them (the `state` table is local to the object).
+    this.sql.exec(this.channelFactsDdl());
     // WP8 §3 — retained last-seen for account presence. When a user's last
     // subscribed panel leaves, we stamp `last_seen`
     // here so an offline member still renders "last seen Xm ago". Deliberately
     // OUTLIVES the ephemeral `participants` row (which is deleted on leave); a
     // (re)join clears the row. Bounded by PRESENCE_LAST_SEEN_RETENTION_MS.
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS presence_last_seen (
-        participant_id TEXT PRIMARY KEY,    -- user:<userId>
-        last_seen      INTEGER NOT NULL
+    this.sql.exec(CHANNEL_TABLE_DDL.presenceLastSeen);
+  }
+
+  private channelFactsDdl(): string {
+    return `
+      CREATE TABLE IF NOT EXISTS channel_facts (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       )
-    `);
+    `;
+  }
+
+  /**
+   * 125 to 126: the conversation's facts move from `state` (local) to `channel_facts` (versioned).
+   * 126 to 127: the hash chain is gone from the ledger (`channel_ledger_events.hash`) and from its
+   * local state row (`head_hash`, `parent_hash`).
+   */
+  protected override schemaUpgrades(): readonly DurableObjectSchemaUpgrade[] {
+    return [
+      {
+        fromVersion: 125,
+        fromFingerprint: CHANNEL_SCHEMA_V125_SHAPE,
+        upgrade: () => {
+          // The four tables whose DDL carried comments are recreated with the text a
+          // Dolt store can fingerprint; their rows move across unchanged.
+          for (const [table, statements] of CHANNEL_RECREATED_TABLES) {
+            this.sql.exec(`CREATE TABLE ${table}_upgrade AS SELECT * FROM ${table}`);
+            this.sql.exec(`DROP TABLE ${table}`);
+            for (const statement of statements) this.sql.exec(statement);
+            this.sql.exec(`INSERT INTO ${table} SELECT * FROM ${table}_upgrade`);
+            this.sql.exec(`DROP TABLE ${table}_upgrade`);
+          }
+          this.sql.exec(this.channelFactsDdl());
+          this.sql.exec(
+            `INSERT OR IGNORE INTO channel_facts (key, value)
+               SELECT key, value FROM state WHERE key IN (${CHANNEL_FACT_KEYS.map(() => "?").join(", ")})`,
+            ...CHANNEL_FACT_KEYS,
+          );
+          // The initial configuration was a column of the delivery context.
+          this.sql.exec(
+            `INSERT OR IGNORE INTO channel_facts (key, value)
+               SELECT 'initialConfig', initial_config_json FROM channel_delivery_context WHERE singleton = 1`,
+          );
+        },
+      },
+      {
+        fromVersion: 126,
+        fromFingerprint: CHANNEL_SCHEMA_V126_SHAPE,
+        upgrade: () => {
+          // The two tables are recreated with the exact text of the current DDL (an `ALTER TABLE ... DROP
+          // COLUMN` leaves the old text with a hole in it, which a SQLite store fingerprints as drift);
+          // their rows move across unchanged.
+          for (const [table, columns, statements] of [
+            [
+              "channel_ledger_events",
+              "sequence, envelope_id, payload_kind, opened_turn_id",
+              [
+                CHANNEL_LEDGER_DDL.events,
+                CHANNEL_LEDGER_DDL.openedTurnIndex,
+                CHANNEL_LEDGER_DDL.kindSequenceIndex,
+              ],
+            ],
+            [
+              "channel_ledger_state",
+              "singleton, head_sequence, observed_sequence, parent_channel_id, parent_sequence, root_observed, parent_observed",
+              [CHANNEL_LEDGER_DDL.state],
+            ],
+          ] as const) {
+            this.sql.exec(`CREATE TABLE ${table}_upgrade AS SELECT ${columns} FROM ${table}`);
+            this.sql.exec(`DROP TABLE ${table}`);
+            for (const statement of statements) this.sql.exec(statement);
+            this.sql.exec(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM ${table}_upgrade`);
+            this.sql.exec(`DROP TABLE ${table}_upgrade`);
+          }
+        },
+      },
+    ];
   }
 
   protected override requiredTables(): readonly string[] {
     return [
+      "channel_facts",
       "participants",
       "pending_calls",
       "provider_call_claims",
@@ -1335,7 +1413,7 @@ export class PubSubChannel
     }
     this.deliveryProjection.cursor();
     this.adoptDurableWorkWorkerGeneration(input.workerId);
-    const claims = this.ctx.storage.transactionSync(() => {
+    const claims = this.transactionSync(() => {
       this.materializeDueMaintenance(input.now);
       const claims: WorkClaim[] = [];
       const maintenance = this.sql
@@ -1527,7 +1605,7 @@ export class PubSubChannel
         return this.settleObservation(request);
       if (queue !== "channel-delivery") return "stale";
       if (request.itemId.startsWith("maintenance:")) {
-        return this.ctx.storage.transactionSync(() => {
+        return this.transactionSync(() => {
           const row = this.sql
             .exec(
               `SELECT lease_owner, lease_generation, disposition
@@ -1580,7 +1658,7 @@ export class PubSubChannel
       ) {
         throw new Error("settleReadyWork: invalid channel delivery outcome");
       }
-      return this.ctx.storage.transactionSync(() => {
+      return this.transactionSync(() => {
         const row = this.sql
           .exec(
             `SELECT claimed_by, claim_generation, state, created_at, event_kind
@@ -1670,7 +1748,7 @@ export class PubSubChannel
       if (queue === "channel-observation") return this.failObservation(request);
       if (queue !== "channel-delivery") return "stale";
       if (request.itemId.startsWith("maintenance:")) {
-        return this.ctx.storage.transactionSync(() => {
+        return this.transactionSync(() => {
           const row = this.sql
             .exec(
               `SELECT attempts
@@ -1715,7 +1793,7 @@ export class PubSubChannel
           ? (request.error as { code?: unknown }).code
           : undefined;
       if (errorCode === "PermanentChannelDelivery") {
-        return this.ctx.storage.transactionSync(() => {
+        return this.transactionSync(() => {
           const updated = this.sql.exec(
             `UPDATE channel_delivery_mailbox
               SET state = 'terminal-integrity', claimed_by = NULL, last_failure_json = ?,
@@ -1790,7 +1868,7 @@ export class PubSubChannel
           return { retryAt: Date.now() };
         });
       }
-      return this.ctx.storage.transactionSync(() => {
+      return this.transactionSync(() => {
         const row = this.sql
           .exec(
             `SELECT attempts
@@ -2027,7 +2105,7 @@ export class PubSubChannel
 
   private readonly observationWaiters = new Set<{
     sequence: number;
-    resolve: (value: { observedSequence: number; hash: string }) => void;
+    resolve: (value: { observedSequence: number; envelopeId: string | null }) => void;
     reject: (error: unknown) => void;
   }>();
 
@@ -2047,7 +2125,7 @@ export class PubSubChannel
     if (!input.workerId || input.limit < 1)
       throw new Error("Channel observation has an invalid claim request");
     this.adoptDurableWorkWorkerGeneration(input.workerId);
-    return this.ctx.storage.transactionSync(() => {
+    return this.transactionSync(() => {
       if (!this.observationReady()) return [];
       const existing = this.sql
         .exec(
@@ -2146,11 +2224,11 @@ export class PubSubChannel
           { signal },
         ),
       );
-      if (receipt.seq !== 0 || receipt.hash !== LOG_GENESIS_HASH)
+      if (receipt.seq !== 0)
         throw new Error(
           "Channel root observation changed its canonical genesis",
         );
-      return { observedSequence: 0, hash: receipt.hash };
+      return { observedSequence: 0, envelopeId: null };
     }
     const signal = this.rpcAbortSignal ?? undefined;
     const throughSequence = Number(row["through_sequence"]);
@@ -2217,7 +2295,7 @@ export class PubSubChannel
     );
     if (
       receipt.observedSequence !== observation.throughSequence ||
-      receipt.hash !== observation.expectedParentHash
+      receipt.envelopeId !== observation.parentEnvelopeId
     )
       throw new Error(
         "Channel fork observation changed its original parent prefix",
@@ -2228,8 +2306,8 @@ export class PubSubChannel
     kind: "fork";
     parentChannelId: string;
     throughSequence: number;
-    expectedParentHash: string;
-  }): Promise<{ observedSequence: number; hash: string }> {
+    parentEnvelopeId: string | null;
+  }): Promise<{ observedSequence: number; envelopeId: string | null }> {
     const signal = this.rpcAbortSignal ?? undefined;
     return this.runDetached(async () => {
       const fork = await this.inviteIndex.callWithOptions(
@@ -2245,19 +2323,19 @@ export class PubSubChannel
         ],
         { signal },
       );
-      if (
-        fork.forkSeq !== input.throughSequence ||
-        fork.forkHash !== input.expectedParentHash
-      )
+      if (fork.forkSeq !== input.throughSequence)
         throw new Error(
           "Channel fork observation acknowledgement changed its canonical prefix",
         );
-      return { observedSequence: fork.forkSeq, hash: fork.forkHash };
+      return {
+        observedSequence: fork.forkSeq,
+        envelopeId: input.parentEnvelopeId,
+      };
     });
   }
 
   private settleObservation(request: SettleRequest): ClaimSettlement {
-    const result = this.ctx.storage.transactionSync(() => {
+    const result = this.transactionSync(() => {
       const row = this.sql
         .exec(`SELECT * FROM channel_observation_claim WHERE singleton=1`)
         .toArray()[0];
@@ -2276,12 +2354,11 @@ export class PubSubChannel
       const outcome = request.outcome as {
         observedSequence?: unknown;
         envelopeId?: unknown;
-        hash?: unknown;
       };
       if (!next)
         throw new Error("Channel observation receipt has no owned event");
       if (next.kind === "root") {
-        if (outcome.observedSequence !== 0 || outcome.hash !== LOG_GENESIS_HASH)
+        if (outcome.observedSequence !== 0 || outcome.envelopeId !== null)
           throw new Error(
             "Channel root observation receipt changed its genesis",
           );
@@ -2289,7 +2366,7 @@ export class PubSubChannel
       } else if (next.kind === "fork") {
         if (
           outcome.observedSequence !== next.throughSequence ||
-          outcome.hash !== next.expectedParentHash
+          outcome.envelopeId !== next.parentEnvelopeId
         )
           throw new Error(
             "Channel fork observation receipt changed its canonical prefix",
@@ -2297,7 +2374,7 @@ export class PubSubChannel
         this.channelLog.ledger.markForkObserved(
           next.parentChannelId,
           next.throughSequence,
-          next.expectedParentHash,
+          next.parentEnvelopeId,
         );
       } else {
         const throughSequence = Number(row["through_sequence"]);
@@ -2305,8 +2382,7 @@ export class PubSubChannel
         if (
           !last ||
           outcome.observedSequence !== throughSequence ||
-          outcome.envelopeId !== last.envelopeId ||
-          outcome.hash !== last.hash
+          outcome.envelopeId !== last.envelopeId
         )
           throw new Error(
             "Channel observation receipt changed its canonical event",
@@ -2360,15 +2436,17 @@ export class PubSubChannel
         this.channelLog.ledger.hasObservedRoot() &&
         observed >= waiter.sequence
       ) {
-        const hash =
-          waiter.sequence === 0
-            ? LOG_GENESIS_HASH
-            : this.channelLog.ledger.at(waiter.sequence)?.hash;
-        if (!hash)
+        let envelopeId: string | null;
+        try {
+          envelopeId = this.channelLog.ledger.boundaryEnvelopeId(waiter.sequence);
+        } catch {
           waiter.reject(
             new Error("Channel observation lost its retained boundary"),
           );
-        else waiter.resolve({ observedSequence: waiter.sequence, hash });
+          this.observationWaiters.delete(waiter);
+          continue;
+        }
+        waiter.resolve({ observedSequence: waiter.sequence, envelopeId });
       } else if (failure)
         waiter.reject(
           deserializeRpcFailure(JSON.parse(String(failure["error_json"]))),
@@ -2390,7 +2468,7 @@ export class PubSubChannel
   })
   async waitObservedThrough(
     sequence: number,
-  ): Promise<{ observedSequence: number; hash: string }> {
+  ): Promise<{ observedSequence: number; envelopeId: string | null }> {
     if (
       !Number.isSafeInteger(sequence) ||
       sequence < 0 ||
@@ -2401,10 +2479,10 @@ export class PubSubChannel
     signal?.throwIfAborted();
     let waiter!: {
       sequence: number;
-      resolve: (value: { observedSequence: number; hash: string }) => void;
+      resolve: (value: { observedSequence: number; envelopeId: string | null }) => void;
       reject: (error: unknown) => void;
     };
-    const promise = new Promise<{ observedSequence: number; hash: string }>(
+    const promise = new Promise<{ observedSequence: number; envelopeId: string | null }>(
       (resolve, reject) => {
         waiter = { sequence, resolve, reject };
         this.observationWaiters.add(waiter);
@@ -2425,6 +2503,43 @@ export class PubSubChannel
     }
   }
 
+  // ── Conversation facts ──────────────────────────────────────────────────
+  // The conversation's own facts (its configuration, its seed and the opening
+  // request) are versioned rows: a fork at a sequence carries them. The `state`
+  // table is local to the object (it holds its identity and its caches), so they
+  // cannot live there.
+
+  private getFact(key: string): string | null {
+    const row = this.sql
+      .exec(`SELECT value FROM channel_facts WHERE key = ?`, key)
+      .toArray()[0];
+    return row ? String(row["value"]) : null;
+  }
+
+  /** Write a fact inside a committed transaction (or a plain one on SQLite); whether it changed. */
+  private writeFact(key: string, value: string): boolean {
+    const changed = this.getFact(key) !== value;
+    if (!changed) return false;
+    this.sql.exec(
+      `INSERT INTO channel_facts (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      key,
+      value,
+    );
+    return true;
+  }
+
+  /** One fact, written and committed on its own; nothing is committed if it did not change. */
+  private setFact(key: string, value: string): void {
+    let changed = false;
+    this.committedTransaction(
+      () => (changed ? `channel: ${key}` : null),
+      () => {
+        changed = this.writeFact(key, value);
+      },
+    );
+  }
+
   private get channelLog(): ChannelLog {
     this._channelLog ??= new ChannelLog(
       {
@@ -2432,7 +2547,8 @@ export class PubSubChannel
       },
       this.objectKey,
       this.sql,
-      (operation) => this.ctx.storage.transactionSync(operation),
+      (operation) => this.transactionSync(operation),
+      (describe, operation) => this.committedTransaction(describe, operation),
     );
     return this._channelLog;
   }
@@ -2440,7 +2556,7 @@ export class PubSubChannel
   private get deliveryProjection(): ChannelDeliveryProjection {
     this._deliveryProjection ??= new ChannelDeliveryProjection(
       this.sql,
-      (callback) => this.ctx.storage.transactionSync(callback),
+      (callback) => this.transactionSync(callback),
       this.objectKey,
       () => {
         const value = this.getStateValue("forkPointId");
@@ -2469,8 +2585,8 @@ export class PubSubChannel
     // The canonical resolution envelope is the completion receipt. A lost
     // append reply must not make a resolved request pending after activation
     // loss, even if the disposable delivery cursor already passed that event.
-    const resolution = this.getStateValue("openingRequestResolution");
-    if (resolution && !this.getStateValue("openingRequestOutcome")) {
+    const resolution = this.getFact("openingRequestResolution");
+    if (resolution && !this.getFact("openingRequestOutcome")) {
       const accepted =
         appended?.type === "config-update" &&
         appended.messageId === "conversation-seed:resolution"
@@ -2479,7 +2595,7 @@ export class PubSubChannel
               "conversation-seed:resolution",
             );
       signal?.throwIfAborted();
-      if (accepted) this.setStateValue("openingRequestOutcome", resolution);
+      if (accepted) this.setFact("openingRequestOutcome", resolution);
     }
     // A later relationship fold can legitimately replace the relationship
     // row that owns recovery. Drain that durable debt before the projection
@@ -3039,7 +3155,7 @@ export class PubSubChannel
       throw new Error(
         "Channel live acknowledgement changed its canonical delivery identity",
       );
-    this.ctx.storage.transactionSync(() => {
+    this.transactionSync(() => {
       const changed = this.sql
         .exec(
           `UPDATE channel_delivery_mailbox
@@ -3187,12 +3303,16 @@ export class PubSubChannel
       ...config
     } = channelConfig ?? {};
     const parsedSeed = conversationSeedSchema.parse(seed ?? {});
-    this.ctx.storage.transactionSync(() => {
-      this.setStateValue("contextId", contextId);
-      this.setStateValue("createdAt", String(Date.now()));
-      this.setStateValue("config", JSON.stringify(config));
-      this.setStateValue("conversationSeed", JSON.stringify(parsedSeed));
-    });
+    this.committedTransaction(
+      () => `channel: initialized in context ${contextId}`,
+      () => {
+        this.setStateValue("contextId", contextId);
+        this.writeFact("createdAt", String(Date.now()));
+        this.writeFact("config", JSON.stringify(config));
+        this.writeFact("initialConfig", JSON.stringify(config));
+        this.writeFact("conversationSeed", JSON.stringify(parsedSeed));
+      },
+    );
     this.deliveryProjection.initializeChannelConfig(config);
     void this.refreshOwnTitle();
   }
@@ -3242,21 +3362,18 @@ export class PubSubChannel
         // Authored assistant content is installed before any agent joins.
         ...(role === "assistant" ? { to: [] } : {}),
       },
-      createdAt: new Date(
-        Number(this.getStateValue("createdAt")),
-      ).toISOString(),
+      createdAt: new Date(Number(this.getFact("createdAt"))).toISOString(),
     };
   }
 
   private seedInstallation: Promise<void> | null = null;
   private installConversationSeed(): Promise<void> {
     if (!this.getStateValue("contextId")) return Promise.resolve();
-    if (this.getStateValue("conversationSeedInstalled"))
-      return Promise.resolve();
+    if (this.getFact("conversationSeedInstalled")) return Promise.resolve();
     if (this.seedInstallation) return this.seedInstallation;
     this.seedInstallation = (async () => {
       const seed = conversationSeedSchema.parse(
-        JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+        JSON.parse(this.getFact("conversationSeed") ?? "{}"),
       );
       for (const [index, message] of (seed.messages ?? []).entries()) {
         const event = await this.appendDurable({
@@ -3279,7 +3396,7 @@ export class PubSubChannel
           "conversation-seed",
         );
       }
-      this.setStateValue("conversationSeedInstalled", "true");
+      this.setFact("conversationSeedInstalled", "true");
     })().finally(() => {
       this.seedInstallation = null;
     });
@@ -3321,12 +3438,12 @@ export class PubSubChannel
     requestedOutcome: "deliver" | "cancel",
   ): Promise<ChannelConfig> {
     const seed = conversationSeedSchema.parse(
-      JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+      JSON.parse(this.getFact("conversationSeed") ?? "{}"),
     );
-    if (!seed.openingRequest || this.getStateValue("openingRequestOutcome"))
+    if (!seed.openingRequest || this.getFact("openingRequestOutcome"))
       return this.getChannelConfig() ?? {};
     const outcome =
-      this.getStateValue("openingRequestResolution") ?? requestedOutcome;
+      this.getFact("openingRequestResolution") ?? requestedOutcome;
     if (outcome === "deliver") {
       const accepted = await this.channelLog.getEventByEnvelopeId(
         "conversation-seed:opening",
@@ -3343,16 +3460,21 @@ export class PubSubChannel
       // Releasing a configured request is an authenticated participant action.
       // Retain its actual author with the chosen outcome before publication so
       // reconnects and another caller's retry cannot change the accepted author.
-      this.ctx.storage.transactionSync(() => {
-        this.setStateValue("openingRequestResolution", outcome);
-        if (!this.getStateValue("openingRequestAuthor"))
-          this.setStateValue(
-            "openingRequestAuthor",
-            JSON.stringify(this.participantRef(participantId)),
-          );
-      });
+      let resolved = false;
+      this.committedTransaction(
+        () => (resolved ? "channel: opening request resolved" : null),
+        () => {
+          resolved = this.writeFact("openingRequestResolution", outcome);
+          if (!this.getFact("openingRequestAuthor"))
+            resolved =
+              this.writeFact(
+                "openingRequestAuthor",
+                JSON.stringify(this.participantRef(participantId)),
+              ) || resolved;
+        },
+      );
       const author = JSON.parse(
-        this.getStateValue("openingRequestAuthor")!,
+        this.getFact("openingRequestAuthor")!,
       ) as ParticipantRef;
       const message = this.seedMessage(
         "opening",
@@ -3378,7 +3500,7 @@ export class PubSubChannel
         author.id,
       );
     }
-    this.setStateValue("openingRequestResolution", outcome);
+    this.setFact("openingRequestResolution", outcome);
     const config = this.getChannelConfig() ?? {};
     const { openingRequest: _openingRequest, ...initialization } =
       config.initialization ?? {};
@@ -3417,18 +3539,18 @@ export class PubSubChannel
   }
 
   private getChannelConfig(): ChannelConfig | null {
-    const raw = this.getStateValue("config");
+    const raw = this.getFact("config");
     if (!raw && !this.getStateValue("contextId")) return null;
     const config = JSON.parse(raw ?? "{}");
     const seed = conversationSeedSchema.parse(
-      JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+      JSON.parse(this.getFact("conversationSeed") ?? "{}"),
     );
     const firstAgentPending = !this.deliveryProjection.hasHadAgent();
     return {
       ...config,
       initialization: {
         firstAgentPending,
-        ...(seed.openingRequest && !this.getStateValue("openingRequestOutcome")
+        ...(seed.openingRequest && !this.getFact("openingRequestOutcome")
           ? { openingRequest: seed.openingRequest }
           : {}),
       },
@@ -4257,7 +4379,7 @@ export class PubSubChannel
         // Joining IS activity (WP8 §3): seed `last_active_at` on first join and
         // bump it on every (re)join so a returning panel resets idle/away.
         const joinNow = Date.now();
-        this.ctx.storage.transactionSync(() => {
+        this.transactionSync(() => {
           this.sql.exec(
             `INSERT INTO participants (
                id, metadata, transport, last_active_at, presence_status, handle
@@ -4278,7 +4400,7 @@ export class PubSubChannel
           );
         });
       } else {
-        this.ctx.storage.transactionSync(() => {
+        this.transactionSync(() => {
           this.sql.exec(
             `INSERT INTO participants (
                id, metadata, transport, last_active_at, presence_status, handle
@@ -4497,7 +4619,7 @@ export class PubSubChannel
     if (this.participantSubscriptionCount(participantId) > 0) return;
     if (!participantExists) return;
 
-    this.ctx.storage.transactionSync(() => {
+    this.transactionSync(() => {
       if (isUserParticipantId(participantId)) {
         this.recordOfflinePresence(participantId, Date.now());
       }
@@ -5266,7 +5388,7 @@ export class PubSubChannel
 
     const existing = this.sql
       .exec(
-        `SELECT added_at, added_by FROM channel_members WHERE user_id = ?`,
+        `SELECT added_at, added_by, handle FROM channel_members WHERE user_id = ?`,
         memberId,
       )
       .toArray();
@@ -5279,21 +5401,25 @@ export class PubSubChannel
             memberId,
           )
           .toArray().length > 0;
-      this.ctx.storage.transactionSync(() => {
-        this.sql.exec(
-          `UPDATE channel_members SET handle = ? WHERE user_id = ?`,
-          handle,
-          memberId,
-        );
-        if (pendingPut) {
-          this.journalInvitePut(
-            memberId,
+      const handleChanged = String(existing[0]!["handle"]) !== handle;
+      this.committedTransaction(
+        () => (handleChanged ? `channel: member handle ${memberId}` : null),
+        () => {
+          this.sql.exec(
+            `UPDATE channel_members SET handle = ? WHERE user_id = ?`,
             handle,
-            String(existing[0]!["added_by"]),
-            Number(existing[0]!["added_at"]),
+            memberId,
           );
-        }
-      });
+          if (pendingPut) {
+            this.journalInvitePut(
+              memberId,
+              handle,
+              String(existing[0]!["added_by"]),
+              Number(existing[0]!["added_at"]),
+            );
+          }
+        },
+      );
       if (pendingPut) {
         const synced = await this.flushInviteIndexOp(memberId);
         if (!synced) {
@@ -5313,17 +5439,20 @@ export class PubSubChannel
     }
 
     const addedAt = Date.now();
-    this.ctx.storage.transactionSync(() => {
-      this.sql.exec(
-        `INSERT INTO channel_members (user_id, handle, added_by, added_at)
+    this.committedTransaction(
+      () => `channel: member add ${memberId}`,
+      () => {
+        this.sql.exec(
+          `INSERT INTO channel_members (user_id, handle, added_by, added_at)
            VALUES (?, ?, ?, ?)`,
-        memberId,
-        handle,
-        addedBy,
-        addedAt,
-      );
-      this.journalInvitePut(memberId, handle, addedBy, addedAt);
-    });
+          memberId,
+          handle,
+          addedBy,
+          addedAt,
+        );
+        this.journalInvitePut(memberId, handle, addedBy, addedAt);
+      },
+    );
     const synced = await this.flushInviteIndexOp(memberId);
     // Live nudge is a membership signal, never a presence event: inviting an
     // offline person must not make them appear online.
@@ -5385,14 +5514,17 @@ export class PubSubChannel
       this.sql
         .exec(`SELECT 1 FROM channel_members WHERE user_id = ?`, memberId)
         .toArray().length > 0;
-    this.ctx.storage.transactionSync(() => {
-      if (existed)
-        this.sql.exec(
-          `DELETE FROM channel_members WHERE user_id = ?`,
-          memberId,
-        );
-      this.journalInviteDelete(memberId);
-    });
+    this.committedTransaction(
+      () => (existed ? `channel: member remove ${memberId}` : null),
+      () => {
+        if (existed)
+          this.sql.exec(
+            `DELETE FROM channel_members WHERE user_id = ?`,
+            memberId,
+          );
+        this.journalInviteDelete(memberId);
+      },
+    );
     return existed;
   }
 
@@ -5550,13 +5682,7 @@ export class PubSubChannel
           [userId],
         );
         if (!isStillWorkspaceMember) {
-          this.ctx.storage.transactionSync(() => {
-            this.sql.exec(
-              `DELETE FROM channel_members WHERE user_id = ?`,
-              memberId,
-            );
-            this.journalInviteDelete(memberId);
-          });
+          this.deleteMembershipRow(memberId);
           // Flush the newly journaled, higher-revision delete now. If it fails,
           // the normal retry path retains it durably.
           return await this.flushInviteIndexOp(memberId);
@@ -5667,7 +5793,7 @@ export class PubSubChannel
       const { initialization: _currentInitialization, ...storedConfig } =
         existingConfig ?? {};
       const storedSeed = conversationSeedSchema.parse(
-        JSON.parse(this.getStateValue("conversationSeed") ?? "{}"),
+        JSON.parse(this.getFact("conversationSeed") ?? "{}"),
       );
       if (
         existingContextId !== contextId ||
@@ -5711,7 +5837,7 @@ export class PubSubChannel
     const { initialization: _initialization, ...storedConfig } =
       this.getChannelConfig() ?? {};
     const storedUpdate = { ...storedConfig, ...config };
-    this.setStateValue("config", JSON.stringify(storedUpdate));
+    this.setFact("config", JSON.stringify(storedUpdate));
     const newConfig = this.getChannelConfig()!;
     this.policyHost.invalidatePolicySelection();
     const event = await this.appendDurable({
@@ -6695,7 +6821,7 @@ export class PubSubChannel
         limit: PAGE,
       });
       if (envelopes.length === 0) return;
-      this.ctx.storage.transactionSync(() => {
+      this.transactionSync(() => {
         for (const envelope of envelopes) {
           this.foldForkMetadataEnvelope(envelope);
           afterSeq = envelope.seq;
@@ -7043,6 +7169,46 @@ export class PubSubChannel
     }
   }
 
+  /**
+   * The commit of this channel's store that appended event `sequence`: the state
+   * of the conversation exactly as of that event. Every ledger append is one
+   * commit named for its sequence (`ChannelLedger.appendMessage`); a sequence of
+   * 0 is the state before the first event. The commit found is checked against
+   * the ledger it holds.
+   */
+  private commitAtSequence(sequence: number): string {
+    const dolt = this.dolt;
+    if (!dolt) throw new Error("A channel fork needs the Dolt history of its store");
+    if (!Number.isSafeInteger(sequence) || sequence < 0)
+      throw new Error("A channel fork names a sequence of its ledger");
+    const appendedAt = (n: number): string | null => {
+      const row = this.sql
+        .exec(
+          `SELECT commit_hash FROM dolt_log WHERE message LIKE ? ORDER BY date DESC LIMIT 1`,
+          `channel: append ${n} %`,
+        )
+        .toArray()[0];
+      return row ? String(row["commit_hash"]) : null;
+    };
+    let commit: string | null;
+    if (sequence === 0) {
+      const first = appendedAt(1);
+      commit = first ? dolt.hashOf(`${first}~1`) : dolt.hashOf("HEAD");
+    } else commit = appendedAt(sequence);
+    if (!commit)
+      throw new Error(`Channel ${this.objectKey} has no commit that appended event ${sequence}`);
+    const held = Number(
+      this.sql
+        .exec(`SELECT COALESCE(MAX(sequence), 0) AS head FROM dolt_at_channel_ledger_events('${commit}')`)
+        .toArray()[0]?.["head"] ?? -1,
+    );
+    if (held !== sequence)
+      throw new Error(
+        `Channel ${this.objectKey} commit ${commit} holds events through ${held}, not ${sequence}`,
+      );
+    return commit;
+  }
+
   private async runForkOpOnce(forkId: string): Promise<ForkResult> {
     const row = this.getForkOpRow(forkId);
     if (!row) throw new Error(`fork op ${forkId} not found`);
@@ -7075,11 +7241,14 @@ export class PubSubChannel
           !p.doRef
         )
           continue;
+        // Only an agent has a cell to fork: a headless client is an entity too (kind "external"), and it holds no
+        // conversation knowledge to select a commit of.
+        if (p.ref.kind !== "agent") continue;
         if (includeScope && !includeScope.has(doTarget(p.doRef))) continue;
         opts.agents.push({
           participantId: p.participantId,
           ref: p.doRef,
-          knowledge: null,
+          frontier: null,
         });
       }
       this.sql.exec(
@@ -7103,13 +7272,14 @@ export class PubSubChannel
     });
 
     try {
-      // Source execution stays with its owner. Only the exact committed native
-      // transcript prefix crosses into the receiving lifetime.
+      // Source execution stays with its owner. Each agent names the commit of its own cell that
+      // holds the conversation through the fork point; the cell is forked there, so the exact
+      // committed native transcript prefix is the receiving lifetime's own storage.
       for (const agent of keptAgents) {
-        if (agent.knowledge !== null) continue;
-        const knowledge = await this.rpc.call(
+        if (agent.frontier !== null) continue;
+        const frontier = await this.rpc.call(
           doTarget(agent.ref),
-          agentRpcMethods["exportChannelKnowledge"],
+          agentRpcMethods["forkFrontier"],
           [
             {
               operationId: `fork:${forkId}:${agent.participantId}`,
@@ -7120,15 +7290,15 @@ export class PubSubChannel
         );
         this.forkLifetime.signal.throwIfAborted();
         if (
-          knowledge.channelId !== this.objectKey ||
-          knowledge.throughSequence !== opts.forkPointPubsubId
+          frontier.channelId !== this.objectKey ||
+          frontier.throughSequence !== opts.forkPointPubsubId
         )
           throw new Error(
             `Fork participant ${agent.participantId} changed its selected knowledge frontier`,
           );
-        agent.knowledge = JSON.parse(
-          canonicalJson(knowledge),
-        ) as NativeChannelKnowledge;
+        agent.frontier = JSON.parse(
+          canonicalJson(frontier),
+        ) as NativeForkFrontier;
         this.sql.exec(
           `UPDATE fork_ops SET opts = ? WHERE fork_id = ?`,
           canonicalJson(opts),
@@ -7144,11 +7314,30 @@ export class PubSubChannel
         doTarget(selfRef),
         ...keptAgents.map((a) => doTarget(a.ref)),
       ];
+      // The fork is this channel's own cell taken at the commit that appended the
+      // fork point (§6.4): its ledger ends there and nothing is cut afterwards.
+      if (!opts.channelCommit) {
+        opts.channelCommit = this.commitAtSequence(opts.forkPointPubsubId);
+        this.sql.exec(
+          `UPDATE fork_ops SET opts = ? WHERE fork_id = ?`,
+          canonicalJson(opts),
+          forkId,
+        );
+      }
       const clone = await this.callMain("runtime.cloneContext", [
         {
           sourceContextId,
           include,
           recursive: true,
+          storageAt: {
+            [doTarget(selfRef)]: opts.channelCommit,
+            ...Object.fromEntries(
+              keptAgents.map((agent) => [
+                doTarget(agent.ref),
+                agent.frontier!.commit,
+              ]),
+            ),
+          },
           targetKey: `fork:${forkId}`,
         },
       ]);
@@ -7226,11 +7415,11 @@ export class PubSubChannel
             },
           ]);
           this.forkLifetime.signal.throwIfAborted();
-          if (agent.knowledge === null)
-            throw new Error("Fork lost its immutable agent knowledge");
+          if (agent.frontier === null)
+            throw new Error("Fork lost its immutable agent frontier");
           await this.rpc.call(
             doTarget(clonedRef),
-            agentRpcMethods["importChannelKnowledge"],
+            agentRpcMethods["adoptChannelKnowledge"],
             [
               {
                 operationId: `fork:${forkId}:${agent.participantId}`,
@@ -7242,7 +7431,7 @@ export class PubSubChannel
                   objectKey: forkedChannelId,
                 },
                 contextId: forkedContextId,
-                knowledge: agent.knowledge,
+                frontier: agent.frontier,
               },
             ],
           );
@@ -7758,26 +7947,19 @@ export class PubSubChannel
         );
       }
     }
-    await this.channelLog.forkFrom(parentChannelId, forkPointId);
-    this.deliveryProjection.resetForFork(forkPointId);
-    // The child must NOT inherit the parent's fork journal or direct-child
-    // projection. Its semantic locus index retains only the inherited prefix.
-    this.sql.exec(
-      `DELETE FROM fork_message_loci WHERE first_seq > ?`,
+    await this.channelLog.adoptParent(parentChannelId, forkPointId);
+    this.deliveryProjection.seedForFork(
+      this.getFact("initialConfig") ?? "{}",
       forkPointId,
     );
+    // The child's fork view is derived from its own log, which ends at the fork
+    // point; the parent's journal and direct-child projection are local to the
+    // parent and did not come with the fork.
+    this.sql.exec(`DELETE FROM fork_projection`);
+    this.sql.exec(`DELETE FROM fork_message_loci`);
+    this.sql.exec(`DELETE FROM fork_turn_loci`);
     this.sql.exec(
-      `UPDATE fork_message_loci SET terminal_seq = NULL
-       WHERE terminal_seq IS NOT NULL AND terminal_seq > ?`,
-      forkPointId,
-    );
-    this.sql.exec(
-      `DELETE FROM fork_turn_loci WHERE opened_seq > ?`,
-      forkPointId,
-    );
-    this.sql.exec(
-      `UPDATE fork_view_cursor SET folded_through_seq = ? WHERE singleton = 1`,
-      forkPointId,
+      `INSERT OR REPLACE INTO fork_view_cursor (singleton, folded_through_seq) VALUES (1, 0)`,
     );
     // A cloned operation was authored for the parent's object key. Membership
     // may be inherited, but its in-flight projection must never be replayed as

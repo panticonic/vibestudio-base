@@ -13,7 +13,7 @@ import {
 } from "@vibestudio/service-schemas/runtime/runtimeSurface.eval";
 
 /**
- * Surface contract the EvalDO depends on: the eval engine resolves
+ * Surface contract the eval kernel depends on: the eval engine resolves
  * `import {…} from "@workspace/runtime"` to the SAME `createHostedRuntime` object
  * injected ambiently, rejects importing the ambient-only names, and resolves
  * `@workspace/cdp-client`. This is the unit-level proxy for the live e2e — it
@@ -23,7 +23,7 @@ import {
 
 function fakeHost(): RuntimeHost {
   const rpc = {
-    selfId: "do:test:EvalDO:k",
+    selfId: "do:test:SessionDO:k",
     call: async () => null,
     stream: async () => new Response(),
     emit: async () => {},
@@ -37,7 +37,7 @@ function fakeHost(): RuntimeHost {
     onStatusChange: () => () => {},
   } as unknown as RpcClient;
   return {
-    id: "do:test:EvalDO:k",
+    id: "do:test:SessionDO:k",
     contextId: "ctx-1",
     rpc,
     fs: {} as never,
@@ -57,12 +57,12 @@ function fakeHost(): RuntimeHost {
 
 class FakeCdpConnection {}
 
-/** Mirror EvalDO.runLocked: rt seeded into the per-object module map + ambient bindings. */
+/** Mirror eval kernel.runLocked: rt seeded into the per-object module map + ambient bindings. */
 function evalEnv() {
   const rt = createHostedRuntime(fakeHost());
   const moduleMap: Record<string, unknown> = {
     // Eval's `@workspace/runtime` = hosted instance + pure authoring helpers
-    // (mirrors EvalDO.runLocked, so panel/worker/eval expose the same helpers).
+    // (mirrors eval kernel.runLocked, so panel/worker/eval expose the same helpers).
     "@workspace/runtime": { ...rt, ...portableHelpers },
     "@workspace/cdp-client": { CdpConnection: FakeCdpConnection },
   };

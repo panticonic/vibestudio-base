@@ -2,12 +2,18 @@ import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import type {
   AuthenticatedCaller,
   AuthorizationContext,
+  RpcEnvelope,
   AuthorityGrant,
   Principal,
   PrincipalKind,
 } from "@vibestudio/rpc";
 import type { AttestedCaller, DirectAuthorityAttestation } from "@vibestudio/rpc/internal";
-import { deserializeRpcFailure, rpcMethodAuthority } from "@vibestudio/rpc";
+import {
+  decodeRpcJson,
+  deserializeRpcFailure,
+  encodeRpcJson,
+  rpcMethodAuthority,
+} from "@vibestudio/rpc";
 import { requirementForPrincipals } from "@vibestudio/shared/authorization";
 
 type BindParams = Parameters<Database["run"]>[1];
@@ -196,6 +202,35 @@ export async function createInMemorySql(): Promise<{
 
 /** Default env stubs so AgentWorkerBase subclasses don't crash during construction.
  *  The HTTP clients are created but never called in unit tests. */
+/** Reply through the real envelope boundary using the test's receiver-owned fixtures. */
+export function createTestRpcFetch(
+  reply: (request: RpcEnvelope) => unknown | Promise<unknown>,
+): typeof fetch {
+  return async (_input, init) => {
+    const request = decodeRpcJson(String(init?.body ?? "{}")) as RpcEnvelope;
+    if (request.message.type !== "request")
+      throw new Error("Expected RPC request envelope");
+    const result = await reply(request);
+    return new Response(
+      encodeRpcJson({
+        from: request.target,
+        target: request.from,
+        delivery: request.delivery,
+        provenance: request.provenance ?? [],
+        message: {
+          type: "response",
+          requestId: request.message.requestId,
+          result,
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+}
+
+/** Deterministic acknowledgement for tests which do not consume a host reply. */
+export const successfulTestRpcFetch = createTestRpcFetch(() => null);
+
 const AGENTIC_ENV_DEFAULTS: Record<string, string> = {
   GATEWAY_URL: "http://test-server.invalid",
   RPC_AUTH_TOKEN: "test-token",
@@ -351,12 +386,19 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
     db?: Database;
     initialize?: boolean;
     props?: import("./durable-base.js").DurableObjectContext["props"];
+    /**
+     * A complete `ctx.storage` replacing the in-memory SQLite one, for example
+     * `FakeDoltStorage#storage` to run the object on a Dolt cell. Its `sql` is
+     * the object's `sql`; `db` is then an unused empty database.
+     */
+    storage?: Record<string, unknown> & { sql: unknown };
   }
 ): Promise<TestDOResult<InstanceType<DOClass>, DOClass>> {
   const SQL = await getSqlJs();
   // Reuse an existing db to simulate hibernation (fresh DO, same durable storage).
   const db = opts?.db ?? new SQL.Database();
-  const sqlProxy = createSqlProxy(db);
+  const sqlProxy =
+    (opts?.storage?.sql as ReturnType<typeof createSqlProxy> | undefined) ?? createSqlProxy(db);
 
   const alarms: number[] = [];
   const acceptedWebSockets: AcceptedWebSocket[] = [];
@@ -366,7 +408,11 @@ export async function createTestDO<DOClass extends new (ctx: any, env: any) => o
   const ctx = {
     props: structuredClone(opts?.props ?? { nativeOwner: null, stateArgs: null, image: null }),
     id: { toString: () => objectKey, name: objectKey },
-    storage: {
+    // A real object keeps background work (a run, say) alive under waitUntil.
+    waitUntil(promise: Promise<unknown>): void {
+      void promise.catch(() => undefined);
+    },
+    storage: opts?.storage ? { sync: async (): Promise<void> => {}, ...opts.storage } : {
       sql: sqlProxy,
       // Unit storage is already synchronous/in-memory. Native workerd tests
       // separately prove the real confirmation and uncertain-failure contract.

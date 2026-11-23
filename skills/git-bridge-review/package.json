@@ -1,0 +1,9 @@
+{
+  "name": "@workspace-skills/git-bridge-review",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./types.ts"
+  }
+}

@@ -8,5 +8,8 @@
     "@workspace/agentic-protocol": "workspace:*",
     "@workspace/pubsub": "workspace:*",
     "@workspace/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace-skills/conversation-evidence-review": "workspace:*"
   }
 }

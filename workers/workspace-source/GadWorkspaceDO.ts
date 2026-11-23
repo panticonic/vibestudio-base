@@ -1,11 +1,22 @@
 import { registryMutationFromLogEnvelope, isAgenticLogKind } from "@workspace/agentic-protocol";
+export { GadHistoryDO } from "./GadHistoryDO.js";
 import { prepareLogEvent, agenticLogCausality as agenticCausality, type PreparedLogEvent, type LogAppendEventInput } from "@workspace/agentic-protocol";
 import { rpcFailureSchema } from "@vibestudio/service-schemas/rpcFailure";
 import {
   EnvelopeLineageSchema,
+  HistoryCommitMemoryMarkerSchema,
+  HistoryTrajectorySearchInputSchema,
+  HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
+  HistoryQueryCausesSchema,
+  HistoryQueryTrajectorySchema,
+  HistoryWalkCohortSchema,
+  type HistoryWalkCohort,
   PrivateLineageForPublishedEnvelopeSchema,
   type GadJsonValue,
+  type HistoryTrajectorySearchInput,
 } from "@vibestudio/service-schemas/workspaceSource";
+import { vcsProvenanceEdgeSchema, vcsTrajectoryInvocationRefSchema } from "@vibestudio/service-schemas/vcs";
+import { searchTrajectoryProse } from "./doltWorkspaceSearch.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { durableWorkOwnerMethods } from "@vibestudio/service-schemas/durableWorkOwner";
 /**
@@ -27,11 +38,14 @@ import type {
 } from "@vibestudio/shared/durableWork";
 import {
   gadWireMethods,
+  HistoryTrajectoryProvenanceRequestSchema,
+  type HistoryTrajectoryProvenanceRequest,
 } from "@vibestudio/service-schemas/workspaceSource";
 import {
   logIdForChannel,
   headForChannel,
 } from "@vibestudio/trajectory-identity";
+import { inspectTrajectoryNode, readHistoryMemoryCause, readHistoryWalkInvocation, trajectoryNeighborEdges } from "./trajectoryEvidence.js";
 import { DurableObjectBase } from "@vibestudio/durable";
 import type {
   ChannelInvite,
@@ -118,7 +132,6 @@ import {
   agenticEventFromLogEnvelope,
   isAgenticLogEventKind,
   eventKindSchemas,
-  GENESIS_EVENT_HASH,
   brandId,
   collectStoredValueRefs,
   publicActorRef,
@@ -133,7 +146,6 @@ import {
 } from "@workspace/agentic-protocol";
 import {
   gadAppendErrorMessage,
-  logEnvelopeHashPreimage,
   logEnvelopeSemantic,
   type AppendIdempotency,
   type LogEnvelopeSemanticInput,
@@ -142,25 +154,10 @@ import {
   sha256HexSyncText,
   sortForCanonicalJson,
   canonicalJson,
-  stateHashForRoot,
 } from "@vibestudio/content-addressing";
-import {
-  createSemanticVcsSchema,
-  createTrajectoryMirrorSchema,
-  SEMANTIC_VCS_REQUIRED_TABLES,
-} from "./semanticVcsSchema.js";
-import { SemanticVcsError, SemanticVcsStore } from "./semanticVcsStore.js";
-import {
-  SemanticWorkspace,
-  type SemanticDispatchRequest,
-  type SemanticEffectAcknowledgement,
-} from "./semanticWorkspace.js";
-import type {
-  InitializeExactWorkspaceSnapshotInput,
-  WorkspaceSourceEffect,
-  WorkspaceSourceInitializationInspection,
-  WorkspaceSourceInitializationReceipt,
-} from "@vibestudio/workspace-contracts/workspaceSource";
+import { createTrajectoryMirrorSchema } from "./trajectorySchema.js";
+import { SemanticVcsError } from "./semanticVcsErrors.js";
+import { parseSemanticCursor, semanticCursor } from "./workspaceHistoryPagination.js";
 
 type JsonPrimitive = null | string | number | boolean;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -174,37 +171,17 @@ type InvocationDiagnostic = NonNullable<
   InvocationDiagnosticPacket["invocation"]
 >;
 type TurnDiagnostic = NonNullable<InvocationDiagnosticPacket["turn"]>;
-type CommandDiagnostic = InvocationDiagnosticPacket["commands"][number];
 type ChannelRosterRow = ChannelRosterInspection["rows"][number];
 type StorageDiagnostic = AgentHealthInspection["storage"]["rows"][number];
 
-/** First supported production schema for the semantic workspace authority. */
-const GAD_WORKSPACE_SCHEMA_VERSION = 66;
+/** Transcript and channel storage schema for fresh workspaces. */
+const GAD_WORKSPACE_SCHEMA_VERSION = 69;
 
 
 const utf8Bytes = (value: string): number =>
   new TextEncoder().encode(value).byteLength;
 
 const CHANNEL_LOG_HEAD = "main";
-
-function createWorkspaceSourceInitializationTable(sql: {
-  exec(query: string, ...bindings: SqlBinding[]): unknown;
-}): void {
-  sql.exec(`
-    CREATE TABLE IF NOT EXISTS workspace_source_initializations (
-      command_id TEXT PRIMARY KEY,
-      request_digest TEXT NOT NULL,
-      phase TEXT NOT NULL CHECK (
-        phase IN ('observe', 'publish', 'ready', 'failed')
-      ),
-      context_id TEXT NOT NULL,
-      genesis_event_id TEXT,
-      receipt_json TEXT CHECK (receipt_json IS NULL OR json_valid(receipt_json) = 1),
-      failure_json TEXT CHECK (failure_json IS NULL OR json_valid(failure_json) = 1),
-      updated_at TEXT NOT NULL
-    )
-  `);
-}
 
 function createPublicationDeliveryOutbox(sql: {
   exec(query: string, ...bindings: SqlBinding[]): unknown;
@@ -402,10 +379,8 @@ const GAD_REQUIRED_TABLES = [
   "channel_membership_revisions",
   "agent_directory",
   "gad_blobs",
-  "workspace_source_initializations",
   "publication_intents",
   "publication_delivery_outbox",
-  ...SEMANTIC_VCS_REQUIRED_TABLES,
 ] as const;
 
 /** Log kinds whose events are full agentic trajectory events (validated and
@@ -426,7 +401,7 @@ export interface AppendLogEventInput {
   head: string;
   logKind: LogKind | string;
   owner?: ActorRef | null;
-  expectedHeadHash?: string | null;
+  expectedHead?: { seq: number; envelopeId: string | null };
   /** Append idempotency intent — see AppendIdempotency in agentic-protocol.
    *  Default "exact": same-id-different-content is a hard integrity error.
    *  "idempotent-by-id" (client publish paths only): first write wins; the
@@ -439,7 +414,7 @@ export interface AppendLogEventResult {
   logId: string;
   head: string;
   headSeq: number;
-  headHash: string;
+  headEnvelopeId: string;
   envelopes: LogEnvelope[];
   published: Array<{
     originEnvelopeId: string;
@@ -463,7 +438,7 @@ export interface ForkLogResult {
   toLogId: string;
   toHead: string;
   forkSeq: number;
-  forkHash: string;
+  forkEnvelopeId: string | null;
   inherited: number;
 }
 
@@ -485,10 +460,9 @@ export interface LogHeadInfo {
   head: string;
   logKind: string;
   seq: number;
-  hash: string;
   envelopeId: string | null;
   forkSeq: number | null;
-  forkHash: string | null;
+  forkEnvelopeId: string | null;
   parentLogId: string | null;
   parentHead: string | null;
 }
@@ -506,7 +480,7 @@ export interface ForkTrajectoryBranchInput {
   toTrajectoryId: string;
   toBranchId: string;
   throughSeq?: number | null;
-  throughEventHash?: string | null;
+  throughEventId?: string | null;
   throughPublishedChannelId?: string | null;
   throughPublishedChannelSeq?: number | null;
   toPublishedChannelId?: string | null;
@@ -520,14 +494,12 @@ export interface ForkTrajectoryBranchResult {
   toBranchId: string;
   copied: number;
   headEventId: string | null;
-  headEventHash: string | null;
+  headSeq: number;
   lineage: Array<{
     sourceEventId: string;
     forkEventId: string;
     sourceSeq: number;
     forkSeq: number;
-    sourceEventHash: string;
-    forkEventHash: string;
   }>;
 }
 
@@ -754,6 +726,8 @@ interface ProjectionKey {
   logId: string;
   head: string;
 }
+
+const historyCommitMemoryIndexKey = "native-commit-memory-index-v1";
 
 export class GadWorkspaceDO extends DurableObjectBase {
   private get userNotifications(): UserNotificationStore {
@@ -1089,9 +1063,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
         parent_log_id TEXT,
         parent_head TEXT,
         fork_seq INTEGER,
-        fork_hash TEXT,
+        fork_envelope_id TEXT,
         current_seq INTEGER NOT NULL DEFAULT 0,
-        current_hash TEXT NOT NULL DEFAULT '${GENESIS_EVENT_HASH}',
         current_envelope_id TEXT,
         created_at TEXT NOT NULL,
         PRIMARY KEY (log_id, head)
@@ -1110,8 +1083,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
         annotations_json TEXT,
         payload_ref_json TEXT NOT NULL,
         appended_at TEXT NOT NULL,
-        hash TEXT NOT NULL UNIQUE,
-        prev_hash TEXT NOT NULL,
         origin_log_id TEXT,
         origin_head TEXT,
         origin_envelope_id TEXT,
@@ -1211,11 +1182,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
       CREATE TABLE IF NOT EXISTS trajectory_checkpoints (
         log_id TEXT NOT NULL,
         head TEXT NOT NULL,
-        anchor_event_hash TEXT NOT NULL,
+        anchor_event_id TEXT NOT NULL,
         materialized_blob_json TEXT NOT NULL,
         materializer_version TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        PRIMARY KEY (log_id, head, anchor_event_hash)
+        PRIMARY KEY (log_id, head, anchor_event_id)
       )
     `);
     this.sql.exec(`
@@ -1278,19 +1249,13 @@ export class GadWorkspaceDO extends DurableObjectBase {
         created_at TEXT NOT NULL
       )
     `);
-    createWorkspaceSourceInitializationTable(this.sql);
     createPublicationDeliveryOutbox(this.sql);
-    createSemanticVcsSchema(this.sql);
     // The recall contents are disposable, but the index table is part of the
     // exact database shape. Lazy creation changed sqlite_master after schema
     // identity was sealed, so the next activation rejected its own database.
     createMemoryIndex(this.sql);
     createAgentDirectory(this.sql);
     createAgentDirectoryIndex(this.sql);
-    // Provenance is compiled from normalized point tables. We intentionally do
-    // not create union views or persisted traversal continuations: callers
-    // inspect a node and keyset-page its immediate indexed edges.
-    this.ensureEmptyState();
   }
 
   @schemaRpc()
@@ -1305,615 +1270,184 @@ export class GadWorkspaceDO extends DurableObjectBase {
     );
   }
 
-  private semanticVcsStore(): SemanticVcsStore {
-    return new SemanticVcsStore(this.sql, nowIso);
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native workspace history for trajectory search." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  searchHistoryTrajectory(input: HistoryTrajectorySearchInput) {
+    const { causes, ...search } = HistoryTrajectorySearchInputSchema.parse(input);
+    return searchTrajectoryProse(this.sql, search, causes);
   }
 
-  private semanticWorkspace(): SemanticWorkspace {
-    return new SemanticWorkspace({
-      workspaceId: this.semanticWorkspaceId(),
-      sql: this.sql,
-      store: this.semanticVcsStore(),
-      now: nowIso,
-      transaction: (fn) => this.transaction(fn),
-    });
-  }
-
-  private semanticWorkspaceId(): string {
-    const configured = this.env["WORKSPACE_ID"];
-    if (typeof configured !== "string" || configured.length === 0) {
-      throw new Error(
-        "GadWorkspaceDO requires the topology-owned WORKSPACE_ID binding",
-      );
-    }
-    return configured;
-  }
-
-  @schemaRpc()
-  workspaceSourceTemplateInstallation(input: {
-    eventId: string;
-  }): import("@vibestudio/workspace-contracts/types").WorkspaceTemplateInstallation | null {
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host admits exact trajectory provenance coordinates." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryTrajectoryProvenance(input: HistoryTrajectoryProvenanceRequest) {
     this.ensureReady();
-    if (!this.semanticVcsStore().event(input.eventId))
-      throw new Error(`Unknown workspace event ${input.eventId}`);
-    const row = this.sql
-      .exec(
-        `
-      WITH RECURSIVE ancestry(event_id, depth) AS (
-        SELECT ?, 0
-        UNION ALL
-        SELECT p.parent_event_id, a.depth + 1 FROM ancestry a
-        JOIN gad_workspace_event_parents p ON p.event_id = a.event_id AND p.ordinal = 0
-      )
-      SELECT i.installation_json FROM ancestry a
-      JOIN workspace_template_installations i ON i.event_id = a.event_id
-      ORDER BY a.depth LIMIT 1
-    `,
-        input.eventId,
-      )
-      .toArray()[0] as JsonRecord | undefined;
-    return row ? JSON.parse(String(row["installation_json"])) : null;
-  }
-
-  @schemaRpc()
-  async workspaceSourceInitializeExactSnapshot(
-    input: InitializeExactWorkspaceSnapshotInput,
-  ): Promise<WorkspaceSourceInitializationInspection> {
-    this.ensureReady();
-    const requestDigest = sha256HexSyncText(
-      canonicalJson({
-        pin: input.pin,
-        repositories: input.repositories,
-        installation: input.installation,
-      }),
-    );
-    const existing = this.workspaceSourceInitializationRow();
-    if (existing && String(existing["command_id"]) !== input.commandId) {
-      throw new Error(
-        `Workspace source was already initialized by ${String(existing["command_id"])}`,
-      );
-    }
-    if (existing && String(existing["request_digest"]) !== requestDigest) {
-      throw new Error(
-        `Workspace source initialization command ${input.commandId} was reused`,
-      );
-    }
-    if (!existing) {
-      const repoPaths = new Set<string>();
-      for (const repository of input.repositories) {
-        if (repoPaths.has(repository.repoPath)) {
-          throw new Error(
-            `Workspace source snapshot repeats ${repository.repoPath}`,
-          );
-        }
-        repoPaths.add(repository.repoPath);
-      }
-      if (!repoPaths.has("meta")) {
-        throw new Error("Workspace source snapshot has no meta repository");
-      }
-      this.transaction(() => {
-        const contextId = `workspace-initialization:${this.objectKey}`;
-        const store = this.semanticVcsStore();
-        const context = store.initializeWorkspace(
-          contextId,
-          `${input.commandId}:snapshot`,
-          {
-            source: {
-              sourceUri: "vibestudio://workspace/root-template",
-              snapshotRevision: input.pin.commit,
-            },
-            repositories: input.repositories,
-          },
-        );
-        store.recordInitializedRepositoryContentRoots({
-          workspaceFactRootId: context.committed.workspaceFactRootId,
-          provenanceId: `workspace-source:${input.commandId}`,
-          repositories: input.repositories.map(({ repoPath, contentRoot }) => ({
-            repoPath,
-            contentRoot,
-          })),
-        });
-        this.sql.exec(
-          `INSERT INTO workspace_source_initializations
-           (command_id, request_digest, phase, context_id, genesis_event_id, receipt_json, failure_json, updated_at)
-           VALUES (?, ?, 'publish', ?, ?, NULL, NULL, ?)`,
-          input.commandId,
-          requestDigest,
-          contextId,
-          context.committed.ref.eventId,
-          nowIso(),
-        );
-      });
-    }
-
-    const ready = this.workspaceSourceInitializationInspection();
-    if (ready.state === "ready" || ready.state === "failed") return ready;
-
-    const workspace = this.semanticWorkspace();
-    if (input.acknowledgement) {
-      const pending = workspace
-        .pendingEffects()
-        .find(
-          (effect) =>
-            effect.effectId === input.acknowledgement?.effectId &&
-            effect.payloadDigest === input.acknowledgement.payloadDigest,
-        );
-      if (!pending || !pending.commandId.startsWith(`${input.commandId}:`)) {
-        throw new Error(
-          `Initialization acknowledgement does not match a pending effect for ${input.commandId}`,
-        );
-      }
-      const acknowledged = workspace.acknowledgeEffect(
-        input.acknowledgement as SemanticEffectAcknowledgement,
-      );
-      if (acknowledged.kind === "effects-pending")
-        return this.workspaceSourcePendingInspection(
-          input.commandId,
-          acknowledged.effects[0],
-        );
-      if (acknowledged.kind === "host-read")
-        throw new Error(
-          "Workspace initialization emitted an unsupported host read",
-        );
-    }
-
-    for (let step = 0; step < input.repositories.length + 4; step += 1) {
-      const pending = workspace
-        .pendingEffects()
-        .find((effect) => effect.commandId.startsWith(`${input.commandId}:`));
-      if (pending)
-        return this.workspaceSourcePendingInspection(input.commandId, pending);
-
-      const row = this.workspaceSourceInitializationRow();
-      if (!row)
-        throw new Error("Workspace source initialization record disappeared");
-      const phase = String(row["phase"]);
-      const contextId = String(row["context_id"]);
-      const store = this.semanticVcsStore();
-
-      if (phase === "publish") {
-        const pushCommandId = `${input.commandId}:publish`;
-        const command = this.sql
-          .exec(
-            `SELECT status FROM vcs_command_journal WHERE command_id = ?`,
-            pushCommandId,
-          )
-          .toArray()[0] as JsonRecord | undefined;
-        if (command?.["status"] === "complete") {
-          const context = store.contextRequired(contextId);
-          if (context.committed.ref.kind !== "event") {
-            throw new Error("Initialized workspace source is not committed");
-          }
-          const receipt: WorkspaceSourceInitializationReceipt = {
-            commandId: input.commandId,
-            pin: input.pin,
-            initializedEventId: context.committed.ref.eventId,
-            initializedStateHash: stateHashForRoot(
-              context.committed.workspaceFactRootId,
-            ),
-          };
-          this.sql.exec(
-            `UPDATE workspace_source_initializations
-                SET phase = 'ready', receipt_json = ?, updated_at = ?
-              WHERE command_id = ?`,
-            canonicalJson(receipt),
-            nowIso(),
-            input.commandId,
-          );
-          return { state: "ready", commandId: input.commandId, receipt };
-        }
-        const context = store.contextRequired(contextId);
-        const genesisEventId = String(row["genesis_event_id"] ?? "");
-        const dispatched = await workspace.dispatch("vcsPush", {
-          input: {
-            contextId,
-            commandId: pushCommandId,
-            expectedCommittedEventId: context.committed.ref.eventId,
-            expectedMainEventId: genesisEventId,
-            templateInstallation: input.installation,
-          },
-          ingress: {
-            causalParent: null,
-          },
-        });
-        if (dispatched.kind === "host-read") {
-          throw new Error(
-            "Workspace initialization emitted an unsupported host read",
-          );
-        }
-        if (dispatched.kind === "effects-pending") {
-          return this.workspaceSourcePendingInspection(
-            input.commandId,
-            dispatched.effects[0],
-          );
-        }
-        continue;
-      }
-
-      if (phase === "ready")
-        return this.workspaceSourceInitializationInspection();
-      throw new Error(`Unknown workspace source initialization phase ${phase}`);
-    }
-    throw new Error("Workspace source initialization made no progress");
-  }
-
-  @schemaRpc()
-  workspaceSourceResolve(input: { ref: string }): { stateHash: string } {
-    const current = this.workspaceSourceCurrent();
-    if (!current) throw new Error("Workspace source is not initialized");
-    if (input.ref !== "main" && input.ref !== current.stateHash) {
-      throw new Error(`Unknown workspace source reference ${input.ref}`);
-    }
-    return current;
-  }
-
-  @schemaRpc()
-  workspaceSourceCurrent(): { stateHash: string } | null {
-    this.ensureReady();
-    const mainEventId = this.semanticVcsStore().mainEventId();
-    if (!mainEventId) return null;
-    return {
-      stateHash: stateHashForRoot(
-        this.semanticVcsStore().stateRoot({
-          kind: "event",
-          eventId: mainEventId,
-        }),
-      ),
-    };
-  }
-
-  @schemaRpc()
-  workspaceSourceInspectInitialization(): WorkspaceSourceInitializationInspection {
-    this.ensureReady();
-    return this.workspaceSourceInitializationInspection();
-  }
-
-  @schemaRpc()
-  workspaceSourceHealth(): {
-    ok: true;
-    protocol: "vibestudio.workspace-source.v1";
-  } {
-    this.ensureReady();
-    return { ok: true, protocol: "vibestudio.workspace-source.v1" };
-  }
-
-  private workspaceSourceInitializationRow(): JsonRecord | undefined {
-    return this.sql
-      .exec(
-        `SELECT command_id, request_digest, phase,
-                context_id, genesis_event_id, receipt_json,
-                failure_json, updated_at
-           FROM workspace_source_initializations
-          ORDER BY updated_at DESC LIMIT 1`,
-      )
-      .toArray()[0] as JsonRecord | undefined;
-  }
-
-  private workspaceSourceInitializationInspection(): WorkspaceSourceInitializationInspection {
-    const row = this.workspaceSourceInitializationRow();
-    if (!row) return { state: "empty" };
-    const commandId = String(row["command_id"]);
-    const phase = String(row["phase"]);
-    if (phase === "ready") {
+    const parsed = HistoryTrajectoryProvenanceRequestSchema.parse(input);
+    if (parsed.operation === "inspect") {
+      const { node: root, edgeLimit } = parsed.request;
+      const node = inspectTrajectoryNode(this.sql, root);
+      const edges = parsed.expand
+        ? trajectoryNeighborEdges(this.sql, root, { phase: 0, key: null }, edgeLimit + 1)
+        : [];
       return {
-        state: "ready",
-        commandId,
-        receipt: JSON.parse(
-          String(row["receipt_json"]),
-        ) as WorkspaceSourceInitializationReceipt,
+        root,
+        node,
+        edges: edges.slice(0, edgeLimit).map(({ edge }) => vcsProvenanceEdgeSchema.parse(edge)),
+        hasMoreEdges: edges.length > edgeLimit,
       };
     }
-    if (phase === "failed") {
-      return {
-        state: "failed",
-        commandId,
-        failure: rpcFailureSchema.parse(JSON.parse(String(row["failure_json"]))),
-      };
+    const { root, cursor, limit } = parsed.request;
+    inspectTrajectoryNode(this.sql, root);
+    const basis = { root, expand: parsed.expand };
+    const position = parseSemanticCursor(cursor, "trajectory-neighbors", basis);
+    const phase = position ? position["phase"] : 0;
+    const key = position ? position["key"] : null;
+    if (typeof phase !== "number" || !Number.isSafeInteger(phase) || phase < 0 || phase > 3 ||
+        (position && typeof key !== "string") || (key !== null && typeof key !== "string")) {
+      throw new SemanticVcsError("InvalidReference", "Invalid trajectory neighbor cursor");
     }
-    const pending = this.semanticWorkspace()
-      .pendingEffects()
-      .find((effect) => effect.commandId.startsWith(`${commandId}:`));
-    return pending
-      ? this.workspaceSourcePendingInspection(commandId, pending)
-      : { state: "initializing", commandId };
-  }
-
-  private workspaceSourcePendingInspection(
-    commandId: string,
-    effect:
-      | {
-          effectId: string;
-          scopeKind: "context" | "workspace";
-          scopeId: string;
-          commandId: string;
-          kind: "observe-content" | "materialize-context" | "publish-main";
-          payload: Record<string, unknown>;
-          payloadDigest: string;
-        }
-      | undefined,
-  ): WorkspaceSourceInitializationInspection {
-    if (!effect)
-      throw new Error(
-        "Workspace source initialization reported no pending effect",
-      );
-    const pendingEffect: WorkspaceSourceEffect = {
-      effectId: effect.effectId,
-      scopeKind: effect.scopeKind,
-      scopeId: effect.scopeId,
-      commandId: effect.commandId,
-      kind: effect.kind,
-      payload: effect.payload,
-      payloadDigest: effect.payloadDigest,
-      status: "pending",
-    };
-    return { state: "initializing", commandId, pendingEffect };
-  }
-
-  private vcsSemantic(
-    method: import("@vibestudio/service-schemas/vcs").VcsSemanticMethodName,
-    request: SemanticDispatchRequest,
-  ): Promise<unknown> {
-    this.ensureReady();
-    return this.semanticWorkspace().dispatch(method, request);
-  }
-
-  @schemaRpc()
-  vcsEdit(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("edit", request);
-  }
-
-  @schemaRpc()
-  vcsMove(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("move", request);
-  }
-
-  @schemaRpc()
-  vcsCopy(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("copy", request);
-  }
-
-  @schemaRpc()
-  vcsMerge(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("merge", request);
-  }
-
-  @schemaRpc()
-  vcsRevert(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("revert", request);
-  }
-
-  @schemaRpc()
-  vcsCommit(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("commit", request);
-  }
-
-  @schemaRpc()
-  vcsDiscard(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("discard", request);
-  }
-
-  @schemaRpc()
-  vcsImportSnapshot(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("importSnapshot", request);
-  }
-
-  @schemaRpc()
-  vcsRegisterExternalDelta(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("registerExternalDelta", request);
-  }
-
-  @schemaRpc()
-  vcsSupersedeExternalDelta(
-    request: SemanticDispatchRequest,
-  ): Promise<unknown> {
-    return this.vcsSemantic("supersedeExternalDelta", request);
-  }
-
-  @schemaRpc()
-  vcsFinalizeExternalDelta(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("finalizeExternalDelta", request);
-  }
-
-  @schemaRpc()
-  vcsPush(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("push", request);
-  }
-
-  @schemaRpc()
-  vcsStatus(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("status", request);
-  }
-
-  @schemaRpc()
-  vcsMainState(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("mainState", request);
-  }
-
-  @schemaRpc()
-  vcsCompare(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("compare", request);
-  }
-
-  @schemaRpc()
-  vcsInspect(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("inspect", request);
-  }
-
-  @schemaRpc()
-  vcsNeighbors(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("neighbors", request);
-  }
-
-  @schemaRpc()
-  vcsHistory(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("history", request);
-  }
-
-  @schemaRpc()
-  vcsBlame(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("blame", request);
-  }
-
-  @schemaRpc()
-  vcsWalk(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("walk", request);
-  }
-
-  @schemaRpc()
-  vcsQuery(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("query", request);
-  }
-
-  @schemaRpc()
-  vcsSearch(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("search", request);
-  }
-
-  @schemaRpc()
-  vcsReadMemory(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("readMemory", request);
-  }
-
-  @schemaRpc()
-  vcsResolveRepository(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("resolveRepository", request);
-  }
-
-  @schemaRpc()
-  vcsReadFiles(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("readFiles", request);
-  }
-
-  @schemaRpc()
-  vcsReadFile(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("readFile", request);
-  }
-
-  @schemaRpc()
-  vcsListDirectory(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("listDirectory", request);
-  }
-
-  @schemaRpc()
-  vcsListFiles(request: SemanticDispatchRequest): Promise<unknown> {
-    return this.vcsSemantic("listFiles", request);
-  }
-
-  @schemaRpc()
-  vcsSemanticEffectAck(input: { acknowledgement: SemanticEffectAcknowledgement }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().acknowledgeEffect(input.acknowledgement);
-  }
-
-  @schemaRpc()
-  vcsSemanticHostReadAck(input: {
-    acknowledgement: {
-      request: GadJsonRecord;
-      files: Array<{ contentHash: string; text: string }>;
-    };
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().acknowledgeHostRead(input.acknowledgement);
-  }
-
-  @schemaRpc()
-  vcsSemanticContentAck(input: {
-    acknowledgement: { request: GadJsonRecord; contentHashes: string[] };
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().acknowledgeContent(input.acknowledgement);
-  }
-
-  @schemaRpc()
-  vcsPendingSemanticEffects(): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().pendingEffects();
-  }
-
-  @schemaRpc()
-  vcsContentGcRoots(): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().contentGcRoots();
-  }
-
-  @schemaRpc()
-  vcsListContexts(input: { prefix?: string }): string[] {
-    this.ensureReady();
-    return this.semanticWorkspace().listContexts(input.prefix);
-  }
-
-  @schemaRpc()
-  vcsReferencesReachable(input: {
-    contextIds: string[];
-    references: Array<{ kind: string; value: unknown }>;
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().referencesReachable(
-      input.contextIds,
-      input.references,
-    );
-  }
-
-  @schemaRpc()
-  vcsIsStateDescendant(input: {
-    ancestor: import("@vibestudio/service-schemas/vcs").VcsStateNodeRef;
-    descendant: import("@vibestudio/service-schemas/vcs").VcsStateNodeRef;
-    maxEdges: number;
-  }): boolean {
-    this.ensureReady();
-    return this.semanticWorkspace().isStateDescendant(
-      input.ancestor as import("@workspace/vcs-engine").StateNodeRef,
-      input.descendant as import("@workspace/vcs-engine").StateNodeRef,
-      input.maxEdges,
-    );
-  }
-
-  @schemaRpc()
-  vcsEnsureContext(input: {
-    contextId: string;
-    commandId: string;
-    projection?: "required" | "deferred";
-    ingress: SemanticDispatchRequest["ingress"];
-  }): unknown {
-    this.ensureReady();
-    return input.projection === "deferred"
-      ? this.semanticWorkspace().ensureContextCoordinate(input, input.ingress)
-      : this.semanticWorkspace().ensureContext(input, input.ingress);
-  }
-
-  @schemaRpc()
-  vcsContextMaterializationCommand(input: {
-    contextId: string;
-    materializedState:
-      | import("@vibestudio/shared/vcs/workspaceProjection").WorkspaceStateRef
-      | null;
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().contextMaterializationCommand(
-      input.contextId,
-      input.materializedState,
-    );
-  }
-
-  @schemaRpc()
-  vcsForkContext(input: {
-    sourceContextId: string;
-    targetContextId: string;
-    commandId: string;
-    ingress: SemanticDispatchRequest["ingress"];
-  }): unknown {
-    this.ensureReady();
-    return this.semanticWorkspace().forkContext(input, input.ingress);
-  }
-
-  @schemaRpc()
-  vcsDropContext(input: { contextId: string }): { dropped: boolean } {
-    this.ensureReady();
+    const edges = parsed.expand
+      ? trajectoryNeighborEdges(this.sql, root, { phase, key }, limit + 1)
+      : [];
     return {
-      dropped: this.transaction(() =>
-        this.semanticVcsStore().dropContext(input.contextId),
-      ),
+      root,
+      edges: edges.slice(0, limit).map(({ edge }) => vcsProvenanceEdgeSchema.parse(edge)),
+      nextCursor: edges.length > limit
+        ? semanticCursor("trajectory-neighbors", basis, edges[limit - 1]!.position)
+        : null,
     };
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host admits exact invocation coordinates from native workspace history." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryMemoryCause(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
+    this.ensureReady();
+    return readHistoryMemoryCause(this.sql, vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Trajectory query evidence is limited to native command coordinates selected by the host." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryQueryTrajectory(input: ReturnType<typeof HistoryQueryCausesSchema.parse>) {
+    const causes = HistoryQueryCausesSchema.parse(input);
+    const rows = this.sql.exec(
+      `WITH causes AS MATERIALIZED (
+         SELECT json_extract(value, '$[0]') AS log_id, json_extract(value, '$[1]') AS head,
+                json_extract(value, '$[2]') AS invocation_id FROM json_each(?1)
+       ), invocations AS MATERIALIZED (
+         SELECT invocation.log_id, invocation.head, invocation.invocation_id, invocation.turn_id,
+                invocation.status, invocation.terminal_outcome, input.input_log_id, input.input_head, input.input_message_id
+           FROM causes JOIN trajectory_invocations invocation USING (log_id, head, invocation_id)
+           LEFT JOIN trajectory_invocation_inputs input
+             ON input.log_id = invocation.log_id AND input.head = invocation.head
+            AND input.invocation_id = invocation.invocation_id
+       ), turns AS MATERIALIZED (
+         SELECT DISTINCT turn.log_id, turn.head, turn.turn_id, turn.ordinal,
+                         turn.trigger_message_id, substr(turn.summary, 1, 2000) AS summary
+           FROM invocations JOIN trajectory_turns turn USING (log_id, head, turn_id)
+       ), message_keys AS (
+         SELECT message.log_id, message.head, message.message_id FROM turns
+           JOIN trajectory_messages message USING (log_id, head, turn_id)
+         UNION
+         SELECT input_log_id, input_head, input_message_id FROM invocations WHERE input_message_id IS NOT NULL
+       )
+       SELECT 'invocations' AS relation,
+              json_array(log_id, head, invocation_id, turn_id, status, terminal_outcome,
+                         input_log_id, input_head, input_message_id) AS row_json
+         FROM invocations
+       UNION ALL
+       SELECT 'turns', json_array(log_id, head, turn_id, ordinal, trigger_message_id, summary) FROM turns
+       UNION ALL
+       SELECT 'messages', json_array(message.log_id, message.head, message.message_id,
+               message.turn_id, message.role,
+               coalesce(json_extract(event.payload_ref_json, '$.senderRef.kind'), json_extract(event.actor_json, '$.kind')),
+               coalesce(json_extract(event.payload_ref_json, '$.senderRef.id'), json_extract(event.actor_json, '$.id')),
+               json_extract(event.payload_ref_json, '$.sourceMessageId'),
+               substr(coalesce(json_extract(event.payload_ref_json, '$.blocks[0].content'), ''), 1, 400),
+               length(coalesce(json_extract(event.payload_ref_json, '$.blocks[0].content'), '')))
+         FROM message_keys JOIN trajectory_messages message USING (log_id, head, message_id)
+         LEFT JOIN log_events event ON event.log_id = message.log_id AND event.head = message.head
+           AND event.envelope_id = coalesce(message.completed_event_id, message.started_event_id)
+       LIMIT ?2`,
+      JSON.stringify(causes), HISTORY_QUERY_TRAJECTORY_ROW_LIMIT + 1,
+    ).toArray();
+    const result: ReturnType<typeof HistoryQueryTrajectorySchema.parse> = {
+      invocations: [], turns: [], messages: [], truncated: rows.length > HISTORY_QUERY_TRAJECTORY_ROW_LIMIT,
+    };
+    if (!result.truncated) {
+      for (const { relation, row_json } of rows) {
+        if ((relation !== "invocations" && relation !== "turns" && relation !== "messages") || typeof row_json !== "string")
+          throw new Error("Workspace trajectory query has an invalid projection");
+        result[relation].push(JSON.parse(row_json));
+      }
+    }
+    return HistoryQueryTrajectorySchema.parse(result);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native history for walk invocation trails." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryWalkInvocation(input: ReturnType<typeof vcsTrajectoryInvocationRefSchema.parse>) {
+    this.ensureReady();
+    return readHistoryWalkInvocation(this.sql, vcsTrajectoryInvocationRefSchema.parse(input));
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "The host resolves native history before expanding trajectory cohorts." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "read",
+  })
+  readHistoryWalkCohortInvocations(input: HistoryWalkCohort) {
+    const seed = HistoryWalkCohortSchema.parse(input);
+    const rows = seed.kind === "turn"
+      ? this.sql.exec(
+          `SELECT log_id, head, invocation_id FROM trajectory_invocations
+            WHERE log_id = ? AND head = ? AND turn_id = ?
+            ORDER BY invocation_id LIMIT 2001`,
+          seed.turn.logId, seed.turn.head, seed.turn.turnId,
+        ).toArray()
+      : this.sql.exec(
+          `SELECT sibling.log_id, sibling.head, sibling.invocation_id
+             FROM trajectory_invocations AS origin JOIN trajectory_invocations AS sibling
+               ON sibling.log_id = origin.log_id AND sibling.head = origin.head AND sibling.turn_id = origin.turn_id
+            WHERE origin.log_id = ?1 AND origin.head = ?2 AND origin.invocation_id = ?3
+           UNION
+           SELECT sibling.log_id, sibling.head, sibling.invocation_id
+             FROM trajectory_invocation_inputs AS origin JOIN trajectory_invocation_inputs AS sibling
+               ON sibling.input_log_id = origin.input_log_id AND sibling.input_head = origin.input_head
+              AND sibling.input_message_id = origin.input_message_id
+            WHERE origin.log_id = ?1 AND origin.head = ?2 AND origin.invocation_id = ?3
+           ORDER BY log_id, head, invocation_id LIMIT 2001`,
+          seed.invocation.logId, seed.invocation.head, seed.invocation.invocationId,
+        ).toArray();
+    if (rows.length > 2000) throw new Error("Workspace trajectory cohort contains too many invocations");
+    return rows.map(({ log_id, head, invocation_id }) => vcsTrajectoryInvocationRefSchema.parse({
+      kind: "trajectory-invocation", logId: log_id, head, invocationId: invocation_id,
+    }));
   }
 
   // -------------------------------------------------------------------------
@@ -2084,10 +1618,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
       head: input.head,
       logKind: String(row["log_kind"]),
       seq: pointer.seq,
-      hash: pointer.hash,
       envelopeId: pointer.envelopeId,
       forkSeq: row["fork_seq"] == null ? null : asNumber(row["fork_seq"]),
-      forkHash: asString(row["fork_hash"]),
+      forkEnvelopeId: asString(row["fork_envelope_id"]),
       parentLogId: asString(row["parent_log_id"]),
       parentHead: asString(row["parent_head"]),
     };
@@ -2095,8 +1628,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   /**
    * The fork lineage recorded on a `log_heads` row: its parent log and the
-   * `(seq, hash)` it forked at (all null for a root / un-forked head). A pure
-   * read of the `parent_log_id`/`fork_seq`/`fork_hash` columns {@link forkLog}
+   * `(sequence, envelope ID)` it forked at (all null for a root / un-forked head). A pure
+   * read of the `parent_log_id`/`fork_seq`/`fork_envelope_id` columns {@link forkLog}
    * populates — the LOG lineage surface (trajectory-fork provenance), distinct
    * from the state-DAG merge base a context fork shares. `head` defaults to the
    * log's primary head.
@@ -2105,7 +1638,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   getLogLineage(input: { logId: string; head?: string }): {
     parentLogId: string | null;
     forkSeq: number | null;
-    forkHash: string | null;
+    forkEnvelopeId: string | null;
   } {
     this.ensureReady();
     const row = this.logHeadRow(input.logId, input.head ?? CHANNEL_LOG_HEAD);
@@ -2113,7 +1646,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       parentLogId: row ? asString(row["parent_log_id"]) : null,
       forkSeq:
         row && row["fork_seq"] != null ? asNumber(row["fork_seq"]) : null,
-      forkHash: row ? asString(row["fork_hash"]) : null,
+      forkEnvelopeId: row ? asString(row["fork_envelope_id"]) : null,
     };
   }
 
@@ -2135,16 +1668,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
     logId: string,
     head: string,
     headRow?: JsonRecord | null,
-  ): { seq: number; hash: string; envelopeId: string | null } {
+  ): { seq: number; envelopeId: string | null } {
     const row = headRow ?? this.logHeadRow(logId, head);
     if (row) {
       return {
         seq: asNumber(row["current_seq"]),
-        hash: asString(row["current_hash"]) ?? GENESIS_EVENT_HASH,
         envelopeId: asString(row["current_envelope_id"]),
       };
     }
-    return { seq: 0, hash: GENESIS_EVENT_HASH, envelopeId: null };
+    return { seq: 0, envelopeId: null };
   }
 
   /** Lineage segments, self first, each capped at the seq visible from the
@@ -2177,22 +1709,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return segments;
   }
 
-  /** Sync twin of the protocol's computeLogEnvelopeHash — same preimage
-   *  builder, sync sha256 (workerd has no sync crypto and hashes are needed
-   *  inside SQL transactions). */
-  private computeEnvelopeHash(
-    logId: string,
-    head: string,
-    seq: number,
-    prevHash: string,
-    semantic: Record<string, unknown>,
-  ): string {
-    return sha256HexSyncText(
-      logEnvelopeHashPreimage({ prevHash, logId, head, seq, semantic }),
-    );
-  }
-
-  /** The hash-covered slice — the protocol's logEnvelopeSemantic. */
   private semanticSlice(
     event: LogEnvelopeSemanticInput,
   ): Record<string, unknown> {
@@ -2266,8 +1782,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           }
         : {}),
       appendedAt: String(row["appended_at"]),
-      prevHash: String(row["prev_hash"]),
-      hash: String(row["hash"]),
     };
   }
 
@@ -2505,7 +2019,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  initializeLogHead(input: { logId: string; head: string; logKind: string }): { seq: 0; hash: string } {
+  initializeLogHead(input: { logId: string; head: string; logKind: string }): { seq: 0; envelopeId: null } {
     this.ensureReady();
     return this.transaction(() => {
       const existing = this.logHeadRow(input.logId, input.head);
@@ -2515,7 +2029,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       } else {
         this.sql.exec(`INSERT INTO log_heads (log_id, head, log_kind, owner_json, created_at) VALUES (?, ?, ?, ?, ?)`, input.logId, input.head, input.logKind, json(null), nowIso());
       }
-      return { seq: 0, hash: GENESIS_EVENT_HASH };
+      return { seq: 0, envelopeId: null };
     });
   }
 
@@ -2672,11 +2186,12 @@ export class GadWorkspaceDO extends DurableObjectBase {
     // can change independently inside the transaction.
     const pointer = existingHead
       ? this.headPointer(input.logId, input.head, existingHead)
-      : { seq: 0, hash: GENESIS_EVENT_HASH, envelopeId: null };
+      : { seq: 0, envelopeId: null };
     if (
       replayed.length === 0 &&
-      "expectedHeadHash" in input &&
-      (input.expectedHeadHash ?? GENESIS_EVENT_HASH) !== pointer.hash
+      input.expectedHead !== undefined &&
+      (input.expectedHead.seq !== pointer.seq ||
+        input.expectedHead.envelopeId !== pointer.envelopeId)
     ) {
       throw new Error(
         gadAppendErrorMessage("head-conflict", `log head conflict for ${input.logId}:${input.head}`)
@@ -2684,7 +2199,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     }
     if (remaining.length > 0 && replayed.length > 0) {
       const lastReplayed = replayed[replayed.length - 1]!;
-      if (lastReplayed.hash !== pointer.hash) {
+      if (lastReplayed.seq !== pointer.seq || lastReplayed.envelopeId !== pointer.envelopeId) {
         throw new Error(
           gadAppendErrorMessage(
             "replay-mismatch",
@@ -2708,7 +2223,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
     const appended: LogEnvelope[] = [];
     let seq = pointer.seq;
-    let prevHash = pointer.hash;
     for (const event of remaining) {
       if (
         isAgenticLogKind(logKind) &&
@@ -2723,14 +2237,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
         );
       }
       seq += 1;
-      const semantic = this.semanticSlice(event);
-      const hash = this.computeEnvelopeHash(
-        input.logId,
-        input.head,
-        seq,
-        prevHash,
-        semantic,
-      );
       const envelope: LogEnvelope = {
         logId: input.logId,
         head: input.head,
@@ -2747,12 +2253,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
           ? { causality: event.causality }
           : {}),
         appendedAt: event.appendedAt,
-        prevHash,
-        hash,
       };
       this.insertLogEvent(envelope);
       this.applyProjections(logKind, envelope);
-      prevHash = hash;
       appended.push(envelope);
 
       for (const target of event.publish) {
@@ -2808,10 +2311,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const last = appended[appended.length - 1]!;
       this.sql.exec(
         `UPDATE log_heads
-            SET current_seq = ?, current_hash = ?, current_envelope_id = ?
+            SET current_seq = ?, current_envelope_id = ?
           WHERE log_id = ? AND head = ?`,
         last.seq,
-        last.hash,
         String(last.envelopeId),
         input.logId,
         input.head,
@@ -2822,15 +2324,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const finalPointer = lastAppended
       ? {
           seq: lastAppended.seq,
-          hash: lastAppended.hash,
           envelopeId: String(lastAppended.envelopeId),
         }
       : pointer;
+    if (!finalPointer.envelopeId) throw new Error("Append has no resulting log head");
     return {
       logId: input.logId,
       head: input.head,
       headSeq: finalPointer.seq,
-      headHash: finalPointer.hash,
+      headEnvelopeId: finalPointer.envelopeId,
       envelopes: [...replayed, ...midBatchReplayed, ...appended],
       published,
     };
@@ -2904,8 +2406,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       `INSERT INTO log_events (
          log_id, head, seq, envelope_id, payload_kind, actor_json, to_json,
          causality_json, annotations_json, payload_ref_json, appended_at,
-         hash, prev_hash, origin_log_id, origin_head, origin_envelope_id, turn_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         origin_log_id, origin_head, origin_envelope_id, turn_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       envelope.logId,
       envelope.head,
       envelope.seq,
@@ -2917,8 +2419,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       json(envelope.annotations),
       JSON.stringify(envelope.payload),
       envelope.appendedAt,
-      envelope.hash,
-      envelope.prevHash,
       envelope.causality?.originLogId ?? null,
       envelope.causality?.originHead ?? null,
       envelope.causality?.originEnvelopeId ?? null,
@@ -2972,12 +2472,11 @@ export class GadWorkspaceDO extends DurableObjectBase {
         sourceRow,
       );
       const forkSeq = input.atSeq ?? sourcePointer.seq;
-      if (forkSeq > sourcePointer.seq) {
+      if (!Number.isSafeInteger(forkSeq) || forkSeq < 0 || forkSeq > sourcePointer.seq) {
         throw new Error(
-          `forkLog atSeq ${forkSeq} is beyond the source head ${sourcePointer.seq}`,
+          `forkLog atSeq ${forkSeq} is outside the source head ${sourcePointer.seq}`,
         );
       }
-      let forkHash = GENESIS_EVENT_HASH;
       let forkEnvelopeId: string | null = null;
       if (forkSeq > 0) {
         const eventRow = this.lineageEventBySeq(
@@ -2989,7 +2488,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           throw new Error(
             `forkLog atSeq ${forkSeq} not found in source lineage`,
           );
-        forkHash = String(eventRow["hash"]);
         forkEnvelopeId = String(eventRow["envelope_id"]);
       }
 
@@ -2999,7 +2497,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
           asString(existing["parent_log_id"]) !== input.fromLogId ||
           asString(existing["parent_head"]) !== input.fromHead ||
           asNumber(existing["fork_seq"]) !== forkSeq ||
-          asString(existing["fork_hash"]) !== forkHash
+          asString(existing["fork_envelope_id"]) !== forkEnvelopeId
         ) {
           throw new Error(
             `target log already exists with different fork lineage: ${input.toLogId}:${input.toHead}`,
@@ -3011,7 +2509,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
           toLogId: input.toLogId,
           toHead: input.toHead,
           forkSeq,
-          forkHash,
+          forkEnvelopeId,
           inherited: this.lineageEventCountThrough(
             input.toLogId,
             input.toHead,
@@ -3024,8 +2522,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       this.sql.exec(
         `INSERT INTO log_heads (
            log_id, head, log_kind, owner_json, parent_log_id, parent_head,
-           fork_seq, fork_hash, current_seq, current_hash, current_envelope_id, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           fork_seq, fork_envelope_id, current_seq, current_envelope_id, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         input.toLogId,
         input.toHead,
         logKind,
@@ -3033,16 +2531,15 @@ export class GadWorkspaceDO extends DurableObjectBase {
         input.fromLogId,
         input.fromHead,
         forkSeq,
-        forkHash,
+        forkEnvelopeId,
         forkSeq,
-        forkHash,
         forkEnvelopeId,
         nowIso(),
       );
 
       // Seed the child's projection caches (P1: caches, rebuildable) by folding
       // the inherited lineage view under the child key. No log rows are copied.
-      const inherited = this.readLog({
+      const inherited = this.readLogQuery({
         logId: input.toLogId,
         head: input.toHead,
       });
@@ -3060,7 +2557,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         toLogId: input.toLogId,
         toHead: input.toHead,
         forkSeq,
-        forkHash,
+        forkEnvelopeId,
         inherited: inherited.length,
       };
     });
@@ -3094,65 +2591,61 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const head = String(headRow["head"]);
       const startSeq =
         headRow["fork_seq"] == null ? 0 : asNumber(headRow["fork_seq"]);
-      const startHash = asString(headRow["fork_hash"]) ?? GENESIS_EVENT_HASH;
+      const startEnvelopeId = asString(headRow["fork_envelope_id"]);
+      const parentLogId = asString(headRow["parent_log_id"]);
+      const parentHead = asString(headRow["parent_head"]);
+      const forked = headRow["fork_seq"] != null;
+      if (forked || parentLogId !== null || parentHead !== null || startEnvelopeId !== null) {
+        let validFork = false;
+        if (forked && parentLogId && parentHead) {
+          try {
+            const parent = this.logHeadRow(parentLogId, parentHead);
+            const anchor = startSeq > 0 ? this.lineageEventBySeq(parentLogId, parentHead, startSeq) : null;
+            validFork = parent !== null && startSeq <= asNumber(parent["current_seq"]) &&
+              (startSeq === 0 ? startEnvelopeId === null : anchor !== null && anchor["envelope_id"] === startEnvelopeId);
+            this.logLineage(logId, head);
+          } catch {
+            validFork = false;
+          }
+        }
+        if (!validFork) errors.push({
+          type: "log-fork-boundary",
+          message: `log fork boundary disagrees with its parent for ${logId}:${head}`,
+          logId,
+          head,
+        });
+      }
+
       const rows = this.sql
         .exec(
-          `SELECT * FROM log_events WHERE log_id = ? AND head = ? ORDER BY seq ASC`,
+          `SELECT seq, envelope_id FROM log_events WHERE log_id = ? AND head = ? ORDER BY seq ASC`,
           logId,
           head,
         )
-        .toArray() as JsonRecord[];
+        .toArray();
       let expectedSeq = startSeq;
-      let prevHash = startHash;
       for (const row of rows) {
-        const envelope = this.mapLogEnvelope(row);
+        const seq = asNumber(row["seq"]);
         expectedSeq += 1;
-        if (envelope.seq !== expectedSeq) {
+        if (seq !== expectedSeq) {
           errors.push({
-            type: "log-chain",
-            message: `log ${logId}:${head} seq gap: expected ${expectedSeq}, found ${envelope.seq}`,
+            type: "log-sequence",
+            message: `log ${logId}:${head} seq gap: expected ${expectedSeq}, found ${seq}`,
             logId,
             head,
-            envelopeId: String(envelope.envelopeId),
+            envelopeId: String(row["envelope_id"]),
           });
-          expectedSeq = envelope.seq;
+          expectedSeq = seq;
         }
-        if (envelope.prevHash !== prevHash) {
-          errors.push({
-            type: "log-chain",
-            message: `log ${logId}:${head} seq ${envelope.seq} prevHash does not link`,
-            logId,
-            head,
-            envelopeId: String(envelope.envelopeId),
-          });
-        }
-        const recomputed = this.computeEnvelopeHash(
-          logId,
-          head,
-          envelope.seq,
-          envelope.prevHash,
-          this.semanticSlice(envelope),
-        );
-        if (recomputed !== envelope.hash) {
-          errors.push({
-            type: "log-hash",
-            message: `log ${logId}:${head} seq ${envelope.seq} hash mismatch (${String(envelope.envelopeId)})`,
-            logId,
-            head,
-            envelopeId: String(envelope.envelopeId),
-          });
-        }
-        prevHash = envelope.hash;
       }
       const pointer = this.headPointer(logId, head, headRow);
-      const lastSeq =
-        rows.length > 0 ? asNumber(rows[rows.length - 1]!["seq"]) : startSeq;
-      const lastHash =
-        rows.length > 0 ? String(rows[rows.length - 1]!["hash"]) : startHash;
-      if (pointer.seq !== lastSeq || pointer.hash !== lastHash) {
+      const last = rows.at(-1);
+      const lastSeq = last ? asNumber(last["seq"]) : startSeq;
+      const lastEnvelopeId = last ? String(last["envelope_id"]) : startEnvelopeId;
+      if (pointer.seq !== lastSeq || pointer.envelopeId !== lastEnvelopeId) {
         errors.push({
           type: "log-head-pointer",
-          message: `log head pointer disagrees with the stored chain for ${logId}:${head}`,
+          message: `log head pointer disagrees with the stored sequence for ${logId}:${head}`,
           logId,
           head,
         });
@@ -3868,77 +3361,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
     return this.memoryIndexMode;
   }
 
-  /** Reconcile searchable commit documents from the semantic event DAG. The
-   * recall index is disposable; workspace events and their authored work-unit
-   * intents remain the authority. */
-  private ensureCommitMemoryIndex(): void {
-    this.ensureMemoryIndex();
-
-    // Commit memory originally indexed only the event message. Rebuild that
-    // disposable projection once so existing workspaces gain the authored
-    // intent terms as well; subsequent calls only project newly committed
-    // events. This marker is deliberately internal rather than part of the
-    // public file-index marker namespace.
-    const projectionVersionKey = "memory:commit-projection-version";
-    const projectionVersion = "2";
-    if (this.getStateValue(projectionVersionKey) !== projectionVersion) {
-      this.sql.exec(
-        `DELETE FROM gad_memory_fts
-          WHERE kind = 'commit'
-            AND event_id IN (SELECT event_id FROM gad_workspace_events)`,
-      );
-    }
-
-    const missing = this.sql
-      .exec(
-        `SELECT e.event_id,
-                e.result_workspace_fact_root_id,
-                e.message,
-                (
-                  SELECT GROUP_CONCAT(intent_summary, CHAR(10))
-                    FROM (
-                      SELECT DISTINCT TRIM(w.intent_summary) AS intent_summary
-                        FROM gad_workspace_event_applications ea
-                        JOIN gad_work_unit_applications a
-                          ON a.application_id = ea.application_id
-                        JOIN gad_work_units w
-                          ON w.work_unit_id = a.work_unit_id
-                       WHERE ea.event_id = e.event_id
-                         AND TRIM(COALESCE(w.intent_summary, '')) <> ''
-                       ORDER BY ea.ordinal
-                    )
-                ) AS intent_summaries
-           FROM gad_workspace_events e
-          WHERE e.kind <> 'genesis'
-            AND NOT EXISTS (
-              SELECT 1 FROM gad_memory_fts m
-               WHERE m.kind = 'commit'
-                 AND m.event_id = e.event_id
-            )`,
-      )
-      .toArray() as JsonRecord[];
-    for (const row of missing) {
-      const message = asString(row["message"])?.trim();
-      const intentSummaries = asString(row["intent_summaries"])?.trim();
-      const summary = [message, intentSummaries]
-        .filter((part): part is string => Boolean(part))
-        .filter((part, index, parts) => parts.indexOf(part) === index)
-        .join("\n");
-      const eventId = asString(row["event_id"]);
-      const workspaceFactRootId = asString(
-        row["result_workspace_fact_root_id"],
-      );
-      if (!summary || !eventId || !workspaceFactRootId) continue;
-      this.indexMemoryRow({
-        text: summary,
-        kind: "commit",
-        eventId,
-        anchor: { workspaceEventId: eventId, workspaceFactRootId },
-      });
-    }
-    this.setStateValue(projectionVersionKey, projectionVersion);
-  }
-
   private indexMemoryRow(row: {
     text: string;
     kind: "message" | "file" | "commit";
@@ -3982,6 +3404,67 @@ export class GadWorkspaceDO extends DurableObjectBase {
       row.contentHash ?? null,
       row.anchor ? JSON.stringify(row.anchor) : null,
     );
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Only the host can index protected native publications." },
+    effect: { kind: "open" },
+    tier: "open",
+    sensitivity: "write",
+  })
+  recordHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): true {
+    this.ensureReady();
+    this.transaction(() => this.indexHistoryCommitMemory(input));
+    return true;
+  }
+
+  private indexHistoryCommitMemory(input: { eventId: string; revision: string; text: string; createdAt: string }): void {
+    const { eventId, revision, text, createdAt } = input;
+    if (typeof eventId !== "string" || !eventId ||
+        typeof revision !== "string" || !/^[a-f0-9]{40}$/u.test(revision) ||
+        typeof text !== "string" || !text.trim() || typeof createdAt !== "string" ||
+        !Number.isFinite(Date.parse(createdAt))) {
+      throw new Error("Invalid native commit memory");
+    }
+    this.indexMemoryRow({
+      text, kind: "commit", eventId,
+      anchor: { workspaceEventId: eventId, revision, createdAt },
+    });
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Protected commit recall indexing is managed by the host." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "read",
+  })
+  readHistoryCommitMemoryIndex(): string | null {
+    this.ensureReady();
+    return this.getStateValue(historyCommitMemoryIndexKey);
+  }
+
+  @rpc({
+    principals: ["host"],
+    website: { kind: "closed", reason: "Protected commit recall indexing is managed by the host." },
+    effect: { kind: "open" }, tier: "open", sensitivity: "write",
+  })
+  recordHistoryCommitMemoryPage(input: {
+    previousMarker: string | null;
+    marker: string;
+    documents: { eventId: string; revision: string; text: string; createdAt: string }[];
+  }): true {
+    this.ensureReady();
+    if (typeof input.marker !== "string" || !input.marker || input.marker.length > 4096 ||
+        !Array.isArray(input.documents) || input.documents.length > 16)
+      throw new Error("Invalid native commit memory page");
+    HistoryCommitMemoryMarkerSchema.parse(JSON.parse(input.marker));
+    this.transaction(() => {
+      if (this.getStateValue(historyCommitMemoryIndexKey) !== input.previousMarker)
+        throw new Error("Native commit memory index advanced concurrently");
+      for (const document of input.documents) this.indexHistoryCommitMemory(document);
+      this.setStateValue(historyCommitMemoryIndexKey, input.marker);
+    });
+    return true;
   }
 
   /** Batch file-text indexing (the server pushes changed file text — bytes
@@ -4038,7 +3521,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
    * commits stay workspace-wide: they are committed workspace state every
    * context shares, and the boundary held here is around conversation.
    */
-  private materializeRecallVisibility(): {
+  private recallVisibility(): {
     clause: string;
     bindings: SqlBinding[];
   } {
@@ -4050,19 +3533,37 @@ export class GadWorkspaceDO extends DurableObjectBase {
       return { clause: "", bindings: [] };
     }
     const binding = authorization.agentBinding;
-    this.semanticWorkspace().materializeVisibilityBasis(
-      binding ? [binding.contextId] : [],
-    );
+    const ownLogId = binding ? logIdForChannel(binding.channelId) : null;
+    const causes = authorization.workspaceRecallCauses;
+    if (!binding || !causes?.length) {
+      return {
+        clause: " AND (kind <> 'message' OR log_id = ?)",
+        bindings: [ownLogId],
+      };
+    }
     return {
-      clause: ` AND (kind <> 'message'
-              OR log_id = ?
-              OR EXISTS (
-                   SELECT 1 FROM prov_messages visible
-                    WHERE visible.log_id = gad_memory_fts.log_id
-                      AND visible.head = gad_memory_fts.head
-                      AND visible.message_id =
-                            json_extract(gad_memory_fts.anchor_json, '$.messageId')))`,
-      bindings: [binding ? logIdForChannel(binding.channelId) : null],
+      clause: ` AND (kind <> 'message' OR log_id = ?
+          OR (log_id, head, json_extract(anchor_json, '$.messageId')) IN (
+            WITH invocations AS MATERIALIZED (
+              SELECT invocation.log_id, invocation.head, invocation.turn_id,
+                     input.input_log_id, input.input_head, input.input_message_id
+                FROM json_each(?) AS cause
+                JOIN trajectory_invocations invocation
+                  ON invocation.log_id = cause.value ->> 0 AND invocation.head = cause.value ->> 1
+                 AND invocation.invocation_id = cause.value ->> 2
+                LEFT JOIN trajectory_invocation_inputs input
+                  USING (log_id, head, invocation_id)
+            )
+            SELECT message.log_id, message.head, message.message_id
+              FROM invocations JOIN trajectory_turns USING (log_id, head, turn_id)
+              JOIN trajectory_messages message USING (log_id, head, turn_id)
+            UNION
+            SELECT message.log_id, message.head, message.message_id
+              FROM invocations invocation JOIN trajectory_messages message
+                ON message.log_id = invocation.input_log_id AND message.head = invocation.input_head
+               AND message.message_id = invocation.input_message_id
+          ))`,
+      bindings: [ownLogId, JSON.stringify(causes)],
     };
   }
 
@@ -4103,16 +3604,17 @@ export class GadWorkspaceDO extends DurableObjectBase {
   } {
     this.ensureReady();
     const mode = this.ensureMemoryIndex();
-    const visibility = this.materializeRecallVisibility();
-    const visibilityFilter = visibility.clause;
+    const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
+    const visibility = kinds === null || kinds.includes("message")
+      ? this.recallVisibility()
+      : { clause: "", bindings: [] };
+    const visibilityFilter =
+      ` AND (kind <> 'commit' OR json_extract(anchor_json, '$.revision') IS NOT NULL)${visibility.clause}`;
     const limit = Math.min(input.limit ?? 10, 50);
     // Over-fetch so published/fork copies (the same logical item indexed under
     // several (log,head) pairs) can be collapsed BEFORE the page is sliced —
     // otherwise duplicates eat slots and the caller's page under-fills (§8.1/C6).
     const fetchLimit = Math.min(limit * 3, 150);
-    const kinds = input.kinds && input.kinds.length > 0 ? input.kinds : null;
-    if (kinds === null || kinds.includes("commit"))
-      this.ensureCommitMemoryIndex();
     const pathPrefixes =
       input.pathPrefixes && input.pathPrefixes.length > 0
         ? input.pathPrefixes
@@ -4214,7 +3716,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       const logId = asString(row["log_id"]);
       const head = asString(row["head"]);
       let actor: unknown = null;
-      let appendedAt: string | null = null;
+      const anchor = parseJson(asString(row["anchor_json"])) as Record<string, unknown> | null;
+      let appendedAt = row["kind"] === "commit" ? asString(anchor?.["createdAt"]) : null;
       if (eventId && logId && head) {
         const event = this.getLogEvent({ logId, head, envelopeId: eventId });
         if (event) {
@@ -4232,10 +3735,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
         eventId,
         path: asString(row["path"]),
         contentHash: asString(row["content_hash"]),
-        anchor: parseJson(asString(row["anchor_json"])) as Record<
-          string,
-          unknown
-        > | null,
+        anchor,
         actor,
         appendedAt,
       };
@@ -4469,7 +3969,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     );
     this.copyProjectionRows(
       "trajectory_checkpoints",
-      "anchor_event_hash, materialized_blob_json, materializer_version, created_at",
+      "anchor_event_id, materialized_blob_json, materializer_version, created_at",
       from,
       to,
     );
@@ -4531,9 +4031,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   private clearProjections(): void {
-    // Memory rows are projections too and are rebuilt from canonical events.
+    // Commit documents come from protected Dolt history and share its index marker.
     this.ensureMemoryIndex();
-    this.sql.exec(`DELETE FROM gad_memory_fts`);
+    this.sql.exec(`DELETE FROM gad_memory_fts WHERE kind <> 'commit'`);
     this.sql.exec(`DELETE FROM state WHERE key LIKE 'memidx:%'`);
     for (const table of [
       "trajectory_turns",
@@ -4567,8 +4067,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       trajectoryId: override?.trajectoryId ?? envelope.logId,
       branchId: override?.branchId ?? envelope.head,
       seq: envelope.seq,
-      prevEventHash: envelope.prevHash,
-      eventHash: envelope.hash,
       kind: envelope.payloadKind,
       actor: envelope.actor,
       ...(turnId ? { turnId } : {}),
@@ -4676,7 +4174,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     const logId = input.trajectoryId ?? this.findLogIdForHead(input.branchId);
     if (!logId) return [];
     const limit = input.limit ?? 500;
-    const envelopes = this.readLog({
+    const envelopes = this.readLogQuery({
       logId,
       head: input.branchId,
       afterSeq: input.cursor ?? 0,
@@ -4700,7 +4198,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
                 head AS branch_id,
                 owner_json,
                 current_seq AS seq,
-                current_hash AS head_event_hash,
                 current_envelope_id AS head_event_id,
                 parent_head AS parent_branch_id,
                 created_at,
@@ -4803,9 +4300,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
       branch_id: input.branchId,
       owner_json: (row["owner_json"] ?? null) as JsonValue,
       head_event_id: pointer.envelopeId,
-      head_event_hash: pointer.seq > 0 ? pointer.hash : null,
       parent_branch_id: (row["parent_head"] ?? null) as JsonValue,
-      fork_event_id: null,
+      fork_event_id: asString(row["fork_envelope_id"]),
       created_at: row["created_at"] as JsonValue,
       updated_at: row["created_at"] as JsonValue,
     };
@@ -4817,15 +4313,9 @@ export class GadWorkspaceDO extends DurableObjectBase {
   ): Promise<ForkTrajectoryBranchResult> {
     this.ensureReady();
     let atSeq: number | null = input.throughSeq ?? null;
-    if (input.throughEventHash) {
-      const row = this.sql
-        .exec(
-          `SELECT seq FROM log_events WHERE hash = ? LIMIT 1`,
-          input.throughEventHash,
-        )
-        .toArray()[0] as JsonRecord | undefined;
-      if (!row)
-        throw new Error("forkTrajectoryBranch throughEventHash not found");
+    if (input.throughEventId) {
+      const row = this.lineageEventRow(input.fromTrajectoryId, input.fromBranchId, input.throughEventId);
+      if (!row) throw new Error("forkTrajectoryBranch event is outside the source lineage");
       atSeq = asNumber(row["seq"]);
     }
     if (
@@ -4869,7 +4359,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
       toBranchId: input.toBranchId,
       copied: fork.inherited,
       headEventId: pointer.envelopeId,
-      headEventHash: pointer.seq > 0 ? pointer.hash : null,
+      headSeq: pointer.seq,
       lineage: [],
     };
   }
@@ -5358,7 +4848,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
     if (!lineage) return null;
     const trajectoryId = lineage.publication.trajectoryId;
     const branchId = lineage.publication.branchId;
-    const events = this.readLog({ logId: trajectoryId, head: branchId }).filter(
+    const events = this.readLogQuery({ logId: trajectoryId, head: branchId }).filter(
       (envelope) => envelope.seq <= lineage.trajectoryEvent.seq,
     );
     return PrivateLineageForPublishedEnvelopeSchema.parse({
@@ -5631,8 +5121,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
   ): InvocationDiagnosticPacket {
     this.ensureReady();
     const eventLimit = Math.min(Math.max(input.eventLimit ?? 20, 1), 50);
-    const commandLimit = Math.min(Math.max(input.commandLimit ?? 20, 1), 50);
-    const effectLimit = Math.min(Math.max(input.effectLimit ?? 50, 1), 100);
     const invocation = this.sql
       .exec(
         `SELECT log_id,head,invocation_id,turn_id,transport_call_id,kind,status,
@@ -5680,63 +5168,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
           this.trajectoryEventView(this.mapLogEnvelope(row)),
         ),
       ) as JsonRecord[];
-    const commandRows = this.sql
-      .exec(
-        `SELECT command_id,scope_kind,scope_id,method,request_digest,status,result_json,
-                created_at,completed_at
-           FROM vcs_command_journal
-          WHERE cause_log_id = ? AND cause_head = ? AND cause_invocation_id = ?
-          ORDER BY created_at ASC, command_id ASC
-          LIMIT ?`,
-        input.trajectoryId,
-        input.branchId,
-        input.invocationId,
-        commandLimit + 1,
-      )
-      .toArray() as JsonRecord[];
-    const commandsTruncated = commandRows.length > commandLimit;
-    let effectsTruncated = false;
-    const commands: CommandDiagnostic[] = commandRows
-      .slice(0, commandLimit)
-      .map((command) => {
-        const effects = this.sql
-          .exec(
-            `SELECT effect_id,scope_kind,scope_id,command_id,kind,payload_digest,status,
-                  receipt_digest,created_at,applied_at,payload_json,receipt_json
-             FROM gad_effect_intents
-            WHERE command_id = ? AND scope_kind = ? AND scope_id = ?
-            ORDER BY created_at ASC,effect_id ASC
-            LIMIT ?`,
-            String(command["command_id"]),
-            String(command["scope_kind"]),
-            String(command["scope_id"]),
-            effectLimit + 1,
-          )
-          .toArray()
-          .slice(0, effectLimit + 1)
-          .map((effect) => {
-            const {
-              payload_json: payloadJson,
-              receipt_json: receiptJson,
-              ...identity
-            } = effect as JsonRecord;
-            return {
-              ...identity,
-            payload: payloadJson == null ? null : parseJson(String(payloadJson)),
-            receipt: receiptJson == null ? null : parseJson(String(receiptJson)),
-            };
-          }) as CommandDiagnostic["effects"];
-        if (effects.length > effectLimit) effectsTruncated = true;
-        effects.splice(effectLimit);
-        const { result_json: resultJson, ...identity } = command;
-        return {
-          command: {
-            ...identity,
-            result: resultJson == null ? null : parseJson(String(resultJson)),
-          } as CommandDiagnostic["command"],
-          effects,
-        };
-      });
     const cleanupFailureCount = events.reduce((count, event) => {
       const payload = event["payload"];
       if (!payload || typeof payload !== "object" || Array.isArray(payload))
@@ -5770,7 +5201,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
       invocation: invocation ?? null,
       turn: turn ?? null,
       events,
-      commands,
       summary: {
         terminal: Boolean(
           invocation &&
@@ -5779,21 +5209,8 @@ export class GadWorkspaceDO extends DurableObjectBase {
           ),
         ),
         eventCount: events.length,
-        commandCount: commands.length,
-        pendingEffectCount: commands.reduce(
-          (count, command) =>
-            count +
-            command.effects.filter(
-              (effect) => String(effect["status"]) === "pending",
-            ).length,
-          0,
-        ),
         cleanupFailureCount,
-        truncated: {
-          events: eventsTruncated,
-          commands: commandsTruncated,
-          effects: effectsTruncated,
-        },
+        truncated: { events: eventsTruncated },
       },
     };
   }
@@ -6336,6 +5753,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   getStatus(): { metric: string; value: number }[] {
+    this.ensureReady();
     const count = (sql: string, ...bindings: SqlBinding[]) =>
       asNumber(this.sql.exec(sql, ...bindings).one()["value"]);
     return [
@@ -6354,18 +5772,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
            JOIN log_heads h ON h.log_id = e.log_id AND h.head = e.head
            WHERE h.log_kind = 'channel'`,
         ),
-      },
-      {
-        metric: "Workspace contexts",
-        value: count(`SELECT COUNT(*) AS value FROM vcs_contexts`),
-      },
-      {
-        metric: "Workspace events",
-        value: count(`SELECT COUNT(*) AS value FROM gad_workspace_events`),
-      },
-      {
-        metric: "Work units",
-        value: count(`SELECT COUNT(*) AS value FROM gad_work_units`),
       },
     ];
   }
@@ -6842,7 +6248,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
   }
 
   @schemaRpc()
-  async validateGadHashes(): Promise<{ ok: boolean; errors: string[] }> {
+  async validateGadIntegrity(): Promise<{ ok: boolean; errors: string[] }> {
     const integrity = await this.checkGadIntegrity();
     return {
       ok: integrity.ok,
@@ -6854,7 +6260,7 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
   @schemaRpc()
   clearDirtyAfterValidation(): Promise<{ ok: boolean; errors: string[] }> {
-    return this.validateGadHashes();
+    return this.validateGadIntegrity();
   }
 
   @schemaRpc()
@@ -6867,18 +6273,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
     const logIntegrity = await this.checkLogIntegrity({});
     errors.push(...logIntegrity.errors);
-
-    try {
-      this.semanticVcsStore().assertIntegrity();
-    } catch (error) {
-      errors.push({
-        type: "semantic-vcs",
-        message: error instanceof Error ? error.message : String(error),
-        ...(error instanceof SemanticVcsError
-          ? { code: error.code, detail: error.detail }
-          : {}),
-      });
-    }
 
     for (const orphan of this.inspectPublicationIntegrity({}).rows) {
       errors.push({
@@ -6923,12 +6317,6 @@ export class GadWorkspaceDO extends DurableObjectBase {
 
     return { ok: errors.length === 0, errors };
   }
-  private ensureEmptyState(): void {
-    // Semantic workspace genesis is context-scoped and is created lazily by
-    // SemanticVcsStore.ensureWorkspace. Schema creation itself has no authority
-    // to invent a workspace/context identity.
-  }
-
   private transaction<T>(fn: () => T): T {
     return this.ctx.storage.transactionSync(fn);
   }
