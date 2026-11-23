@@ -1,9 +1,15 @@
 import {readFileSync} from "node:fs";
-import {createRequire} from "node:module";
+import {createRequire,registerHooks} from "node:module";
+import {pathToFileURL} from "node:url";
 import path from "node:path";
 import {expect,it,vi} from "vitest";
 // Node24 loads this ESM SDK directly; Vite must not instrument its bundled compiler.
-const natlang=createRequire(import.meta.url)(path.resolve(import.meta.dirname,"../../packages/natlang/vendor/workerd/natlang-workerd.js"));
+const natlang=(()=>{
+ const anchor=pathToFileURL(path.join(process.cwd(),"package.json")).href;
+ const hook=registerHooks({resolve(specifier,context,next){return next(specifier,specifier==="yaml"||specifier.startsWith("@noble/hashes/")?{...context,parentURL:anchor}:context);}});
+ try{return createRequire(import.meta.url)(path.resolve(import.meta.dirname,"../../packages/natlang/vendor/workerd/natlang-workerd.js"));}
+ finally{hook.deregister();}
+})();
 // Execute the actual typed composition with recorded native/policy boundaries.
 // The caller supplies judgments; these tests never invoke a model.
 const {transformSync}=createRequire(path.join(process.cwd(),"package.json"))("esbuild");
