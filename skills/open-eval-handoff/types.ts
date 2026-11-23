@@ -56,3 +56,6 @@ export type ConfirmedEvalResult = {
     readback: { digest: string; observedDigest: string; size: number };
   };
 };
+
+export type EvalRecoveredOutput={jobId:string;runId:string;runDigest:string;resultDigest:string;readback:{digest:string;observedDigest:string;size:number}};
+export type EvalRecoveryResult={status:"unresolved";reason:"job-unavailable"}|{status:"reviewed";jobId:string;reviews:OpenEvalReview[];decision:EvalRecoveryDecision;result:EvalRecoveredOutput|null;artifact:EvalHandoffArtifact|null};

@@ -863,7 +863,7 @@ export default {
   "eval-handoff": {
     "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
     "callable": "workOnEvalHandoffGoal",
-    "resultType": "EvalHandoffGoalReport",
+    "resultType": "EvalRecoveryResult",
     "skill": "evalHandoff",
     "parameterNames": [
       "goal"

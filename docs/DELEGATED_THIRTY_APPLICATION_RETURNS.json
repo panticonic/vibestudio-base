@@ -314,7 +314,15 @@
       "line": 8,
       "text": "export type RecoveryHandoffOutcome = {\n  status: ScratchStatus | \"held-eval\" | \"held-policy\";\n  recovery: EvalReport;\n  directive: Directive;\n  handoff: {\n    status: ScratchStatus;\n    artifact: { path: string; bytes: number } | null;\n    missingSources: string[];\n    unanswered: string[];\n  } | null;\n  reason: string;\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "status": "actual operational disposition",
+      "recovery": "internal native recovery dependency; compact verified handle supplied to source acquisition",
+      "directive": "internal current authorization input; not copied into public return",
+      "handoff": "actual retained artifact or source/unanswered findings",
+      "reason": "actual grounded operating finding"
+    },
+    "nativeEvidence": "Native Eval verifyObserved validates actual original journals/blob/retry receipts without claiming any model-generated decision; acquisition still validates exact job/run/both digests and live directive before any private write"
   },
   {
     "entry": "skills/open-user-goal/workOnTerminalGoal.nl",
@@ -523,7 +531,16 @@
       "line": 4,
       "text": "export type EvalHandoffGoalReport = EvalReport;"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "status": "actual recovery disposition",
+      "jobId": "actual owned job handle",
+      "trials": "native input/request observations omitted; actual per-attempt review findings retained",
+      "decision": "actual selected result/recovery finding",
+      "artifact": "actual retained artifact handle",
+      "result": "verified native job/run/runDigest/resultDigest/blob readback handle projected from confirmedEvalResult"
+    },
+    "nativeEvidence": "Original native custody/replay/authority journals and physical blob readbacks verified independently; actual returned review findings, decision and confirmed result handle compared to those observations"
   },
   {
     "entry": "skills/panel-health/recoverPanelGoal.nl",

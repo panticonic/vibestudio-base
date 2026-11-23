@@ -669,3 +669,5 @@ export type { TerminalResult } from "./workOnTerminalGoal/types.js";
 export type { ContentProjectResult } from "./prepareContentProject/types.js";
 
 export type { PdfVaultCorrectionResult } from "./correctVaultFromPdf/types.js";
+
+export type { EvalRecoveryResult } from "./workOnEvalHandoffGoal/types.js";
