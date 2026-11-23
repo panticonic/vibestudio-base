@@ -353,12 +353,9 @@
     ],
     "automationActivationReadback": [],
     "googleRunbook": [
-      "reconcileGoogleRunbook.nl",
       "reconcileGoogleRunbook/reviseRunbook.nl"
     ],
-    "newsEditionReview": [
-      "prepareNewsEditionReview.nl"
-    ],
+    "newsEditionReview": [],
     "unitHandoff": [
       "reviewUnitHandoffGoal.nl",
       "reviewUnitHandoffGoal/reviewDesign.nl"

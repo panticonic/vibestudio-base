@@ -241,7 +241,7 @@ export default {
     "additionalArguments": {}
   },
   "editorial-packet": {
-    "program": "skills/open-user-goal/workOnEditorialPacket.nl",
+    "program": "skills/open-user-goal/workOnEditorialPacket.ts",
     "callable": "workOnEditorialPacket",
     "resultType": "EditorialPacketResult",
     "skill": "editorialPacket",
@@ -791,7 +791,7 @@ export default {
     "additionalArguments": {}
   },
   "gadDurableQuestion": {
-    "program": "skills/gad-context/natlang/reviewDurableQuestion.nl",
+    "program": "skills/gad-context/natlang/reviewDurableQuestion.ts",
     "callable": "reviewDurableQuestion",
     "resultType": "DurableQuestionReport",
     "skill": "gadDurableQuestion",
