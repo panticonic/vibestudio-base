@@ -2,6 +2,7 @@ import {readFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import path from "node:path";
 import {expect,it,vi} from "vitest";
+import * as natlang from "../../packages/natlang/vendor/workerd/natlang-workerd.js";
 // Execute the actual typed composition with recorded native/policy boundaries.
 // The caller supplies judgments; these tests never invoke a model.
 const {transformSync}=createRequire(path.join(process.cwd(),"package.json"))("esbuild");
@@ -10,6 +11,7 @@ function compose(relative:string,mocks:Record<string,unknown>){
  const {code}=transformSync(readFileSync(file,"utf8"),{loader:"ts",format:"cjs",target:"es2022"});
  new Function("require","module","exports",code)((id:string)=>{
   if(id==="natlang:services")return mocks.services;
+  if(id==="@natlang/node")return natlang;
   const name=path.basename(id).replace(/\.(nl|js)$/,""),value=mocks[name];
   if(value===undefined)throw new Error("Unbound test boundary: "+id);
   return {__esModule:true,default:value};
@@ -34,7 +36,7 @@ it("reconsiders a stale browser action from the actual new visible revision",asy
  const activate=vi.fn().mockResolvedValueOnce("changed").mockResolvedValueOnce("activated");
  const choosePanelAction=vi.fn().mockResolvedValueOnce({kind:"act",control:"old-action"}).mockResolvedValueOnce({kind:"act",control:"new-action"}).mockResolvedValueOnce({kind:"report",labels:["Task"]});
  const run=compose("workInBrowser.ts",{services:{goalBrowser:{inspect,activate}},choosePanelAction});
- expect(await run("Complete Task")).toEqual({status:"changed",revision:"done",rows:[{label:"Task",state:"done",detail:"saved"}]});
+ expect(await natlang.createNatlangRuntime().run(()=>run("Complete Task"))).toEqual({status:"changed",revision:"done",rows:[{label:"Task",state:"done",detail:"saved"}]});
  expect(activate.mock.calls).toEqual([["old-action","old"],["new-action","current"]]);
  expect(choosePanelAction.mock.calls[1]).toEqual(["Complete Task",current]);
 });
