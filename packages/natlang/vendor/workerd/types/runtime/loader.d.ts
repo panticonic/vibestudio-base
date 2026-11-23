@@ -151,6 +151,7 @@ export declare function recordProtectedSources(record: Pick<NatlangRecord, 'sour
 export declare function treeProtectedSources(codebase: Record<string, ItemRecord>): string[];
 /** The package root above `dir`: the nearest directory with `natlang.json` or `package.json`. */
 export declare function packageRoot(dir: string, files: SourceFiles): string;
+export declare function packageExportTarget(exportsMap: Record<string, unknown>, key: string, conditions?: readonly string[]): string | undefined;
 export declare function usesTargetsOf(record: NatlangRecord): Readonly<Record<string, string>> | undefined;
 /** Shared source resolution for runtime module loading and explicit compiler import closure. */
 export declare function resolveImportedSource(specifier: string, from: string, files: SourceFiles): string | undefined;
