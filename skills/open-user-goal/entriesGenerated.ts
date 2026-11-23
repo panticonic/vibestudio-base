@@ -591,7 +591,7 @@ export default {
     "additionalArguments": {}
   },
   "google-runbook": {
-    "program": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+    "program": "skills/open-user-goal/reconcileGoogleRunbook.ts",
     "callable": "reconcileGoogleRunbook",
     "resultType": "GoogleRunbookResult",
     "skill": "googleRunbook",
@@ -601,7 +601,7 @@ export default {
     "additionalArguments": {}
   },
   "news-edition-review": {
-    "program": "skills/open-user-goal/prepareNewsEditionReview.nl",
+    "program": "skills/open-user-goal/prepareNewsEditionReview.ts",
     "callable": "prepareNewsEditionReview",
     "resultType": "NewsEditionReviewResult",
     "skill": "newsEditionReview",
@@ -881,7 +881,7 @@ export default {
     "additionalArguments": {}
   },
   "visualRecovery": {
-    "program": "skills/panel-health/recoverPanelGoal.nl",
+    "program": "skills/panel-health/recoverPanelGoal.ts",
     "callable": "recoverPanelGoal",
     "resultType": "PanelRecoveryResult",
     "skill": "visualRecovery",
@@ -911,7 +911,7 @@ export default {
     "additionalArguments": {}
   },
   "ownedPreview": {
-    "program": "skills/publish-preflight/publishOwnedPreviewGoal.nl",
+    "program": "skills/publish-preflight/publishOwnedPreviewGoal.ts",
     "callable": "publishOwnedPreviewGoal",
     "resultType": "OwnedPreviewReport",
     "skill": "ownedPreview",
@@ -991,7 +991,7 @@ export default {
     "additionalArguments": {}
   },
   "pdfVault": {
-    "program": "skills/open-user-goal/correctVaultFromPdf.nl",
+    "program": "skills/open-user-goal/correctVaultFromPdf.ts",
     "callable": "correctVaultFromPdf",
     "resultType": "PdfVaultCorrectionResult",
     "skill": "pdfVault",
@@ -1011,7 +1011,7 @@ export default {
     "additionalArguments": {}
   },
   "pdf": {
-    "program": "skills/pdf-intake/workOnPdfGoal.nl",
+    "program": "skills/pdf-intake/workOnPdfGoal.ts",
     "callable": "workOnPdfGoal",
     "resultType": "PdfGoalReport",
     "skill": "pdf",
@@ -1021,7 +1021,7 @@ export default {
     "additionalArguments": {}
   },
   "publication": {
-    "program": "skills/publish-preflight/workTowardPublicationGoal.nl",
+    "program": "skills/publish-preflight/workTowardPublicationGoal.ts",
     "callable": "workTowardPublicationGoal",
     "resultType": "PublicationGoalReport",
     "skill": "publication",

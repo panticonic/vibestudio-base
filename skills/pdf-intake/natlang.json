@@ -9,12 +9,8 @@
     }
   },
   "serviceScopes": {
-    "pdfGoalDocuments": [
-      "workOnPdfGoal.nl"
-    ],
-    "pdfGoalVisual": [
-      "workOnPdfGoal/readRenderedPages.nl"
-    ],
+    "pdfGoalDocuments": [],
+    "pdfGoalVisual": [],
     "pdfIntakeProbe": [],
     "pdfIntakeRead": [],
     "pdfLayoutRead": [

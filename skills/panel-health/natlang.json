@@ -2,10 +2,19 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-panel-health",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reviewPanelHealth.nl" } },
+  "targets": {
+    "main": {
+      "entry": "reviewPanelHealth.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "panelRecovery": ["recoverPanelGoal.nl", "recoverPanelGoal/recoverSurface.nl"],
-    "panelHealth": ["reviewPanelHealth.nl", "reviewPanelHealth/checkHealthChange.nl"]
+    "panelRecovery": [
+      "recoverPanelGoal/recoverSurface.nl"
+    ],
+    "panelHealth": [
+      "reviewPanelHealth.nl",
+      "reviewPanelHealth/checkHealthChange.nl"
+    ]
   }
 }

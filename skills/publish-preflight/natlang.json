@@ -3,12 +3,22 @@
   "name": "publish-preflight",
   "version": "0.1.0",
   "description": "Review an immutable, caller-assigned website package and existing publication evidence.",
-  "targets": { "main": { "entry": "preflightPublication.nl" } },
+  "targets": {
+    "main": {
+      "entry": "preflightPublication.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "ownedPreviewPublication": ["publishOwnedPreviewGoal.nl", "publishOwnedPreviewGoal/deliverPreview.nl"],
-    "publicationGoal": ["workTowardPublicationGoal.nl"],
-    "websiteReadback": ["preflightPublication.nl"],
-    "publicationRevision": ["reviewPublicationRevision.nl"]
+    "ownedPreviewPublication": [
+      "publishOwnedPreviewGoal/deliverPreview.nl"
+    ],
+    "publicationGoal": [],
+    "websiteReadback": [
+      "preflightPublication.nl"
+    ],
+    "publicationRevision": [
+      "reviewPublicationRevision.nl"
+    ]
   }
 }
