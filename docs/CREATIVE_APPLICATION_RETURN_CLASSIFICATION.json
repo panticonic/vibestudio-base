@@ -1,0 +1,185 @@
+{
+  "entries": [
+    {
+      "entry": "skills/open-user-goal/prepareContentProject.nl",
+      "originalFields": {
+        "evidence": "internal typed state; omit public return",
+        "decision": "internal typed state; omit public return",
+        "scope": "internal typed state; omit public return",
+        "draft": "internal typed state; omit public return",
+        "final": "application handle projected from retained state",
+        "explanation": "redundant narrative; actual disposition retained"
+      },
+      "result": "ContentProjectResult",
+      "reason": "Native workspace+journal bind exact retained project and commit"
+    },
+    {
+      "entry": "skills/open-user-goal/generateOwnedIllustration.nl",
+      "originalFields": {
+        "assignment": "internal typed state; omit public return",
+        "basis": "internal typed state; omit public return",
+        "decision": "internal typed state; omit public return",
+        "outcome": "application value",
+        "saved": "application value"
+      },
+      "result": "OwnedIllustrationResult",
+      "reason": "Native verified image job/original and actual save receipt"
+    },
+    {
+      "entry": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+      "originalFields": {
+        "assignment": "internal typed state; omit public return",
+        "observed": "internal typed state; omit public return",
+        "choice": "application handle projected from retained state",
+        "assessment": "application value",
+        "receipt": "application value"
+      },
+      "result": "DevelopmentAuditFindings",
+      "reason": "Requested audit findings include decisive journal sequences; runId binds selected subject"
+    },
+    {
+      "entry": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+      "originalFields": {
+        "initial": "internal typed state; omit public return",
+        "initialAuthority": "internal typed state; omit public return",
+        "plan": "internal typed state; omit public return",
+        "first": "internal typed state; omit public return",
+        "updated": "internal typed state; omit public return",
+        "updatedAuthority": "internal typed state; omit public return",
+        "reconciled": "internal typed state; omit public return",
+        "final": "internal typed state; omit public return",
+        "readback": "application handle projected from retained state"
+      },
+      "result": "CoordinatedRevisionResult",
+      "reason": "Actual document path/version handles and current head, final semantic disposition"
+    },
+    {
+      "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+      "originalFields": {
+        "plan": "application handle projected from retained state",
+        "readers": "review findings retained; repeated observed inputs omitted",
+        "schedule": "review findings retained; repeated cadence input omitted",
+        "briefing": "review findings retained; repeated edition input omitted",
+        "sources": "application handle projected from retained state",
+        "handoff": "application value"
+      },
+      "result": "NewsEvidenceResult",
+      "reason": "Internal reviewNewsEvidence retains semantic dependency state; public returns requested findings/citations"
+    },
+    {
+      "entry": "skills/open-user-goal/prepareNewsEditionReview.nl",
+      "originalFields": {
+        "desk": "internal typed state; omit public return",
+        "news": "internal typed state; omit public return",
+        "plan": "application value",
+        "presentation": "artifact body retained privately; omit duplicate",
+        "artifact": "application value",
+        "attribution": "application value"
+      },
+      "result": "NewsEditionReviewResult",
+      "reason": "Actual editorial finding, packet receipt and source attribution"
+    },
+    {
+      "entry": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+      "originalFields": {
+        "plan": "internal typed state; omit public return",
+        "assessment": "candidate findings retained; queue internal",
+        "reads": "application value",
+        "decision": "application value",
+        "handoff": "application value"
+      },
+      "result": "ImageCandidateResult",
+      "reason": "Verified original handles and candidate findings are requested application result"
+    },
+    {
+      "entry": "skills/open-user-goal/workOnEditorialPacket.nl",
+      "originalFields": {
+        "plan": "internal typed state; omit public return",
+        "opening": "internal typed state; omit public return",
+        "current": "internal typed state; omit public return",
+        "sources": "internal typed state; omit public return",
+        "edit": "application handle projected from retained state",
+        "decision": "application value",
+        "note": "application value"
+      },
+      "result": "EditorialPacketResult",
+      "reason": "Actual stored document handle, settled findings and private note"
+    },
+    {
+      "entry": "skills/open-user-goal/answerWorkspaceQuestion.nl",
+      "originalFields": {
+        "answer": "application value",
+        "citations": "application value",
+        "unresolved": "application value"
+      },
+      "result": "WorkspaceAnswer unchanged",
+      "reason": "Requested grounded answer, see answerWorkspaceQuestion.nl step2"
+    },
+    {
+      "entry": "skills/open-user-goal/investigatePublicQuestion.nl",
+      "originalFields": {
+        "question": "application value",
+        "status": "application value",
+        "statements": "application value",
+        "notRead": "application value",
+        "rejected": "application value"
+      },
+      "result": "ResearchGoalReport unchanged",
+      "reason": "Requested research findings and explicit source gaps; consumed by reviseFromPublicResearch"
+    },
+    {
+      "entry": "skills/open-user-goal/answerFromAssignedPublicSources.nl",
+      "originalFields": {
+        "decision": "application value",
+        "brief": "application value"
+      },
+      "result": "AssignedPublicGoalReport unchanged",
+      "reason": "Exact requested CitedBrief fields question/status/statements/notRead/rejected are application findings, see web-research/research/types.ts:51"
+    },
+    {
+      "entry": "skills/open-user-goal/reviseWorkspaceDocument.nl",
+      "originalFields": {
+        "status": "application value",
+        "path": "application value",
+        "version": "application value",
+        "reason": "application value"
+      },
+      "result": "WorkspaceEditReport unchanged",
+      "reason": "Discriminated actual document edit handle or blocked reason, independently read back"
+    },
+    {
+      "entry": "skills/open-user-goal/reviseFromPublicResearch.nl",
+      "originalFields": {
+        "research": "application value",
+        "revision": "application value"
+      },
+      "result": "ResearchRevision unchanged",
+      "reason": "Combined requested grounded findings and actual document edit handle"
+    },
+    {
+      "entry": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+      "originalFields": {
+        "calendar": "internal typed state; omit public return",
+        "decision": "application value",
+        "write": "application value",
+        "attribution": "application value"
+      },
+      "result": "pending independent Calendar observation API",
+      "reason": "Read-only native validation currently consumes copied calendar; awaiting root Calendar migration interface"
+    },
+    {
+      "entry": "skills/open-user-goal/correctVaultFromPdf.nl",
+      "originalFields": {
+        "pdf": "internal typed state; omit public return",
+        "handoff": "source citations application; bound directive internal",
+        "vault": "application value"
+      },
+      "result": "pending independent PDF observation API + actual Vault result",
+      "reason": "Successful native bind retains exact attested PDF report; held path needs independent PDF observation projection"
+    }
+  ],
+  "publicEntries": 15,
+  "migrated": 8,
+  "retainedApplicationValues": 5,
+  "pending": 2
+}
