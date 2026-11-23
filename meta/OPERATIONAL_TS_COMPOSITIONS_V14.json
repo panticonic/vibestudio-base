@@ -592,6 +592,674 @@
       ],
       "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
       "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "compareTestkitCloseouts",
+      "oldProgram": "skills/open-user-goal/compareTestkitCloseouts.nl",
+      "program": "skills/open-user-goal/compareTestkitCloseouts.ts",
+      "resultType": "CloseoutReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "readAttempt",
+          "./compareTestkitCloseouts/readAttempt.nl"
+        ],
+        [
+          "decideCloseout",
+          "./compareTestkitCloseouts/decideCloseout.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewWebhookAdmission",
+      "oldProgram": "skills/open-user-goal/reviewWebhookAdmission.nl",
+      "program": "skills/open-user-goal/reviewWebhookAdmission.ts",
+      "resultType": "WebhookAdmissionOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectWebhookStatus",
+          "./reviewWebhookAdmission/inspectWebhookStatus.nl"
+        ],
+        [
+          "matchRegistration",
+          "./reviewWebhookAdmission/matchRegistration.nl"
+        ],
+        [
+          "assessWebhookAdmission",
+          "./reviewWebhookAdmission/assessWebhookAdmission.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewRecordedQuestion",
+      "oldProgram": "skills/open-user-goal/reviewRecordedQuestion.nl",
+      "program": "skills/open-user-goal/reviewRecordedQuestion.ts",
+      "resultType": "RecordedQuestionReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "chooseSearchPhrase",
+          "./reviewRecordedQuestion/chooseSearchPhrase.nl"
+        ],
+        [
+          "findRecordedProposal",
+          "./reviewRecordedQuestion/findRecordedProposal.nl"
+        ],
+        [
+          "selectRecordedProposal",
+          "./reviewRecordedQuestion/selectRecordedProposal.nl"
+        ],
+        [
+          "collectRecordedEvidence",
+          "./reviewRecordedQuestion/collectRecordedEvidence.nl"
+        ],
+        [
+          "answerRecordedQuestion",
+          "./reviewRecordedQuestion/answerRecordedQuestion.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewTranscriptSurface",
+      "oldProgram": "skills/open-user-goal/reviewTranscriptSurface.nl",
+      "program": "skills/open-user-goal/reviewTranscriptSurface.ts",
+      "resultType": "TranscriptSurfaceReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "reviewApprovals",
+          "./reviewTranscriptSurface/reviewApprovals.nl"
+        ],
+        [
+          "selectApprovedSurface",
+          "./reviewTranscriptSurface/selectApprovedSurface.nl"
+        ],
+        [
+          "inspectNativeSurface",
+          "./reviewTranscriptSurface/inspectNativeSurface.nl"
+        ],
+        [
+          "decideTranscriptEffect",
+          "./reviewTranscriptSurface/decideTranscriptEffect.nl"
+        ],
+        [
+          "materializeTranscriptEffect",
+          "./reviewTranscriptSurface/materializeTranscriptEffect.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewSourceAttribution",
+      "oldProgram": "skills/open-user-goal/reviewSourceAttribution.nl",
+      "program": "skills/open-user-goal/reviewSourceAttribution.ts",
+      "resultType": "SourceAttributionReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "selectCandidates",
+          "./reviewSourceAttribution/selectCandidates.nl"
+        ],
+        [
+          "inspectCurrentSource",
+          "./reviewSourceAttribution/inspectCurrentSource.nl"
+        ],
+        [
+          "selectFragments",
+          "./reviewSourceAttribution/selectFragments.nl"
+        ],
+        [
+          "traceSelectedSource",
+          "./reviewSourceAttribution/traceSelectedSource.nl"
+        ],
+        [
+          "explainSourceOrigin",
+          "./reviewSourceAttribution/explainSourceOrigin.nl"
+        ],
+        [
+          "reviewAttributionHandoff",
+          "./reviewSourceAttribution/reviewAttributionHandoff.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewWorkspaceSmoke",
+      "oldProgram": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
+      "program": "skills/open-user-goal/reviewWorkspaceSmoke.ts",
+      "resultType": "WorkspaceSmokeReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectSmokeFiles",
+          "./reviewWorkspaceSmoke/inspectSmokeFiles.nl"
+        ],
+        [
+          "selectSmokeContract",
+          "./reviewWorkspaceSmoke/selectSmokeContract.nl"
+        ],
+        [
+          "exerciseInstalledSmoke",
+          "./reviewWorkspaceSmoke/exerciseInstalledSmoke.nl"
+        ],
+        [
+          "compareSmokeOutput",
+          "./reviewWorkspaceSmoke/compareSmokeOutput.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "recoverSameTurnEval",
+      "oldProgram": "skills/open-user-goal/recoverSameTurnEval.nl",
+      "program": "skills/open-user-goal/recoverSameTurnEval.ts",
+      "resultType": "SameTurnEvalOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectSameTurnEval",
+          "./recoverSameTurnEval/inspectSameTurnEval.nl"
+        ],
+        [
+          "chooseSameTurnRecovery",
+          "./recoverSameTurnEval/chooseSameTurnRecovery.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewLogFollower",
+      "oldProgram": "skills/open-user-goal/reviewLogFollower.nl",
+      "program": "skills/open-user-goal/reviewLogFollower.ts",
+      "resultType": "LogFollowerOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "observeLogFollower",
+          "./reviewLogFollower/observeLogFollower.nl"
+        ],
+        [
+          "reconcileLogFollower",
+          "./reviewLogFollower/reconcileLogFollower.nl"
+        ],
+        [
+          "classifyLogOperation",
+          "./reviewLogFollower/classifyLogOperation.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewPtyContinuity",
+      "oldProgram": "skills/open-user-goal/reviewPtyContinuity.nl",
+      "program": "skills/open-user-goal/reviewPtyContinuity.ts",
+      "resultType": "PtyContinuityOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectPtyReceipts",
+          "./reviewPtyContinuity/inspectPtyReceipts.nl"
+        ],
+        [
+          "choosePtyGeneration",
+          "./reviewPtyContinuity/choosePtyGeneration.nl"
+        ],
+        [
+          "judgePtyContinuity",
+          "./reviewPtyContinuity/judgePtyContinuity.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "recoverContentArchive",
+      "oldProgram": "skills/open-user-goal/recoverContentArchive.nl",
+      "program": "skills/open-user-goal/recoverContentArchive.ts",
+      "resultType": "ContentArchiveOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectArchive",
+          "./recoverContentArchive/inspectArchive.nl"
+        ],
+        [
+          "chooseEdition",
+          "./recoverContentArchive/chooseEdition.nl"
+        ],
+        [
+          "planRestoration",
+          "./recoverContentArchive/planRestoration.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewSystemRelease",
+      "oldProgram": "skills/open-user-goal/reviewSystemRelease.nl",
+      "program": "skills/open-user-goal/reviewSystemRelease.ts",
+      "resultType": "SystemReleaseOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "compareRuns",
+          "./reviewSystemRelease/compareRuns.nl"
+        ],
+        [
+          "evaluateCases",
+          "./reviewSystemRelease/evaluateCases.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "migratePanelSource",
+      "oldProgram": "skills/open-user-goal/migratePanelSource.nl",
+      "program": "skills/open-user-goal/migratePanelSource.ts",
+      "resultType": "PanelSourceMigrationOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectMigration",
+          "./migratePanelSource/inspectMigration.nl"
+        ],
+        [
+          "planMigration",
+          "./migratePanelSource/planMigration.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewWorkspaceShare",
+      "oldProgram": "skills/open-user-goal/reviewWorkspaceShare.nl",
+      "program": "skills/open-user-goal/reviewWorkspaceShare.ts",
+      "resultType": "WorkspaceShareOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "identifyShare",
+          "./reviewWorkspaceShare/identifyShare.nl"
+        ],
+        [
+          "reviewSharePolicy",
+          "./reviewWorkspaceShare/reviewSharePolicy.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "recoverAgentCapability",
+      "oldProgram": "skills/open-user-goal/recoverAgentCapability.nl",
+      "program": "skills/open-user-goal/recoverAgentCapability.ts",
+      "resultType": "AgentCapabilityOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectAttempt",
+          "./recoverAgentCapability/inspectAttempt.nl"
+        ],
+        [
+          "decideContinuation",
+          "./recoverAgentCapability/decideContinuation.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewLocalExecutionWidth",
+      "oldProgram": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
+      "program": "skills/open-user-goal/reviewLocalExecutionWidth.ts",
+      "resultType": "LocalWidthOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "localModelReadiness",
+          "./reviewLocalExecutionWidth/readiness/localModelReadiness.nl"
+        ],
+        [
+          "assessExecution",
+          "./reviewLocalExecutionWidth/assessExecution.nl"
+        ],
+        [
+          "shouldRetainWidth",
+          "./reviewLocalExecutionWidth/shouldRetainWidth.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewExtensionDossier",
+      "oldProgram": "skills/open-user-goal/reviewExtensionDossier.nl",
+      "program": "skills/open-user-goal/reviewExtensionDossier.ts",
+      "resultType": "ExtensionDossierOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "reviewExtensionRelease",
+          "./reviewExtensionDossier/extensiondev/reviewExtensionRelease.nl"
+        ],
+        [
+          "compareCandidate",
+          "./reviewExtensionDossier/compareCandidate.nl"
+        ],
+        [
+          "inspectRelease",
+          "./reviewExtensionDossier/inspectRelease.nl"
+        ],
+        [
+          "decideDossier",
+          "./reviewExtensionDossier/decideDossier.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewRetainedBuildIncident",
+      "oldProgram": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
+      "program": "skills/open-user-goal/reviewRetainedBuildIncident.ts",
+      "resultType": "BuildIncidentOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "selectCheckpoints",
+          "./reviewRetainedBuildIncident/selectCheckpoints.nl"
+        ],
+        [
+          "decideFinding",
+          "./reviewRetainedBuildIncident/decideFinding.nl"
+        ],
+        [
+          "shouldRetainIncident",
+          "./reviewRetainedBuildIncident/shouldRetainIncident.nl"
+        ],
+        [
+          "reviewBuildPerformance",
+          "./reviewRetainedBuildIncident/performance/reviewBuildPerformance.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "workOnProblemReportGoal",
+      "oldProgram": "skills/open-user-goal/workOnProblemReportGoal.nl",
+      "program": "skills/open-user-goal/workOnProblemReportGoal.ts",
+      "resultType": "OpenProblemOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "saveProblemDraft",
+          "./workOnProblemReportGoal/reporter/saveProblemDraft.nl"
+        ],
+        [
+          "selectIncident",
+          "./workOnProblemReportGoal/selectIncident.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "reviewTemplateMigration",
+      "oldProgram": "skills/template-candidate/reviewTemplateMigration.nl",
+      "program": "skills/template-candidate/reviewTemplateMigration.ts",
+      "resultType": "MigrationReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "chooseMigrationEvidence",
+          "./reviewTemplateMigration/chooseMigrationEvidence.nl"
+        ],
+        [
+          "decideMigration",
+          "./reviewTemplateMigration/decideMigration.nl"
+        ],
+        [
+          "finishMigration",
+          "./reviewTemplateMigration/finishMigration.nl"
+        ],
+        [
+          "stageTemplateCandidate",
+          "./stageTemplateCandidate.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "repairWorkspaceUnit",
+      "oldProgram": "skills/open-unit-rollout/repairWorkspaceUnit.nl",
+      "program": "skills/open-unit-rollout/repairWorkspaceUnit.ts",
+      "resultType": "UnitRolloutReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "chooseUnit",
+          "./repairWorkspaceUnit/chooseUnit.nl"
+        ],
+        [
+          "inspectUnit",
+          "./repairWorkspaceUnit/inspectUnit.nl"
+        ],
+        [
+          "decideNext",
+          "./repairWorkspaceUnit/decideNext.nl"
+        ],
+        [
+          "evolveCandidate",
+          "./repairWorkspaceUnit/evolveCandidate.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "workOnTerminalApp",
+      "oldProgram": "skills/open-user-goal/workOnTerminalApp.nl",
+      "program": "skills/open-user-goal/workOnTerminalApp.ts",
+      "resultType": "TerminalRepairReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "inspectTerminalApp",
+          "./workOnTerminalApp/inspectTerminalApp.nl"
+        ],
+        [
+          "reviewTerminalCandidate",
+          "./workOnTerminalApp/reviewTerminalCandidate.nl"
+        ],
+        [
+          "verifyTerminalOutput",
+          "./workOnTerminalApp/verifyTerminalOutput.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "activateOwnedAutomation",
+      "oldProgram": "skills/open-user-goal/activateOwnedAutomation.nl",
+      "program": "skills/open-user-goal/activateOwnedAutomation.ts",
+      "resultType": "OwnedAutomationActivationReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "reviewLaunchEvidence",
+          "./activateOwnedAutomation/reviewLaunchEvidence.nl"
+        ],
+        [
+          "completeAutomationLaunch",
+          "./activateOwnedAutomation/completeAutomationLaunch.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "workOnProgramRunGoal",
+      "oldProgram": "skills/open-user-goal/workOnProgramRunGoal.nl",
+      "program": "skills/open-user-goal/workOnProgramRunGoal.ts",
+      "resultType": "ProgramRunReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "reviewRuntimeEvidence",
+          "./workOnProgramRunGoal/reviewer/reviewRuntimeEvidence.nl"
+        ],
+        [
+          "chooseRunProgram",
+          "./workOnProgramRunGoal/chooseRunProgram.nl"
+        ],
+        [
+          "chooseRunSample",
+          "./workOnProgramRunGoal/chooseRunSample.nl"
+        ],
+        [
+          "decideRunContinuation",
+          "./workOnProgramRunGoal/decideRunContinuation.nl"
+        ],
+        [
+          "shouldSignOutput",
+          "./workOnProgramRunGoal/shouldSignOutput.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "workOnAuthoringGoal",
+      "oldProgram": "skills/open-user-goal/workOnAuthoringGoal.nl",
+      "program": "skills/open-user-goal/workOnAuthoringGoal.ts",
+      "resultType": "AuthoringOpenOutcome",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "discoverAuthoring",
+          "./workOnAuthoringGoal/discovery/discoverAuthoring.nl"
+        ],
+        [
+          "reviewProgram",
+          "./workOnAuthoringGoal/reviewer/reviewProgram.nl"
+        ],
+        [
+          "decideHandoff",
+          "./workOnAuthoringGoal/decideHandoff.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "workTowardLocalDelivery",
+      "oldProgram": "skills/open-local-delivery/workTowardLocalDelivery.nl",
+      "program": "skills/open-local-delivery/workTowardLocalDelivery.ts",
+      "resultType": "LocalDeliveryReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "chooseConversations",
+          "./workTowardLocalDelivery/chooseConversations.nl"
+        ],
+        [
+          "reconsider",
+          "./workTowardLocalDelivery/reconsider.nl"
+        ],
+        [
+          "decideDelivery",
+          "./workTowardLocalDelivery/decideDelivery.nl"
+        ],
+        [
+          "completeDelivery",
+          "./workTowardLocalDelivery/completeDelivery.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "recoverSessionGoal",
+      "oldProgram": "skills/open-session-recovery/program/recoverSessionGoal.nl",
+      "program": "skills/open-session-recovery/program/recoverSessionGoal.ts",
+      "resultType": "RecoveryReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "shouldRetainRecovery",
+          "./recoverSessionGoal/shouldRetainRecovery.nl"
+        ],
+        [
+          "chooseRecoverySources",
+          "./recoverSessionGoal/chooseRecoverySources.nl"
+        ],
+        [
+          "readRecoveryWindows",
+          "./recoverSessionGoal/readRecoveryWindows.nl"
+        ],
+        [
+          "interpretRecovery",
+          "./recoverSessionGoal/interpretRecovery.nl"
+        ],
+        [
+          "stageRecoveryHandoff",
+          "./recoverSessionGoal/stageRecoveryHandoff.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "workInBrowser",
+      "oldProgram": "skills/open-user-goal/workInBrowser.nl",
+      "program": "skills/open-user-goal/workInBrowser.ts",
+      "resultType": "BrowserGoalReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "choosePanelAction",
+          "./workInBrowser/choosePanelAction.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
+    },
+    {
+      "entry": "verifyWorkspaceSuite",
+      "oldProgram": "skills/open-user-goal/verifyWorkspaceSuite.nl",
+      "program": "skills/open-user-goal/verifyWorkspaceSuite.ts",
+      "resultType": "WorkspaceSuiteReport",
+      "scopeMigration": "Replace exact old .nl selectors with .ts; retain original descendant coverage only.",
+      "semanticImports": [
+        [
+          "chooseSuiteRoute",
+          "./verifyWorkspaceSuite/chooseSuiteRoute.nl"
+        ],
+        [
+          "reviewTestSuite",
+          "./verifyWorkspaceSuite/suites/reviewTestSuite.nl"
+        ]
+      ],
+      "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
+      "classification": "typed native composition with retained scoped natural-language judgments"
     }
   ]
 }
