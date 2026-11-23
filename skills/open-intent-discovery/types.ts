@@ -1,12 +1,12 @@
 export type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};
 export type IntentHit={id:string;name:string;description:string};
 export type IntentDescription={id:string;name:string;description:string;digest:string};
-export type IntentSearch={queries:string[];hits:IntentHit[][];described:IntentDescription[]};
+export type IntentCapabilitySelection={methodIds:string[]};
 export type IntentAction={methodId:string;scope:string};
 export type IntentPlan={actions:IntentAction[];retain:boolean};
 export type IntentObservation={methodId:string;scope:string;status:"observed"|"missing";coordinate:string|null;
   details:string[];digest:string|null};
 export type IntentOutcome={status:"observed"|"partial"|"unavailable";summary:string};
 export type IntentNote={path:string;digest:string};
-export type IntentReport={notice:IntentNotice;search:IntentSearch;plan:IntentPlan;
+export type IntentReport={notice:IntentNotice;selection:IntentCapabilitySelection;capabilities:IntentDescription[];plan:IntentPlan;
   evidence:IntentObservation[];outcome:IntentOutcome;handoff:IntentNote|null};
