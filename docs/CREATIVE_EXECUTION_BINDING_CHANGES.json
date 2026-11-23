@@ -32,7 +32,7 @@
       "newReturn": "NewsEditionReviewResult",
       "parametersChanged": false,
       "oldSourceSha256": "03b52b5496e674ca2e901c438e8b620ddb7ae5668203f573906c8b61cdb024b3",
-      "newSourceSha256": "fa0037abbd84c71b369c87fe8dbce8e01469c67c2cf5a0b77c7ae4324dd74fff",
+      "newSourceSha256": "961054450cd1d2cb52aefc38cf5d13c7bfad1f488c56a13e0a0e5a64b8cfe942",
       "originalEntry": "skills/open-user-goal/prepareNewsEditionReview.nl"
     },
     {
@@ -41,7 +41,7 @@
       "newReturn": "NewsEvidenceResult",
       "parametersChanged": false,
       "oldSourceSha256": "661900ab011b85ad43817948837a881d32a25e505fe85ce11177075fa3df5fe4",
-      "newSourceSha256": "c9d85e252fd3bdf70ba586cc944996ce56aa54c9695dd8ec718591e3683610e0",
+      "newSourceSha256": "c981924b5678df5b3702d3625894bd8315e15d93c5d837a0691a19b76be8f224",
       "originalEntry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl"
     },
     {

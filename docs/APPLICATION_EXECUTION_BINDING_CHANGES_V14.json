@@ -129,7 +129,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+        "program": "skills/open-user-goal/reconcilePanelLaunchState.ts",
         "callable": "reconcilePanelLaunchState",
         "resultType": "LaunchResult | null",
         "parameterNames": [
@@ -171,7 +171,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
+        "program": "skills/open-user-goal/workOnBridgeDelivery.ts",
         "callable": "workOnBridgeDelivery",
         "resultType": "BridgeResult | null",
         "parameterNames": [
@@ -192,7 +192,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/workOnChatContinuity.nl",
+        "program": "skills/open-user-goal/workOnChatContinuity.ts",
         "callable": "workOnChatContinuity",
         "resultType": "ChatResult",
         "parameterNames": [
@@ -339,7 +339,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+        "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.ts",
         "callable": "workOnPersonalWelcomeGoal",
         "resultType": "WelcomeResult",
         "parameterNames": [
@@ -444,7 +444,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+        "program": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
         "callable": "reviewUnitHandoffGoal",
         "resultType": "UnitHandoffResult",
         "parameterNames": [
@@ -465,7 +465,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+        "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.ts",
         "callable": "workOnSpecialistHandoffGoal",
         "resultType": "SpecialistResult",
         "parameterNames": [
@@ -507,7 +507,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+        "program": "skills/open-user-goal/workOnProviderHandoffGoal.ts",
         "callable": "workOnProviderHandoffGoal",
         "resultType": "ProviderResult",
         "parameterNames": [
@@ -696,7 +696,7 @@
         "additionalArguments": {}
       },
       "after": {
-        "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+        "program": "skills/open-user-goal/workOnEvalHandoffGoal.ts",
         "callable": "workOnEvalHandoffGoal",
         "resultType": "EvalRecoveryResult",
         "parameterNames": [

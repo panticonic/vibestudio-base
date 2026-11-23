@@ -97,13 +97,8 @@
       "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "c9d85e252fd3bdf70ba586cc944996ce56aa54c9695dd8ec718591e3683610e0",
-      "semanticImports": [
-        {
-          "line": 1,
-          "import": "import reviewNewsEvidence from \"./reviewNewsEvidence.nl\";"
-        }
-      ],
+      "sourceSha256": "c981924b5678df5b3702d3625894bd8315e15d93c5d837a0691a19b76be8f224",
+      "semanticImports": [],
       "originalSourceEvidence": {
         "source": "---\ndescription: Reconcile exact retained News articles and authority and stage an authorized private evidence handoff.\nbudget: { maxTurns: 36 }\nargs:\n  goal: string\nreturns: NewsEvidenceReport\n---\n1. Discover the owned reader and topics. Call chooseNewsCoverage with the unchanged goal and index. Read the exact native conversation twice. Check current reader authority with checkNewsReaderBoundary.\n2. Separately call reviewNewsOwnerCadence with the current snapshot. When reader authority verifies, read the selected views in order through workspace.readNewsEvidenceView and call reviewNewsReaderWindow on each exact input. Call groundNewsEdition for the exact topic. Otherwise keep readers and sources empty and briefing null.\n3. Call decideNewsEvidenceHandoff with all exact evidence. Form the report with plan, readers, schedule, briefing, sources and null handoff. If stage is supported, call workspace.stageNewsEvidenceNote with that report and include its unchanged receipt. Otherwise return the unchanged no-handoff report.\n",
         "returns": "NewsEvidenceReport"
@@ -115,30 +110,22 @@
       "entry": "skills/open-user-goal/prepareNewsEditionReview.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "fa0037abbd84c71b369c87fe8dbce8e01469c67c2cf5a0b77c7ae4324dd74fff",
+      "sourceSha256": "961054450cd1d2cb52aefc38cf5d13c7bfad1f488c56a13e0a0e5a64b8cfe942",
       "semanticImports": [
         {
-          "line": 2,
-          "import": "import readonlyEditionQuestion from \"./prepareNewsEditionReview/readonlyEditionQuestion.nl\";"
-        },
-        {
           "line": 3,
-          "import": "import reviewNewsEvidence from \"./reviewNewsEvidence.nl\";"
-        },
-        {
-          "line": 4,
           "import": "import reviewBriefing from \"./prepareNewsEditionReview/reviewBriefing.nl\";"
         },
         {
-          "line": 5,
+          "line": 4,
           "import": "import choosePacket from \"./prepareNewsEditionReview/choosePacket.nl\";"
         },
         {
-          "line": 6,
+          "line": 5,
           "import": "import attributeBasis from \"./prepareNewsEditionReview/attributeBasis.nl\";"
         },
         {
-          "line": 7,
+          "line": 6,
           "import": "import designEditorPacket from \"./prepareNewsEditionReview/designEditorPacket.nl\";"
         }
       ],
@@ -427,11 +414,24 @@
     {
       "callable": "reconcilePanelLaunchState",
       "originalEntry": "skills/open-user-goal/reconcilePanelLaunchState.nl",
-      "entry": "skills/open-user-goal/reconcilePanelLaunchState.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "9f37394c9f579938fc033f1b714cacf3211ae5024539755d282341e9c0d4766e",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/reconcilePanelLaunchState.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "4dab76ade28741cda935cea85df5fb3071e6aff4a4c2c36ff9dce09992d4941b",
+      "semanticImports": [
+        {
+          "line": 7,
+          "import": "import planLaunchState from \"./reconcilePanelLaunchState/planLaunchState.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import decideLaunchChange from \"./reconcilePanelLaunchState/decideLaunchChange.nl\";"
+        },
+        {
+          "line": 10,
+          "import": "import concludeLaunchState from \"./reconcilePanelLaunchState/concludeLaunchState.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Reconcile requested changes with the exact owned panel launch slot and its validated native persistence.\nbudget: { maxTurns: 34 }\nargs:\n  goal: string\nreturns: LaunchReport | null\n---\n1. Call workspace.listLaunchSlots and planLaunchState. Read workspace.readLaunchSlot twice for plan.panelId. If either observation is absent, return null.\n2. Call decideLaunchChange on the goal, plan and both observations. For an authorized attempt, bind workspace.bindLaunchAuthority for the current digest and exact patch. Call reviewLaunchAuthority with the exact request. Only use the original plan against its current basis if the read says it is eligible. Preserve the actual effect or null.\n3. Read workspace.readbackLaunchSlot even if the effect was declined or rejected. Call concludeLaunchState with the plan, both snapshots, decision, effect and independent readback. Return the actual report. Stage a private note only if plan.retain.\n",
         "returns": "LaunchReport | null"
@@ -462,11 +462,24 @@
     {
       "callable": "workOnBridgeDelivery",
       "originalEntry": "skills/open-user-goal/workOnBridgeDelivery.nl",
-      "entry": "skills/open-user-goal/workOnBridgeDelivery.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "266e6e614cf2c95a9f9bb86a8b78bfcc8099e2f5d138ae9f260e481e9430a118",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/workOnBridgeDelivery.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "db9647ec39f044342fa8305abce6ec514b68ce03b1c4556f8751714f1b4d28d7",
+      "semanticImports": [
+        {
+          "line": 6,
+          "import": "import chooseBridgeScope from \"./workOnBridgeDelivery/chooseBridgeScope.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import assessRetainedBranch from \"./workOnBridgeDelivery/assessRetainedBranch.nl\";"
+        },
+        {
+          "line": 10,
+          "import": "import decideLocalDelivery from \"./workOnBridgeDelivery/decideLocalDelivery.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Decide local semantic release delivery from exact file revisions and retained external branch evidence.\nbudget: { maxTurns: 46 }\nargs:\n  goal: string\nreturns: BridgeDeliveryReport | null\n---\n1. Call project.discover and chooseBridgeScope on the unchanged goal and discovery. Call project.inspect on the selected id. If unavailable return null. Keep the exact scope.\n2. Call project.operation with the scope id and an empty path for the local bridge. Call project.operation once per scope file path for its two file review ids. Stop with null if any binding is unavailable. Call inspectCurrentBridge with its exact operation id, goal and scope. Call reviewDeliveryFile twice with each exact operation id and file path, once for the contract and once for the release note.\n3. Call assessRetainedBranch on the scope. Call decideLocalDelivery with the original goal, plan, scope, three reviews and branch assessment.\n4. Return the exact report. If the decision is commit, call project.commit with the selected id and verified working state before filling the commit receipt. If the user authorized a private decision, call project.retain with the report and a null handoff before filling the handoff receipt.\n",
         "returns": "BridgeDeliveryReport | null"
@@ -475,11 +488,20 @@
     {
       "callable": "workOnChatContinuity",
       "originalEntry": "skills/open-user-goal/workOnChatContinuity.nl",
-      "entry": "skills/open-user-goal/workOnChatContinuity.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "94e158f3359a0d6e01534c2a8230f5a9cfd83be33bcebe5b1f6a0aa7821c3522",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/workOnChatContinuity.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "88591bc4c84cd872f38e2fcdb73f4e46d2e91b91dc218ef8d69589125384e1a6",
+      "semanticImports": [
+        {
+          "line": 4,
+          "import": "import chooseChatContinuity from \"./workOnChatContinuity/chooseChatContinuity.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import decideChatContinuity from \"./workOnChatContinuity/decideChatContinuity.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Verify whether an owned chat can continue using its retained delivery and actual worker identity.\nbudget: { maxTurns: 34 }\nargs:\n  goal: string\nreturns: ChatContinuityReport\n---\n1. Discover owned chat scopes, original receipt, and installed worker with workspace.discoverChatContinuity. Call chooseChatContinuity on the goal and index.\n2. Read two observations of the selected channel through workspace.observeChatContinuity. Call reviewChatContinuity with both observations, index, goal and plan. It calls the installed delivery reviewer with its exact native facts.\n3. Call decideChatContinuity with both observations and exact review. Return the complete report. Call workspace.stageChatContinuityNote only if the user requests the privately authorized handoff the decision allows.\n",
         "returns": "ChatContinuityReport"
@@ -491,7 +513,7 @@
       "entry": "skills/open-user-goal/workOnDemoPortfolio.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "30d078a52406cf34367d50c112574eaead37aeee3e23821b3c3cc85b47e6064e",
+      "sourceSha256": "2a65ad069e92d8fdd295c13011acdcdb09e089e844c7f46bc702233cc691a7a3",
       "semanticImports": [
         {
           "line": 5,
@@ -521,7 +543,7 @@
       "entry": "skills/open-user-goal/workOnRegencyBriefing.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "eb9c34106e1fe8e07868b8c10bb6bcfe9c96772d18f843a7068a7c5488ee6288",
+      "sourceSha256": "c5b844a8861ef67e14e8db25b49b62749d51f157ec486f6d2c6d15c2536a7e69",
       "semanticImports": [
         {
           "line": 6,
@@ -574,11 +596,24 @@
     {
       "callable": "workOnPersonalWelcomeGoal",
       "originalEntry": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
-      "entry": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "cf3d5e37941c309706e4c616c0b84b3703d3aa16411a18029113a121ba475014",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/workOnPersonalWelcomeGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "bd36fbece0a0e6e0a3d218efd1bac3612b1e56c7135ca59b4102eeaf48f8bc28",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import chooseWelcomeResource from \"./workOnPersonalWelcomeGoal/chooseWelcomeResource.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import reconcileWelcomeEvidence from \"./workOnPersonalWelcomeGoal/reconcileWelcomeEvidence.nl\";"
+        },
+        {
+          "line": 10,
+          "import": "import decideWelcomeNextStep from \"./workOnPersonalWelcomeGoal/decideWelcomeNextStep.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Reconcile an owned Personal welcome, setup, tour or Explorer next step.\nbudget: { maxTurns: 32 }\nargs:\n  goal: string\nreturns: WelcomeGoalReport\n---\n1. Discover the current Personal resources. Choose the intended resource. Read the exact retained channel twice, keeping both native frontiers. Resolve the chosen resource if there is one.\n2. Call reconcileWelcomeEvidence with the exact index, choice, both views and actual resolution.\n3. For setup or chooser call reviewWelcomeSetup with goal and the assigned intent. For a valid verified-current tour record call reviewWelcomeTour with its exact native row, canonical scene and deck count. For retry-ready call retryWelcomeProbe with the authorized exact request. Leave other reviews null.\n4. Call decideWelcomeNextStep with the exact evidence, current resolution and reviews. If it says stage, use workspace.stageWelcomeNextStep once. Return its exact plan, reviews containing setup, tour and probe, and the local receipt or null.\n",
         "returns": "WelcomeGoalReport"
@@ -587,11 +622,28 @@
     {
       "callable": "reviewUnitHandoffGoal",
       "originalEntry": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
-      "entry": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "64c90e41c050c92f3816e0074b89ab09d3f622f270ee4bc12e55ba2cdf5ae4e0",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "90758ef9cac3cb59cf5798509350f9c4232d1b4284a7b9e67251c6eaeb0bb878",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import chooseUnit from \"./reviewUnitHandoffGoal/chooseUnit.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import reviewDesign from \"./reviewUnitHandoffGoal/reviewDesign.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import reviewIdentity from \"./reviewUnitHandoffGoal/reviewIdentity.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import completeHandoff from \"./reviewUnitHandoffGoal/completeHandoff.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Review an installed workspace unit's manifest and visual identity for one private handoff, with a local icon draft only when authorized.\nargs:\n  goal: string\nreturns: UnitHandoffReport\nbudget: { maxTurns: 26 }\n---\n1. Call unitHandoff.discover. Pass the exact goal and visible units to chooseUnit. If there is no single match, return an unassigned report with no observations or effects and explain the distinction the user must supply.\n2. Call unitHandoff.begin with the selected path. Check that the returned unit is the selected one. Pass the goal, plan, and exact observation to reviewDesign for a requested manifest or joined review.\n3. Pass the goal, plan, observation, and design finding to reviewIdentity for a requested identity or joined review. A proposal can be read-only. A joined review cannot draft an icon on a missing or invalid manifest.\n4. Call completeHandoff with the goal and every scoped result. Preserve actual receipts and give the user one grounded next step. Runtime lifecycle, protected main, and working draft are separate facts. Do not publish, activate, restart or build a unit in this review.\n",
         "returns": "UnitHandoffReport"
@@ -600,11 +652,28 @@
     {
       "callable": "workOnSpecialistHandoffGoal",
       "originalEntry": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
-      "entry": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "69b460d4f51af98a9c51d6fd798c36fecd2443700a716a841164d515f718d617",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/workOnSpecialistHandoffGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "2bc5a0acdfdebfb5c5855423f096cc32d1131c842fa3fe1f8e2b4da0884eca90",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import manageChannelAgent from \"./workOnSpecialistHandoffGoal/agents/manageChannelAgent.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import chooseCurrentSpecialist from \"./workOnSpecialistHandoffGoal/chooseCurrentSpecialist.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import checkSpecialistReceipt from \"./workOnSpecialistHandoffGoal/checkSpecialistReceipt.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import decideSpecialistHandoff from \"./workOnSpecialistHandoffGoal/decideSpecialistHandoff.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Verify the exact retained specialist result and decide an authorized local integration handoff.\nbudget: { maxTurns: 30 }\nargs:\n  goal: string\nreturns: SpecialistGoalReport\n---\n1. Discover the current specialist index and chooseCurrentSpecialist for the user's goal. If it names a handle, call agents.manageChannelAgent with the exact goal, channel, context, handle, action inspect and null options. Keep the exact request and returned membership report. Otherwise keep null membership.\n2. Read the owned retained frontier twice. Call checkSpecialistReceipt with the choice, current frontier and exact membership. If verified, use workspace.readOriginalSpecialistArtifact with its exact result message. If the original is present call reviewSpecialistHistory with that result record and original bytes.\n3. Call decideSpecialistHandoff with the exact evidence and unchanged goal. If the plan says stage and the history review exists, call workspace.stageSpecialistHandoff once. Return the actual plan, membership with the exact request and report or null, unchanged history witness or null, and actual local receipt or null.\n",
         "returns": "SpecialistGoalReport"
@@ -616,7 +685,7 @@
       "entry": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "1ff2d123c4cac992554b477832af52ba4278cf8c38d15f6d963703db5ea14ce2",
+      "sourceSha256": "fef888b8338bbccd0d870c8062626d9e2b76ee0c22ba8ac60cbafae44b98a7bf",
       "semanticImports": [
         {
           "line": 4,
@@ -625,10 +694,6 @@
         {
           "line": 5,
           "import": "import reconcileDictationSegments from \"./workOnDictationHandoffGoal/reconcileDictationSegments.nl\";"
-        },
-        {
-          "line": 6,
-          "import": "import reviewRetainedDictation from \"./workOnDictationHandoffGoal/reviewRetainedDictation.nl\";"
         },
         {
           "line": 7,
@@ -643,11 +708,36 @@
     {
       "callable": "workOnProviderHandoffGoal",
       "originalEntry": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
-      "entry": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "efd8f1f008b3a9a10b6d789223edc599c57988484c4951c5730a60007cd5aca5",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/workOnProviderHandoffGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "b0d8e3b7eaabace1c8f3c5ef8b8953871b0f50462f4bb99c6e43bace449469d0",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import chooseProviderConversation from \"./workOnProviderHandoffGoal/chooseProviderConversation.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import reviewRetainedApproval from \"./workOnProviderHandoffGoal/reviewRetainedApproval.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import chooseRetainedResult from \"./workOnProviderHandoffGoal/chooseRetainedResult.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import reviewRetainedDelivery from \"./workOnProviderHandoffGoal/reviewRetainedDelivery.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import decideProviderHandoff from \"./workOnProviderHandoffGoal/decideProviderHandoff.nl\";"
+        },
+        {
+          "line": 10,
+          "import": "import shouldStageProviderHandoff from \"./workOnProviderHandoffGoal/shouldStageProviderHandoff.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Recover a retained provider approval and original conversation result for an authorized handoff.\nbudget: { maxTurns: 30 }\nargs:\n  goal: string\nreturns: ProviderGoalReport\n---\n1. Call workspace.discoverRetainedConversations. Select the intended conversation with chooseProviderConversation. Inspect its exact retained state with workspace.readProviderConversation. Re-read it once for its current frontier. Keep both actual views.\n2. Call reviewRetainedApproval with the goal, selected card, and both views. It compares the caller-visible queue observations through the installed approval review. Call chooseRetainedResult with the goal, card, latest view and approval.result. Read exact cached output using workspace.readProviderOutput only if that selection requests it.\n3. Call reviewRetainedDelivery with the actual card, current view, selection and returned cached output. Call decideProviderHandoff with the goal and exact receipts, using approval.result and delivery.result for the two reviews. If the resulting plan is ready and the user requested an explicitly permitted local handoff, call workspace.stageProviderHandoff once. Otherwise retain no artifact. Return the actual plan, handoff receipt or null, and reviews containing the unchanged approval and delivery evidence.\n",
         "returns": "ProviderGoalReport"
@@ -659,12 +749,8 @@
       "entry": "skills/open-user-goal/recoverOperatingHandoff.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "e5eb710e34d6d1f9aa57a7063ff4bce88609f662652ed943afdd98ac3e059deb",
+      "sourceSha256": "f004c6dfac5dc77d63ac94788d3fa0b743000a03dcfe0d8ecb4551fb098f98d1",
       "semanticImports": [
-        {
-          "line": 1,
-          "import": "import workOnEvalHandoffGoal from \"./workOnEvalHandoffGoal.nl\";"
-        },
         {
           "line": 2,
           "import": "import workOnRecoveryHandoff from \"./workOnRecoveryHandoff.nl\";"
@@ -737,11 +823,11 @@
       "entry": "skills/open-user-goal/workOnCapabilityGoal.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "71eee183b65cb1bdf695e40710049145e971f86ab21c9eca82bce5b8a9409200",
+      "sourceSha256": "22fead3d1a50b2f107cd3912b53211f0b7464cc555bc3a7a335e2c8fb1d6185d",
       "semanticImports": [
         {
           "line": 2,
-          "import": "import keywords from \"./workOnCapabilityGoal/help/docHelp/keywords.nl\";"
+          "import": "import docHelp from \"./workOnCapabilityGoal/help/docHelp.nl\";"
         },
         {
           "line": 3,
@@ -867,11 +953,32 @@
     {
       "callable": "workOnEvalHandoffGoal",
       "originalEntry": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
-      "entry": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
-      "classification": "parallel-conversion-in-progress",
-      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
-      "sourceSha256": "e57b64171b6a2ff451b09d83f56247a029eb0fc7196920f0fb440e36e1edd5dd",
-      "semanticImports": [],
+      "entry": "skills/open-user-goal/workOnEvalHandoffGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "c7239b3c554bf1bc55cf9f8e6ee7d38edb4c34e0426e3e2ad17ea553c1551aaf",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import reviewEvalRecovery from \"./workOnEvalHandoffGoal/reviewer/reviewEvalRecovery.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import chooseEvalJob from \"./workOnEvalHandoffGoal/chooseEvalJob.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import chooseEvalAttempts from \"./workOnEvalHandoffGoal/chooseEvalAttempts.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import decideEvalHandoff from \"./workOnEvalHandoffGoal/decideEvalHandoff.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import shouldStageEvalResult from \"./workOnEvalHandoffGoal/shouldStageEvalResult.nl\";"
+        }
+      ],
       "originalSourceEvidence": {
         "source": "---\ndescription: Recover the user's owned native eval work and carry verified output into a scratch handoff.\nbudget: { maxTurns: 24 }\nargs:\n  goal: string\nreturns: EvalHandoffGoalReport\n---\n1. Call journal.discoverEvalJobs. Call chooseEvalJob with the user's goal and actual catalog. If no job resolves, return {status:\"unresolved\", reason:\"job-unavailable\"}.\n2. Call chooseEvalAttempts to select the original attempts needed for the request. For each selected ID in order, call journal.openEvalAttempt with the exact job and run IDs. For each opened attempt call reviewer.reviewEvalRecovery with its request unchanged. Keep each actual observation and its returned review as a trial.\n3. Ask decideEvalHandoff to select a usable result, an authorized exact retry or a hold. If it chooses retry, call journal.retryOpenEval with the original chosen run ID. When a new observation returns, call reviewer.reviewEvalRecovery on that new request and append its trial. Ask decideEvalHandoff again with retrySpent true. If the retry did not open, hold based on the retained attempts. Never repeat the retry.\n4. Join the final decision to the actual trials with confirmedEvalResult. If there is a confirmed result, pass that result and the unchanged goal to shouldStageEvalResult to decide the requested local handoff. Stage only when requested, using the exact job and run IDs carried by that confirmed observation. The writer independently checks its current authority and original receipts. With no confirmed result, preserve the hold and leave no artifact. Return status \"reviewed\", the actual job ID, all trials in order, the final decision and the actual artifact or null.\n",
         "returns": "EvalHandoffGoalReport"
