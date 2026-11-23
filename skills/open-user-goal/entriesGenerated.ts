@@ -243,7 +243,7 @@ export default {
   "editorial-packet": {
     "program": "skills/open-user-goal/workOnEditorialPacket.nl",
     "callable": "workOnEditorialPacket",
-    "resultType": "PacketReport",
+    "resultType": "EditorialPacketResult",
     "skill": "editorialPacket",
     "parameterNames": [
       "goal"
@@ -293,7 +293,7 @@ export default {
   "image-candidate": {
     "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
     "callable": "workOnImageCandidateGoal",
-    "resultType": "ImageReport",
+    "resultType": "ImageCandidateResult",
     "skill": "imageCandidate",
     "parameterNames": [
       "goal"

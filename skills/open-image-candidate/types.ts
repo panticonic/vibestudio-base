@@ -26,3 +26,5 @@ export type ImageRead = { candidateId:string; rowId:string|null; status:"verifie
 export type ImageDecision = {action:"report"|"hold"|"stage"; candidateId:string|null; explanation:string};
 export type ImageHandoff = {path:string; digest:string; candidateId:string; assetDigest:string; frontier:number};
 export type ImageReport = {plan:ImagePlan; assessment:ImageAssessment; reads:ImageRead[]; decision:ImageDecision; handoff:ImageHandoff|null};
+
+export type ImageCandidateResult = {candidates:CandidateAssessment[];originals:ImageRead[];decision:ImageDecision;handoff:ImageHandoff|null};

@@ -172,7 +172,7 @@
         "workOnEditorialPacket/reviewPacketSource/packet"
       ],
       "types": [
-        "PacketReport"
+        "PacketReport", "EditorialPacketResult"
       ]
     },
     "reviewRetainedBuildIncident": {

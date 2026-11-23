@@ -18,3 +18,5 @@ export type PacketDecision = {status:"ready"|"already-current"|"held"|"reviewed"
 export type PacketReceipt = {path:string;digest:string;candidateVersion:string;missionRevision:number};
 export type PacketReport = {plan:PacketPlan;opening:PacketSnapshot;current:PacketSnapshot;sources:PacketSource[];
   edit:PacketEdit;decision:PacketDecision;note:PacketReceipt|null};
+
+export type EditorialPacketResult = {document:{path:string;version:string};decision:PacketDecision;note:PacketReceipt|null};
