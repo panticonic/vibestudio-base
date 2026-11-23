@@ -17,6 +17,14 @@
       "newSourceSha256": "f0aa7f76988fb85e707c406be69506f271fa9902aa13cc01773b949ea675fcca"
     },
     {
+      "entry": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+      "oldReturn": "GoogleRunbookReport",
+      "newReturn": "GoogleRunbookResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "3325dc17d267e90b5c3cdd32783d2ad41cf8d96eb5266579eaa6931f18ff85af",
+      "newSourceSha256": "6b76816cdcd3eae5e2aa1f3bccb4bd37b06648db155c1d830d14bf0812755db7"
+    },
+    {
       "entry": "skills/open-user-goal/prepareNewsEditionReview.nl",
       "oldReturn": "NewsEditionReviewReport",
       "newReturn": "NewsEditionReviewResult",
@@ -49,6 +57,14 @@
       "newSourceSha256": "062f98031e61a5353a7e7596ad3a63f1b2f0ea60a4e39d7826f1c538416bf682"
     },
     {
+      "entry": "skills/open-user-goal/correctVaultFromPdf.nl",
+      "oldReturn": "PdfVaultCorrection",
+      "newReturn": "PdfVaultCorrectionResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "6a0feb09a13d9d41fdece5f2f8b725ebb87429a91a2d51c6dba8657d6a962cca",
+      "newSourceSha256": "3bb42e4a8f12f65b226d63f77cf022fcdc005682a0b07b56d384d2d476cceac7"
+    },
+    {
       "entry": "skills/open-user-goal/generateOwnedIllustration.nl",
       "oldReturn": "OwnedIllustrationReport",
       "newReturn": "OwnedIllustrationResult",
@@ -70,7 +86,7 @@
       "newReturn": "CoordinatedRevisionResult",
       "parametersChanged": false,
       "oldSourceSha256": "13678fba56902b2642d8cf9dc64262ad86715aec4f2beb7ba7327aa132904a44",
-      "newSourceSha256": "c36517d26e337f25b931f6a6710ded32fb75f251bca77e50bc4eafe774d10ea3"
+      "newSourceSha256": "d7087c6c36b7f0c201e5238c3314a64eca58c65ea55ce75e3d1a0be835862979"
     }
   ]
 }
