@@ -31,9 +31,28 @@ export type OpenEvalReview = {
 };
 export type EvalRecoveryDecision =
   | { action: "use" | "retry"; runId: string }
-  | { action: "hold"; reason: "no-confirmed-effect" | "current-result-required" | "source-withdrawn" };
+  | {
+      action: "hold";
+      reason: "no-confirmed-effect" | "current-result-required" | "source-withdrawn";
+    };
 export type EvalTrial = { observation: OpenEvalObservation; review: OpenEvalReview };
 export type EvalHandoffArtifact = { path: string; bytes: number; sha256: string; runId: string };
 export type EvalHandoffGoalReport =
   | { status: "unresolved"; reason: "job-unavailable" }
-  | { status: "reviewed"; jobId: string; trials: EvalTrial[]; decision: EvalRecoveryDecision; artifact: EvalHandoffArtifact | null };
+  | {
+      status: "reviewed";
+      jobId: string;
+      trials: EvalTrial[];
+      decision: EvalRecoveryDecision;
+      artifact: EvalHandoffArtifact | null;
+    };
+
+/** Original native observations, retained together after a confirmed readback. */
+export type ConfirmedEvalResult = {
+  observation: OpenEvalObservation;
+  review: OpenEvalReview & {
+    journal: "matched";
+    effect: "confirmed";
+    readback: { digest: string; observedDigest: string; size: number };
+  };
+};
