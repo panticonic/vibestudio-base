@@ -51,7 +51,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-config": {
-    "program": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
+    "program": "skills/open-user-goal/reconcileWorkspaceConfig.ts",
     "callable": "reconcileWorkspaceConfig",
     "resultType": "ConfigResult | null",
     "skill": "workspaceConfig",
@@ -81,7 +81,7 @@ export default {
     "additionalArguments": {}
   },
   "retained-memory": {
-    "program": "skills/open-user-goal/reviewRetainedMemory.nl",
+    "program": "skills/open-user-goal/reviewRetainedMemory.ts",
     "callable": "reviewRetainedMemory",
     "resultType": "MemoryResult",
     "skill": "retainedMemory",
@@ -121,7 +121,7 @@ export default {
     "additionalArguments": {}
   },
   "route-authority": {
-    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
+    "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.ts",
     "callable": "chooseAuthorizedEvidenceRoute",
     "resultType": "RouteResult",
     "skill": "ownedRouteAuthority",
@@ -201,7 +201,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-claims": {
-    "program": "skills/open-user-goal/reviewWorkspaceClaims.nl",
+    "program": "skills/open-user-goal/reviewWorkspaceClaims.ts",
     "callable": "reviewWorkspaceClaims",
     "resultType": "ClaimResult | null",
     "skill": "workspaceClaims",
