@@ -16,7 +16,7 @@ type Assignment = Pick<
   "document" | "pages" | "batchSize" | "purpose" | "allowOcr"
 >;
 
-/** Bind the canonical extension to exactly one content snapshot and page sequence. */
+/** Bind the canonical extension to one content snapshot and authorized page scope. */
 export function createPdfIntakeBindings(
   extension: Pick<Api, "probe" | "ingest">,
   assignment: Assignment,
@@ -24,11 +24,9 @@ export function createPdfIntakeBindings(
 ) {
   const scope = { ...assignment, pages: [...assignment.pages] };
   const bytes = new Uint8Array(documentBytes);
-  const sequence = batches(scope.pages, scope.batchSize);
+  batches(scope.pages, scope.batchSize); // Validate the assigned extraction budget.
   let probeFlight: Promise<ProbeReceipt> | undefined;
-  let verifiedBatches = 0;
-  let reading = false;
-  let failed = false;
+  const reads = new Map<string, Promise<BatchReceipt>>();
 
   function assertDocument(document: string): void {
     if (!scope.document || document !== scope.document)
@@ -53,7 +51,14 @@ export function createPdfIntakeBindings(
 
   async function probe(document: string): Promise<ProbeReceipt> {
     assertDocument(document);
-    const receipt = await (probeFlight ??= readProbe());
+    const pending = (probeFlight ??= readProbe());
+    let receipt: ProbeReceipt;
+    try {
+      receipt = await pending;
+    } catch (error) {
+      if (probeFlight === pending) probeFlight = undefined;
+      throw error;
+    }
     return { ...receipt, selectedPages: [...receipt.selectedPages] };
   }
 
@@ -63,22 +68,21 @@ export function createPdfIntakeBindings(
     mode: ExtractionMode,
   ): Promise<BatchReceipt> {
     assertDocument(document);
-    const assigned = sequence[verifiedBatches];
+    const assigned = [...pages];
     if (
-      !probeFlight ||
-      reading ||
-      failed ||
-      !assigned ||
-      pages.length !== assigned.length ||
-      pages.some((page, index) => page !== assigned[index])
-    ) {
+      !assigned.length ||
+      assigned.length > scope.batchSize ||
+      new Set(assigned).size !== assigned.length ||
+      assigned.some((page) => !scope.pages.includes(page))
+    )
       throw new Error(
-        "Read the next assigned PDF batch only after probing the document.",
+        "Read only assigned PDF pages within the extraction batch budget.",
       );
-    }
-    reading = true;
-    try {
-      const observed = await probeFlight;
+    const key = JSON.stringify({ pages: assigned, mode });
+    const previous = reads.get(key);
+    if (previous) return structuredClone(await previous);
+    const pending = (async () => {
+      const observed = await probe(document);
       if (
         observed.encrypted ||
         !observed.embedded ||
@@ -133,13 +137,14 @@ export function createPdfIntakeBindings(
           "The PDF batch receipt does not match the selected digest and pages.",
         );
       }
-      verifiedBatches++;
       return receipt;
+    })();
+    reads.set(key, pending);
+    try {
+      return structuredClone(await pending);
     } catch (error) {
-      failed = true;
+      if (reads.get(key) === pending) reads.delete(key);
       throw error;
-    } finally {
-      reading = false;
     }
   }
 

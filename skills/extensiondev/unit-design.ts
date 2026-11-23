@@ -21,7 +21,6 @@ export function bindExtensionDesign(input: {
   const { contextId, source, name, goal } = input;
   const operationId = crypto.randomUUID();
   const request: LiveExtensionDesignRequest = { kind: "extension-design-live", goal, operationId };
-  let used = false;
 
   async function read(state: State, side: "working" | "published"): Promise<ExtensionManifestEvidence> {
     const repository = await vcs.resolveRepository({ state, repoPath: source });
@@ -54,9 +53,8 @@ export function bindExtensionDesign(input: {
     services: {
       extensionDesignRead: {
         async inspect(id: string): Promise<LiveExtensionDesignEvidence> {
-          if (id !== operationId || used)
-            throw new Error("Inspect only the assigned extension manifests once");
-          used = true;
+          if (id !== operationId)
+            throw new Error("Inspect only the assigned extension manifests");
           const { workingHead, mainEventId } = await vcs.status({ contextId });
           const [working, published] = await Promise.all([
             read(workingHead, "working"),

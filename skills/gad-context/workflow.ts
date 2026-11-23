@@ -30,16 +30,13 @@ export function bindChannelReview(
     channelId,
     ...(branchId === undefined ? {} : { branchId }),
   };
-  let read = false;
   let health: ChannelHealth | undefined;
-  let followedUp = false;
 
   function claim(id: string, permitted: boolean) {
-    if (!permitted || id !== operationId || read)
+    if (!permitted || id !== operationId)
       throw new Error(
-        "Read the assigned channel once through its selected review",
+        "Read the assigned channel through its selected review",
       );
-    read = true;
   }
 
   const request: ChannelReviewRequest = { goal, view, operationId };
@@ -83,11 +80,10 @@ export function bindChannelReview(
           if (
             view !== "triage" ||
             !health ||
-            healthReceipt !== health.receipt ||
-            followedUp
+            healthReceipt !== health.receipt
           )
             throw new Error(
-              "Follow up once on the assigned channel health receipt",
+              "Follow up on the assigned channel health receipt",
             );
           const inspector = scopedInspector(kind);
           if (
@@ -96,7 +92,6 @@ export function bindChannelReview(
           )
             throw new Error("Use an inspector for an observed finding");
           const input = { channelId, branchId: health.branchId, limit: 12 };
-          followedUp = true;
           const observation =
             inspector === "inspectChannelRoster"
               ? await gad.inspectChannelRoster({

@@ -8374,7 +8374,7 @@ export function resume(kind: "reattach" | "restart"): Promise<{
 }>;`,
   onboardingRead: `/** Read the actual setup owners and the caller's assigned catalog selection. */
 
-/** Return the assigned owner observations and resolved product route once. */
+/** Return the assigned owner observations and resolved product route. */
 export function inspect(): Promise<{
   receipt: string;
   rows: {

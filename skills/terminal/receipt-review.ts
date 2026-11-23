@@ -37,14 +37,12 @@ export function bindTerminalReceiptReview(input: {
       hasStdout: !!result.stdout, hasStderr: !!result.stderr,
     } : null,
   };
-  let used = false;
   return {
     request: { kind: "terminal-receipt" as const, goal, operationId },
     services: {
       terminalEvidenceRead: {
         async inspect(id: string) {
-          if (id !== operationId || used) throw new Error("Inspect the assigned terminal receipt once");
-          used = true;
+          if (id !== operationId) throw new Error("Inspect the assigned terminal receipt");
           return structuredClone(evidence);
         },
       },

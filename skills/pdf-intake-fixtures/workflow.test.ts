@@ -1010,5 +1010,5 @@ it("probes and cites a real PDF through the existing extension and the native ca
   ).rejects.toThrow("assigned PDF reference");
   await expect(
     bindings.pdfIntakeRead.read(request.document, [1], "embedded"),
-  ).rejects.toThrow("next assigned");
+  ).resolves.toMatchObject({digest:baseline.document.digest,pages:[{number:1}]});
 });

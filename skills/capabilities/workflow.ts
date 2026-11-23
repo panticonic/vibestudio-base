@@ -36,40 +36,31 @@ export function bindAuthorityReview(input: {
     { targetId: "main", namespace: "authority" },
     authorityMethods,
   );
-  let index = 0;
-  let pending = false;
   return {
     request,
     services: {
       assignedAuthorityRead: {
         async preflight(operationId: string): Promise<AuthorityObservation> {
-          const assigned = operations[index];
-          if (pending || !assigned || operationId !== assigned.id)
-            throw new Error("Inspect only the next assigned operation");
-          pending = true;
-          try {
-            const { service, method, args } = assigned;
-            const { decision, leaves } = await authority.preflight({
-              service,
-              method,
-              args,
-            });
-            index++;
-            return {
-              operationId,
-              decision,
-              leaves: leaves.map(
-                ({ capability, resourceKey, tier, status }) => ({
-                  capability,
-                  resourceKey,
-                  tier,
-                  status,
-                }),
-              ),
-            };
-          } finally {
-            pending = false;
-          }
+          const assigned = operations.find(
+            (operation) => operation.id === operationId,
+          );
+          if (!assigned) throw new Error("Inspect only an assigned operation");
+          const { service, method, args } = assigned;
+          const { decision, leaves } = await authority.preflight({
+            service,
+            method,
+            args,
+          });
+          return {
+            operationId,
+            decision,
+            leaves: leaves.map(({ capability, resourceKey, tier, status }) => ({
+              capability,
+              resourceKey,
+              tier,
+              status,
+            })),
+          };
         },
       },
     },

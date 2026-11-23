@@ -19,12 +19,10 @@ export function bindDurableQuestionReview(channelId: string, readers: Readers = 
   const historyReceipt = `${operation}:messages`;
   const rosterReceipt = `${operation}:roster`;
   let historyRead = false;
-  let rosterRead = false;
 
   return {
     gadDurableHistory: {
       async read(): Promise<DurableQuestionHistory> {
-        if (historyRead) throw new Error("Read the assigned durable history once");
         const messages: DurableQuestionMessage[] = [];
         const page = await readers.readChannelEnvelopes({
           channelId, limit: 96, payloadKind: eventKind, window: {kind: "tail"},
@@ -66,8 +64,8 @@ export function bindDurableQuestionReview(channelId: string, readers: Readers = 
     },
     gadDurableRoster: {
       async read(receipt: string): Promise<DurableQuestionRoster> {
-        if (!historyRead || rosterRead || receipt !== historyReceipt)
-          throw new Error("Read the roster once using the assigned durable history receipt");
+        if (!historyRead || receipt !== historyReceipt)
+          throw new Error("Read the roster using the assigned durable history receipt");
         const roster = await readers.inspectChannelRoster({channelId, limit: 24});
         if (roster.rows.some(row => row.channel_id !== channelId))
           throw new Error("The durable roster returned a foreign channel");
@@ -80,7 +78,6 @@ export function bindDurableQuestionReview(channelId: string, readers: Readers = 
           joinedAt: row.joined_at,
           leftAt: row.left_at,
         }));
-        rosterRead = true;
         return { receipt: rosterReceipt, channelId, complete: members.length < 24, members };
       },
     },

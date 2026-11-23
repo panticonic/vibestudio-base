@@ -57,8 +57,8 @@ export function bindTerminalChecks(assignment: {
     services: {
       terminalCheckRead: {
         async observe(id: string): Promise<TerminalPlan> {
-          if (id !== operationId || observed)
-            throw new Error("Read the assigned terminal plan once");
+          if (id !== operationId)
+            throw new Error("Read only the assigned terminal plan");
           observed = true;
           return {
             receipt,

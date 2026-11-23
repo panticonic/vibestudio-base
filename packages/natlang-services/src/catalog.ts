@@ -472,7 +472,7 @@ export const SERVICE_CATALOG = [
     name: "onboardingRead",
     summary: "Read the actual setup owners and the caller's assigned catalog selection.",
     contract: { origin: "base", file: "packages/natlang-services/src/onboardingContracts.ts", table: "onboardingReadMethods" },
-    methods: [{ name: "inspect", params: [], description: "Return the assigned owner observations and resolved product route once." }],
+    methods: [{ name: "inspect", params: [], description: "Return the assigned owner observations and resolved product route." }],
   },
   {
     name: "decisionRecall",
