@@ -78,7 +78,8 @@ export function bindScratchHandoff(
       "Assign one to eight uniquely identified files and one to eight bounded questions.",
     );
 
-  let staged = false;
+  let staged: {body:string;receipt:ScratchReceipt}|undefined;
+  let pending: {body:string;promise:Promise<ScratchReceipt|null>}|undefined;
   return {
     scratchHandoffRead: {
       async read(id: string): Promise<SourceRead | null> {
@@ -100,9 +101,16 @@ export function bindScratchHandoff(
     scratchHandoffWrite: {
       async stage(body: string): Promise<ScratchReceipt | null> {
         const expected = new TextEncoder().encode(body);
-        if (staged || !expected.length || expected.length > maxArtifactBytes)
-          return null;
-        staged = true;
+        if (!expected.length || expected.length > maxArtifactBytes)return null;
+        if(staged){
+          if(staged.body!==body)return null;
+          try{
+            const actual=await readBounded(staged.receipt.path,expected.length);
+            return actual.length===expected.length&&actual.every((byte,index)=>byte===expected[index])?{...staged.receipt}:null;
+          }catch{return null;}
+        }
+        if(pending)return pending.body===body?await pending.promise:null;
+        const perform=async():Promise<ScratchReceipt|null>=>{
         let directory: string | undefined;
         try {
           directory = await fs.mkdtemp("evidence-handoff");
@@ -125,6 +133,13 @@ export function bindScratchHandoff(
             .rm(directory, { recursive: true, force: true })
             .catch(() => {});
         return null;
+        };
+        const promise=perform();pending={body,promise};
+        try{
+          const receipt=await promise;
+          if(receipt)staged={body,receipt:{...receipt}};
+          return receipt;
+        }finally{pending=undefined;}
       },
     },
   };

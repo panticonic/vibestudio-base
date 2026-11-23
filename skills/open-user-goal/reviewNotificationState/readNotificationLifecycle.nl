@@ -5,6 +5,4 @@ args:
 returns: NotificationLifecycle
 budget: { maxTurns: 12 }
 ---
-1. Call notificationState.read(lane) to capture the original owned projection.
-2. Call notificationState.refresh(lane) exactly once. Preserve its actual authority, producer receipt and observation disposition.
-3. If the returned lane still has the same exact ID and is non-null, read that returned current lane using notificationState.read. When the old scope is retired or replaced with another scope, current is null. Return the original, refresh and current results exactly.
+Obtain the actual original owned projection and the native refresh receipt. Preserve the actual authority, producer receipt and observation disposition. An identical authorized refresh request retrieves the original committed receipt without advancing or producing a notification again; retry it if the prior response was interrupted. Preserve the original snapshot from that execution rather than relabel a later snapshot as the original. Read the returned current lane only while it retains the same exact ID; current is null for a retired or replacement scope. Return the original, refresh and current observations without reconstructing unobserved values.

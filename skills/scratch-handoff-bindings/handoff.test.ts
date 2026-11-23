@@ -54,6 +54,9 @@ it("writes exact UTF-8 into a fresh scratch directory without touching the sourc
     const { body } = prepareFor(1);
     expect(body).toContain(next.trimEnd());
     const staged = await binding.scratchHandoffWrite.stage(body!);
+    // The caller can lose the first response after the native write committed.
+    expect(await binding.scratchHandoffWrite.stage(body!)).toEqual(staged);
+    expect((await readdir(root)).filter(name=>name.startsWith("evidence-handoff"))).toHaveLength(1);
     expect(staged?.bytes).toBe(Buffer.byteLength(body!));
     expect(await readFile(staged!.path, "utf8")).toBe(body);
     expect(await readdir(join(staged!.path, ".."))).toEqual(["handoff.json"]);
@@ -61,7 +64,22 @@ it("writes exact UTF-8 into a fresh scratch directory without touching the sourc
       await binding.scratchHandoffWrite.stage("overwrite attempt"),
     ).toBeNull();
     expect(await readFile(source, "utf8")).toBe(next);
+    await writeFile(staged!.path,"corrupt");
+    expect(await binding.scratchHandoffWrite.stage(body!)).toBeNull();
+    expect(await readFile(staged!.path,"utf8")).toBe("corrupt");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+it("coalesces exact concurrent staging and retries a failed uncommitted scratch write",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"vibe-scratch-retry-test-"));let writes=0,fail=true;
+ try{
+  const binding=bindScratchHandoff({open,rename,rm,mkdtemp:prefix=>mkdtemp(join(root,prefix??"scratch")),writeFile:async(path,body)=>{writes++;if(fail){fail=false;throw Error("precommit I/O");}await writeFile(path,body);}},
+   {goal:"Keep a private note",questions:["What happened?"],sources:[{id:"review",path:join(root,"original.txt")}]});
+  expect(await binding.scratchHandoffWrite.stage("native body")).toBeNull();
+  const [a,b]=await Promise.all([binding.scratchHandoffWrite.stage("native body"),binding.scratchHandoffWrite.stage("native body")]);
+  expect(a).not.toBeNull();expect(b).toEqual(a);expect(writes).toBe(2);
+  expect(await binding.scratchHandoffWrite.stage("foreign body")).toBeNull();
+ }finally{await rm(root,{recursive:true,force:true});}
 });
