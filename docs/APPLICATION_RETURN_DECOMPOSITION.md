@@ -15,3 +15,7 @@ Policy remains in the hierarchical NL entry and author/review stages. The TS pro
 ## Owned illustration
 
 `generateOwnedIllustration/contract.ts`: assignment and basis are internal owned-scope and CAS inputs, decision is semantic policy state. They are not the illustration. The application value is the real native job and verified original plus its saved/stale receipt; retain outcome and saved. The native managed verifier already observes basis, transport, original bytes and workspace independently; only its final value comparison must project the new application result. Its diagnostic output may retain those observations without asking the model to repeat them.
+
+## Development audit
+
+`reviewDevelopmentAudit/contract.ts`: assignment, observed pair and choice are internal discovery/selection state. The requested audit findings are the selected run identity, assessment (including decisive journal sequence findings) and actual keep receipt. `open-goal-development-audit-managed.ts` owns the before/after native runs, read journal and paged cursors; those independently prove scope/evidence/transition instead of comparing copied observations. Qualification rejects a foreign returned run identity and an invented assessment while preserving native wrong-scope/stale-approval probes.

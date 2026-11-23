@@ -21,5 +21,4 @@ export type DevelopmentDisposition =
   "hold-context" | "hold-checkpoint" | "hold-journal" | "hold-process" | "hold-effects";
 export type DevelopmentAssessment = { disposition: DevelopmentDisposition; decisiveSequences: number[] };
 export type DevelopmentKeepReceipt = { runId: string; snapshot: string; updatedAt: number; sequence: number; attention: "kept" };
-export type DevelopmentAuditOutcome = { assignment: DevelopmentAssignment; observed: DevelopmentPair; choice: DevelopmentChoice;
-  assessment: DevelopmentAssessment; receipt: DevelopmentKeepReceipt | null };
+export type DevelopmentAuditFindings = { runId: string | null; assessment: DevelopmentAssessment; receipt: DevelopmentKeepReceipt | null };

@@ -512,7 +512,7 @@
   "development-audit": {
     "program": "skills/open-user-goal/reviewDevelopmentAudit.nl",
     "callable": "reviewDevelopmentAudit",
-    "resultType": "DevelopmentAuditOutcome",
+    "resultType": "DevelopmentAuditFindings",
     "skill": "developmentAudit",
     "parameterNames": [
       "goal"
