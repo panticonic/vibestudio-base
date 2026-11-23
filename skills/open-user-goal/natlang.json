@@ -60,7 +60,7 @@
         "chooseAudienceResponse/prepareAudienceVisual/visualize"
       ],
       "types": [
-        "AudienceReport"
+        "AudienceReport", "AudienceResult"
       ]
     },
     "reviseCoordinatedDocuments": {
@@ -95,7 +95,7 @@
         "reviewRetainedMemory/resolveMemoryEvidence/evidence"
       ],
       "types": [
-        "RetainedMemoryReport"
+        "RetainedMemoryReport", "MemoryResult"
       ]
     },
     "compareLiveLocalInventory": {
@@ -112,7 +112,7 @@
         "reconcileWorkspaceConfig/collectConfigEvidence/settings"
       ],
       "types": [
-        "ConfigReport"
+        "ConfigReport", "ConfigResult"
       ]
     },
     "auditAndroidGoal": {

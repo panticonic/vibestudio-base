@@ -1,0 +1,399 @@
+[
+  {
+    "entry": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
+    "function": "reconcileWorkspaceConfig",
+    "originalResultType": "ConfigReport | null",
+    "definition": {
+      "path": "skills/open-workspace-config/types.ts",
+      "line": 34,
+      "text": "export type ConfigReport = {\n  brief: ConfigBrief; lens: ConfigLens; evidence: ConfigEvidence; outcome: ConfigOutcome;\n  handoff: ConfigDisposition | null;\n};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "brief": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "lens": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "evidence": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "outcome": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/chooseAudienceResponse.nl",
+    "function": "chooseAudienceResponse",
+    "originalResultType": "AudienceReport",
+    "definition": {
+      "path": "skills/open-audience-response/types.ts",
+      "line": 20,
+      "text": "export type AudienceReport = {\n  record: AudienceRecord; choice: AudienceChoice; answer: AudienceAnswer;\n  prepared: AudiencePrepared | null; receipt: AudienceReceipt | null;\n};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "record": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "choice": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "answer": "actual requested findings, result data or retained receipt",
+      "prepared": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "receipt": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/reviewRetainedMemory.nl",
+    "function": "reviewRetainedMemory",
+    "originalResultType": "RetainedMemoryReport",
+    "definition": {
+      "path": "skills/open-retained-memory/types.ts",
+      "line": 21,
+      "text": "export type RetainedMemoryReport = {\n  brief: MemoryBrief; plan: MemoryPlan; evidence: MemoryEvidence; outcome: MemoryOutcome; handoff: MemoryNote | null;\n};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "brief": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "plan": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "evidence": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "outcome": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
+    "function": "chooseAuthorizedEvidenceRoute",
+    "originalResultType": "OwnedRouteReview",
+    "definition": {
+      "path": "skills/open-route-authority/types.ts",
+      "line": 13,
+      "text": "export type OwnedRouteReview={offer:RouteOffer;authority:RouteAuthorityReport;choice:RouteChoice;readback:RouteReadback|null;\n  outcome:RouteOutcome;handoff:RouteHandoff|null};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "offer": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "authority": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "choice": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "readback": "actual requested findings, result data or retained receipt",
+      "outcome": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+    "function": "reconcilePanelLaunchState",
+    "originalResultType": "LaunchReport | null",
+    "definition": {
+      "path": "skills/open-panel-launch-state/types.ts",
+      "line": 17,
+      "text": "export type LaunchReport={plan:LaunchPlan;opening:LaunchSnapshot;current:LaunchSnapshot;decision:LaunchDecision;\n  preflight:LaunchPreflight|null;effect:LaunchEffect|null;readback:LaunchSnapshot;result:LaunchVerdict;handoff:LaunchNote|null};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "plan": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "opening": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "current": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "decision": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "preflight": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "effect": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "readback": "actual requested findings, result data or retained receipt",
+      "result": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/reviewWorkspaceClaims.nl",
+    "function": "reviewWorkspaceClaims",
+    "originalResultType": "WorkspaceClaimReview | null",
+    "definition": {
+      "path": "skills/open-workspace-claims/types.ts",
+      "line": 10,
+      "text": "export type WorkspaceClaimReview={choice:ClaimReviewChoice;packet:ClaimPacket;evidence:ClaimEvidence;\n  support:ClaimSupport;disposition:ClaimDisposition;handoff:ClaimHandoff|null};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "choice": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "packet": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "evidence": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "support": "actual requested findings, result data or retained receipt",
+      "disposition": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnBridgeDelivery.nl",
+    "function": "workOnBridgeDelivery",
+    "originalResultType": "BridgeDeliveryReport | null",
+    "definition": {
+      "path": "skills/open-bridge-delivery/types.ts",
+      "line": 41,
+      "text": "export type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview;spec:LocalFileReview;note:LocalFileReview;\n  branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "scope": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "plan": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "local": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "spec": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "note": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "branch": "actual requested findings, result data or retained receipt",
+      "decision": "actual requested findings, result data or retained receipt",
+      "commit": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnChatContinuity.nl",
+    "function": "workOnChatContinuity",
+    "originalResultType": "ChatContinuityReport",
+    "definition": {
+      "path": "skills/open-chat-continuity/types.ts",
+      "line": 16,
+      "text": "export type ChatContinuityReport = {plan:ChatPlan;opening:ChatObservation;current:ChatObservation;evidence:ChatEvidence;\n  disposition:ChatDisposition;handoff:ChatHandoff|null};"
+    },
+    "classification": "migrated",
+    "fields": {
+      "plan": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "opening": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "current": "internal observation/authorization/planning state; retained for semantic stages or native stage admission, omitted public return",
+      "evidence": "only actual delivery review findings projected; request facts stay internal",
+      "disposition": "actual requested findings, result data or retained receipt",
+      "handoff": "actual requested findings, result data or retained receipt"
+    },
+    "nativeEvidence": "Independent native observations, authority/CAS checks, private head checks and actual captured staged bytes; negative qualification rejects invented domain outcome"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnDemoPortfolio.nl",
+    "function": "workOnDemoPortfolio",
+    "originalResultType": "PortfolioReport",
+    "definition": null,
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnRegencyBriefing.nl",
+    "function": "workOnRegencyBriefing",
+    "originalResultType": "RegencyReport",
+    "definition": null,
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnApiReadinessGoal.nl",
+    "function": "workOnApiReadinessGoal",
+    "originalResultType": "ApiReadinessReport",
+    "definition": {
+      "path": "skills/open-api-readiness/types.ts",
+      "line": 26,
+      "text": "export type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietRequest;result:BoundReport}|null;\n  audit:QuietAudit|null;handoff:ReadinessArtifact|null};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+    "function": "workOnPersonalWelcomeGoal",
+    "originalResultType": "WelcomeGoalReport",
+    "definition": {
+      "path": "skills/open-personal-welcome/types.ts",
+      "line": 65,
+      "text": "export type WelcomeGoalReport = { plan: WelcomePlan; reviews: WelcomeReviews; handoff: WelcomeHandoff | null };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+    "function": "reviewUnitHandoffGoal",
+    "originalResultType": "UnitHandoffReport",
+    "definition": {
+      "path": "skills/open-user-goal/reviewUnitHandoffGoal/types.ts",
+      "line": 17,
+      "text": "export type UnitHandoffReport = {\n  decision: \"reviewed\" | \"staged\" | \"held\";\n  plan: UnitHandoffPlan;\n  observation: UnitHandoffObservation | null;\n  design: UnitDesignHandoff | null;\n  identity: UnitIdentityReport | null;\n  reason: string;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+    "function": "workOnSpecialistHandoffGoal",
+    "originalResultType": "SpecialistGoalReport",
+    "definition": {
+      "path": "skills/open-specialist-handoff/types.ts",
+      "line": 84,
+      "text": "export type SpecialistGoalReport = {\n  plan: SpecialistPlan;\n  membership: MembershipWitness | null;\n  history: HistoryReview | null;\n  handoff: IntegrationArtifact | null;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
+    "function": "workOnDictationHandoffGoal",
+    "originalResultType": "DictationGoalReport",
+    "definition": {
+      "path": "skills/open-dictation-handoff/types.ts",
+      "line": 70,
+      "text": "export type DictationGoalReport = {\n  plan: DictationPlan;\n  review: DictationDraftWitness | null;\n  handoff: DictationArtifact | null;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+    "function": "workOnProviderHandoffGoal",
+    "originalResultType": "ProviderGoalReport",
+    "definition": {
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal/types.ts",
+      "line": 9,
+      "text": "export type ProviderGoalReport = Report & {\n  reviews: { approval: ApprovalReviewEvidence; delivery: DeliveryReviewEvidence };\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/recoverOperatingHandoff.nl",
+    "function": "recoverOperatingHandoff",
+    "originalResultType": "RecoveryHandoffOutcome",
+    "definition": {
+      "path": "skills/open-user-goal/workOnRecoveryHandoff/types.ts",
+      "line": 8,
+      "text": "export type RecoveryHandoffOutcome = {\n  status: ScratchStatus | \"held-eval\" | \"held-policy\";\n  recovery: EvalReport;\n  directive: Directive;\n  handoff: {\n    status: ScratchStatus;\n    artifact: { path: string; bytes: number } | null;\n    missingSources: string[];\n    unanswered: string[];\n  } | null;\n  reason: string;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnTerminalGoal.nl",
+    "function": "workOnTerminalGoal",
+    "originalResultType": "TerminalGoalReport",
+    "definition": {
+      "path": "skills/open-user-goal/workOnTerminalGoal/types.ts",
+      "line": 6,
+      "text": "export type TerminalGoalReport = {\n  initial: Screen;\n  events: TerminalEvent[];\n  checkReport: TerminalCheckReport | null;\n  discovery: TerminalDiscovery | null;\n  handoff: TerminalHandoff | null;\n  summary: TerminalSummary;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
+    "function": "workOnLocalReconciliationGoal",
+    "originalResultType": "LocalReconciliationGoalReport",
+    "definition": {
+      "path": "skills/open-user-goal/types.ts",
+      "line": 590,
+      "text": "export type LocalReconciliationGoalReport = {\n  integration: { status: \"integrated\" | \"held\"; head: string; reason: string };\n  window: { title: string; window: \"open\" | \"pending\" | \"closed\"; note: string; head: string };\n  handoff: { status: \"none\" | \"held\" | \"staged\"; artifact: { path: string; bytes: number } | null };\n  archive?: {\n    prior: { id: string; title: string; revision: string; setting: string; key: string; value: unknown; sha256: string };\n    current: { exists: boolean; value: unknown };\n    relation: \"matches\" | \"changed\";\n  } | null;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnCapabilityGoal.nl",
+    "function": "workOnCapabilityGoal",
+    "originalResultType": "CapabilityGoalReport",
+    "definition": {
+      "path": "skills/open-doc-plan/types.ts",
+      "line": 35,
+      "text": "export type CapabilityGoalReport = { plan: CapabilityPlan; handoff: CapabilityHandoff | null };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-owned-task-recovery/recoverOwnedTask.nl",
+    "function": "recoverOwnedTask",
+    "originalResultType": "RecoveryReport",
+    "definition": {
+      "path": "skills/open-owned-task-recovery/types.ts",
+      "line": 38,
+      "text": "export type RecoveryReport = {\n  task: string;\n  revision: number;\n  status: TaskStatus;\n  original: MessageReceipt | null;\n  delivery: OwnerDelivery | null;\n  reason: string;\n} | { task: null; reason: string };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/gad-context/natlang/reviewDurableQuestion.nl",
+    "function": "reviewDurableQuestion",
+    "originalResultType": "DurableQuestionReport",
+    "definition": {
+      "path": "skills/gad-context/natlang/types.ts",
+      "line": 159,
+      "text": "export type DurableQuestionReport = {\n  historyReceipt: string;\n  rosterReceipt: string;\n  channelId: string;\n  question: DurableQuestionJudgment;\n  participant: DurableParticipantJudgment;\n  disposition: \"ready\" | \"hold\";\n  explanation: string;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
+    "function": "workOnClientDiagnostics",
+    "originalResultType": "ClientDiagnosticsReport",
+    "definition": {
+      "path": "skills/gad-context/natlang/types.ts",
+      "line": 108,
+      "text": "export type ClientDiagnosticsReport = {\n  views: ClientView[];\n  effects: ClientActionReceipt[];\n  channel: ChannelReview | null;\n  decision: ClientDecision;\n  handoff: ClientHandoff | null;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnAssemblyGoal.nl",
+    "function": "workOnAssemblyGoal",
+    "originalResultType": "AssemblyReport",
+    "definition": {
+      "path": "skills/open-workspace-assembly/types.ts",
+      "line": 34,
+      "text": "export type AssemblyReport = { plan: AssemblyPlan; handoff: AssemblyHandoff | null };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-owned-scheduled-recovery/recoverScheduledAutomation.nl",
+    "function": "recoverScheduledAutomation",
+    "originalResultType": "ScheduledOutcome",
+    "definition": {
+      "path": "skills/open-owned-scheduled-recovery/types.ts",
+      "line": 21,
+      "text": "export type ScheduledOutcome = {\n  schedule: Schedule; authorization: Receipt | null; delivery: Receipt | null; reason: string;\n};"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+    "function": "workOnEvalHandoffGoal",
+    "originalResultType": "EvalHandoffGoalReport",
+    "definition": {
+      "path": "skills/open-user-goal/workOnRecoveryHandoff/types.ts",
+      "line": 4,
+      "text": "export type EvalHandoffGoalReport = EvalReport;"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/panel-health/recoverPanelGoal.nl",
+    "function": "recoverPanelGoal",
+    "originalResultType": "RecoveryReport",
+    "definition": {
+      "path": "skills/panel-health/types.ts",
+      "line": 53,
+      "text": "export type RecoveryReport =\n  | { status: \"unresolved\"; reason: string }\n  | {\n    status: \"healthy\" | \"recovered\" | \"attention\" | \"inconclusive\" | \"held\";\n    surfaceId: string;\n    initial: PanelHealthAssessment;\n    final: PanelHealthAssessment;\n    effects: RecoveryEffect[];\n    reason: string;\n  };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/publish-preflight/publishOwnedPreviewGoal.nl",
+    "function": "publishOwnedPreviewGoal",
+    "originalResultType": "OwnedPreviewReport",
+    "definition": {
+      "path": "skills/publish-preflight/types.ts",
+      "line": 177,
+      "text": "export type OwnedPreviewReport =\n  | {\n      status: \"published\" | \"held\" | \"incomplete\";\n      targetId: string;\n      reason: string | null;\n      preflight: PublishPreflightReport | null;\n      receipt: OwnedPreviewReceipt | null;\n      hosted: OwnedPreviewReadback | null;\n    }\n  | { status: \"unresolved\"; reason: string };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/pdf-intake/workOnPdfGoal.nl",
+    "function": "workOnPdfGoal",
+    "originalResultType": "PdfGoalReport",
+    "definition": {
+      "path": "skills/pdf-intake/types.ts",
+      "line": 121,
+      "text": "export type PdfGoalReport =\n  | {\n    status: \"inspected\";\n    document: PdfGoalFile;\n    selection: PdfGoalSelection;\n    missingPages: number[];\n    text: PdfIntakeReport | null;\n    layouts: PdfLayoutReport[];\n    rendered: PdfGoalRender[];\n    recommendation: PdfGoalRecommendation;\n  }\n  | { status: \"blocked\"; reason: string };"
+    },
+    "classification": "pending"
+  },
+  {
+    "entry": "skills/publish-preflight/workTowardPublicationGoal.nl",
+    "function": "workTowardPublicationGoal",
+    "originalResultType": "PublicationGoalReport",
+    "definition": {
+      "path": "skills/publish-preflight/types.ts",
+      "line": 135,
+      "text": "export type PublicationGoalReport =\n  | {\n      status: \"reviewed\";\n      choice: PublicationGoalChoice;\n      preflight: PublishPreflightReport | null;\n      revision: PublicationRevisionReport | null;\n    }\n  | { status: \"blocked\"; reason: string };"
+    },
+    "classification": "pending"
+  }
+]

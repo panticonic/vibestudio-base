@@ -36,3 +36,5 @@ export type ConfigReport = {
   brief: ConfigBrief; lens: ConfigLens; evidence: ConfigEvidence; outcome: ConfigOutcome;
   handoff: ConfigDisposition | null;
 };
+
+export type ConfigResult = {outcome:ConfigOutcome;handoff:ConfigDisposition|null};

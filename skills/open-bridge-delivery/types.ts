@@ -41,3 +41,5 @@ export type LocalDeliveryReceipt={repository:string;eventId:string;from:Delivery
 export type BranchPrivateNote={path:string;digest:string};
 export type BridgeDeliveryReport={scope:DeliveryScope;plan:BridgePlan;local:LocalGitReview;spec:LocalFileReview;note:LocalFileReview;
   branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};
+
+export type BridgeResult = {branch:BranchAssessment;decision:BridgeDecision;commit:LocalDeliveryReceipt|null;handoff:BranchPrivateNote|null};

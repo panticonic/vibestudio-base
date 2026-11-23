@@ -22,3 +22,5 @@ export type MemoryNote = { path: string; digest: string };
 export type RetainedMemoryReport = {
   brief: MemoryBrief; plan: MemoryPlan; evidence: MemoryEvidence; outcome: MemoryOutcome; handoff: MemoryNote | null;
 };
+
+export type MemoryResult = {outcome:MemoryOutcome;handoff:MemoryNote|null};

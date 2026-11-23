@@ -13,3 +13,5 @@ export type RouteOutcome={status:"verified"|"mismatch"|"missing"|"outside-limit"
 export type RouteHandoff={path:string;digest:string};
 export type OwnedRouteReview={offer:RouteOffer;authority:RouteAuthorityReport;choice:RouteChoice;readback:RouteReadback|null;
   outcome:RouteOutcome;handoff:RouteHandoff|null};
+
+export type RouteResult = {readback:RouteReadback|null;outcome:RouteOutcome;handoff:RouteHandoff|null};

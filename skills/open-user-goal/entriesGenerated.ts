@@ -53,7 +53,7 @@ export default {
   "workspace-config": {
     "program": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
     "callable": "reconcileWorkspaceConfig",
-    "resultType": "ConfigReport | null",
+    "resultType": "ConfigResult | null",
     "skill": "workspaceConfig",
     "parameterNames": [
       "goal"
@@ -63,7 +63,7 @@ export default {
   "audience-response": {
     "program": "skills/open-user-goal/chooseAudienceResponse.nl",
     "callable": "chooseAudienceResponse",
-    "resultType": "AudienceReport",
+    "resultType": "AudienceResult",
     "skill": "audienceResponse",
     "parameterNames": [
       "goal"
@@ -83,7 +83,7 @@ export default {
   "retained-memory": {
     "program": "skills/open-user-goal/reviewRetainedMemory.nl",
     "callable": "reviewRetainedMemory",
-    "resultType": "RetainedMemoryReport",
+    "resultType": "MemoryResult",
     "skill": "retainedMemory",
     "parameterNames": [
       "goal"
@@ -123,7 +123,7 @@ export default {
   "route-authority": {
     "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
     "callable": "chooseAuthorizedEvidenceRoute",
-    "resultType": "OwnedRouteReview",
+    "resultType": "RouteResult",
     "skill": "ownedRouteAuthority",
     "parameterNames": [
       "goal"
@@ -193,7 +193,7 @@ export default {
   "launch-state": {
     "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
     "callable": "reconcilePanelLaunchState",
-    "resultType": "LaunchReport | null",
+    "resultType": "LaunchResult | null",
     "skill": "panelLaunchState",
     "parameterNames": [
       "goal"
@@ -203,7 +203,7 @@ export default {
   "workspace-claims": {
     "program": "skills/open-user-goal/reviewWorkspaceClaims.nl",
     "callable": "reviewWorkspaceClaims",
-    "resultType": "WorkspaceClaimReview | null",
+    "resultType": "ClaimResult | null",
     "skill": "workspaceClaims",
     "parameterNames": [
       "goal"
@@ -213,7 +213,7 @@ export default {
   "bridge-delivery": {
     "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
     "callable": "workOnBridgeDelivery",
-    "resultType": "BridgeDeliveryReport | null",
+    "resultType": "BridgeResult | null",
     "skill": "bridgeDelivery",
     "parameterNames": [
       "goal"
@@ -223,7 +223,7 @@ export default {
   "chat-continuity": {
     "program": "skills/open-user-goal/workOnChatContinuity.nl",
     "callable": "workOnChatContinuity",
-    "resultType": "ChatContinuityReport",
+    "resultType": "ChatResult",
     "skill": "chatContinuity",
     "parameterNames": [
       "goal"

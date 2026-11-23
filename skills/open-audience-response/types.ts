@@ -22,3 +22,5 @@ export type AudienceReport = {
   record: AudienceRecord; choice: AudienceChoice; answer: AudienceAnswer;
   prepared: AudiencePrepared | null; receipt: AudienceReceipt | null;
 };
+
+export type AudienceResult = {answer:AudienceAnswer;receipt:AudienceReceipt|null};

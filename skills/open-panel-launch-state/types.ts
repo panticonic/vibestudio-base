@@ -17,3 +17,5 @@ export type LaunchVerdict={status:"confirmed"|"held"|"applied"|"rejected";summar
 export type LaunchNote={path:string;digest:string};
 export type LaunchReport={plan:LaunchPlan;opening:LaunchSnapshot;current:LaunchSnapshot;decision:LaunchDecision;
   preflight:LaunchPreflight|null;effect:LaunchEffect|null;readback:LaunchSnapshot;result:LaunchVerdict;handoff:LaunchNote|null};
+
+export type LaunchResult = {readback:LaunchSnapshot;result:LaunchVerdict;handoff:LaunchNote|null};

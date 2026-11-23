@@ -10,3 +10,5 @@ export type ClaimDisposition={status:"confirmed"|"partial"|"unconfirmed";summary
 export type ClaimHandoff={path:string;digest:string};
 export type WorkspaceClaimReview={choice:ClaimReviewChoice;packet:ClaimPacket;evidence:ClaimEvidence;
   support:ClaimSupport;disposition:ClaimDisposition;handoff:ClaimHandoff|null};
+
+export type ClaimResult = {support:ClaimSupport;disposition:ClaimDisposition;handoff:ClaimHandoff|null};

@@ -16,3 +16,5 @@ export type ChatDisposition = {status:"ready"|"held";write:boolean;explanation:s
 export type ChatHandoff = {path:string;digest:string;messageId:string;channelId:string;through:number};
 export type ChatContinuityReport = {plan:ChatPlan;opening:ChatObservation;current:ChatObservation;evidence:ChatEvidence;
   disposition:ChatDisposition;handoff:ChatHandoff|null};
+
+export type ChatResult = {review:ReviewedDelivery;disposition:ChatDisposition;handoff:ChatHandoff|null};
