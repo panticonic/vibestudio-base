@@ -15,6 +15,13 @@ it("links the actual public native type export in its nearest declared branch an
  const compiled=compileProgram({files:linked,entry:"first.ts",label:"skills/app/first.ts",root:"skills/app",platform:core.workerdPlatform({realm:{call:(body:string,params:string[],args:unknown[])=>Function(...params,body)(...args)}})});
  expect((compiled.value as any).default({native:{revision:"r",permission:"inspect"}})).toBe("inspect");
 });
+it("resolves a root conditional type export without exposing its runtime entry",async()=>{
+ const projects=packages();projects.get("skills/discovery")!["types.ts"]='import type {Native} from "@workspace-skills/reviewer";export type Input={native:Native};';
+ projects.get("skills/reviewer")!["package.json"]=JSON.stringify({name:"@workspace-skills/reviewer",exports:{types:"./types.ts",default:"./runtime.ts"}});
+ const linked=await linkWorkspaceModules("skills/app",local(),async()=>projects);
+ expect(linked["first/discovery/types.ts"]).toContain('from "../reviewer/types.js"');
+ expect(linked["first/discovery/types.ts"]).not.toContain("runtime");
+});
 it("does not reach undeclared, unexported, excluded or escaping private type files",async()=>{
  for(const mode of ["private","excluded","escape","ambiguous"]){
   const projects=packages(),files=projects.get("skills/reviewer")!;
