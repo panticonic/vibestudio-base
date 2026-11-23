@@ -26,3 +26,15 @@ its available original attempts from owned workspace records.
   confirmed text with its original admission and result digests. The judge
   independently rereads native storage, original receipts and scratch bytes.
   Private verifier outcomes and replay controls stay in System Testing.
+
+## Preserve confirmation through intent composition
+
+The staging decision previously received only goal plus `{action,runId}`, while
+its instructions required native confirmation. The verified original trial was
+lost between the recovery decision and staging intent. `confirmedEvalResult`
+now joins the selection to the original observation and review, validates their
+run/lifecycle/journal/readback identities, and preserves their actual values.
+`shouldStageEvalResult` consumes that confirmed result and interprets only the
+user's handoff request. The native writer remains the current authority and byte
+receipt boundary. Joint-library input inventory is recorded in
+`../open-user-goal/evidence-inventory/HANDOFF_INPUTS.md` and its hashed JSON.

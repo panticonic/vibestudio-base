@@ -1,0 +1,966 @@
+{
+  "schema": "vibestudio.semantic-handoff-input-inventory/1",
+  "scope": "All joint Base NL callables whose name contains should/handoff/complete/finish/stage; reviewed domain evidence inputs, native effect adapters and completion composition. Candidate inventory is not an outcome qualification.",
+  "confirmed_defects": [
+    {
+      "path": "skills/open-user-goal/workOnEvalHandoffGoal/shouldStageEvalResult.nl",
+      "original_inputs": [
+        "goal",
+        "decision"
+      ],
+      "defect": "Asks whether result is confirmed without carrying the reviewed trial or independent byte readback.",
+      "replacement": "ConfirmedEvalResult preserving original observation and review, selected by confirmedEvalResult.ts; intent lambda judges user requested handoff only."
+    }
+  ],
+  "api_readiness": {
+    "path": "skills/open-user-goal/workOnApiReadinessGoal/decideApiReadiness.nl",
+    "inputs": [
+      "goal",
+      "index",
+      "choice",
+      "current",
+      "selection",
+      "review",
+      "audit"
+    ],
+    "result": "No omitted-evidence interface found. Root explicitly reads native metadata-only audit before deciding/staging; wave0032 teacher omitted it. Do not weaken the native quiet proof or manufacture a successful handoff."
+  },
+  "callables": [
+    {
+      "path": "skills/open-user-goal/activateOwnedAutomation/completeAutomationLaunch.nl",
+      "line": 3,
+      "sha256": "fc87767a75dbbb63eadb9e22c98c369b20b8babb650b578387104177256f048e",
+      "arguments": [
+        {
+          "name": "review",
+          "type": "AutomationLaunchReview"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/authorizePdfVaultHandoff.nl",
+      "line": 3,
+      "sha256": "1d5a699b3bc5a069e6193d93232afc43803aa954573533d063827e039f2ab0b7",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "pdf",
+          "type": "PdfGoalReport"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/careForGrimoireScene/stageCaretakerArtifact.nl",
+      "line": 3,
+      "sha256": "928ff9c36a8d4314bd6626239c63df5540bd6a027adae3c035786aa6ca95a785",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "frontier",
+          "type": "string"
+        },
+        {
+          "name": "plan",
+          "type": "GrimoirePlan"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/careForGrimoireScene/verifySceneHandoff.nl",
+      "line": 3,
+      "sha256": "9a3a7573de51fc48980a8b7349f8d01e79e017358c889878eae278bba70a7d82",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string | null"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/compareTestkitCloseouts/stageCloseoutEvidence.nl",
+      "line": 3,
+      "sha256": "510c8bbb9a65239a65c70c8e8e778a1c0054d40827d42e1364afc8710789231d",
+      "arguments": [
+        {
+          "name": "report",
+          "type": "CloseoutReport"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/maintainWorkspaceSkill/prepareSkillRepair/stageSkillChanges.nl",
+      "line": 3,
+      "sha256": "0fda77685bbe0643495a2303c40a99fd36a6dbbd4aea9bcbc56cc6a79d4c8b6e",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "revision",
+          "type": "string"
+        },
+        {
+          "name": "changes",
+          "type": "SkillMaintenanceChange[]"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/prepareContentProject/finishPrivateProject.nl",
+      "line": 3,
+      "sha256": "622497e84656c6a1a9b0251fe44992c40706a98d404767a082c5e5b8018535d4",
+      "arguments": [
+        {
+          "name": "decision",
+          "type": "ProjectEvidenceDecision"
+        },
+        {
+          "name": "scope",
+          "type": "ProjectScopeLease"
+        },
+        {
+          "name": "draft",
+          "type": "AuthoredProjectDraft"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/prepareOwnedScaffold/stageNativeScaffold.nl",
+      "line": 3,
+      "sha256": "70ff63532086280cc9981e7dc3ba0eafc0844a8d69fed979a153651ec158b1c7",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "event",
+          "type": "string"
+        },
+        {
+          "name": "kinds",
+          "type": "ScaffoldKind[]"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/recoverOperatingHandoff.nl",
+      "line": 3,
+      "sha256": "f577981eb4d82b785266128ccf0de9bd83de7198c6c8a050fbe72dd3484699b3",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/reviewAssetIntegrity/stageRecovery.nl",
+      "line": 3,
+      "sha256": "0ed00439733c9b38e654a3603427c35ee8c98c346a101c7b19759742ebf2c184",
+      "arguments": [
+        {
+          "name": "source",
+          "type": "string"
+        },
+        {
+          "name": "working",
+          "type": "string"
+        },
+        {
+          "name": "selection",
+          "type": "AssetSelection[]"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewDeployedInterface/stageReview.nl",
+      "line": 3,
+      "sha256": "205c8ce6f9757bdd3b1f53e507f8124a19c778be84c52439d33ea7b161199eee",
+      "arguments": [
+        {
+          "name": "observation",
+          "type": "InterfaceObservation"
+        },
+        {
+          "name": "decision",
+          "type": "InterfaceDecision"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewExamplesAdoption/findStagedComposition.nl",
+      "line": 3,
+      "sha256": "786e5d4922d9d35cf5bdfa27bec154005e5636ccb93be05d752244b2a53bfeb8",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewExamplesAdoption/planAdoptionHandoff.nl",
+      "line": 3,
+      "sha256": "1d77abf45733812b84857b5b7663d97042521f21f74ae85e9fcaaeb2cad64486",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "card",
+          "type": "AdoptionReviewCard"
+        },
+        {
+          "name": "evidence",
+          "type": "AdoptionEvidence"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/reviewExamplesAdoption/readAdoptionHandoff.nl",
+      "line": 3,
+      "sha256": "e433dc6a71a927c7edd9a8dc7c387da9497878bcff3fde26ebc8dce475b1230d",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string | null"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewExtensionDossier/stageDossier.nl",
+      "line": 3,
+      "sha256": "66533ac92fb195b87d796cecc61c85f1444c2235c3850324f15a121354b03636",
+      "arguments": [
+        {
+          "name": "decision",
+          "type": "DossierDecision"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewLocalExecutionWidth/stageWidth.nl",
+      "line": 3,
+      "sha256": "3d6f6dcfe46b5c602e87e6f60e0d7a97c2075fae4791c81c402b008e52ae8ff6",
+      "arguments": [
+        {
+          "name": "finding",
+          "type": "WidthFinding"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewLogFollower/stageLogFollower.nl",
+      "line": 3,
+      "sha256": "f9a1d3c3155dbf12e2a8099d8c550cba5db968291461a06e8afea3e486c58bce",
+      "arguments": [
+        {
+          "name": "assignment",
+          "type": "FollowAssignment"
+        },
+        {
+          "name": "joined",
+          "type": "FollowJoin"
+        },
+        {
+          "name": "decision",
+          "type": "FollowDecision"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewNotificationState/finishNotificationReview.nl",
+      "line": 3,
+      "sha256": "2960691d629408be2bcdc887e11425ec1d5089519ca88df3f3bd9469fd68af58",
+      "arguments": [
+        {
+          "name": "lifecycle",
+          "type": "NotificationLifecycle"
+        },
+        {
+          "name": "decision",
+          "type": "NotificationDecision"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/reviewPtyContinuity/stagePtyReceipt.nl",
+      "line": 3,
+      "sha256": "3c887c45adb4005044b37d6c8d8a33a90e7bf7dae342bb0d06560b2877267d29",
+      "arguments": [
+        {
+          "name": "observed",
+          "type": "PtyObservation"
+        },
+        {
+          "name": "decision",
+          "type": "PtyDecision"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewRetainedBuildIncident/stageEvidence.nl",
+      "line": 3,
+      "sha256": "81967ba0c12cafe7c8b7a00b35d3d313645e993d3403e9a5e3afec6dcb87b4fb",
+      "arguments": [
+        {
+          "name": "checkpoints",
+          "type": "string[]"
+        },
+        {
+          "name": "focus",
+          "type": "IncidentFocus"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewSourceAttribution/reviewAttributionHandoff.nl",
+      "line": 3,
+      "sha256": "6095360c5c8f97c548f56faaa8ef4c974ec9c29eabe3ee88c5fcbfd418e07ebb",
+      "arguments": [
+        {
+          "name": "assignment",
+          "type": "SourceAttributionAssignment"
+        },
+        {
+          "name": "files",
+          "type": "SourceAttributionFile[]"
+        },
+        {
+          "name": "evidence",
+          "type": "SourceAttributionEvidence[]"
+        },
+        {
+          "name": "conclusion",
+          "type": "SourceAttributionConclusion"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/reviewSystemRelease/stageRelease.nl",
+      "line": 3,
+      "sha256": "8160949f7badad39ebde9c7ad97adb64bce59a118d62ae474dacdcfdcb2cca74",
+      "arguments": [
+        {
+          "name": "assignment",
+          "type": "ReleaseAssignment"
+        },
+        {
+          "name": "choice",
+          "type": "RunChoice"
+        },
+        {
+          "name": "cases",
+          "type": "\"CaseEvidence[]\""
+        },
+        {
+          "name": "assessment",
+          "type": "ReleaseAssessment"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewUnitHandoffGoal/completeHandoff.nl",
+      "line": 3,
+      "sha256": "06adf0b4063bb45bdab04becfd5ded862ecf2f57042f287523783555af4059d0",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "plan",
+          "type": "UnitHandoffPlan"
+        },
+        {
+          "name": "observation",
+          "type": "UnitHandoffObservation"
+        },
+        {
+          "name": "design",
+          "type": "UnitDesignHandoff | null"
+        },
+        {
+          "name": "identity",
+          "type": "UnitIdentityReport | null"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+      "line": 3,
+      "sha256": "eaaa1fc751f8f0361453f5b6d39c3543320437138aa18a85f3a561629c7554fc",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/reviewWebhookAdmission/stageWebhookAudit.nl",
+      "line": 3,
+      "sha256": "fd7e9a9b61b097ed69519806a9abb73696d7a99b5da867346a8ba80495a9f463",
+      "arguments": [
+        {
+          "name": "assignment",
+          "type": "WebhookAdmissionAssignment"
+        },
+        {
+          "name": "evidence",
+          "type": "WebhookAdmissionEvidence"
+        },
+        {
+          "name": "binding",
+          "type": "WebhookAdmissionBinding"
+        },
+        {
+          "name": "assessment",
+          "type": "WebhookAdmissionAssessment"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewWorkspaceShare/stageShare.nl",
+      "line": 3,
+      "sha256": "9636d4ed3158325cc640d7ecd19898f89e3ede27e85b7aac34de697dd6cfa410",
+      "arguments": [
+        {
+          "name": "observation",
+          "type": "ShareObservation"
+        },
+        {
+          "name": "decision",
+          "type": "ShareDecision"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/reviewWorkspaceSmoke/stageWorkspaceSmoke.nl",
+      "line": 3,
+      "sha256": "367141405600be1ba09813fb91a8af857dc28f9901e4b2ea6f8c7e879a39ed7a",
+      "arguments": [
+        {
+          "name": "assignment",
+          "type": "SmokeAssignment"
+        },
+        {
+          "name": "selection",
+          "type": "SmokeSelection"
+        },
+        {
+          "name": "runtime",
+          "type": "SmokeRuntime"
+        },
+        {
+          "name": "decision",
+          "type": "SmokeDecision"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/triageSystemTemplate/planCandidateHandoff.nl",
+      "line": 3,
+      "sha256": "1e463aace67f3f1a91b5a23a5701d5a851d5981e78caa1f4ed68edf62c222ac8",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "card",
+          "type": "SystemCandidateCard"
+        },
+        {
+          "name": "preview",
+          "type": "SystemCandidatePreview"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/triageSystemTemplate/recordCandidateHandoff.nl",
+      "line": 3,
+      "sha256": "7e76bf75a9e1c07263d5a2fa41d0d84dcd0edca11e838fd2f3069fffc2ada572",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "event",
+          "type": "string"
+        },
+        {
+          "name": "coordinate",
+          "type": "string"
+        },
+        {
+          "name": "plan",
+          "type": "SystemCandidatePlan"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/triageSystemTemplate/verifyCandidateHandoff.nl",
+      "line": 3,
+      "sha256": "68ae9f89474ac4176f22115c71171e91ec8fccc18bc900004cb9e1a4cf033af5",
+      "arguments": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "string | null"
+        }
+      ],
+      "role": "native effect/readback adapter; does not re-judge unavailable facts"
+    },
+    {
+      "path": "skills/open-user-goal/workOnAssemblyGoal/completeAssemblyScope.nl",
+      "line": 3,
+      "sha256": "abe0b2fa2492c3d4324caadded3ef62dd3f8b5126f45b657992729cf77bd64c6",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "inventory",
+          "type": "AssemblyInventory"
+        },
+        {
+          "name": "scope",
+          "type": "AssemblyScope"
+        },
+        {
+          "name": "sources",
+          "type": "UnitSource[]"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/workOnAssemblyGoal/shouldStageAssemblyDraft.nl",
+      "line": 3,
+      "sha256": "76cde8817d637cfadd49253b54be4d3696b2230f20e2d0fb29606be14584fd88",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "allowed",
+          "type": "boolean"
+        },
+        {
+          "name": "plan",
+          "type": "AssemblyPlan"
+        }
+      ],
+      "role": "intent plus complete typed native plan/receipt; no omitted confirmation observed"
+    },
+    {
+      "path": "skills/open-user-goal/workOnAuthoringGoal/decideHandoff.nl",
+      "line": 3,
+      "sha256": "a00ab317b56996523382fcd64202b4e02a4e2c6a955a265276184856bb19b23a",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "receipt",
+          "type": "AuthoringReceipt"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnCapabilityGoal/shouldStageCapabilityPlan.nl",
+      "line": 3,
+      "sha256": "e2bc76127946f080930bed04cd8401b9635489b15892751ecfd27ae16a87b1e7",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "allowed",
+          "type": "boolean"
+        },
+        {
+          "name": "plan",
+          "type": "CapabilityPlan"
+        }
+      ],
+      "role": "intent plus complete typed native plan/receipt; no omitted confirmation observed"
+    },
+    {
+      "path": "skills/open-user-goal/workOnDictationHandoffGoal/decideDictationHandoff.nl",
+      "line": 3,
+      "sha256": "b7f3061a196c582720beba5f6ec2938b23daa487873d9c13e1007c2fab5bfb22",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "thread",
+          "type": "DictationThread"
+        },
+        {
+          "name": "current",
+          "type": "DictationSnapshot"
+        },
+        {
+          "name": "selection",
+          "type": "DictationSelection"
+        },
+        {
+          "name": "review",
+          "type": "DictationDraftWitness | null"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
+      "line": 4,
+      "sha256": "1b442188dfc95c11dd7b1a04662a08113b05fed8f94e35c2cf8b4ba57de6e35e",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/workOnEditorialPacket/decideEditorialHandoff.nl",
+      "line": 3,
+      "sha256": "49bba776ffdfec552732a43f3cd2506d4db9fcff4ce3f09700c8f5bbb4295463",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "plan",
+          "type": "PacketPlan"
+        },
+        {
+          "name": "opening",
+          "type": "PacketSnapshot"
+        },
+        {
+          "name": "current",
+          "type": "PacketSnapshot"
+        },
+        {
+          "name": "sources",
+          "type": "PacketSource[]"
+        },
+        {
+          "name": "edit",
+          "type": "PacketEdit"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnEvalHandoffGoal/decideEvalHandoff.nl",
+      "line": 3,
+      "sha256": "5a0503e38c2d8731e92b56281a5c8c50fdc6803c6763370a060e53043724c84e",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "trials",
+          "type": "EvalTrial[]"
+        },
+        {
+          "name": "retrySpent",
+          "type": "boolean"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnEvalHandoffGoal/shouldStageEvalResult.nl",
+      "line": 3,
+      "sha256": "70244b9c7a90e71098a699d75197bbf6a7e8a0d24ed8e72f3f13514c397a0421",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "result",
+          "type": "ConfirmedEvalResult"
+        }
+      ],
+      "role": "confirmed-evidence intent; fixed original omitted-trial interface"
+    },
+    {
+      "path": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+      "line": 4,
+      "sha256": "ad946e4b63d6a8c31c02b37fc530cbc2c1a59242489c1c5199789e1a18d2a8c3",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/workOnImageCandidateGoal/decideImageHandoff.nl",
+      "line": 3,
+      "sha256": "d13f7fe40da57aea7b76a8122a12e5de7e05c80d243c457148f769314b4b0b3a",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "plan",
+          "type": "ImagePlan"
+        },
+        {
+          "name": "assessment",
+          "type": "ImageAssessment"
+        },
+        {
+          "name": "reads",
+          "type": "ImageRead[]"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnNewsEvidenceGoal/decideNewsEvidenceHandoff.nl",
+      "line": 3,
+      "sha256": "d1aea4cac5854b64e8a154ede3fd9c0af5d1711172ce6319ade18f28cbe21b37",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "index",
+          "type": "NewsEvidenceIndex"
+        },
+        {
+          "name": "choice",
+          "type": "NewsEvidenceChoice"
+        },
+        {
+          "name": "current",
+          "type": "NewsEvidenceSnapshot"
+        },
+        {
+          "name": "boundary",
+          "type": "ReaderBoundary"
+        },
+        {
+          "name": "readers",
+          "type": "ReaderWitness[]"
+        },
+        {
+          "name": "schedule",
+          "type": "ScheduleWitness"
+        },
+        {
+          "name": "briefing",
+          "type": "BriefingWitness | null"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnProgramRunGoal/shouldSignOutput.nl",
+      "line": 3,
+      "sha256": "ccab9c78b173b17867206031ba95238837827b14743ed9cef66ff3e787b3faaf",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "program",
+          "type": "RunProgram"
+        },
+        {
+          "name": "receipt",
+          "type": "ProgramOutputReceipt"
+        },
+        {
+          "name": "review",
+          "type": "ProgramRunReview"
+        }
+      ],
+      "role": "intent plus complete typed native plan/receipt; no omitted confirmation observed"
+    },
+    {
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal/decideProviderHandoff.nl",
+      "line": 3,
+      "sha256": "185a97165280e88ab261a11db1464d3975217523353cfdd324c21c6657d30c9e",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "card",
+          "type": "ConversationCard"
+        },
+        {
+          "name": "current",
+          "type": "ConversationRead"
+        },
+        {
+          "name": "approval",
+          "type": "RetainedApproval"
+        },
+        {
+          "name": "selection",
+          "type": "ResultSelection"
+        },
+        {
+          "name": "delivery",
+          "type": "RetainedDelivery"
+        },
+        {
+          "name": "output",
+          "type": "'OutputReadback | null'"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+      "line": 4,
+      "sha256": "705c6c0e231b5594901859d151124cc520519942f1a5c3d8d3d5e2043706266f",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/workOnRecoveryHandoff.nl",
+      "line": 3,
+      "sha256": "3688be25fc7ea2fe25d1cb8431e1a1ed9ceb6c7b11473eef6f9e1ed522f8066b",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "recovery",
+          "type": "EvalHandoffGoalReport"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    },
+    {
+      "path": "skills/open-user-goal/workOnSpecialistHandoffGoal/decideSpecialistHandoff.nl",
+      "line": 3,
+      "sha256": "295e24d7d34137e10afbf18435f99eae3b765177df5e93af30ec3740bcc765e1",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        },
+        {
+          "name": "index",
+          "type": "SpecialistIndex"
+        },
+        {
+          "name": "choice",
+          "type": "SpecialistChoice"
+        },
+        {
+          "name": "current",
+          "type": "SpecialistSnapshot"
+        },
+        {
+          "name": "joined",
+          "type": "ReceiptJoin"
+        },
+        {
+          "name": "original",
+          "type": "OriginalArtifact | null"
+        },
+        {
+          "name": "history",
+          "type": "HistoryReview | null"
+        }
+      ],
+      "role": "evidence/selection judgment with original domain observations"
+    },
+    {
+      "path": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+      "line": 4,
+      "sha256": "fb57739b7ee6f7cd8eed1db8cd20e54bca635f10b129166fcc9f418f88b56b7b",
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string"
+        }
+      ],
+      "role": "domain orchestration/completion; obtains or receives original evidence"
+    }
+  ]
+}
