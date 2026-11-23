@@ -1,61 +1,77 @@
-/**
- * Raw CDP session helper over a panel's CDP endpoint.
- *
- * Browser panels: connect directly (panel callers are allowed). Workspace
- * panels: panel callers are denied by panelCdp policy — those route through
- * the testkit-driver DO once registered (see driver.ts); until then the
- * server's policy error propagates with its own remediation hint.
- */
-import { CdpConnection } from "@workspace/cdp-client";
+/** Raw panel CDP uses the authorized testkit driver in every confined runtime. */
 import type { PanelHandle } from "@workspace/runtime";
+import { activeTestContext } from "./run.js";
 
 export interface RawCdpSession {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
   on(method: string, listener: (params: unknown) => void): () => void;
-  close(): void;
+  close(): Promise<void>;
 }
 
 type SessionRoute = (handle: PanelHandle) => Promise<RawCdpSession | null>;
-
-// Phase-2 hook: driver.ts registers a route that proxies workspace-panel
-// sessions through the testkit-driver DO.
 let driverRoute: SessionRoute | null = null;
 
 export function _registerDriverRoute(route: SessionRoute): void {
   driverRoute = route;
 }
 
-async function connectDirect(handle: PanelHandle): Promise<RawCdpSession> {
-  const endpoint = await handle.cdp.getCdpEndpoint();
-  const connection = await CdpConnection.connect(
-    endpoint.wsEndpoint,
-    (endpoint as { token?: string }).token
-  );
-  return {
-    send: (method, params) => connection.send(method, params),
-    on: (method, listener) => connection.on(method, listener),
-    close: () => connection.close(),
-  };
+async function openRawSession(handle: PanelHandle): Promise<RawCdpSession> {
+  if (!driverRoute)
+    throw new Error(
+      "Raw panel CDP requires the authorized testkit driver; import @workspace/testkit to register it",
+    );
+  const session = await driverRoute(handle);
+  if (!session)
+    throw new Error(
+      "The authorized testkit driver did not open the requested panel",
+    );
+  return session;
 }
 
-/** Open a raw CDP session to a panel, routing via the driver DO when needed. */
-export async function rawCdpSession(handle: PanelHandle): Promise<RawCdpSession> {
-  if (handle.kind !== "browser" && driverRoute) {
-    const routed = await driverRoute(handle);
-    if (routed) return routed;
-  }
-  return connectDirect(handle);
-}
-
-/** Run `fn` with a session that is always closed afterwards. */
-export async function withCdpSession<T>(
+/** Open either panel kind through the same target-authorized driver. */
+export async function rawCdpSession(
   handle: PanelHandle,
-  fn: (session: RawCdpSession) => Promise<T>
+): Promise<RawCdpSession> {
+  const context = activeTestContext();
+  return context
+    ? context.acquire(
+        () => openRawSession(handle),
+        (session) => session.close(),
+      )
+    : openRawSession(handle);
+}
+
+/** Internal shared ownership boundary, including primary plus cleanup failures. */
+export async function _usingCdpSession<T>(
+  session: RawCdpSession,
+  fn: (session: RawCdpSession) => Promise<T>,
 ): Promise<T> {
-  const session = await rawCdpSession(handle);
+  let failed = false,
+    primary: unknown;
   try {
     return await fn(session);
+  } catch (error) {
+    failed = true;
+    primary = error;
+    throw error;
   } finally {
-    session.close();
+    try {
+      await session.close();
+    } catch (cleanup) {
+      if (failed)
+        throw new AggregateError(
+          [primary, cleanup],
+          "CDP operation and session cleanup failed",
+        );
+      throw cleanup;
+    }
   }
+}
+
+/** Run fn with a session whose native release is joined before returning. */
+export async function withCdpSession<T>(
+  handle: PanelHandle,
+  fn: (session: RawCdpSession) => Promise<T>,
+): Promise<T> {
+  return _usingCdpSession(await rawCdpSession(handle), fn);
 }

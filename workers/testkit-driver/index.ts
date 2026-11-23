@@ -1,12 +1,12 @@
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
-import type { TestkitDriverReceiver } from "@workspace/testkit/driver-contract";
+import type { TestkitDriverReceiver, DriverEvents } from "@workspace/testkit/driver-contract";
 /**
  * Testkit Driver — a Durable Object that performs CDP operations a panel
  * caller is not permitted to do directly (panelCdp policy restricts panel
  * callers to browser-panel targets; worker/DO callers are exempt, subject to
  * the panel-access approval flow).
  *
- * The @workspace/testkit panel SDK routes workspace-panel automation and
+ * The @workspace/testkit panel SDK routes all panel automation and
  * profiling through this DO (see testkit's driver.ts). Sessions are held in
  * instance memory: they die if the DO hibernates or restarts, which is fine
  * for test-scoped use — callers reopen on "unknown session" errors.
@@ -25,6 +25,7 @@ import {
 
 interface DriverSession {
   connection: CdpConnection;
+  owner: string;
   panelId: string;
   events: Array<{ seq: number; method: string; params: unknown }>;
   nextEventSeq: number;
@@ -42,7 +43,6 @@ export class TestkitDriverDO
   static override schemaVersion = 1;
 
   private readonly sessions = new Map<string, DriverSession>();
-  private sessionCounter = 0;
 
   protected createTables(): void {
     // Stateless by design — all session state is in-memory and test-scoped.
@@ -53,22 +53,43 @@ export class TestkitDriverDO
     return CdpConnection.connect(endpoint.wsEndpoint, endpoint.token);
   }
 
+  private sessionOwner(): string {
+    const caller = this.caller;
+    if (!caller?.callerId || !caller.callerKind) throw new Error("CDP session requires an authenticated caller");
+    return JSON.stringify([caller.callerId, caller.callerKind, caller.workspaceId ?? null, caller.userId ?? null]);
+  }
+
   private session(sessionId: string): DriverSession {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`unknown CDP session ${sessionId} (the driver may have restarted — reopen)`);
     }
+    if (session.owner !== this.sessionOwner()) throw new Error("CDP session belongs to a different caller");
+    session.openedAt = Date.now();
     return session;
+  }
+
+  private retire(sessionId: string, session: DriverSession): DriverEvents {
+    const final = { events: session.events.slice(), cursor: session.nextEventSeq - 1 };
+    this.sessions.delete(sessionId);
+    const failures: unknown[] = [];
+    for (const unsubscribe of session.subscriptions.values()) {
+      try { unsubscribe(); } catch (error) { failures.push(error); }
+    }
+    try { session.connection.close(); } catch (error) { failures.push(error); }
+    if (failures.length) throw new AggregateError(failures, "Native CDP session cleanup failed");
+    return final;
   }
 
   private reapIdleSessions(): void {
     const cutoff = Date.now() - SESSION_IDLE_LIMIT_MS;
+    const failures: unknown[] = [];
     for (const [id, session] of this.sessions) {
       if (session.openedAt < cutoff) {
-        session.connection.close();
-        this.sessions.delete(id);
+        try { this.retire(id, session); } catch (error) { failures.push(error); }
       }
     }
+    if (failures.length) throw new AggregateError(failures, "Idle CDP session cleanup failed");
   }
 
   /** Open a raw CDP session to a panel. Approval-gated via panelCdp. */
@@ -79,11 +100,13 @@ export class TestkitDriverDO
     sensitivity: "write",
   })
   async cdpOpen(panelId: string): Promise<{ sessionId: string }> {
+    const owner = this.sessionOwner();
     this.reapIdleSessions();
     const connection = await this.connectToPanel(panelId);
-    const sessionId = `cdp-${++this.sessionCounter}-${Date.now()}`;
+    const sessionId = "cdp-" + crypto.randomUUID();
     this.sessions.set(sessionId, {
       connection,
+      owner,
       panelId,
       events: [],
       nextEventSeq: 1,
@@ -105,7 +128,6 @@ export class TestkitDriverDO
     params?: Record<string, unknown>
   ): Promise<unknown> {
     const session = this.session(sessionId);
-    session.openedAt = Date.now();
     return session.connection.send(method, params);
   }
 
@@ -150,12 +172,11 @@ export class TestkitDriverDO
     tier: "open",
     sensitivity: "write",
   })
-  async cdpClose(sessionId: string): Promise<void> {
+  async cdpClose(sessionId: string): Promise<DriverEvents> {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
-    for (const unsubscribe of session.subscriptions.values()) unsubscribe();
-    session.connection.close();
-    this.sessions.delete(sessionId);
+    if (!session) return { events: [], cursor: 0 };
+    if (session.owner !== this.sessionOwner()) throw new Error("CDP session belongs to a different caller");
+    return this.retire(sessionId, session);
   }
 
   /**
