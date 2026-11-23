@@ -5,5 +5,5 @@ declare module "natlang:services" {
     describe(id:string):Promise<import("./types.js").IntentDescription|null>;
     inspect(methodId:string,scope:string):Promise<import("./types.js").IntentObservation|null>;
   };
-  export const nativeIntentHandoff:{stage(report:import("./types.js").IntentReport):Promise<import("./types.js").IntentNote|null>};
+  export const nativeIntentHandoff:{stage(outcome:import("./types.js").IntentOutcome):Promise<import("./types.js").IntentNote|null>};
 }

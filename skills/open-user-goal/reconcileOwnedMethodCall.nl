@@ -7,4 +7,4 @@ budget: { maxTurns: 18 }
 ---
 1. Call readMethodLane with the original goal. Pass its card and actual evidence to planMethodExchange.
 2. Call dispatchOwnedLocalMethod only for action "request", with the exact card id, basis and chosen method. A previously settled exchange never needs a new dispatch.
-3. Call readExactMethodTerminal with the exact card id and basis. Use the new attempt transport, the exact retained transport on recover, or null on a hold. Return real card, evidence, plan, attempt and terminal under scope "owned-local-method-exchange". An error terminal is still evidence of an exchange. Do not equate dispatched with delivered.
+3. Call readExactMethodTerminal with the exact card id and basis. Use the new attempt transport, the exact retained transport on recover, or null on a hold. Return finishMethodExchange(plan, terminal): the exact method result when settled, otherwise the current disposition. An error terminal is still evidence of an exchange. Do not equate dispatched with delivered.

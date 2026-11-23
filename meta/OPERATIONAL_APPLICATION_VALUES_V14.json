@@ -1,0 +1,544 @@
+{
+  "schema": "operational-application-contracts/1",
+  "status": "in-progress; 12 of retained52 completed, remaining40 continue",
+  "generatedEntryMetadataOwner": "app_values",
+  "catalogGoalsAndSplitsChanged": false,
+  "coreOrVendorChanged": false,
+  "entries": [
+    {
+      "kind": "intent-discovery",
+      "program": "skills/open-user-goal/discoverScopedIntent.nl",
+      "callable": "discoverScopedIntent",
+      "oldResultType": "IntentReport",
+      "resultType": "IntentReport",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-intent-discovery/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "notice",
+          "type": "IntentNotice",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "selection",
+          "type": "IntentCapabilitySelection",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "capabilities",
+          "type": "IntentDescription[]",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plan",
+          "type": "IntentPlan",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "evidence",
+          "type": "IntentObservation[]",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "outcome",
+          "type": "IntentOutcome",
+          "classification": "application disposition or requested conclusion"
+        },
+        {
+          "name": "handoff",
+          "type": "IntentNote",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "scaffoldReview",
+      "program": "skills/open-user-goal/prepareOwnedScaffold.nl",
+      "callable": "prepareOwnedScaffold",
+      "oldResultType": "ScaffoldOutcome",
+      "resultType": "ScaffoldOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-scaffold-draft\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "card",
+          "type": "ScaffoldCard",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "options",
+          "type": "ScaffoldOptions",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plan",
+          "type": "ScaffoldPlan",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "receipt",
+          "type": "ScaffoldReceipt",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        },
+        {
+          "name": "readback",
+          "type": "ScaffoldReadback",
+          "classification": "independent native verification observation; not a public witness copy"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "localMethodExchange",
+      "program": "skills/open-user-goal/reconcileOwnedMethodCall.nl",
+      "callable": "reconcileOwnedMethodCall",
+      "oldResultType": "LocalMethodOutcome",
+      "resultType": "LocalMethodOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-local-method-exchange\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "card",
+          "type": "LocalMethodCard",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "evidence",
+          "type": "LocalMethodEvidence",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plan",
+          "type": "LocalMethodPlan",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "attempt",
+          "type": "LocalMethodAttempt",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "terminal",
+          "type": "LocalMethodReport",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "systemCandidateTriage",
+      "program": "skills/open-user-goal/triageSystemTemplate.nl",
+      "callable": "triageSystemTemplate",
+      "oldResultType": "SystemCandidateOutcome",
+      "resultType": "SystemCandidateOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-system-template-conflict-review\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "card",
+          "type": "SystemCandidateCard",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "frontier",
+          "type": "SystemCandidateFrontier",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "preview",
+          "type": "SystemCandidatePreview",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plan",
+          "type": "SystemCandidatePlan",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "gate",
+          "type": "SystemCandidateGate",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "receipt",
+          "type": "SystemCandidateReceipt",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        },
+        {
+          "name": "readback",
+          "type": "SystemCandidateReadback",
+          "classification": "independent native verification observation; not a public witness copy"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "examplesAdoption",
+      "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
+      "callable": "reviewExamplesAdoption",
+      "oldResultType": "AdoptionOutcome",
+      "resultType": "AdoptionOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-examples-composition-rehearsal\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "card",
+          "type": "AdoptionReviewCard",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "evidence",
+          "type": "AdoptionEvidence",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plan",
+          "type": "AdoptionPlan",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "gate",
+          "type": "AdoptionGate",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "receipt",
+          "type": "AdoptionReceipt",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        },
+        {
+          "name": "readback",
+          "type": "AdoptionReadback",
+          "classification": "independent native verification observation; not a public witness copy"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "grimoireScene",
+      "program": "skills/open-user-goal/careForGrimoireScene.nl",
+      "callable": "careForGrimoireScene",
+      "oldResultType": "GrimoireSceneOutcome",
+      "resultType": "GrimoireSceneOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-grimoire-caretaker-draft\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "docket",
+          "type": "GrimoireDocket",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "evidence",
+          "type": "GrimoireSceneEvidence",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plan",
+          "type": "GrimoirePlan",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "gate",
+          "type": "GrimoireSceneGate",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "receipt",
+          "type": "GrimoireSceneReceipt",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        },
+        {
+          "name": "readback",
+          "type": "GrimoireSceneReadback",
+          "classification": "independent native verification observation; not a public witness copy"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "phoneFirstRun",
+      "program": "skills/open-user-goal/planPhoneFirstRun.nl",
+      "callable": "planPhoneFirstRun",
+      "oldResultType": "PhoneFirstRunOutcome",
+      "resultType": "PhoneFirstRunOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-phone-eligibility-rehearsal\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "evidence",
+          "type": "PhoneFirstRunEvidence",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "decision",
+          "type": "PhoneFirstRunDecision",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "skillMaintenance",
+      "program": "skills/open-user-goal/maintainWorkspaceSkill.nl",
+      "callable": "maintainWorkspaceSkill",
+      "oldResultType": "SkillMaintenanceOutcome",
+      "resultType": "SkillMaintenanceOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-working-skill\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "observation",
+          "type": "SkillMaintenanceObservation",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "authoring",
+          "type": "unknown",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "gate",
+          "type": "SkillMaintenanceGate",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "decision",
+          "type": "SkillMaintenanceDecision",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "receipt",
+          "type": "SkillMaintenanceReceipt",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        },
+        {
+          "name": "final",
+          "type": "SkillMaintenanceCheck",
+          "classification": "independent native verification observation; not a public witness copy"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "desktopReadiness",
+      "program": "skills/open-user-goal/reviewDesktopReadiness.nl",
+      "callable": "reviewDesktopReadiness",
+      "oldResultType": "DesktopReadinessOutcome",
+      "resultType": "DesktopReadinessOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-desktop-readiness-fixture\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "evidence",
+          "type": "DesktopReadinessEvidence",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "decision",
+          "type": "DesktopReadinessDecision",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "notificationState",
+      "program": "skills/open-user-goal/reviewNotificationState.nl",
+      "callable": "reviewNotificationState",
+      "oldResultType": "NotificationStateOutcome",
+      "resultType": "NotificationStateOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "\"owned-notification-fixture\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "lifecycle",
+          "type": "NotificationLifecycle",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "decision",
+          "type": "NotificationDecision",
+          "classification": "internal semantic decision; public value retains only its relevant disposition/finding"
+        },
+        {
+          "name": "acknowledgement",
+          "type": "NotificationAcknowledgment",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "final",
+          "type": "NotificationSnapshot",
+          "classification": "independent native verification observation; not a public witness copy"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "mobileContinuity",
+      "program": "skills/open-user-goal/reviewMobileContinuity.nl",
+      "callable": "reviewMobileContinuity",
+      "oldResultType": "MobileContinuityOutcome",
+      "resultType": "MobileContinuityOutcome",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "profile",
+          "type": "string",
+          "classification": "application disposition or requested conclusion"
+        },
+        {
+          "name": "action",
+          "type": "\"resume\" | \"rebuild-shell\" | \"reacquire-route\" | \"hold\"",
+          "classification": "application disposition or requested conclusion"
+        },
+        {
+          "name": "scope",
+          "type": "\"owned-fixture\"",
+          "classification": "audit-only label; native ownership remains enforced independently"
+        },
+        {
+          "name": "evidence",
+          "type": "MobileContinuityEvidence",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "application disposition or requested conclusion"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "kind": "terminalAppRepair",
+      "program": "skills/open-user-goal/workOnTerminalApp.nl",
+      "callable": "workOnTerminalApp",
+      "oldResultType": "TerminalRepairReport",
+      "resultType": "TerminalRepairReport",
+      "publicShapeChanged": true,
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "classification": "converted to actual native receipt/result or application finding",
+      "fields": [
+        {
+          "name": "app",
+          "type": "TerminalRepairApp",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "initial",
+          "type": "TerminalRepairCheck",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "plans",
+          "type": "TerminalRepairPlan[]",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "applied",
+          "type": "TerminalRepairApplied[]",
+          "classification": "native or typed working state; not copied into the public result"
+        },
+        {
+          "name": "final",
+          "type": "TerminalRepairCheck",
+          "classification": "independent native verification observation; not a public witness copy"
+        },
+        {
+          "name": "artifact",
+          "type": "TerminalRepairArtifact",
+          "classification": "actual native application value; identity preserved without model reconstruction"
+        },
+        {
+          "name": "outcome",
+          "type": "\"verified\" | \"already-ready\" | \"hold-edit\" | \"hold-test\" | \"hold-moved\" | \"blocked\"",
+          "classification": "application disposition or requested conclusion"
+        },
+        {
+          "name": "explanation",
+          "type": "string",
+          "classification": "application disposition or requested conclusion"
+        }
+      ],
+      "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    }
+  ],
+  "testEvidence": {
+    "signatureUnit": "vibe-v14-operational-signatures-20261123b",
+    "signatures": 116,
+    "nativeUnit": "vibe-v14-operational-native-first-20261123d",
+    "nativeTestsPassed": 32
+  },
+  "sharedMechanism": "Native journals/captured invocation values provide execution evidence. Public results do not duplicate requests, scope cards, observations, gates or readbacks."
+}
