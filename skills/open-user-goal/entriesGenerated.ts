@@ -61,7 +61,7 @@ export default {
     "additionalArguments": {}
   },
   "audience-response": {
-    "program": "skills/open-user-goal/chooseAudienceResponse.nl",
+    "program": "skills/open-user-goal/chooseAudienceResponse.ts",
     "callable": "chooseAudienceResponse",
     "resultType": "AudienceResult",
     "skill": "audienceResponse",
@@ -331,7 +331,7 @@ export default {
     "additionalArguments": {}
   },
   "api-readiness": {
-    "program": "skills/open-user-goal/workOnApiReadinessGoal.nl",
+    "program": "skills/open-user-goal/workOnApiReadinessGoal.ts",
     "callable": "workOnApiReadinessGoal",
     "resultType": "ApiReadinessResult",
     "skill": "apiReadiness",
@@ -661,7 +661,7 @@ export default {
     "additionalArguments": {}
   },
   "dictation-handoff": {
-    "program": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
+    "program": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
     "callable": "workOnDictationHandoffGoal",
     "resultType": "DictationResult",
     "skill": "dictationHandoff",
