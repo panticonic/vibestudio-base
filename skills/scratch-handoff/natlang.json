@@ -3,9 +3,13 @@
   "name": "vibestudio-scratch-handoff",
   "version": "0.1.0",
   "serviceBinding": "explicit",
-  "targets": { "main": { "entry": "assembleHandoff.nl" } },
+  "targets": {
+    "main": {
+      "entry": "assembleHandoff.nl"
+    }
+  },
   "serviceScopes": {
-    "scratchHandoffRead": ["assembleHandoff/inspectSources/readSource.nl"],
-    "scratchHandoffWrite": ["assembleHandoff/deliverHandoff/commitHandoff.nl"]
+    "scratchHandoffRead": [],
+    "scratchHandoffWrite": []
   }
 }

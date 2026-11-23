@@ -4,17 +4,13 @@
   "version": "0.1.0",
   "targets": {
     "main": {
-      "entry": "readPlanningState.nl"
+      "entry": "readPlanningState.ts"
     }
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "docPlanContext": [
-      "readPlanningState.nl"
-    ],
-    "docPlanHandoff": [
-      "stageCapabilityPlan.nl"
-    ],
+    "docPlanContext": [],
+    "docPlanHandoff": [],
     "docPlanCatalog": [
       "collectCapabilityEvidence.nl",
       "synthesizeCapabilityPlan.nl"

@@ -1,23 +1,15 @@
-import type {
-  LocalDraft,
-  LocalDraftConfirmation,
-  LocalDraftSection,
-  LocalDraftWrite,
-  LocalProblemObservation,
-} from "./types.js";
-
 declare module "natlang:services" {
   export const problemDraftRead: {
-    observe(operationId: string): Promise<LocalProblemObservation>;
-    confirm(write: LocalDraftWrite): Promise<LocalDraftConfirmation>;
+    observe(operationId: string): Promise<import("./types.js").LocalProblemObservation>;
+    confirm(write: import("./types.js").LocalDraftWrite): Promise<import("./types.js").LocalDraftConfirmation>;
   };
   export const problemDraftOpen: {
-    create(operationId: string): Promise<LocalDraft>;
+    create(operationId: string): Promise<import("./types.js").LocalDraft>;
   };
   export const problemDraftAppend: {
     append(
-      draft: LocalDraft,
-      sections: LocalDraftSection[],
-    ): Promise<LocalDraftWrite>;
+      draft: import("./types.js").LocalDraft,
+      sections: import("./types.js").LocalDraftSection[],
+    ): Promise<import("./types.js").LocalDraftWrite>;
   };
 }

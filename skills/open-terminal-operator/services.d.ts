@@ -1,21 +1,20 @@
-import type { ChecklistChange, RecoveryKnowledge, RecoveryRoute, RecoveryRouteHit, RecoverySkill, TerminalEvent, TerminalHandoff, TerminalStart, TerminalTransition } from "./types.js";
 declare module "natlang:services" {
   export const openTerminalRead: {
-    open(): Promise<TerminalStart>;
+    open(): Promise<import("./types.js").TerminalStart>;
   };
   export const openTerminalInput: {
-    change(request: ChecklistChange): Promise<TerminalEvent | null>;
+    change(request: import("./types.js").ChecklistChange): Promise<import("./types.js").TerminalEvent | null>;
   };
   export const openTerminalLifecycle: {
-    advance(request: TerminalTransition): Promise<TerminalEvent | null>;
+    advance(request: import("./types.js").TerminalTransition): Promise<import("./types.js").TerminalEvent | null>;
   };
   export const openTerminalHandoff: {
-    stage(): Promise<TerminalHandoff | null>;
+    stage(): Promise<import("./types.js").TerminalHandoff | null>;
   };
   export const openTerminalDiscovery: {
-    search(query: string): Promise<RecoveryRouteHit[]>;
-    open(id: string): Promise<RecoveryRoute | null>;
-    installed(): Promise<RecoverySkill[]>;
-    load(dirPath: string, focus: string[]): Promise<RecoveryKnowledge | null>;
+    search(query: string): Promise<import("./types.js").RecoveryRouteHit[]>;
+    open(id: string): Promise<import("./types.js").RecoveryRoute | null>;
+    installed(): Promise<import("./types.js").RecoverySkill[]>;
+    load(dirPath: string, focus: string[]): Promise<import("./types.js").RecoveryKnowledge | null>;
   };
 }

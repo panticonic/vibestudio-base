@@ -2,10 +2,14 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-terminal-checks",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "runTerminalChecks.nl" } },
+  "targets": {
+    "main": {
+      "entry": "runTerminalChecks.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "terminalCheckRead": ["runTerminalChecks/readAssignedChecks.nl"],
-    "terminalCheckRun": ["runTerminalChecks/performCheck.nl"]
+    "terminalCheckRead": [],
+    "terminalCheckRun": []
   }
 }

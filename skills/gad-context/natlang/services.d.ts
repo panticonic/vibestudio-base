@@ -1,5 +1,3 @@
-import type { ChannelFollowUp, ChannelHealth, ChannelTail } from "./types.js";
-
 declare module "natlang:services" {
   export const clientDiagnostics: {
     discover(): Promise<import("./types.js").ClientCatalog>;
@@ -23,12 +21,12 @@ declare module "natlang:services" {
     read(historyReceipt: string): Promise<import("./types.js").DurableQuestionRoster>;
   };
   export const gadHealth: {
-    observe(operationId: string): Promise<ChannelHealth>;
+    observe(operationId: string): Promise<import("./types.js").ChannelHealth>;
   };
   export const gadFollowUp: {
-    inspect(healthReceipt: string, kind: string): Promise<ChannelFollowUp>;
+    inspect(healthReceipt: string, kind: string): Promise<import("./types.js").ChannelFollowUp>;
   };
   export const gadConversation: {
-    read(operationId: string): Promise<ChannelTail>;
+    read(operationId: string): Promise<import("./types.js").ChannelTail>;
   };
 }

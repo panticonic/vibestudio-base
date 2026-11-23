@@ -1,11 +1,15 @@
 {
-  "schema":"natlang.package/v2",
-  "name":"vibestudio-open-panel-launch-state",
-  "version":"0.1.0",
-  "targets":{"main":{"entry":"listLaunchSlots.nl"}},
-  "serviceBinding":"explicit",
-  "serviceScopes":{
-    "launchStateRead":["listLaunchSlots.nl","readLaunchSlot.nl","readbackLaunchSlot.nl","bindLaunchAuthority.nl"],
-    "launchStateWrite":["applyLaunchPatch.nl","writeLaunchNote.nl"]
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-panel-launch-state",
+  "version": "0.1.0",
+  "targets": {
+    "main": {
+      "entry": "listLaunchSlots.ts"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "launchStateRead": [],
+    "launchStateWrite": []
   }
 }

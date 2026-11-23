@@ -1,13 +1,11 @@
-import type { TerminalCheckResult, TerminalPlan } from "./types.js";
-
 declare module "natlang:services" {
   export const terminalCheckRead: {
-    observe(operationId: string): Promise<TerminalPlan>;
+    observe(operationId: string): Promise<import("./types.js").TerminalPlan>;
   };
   export const terminalCheckRun: {
     execute(
       assignmentReceipt: string,
       checkId: string,
-    ): Promise<TerminalCheckResult>;
+    ): Promise<import("./types.js").TerminalCheckResult>;
   };
 }

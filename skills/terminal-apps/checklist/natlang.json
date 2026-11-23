@@ -2,11 +2,15 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-terminal-checklist",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "verifyChecklist.nl" } },
+  "targets": {
+    "main": {
+      "entry": "verifyChecklist.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "checklistOpen": ["verifyChecklist/openSession/launchApp.nl"],
-    "checklistKeys": ["verifyChecklist/editItems/sendToggle.nl"],
-    "checklistResume": ["verifyChecklist/resumeSession/continueApp.nl"]
+    "checklistOpen": [],
+    "checklistKeys": [],
+    "checklistResume": []
   }
 }

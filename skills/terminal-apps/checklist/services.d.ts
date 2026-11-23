@@ -1,10 +1,9 @@
-import type { ChecklistScreen, ItemKey } from "./types.js";
 declare module "natlang:services" {
-  export const checklistOpen: { launch(): Promise<ChecklistScreen> };
+  export const checklistOpen: { launch(): Promise<import("./types.js").ChecklistScreen> };
   export const checklistKeys: {
-    toggle(key: ItemKey): Promise<ChecklistScreen>;
+    toggle(key: import("./types.js").ItemKey): Promise<import("./types.js").ChecklistScreen>;
   };
   export const checklistResume: {
-    resume(kind: "reattach" | "restart"): Promise<ChecklistScreen>;
+    resume(kind: "reattach" | "restart"): Promise<import("./types.js").ChecklistScreen>;
   };
 }

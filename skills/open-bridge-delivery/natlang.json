@@ -2,10 +2,14 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-bridge-delivery",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "discover.nl" } },
+  "targets": {
+    "main": {
+      "entry": "discover.ts"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "branchDeliveryRead": ["discover.nl", "inspect.nl", "operation.nl"],
-    "branchDeliveryWrite": ["commit.nl", "retain.nl"]
+    "branchDeliveryRead": [],
+    "branchDeliveryWrite": []
   }
 }

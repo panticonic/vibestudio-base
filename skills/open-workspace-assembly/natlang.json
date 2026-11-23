@@ -2,12 +2,18 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-workspace-assembly",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "readAssemblyInventory.nl" } },
+  "targets": {
+    "main": {
+      "entry": "readAssemblyInventory.ts"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "assemblyInventory": ["readAssemblyInventory.nl"],
-    "assemblySource": ["readAssemblyUnits.nl"],
-    "assemblyBuild": ["verifyAssemblyBuild.nl"],
-    "assemblyDraft": ["stageAssemblyDraft.nl"]
+    "assemblyInventory": [],
+    "assemblySource": [
+      "readAssemblyUnits.nl"
+    ],
+    "assemblyBuild": [],
+    "assemblyDraft": []
   }
 }

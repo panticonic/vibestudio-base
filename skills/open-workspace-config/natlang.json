@@ -2,10 +2,14 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-workspace-config",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "readConfigBrief.nl" } },
+  "targets": {
+    "main": {
+      "entry": "readConfigBrief.ts"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "nativeWorkspaceConfig": ["readConfigBrief.nl", "inspectActiveConfig.nl", "inspectConfigManifests.nl", "inspectConfigDependencies.nl"],
-    "nativeConfigHandoff": ["stageConfigDisposition.nl"]
+    "nativeWorkspaceConfig": [],
+    "nativeConfigHandoff": []
   }
 }

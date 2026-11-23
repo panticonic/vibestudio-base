@@ -1,12 +1,10 @@
 declare module "natlang:services" {
-  import type { ChatDeliveryPanel, DeliveryHistoryObservation } from "./types.js";
-
   export const chatDeliveryPanel: {
-    inspect(panelId: string): Promise<ChatDeliveryPanel>;
+    inspect(panelId: string): Promise<import("./types.js").ChatDeliveryPanel>;
   };
 
   export const deliveryHistory: {
-    inspect(operationId: string): Promise<DeliveryHistoryObservation>;
+    inspect(operationId: string): Promise<import("./types.js").DeliveryHistoryObservation>;
   };
 }
 declare module "natlang:services" {

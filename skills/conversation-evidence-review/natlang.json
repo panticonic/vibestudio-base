@@ -9,13 +9,11 @@
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "chatDeliveryPanel": [
-      "reviewChatDelivery/inspectPanel.nl"
-    ],
+    "chatDeliveryPanel": [],
     "deliveryHistory": [
       "reviewDeliveryHistory.nl"
     ],
-    "temporaryNotificationShow": ["runNotificationLifecycle/showAssignedNotification.nl"],
-    "temporaryNotificationDismiss": ["runNotificationLifecycle/dismissAssignedNotification.nl"]
+    "temporaryNotificationShow": [],
+    "temporaryNotificationDismiss": []
   }
 }

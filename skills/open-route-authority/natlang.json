@@ -1,11 +1,15 @@
 {
-  "schema":"natlang.package/v2",
-  "name":"vibestudio-open-route-authority",
-  "version":"0.1.0",
-  "targets":{"main":{"entry":"discoverEvidenceRoutes.nl"}},
-  "serviceBinding":"explicit",
-  "serviceScopes":{
-    "routeEvidenceRead":["discoverEvidenceRoutes.nl","readSelectedEvidenceRoute.nl"],
-    "routeEvidenceHandoff":["stageRouteReview.nl"]
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-route-authority",
+  "version": "0.1.0",
+  "targets": {
+    "main": {
+      "entry": "discoverEvidenceRoutes.ts"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "routeEvidenceRead": [],
+    "routeEvidenceHandoff": []
   }
 }

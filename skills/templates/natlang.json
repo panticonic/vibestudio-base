@@ -13,9 +13,13 @@
     "templateRemedy.nl",
     "summarize.ts"
   ],
-  "targets": { "main": { "entry": "reviewTemplate.nl" } },
+  "targets": {
+    "main": {
+      "entry": "reviewTemplate.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "templateAuthoringRead": ["reviewTemplateRelease/readAuthoringPlan.nl"]
+    "templateAuthoringRead": []
   }
 }

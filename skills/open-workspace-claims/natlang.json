@@ -1,11 +1,15 @@
 {
-  "schema":"natlang.package/v2",
-  "name":"vibestudio-open-workspace-claims",
-  "version":"0.1.0",
-  "targets":{"main":{"entry":"listClaimScopes.nl"}},
-  "serviceBinding":"explicit",
-  "serviceScopes":{
-    "workspaceClaimRead":["listClaimScopes.nl","readClaimPacket.nl","readClaimEvidence.nl"],
-    "workspaceClaimHandoff":["writeClaimNote.nl"]
+  "schema": "natlang.package/v2",
+  "name": "vibestudio-open-workspace-claims",
+  "version": "0.1.0",
+  "targets": {
+    "main": {
+      "entry": "listClaimScopes.ts"
+    }
+  },
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "workspaceClaimRead": [],
+    "workspaceClaimHandoff": []
   }
 }

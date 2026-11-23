@@ -1,8 +1,7 @@
-import type { RevisionDraft, RevisionReadback, RevisionReceipt, RevisionScope } from "./types.js";
 declare module "natlang:services" {
   export const nativeCoordinatedRevision: {
-    discover(): Promise<RevisionScope>;
-    revise(head: string, drafts: RevisionDraft[]): Promise<RevisionReceipt>;
-    readback(): Promise<RevisionReadback>;
+    discover(): Promise<import("./types.js").RevisionScope>;
+    revise(head: string, drafts: import("./types.js").RevisionDraft[]): Promise<import("./types.js").RevisionReceipt>;
+    readback(): Promise<import("./types.js").RevisionReadback>;
   };
 }

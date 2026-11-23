@@ -20,14 +20,10 @@
   ],
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "channelAgentRead": [
-      "manageChannelAgent/inspect.nl"
-    ],
+    "channelAgentRead": [],
     "channelAgentAttach": [
       "manageChannelAgent/change/attach.nl"
     ],
-    "channelAgentDetach": [
-      "manageChannelAgent/change/detach.nl"
-    ]
+    "channelAgentDetach": []
   }
 }

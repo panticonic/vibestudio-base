@@ -1,8 +1,6 @@
-import type { LocalAttempt, LocalConversation, LocalDeliveryEvidence, LocalObservation } from "./types.js";
-
 declare module "natlang:services" {
-  export const localDeliveryCatalog: { discover(): Promise<LocalConversation[]> };
-  export const localDeliveryHistory: { inspect(roomId: string, recipientPhrase: string | null): Promise<LocalObservation> };
-  export const localDeliverySend: { submit(basis: string, content: string): Promise<LocalAttempt> };
-  export const localDeliveryReadback: { read(attemptId: string): Promise<LocalDeliveryEvidence | null> };
+  export const localDeliveryCatalog: { discover(): Promise<import("./types.js").LocalConversation[]> };
+  export const localDeliveryHistory: { inspect(roomId: string, recipientPhrase: string | null): Promise<import("./types.js").LocalObservation> };
+  export const localDeliverySend: { submit(basis: string, content: string): Promise<import("./types.js").LocalAttempt> };
+  export const localDeliveryReadback: { read(attemptId: string): Promise<import("./types.js").LocalDeliveryEvidence | null> };
 }

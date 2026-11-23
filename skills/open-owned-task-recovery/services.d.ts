@@ -1,19 +1,15 @@
-import type {
-  HandoffAttempt, LaneObservation, MessageReceipt, OwnerLane, TaskOption, TaskStatus,
-  TaskView, UpdateTaskResult,
-} from "./types.js";
 declare module "natlang:services" {
   export const ownedTaskBoard: {
-    discover(): Promise<TaskOption[]>;
-    observe(id: string): Promise<TaskView>;
-    transition(id: string, revision: number, status: TaskStatus): Promise<UpdateTaskResult>;
+    discover(): Promise<import("./types.js").TaskOption[]>;
+    observe(id: string): Promise<import("./types.js").TaskView>;
+    transition(id: string, revision: number, status: import("./types.js").TaskStatus): Promise<import("./types.js").UpdateTaskResult>;
   };
   export const ownedTaskAttempts: {
-    discover(): Promise<OwnerLane[]>;
-    inspect(room: string, recipient: string | null): Promise<LaneObservation>;
+    discover(): Promise<import("./types.js").OwnerLane[]>;
+    inspect(room: string, recipient: string | null): Promise<import("./types.js").LaneObservation>;
   };
   export const ownedTaskHandoff: {
-    submit(task: string, revision: number, basis: string, content: string): Promise<HandoffAttempt>;
-    read(attemptId: string): Promise<MessageReceipt | null>;
+    submit(task: string, revision: number, basis: string, content: string): Promise<import("./types.js").HandoffAttempt>;
+    read(attemptId: string): Promise<import("./types.js").MessageReceipt | null>;
   };
 }

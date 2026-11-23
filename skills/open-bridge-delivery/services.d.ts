@@ -1,12 +1,11 @@
-import type { BridgeDeliveryReport, BridgeIndex, BranchPrivateNote, DeliveryScope, DeliveryState, LocalDeliveryReceipt } from "./types.js";
 declare module "natlang:services" {
   export const branchDeliveryRead: {
-    discover(): Promise<BridgeIndex>;
-    inspect(id:string): Promise<DeliveryScope|null>;
+    discover(): Promise<import("./types.js").BridgeIndex>;
+    inspect(id:string): Promise<import("./types.js").DeliveryScope|null>;
     operation(id:string,path:string): Promise<string|null>;
   };
   export const branchDeliveryWrite: {
-    commit(id:string,basis:DeliveryState): Promise<LocalDeliveryReceipt|null>;
-    retain(report:BridgeDeliveryReport): Promise<BranchPrivateNote|null>;
+    commit(id:string,basis:import("./types.js").DeliveryState): Promise<import("./types.js").LocalDeliveryReceipt|null>;
+    retain(report:import("./types.js").BridgeDeliveryReport): Promise<import("./types.js").BranchPrivateNote|null>;
   };
 }

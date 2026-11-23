@@ -1,8 +1,7 @@
-import type { OwnedRouteReview,RouteHandoff,RouteOffer,RouteReadback } from "./types.js";
 declare module "natlang:services" {
   export const routeEvidenceRead:{
-    discover():Promise<RouteOffer>;
-    inspect(routeId:string):Promise<RouteReadback|null>;
+    discover():Promise<import("./types.js").RouteOffer>;
+    inspect(routeId:string):Promise<import("./types.js").RouteReadback|null>;
   };
-  export const routeEvidenceHandoff:{stage(report:OwnedRouteReview):Promise<RouteHandoff|null>};
+  export const routeEvidenceHandoff:{stage(report:import("./types.js").OwnedRouteReview):Promise<import("./types.js").RouteHandoff|null>};
 }

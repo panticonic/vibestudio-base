@@ -9,15 +9,9 @@
     }
   },
   "serviceScopes": {
-    "templateOffer": [
-      "stageTemplateCandidate/inspectOffer/readOffer.nl"
-    ],
-    "templateCandidatePrepare": [
-      "stageTemplateCandidate/prepareCandidate/requestPreparation.nl"
-    ],
-    "templateCandidateReview": [
-      "stageTemplateCandidate/reconcileCandidate/readCandidate.nl"
-    ],
+    "templateOffer": [],
+    "templateCandidatePrepare": [],
+    "templateCandidateReview": [],
     "templateMigration": [
       "reviewTemplateMigration.nl"
     ]

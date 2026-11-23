@@ -2,9 +2,13 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-coordinated-revision",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "discoverRevisionDocuments.nl" } },
+  "targets": {
+    "main": {
+      "entry": "discoverRevisionDocuments.ts"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "nativeCoordinatedRevision": ["discoverRevisionDocuments.nl", "applyRevisionBatch.nl", "readCoordinatedRevision.nl"]
+    "nativeCoordinatedRevision": []
   }
 }

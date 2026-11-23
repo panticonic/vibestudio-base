@@ -2,9 +2,13 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-natlang-authoring",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reviewProgram.nl" } },
+  "targets": {
+    "main": {
+      "entry": "reviewProgram.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "authoringCompiler": ["reviewProgram/inspectRevisions/readAssignedProgram.nl"]
+    "authoringCompiler": []
   }
 }

@@ -2,14 +2,20 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-gad-review",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "reviewChannel.nl" } },
+  "targets": {
+    "main": {
+      "entry": "reviewChannel.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "clientDiagnostics": ["workOnClientDiagnostics.nl", "workOnClientDiagnostics/stageClientHandoff.nl"],
-    "gadHealth": ["reviewChannel/reviewHealth/readHealth.nl"],
-    "gadDurableHistory": ["reviewDurableQuestion/reviewQuestion/readMessages.nl"],
-    "gadDurableRoster": ["reviewDurableQuestion/reviewParticipant/readMembers.nl"],
-    "gadFollowUp": ["reviewChannel/inspectFinding.nl"],
-    "gadConversation": ["reviewChannel/reviewConversation/readConversation.nl"]
+    "clientDiagnostics": [
+      "workOnClientDiagnostics.nl"
+    ],
+    "gadHealth": [],
+    "gadDurableHistory": [],
+    "gadDurableRoster": [],
+    "gadFollowUp": [],
+    "gadConversation": []
   }
 }

@@ -9,17 +9,11 @@
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "reconciliationWindow": [
-      "reconcileLocalGoal/discoverWindow/readWindow.nl",
-      "reconcileLocalGoal/prepareEvidence/releaseEvidence.nl"
-    ],
+    "reconciliationWindow": [],
     "reconciliationNative": [
-      "reconcileLocalGoal/reconcileProject/observeProject.nl",
       "reconcileLocalGoal/reconcileProject/writeResolution.nl"
     ],
     "reconciliationArchive": [
-      "reconcileLocalGoal/recoverPrior/listArchive.nl",
-      "reconcileLocalGoal/recoverPrior/readArchive.nl",
       "reconcileLocalGoal/comparePrior.nl"
     ]
   }

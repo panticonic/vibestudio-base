@@ -2,12 +2,16 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-personal-welcome",
   "version": "0.1.0",
-  "targets": {"main": {"entry": "discoverWelcomeResources.nl"}},
+  "targets": {
+    "main": {
+      "entry": "discoverWelcomeResources.ts"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "welcomeResourceIndex": ["discoverWelcomeResources.nl"],
-    "welcomeReceiptStore": ["readWelcomeFrontier.nl"],
-    "welcomeResourceResolution": ["resolveWelcomeResource.nl"],
-    "welcomeLocalHandoff": ["stageWelcomeNextStep.nl"]
+    "welcomeResourceIndex": [],
+    "welcomeReceiptStore": [],
+    "welcomeResourceResolution": [],
+    "welcomeLocalHandoff": []
   }
 }

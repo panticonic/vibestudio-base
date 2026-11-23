@@ -1,9 +1,7 @@
-import type { PanelHealthObservation } from "./types.js";
-
 declare module "natlang:services" {
   export const panelHealth: {
-    observe(): Promise<PanelHealthObservation>;
-    observeAfter(snapshotId: string): Promise<PanelHealthObservation>;
+    observe(): Promise<import("./types.js").PanelHealthObservation>;
+    observeAfter(snapshotId: string): Promise<import("./types.js").PanelHealthObservation>;
   };
   export const panelRecovery: {
     discover(): Promise<import("./types.js").RecoveryCatalog>;

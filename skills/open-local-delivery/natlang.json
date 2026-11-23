@@ -3,11 +3,21 @@
   "name": "vibestudio-open-local-delivery",
   "version": "0.1.0",
   "serviceBinding": "explicit",
-  "targets": { "main": { "entry": "workTowardLocalDelivery.nl" } },
+  "targets": {
+    "main": {
+      "entry": "workTowardLocalDelivery.nl"
+    }
+  },
   "serviceScopes": {
-    "localDeliveryCatalog": ["workTowardLocalDelivery.nl"],
-    "localDeliveryHistory": ["workTowardLocalDelivery/inspectConversation.nl"],
-    "localDeliverySend": ["workTowardLocalDelivery/completeDelivery.nl"],
-    "localDeliveryReadback": ["workTowardLocalDelivery/completeDelivery.nl"]
+    "localDeliveryCatalog": [
+      "workTowardLocalDelivery.nl"
+    ],
+    "localDeliveryHistory": [],
+    "localDeliverySend": [
+      "workTowardLocalDelivery/completeDelivery.nl"
+    ],
+    "localDeliveryReadback": [
+      "workTowardLocalDelivery/completeDelivery.nl"
+    ]
   }
 }

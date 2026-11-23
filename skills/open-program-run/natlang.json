@@ -2,11 +2,15 @@
   "schema": "natlang.package/v2",
   "name": "vibestudio-open-program-run",
   "version": "0.1.0",
-  "targets": { "main": { "entry": "discoverRuns.nl" } },
+  "targets": {
+    "main": {
+      "entry": "discoverRuns.ts"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "programRunCatalog": ["discoverRuns.nl", "inspectProgram.nl"],
-    "programExecution": ["runSample.nl", "readOutputReceipt.nl"],
-    "programReceiptSigner": ["signVerifiedRun.nl"]
+    "programRunCatalog": [],
+    "programExecution": [],
+    "programReceiptSigner": []
   }
 }

@@ -13,9 +13,13 @@
     "schedule.ts",
     "types.ts"
   ],
-  "targets": { "main": { "entry": "prepareAutomation.nl" } },
+  "targets": {
+    "main": {
+      "entry": "prepareAutomation.nl"
+    }
+  },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "automationPlanning": ["reviewAssignedAutomation/observePlanningState.nl"]
+    "automationPlanning": []
   }
 }

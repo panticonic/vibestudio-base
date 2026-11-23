@@ -360,15 +360,11 @@
     "publicBrief": [
       "answerFromAssignedPublicSources.nl"
     ],
-    "automationActivationEvidence": [
-      "activateOwnedAutomation/reviewLaunchEvidence/readLaunchEvidence.nl"
-    ],
+    "automationActivationEvidence": [],
     "automationActivationCommit": [
       "activateOwnedAutomation/completeAutomationLaunch/submitOwnedLaunch.nl"
     ],
-    "automationActivationReadback": [
-      "activateOwnedAutomation/completeAutomationLaunch/readActivatedSchedule.nl"
-    ],
+    "automationActivationReadback": [],
     "googleRunbook": [
       "reconcileGoogleRunbook.nl",
       "reconcileGoogleRunbook/reviseRunbook.nl"
@@ -385,12 +381,8 @@
       "reviewBoardMigration/locateSource.nl",
       "reviewBoardMigration/decideMigration.nl"
     ],
-    "contentProjectSources": [
-      "prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.nl"
-    ],
-    "contentProjectScope": [
-      "prepareContentProject/confirmProjectScope.nl"
-    ],
+    "contentProjectSources": [],
+    "contentProjectScope": [],
     "contentProjectDraft": [
       "prepareContentProject/authorProjectDocuments/writeInitialProject.nl"
     ],
@@ -400,27 +392,17 @@
     "localInventoryDocket": [
       "compareLiveLocalInventory/findLocalInventoryDocket.nl"
     ],
-    "androidGoalAudit": [
-      "auditAndroidGoal/readAndroidAuditScope.nl"
-    ],
-    "androidDeliveryScope": [
-      "verifyAndroidDelivery/readAndroidDeliveryScope.nl"
-    ],
+    "androidGoalAudit": [],
+    "androidDeliveryScope": [],
     "terminalRepairCatalog": [
       "workOnTerminalApp/inspectTerminalApp/findTerminalApp.nl"
     ],
-    "terminalRepairObserve": [
-      "workOnTerminalApp/inspectTerminalApp/observeTerminalApp.nl"
-    ],
+    "terminalRepairObserve": [],
     "terminalRepairApply": [
       "workOnTerminalApp.nl"
     ],
-    "terminalRepairFinal": [
-      "workOnTerminalApp/verifyTerminalOutput/checkFinalSource.nl"
-    ],
-    "terminalRepairArtifact": [
-      "workOnTerminalApp/verifyTerminalOutput/readTerminalArtifact.nl"
-    ],
+    "terminalRepairFinal": [],
+    "terminalRepairArtifact": [],
     "tendrilBoardDocket": [
       "workOnLiveTendrilBoard/findLiveTendrilTicket.nl"
     ],
@@ -428,31 +410,17 @@
       "recoverCliRoute/selectCliDocket.nl"
     ],
     "scaffoldRead": [
-      "prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl",
-      "prepareOwnedScaffold/reviewScaffoldBrief/readInstalledScaffolds.nl",
-      "prepareOwnedScaffold/rereadScaffoldDraft.nl"
+      "prepareOwnedScaffold/reviewScaffoldBrief/findScaffoldBrief.nl"
     ],
-    "scaffoldPrepare": [
-      "prepareOwnedScaffold/stageNativeScaffold.nl"
-    ],
+    "scaffoldPrepare": [],
     "localMethodRead": [
-      "reconcileOwnedMethodCall/readMethodLane/findOwnedMethodCard.nl",
-      "reconcileOwnedMethodCall/readMethodLane/inspectOwnedMethodLane.nl",
-      "reconcileOwnedMethodCall/readExactMethodTerminal.nl"
+      "reconcileOwnedMethodCall/readMethodLane/findOwnedMethodCard.nl"
     ],
-    "localMethodDispatch": [
-      "reconcileOwnedMethodCall/dispatchOwnedLocalMethod.nl"
-    ],
+    "localMethodDispatch": [],
     "systemCandidateRead": [
-      "triageSystemTemplate/findSystemCandidate.nl",
-      "triageSystemTemplate/readCandidateEvidence/readDeltaFrontier.nl",
-      "triageSystemTemplate/readCandidateEvidence/readFileTriplet.nl",
-      "triageSystemTemplate/checkCandidateCurrent.nl",
-      "triageSystemTemplate/verifyCandidateHandoff.nl"
+      "triageSystemTemplate/findSystemCandidate.nl"
     ],
-    "systemCandidateHandoff": [
-      "triageSystemTemplate/recordCandidateHandoff.nl"
-    ],
+    "systemCandidateHandoff": [],
     "operationsDossier": [
       "coordinateOwnedOperations/retainOperationsDossier.nl"
     ],
@@ -463,255 +431,93 @@
       "coordinateOwnedOperations.nl"
     ],
     "adoptionReview": [
-      "reviewExamplesAdoption/findStagedComposition.nl",
-      "reviewExamplesAdoption/inspectComposition/readInstalledExamples.nl",
-      "reviewExamplesAdoption/inspectComposition/simulateOwnedComposition.nl",
-      "reviewExamplesAdoption/confirmAdoptionFrontier.nl",
-      "reviewExamplesAdoption/readAdoptionHandoff.nl"
+      "reviewExamplesAdoption/findStagedComposition.nl"
     ],
-    "adoptionHandoff": [
-      "reviewExamplesAdoption/recordPrivateAdoption.nl"
-    ],
+    "adoptionHandoff": [],
     "grimoireScene": [
-      "careForGrimoireScene/findCaretakerDocket.nl",
-      "careForGrimoireScene/readSceneEvidence/readOwnerView.nl",
-      "careForGrimoireScene/readSceneEvidence/readCaretakerScope.nl",
-      "careForGrimoireScene/confirmSceneFrontier.nl",
-      "careForGrimoireScene/verifySceneHandoff/readSceneAndArtifact.nl"
+      "careForGrimoireScene/findCaretakerDocket.nl"
     ],
-    "grimoireHandoff": [
-      "careForGrimoireScene/stageCaretakerArtifact.nl"
-    ],
-    "testkitCloseout": [
-      "compareTestkitCloseouts/discoverCloseoutAttempts.nl",
-      "compareTestkitCloseouts/stageCloseoutEvidence.nl"
-    ],
+    "grimoireHandoff": [],
+    "testkitCloseout": [],
     "phoneFirstRun": [
-      "planPhoneFirstRun/locatePhoneRehearsal.nl",
-      "planPhoneFirstRun/readPhoneEvidence/readSetupAssignment.nl",
-      "planPhoneFirstRun/readPhoneEvidence/readStartupPhases.nl",
-      "planPhoneFirstRun/readPhoneEvidence/readBuildProvider.nl"
+      "planPhoneFirstRun/locatePhoneRehearsal.nl"
     ],
     "skillMaintenanceEvidence": [
-      "maintainWorkspaceSkill/locateMaintenanceSkill.nl",
-      "maintainWorkspaceSkill/inspectMaintenanceEvidence/readScopedSkill.nl",
-      "maintainWorkspaceSkill/confirmSkillFrontier.nl",
-      "maintainWorkspaceSkill/checkSkillReadback.nl"
+      "maintainWorkspaceSkill/locateMaintenanceSkill.nl"
     ],
-    "skillMaintenanceEdit": [
-      "maintainWorkspaceSkill/prepareSkillRepair/stageSkillChanges.nl"
-    ],
+    "skillMaintenanceEdit": [],
     "desktopReadiness": [
-      "reviewDesktopReadiness/locateDesktopDesk.nl",
-      "reviewDesktopReadiness/inspectDesktopWindow/readDesktopWindow.nl",
-      "reviewDesktopReadiness/inspectDesktopUpdates/readDesktopOffers.nl"
+      "reviewDesktopReadiness/locateDesktopDesk.nl"
     ],
     "notificationState": [
       "reviewNotificationState/locateNotificationLane.nl",
       "reviewNotificationState/readNotificationLifecycle.nl",
       "reviewNotificationState/finishNotificationReview.nl"
     ],
-    "mobileContinuity": [
-      "reviewMobileContinuity/selectProfile/listProfiles.nl",
-      "reviewMobileContinuity/selectProfile/readProfile.nl",
-      "reviewMobileContinuity/auditContinuity/readBuild.nl",
-      "reviewMobileContinuity/auditContinuity/readCache.nl",
-      "reviewMobileContinuity/auditContinuity/readTransport.nl",
-      "reviewMobileContinuity/auditContinuity/readRoutes.nl"
-    ],
-    "assetHistory": [
-      "reviewAssetIntegrity/discoverVersions.nl",
-      "reviewAssetIntegrity/readVersion/listFiles.nl",
-      "reviewAssetIntegrity/readVersion/inspectFile.nl"
-    ],
-    "assetRecovery": [
-      "reviewAssetIntegrity/stageRecovery.nl"
-    ],
+    "mobileContinuity": [],
+    "assetHistory": [],
+    "assetRecovery": [],
     "tendrilRouteRead": [
-      "reviewTendrilRoute/identifyTendril/listBoards.nl",
-      "reviewTendrilRoute/identifyTendril/readBoard.nl",
       "reviewTendrilRoute/reviewSlot/probeSlot.nl"
     ],
-    "tendrilRouteRetention": [
-      "reviewTendrilRoute/retainRoute.nl"
-    ],
-    "presentationRecords": [
-      "reviewLocalPresentation/selectSource/listRecords.nl",
-      "reviewLocalPresentation/selectSource/readRecord.nl",
-      "reviewLocalPresentation/previewRecord.nl"
-    ],
+    "tendrilRouteRetention": [],
+    "presentationRecords": [],
     "problemIncident": [
       "workOnProblemReportGoal.nl"
     ],
     "recoveryHandoffLink": [
-      "workOnRecoveryHandoff/readDirective.nl",
       "workOnRecoveryHandoff/acquireSources.nl"
     ],
-    "buildIncidentCatalog": [
-      "reviewRetainedBuildIncident/discoverIncident.nl",
-      "reviewRetainedBuildIncident/selectCheckpoints/openCheckpoint.nl"
-    ],
-    "buildIncidentHandoff": [
-      "reviewRetainedBuildIncident/stageEvidence.nl"
-    ],
-    "localWidthEvidence": [
-      "reviewLocalExecutionWidth/discoverWidth.nl",
-      "reviewLocalExecutionWidth/assessExecution/readWitness.nl"
-    ],
-    "localWidthHandoff": [
-      "reviewLocalExecutionWidth/stageWidth.nl"
-    ],
-    "interfaceEvidence": [
-      "reviewDeployedInterface/discoverInterface.nl",
-      "reviewDeployedInterface/selectInterface/inspectInterface.nl"
-    ],
-    "interfaceReviewHandoff": [
-      "reviewDeployedInterface/stageReview.nl"
-    ],
-    "extensionDossierRead": [
-      "reviewExtensionDossier/discoverDossier.nl",
-      "reviewExtensionDossier/compareCandidate/readCandidate.nl",
-      "reviewExtensionDossier/inspectRelease/readHistory.nl"
-    ],
-    "extensionDossierWrite": [
-      "reviewExtensionDossier/stageDossier.nl"
-    ],
-    "installedPackageRead": [
-      "reviewInstalledPackage/discoverPackage.nl",
-      "reviewInstalledPackage/inspectPackage/readOwnedPackage.nl"
-    ],
+    "buildIncidentCatalog": [],
+    "buildIncidentHandoff": [],
+    "localWidthEvidence": [],
+    "localWidthHandoff": [],
+    "interfaceEvidence": [],
+    "interfaceReviewHandoff": [],
+    "extensionDossierRead": [],
+    "extensionDossierWrite": [],
+    "installedPackageRead": [],
     "installedPackageChange": [
       "reviewInstalledPackage/restorePackage.nl"
     ],
-    "webhookAdmissionEvidence": [
-      "reviewWebhookAdmission/discoverWebhook.nl",
-      "reviewWebhookAdmission/inspectWebhookStatus/readWebhookEvidence.nl"
-    ],
-    "webhookAdmissionHandoff": [
-      "reviewWebhookAdmission/stageWebhookAudit.nl"
-    ],
-    "transcriptApproval": [
-      "reviewTranscriptSurface/discoverTranscriptSurface.nl",
-      "reviewTranscriptSurface/reviewApprovals/readCurrentApprovals.nl"
-    ],
-    "transcriptObservation": [
-      "reviewTranscriptSurface/inspectNativeSurface/readChannelReplay.nl"
-    ],
-    "transcriptMutation": [
-      "reviewTranscriptSurface/materializeTranscriptEffect/mutateOwnedTranscript.nl"
-    ],
-    "illustrationEvidence": [
-      "generateOwnedIllustration/discoverIllustration.nl",
-      "generateOwnedIllustration/inspectIllustrationBasis/readCurrentImagePlan.nl"
-    ],
-    "illustrationJobs": [
-      "generateOwnedIllustration/runIllustrationJob/readNativeImageOutcome.nl"
-    ],
-    "illustrationOriginal": [
-      "generateOwnedIllustration/retainIllustrationOriginal/writeVerifiedOriginal.nl"
-    ],
-    "recordedQuestionDiscovery": [
-      "reviewRecordedQuestion/discoverRecordedQuestion.nl",
-      "reviewRecordedQuestion/findRecordedProposal/searchNativeRationale.nl"
-    ],
-    "recordedQuestionGraph": [
-      "reviewRecordedQuestion/collectRecordedEvidence/readWorkCohort.nl",
-      "reviewRecordedQuestion/collectRecordedEvidence/readRejectionRecord.nl"
-    ],
-    "sourceOriginEvidence": [
-      "reviewSourceAttribution/discoverSourceAttribution.nl",
-      "reviewSourceAttribution/inspectCurrentSource/readOwnedFile.nl"
-    ],
-    "sourceOriginGraph": [
-      "reviewSourceAttribution/traceSelectedSource/content/traceOwnedRange.nl",
-      "reviewSourceAttribution/traceSelectedSource/intent/inspectOwnedRoot.nl"
-    ],
-    "sourceOriginReceipt": [
-      "reviewSourceAttribution/reviewAttributionHandoff/writeOwnedReceipt.nl"
-    ],
-    "workspaceSmokeEvidence": [
-      "reviewWorkspaceSmoke/discoverWorkspaceSmoke.nl",
-      "reviewWorkspaceSmoke/inspectSmokeFiles/readNativeSmokeFiles.nl"
-    ],
-    "workspaceSmokeRuntime": [
-      "reviewWorkspaceSmoke/exerciseInstalledSmoke/readActualSmokeResult.nl"
-    ],
-    "workspaceSmokeHandoff": [
-      "reviewWorkspaceSmoke/stageWorkspaceSmoke.nl"
-    ],
-    "sameTurnEvalEvidence": [
-      "recoverSameTurnEval/discoverSameTurnEval.nl",
-      "recoverSameTurnEval/inspectSameTurnEval/readNativeEvalState.nl"
-    ],
-    "sameTurnEvalRecovery": [
-      "recoverSameTurnEval/resolveSameTurnEval.nl"
-    ],
-    "deliveryWakeEvidence": [
-      "reviewDeliveryWake/discoverDeliveryWake.nl",
-      "reviewDeliveryWake/inspectDeliveryWake/readNativeWake.nl"
-    ],
-    "deliveryWakeAction": [
-      "reviewDeliveryWake/applyDeliveryWake.nl"
-    ],
-    "logFollowerEvidence": [
-      "reviewLogFollower/discoverLogFollower.nl",
-      "reviewLogFollower/observeLogFollower/readNativeFollow.nl"
-    ],
-    "logFollowerHandoff": [
-      "reviewLogFollower/stageLogFollower.nl"
-    ],
-    "ptyContinuityEvidence": [
-      "reviewPtyContinuity/discoverPtyReview.nl",
-      "reviewPtyContinuity/inspectPtyReceipts/readPtyAttempt.nl"
-    ],
-    "ptyContinuityHandoff": [
-      "reviewPtyContinuity/stagePtyReceipt.nl"
-    ],
+    "webhookAdmissionEvidence": [],
+    "webhookAdmissionHandoff": [],
+    "transcriptApproval": [],
+    "transcriptObservation": [],
+    "transcriptMutation": [],
+    "illustrationEvidence": [],
+    "illustrationJobs": [],
+    "illustrationOriginal": [],
+    "recordedQuestionDiscovery": [],
+    "recordedQuestionGraph": [],
+    "sourceOriginEvidence": [],
+    "sourceOriginGraph": [],
+    "sourceOriginReceipt": [],
+    "workspaceSmokeEvidence": [],
+    "workspaceSmokeRuntime": [],
+    "workspaceSmokeHandoff": [],
+    "sameTurnEvalEvidence": [],
+    "sameTurnEvalRecovery": [],
+    "deliveryWakeEvidence": [],
+    "deliveryWakeAction": [],
+    "logFollowerEvidence": [],
+    "logFollowerHandoff": [],
+    "ptyContinuityEvidence": [],
+    "ptyContinuityHandoff": [],
     "developmentAuditEvidence": [
-      "reviewDevelopmentAudit/discoverDevelopmentAudit.nl",
       "reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl"
     ],
-    "developmentAuditKeep": [
-      "reviewDevelopmentAudit/keepDevelopmentRepair.nl"
-    ],
-    "contentArchiveEvidence": [
-      "recoverContentArchive/discoverArchive.nl",
-      "recoverContentArchive/inspectArchive/readArchiveEvidence.nl"
-    ],
-    "contentArchiveChange": [
-      "recoverContentArchive/applyArchive.nl"
-    ],
-    "systemReleaseEvidence": [
-      "reviewSystemRelease/discoverRelease.nl",
-      "reviewSystemRelease/compareRuns/readRuns.nl",
-      "reviewSystemRelease/evaluateCases/readCase.nl"
-    ],
-    "systemReleaseHandoff": [
-      "reviewSystemRelease/stageRelease.nl"
-    ],
-    "panelMigrationEvidence": [
-      "migratePanelSource/discoverMigration.nl",
-      "migratePanelSource/inspectMigration/readMigration.nl"
-    ],
-    "panelMigrationChange": [
-      "migratePanelSource/moveSource.nl",
-      "migratePanelSource/alignBuildIdentity.nl",
-      "migratePanelSource/updateConsumers.nl"
-    ],
-    "workspaceShareEvidence": [
-      "reviewWorkspaceShare/discoverShare.nl",
-      "reviewWorkspaceShare/identifyShare/readShare.nl"
-    ],
-    "workspaceShareHandoff": [
-      "reviewWorkspaceShare/stageShare.nl"
-    ],
-    "agentCapabilityEvidence": [
-      "recoverAgentCapability/discoverAttempts.nl",
-      "recoverAgentCapability/inspectAttempt/readNativeAttempt.nl"
-    ],
-    "agentCapabilityContinue": [
-      "recoverAgentCapability/continueCapability.nl"
-    ],
+    "developmentAuditKeep": [],
+    "contentArchiveEvidence": [],
+    "contentArchiveChange": [],
+    "systemReleaseEvidence": [],
+    "systemReleaseHandoff": [],
+    "panelMigrationEvidence": [],
+    "panelMigrationChange": [],
+    "workspaceShareEvidence": [],
+    "workspaceShareHandoff": [],
+    "agentCapabilityEvidence": [],
+    "agentCapabilityContinue": [],
     "goalDiscovery": [
       "investigatePublicQuestion.nl"
     ],

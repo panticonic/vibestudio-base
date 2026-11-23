@@ -1,10 +1,9 @@
-import type { IntentDescription,IntentHit,IntentNote,IntentNotice,IntentObservation,IntentReport } from "./types.js";
 declare module "natlang:services" {
   export const nativeIntentDiscovery:{
-    notice():Promise<IntentNotice>;
-    search(query:string):Promise<IntentHit[]>;
-    describe(id:string):Promise<IntentDescription|null>;
-    inspect(methodId:string,scope:string):Promise<IntentObservation|null>;
+    notice():Promise<import("./types.js").IntentNotice>;
+    search(query:string):Promise<import("./types.js").IntentHit[]>;
+    describe(id:string):Promise<import("./types.js").IntentDescription|null>;
+    inspect(methodId:string,scope:string):Promise<import("./types.js").IntentObservation|null>;
   };
-  export const nativeIntentHandoff:{stage(report:IntentReport):Promise<IntentNote|null>};
+  export const nativeIntentHandoff:{stage(report:import("./types.js").IntentReport):Promise<import("./types.js").IntentNote|null>};
 }

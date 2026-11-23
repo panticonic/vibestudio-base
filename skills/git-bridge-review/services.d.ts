@@ -1,7 +1,5 @@
-import type { GitBridgeView } from "./types.js";
-
 declare module "natlang:services" {
   export const gitBridgeReviewRead: {
-    observe(operationId: string): Promise<GitBridgeView>;
+    observe(operationId: string): Promise<import("./types.js").GitBridgeView>;
   };
 }

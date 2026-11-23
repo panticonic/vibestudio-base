@@ -1,16 +1,11 @@
-import type {
-  ConfigBrief, ConfigDisposition, ConfigEvidence, ConfigHistory, ConfigIdentity,
-  ConfigDependencies, ConfigLens, ConfigOutcome, ConfigQuestion,
-} from "./types.js";
-
 declare module "natlang:services" {
   export const nativeWorkspaceConfig: {
-    readBrief(): Promise<ConfigBrief>;
-    inspectActive(questions: ConfigQuestion[]): Promise<ConfigIdentity | null>;
-    inspectManifests(questions: ConfigQuestion[]): Promise<ConfigHistory | null>;
-    inspectDependencies(mainEvent: string): Promise<ConfigDependencies | null>;
+    readBrief(): Promise<import("./types.js").ConfigBrief>;
+    inspectActive(questions: import("./types.js").ConfigQuestion[]): Promise<import("./types.js").ConfigIdentity | null>;
+    inspectManifests(questions: import("./types.js").ConfigQuestion[]): Promise<import("./types.js").ConfigHistory | null>;
+    inspectDependencies(mainEvent: string): Promise<import("./types.js").ConfigDependencies | null>;
   };
   export const nativeConfigHandoff: {
-    stage(brief: ConfigBrief, lens: ConfigLens, evidence: ConfigEvidence, outcome: ConfigOutcome): Promise<ConfigDisposition | null>;
+    stage(brief: import("./types.js").ConfigBrief, lens: import("./types.js").ConfigLens, evidence: import("./types.js").ConfigEvidence, outcome: import("./types.js").ConfigOutcome): Promise<import("./types.js").ConfigDisposition | null>;
   };
 }

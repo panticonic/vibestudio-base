@@ -1,8 +1,6 @@
-import type { ImageHandoff, ImageIndex, ImageJournal, ImageRead, ImageReport } from "./types.js";
-
 declare module "natlang:services" {
-  export const imageCandidateBriefs: { list(): Promise<ImageIndex> };
-  export const imageCandidateJournal: { read(channelId:string): Promise<ImageJournal|null> };
-  export const imageCandidateOriginal: { read(briefId:string,candidateId:string): Promise<ImageRead> };
-  export const imageCandidateHandoff: { stage(report:ImageReport): Promise<ImageHandoff|null> };
+  export const imageCandidateBriefs: { list(): Promise<import("./types.js").ImageIndex> };
+  export const imageCandidateJournal: { read(channelId:string): Promise<import("./types.js").ImageJournal|null> };
+  export const imageCandidateOriginal: { read(briefId:string,candidateId:string): Promise<import("./types.js").ImageRead> };
+  export const imageCandidateHandoff: { stage(report:import("./types.js").ImageReport): Promise<import("./types.js").ImageHandoff|null> };
 }

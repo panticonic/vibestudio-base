@@ -21,11 +21,8 @@
   ],
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "problemDraftRead": [
-      "saveProblemDraft/readDraft.nl",
-      "saveProblemDraft/confirmDraft.nl"
-    ],
-    "problemDraftOpen": ["saveProblemDraft/openDraft.nl"],
-    "problemDraftAppend": ["saveProblemDraft/appendDraft.nl"]
+    "problemDraftRead": [],
+    "problemDraftOpen": [],
+    "problemDraftAppend": []
   }
 }
