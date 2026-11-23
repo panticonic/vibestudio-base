@@ -541,7 +541,7 @@ export class CdpConnection {
     params?: Record<string, unknown>,
     sessionId?: string,
   ): Promise<unknown> {
-    if (this.closed) {
+    if (this.isClosed()) {
       if (this.closeError instanceof CdpError) {
         return Promise.reject(
           new CdpError(`Cannot send ${method}: ${this.closeError.message}`, {
@@ -621,7 +621,7 @@ export class CdpConnection {
   }
 
   isClosed(): boolean {
-    return this.closed;
+    return this.closed || this.ws.readyState === 2 || this.ws.readyState === 3;
   }
 
   private disconnect(error: Error): void {

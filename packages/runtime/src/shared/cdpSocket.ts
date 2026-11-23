@@ -1,21 +1,9 @@
-import { openCdpWebSocket, type CdpSocketOpener, type CdpSocketPlatform } from "@workspace/cdp-client/socket";
+import { bindCdpSocket, type CdpSocketOpener } from "@vibestudio/rpc/protocol/cdpSocket";
+export type CdpSocketBinder = (endpoint: {wsEndpoint:string;token?:string}, preferFetchUpgrade?:boolean) => CdpSocketOpener;
 
-/** Native runtime capability; no transport globals are endowed to guest code.
- * The caller obtains this endpoint through its own approval-gated native RPC.
- * The returned opener cannot be substituted to connect elsewhere or use a
- * different bearer grant. The host egress/bridge still validates/redeems it.
- */
-export function bindNativeCdpSocket(endpoint: { wsEndpoint: string; token?: string }, preferFetchUpgrade = false): CdpSocketOpener {
-  const {wsEndpoint,token}=endpoint;
-  if(!token)throw new Error("Native CDP transport requires an exact inspection grant");
-  const platform: CdpSocketPlatform = {
-    WebSocket: globalThis.WebSocket,
-    WebSocketPair: (globalThis as {WebSocketPair?:unknown}).WebSocketPair,
-    fetch: typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : undefined,
-  };
-  return async (requested,grant,prefer,signal)=>{
-    if(requested!==wsEndpoint || grant!==token)throw new Error("CDP transport is bound to its approved endpoint and grant");
-    signal?.throwIfAborted();
-    return openCdpWebSocket(requested,grant,preferFetchUpgrade || prefer,signal,platform);
-  };
-}
+/** Unconfined panels/workers use their own native platform. Confined hosted
+ * factories receive this exact capability from their real kernel instead. */
+export const bindNativeCdpSocket: CdpSocketBinder = (endpoint,preferFetchUpgrade=false) => {
+  const opener=bindCdpSocket(endpoint,{platform:globalThis});
+  return (url,token,prefer,signal)=>opener(url,token,preferFetchUpgrade || prefer,signal);
+};

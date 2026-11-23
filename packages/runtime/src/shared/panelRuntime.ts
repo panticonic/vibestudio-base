@@ -1,3 +1,4 @@
+import type { CdpSocketBinder } from "./cdpSocket.js";
 import { formatRpcFailure } from "@vibestudio/rpc";
 import { panelCapturedDocumentSchema } from "@vibestudio/shared/panel/observation";
 import {
@@ -296,6 +297,7 @@ export interface PanelRuntimeApi {
 }
 
 export interface CreatePanelRuntimeOptions {
+  bindCdpSocket?: CdpSocketBinder;
   rpc: PanelRuntimeRpc;
   /** Owning runtime's context; workspace panels reuse it unless explicitly overridden. */
   contextId?: string | null | (() => string | null | Promise<string | null>);
@@ -570,6 +572,7 @@ export function createPanelRuntime(
       kind: metadata.kind,
       requesterPanelId: requesterPanelId(),
       loadModule: options.loadModule,
+      bindCdpSocket: options.bindCdpSocket,
       operationSignal: options.operationSignal,
       recordOperation,
       observe: () => observePanel(metadata.id),

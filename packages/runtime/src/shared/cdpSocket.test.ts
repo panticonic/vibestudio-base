@@ -1,3 +1,4 @@
+import * as socketProtocol from "@vibestudio/rpc/protocol/cdpSocket";
 import { afterEach, expect, it, vi } from "vitest";
 import { createContext, runInContext } from "node:vm";
 import { build } from "esbuild";
@@ -13,10 +14,10 @@ afterEach(()=>vi.unstubAllGlobals());
 async function confinedProgram(runtime: unknown) {
   const artifact=await build({stdin:{contents:`export {CdpConnection,BrowserImpl} from './packages/cdp-client/src/worker.ts'; export {profileWorkerd} from './packages/testkit/src/workerd-profile.ts';`,resolveDir:base},
     bundle:true,write:false,format:"cjs",platform:"neutral",
-    external:["@workspace/runtime","@vibestudio/service-schemas/mainRpc","@vibestudio/rpc/protocol/webSocketAuthProtocol"],
+    external:["@vibestudio/rpc/protocol/cdpSocket","@workspace/runtime","@vibestudio/service-schemas/mainRpc","@vibestudio/rpc/protocol/webSocketAuthProtocol"],
     plugins:[{name:"actual-cdp-package",setup(builder){builder.onResolve({filter:/^@workspace\/cdp-client$/},()=>({path:base+"packages/cdp-client/src/worker.ts"}));}}]});
   const module={exports:{} as any};
-  const modules:Record<string,unknown>={"@workspace/runtime":runtime,"@vibestudio/service-schemas/mainRpc":{mainRpcMethods},
+  const modules:Record<string,unknown>={"@vibestudio/rpc/protocol/cdpSocket":socketProtocol,"@workspace/runtime":runtime,"@vibestudio/service-schemas/mainRpc":{mainRpcMethods},
     "@vibestudio/rpc/protocol/webSocketAuthProtocol":{webSocketAuthProtocol}};
   const context=createContext({module,exports:module.exports,require:(id:string)=>{if(!(id in modules))throw new Error("Undeclared module "+id);return modules[id];},
     URL,AbortSignal,AbortController,TextEncoder,TextDecoder,setTimeout,clearTimeout,queueMicrotask,console,btoa,atob});

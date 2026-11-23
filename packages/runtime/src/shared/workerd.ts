@@ -1,4 +1,4 @@
-import { bindNativeCdpSocket } from "./cdpSocket.js";
+import { bindNativeCdpSocket, type CdpSocketBinder } from "./cdpSocket.js";
 import type { CdpSocketOpener } from "@workspace/cdp-client/socket";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
@@ -178,7 +178,7 @@ export interface WorkerdClient {
   /** Resolve a Durable Object-backed service and call it through unified RPC. */
   durableObjectService<M extends RpcMethodMap>(query: string, methods: M, objectKey?: string | null): DurableObjectServiceClient<M>;
 }
-export function createWorkerdClient(rpc: RpcCaller): WorkerdClient {
+export function createWorkerdClient(rpc: RpcCaller, options: {bindCdpSocket?: CdpSocketBinder} = {}): WorkerdClient {
   const workers: TypedServiceClient<typeof workersMethods> = createLazyTypedRpcServiceClient(
     rpc, { targetId: "main", namespace: "workers" }, ["listSources", "listServices", "resolveService", "resolveDurableObject", "resetStorage", "listStorageBackups", "restoreStorageBackup"],
     async () => (await import("@vibestudio/service-schemas/workers")).workersMethods,
@@ -187,7 +187,7 @@ export function createWorkerdClient(rpc: RpcCaller): WorkerdClient {
   return {
     async inspectorSocket(targetPath) {
       const endpoint=await rpc.call("main",mainRpcMethods["workerdInspector.getEndpoint"],[targetPath]);
-      return {...endpoint,openSocket:bindNativeCdpSocket(endpoint)};
+      return {...endpoint,openSocket:(options.bindCdpSocket ?? bindNativeCdpSocket)(endpoint)};
     },
     listSources: () => workers.listSources(),
     create: async (source, options = {}) => {
