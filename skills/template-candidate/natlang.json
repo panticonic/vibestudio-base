@@ -13,7 +13,7 @@
     "templateCandidatePrepare": [],
     "templateCandidateReview": [],
     "templateMigration": [
-      "reviewTemplateMigration.nl"
+      "reviewTemplateMigration.ts"
     ]
   }
 }

@@ -10,7 +10,8 @@
   "serviceBinding": "explicit",
   "serviceScopes": {
     "panelRecovery": [
-      "recoverPanelGoal/recoverSurface.nl"
+      "recoverPanelGoal/recoverSurface.nl",
+      "recoverPanelGoal.ts"
     ],
     "panelHealth": [
       "reviewPanelHealth.nl",

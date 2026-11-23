@@ -9,8 +9,12 @@
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "openTerminalRead": [],
-    "openTerminalInput": [],
+    "openTerminalRead": [
+      "openTerminal.ts"
+    ],
+    "openTerminalInput": [
+      "applyChecklistChange.ts"
+    ],
     "openTerminalLifecycle": [],
     "openTerminalDiscovery": [
       "discoverTerminalOptions.nl"

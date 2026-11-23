@@ -9,8 +9,12 @@
     }
   },
   "serviceScopes": {
-    "pdfGoalDocuments": [],
-    "pdfGoalVisual": [],
+    "pdfGoalDocuments": [
+      "workOnPdfGoal.ts"
+    ],
+    "pdfGoalVisual": [
+      "workOnPdfGoal/readRenderedPages.ts"
+    ],
     "pdfIntakeProbe": [],
     "pdfIntakeRead": [],
     "pdfLayoutRead": [

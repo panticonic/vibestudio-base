@@ -11,7 +11,7 @@ export default {
     "additionalArguments": {}
   },
   "android-audit": {
-    "program": "skills/open-user-goal/auditAndroidGoal.nl",
+    "program": "skills/open-user-goal/auditAndroidGoal.ts",
     "callable": "auditAndroidGoal",
     "resultType": "AndroidGoalAuditReport",
     "skill": "androidGoalAudit",
@@ -21,7 +21,7 @@ export default {
     "additionalArguments": {}
   },
   "android-delivery": {
-    "program": "skills/open-user-goal/verifyAndroidDelivery.nl",
+    "program": "skills/open-user-goal/verifyAndroidDelivery.ts",
     "callable": "verifyAndroidDelivery",
     "resultType": "AndroidDeliveryOutcome",
     "skill": "androidDelivery",
@@ -31,7 +31,7 @@ export default {
     "additionalArguments": {}
   },
   "delivery-wake": {
-    "program": "skills/open-user-goal/reviewDeliveryWake.nl",
+    "program": "skills/open-user-goal/reviewDeliveryWake.ts",
     "callable": "reviewDeliveryWake",
     "resultType": "DeliveryWakeReport",
     "skill": "deliveryWake",
@@ -41,7 +41,7 @@ export default {
     "additionalArguments": {}
   },
   "live-local-inventory": {
-    "program": "skills/open-user-goal/compareLiveLocalInventory.nl",
+    "program": "skills/open-user-goal/compareLiveLocalInventory.ts",
     "callable": "compareLiveLocalInventory",
     "resultType": "LocalInventoryOutcome",
     "skill": "liveLocalInventory",
@@ -91,7 +91,7 @@ export default {
     "additionalArguments": {}
   },
   "intent-discovery": {
-    "program": "skills/open-user-goal/discoverScopedIntent.nl",
+    "program": "skills/open-user-goal/discoverScopedIntent.ts",
     "callable": "discoverScopedIntent",
     "resultType": "IntentReport",
     "skill": "intentDiscovery",
@@ -101,7 +101,7 @@ export default {
     "additionalArguments": {}
   },
   "board-migration": {
-    "program": "skills/open-user-goal/reviewBoardMigration.nl",
+    "program": "skills/open-user-goal/reviewBoardMigration.ts",
     "callable": "reviewBoardMigration",
     "resultType": "BoardMigrationOutcome",
     "skill": "boardMigration",
@@ -111,7 +111,7 @@ export default {
     "additionalArguments": {}
   },
   "live-tendril-board": {
-    "program": "skills/open-user-goal/workOnLiveTendrilBoard.nl",
+    "program": "skills/open-user-goal/workOnLiveTendrilBoard.ts",
     "callable": "workOnLiveTendrilBoard",
     "resultType": "LiveTendrilOutcome",
     "skill": "liveTendrilBoard",
@@ -131,7 +131,7 @@ export default {
     "additionalArguments": {}
   },
   "cli-route": {
-    "program": "skills/open-user-goal/recoverCliRoute.nl",
+    "program": "skills/open-user-goal/recoverCliRoute.ts",
     "callable": "recoverCliRoute",
     "resultType": "CliRouteOutcome",
     "skill": "cliRoute",
@@ -141,7 +141,7 @@ export default {
     "additionalArguments": {}
   },
   "scaffoldReview": {
-    "program": "skills/open-user-goal/prepareOwnedScaffold.nl",
+    "program": "skills/open-user-goal/prepareOwnedScaffold.ts",
     "callable": "prepareOwnedScaffold",
     "resultType": "ScaffoldOutcome",
     "skill": "scaffoldReview",
@@ -151,7 +151,7 @@ export default {
     "additionalArguments": {}
   },
   "localMethodExchange": {
-    "program": "skills/open-user-goal/reconcileOwnedMethodCall.nl",
+    "program": "skills/open-user-goal/reconcileOwnedMethodCall.ts",
     "callable": "reconcileOwnedMethodCall",
     "resultType": "LocalMethodOutcome",
     "skill": "localMethodExchange",
@@ -161,7 +161,7 @@ export default {
     "additionalArguments": {}
   },
   "systemCandidateTriage": {
-    "program": "skills/open-user-goal/triageSystemTemplate.nl",
+    "program": "skills/open-user-goal/triageSystemTemplate.ts",
     "callable": "triageSystemTemplate",
     "resultType": "SystemCandidateOutcome",
     "skill": "systemCandidateTriage",
@@ -171,7 +171,7 @@ export default {
     "additionalArguments": {}
   },
   "owned-operations": {
-    "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
+    "program": "skills/open-user-goal/coordinateOwnedOperations.ts",
     "callable": "coordinateOwnedOperations",
     "resultType": "OperationsGoalOutcome",
     "skill": "ownedOperations",
@@ -181,7 +181,7 @@ export default {
     "additionalArguments": {}
   },
   "examplesAdoption": {
-    "program": "skills/open-user-goal/reviewExamplesAdoption.nl",
+    "program": "skills/open-user-goal/reviewExamplesAdoption.ts",
     "callable": "reviewExamplesAdoption",
     "resultType": "AdoptionOutcome",
     "skill": "examplesAdoption",
@@ -231,7 +231,7 @@ export default {
     "additionalArguments": {}
   },
   "grimoireScene": {
-    "program": "skills/open-user-goal/careForGrimoireScene.nl",
+    "program": "skills/open-user-goal/careForGrimoireScene.ts",
     "callable": "careForGrimoireScene",
     "resultType": "GrimoireSceneOutcome",
     "skill": "grimoireScene",
@@ -251,7 +251,7 @@ export default {
     "additionalArguments": {}
   },
   "phoneFirstRun": {
-    "program": "skills/open-user-goal/planPhoneFirstRun.nl",
+    "program": "skills/open-user-goal/planPhoneFirstRun.ts",
     "callable": "planPhoneFirstRun",
     "resultType": "PhoneFirstRunOutcome",
     "skill": "phoneFirstRun",
@@ -281,7 +281,7 @@ export default {
     "additionalArguments": {}
   },
   "skillMaintenance": {
-    "program": "skills/open-user-goal/maintainWorkspaceSkill.nl",
+    "program": "skills/open-user-goal/maintainWorkspaceSkill.ts",
     "callable": "maintainWorkspaceSkill",
     "resultType": "SkillMaintenanceOutcome",
     "skill": "skillMaintenance",
@@ -301,7 +301,7 @@ export default {
     "additionalArguments": {}
   },
   "desktopReadiness": {
-    "program": "skills/open-user-goal/reviewDesktopReadiness.nl",
+    "program": "skills/open-user-goal/reviewDesktopReadiness.ts",
     "callable": "reviewDesktopReadiness",
     "resultType": "DesktopReadinessOutcome",
     "skill": "desktopReadiness",
@@ -311,7 +311,7 @@ export default {
     "additionalArguments": {}
   },
   "notificationState": {
-    "program": "skills/open-user-goal/reviewNotificationState.nl",
+    "program": "skills/open-user-goal/reviewNotificationState.ts",
     "callable": "reviewNotificationState",
     "resultType": "NotificationStateOutcome",
     "skill": "notificationState",
@@ -321,7 +321,7 @@ export default {
     "additionalArguments": {}
   },
   "mobileContinuity": {
-    "program": "skills/open-user-goal/reviewMobileContinuity.nl",
+    "program": "skills/open-user-goal/reviewMobileContinuity.ts",
     "callable": "reviewMobileContinuity",
     "resultType": "MobileContinuityOutcome",
     "skill": "mobileContinuity",
@@ -351,7 +351,7 @@ export default {
     "additionalArguments": {}
   },
   "assetIntegrity": {
-    "program": "skills/open-user-goal/reviewAssetIntegrity.nl",
+    "program": "skills/open-user-goal/reviewAssetIntegrity.ts",
     "callable": "reviewAssetIntegrity",
     "resultType": "AssetIntegrityOutcome",
     "skill": "assetIntegrity",
@@ -361,7 +361,7 @@ export default {
     "additionalArguments": {}
   },
   "tendrilRoute": {
-    "program": "skills/open-user-goal/reviewTendrilRoute.nl",
+    "program": "skills/open-user-goal/reviewTendrilRoute.ts",
     "callable": "reviewTendrilRoute",
     "resultType": "TendrilRouteOutcome",
     "skill": "tendrilRoute",
@@ -371,7 +371,7 @@ export default {
     "additionalArguments": {}
   },
   "localPresentation": {
-    "program": "skills/open-user-goal/reviewLocalPresentation.nl",
+    "program": "skills/open-user-goal/reviewLocalPresentation.ts",
     "callable": "reviewLocalPresentation",
     "resultType": "LocalPresentationOutcome",
     "skill": "localPresentation",
@@ -381,7 +381,7 @@ export default {
     "additionalArguments": {}
   },
   "deployed-interface": {
-    "program": "skills/open-user-goal/reviewDeployedInterface.nl",
+    "program": "skills/open-user-goal/reviewDeployedInterface.ts",
     "callable": "reviewDeployedInterface",
     "resultType": "DeployedInterfaceOutcome",
     "skill": "deployedInterface",
@@ -401,7 +401,7 @@ export default {
     "additionalArguments": {}
   },
   "installed-package": {
-    "program": "skills/open-user-goal/reviewInstalledPackage.nl",
+    "program": "skills/open-user-goal/reviewInstalledPackage.ts",
     "callable": "reviewInstalledPackage",
     "resultType": "InstalledPackageOutcome",
     "skill": "installedPackage",
@@ -411,7 +411,7 @@ export default {
     "additionalArguments": {}
   },
   "testkit-closeout": {
-    "program": "skills/open-user-goal/compareTestkitCloseouts.nl",
+    "program": "skills/open-user-goal/compareTestkitCloseouts.ts",
     "callable": "compareTestkitCloseouts",
     "resultType": "CloseoutReport",
     "skill": "testkitCloseout",
@@ -421,7 +421,7 @@ export default {
     "additionalArguments": {}
   },
   "webhook-admission": {
-    "program": "skills/open-user-goal/reviewWebhookAdmission.nl",
+    "program": "skills/open-user-goal/reviewWebhookAdmission.ts",
     "callable": "reviewWebhookAdmission",
     "resultType": "WebhookAdmissionOutcome",
     "skill": "webhookAdmission",
@@ -441,7 +441,7 @@ export default {
     "additionalArguments": {}
   },
   "provenance-question": {
-    "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
+    "program": "skills/open-user-goal/reviewRecordedQuestion.ts",
     "callable": "reviewRecordedQuestion",
     "resultType": "RecordedQuestionReport",
     "skill": "provenanceQuestion",
@@ -451,7 +451,7 @@ export default {
     "additionalArguments": {}
   },
   "transcript-surface": {
-    "program": "skills/open-user-goal/reviewTranscriptSurface.nl",
+    "program": "skills/open-user-goal/reviewTranscriptSurface.ts",
     "callable": "reviewTranscriptSurface",
     "resultType": "TranscriptSurfaceReport",
     "skill": "transcriptSurface",
@@ -461,7 +461,7 @@ export default {
     "additionalArguments": {}
   },
   "source-attribution": {
-    "program": "skills/open-user-goal/reviewSourceAttribution.nl",
+    "program": "skills/open-user-goal/reviewSourceAttribution.ts",
     "callable": "reviewSourceAttribution",
     "resultType": "SourceAttributionReport",
     "skill": "sourceAttribution",
@@ -471,7 +471,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-smoke": {
-    "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
+    "program": "skills/open-user-goal/reviewWorkspaceSmoke.ts",
     "callable": "reviewWorkspaceSmoke",
     "resultType": "WorkspaceSmokeReport",
     "skill": "workspaceSmoke",
@@ -481,7 +481,7 @@ export default {
     "additionalArguments": {}
   },
   "same-turn-eval": {
-    "program": "skills/open-user-goal/recoverSameTurnEval.nl",
+    "program": "skills/open-user-goal/recoverSameTurnEval.ts",
     "callable": "recoverSameTurnEval",
     "resultType": "SameTurnEvalOutcome",
     "skill": "sameTurnEval",
@@ -491,7 +491,7 @@ export default {
     "additionalArguments": {}
   },
   "log-follower": {
-    "program": "skills/open-user-goal/reviewLogFollower.nl",
+    "program": "skills/open-user-goal/reviewLogFollower.ts",
     "callable": "reviewLogFollower",
     "resultType": "LogFollowerOutcome",
     "skill": "logFollower",
@@ -501,7 +501,7 @@ export default {
     "additionalArguments": {}
   },
   "pty-continuity": {
-    "program": "skills/open-user-goal/reviewPtyContinuity.nl",
+    "program": "skills/open-user-goal/reviewPtyContinuity.ts",
     "callable": "reviewPtyContinuity",
     "resultType": "PtyContinuityOutcome",
     "skill": "ptyContinuity",
@@ -521,7 +521,7 @@ export default {
     "additionalArguments": {}
   },
   "content-archive": {
-    "program": "skills/open-user-goal/recoverContentArchive.nl",
+    "program": "skills/open-user-goal/recoverContentArchive.ts",
     "callable": "recoverContentArchive",
     "resultType": "ContentArchiveOutcome",
     "skill": "contentArchive",
@@ -531,7 +531,7 @@ export default {
     "additionalArguments": {}
   },
   "system-release": {
-    "program": "skills/open-user-goal/reviewSystemRelease.nl",
+    "program": "skills/open-user-goal/reviewSystemRelease.ts",
     "callable": "reviewSystemRelease",
     "resultType": "SystemReleaseOutcome",
     "skill": "systemRelease",
@@ -541,7 +541,7 @@ export default {
     "additionalArguments": {}
   },
   "panel-source-migration": {
-    "program": "skills/open-user-goal/migratePanelSource.nl",
+    "program": "skills/open-user-goal/migratePanelSource.ts",
     "callable": "migratePanelSource",
     "resultType": "PanelSourceMigrationOutcome",
     "skill": "panelSourceMigration",
@@ -551,7 +551,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-share": {
-    "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
+    "program": "skills/open-user-goal/reviewWorkspaceShare.ts",
     "callable": "reviewWorkspaceShare",
     "resultType": "WorkspaceShareOutcome",
     "skill": "workspaceShare",
@@ -561,7 +561,7 @@ export default {
     "additionalArguments": {}
   },
   "agent-capability": {
-    "program": "skills/open-user-goal/recoverAgentCapability.nl",
+    "program": "skills/open-user-goal/recoverAgentCapability.ts",
     "callable": "recoverAgentCapability",
     "resultType": "AgentCapabilityOutcome",
     "skill": "agentCapability",
@@ -571,7 +571,7 @@ export default {
     "additionalArguments": {}
   },
   "local-width": {
-    "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
+    "program": "skills/open-user-goal/reviewLocalExecutionWidth.ts",
     "callable": "reviewLocalExecutionWidth",
     "resultType": "LocalWidthOutcome",
     "skill": "localWidth",
@@ -621,7 +621,7 @@ export default {
     "additionalArguments": {}
   },
   "extension-dossier": {
-    "program": "skills/open-user-goal/reviewExtensionDossier.nl",
+    "program": "skills/open-user-goal/reviewExtensionDossier.ts",
     "callable": "reviewExtensionDossier",
     "resultType": "ExtensionDossierOutcome",
     "skill": "extensionDossier",
@@ -651,7 +651,7 @@ export default {
     "additionalArguments": {}
   },
   "build-incident": {
-    "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
+    "program": "skills/open-user-goal/reviewRetainedBuildIncident.ts",
     "callable": "reviewRetainedBuildIncident",
     "resultType": "BuildIncidentOutcome",
     "skill": "buildIncident",
@@ -681,7 +681,7 @@ export default {
     "additionalArguments": {}
   },
   "problem-report": {
-    "program": "skills/open-user-goal/workOnProblemReportGoal.nl",
+    "program": "skills/open-user-goal/workOnProblemReportGoal.ts",
     "callable": "workOnProblemReportGoal",
     "resultType": "OpenProblemOutcome",
     "skill": "problemReport",
@@ -701,7 +701,7 @@ export default {
     "additionalArguments": {}
   },
   "templateMigration": {
-    "program": "skills/template-candidate/reviewTemplateMigration.nl",
+    "program": "skills/template-candidate/reviewTemplateMigration.ts",
     "callable": "reviewTemplateMigration",
     "resultType": "MigrationReport",
     "skill": "templateMigration",
@@ -741,7 +741,7 @@ export default {
     "additionalArguments": {}
   },
   "vaultWork": {
-    "program": "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+    "program": "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
     "callable": "workOnVaultKnowledgeGoal",
     "resultType": "VaultKnowledgeReport",
     "skill": "vaultWork",
@@ -751,7 +751,7 @@ export default {
     "additionalArguments": {}
   },
   "unit-rollout": {
-    "program": "skills/open-unit-rollout/repairWorkspaceUnit.nl",
+    "program": "skills/open-unit-rollout/repairWorkspaceUnit.ts",
     "callable": "repairWorkspaceUnit",
     "resultType": "UnitRolloutReport",
     "skill": "unitRollout",
@@ -811,7 +811,7 @@ export default {
     "additionalArguments": {}
   },
   "terminalAppRepair": {
-    "program": "skills/open-user-goal/workOnTerminalApp.nl",
+    "program": "skills/open-user-goal/workOnTerminalApp.ts",
     "callable": "workOnTerminalApp",
     "resultType": "TerminalRepairReport",
     "skill": "terminalAppRepair",
@@ -841,7 +841,7 @@ export default {
     "additionalArguments": {}
   },
   "automationActivation": {
-    "program": "skills/open-user-goal/activateOwnedAutomation.nl",
+    "program": "skills/open-user-goal/activateOwnedAutomation.ts",
     "callable": "activateOwnedAutomation",
     "resultType": "OwnedAutomationActivationReport",
     "skill": "automationActivation",
@@ -891,7 +891,7 @@ export default {
     "additionalArguments": {}
   },
   "program-run": {
-    "program": "skills/open-user-goal/workOnProgramRunGoal.nl",
+    "program": "skills/open-user-goal/workOnProgramRunGoal.ts",
     "callable": "workOnProgramRunGoal",
     "resultType": "ProgramRunReport",
     "skill": "programRun",
@@ -901,7 +901,7 @@ export default {
     "additionalArguments": {}
   },
   "authoring": {
-    "program": "skills/open-user-goal/workOnAuthoringGoal.nl",
+    "program": "skills/open-user-goal/workOnAuthoringGoal.ts",
     "callable": "workOnAuthoringGoal",
     "resultType": "AuthoringOpenOutcome",
     "skill": "authoring",
@@ -921,7 +921,7 @@ export default {
     "additionalArguments": {}
   },
   "personal-automation": {
-    "program": "skills/open-personal-automation/coordinatePersonalAutomation.nl",
+    "program": "skills/open-personal-automation/coordinatePersonalAutomation.ts",
     "callable": "coordinatePersonalAutomation",
     "resultType": "Report",
     "skill": "personalAutomation",
@@ -931,7 +931,7 @@ export default {
     "additionalArguments": {}
   },
   "google-handoff": {
-    "program": "skills/open-google-handoff-goal/program/reconcileGoogleHandoff.nl",
+    "program": "skills/open-google-handoff-goal/program/reconcileGoogleHandoff.ts",
     "callable": "reconcileGoogleHandoff",
     "resultType": "HandoffOutcome",
     "skill": "googleHandoff",
@@ -941,7 +941,7 @@ export default {
     "additionalArguments": {}
   },
   "system-diagnostics": {
-    "program": "skills/open-system-diagnostics/workTowardDiagnosticGoal.nl",
+    "program": "skills/open-system-diagnostics/workTowardDiagnosticGoal.ts",
     "callable": "workTowardDiagnosticGoal",
     "resultType": "DiagnosticReport",
     "skill": "diagnostics",
@@ -951,7 +951,7 @@ export default {
     "additionalArguments": {}
   },
   "local-delivery": {
-    "program": "skills/open-local-delivery/workTowardLocalDelivery.nl",
+    "program": "skills/open-local-delivery/workTowardLocalDelivery.ts",
     "callable": "workTowardLocalDelivery",
     "resultType": "LocalDeliveryReport",
     "skill": "localDelivery",
@@ -961,7 +961,7 @@ export default {
     "additionalArguments": {}
   },
   "personal-history": {
-    "program": "skills/open-personal-history/reviewPersonalHistory.nl",
+    "program": "skills/open-personal-history/reviewPersonalHistory.ts",
     "callable": "reviewPersonalHistory",
     "resultType": "Report",
     "skill": "personalHistory",
@@ -971,7 +971,7 @@ export default {
     "additionalArguments": {}
   },
   "calendar": {
-    "program": "skills/open-calendar-goal/program/workOnCalendarGoal.nl",
+    "program": "skills/open-calendar-goal/program/workOnCalendarGoal.ts",
     "callable": "workOnCalendarGoal",
     "resultType": "CalendarReport",
     "skill": "calendar",
@@ -1031,7 +1031,7 @@ export default {
     "additionalArguments": {}
   },
   "recovery": {
-    "program": "skills/open-session-recovery/program/recoverSessionGoal.nl",
+    "program": "skills/open-session-recovery/program/recoverSessionGoal.ts",
     "callable": "recoverSessionGoal",
     "resultType": "RecoveryReport",
     "skill": "recovery",
@@ -1041,7 +1041,7 @@ export default {
     "additionalArguments": {}
   },
   "personal": {
-    "program": "skills/open-personal-goal/program/workOnMissionGoal.nl",
+    "program": "skills/open-personal-goal/program/workOnMissionGoal.ts",
     "callable": "workOnMissionGoal",
     "resultType": "MissionGoalReport",
     "skill": "personal",
@@ -1051,7 +1051,7 @@ export default {
     "additionalArguments": {}
   },
   "operator": {
-    "program": "skills/open-system-operations/workOnSystemGoal.nl",
+    "program": "skills/open-system-operations/workOnSystemGoal.ts",
     "callable": "workOnSystemGoal",
     "resultType": "OperatorReport",
     "skill": "operator",
@@ -1061,7 +1061,7 @@ export default {
     "additionalArguments": {}
   },
   "news": {
-    "program": "skills/news-workflows/reviewUserNewsGoal.nl",
+    "program": "skills/news-workflows/reviewUserNewsGoal.ts",
     "callable": "reviewUserNewsGoal",
     "resultType": "NewsUserGoalReport",
     "skill": "news",
@@ -1071,7 +1071,7 @@ export default {
     "additionalArguments": {}
   },
   "spectrolite": {
-    "program": "skills/spectrolite-review/workTowardVaultGoal.nl",
+    "program": "skills/spectrolite-review/workTowardVaultGoal.ts",
     "callable": "workTowardVaultGoal",
     "resultType": "OpenVaultReport",
     "skill": "spectrolite",
@@ -1081,7 +1081,7 @@ export default {
     "additionalArguments": {}
   },
   "google": {
-    "program": "skills/google-drive/driveWorkflow/workOnDriveGoal.nl",
+    "program": "skills/google-drive/driveWorkflow/workOnDriveGoal.ts",
     "callable": "workOnDriveGoal",
     "resultType": "GoogleWorkflowReport",
     "skill": "google",
@@ -1144,7 +1144,7 @@ export default {
     "additionalArguments": {}
   },
   "browser": {
-    "program": "skills/open-user-goal/workInBrowser.nl",
+    "program": "skills/open-user-goal/workInBrowser.ts",
     "callable": "workInBrowser",
     "resultType": "BrowserGoalReport",
     "skill": "browser",
@@ -1154,7 +1154,7 @@ export default {
     "additionalArguments": {}
   },
   "suite": {
-    "program": "skills/open-user-goal/verifyWorkspaceSuite.nl",
+    "program": "skills/open-user-goal/verifyWorkspaceSuite.ts",
     "callable": "verifyWorkspaceSuite",
     "resultType": "WorkspaceSuiteReport",
     "skill": "suite",

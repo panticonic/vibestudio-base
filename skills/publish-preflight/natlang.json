@@ -11,9 +11,12 @@
   "serviceBinding": "explicit",
   "serviceScopes": {
     "ownedPreviewPublication": [
-      "publishOwnedPreviewGoal/deliverPreview.nl"
+      "publishOwnedPreviewGoal/deliverPreview.nl",
+      "publishOwnedPreviewGoal.ts"
     ],
-    "publicationGoal": [],
+    "publicationGoal": [
+      "workTowardPublicationGoal.ts"
+    ],
     "websiteReadback": [
       "preflightPublication.nl"
     ],

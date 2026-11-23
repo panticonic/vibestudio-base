@@ -353,14 +353,18 @@
     ],
     "automationActivationReadback": [],
     "googleRunbook": [
-      "reconcileGoogleRunbook/reviseRunbook.nl"
+      "reconcileGoogleRunbook/reviseRunbook.nl",
+      "reconcileGoogleRunbook.ts"
     ],
-    "newsEditionReview": [],
+    "newsEditionReview": [
+      "prepareNewsEditionReview.ts"
+    ],
     "unitHandoff": [
-      "reviewUnitHandoffGoal/reviewDesign.nl"
+      "reviewUnitHandoffGoal/reviewDesign.nl",
+      "reviewUnitHandoffGoal.ts"
     ],
     "boardMigration": [
-      "reviewBoardMigration.nl",
+      "reviewBoardMigration.ts",
       "reviewBoardMigration/locateSource.nl",
       "reviewBoardMigration/decideMigration.nl"
     ],
@@ -378,7 +382,7 @@
     ],
     "terminalRepairObserve": [],
     "terminalRepairApply": [
-      "workOnTerminalApp.nl"
+      "workOnTerminalApp.ts"
     ],
     "terminalRepairFinal": [],
     "terminalRepairArtifact": [],
@@ -401,13 +405,13 @@
     ],
     "systemCandidateHandoff": [],
     "operationsDossier": [
-      "coordinateOwnedOperations/retainOperationsDossier.nl"
+      "coordinateOwnedOperations/retainOperationsDossier.ts"
     ],
     "operationsDocket": [
       "coordinateOwnedOperations/selectOperationsDocket.nl"
     ],
     "ownedOperations": [
-      "coordinateOwnedOperations.nl"
+      "coordinateOwnedOperations.ts"
     ],
     "adoptionReview": [
       "reviewExamplesAdoption/findStagedComposition.nl"
@@ -442,7 +446,7 @@
     "tendrilRouteRetention": [],
     "presentationRecords": [],
     "problemIncident": [
-      "workOnProblemReportGoal.nl"
+      "workOnProblemReportGoal.ts"
     ],
     "recoveryHandoffLink": [
       "workOnRecoveryHandoff/acquireSources.nl"
@@ -483,7 +487,9 @@
     "logFollowerHandoff": [],
     "ptyContinuityEvidence": [],
     "ptyContinuityHandoff": [],
-    "developmentAuditEvidence": [],
+    "developmentAuditEvidence": [
+      "reviewDevelopmentAudit/inspectDevelopmentRuns.ts"
+    ],
     "developmentAuditKeep": [],
     "contentArchiveEvidence": [],
     "contentArchiveChange": [],
@@ -503,10 +509,10 @@
       "answerWorkspaceQuestion.nl"
     ],
     "goalBrowser": [
-      "workInBrowser.nl"
+      "workInBrowser.ts"
     ],
     "goalSuite": [
-      "verifyWorkspaceSuite.nl"
+      "verifyWorkspaceSuite.ts"
     ],
     "pdfVaultBridge": [
       "authorizePdfVaultHandoff.nl"

@@ -1,6 +1,6 @@
 import workOnPdfGoal from "./correctVaultFromPdf/pdf/workOnPdfGoal.js";
 import authorizePdfVaultHandoff from "./authorizePdfVaultHandoff.nl";
-import workTowardVaultGoal from "./correctVaultFromPdf/vault/workTowardVaultGoal.nl";
+import workTowardVaultGoal from "./correctVaultFromPdf/vault/workTowardVaultGoal.js";
 import correctionResult from "./correctVaultFromPdf/correctionResult.js";
 import type {PdfVaultCorrectionResult} from "./correctVaultFromPdf/types.js";
 export default async function correctVaultFromPdf(goal:string):Promise<PdfVaultCorrectionResult>{
