@@ -63,3 +63,10 @@ export type PreparedContentProjectReport = {
   final: PrivateProjectFinish;
   explanation: string;
 };
+
+/** Semantic choices use local handles; native binding owns opaque identities. */
+export type ProjectDispositionEvidence = {
+ title:string; audience:string; documentRoles:string[]; occupied:boolean;
+ records:{edition:"current"|"retired";purpose:"requirements"|"safety"|"approval";localApproval:"commit"|"draft"|"pending"|null;facts:{handle:number;text:string}[]}[];
+};
+export type ProjectDispositionChoice = {action:"commit"|"draft"|"hold";basis:"authorized"|"occupied"|"missing"|"conflict"|"pending";selected:number[];reason:string};
