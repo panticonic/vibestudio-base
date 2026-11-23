@@ -63,3 +63,12 @@ it("preserves a coedit and refuses a commit when fresh native verification no lo
  expect(await run("Commit the verified owned unit")).toMatchObject({status:"held",unitId:"unit",revision:"new",reason:"coedit needs review"});
  expect(commitCandidate.mock.calls).toEqual([["unit","old"]]);
 });
+
+it("binds the actual local delivery native contract without wrapping or normalizing recipient scope",async()=>{
+ const actual={room:{id:"owned-room"},basis:"observed-head",roster:[],resolution:null,prior:null};
+ const inspect=vi.fn(async(roomId:string,phrase:string|null)=>{expect(roomId).toBe("owned-room");expect(phrase===null||phrase==="@actual-recipient").toBe(true);return actual;});
+ const read=compose("../open-local-delivery/workTowardLocalDelivery/inspectConversation.ts",{services:{localDeliveryHistory:{inspect}}});
+ expect(await read({roomId:"owned-room",recipientPhrase:"@actual-recipient"})).toBe(actual);
+ expect(await read({roomId:"owned-room",recipientPhrase:null})).toBe(actual);
+ expect(inspect.mock.calls).toEqual([["owned-room","@actual-recipient"],["owned-room",null]]);
+});
