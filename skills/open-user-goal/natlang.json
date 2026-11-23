@@ -32,7 +32,7 @@
         "reconcileGoogleRunbook/attributeBasis/installed"
       ],
       "types": [
-        "GoogleRunbookReport"
+        "GoogleRunbookResult"
       ]
     },
     "prepareNewsEditionReview": {

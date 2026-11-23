@@ -164,8 +164,8 @@
         "write": "application value",
         "attribution": "application value"
       },
-      "result": "pending independent Calendar observation API",
-      "reason": "Read-only native validation currently consumes copied calendar; awaiting root Calendar migration interface"
+      "result": "GoogleRunbookResult",
+      "reason": "Actual runbook decision, working-copy receipt and attribution; requires Calendar native observedEvidence API from non-Base strand"
     },
     {
       "entry": "skills/open-user-goal/correctVaultFromPdf.nl",
@@ -179,7 +179,8 @@
     }
   ],
   "publicEntries": 15,
-  "migrated": 9,
+  "migrated": 10,
   "retainedApplicationValues": 5,
-  "pending": 1
+  "pending": 0,
+  "validation": "Not yet run; Calendar observedEvidence() required from non-Base strand"
 }

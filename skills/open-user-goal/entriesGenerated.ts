@@ -593,7 +593,7 @@ export default {
   "google-runbook": {
     "program": "skills/open-user-goal/reconcileGoogleRunbook.nl",
     "callable": "reconcileGoogleRunbook",
-    "resultType": "GoogleRunbookReport",
+    "resultType": "GoogleRunbookResult",
     "skill": "googleRunbook",
     "parameterNames": [
       "goal"

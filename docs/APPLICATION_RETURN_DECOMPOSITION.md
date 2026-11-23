@@ -51,3 +51,7 @@ Residual archive audit (`/home/werg/vibe0036-archive-oracle-audit/target-summary
 ## PDF-backed vault correction
 
 `PdfVaultCorrection.pdf` is the child inspection's internal observation; `handoff.directive` is an internally generated execution instruction. `PdfVaultCorrectionResult` returns only the actual verified source citation handle, a held reason when applicable, and the actual vault result. Native `pdf.verifyObserved()` checks real recorded layout/text/probe/render reads and private heads without a copied report. Successful correction still requires the source actually attested through `pdfVaultBridge.bind`, exact original citation lines and the actual vault edit/readback oracle. Qualification rejects forged source handles and preserves the existing forged quotation/stale/reconciliation checks. Native PDF support is the independently authored operational commit 3b42118, included unchanged here as 2d3fc8f.
+
+## Google runbook
+
+`GoogleRunbookReport.calendar` is the nested verifier's typed state. `GoogleRunbookResult` retains the actual runbook decision, write receipt and source attribution. The native oracle requests Calendar's independent `observedEvidence()` and verifies it against the actual native provider/catalog/window/readback evidence rather than requiring a model copy in the outer result. Exact target bytes, coedit reconciliation, private workspace preservation and attribution remain required, with an invented-write negative. The non-Base Calendar strand must provide this method before compiling the combined release.

@@ -4,4 +4,4 @@ import type { CalendarReport } from "./reviewCalendar/installed/types.js";
 import type { RunbookBasis, RunbookDecision, RunbookWrite } from "./contract.js";
 export type { CalendarReport };
 export type { RunbookBasis, RunbookDecision, RunbookWrite } from "./contract.js";
-export type GoogleRunbookReport = { calendar: CalendarReport; decision: RunbookDecision; write: RunbookWrite | null; attribution: ProvenanceReport };
+export type GoogleRunbookResult = {decision:RunbookDecision;write:RunbookWrite|null;attribution:ProvenanceReport};
