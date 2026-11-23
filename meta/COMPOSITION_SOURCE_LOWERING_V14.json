@@ -1,7 +1,7 @@
 {
   "schema": "natlang.actual-composition-source-policy/1",
   "corePolicy": "/home/werg/vibe-core-type-links-v14/ts-host/dist/compiler/policy.js",
-  "files": 252,
+  "files": 253,
   "errors": [],
   "checked": [
     {
@@ -93,6 +93,11 @@
       "template": "base",
       "path": "skills/open-local-delivery/workTowardLocalDelivery/bindReport.ts",
       "sha256": "7d6c6969742b6eecedc530e54ef355e04df8d40303c13c7b84799b1dbb0929e9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-local-delivery/workTowardLocalDelivery/inspectConversation.ts",
+      "sha256": "5d4a83e9f8db7278c98b3440279aef142bd36508a9f117bd1e5717cccaa6a2db"
     },
     {
       "template": "base",
@@ -1269,16 +1274,16 @@
     }
   ],
   "validation": {
-    "sourcePolicyUnit": "vibe-v14-composition-lowering-20261123c",
+    "sourcePolicyUnit": "vibe-v14-composition-lowering-delivery-a",
     "errors": 0,
-    "scannedSkillTypescriptFiles": 252,
+    "scannedSkillTypescriptFiles": 253,
     "ordinaryNativeExclusions": 3,
     "typeDeclarationModules": 61,
-    "actualCallableModuleParses": 188,
+    "actualCallableModuleParses": 189,
     "policyPeakMiB": 121.4,
     "policyWallSeconds": 1.144,
-    "browserRuntimeUnit": "vibe-v14-browser-iteration-20261123e",
-    "compositionTestsPassed": 4,
+    "browserRuntimeUnit": "vibe-v14-local-delivery-wrapper-a",
+    "compositionTestsPassed": 5,
     "runtimePeakMiB": 228.7,
     "runtimeSeconds": 0.772,
     "publicTypedBindings": 100,

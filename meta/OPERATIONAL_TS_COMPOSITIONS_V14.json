@@ -1190,7 +1190,15 @@
         ]
       ],
       "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",
-      "classification": "typed native composition with retained scoped natural-language judgments"
+      "classification": "typed native composition with retained scoped natural-language judgments",
+      "nativeBoundaryVerification": {
+        "path": "skills/open-local-delivery/workTowardLocalDelivery/inspectConversation.ts",
+        "sha256": "5d4a83e9f8db7278c98b3440279aef142bd36508a9f117bd1e5717cccaa6a2db",
+        "contract": "localDeliveryHistory.inspect(choice.roomId, choice.recipientPhrase)",
+        "validationUnit": "vibe-v14-local-delivery-wrapper-a",
+        "testsPassed": 5,
+        "outsideRootAudit": "Other direct wrappers in open-unit-rollout use exact unitId/revision; template-candidate and session-recovery outer TS compositions already pass their declared native signatures."
+      }
     },
     {
       "entry": "recoverSessionGoal",
