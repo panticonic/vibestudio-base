@@ -1,4 +1,4 @@
-import type { ModelExchange } from './modelTurnCapture.js';
+import type { ModelCaptureSession } from "./modelTurnCapture.js";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import type { RpcCallerLike } from "@vibestudio/shared/workspaceServiceRpc";
 import {
@@ -7,7 +7,11 @@ import {
   isModelUsable,
   type ModelCatalogEntry,
 } from "@workspace/model-catalog/catalog";
-import { MODEL_ROLE_CALL_BUDGETS, isModelRole, type ModelRole } from "@workspace/model-catalog/modelRoles";
+import {
+  MODEL_ROLE_CALL_BUDGETS,
+  isModelRole,
+  type ModelRole,
+} from "@workspace/model-catalog/modelRoles";
 import { modelSettingsRpcMethods } from "@workspace/model-catalog/rpc-contract";
 import type { ModelConfig, ModelDriver } from "../vendor/workerd/natlang-workerd.js";
 import type { ExecutorIdentity } from "./executorIdentity.js";
@@ -102,7 +106,7 @@ export function modelsFor(options: {
   gateway: ModelGatewayClient;
   directory: ModelDirectory;
   turnPrefix: string;
-  recordExchange?: (exchange: ModelExchange) => void;
+  prepareCapture?: (request: unknown) => Promise<ModelCaptureSession>;
   captureModelTurns?: () => boolean;
   executorModel?: () => string | undefined;
 }): {
@@ -120,14 +124,22 @@ export function modelsFor(options: {
    */
   const driverFor = (model: string, guided: () => boolean): ModelDriver => {
     const driver = gatewayDriver({
-      recordExchange: options.recordExchange,
+      prepareCapture: options.prepareCapture,
       captureModelTurns: options.captureModelTurns,
       gateway: options.gateway,
-      resolver: { resolve: (ref) => options.directory.resolve(ref === EXECUTOR_ROLE ? options.executorModel?.() ?? ref : ref) },
+      resolver: {
+        resolve: (ref) =>
+          options.directory.resolve(
+            ref === EXECUTOR_ROLE ? (options.executorModel?.() ?? ref) : ref
+          ),
+      },
       model,
       turnPrefix: `${options.turnPrefix}:${model}`,
     });
-    Object.defineProperty(driver, "guidance", { get: () => (guided() ? true : undefined), enumerable: true });
+    Object.defineProperty(driver, "guidance", {
+      get: () => (guided() ? true : undefined),
+      enumerable: true,
+    });
     return driver;
   };
   let pinned: ModelCatalogEntry | null = null;
@@ -178,5 +190,10 @@ export function modelsFor(options: {
     },
     has: (_, name) => typeof name === "string",
   });
-  return { executor, executorIdentity, pinExecutor: (entry) => void (pinned = entry), models };
+  return {
+    executor,
+    executorIdentity,
+    pinExecutor: (entry) => void (pinned = entry),
+    models,
+  };
 }

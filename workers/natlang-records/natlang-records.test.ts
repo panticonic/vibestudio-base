@@ -704,7 +704,104 @@ describe("contract and authority", () => {
     const sensitivity = (method: string) => rpcMethodAuthority(instance, method)?.sensitivity;
     for (const method of ["listCalls", "getCall", "getValue", "tuneExamples", "liveInterest", "subscribeLive", "listEvaluations", "stats"])
       expect(sensitivity(method), method).toBe("read");
-    for (const method of ["begin", "progress", "discard", "record", "annotate", "feedback", "importExamples", "publishLive", "unsubscribeLive", "recordEvaluation"])
+    for (const method of ["begin", "progress", "appendExchange", "checkpoint", "discard", "record", "annotate", "feedback", "importExamples", "publishLive", "unsubscribeLive", "recordEvaluation"])
       expect(sensitivity(method), method).toBe("write");
   });
+});
+
+it('preserves committed exchanges for unfinished calls and rejects conflicts, gaps, and wrong identities',async()=>{
+  const store=await create();
+  const full=makeRecord({callId:'interrupted'});
+  await store.begin({owner:OWNER,runId:'run',callId:'interrupted',parentCallId:null,parentActionIndex:null,taskId:'task-1',programId:null,programRoot:null,
+    definition:full.record.definition,modelId:'teacher:luna',startedAt:'2026-01-01T00:00:00.000Z',auditOf:null});
+  const exchange={schema:'natlang.model-exchange/1' as const,kind:'generation' as const,request:{invocation_id:'interrupted'},reply:{content:'completed paid response'}};
+  await store.appendExchange({callId:'interrupted',ordinal:0,exchange});
+  await store.appendExchange({callId:'interrupted',ordinal:0,exchange});
+  expect((await store.getCall({callId:'interrupted'}))?.model_turns).toEqual([exchange]);
+  expect((await store.getCall({callId:'interrupted'}))?.record).toBeNull();
+  await expect(store.appendExchange({callId:'interrupted',ordinal:0,exchange:{...exchange,reply:'changed'}})).rejects.toThrow('conflict');
+  await expect(store.appendExchange({callId:'interrupted',ordinal:2,exchange})).rejects.toThrow('next running');
+  await expect(store.appendExchange({callId:'other',ordinal:0,exchange})).rejects.toThrow('identity');
+  await expect(store.annotate({callId:'interrupted',kind:'model-exchange',value:exchange})).rejects.toThrow('Use appendExchange');
+  await store.discard({callId:'interrupted'});
+  expect((await store.getCall({callId:'interrupted'}))?.model_turns).toEqual([exchange]);
+  const bad={...full,record:{...full.record,model_turns:[{...exchange,reply:'forged'}]}};
+  await expect(store.record(bad)).rejects.toThrow('committed');
+  expect((await store.getCall({callId:'interrupted'}))?.model_turns).toEqual([exchange]);
+  await store.record({...full,record:{...full.record,model_turns:[exchange]}});
+  const done=await store.getCall({callId:'interrupted'});
+  expect(done?.record?.model_turns).toEqual([exchange]);
+  expect(done?.model_turns).toBeUndefined();
+  expect(done?.annotations.some(row=>row.kind==='model-exchange')).toBe(false);
+  await store.appendExchange({callId:'interrupted',ordinal:0,exchange});
+  await expect(store.record(bad)).rejects.toThrow('committed');
+  expect((await store.getCall({callId:'interrupted'}))?.record?.model_turns).toEqual([exchange]);
+  await expect(store.record({...full,record:{...full.record,model_turns:[exchange],detail:"rewritten"}})).rejects.toThrow("immutable");
+  await store.record({...full,record:{...full.record,model_turns:[exchange]}});
+  expect((await store.getCall({callId:"interrupted"}))?.record?.detail).toBe(full.record.detail);
+
+});
+
+it("retains native graph checkpoints and hashed values across interruption and finalization", async () => {
+  const store = await create();
+  await begin(store, "checkpointed");
+  const first = makeRecord({callId:"checkpointed",output:{nativeReceipt:"actual side effect"}});
+  const state = {...first.record,outcome:"running"};
+  await store.checkpoint({callId:"checkpointed",state,blobs:first.blobs,events:'{"event":"native-return"}\n'});
+  const snapshot = await store.getCall({callId:"checkpointed"});
+  expect(snapshot).toMatchObject({record:null,capture_state:state,events:'{"event":"native-return"}\n'});
+  for (const [hash,text] of Object.entries(first.blobs)) expect(await store.getValue({hash})).toBe(text);
+  await store.discard({callId:"checkpointed"});
+  expect((await store.getCall({callId:"checkpointed"}))?.capture_state).toEqual(state);
+  store.budget = 1;
+  await store.record(makeRecord({callId:"eviction-trigger"}));
+  expect((await store.getCall({callId:"checkpointed"}))?.capture_state).toEqual(state);
+  for (const hash of Object.keys(first.blobs)) expect(await store.getValue({hash})).not.toBeNull();
+  await expect(store.annotate({callId:"checkpointed",kind:"call-checkpoint",value:{}})).rejects.toThrow("reserved capture");
+  // Finalization can reuse already acknowledged values without retransmission.
+  await store.record({...first,blobs:{}});
+  const done = await store.getCall({callId:"checkpointed"});
+  expect(done?.record).toEqual(first.record);
+  expect(done?.capture_state).toBeUndefined();
+  expect(done?.annotations.some(row=>row.kind==="call-checkpoint")).toBe(false);
+  for (const [hash,text] of Object.entries(first.blobs)) expect(await store.getValue({hash})).toBe(text);
+  await expect(store.checkpoint({callId:"checkpointed",state,blobs:{}})).rejects.toThrow("completed call");
+});
+
+it("binds checkpoints to begin identity and rejects corrupt/missing values atomically", async () => {
+  const store = await create();
+  await begin(store,"bound");
+  const full=makeRecord({callId:"bound"});
+  await store.checkpoint({callId:"bound",state:full.record,blobs:full.blobs});
+  for (const state of [
+    {...full.record,call_id:"foreign"}, {...full.record,task_id:"other"},
+    {...full.record,definition:{...full.record.definition,key:"other"}},
+    {...full.record,definition:{...full.record.definition,source:"foreign.nl"}},
+  ]) await expect(store.checkpoint({callId:"bound",state,blobs:{}})).rejects.toThrow(/identity|differs/);
+  const forged="f".repeat(64);
+  await expect(store.checkpoint({callId:"bound",state:full.record,blobs:{[forged]:"corrupt"}})).rejects.toThrow("SHA-256");
+  await expect(store.checkpoint({callId:"bound",state:{...full.record,output:{complete:true,hash:forged}},blobs:{}})).rejects.toThrow("unavailable");
+  expect((await store.getCall({callId:"bound"}))?.capture_state).toEqual(full.record);
+  await expect(store.record({...full,record:{...full.record,task_id:"foreign"}})).rejects.toThrow("identity");
+  expect((await store.getCall({callId:"bound"}))?.record).toBeNull();
+  await store.checkpoint({callId:"bound",state:{...full.record,nativeSteps:2},blobs:{}});
+  expect((await store.getCall({callId:"bound"}))?.capture_state).toMatchObject({nativeSteps:2});
+});
+
+
+it("journals independent score responses/errors and preserves events-normalized exact final retries",async()=>{
+  const store=await create(); await begin(store,"scored");
+  const response={schema:"natlang.model-exchange/1" as const,kind:"score" as const,request:{invocation_id:"scored",candidates:["yes","no"]},reply:{scores:[1,0]}};
+  const failed={schema:"natlang.model-exchange/1" as const,kind:"generation" as const,request:{invocation_id:"scored"},error:{name:"ProviderError",message:"actual transport failure"}};
+  await store.appendExchange({callId:"scored",ordinal:0,exchange:response});
+  await store.appendExchange({callId:"scored",ordinal:1,exchange:failed});
+  const full=makeRecord({callId:"scored",events:'{"native":"receipt"}\n'});
+  full.record.model_turns=[response,failed];
+  await store.record(full); await store.record(full);
+  const normalized=(await store.getCall({callId:"scored"}))!.record!;
+  await store.record({...full,record:normalized,events:undefined});
+  expect((await store.getCall({callId:"scored"}))?.events).toBe(full.events);
+  await expect(store.record({...full,events:"changed native receipt"})).rejects.toThrow("immutable");
+  await expect(store.record({...full,record:{...full.record,effects:[{forged:true}]}})).rejects.toThrow("immutable");
+  expect((await store.getCall({callId:"scored"}))?.record?.model_turns).toEqual([response,failed]);
 });

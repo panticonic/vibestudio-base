@@ -163,6 +163,10 @@ export interface CallDetail {
   /** Null while the call is still running (or was interrupted before it was recorded). */
   record: CallRecordJson | null;
   summary: CallSummary;
+  /** Committed model exchanges of an unfinished call; no completion is implied. */
+  model_turns?: unknown[];
+  /** Latest durably acknowledged native graph snapshot; does not imply completion. */
+  capture_state?: NatlangCallCheckpointState;
   /** The latest event stream (ndjson), or null when there is none or it was evicted. */
   events: string | null;
   annotations: Annotation[];
@@ -246,6 +250,36 @@ export const natlangProgressInputSchema = z
   .object({ callId: idSchema, events: z.string() })
   .strict();
 export type NatlangProgressInput = z.infer<typeof natlangProgressInputSchema>;
+
+/** Append-only model I/O journal. The ordinal binds each exact exchange to one call. */
+export const natlangAppendExchangeInputSchema = z.object({
+  callId: idSchema,
+  ordinal: z.number().int().nonnegative(),
+  exchange: z.object({
+    schema: z.literal("natlang.model-exchange/1"),
+    kind: z.enum(["generation", "score"]),
+    request: z.unknown(),
+    reply: z.unknown().optional(),
+    provider: z.unknown().optional(),
+    error: z.object({name:z.string(),message:z.string()}).strict().optional(),
+  }).strict(),
+}).strict();
+export type NatlangAppendExchangeInput = z.infer<typeof natlangAppendExchangeInputSchema>;
+
+/** A native graph snapshot is opaque except for its immutable begin identity. */
+export const natlangCallCheckpointStateSchema = z.object({
+  call_id: idSchema,
+  task_id: z.string(),
+  definition: definitionIdentitySchema.passthrough(),
+}).passthrough();
+export type NatlangCallCheckpointState = z.infer<typeof natlangCallCheckpointStateSchema>;
+export const natlangCheckpointInputSchema = z.object({
+  callId: idSchema,
+  state: natlangCallCheckpointStateSchema,
+  blobs: z.record(z.string()),
+  events: z.string().optional(),
+}).strict();
+export type NatlangCheckpointInput = z.infer<typeof natlangCheckpointInputSchema>;
 
 export const natlangDiscardInputSchema = z.object({ callId: idSchema }).strict();
 export type NatlangDiscardInput = z.infer<typeof natlangDiscardInputSchema>;
@@ -458,6 +492,8 @@ export type NatlangListEvaluationsInput = z.infer<typeof natlangListEvaluationsI
 export interface NatlangRecordsRpc {
   begin(input: NatlangBeginInput): Promise<void>;
   progress(input: NatlangProgressInput): Promise<void>;
+  appendExchange(input: NatlangAppendExchangeInput): Promise<void>;
+  checkpoint(input: NatlangCheckpointInput): Promise<void>;
   discard(input: NatlangDiscardInput): Promise<void>;
   record(input: NatlangRecordInput): Promise<NatlangRecordResult>;
   listCalls(filter: NatlangListCallsFilter): Promise<CallSummary[]>;
@@ -485,6 +521,8 @@ export interface NatlangRecordsRpc {
 export const natlangRecordsRpcMethods = createReceiverRpcMethods<NatlangRecordsRpc>([
   "begin",
   "progress",
+  "appendExchange",
+  "checkpoint",
   "discard",
   "record",
   "listCalls",
