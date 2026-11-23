@@ -3,7 +3,7 @@ import readDictationThread from "./workOnDictationHandoffGoal/workspace/readDict
 import stageDictationCorrection from "./workOnDictationHandoffGoal/workspace/stageDictationCorrection.js";
 import identifyDictationThread from "./workOnDictationHandoffGoal/identifyDictationThread.nl";
 import reconcileDictationSegments from "./workOnDictationHandoffGoal/reconcileDictationSegments.nl";
-import reviewRetainedDictation from "./workOnDictationHandoffGoal/reviewRetainedDictation.nl";
+import reviewRetainedDictation from "./workOnDictationHandoffGoal/reviewRetainedDictation.js";
 import decideDictationHandoff from "./workOnDictationHandoffGoal/decideDictationHandoff.nl";
 import applicationResult from "./workOnDictationHandoffGoal/applicationResult.js";
 import type {DictationResult} from "./workOnDictationHandoffGoal/types.js";

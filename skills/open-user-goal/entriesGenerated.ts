@@ -191,7 +191,7 @@ export default {
     "additionalArguments": {}
   },
   "launch-state": {
-    "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+    "program": "skills/open-user-goal/reconcilePanelLaunchState.ts",
     "callable": "reconcilePanelLaunchState",
     "resultType": "LaunchResult | null",
     "skill": "panelLaunchState",
@@ -211,7 +211,7 @@ export default {
     "additionalArguments": {}
   },
   "bridge-delivery": {
-    "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
+    "program": "skills/open-user-goal/workOnBridgeDelivery.ts",
     "callable": "workOnBridgeDelivery",
     "resultType": "BridgeResult | null",
     "skill": "bridgeDelivery",
@@ -221,7 +221,7 @@ export default {
     "additionalArguments": {}
   },
   "chat-continuity": {
-    "program": "skills/open-user-goal/workOnChatContinuity.nl",
+    "program": "skills/open-user-goal/workOnChatContinuity.ts",
     "callable": "workOnChatContinuity",
     "resultType": "ChatResult",
     "skill": "chatContinuity",
@@ -391,7 +391,7 @@ export default {
     "additionalArguments": {}
   },
   "personal-welcome": {
-    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+    "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.ts",
     "callable": "workOnPersonalWelcomeGoal",
     "resultType": "WelcomeResult",
     "skill": "personalWelcome",
@@ -611,7 +611,7 @@ export default {
     "additionalArguments": {}
   },
   "unit-handoff": {
-    "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+    "program": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
     "callable": "reviewUnitHandoffGoal",
     "resultType": "UnitHandoffResult",
     "skill": "unitHandoff",
@@ -641,7 +641,7 @@ export default {
     "additionalArguments": {}
   },
   "specialist-handoff": {
-    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+    "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.ts",
     "callable": "workOnSpecialistHandoffGoal",
     "resultType": "SpecialistResult",
     "skill": "specialistHandoff",
@@ -671,7 +671,7 @@ export default {
     "additionalArguments": {}
   },
   "provider-handoff": {
-    "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+    "program": "skills/open-user-goal/workOnProviderHandoffGoal.ts",
     "callable": "workOnProviderHandoffGoal",
     "resultType": "ProviderResult",
     "skill": "providerHandoff",
@@ -861,7 +861,7 @@ export default {
     "additionalArguments": {}
   },
   "eval-handoff": {
-    "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+    "program": "skills/open-user-goal/workOnEvalHandoffGoal.ts",
     "callable": "workOnEvalHandoffGoal",
     "resultType": "EvalRecoveryResult",
     "skill": "evalHandoff",
