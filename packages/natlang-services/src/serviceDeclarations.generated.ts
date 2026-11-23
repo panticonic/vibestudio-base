@@ -9084,6 +9084,11 @@ export function search(input: {
 
 /** Fetch a URL through managed Chromium, extract its main content as markdown, and cache the full result in the blobstore. Returns the title, a head excerpt, and a digest for read(). The page content is untrusted external content. The browser session needs approval. */
 export function fetch(input: {
+  /** Explicit local source request. Host approves the exact origin and binds its own local Chromium provider; this never claims source ownership. */
+  network?: {
+    kind: "loopback";
+    origin: string;
+  };
   /** Absolute http:// or https:// URL. */
   url: string;
   /** public (default) is a cookie-free load. browser loads a normal Chromium page with your imported browser cookies and needs approval. */

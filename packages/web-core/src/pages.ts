@@ -79,7 +79,7 @@ export function createWebPages(deps: WebPageDeps): WebPages {
   return {
     async fetch(input, options) {
       const signal = options?.signal;
-      const { url, session = "public" } = input;
+      const { url, session = "public", network } = input;
       if (!url || typeof url !== "string") {
         throw new Error("web_fetch: 'url' is required");
       }
@@ -92,7 +92,7 @@ export function createWebPages(deps: WebPageDeps): WebPages {
       const sourceHost = hostnameOf(url);
       if (!sourceHost) throw new Error("web_fetch: URL has no canonical host");
       const t0 = now();
-      const cacheKey = `${session}:${url}`;
+      const cacheKey = `${session}:${network?.origin ?? "public"}:${url}`;
       const cached = urlCacheGet(cacheKey);
       if (cached) {
         const headSlice = await readUtf8BlobRange(deps.rpc, cached.digest, 0, headLength);
@@ -121,7 +121,7 @@ export function createWebPages(deps: WebPageDeps): WebPages {
       // support. Keep that feature payload out of every cold isolate;
       // workerd loads the split module on the first fetch.
       const { extractPage } = await import("./extract.js");
-      const pageFetcher = deps.fetcher ?? createChromiumFetch(deps.rpc, session);
+      const pageFetcher = deps.fetcher ?? createChromiumFetch(deps.rpc, session, network);
       const page = await extractPage(url, withAbort(pageFetcher, signal) as never, signal);
       await deps.recordIngestion?.({
         key: `web:${sourceHost}`,
