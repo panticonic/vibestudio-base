@@ -43,7 +43,7 @@ it("reconsiders a stale browser action from the actual new visible revision",asy
  const activate=vi.fn().mockResolvedValueOnce("changed").mockResolvedValueOnce("activated");
  const choosePanelAction=vi.fn().mockResolvedValueOnce({kind:"act",control:"old-action"}).mockResolvedValueOnce({kind:"act",control:"new-action"}).mockResolvedValueOnce({kind:"report",labels:["Task"]});
  const run=compose("workInBrowser.ts",{services:{goalBrowser:{inspect,activate}},choosePanelAction});
- expect(await natlang.createNatlangRuntime().run(()=>run("Complete Task"))).toEqual({status:"changed",revision:"done",rows:[{label:"Task",state:"done",detail:"saved"}]});
+ expect(await natlang.createNatlangRuntime({platform:natlang.workerdPlatform({realm:{call(body:string,params:string[],args:unknown[]){return Function(...params,body)(...args);}}})}).run(()=>run("Complete Task"))).toEqual({status:"changed",revision:"done",rows:[{label:"Task",state:"done",detail:"saved"}]});
  expect(activate.mock.calls).toEqual([["old-action","old"],["new-action","current"]]);
  expect(choosePanelAction.mock.calls[1]).toEqual(["Complete Task",current]);
 });
