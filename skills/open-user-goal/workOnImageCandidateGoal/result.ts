@@ -1,4 +1,4 @@
-import type {ImageReport,ImageCandidateResult} from "./types.js";
-export default function result(report:ImageReport):ImageCandidateResult {
- return {candidates:report.assessment.candidates,originals:report.reads,decision:report.decision,handoff:report.handoff};
+import type {ImageAssessment,ImageRead,ImageDecision,ImageHandoff,ImageCandidateResult} from "./types.js";
+export default function result(assessment:ImageAssessment,originals:ImageRead[],decision:ImageDecision,handoff:ImageHandoff|null):ImageCandidateResult {
+ return {candidates:assessment.candidates,originals,decision,handoff};
 }
