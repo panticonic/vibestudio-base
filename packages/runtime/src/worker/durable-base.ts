@@ -1,5 +1,5 @@
 import { AlarmProjectionPublisher } from "./alarm-projection-publisher.js";
-import { LifecyclePreparation } from "@vibestudio/shared/lifecyclePreparation";
+import { LifecyclePreparation, LIFECYCLE_RELEASED_STATE_KEY } from "@vibestudio/shared/lifecyclePreparation";
 import { serializeRpcFailure, deserializeRpcFailure } from "@vibestudio/rpc";
 import { createTypedRpcServiceClient } from "@vibestudio/shared/typedRpcServiceClient";
 /**
@@ -210,7 +210,13 @@ export interface DORef {
 // framework/lifecycle methods are simply never `@rpc`-marked, and the base-proto boundary backstops.)
 
 export abstract class DurableObjectBase {
-  private readonly lifecyclePreparation = new LifecyclePreparation();
+  private readonly lifecyclePreparation = new LifecyclePreparation({
+    get: () => this.getStateValue(LIFECYCLE_RELEASED_STATE_KEY) as "started" | "complete" | null,
+    set: (state) => {
+      if (state) this.setStateValue(LIFECYCLE_RELEASED_STATE_KEY, state);
+      else this.deleteStateValue(LIFECYCLE_RELEASED_STATE_KEY);
+    },
+  });
   protected ctx: DurableObjectContext;
   protected sql: TypedSqlStorage;
   protected env: Record<string, unknown>;
@@ -1273,6 +1279,8 @@ export abstract class DurableObjectBase {
             ? await (async () => {
                 const input = parseLifecyclePrepareInput(args[0]);
                 this.lifecyclePreparation.advance(input);
+                  if (this.lifecyclePreparation.releaseCompleted())
+                    return { status: "ready" } satisfies LifecyclePrepareResult;
                 if (input.phase === "cancel") {
                   await this.cancelLifecyclePreparation(input);
                   this.lifecyclePreparation.cancelled(input);
@@ -1305,6 +1313,7 @@ export abstract class DurableObjectBase {
                     "Lifecycle preparation failed",
                     { cause: failures[0] },
                   );
+                if (released?.status === "ready") this.lifecyclePreparation.completed(input);
                 return released!;
               })()
             : method === "__lifecycle/initializeClone"
@@ -1953,7 +1962,7 @@ export abstract class DurableObjectBase {
       const result = await this._invocationContext.run(context, async () => {
         try {
           const result = await callback();
-          if (message.method !== "__alarm") {
+          if (message.method !== "__alarm" && !this.lifecyclePreparation.resourcesReleased()) {
             const nextAlarm = await this.nextAlarmAfterRequest();
             if (nextAlarm === null) this.deleteAlarm();
             else if (nextAlarm !== undefined) this.setAlarmAt(nextAlarm.wakeAt);
@@ -2236,6 +2245,7 @@ export abstract class DurableObjectBase {
         }
       }
       this.initializeClonedStorage(input);
+      this.lifecyclePreparation.resumed();
       // Readiness and worker claims belong to the source activation, not its copy.
       this.sql
         .exec(`DELETE FROM state WHERE key LIKE 'durable-work-ready-generation:%'

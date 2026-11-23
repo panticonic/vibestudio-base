@@ -2791,3 +2791,18 @@ describe("DurableObjectBase title persistence", () => {
     expect(instance.explicitFlag).toBe(true);
   });
 });
+
+it("does not republish wakes after lifecycle release and resumes them only on reactivation",async()=>{
+ const {instance,callAs}=await createTestDO(LifecycleProbeDO);
+ await callAs("server","callerKind");expect(instance.scheduleProjectionCalls).toBe(1);
+ expect((await lifecyclePhase(instance,"quiesce")).status).toBe(200);
+ expect((await lifecyclePhase(instance,"release")).status).toBe(200);
+ await callAs("server","callerKind");expect(instance.scheduleProjectionCalls).toBe(1);
+ const resumed=await instance.fetch(new Request("http://test/test-key/__lifecycle/resume",{method:"POST",body:JSON.stringify({
+  args:[{epoch:"e1",previousGeneration:null,currentGeneration:1,reason:"planned"}],
+  __instanceToken:"token",__instanceId:"do:internal/WorkspaceDO:test-key",
+  __caller:authenticatedTestCaller("__lifecycle/resume"),
+ })}));
+ expect(resumed.status).toBe(200);
+ await callAs("server","callerKind");expect(instance.scheduleProjectionCalls).toBe(2);
+});
