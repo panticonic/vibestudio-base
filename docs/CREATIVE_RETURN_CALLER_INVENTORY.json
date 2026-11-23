@@ -1,0 +1,289 @@
+[
+  {
+    "entry": "skills/open-user-goal/prepareContentProject.nl",
+    "consumerEvidence": [
+      "/home/werg/natlang/scripts/neuralese_data/reassess_goal_return_roles.mjs:27:     native.entry?.callable!=='prepareContentProject'||prior.contextId!==state.contextId||prior.caseId!==state.caseId||",
+      "/home/werg/natlang/scripts/neuralese_data/reassess_goal_return_roles.test.mjs:18: const entry={callable:'prepareContentProject',arguments:{goal}};",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:300:      \"path\": \"skills/open-user-goal/prepareContentProject/finishPrivateProject/commitReviewedProject.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4356:      \"path\": \"skills/open-user-goal/prepareContentProject/confirmProjectScope.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4372:      \"output\": \"skills/open-user-goal/prepareContentProject/confirmProjectScope.ts\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4377:      \"path\": \"skills/open-user-goal/prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4390:      \"output\": \"skills/open-user-goal/prepareContentProject/reviewProjectEvidence/readOwnedProjectSources.ts\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:803:    \"program\": \"skills/open-user-goal/prepareContentProject.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:804:    \"callable\": \"prepareContentProject\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:26:    observe(): Promise<import(\"./prepareContentProject/types.js\").ProjectEvidenceReview>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:29:    confirm(revision: string, decision: import(\"./prepareContentProject/types.js\").ProjectEvidenceDecision):",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:30:      Promise<import(\"./prepareContentProject/types.js\").ProjectScopeLease>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:33:    observe(receipt: string | null): Promise<import(\"./prepareContentProject/types.js\").PreparedContentSnapshot | null>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:34:    prepare(receipt: string | null, head: string): Promise<import(\"./prepareContentProject/types.js\").PreparedContentSnapshot | null>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:36:      Promise<import(\"./prepareContentProject/types.js\").PreparedContentSnapshot | null>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/CONTENT_PROJECT_EVIDENCE_DECOMPOSITION.md:5:| Locate the project and its source records | `prepareContentProject` calls a typed evidence discovery subtree | The original user goal determines the audience and requested deliverables. Resolve exact current source records before treating requirements as true. |",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:77:    \"prepareContentProject\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:79:        \"prepareContentProject/authorProjectDocuments/compose\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:241:    \"prepareContentProject/authorProjectDocuments/compose\": \"skills/vibestudio-workflows/runWorkflow/deliverProject\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/evidence-inventory/handoff-inputs.json:126:      \"path\": \"skills/open-user-goal/prepareContentProject/finishPrivateProject.ts\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:804:    \"program\": \"skills/open-user-goal/prepareContentProject.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:805:    \"callable\": \"prepareContentProject\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/evidence-inventory/WAVE0035_SEMANTIC_BOUNDARIES.md:9:- Base `prepareContentProject` used NL for exact preparation/write forwarding,"
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/generateOwnedIllustration.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:433:    \"program\": \"skills/open-user-goal/generateOwnedIllustration.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:434:    \"callable\": \"generateOwnedIllustration\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/generateOwnedIllustration/DECOMPOSITION.md:5:1. `generateOwnedIllustration` discovers a local brief and uses `inspectIllustrationBasis.readCurrentImagePlan` to bind current project output and retained job state. A typed `chooseIllustrationAction` weighs no action, native create, retry of the exact authorized failed/canceled attempt, or use of existing success. Do not create a second paid request for a queued/completed job, an occupied create-only output, or an unapproved reference or scope.",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:203:    discover(): Promise<import(\"./generateOwnedIllustration/contract.js\").IllustrationAssignment>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:204:    read(scope: string): Promise<import(\"./generateOwnedIllustration/contract.js\").IllustrationBasis>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:207:    run(scope: string, head: string, action: import(\"./generateOwnedIllustration/contract.js\").IllustrationDecision[\"action\"]):",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:208:      Promise<import(\"./generateOwnedIllustration/contract.js\").IllustrationOutcome>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:211:    save(scope: string, head: string, job: string, digest: string): Promise<import(\"./generateOwnedIllustration/contract.js\").IllustrationSave>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/types.ts:583:export * from \"./generateOwnedIllustration/contract.js\";",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:434:    \"program\": \"skills/open-user-goal/generateOwnedIllustration.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:435:    \"callable\": \"generateOwnedIllustration\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4035:      \"path\": \"skills/open-user-goal/generateOwnedIllustration/discoverIllustration.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4047:      \"output\": \"skills/open-user-goal/generateOwnedIllustration/discoverIllustration.ts\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4052:      \"path\": \"skills/open-user-goal/generateOwnedIllustration/inspectIllustrationBasis/readCurrentImagePlan.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4067:      \"output\": \"skills/open-user-goal/generateOwnedIllustration/inspectIllustrationBasis/readCurrentImagePlan.ts\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4072:      \"path\": \"skills/open-user-goal/generateOwnedIllustration/retainIllustrationOriginal/writeVerifiedOriginal.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4089:      \"output\": \"skills/open-user-goal/generateOwnedIllustration/retainIllustrationOriginal/writeVerifiedOriginal.ts\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4094:      \"path\": \"skills/open-user-goal/generateOwnedIllustration/runIllustrationJob/readNativeImageOutcome.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4111:      \"output\": \"skills/open-user-goal/generateOwnedIllustration/runIllustrationJob/readNativeImageOutcome.ts\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:1255:      \"path\": \"skills/open-user-goal/reviewDevelopmentAudit/keepDevelopmentRepair.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:1272:      \"output\": \"skills/open-user-goal/reviewDevelopmentAudit/keepDevelopmentRepair.ts\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4876:      \"path\": \"skills/open-user-goal/reviewDevelopmentAudit/discoverDevelopmentAudit.nl\",",
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:4888:      \"output\": \"skills/open-user-goal/reviewDevelopmentAudit/discoverDevelopmentAudit.ts\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:513:    \"program\": \"skills/open-user-goal/reviewDevelopmentAudit.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:514:    \"callable\": \"reviewDevelopmentAudit\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:514:    \"program\": \"skills/open-user-goal/reviewDevelopmentAudit.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:515:    \"callable\": \"reviewDevelopmentAudit\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:505:      \"reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/types.ts:576:export * from \"./reviewDevelopmentAudit/contract.js\";",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:278:    discover(): Promise<import(\"./reviewDevelopmentAudit/contract.js\").DevelopmentAssignment>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:279:    read(id: string): Promise<import(\"./reviewDevelopmentAudit/contract.js\").DevelopmentObservation | null>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:282:    keep(id: string, snapshot: string, updatedAt: number): Promise<import(\"./reviewDevelopmentAudit/contract.js\").DevelopmentKeepReceipt>;"
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:73:    \"program\": \"skills/open-user-goal/reviseCoordinatedDocuments.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:74:    \"callable\": \"reviseCoordinatedDocuments\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:74:    \"program\": \"skills/open-user-goal/reviseCoordinatedDocuments.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:75:    \"callable\": \"reviseCoordinatedDocuments\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:66:    \"reviseCoordinatedDocuments\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:68:        \"reviseCoordinatedDocuments/workspace\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:69:        \"reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:70:        \"reviseCoordinatedDocuments/planCoordinatedRevision/policy\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:71:        \"reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:258:    \"reviseCoordinatedDocuments/workspace\": \"skills/open-coordinated-revision\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:259:    \"reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules\": \"skills/vibestudio-workflows/evidence\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:260:    \"reviseCoordinatedDocuments/planCoordinatedRevision/policy\": \"skills/workspace-document-revision\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:261:    \"reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy\": \"skills/workspace-document-revision\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/meta/NATIVE_PASSTHROUGH_INVENTORY.json:405:      \"path\": \"skills/open-user-goal/workOnNewsEvidenceGoal/reviewNewsReaderWindow.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:343:    \"program\": \"skills/open-user-goal/workOnNewsEvidenceGoal.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:344:    \"callable\": \"workOnNewsEvidenceGoal\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:194:    \"workOnNewsEvidenceGoal\": {\"types\":[\"NewsEvidenceResult\"]},",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/evidence-inventory/handoff-inputs.json:790:      \"path\": \"skills/open-user-goal/workOnNewsEvidenceGoal/decideNewsEvidenceHandoff.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:344:    \"program\": \"skills/open-user-goal/workOnNewsEvidenceGoal.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:345:    \"callable\": \"workOnNewsEvidenceGoal\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/prepareNewsEditionReview.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-sst/workers/system-test-runner/index.ts:3978:      ? `import {prepareNewsEditionReview} from \"@workspace-skills/system-testing/open-goal-product-owned-managed\";",
+      "/home/werg/vibe-app-values-sst/workers/system-test-runner/index.ts:3983:         const prepared=await prepareNewsEditionReview(input,world,{canonicalizeUrl,articleId,capture:captureNewsReaderReadback});`",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-product-owned-managed.ts:176:export async function prepareNewsEditionReview(input: Input, world: NewsEditionReviewWorld, installed: Installed,",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-product-owned-managed.test.ts:3:import { prepareGoogleRunbook, prepareNewsEditionReview } from \"./open-goal-product-owned-managed.js\";",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-product-owned-managed.test.ts:29:  const prepared = await prepareNewsEditionReview(input, {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:603:    \"program\": \"skills/open-user-goal/prepareNewsEditionReview.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:604:    \"callable\": \"prepareNewsEditionReview\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:38:    \"prepareNewsEditionReview\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:40:        \"prepareNewsEditionReview/designEditorPacket/installed\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:41:        \"prepareNewsEditionReview/reviewBriefing/installed\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:42:        \"prepareNewsEditionReview/attributeBasis/installed\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:233:    \"prepareNewsEditionReview/attributeBasis/installed\": \"skills/provenance-orientation\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:237:    \"prepareNewsEditionReview/designEditorPacket/installed\": \"skills/visualize\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:238:    \"prepareNewsEditionReview/reviewBriefing/installed\": \"skills/news-workflows\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:374:      \"prepareNewsEditionReview.nl\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:470:    readDesk(): Promise<import(\"./prepareNewsEditionReview/contract.js\").EditorDesk>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:471:    stage(desk: import(\"./prepareNewsEditionReview/contract.js\").EditorDesk,",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:472:      plan: import(\"./prepareNewsEditionReview/contract.js\").EditorPacketPlan, news: unknown, presentation: unknown):",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:473:      Promise<import(\"./prepareNewsEditionReview/contract.js\").EditorPacketReceipt | null>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:604:    \"program\": \"skills/open-user-goal/prepareNewsEditionReview.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:605:    \"callable\": \"prepareNewsEditionReview\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:293:    \"program\": \"skills/open-user-goal/workOnImageCandidateGoal.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:294:    \"callable\": \"workOnImageCandidateGoal\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/evidence-inventory/handoff-inputs.json:766:      \"path\": \"skills/open-user-goal/workOnImageCandidateGoal/decideImageHandoff.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:294:    \"program\": \"skills/open-user-goal/workOnImageCandidateGoal.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:295:    \"callable\": \"workOnImageCandidateGoal\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:286:    \"workOnImageCandidateGoal/workspace\": \"skills/open-image-candidate\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/types.ts:584:export type { ImageReport } from \"./workOnImageCandidateGoal/types.js\";"
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/workOnEditorialPacket.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:654:    pdfGoalDocuments: [\"workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.nl\", \"pdf/workOnPdfGoal.nl\"],",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:655:    pdfGoalVisual: [\"workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.nl\", \"pdf/workOnPdfGoal/readRenderedPages.nl\"],",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:659:    pdfLayoutRead: [\"workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl\", \"pdf/reviewPdfLayout.nl\"],",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:243:    \"program\": \"skills/open-user-goal/workOnEditorialPacket.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:244:    \"callable\": \"workOnEditorialPacket\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:169:    \"workOnEditorialPacket\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:171:        \"workOnEditorialPacket/packet\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:172:        \"workOnEditorialPacket/reviewPacketSource/packet\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:251:    \"workOnEditorialPacket/packet\": \"skills/open-editorial-packet\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:252:    \"workOnEditorialPacket/reviewPacketSource/packet\": \"skills/open-editorial-packet\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:253:    \"workOnEditorialPacket/reviewPacketSource/pdf\": \"skills/pdf-intake\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:276:    \"workOnEditorialPacket/proposeEditorialRevision/policy\": \"skills/workspace-document-revision\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:277:    \"workOnEditorialPacket/reconcileEditorialRevision/policy\": \"skills/workspace-document-revision\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/evidence-inventory/handoff-inputs.json:686:      \"path\": \"skills/open-user-goal/workOnEditorialPacket/decideEditorialHandoff.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:244:    \"program\": \"skills/open-user-goal/workOnEditorialPacket.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:245:    \"callable\": \"workOnEditorialPacket\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/answerWorkspaceQuestion.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:4:    \"program\": \"skills/open-user-goal/answerWorkspaceQuestion.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:5:    \"callable\": \"answerWorkspaceQuestion\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:523:      \"answerWorkspaceQuestion.nl\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entrypoints.test.ts:17:  expect(semanticTaskEntry(\"outcome-workspace\", \"Answer this\", { target: null }).callable).toBe(\"answerWorkspaceQuestion\");",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:3:    \"program\": \"skills/open-user-goal/answerWorkspaceQuestion.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:4:    \"callable\": \"answerWorkspaceQuestion\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/DECOMPOSITION.md:11:| Answer a factual workspace question | answerWorkspaceQuestion returns an answer, source citations and unresolved questions |",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:646:    goalWorkspace: [\"reviseWorkspaceDocument.nl\", \"answerWorkspaceQuestion.nl\"],"
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/investigatePublicQuestion.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/OWNED_RESEARCH_DECOMPOSITION.md:10:| Goal-level discovery and revision | Base investigatePublicQuestion, reviseFromPublicResearch and reviseWorkspaceDocument. No new semantic policy or assigned key list. The local catalog only matches keywords against page titles and directory descriptions. |",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/reviseFromPublicResearch.nl:7:uses: [investigatePublicQuestion, reviseWorkspaceDocument]",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/reviseFromPublicResearch.nl:9:1. Inspect the actual target and supporting workspace documents with inspectRevisionContext before choosing the public question. Keep those original observations. Use identifyResearchQuestion with the goal and those documents to separate the public factual question from the original revision goal. Call investigatePublicQuestion with that research question. This child owns research, not access to or edits of the workspace draft. Preserve its citations, unanswered questions and retrieval evidence.",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1093:    \"program\": \"skills/open-user-goal/investigatePublicQuestion.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1094:    \"callable\": \"investigatePublicQuestion\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1126:    \"program\": \"skills/open-user-goal/investigatePublicQuestion.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1127:    \"callable\": \"investigatePublicQuestion\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:330:    \"investigatePublicQuestion/sources\": \"skills/web-research/research\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:519:      \"investigatePublicQuestion.nl\"",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/research-revision-context-workflow.test.ts:13:  reviseFromPublicResearch:'const documents=await inspectRevisionContext(goal); const question=await identifyResearchQuestion(goal,documents);const research=await investigatePublicQuestion(question);const revision=await reviseWorkspaceDocument(goal,research);return {research,revision};',",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/research-revision-context-workflow.test.ts:16:  investigatePublicQuestion:'goalDiscovery.snapshotTime();return {question:goal,status:\"answered\",statements:[{text:\"Reserved example domains cannot be registered.\",cites:[{url:\"https://authority.test/examples\",title:\"Reserved examples\",retrieved:\"2026-11-23\",published:null,quote:\"Reserved example domains cannot be registered.\"}]}],notRead:[],rejected:0};',",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:645:    goalDiscovery: [\"investigatePublicQuestion.nl\"],",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:666:      \"investigatePublicQuestion/sources/researchBrief.nl/**\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1094:    \"program\": \"skills/open-user-goal/investigatePublicQuestion.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1095:    \"callable\": \"investigatePublicQuestion\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1127:    \"program\": \"skills/open-user-goal/investigatePublicQuestion.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1128:    \"callable\": \"investigatePublicQuestion\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/answerFromAssignedPublicSources.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:583:    \"program\": \"skills/open-user-goal/answerFromAssignedPublicSources.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:584:    \"callable\": \"answerFromAssignedPublicSources\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:584:    \"program\": \"skills/open-user-goal/answerFromAssignedPublicSources.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:585:    \"callable\": \"answerFromAssignedPublicSources\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:12:    \"answerFromAssignedPublicSources\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:14:        \"answerFromAssignedPublicSources/webResearch\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:231:    \"answerFromAssignedPublicSources/webResearch\": \"skills/web-research/research\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:362:      \"answerFromAssignedPublicSources.nl\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:479:    bind(sources: string[]): Promise<import(\"./answerFromAssignedPublicSources/contract.js\").AssignedPublicRequest | null>;",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:665:      \"answerFromAssignedPublicSources/webResearch/researchBrief.nl/**\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/reviseWorkspaceDocument.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/OWNED_RESEARCH_DECOMPOSITION.md:10:| Goal-level discovery and revision | Base investigatePublicQuestion, reviseFromPublicResearch and reviseWorkspaceDocument. No new semantic policy or assigned key list. The local catalog only matches keywords against page titles and directory descriptions. |",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/workspace-edit-workflow.test.ts:14:    reviseWorkspaceDocument: `",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/workspace-edit-workflow.test.ts:52:  const run = await loader.load(\"skills/open-user-goal/reviseWorkspaceDocument.nl\", { services: {",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/workspace-edit-workflow.test.ts:69:  expect(steps).toEqual([\"reviseWorkspaceDocument\", \"chooseRevision\", \"reconcileRevision\"]);",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/research-revision-context-workflow.test.ts:13:  reviseFromPublicResearch:'const documents=await inspectRevisionContext(goal); const question=await identifyResearchQuestion(goal,documents);const research=await investigatePublicQuestion(question);const revision=await reviseWorkspaceDocument(goal,research);return {research,revision};',",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/research-revision-context-workflow.test.ts:17:  reviseWorkspaceDocument:'const target=await goalWorkspace.read(\"tutorial.md\");if(!target||!research||research.status!==\"answered\")return {status:\"blocked\",reason:\"Missing grounded revision\"};const text=target.text.replace(\"You may register reserved example domains.\",\"Reserved example domains cannot be registered.\");const written=await goalWorkspace.revise(target.path,target.version,text);return written.status===\"written\"?{status:\"edited\",path:target.path,version:written.version}:{status:\"blocked\",reason:\"Write was not admitted\"};',",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/programs.test.ts:646:    goalWorkspace: [\"reviseWorkspaceDocument.nl\", \"answerWorkspaceQuestion.nl\"],",
+      "/home/werg/vibe-v13-host/scripts/export-live-workflow-teacher.test.mjs:1024:  child.record.definition.name = \"reviseWorkspaceDocument\";",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1103:    \"program\": \"skills/open-user-goal/reviseWorkspaceDocument.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1104:    \"callable\": \"reviseWorkspaceDocument\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/reviseFromPublicResearch.nl:7:uses: [investigatePublicQuestion, reviseWorkspaceDocument]",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/reviseFromPublicResearch.nl:11:3. Otherwise pass the original goal and the actual research result to reviseWorkspaceDocument. Return the research and the revision's actual application result. Its reconciliation stage owns conflicts with current workspace state.",
+      "/home/werg/vibe-app-values-base/skills/open-editorial-packet/DECOMPOSITION.md:7:| Base `skills/open-user-goal/runUserGoal/reviseWorkspaceDocument` | Its existing choose and reconcile lambdas make the narrow proposed edit and reconsider it when the exact workspace revision changes. Preserve independently added text. Abstain when the owner changed the same claim or when refreshed evidence no longer supports it. |",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:278:    \"reviseWorkspaceDocument/policy\": \"skills/workspace-document-revision\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:522:      \"reviseWorkspaceDocument.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1104:    \"program\": \"skills/open-user-goal/reviseWorkspaceDocument.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1105:    \"callable\": \"reviseWorkspaceDocument\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/reviseFromPublicResearch.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/OWNED_RESEARCH_DECOMPOSITION.md:10:| Goal-level discovery and revision | Base investigatePublicQuestion, reviseFromPublicResearch and reviseWorkspaceDocument. No new semantic policy or assigned key list. The local catalog only matches keywords against page titles and directory descriptions. |",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/research-revision-context-workflow.test.ts:13:  reviseFromPublicResearch:'const documents=await inspectRevisionContext(goal); const question=await identifyResearchQuestion(goal,documents);const research=await investigatePublicQuestion(question);const revision=await reviseWorkspaceDocument(goal,research);return {research,revision};',",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/research-revision-context-workflow.test.ts:22: const run=await loader.load('skills/open-user-goal/reviseFromPublicResearch.nl',{services:{goalWorkspace:{list:async()=>['tutorial.md','editor-notes.md'],read:async(path:string)=>{reads.push(path);return {path,version:'original',text:path==='tutorial.md'?text:'The tutorial uses reserved example domains for documentation.'};},revise:async(path:string,version:string,next:string)=>{expect(path).toBe('tutorial.md');expect(version).toBe('original');text=next;return {status:'written',version:'updated'};}},goalDiscovery:{snapshotTime:()=>{expect(reads).toContain('tutorial.md');expect(reads).toContain('editor-notes.md');researchStarted=true;return 1795449600000;},search:async()=>[]}}}) as (goal:string)=>Promise<any>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1116:    \"program\": \"skills/open-user-goal/reviseFromPublicResearch.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1117:    \"callable\": \"reviseFromPublicResearch\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1136:    \"program\": \"skills/open-user-goal/reviseFromPublicResearch.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:1137:    \"callable\": \"reviseFromPublicResearch\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/DECOMPOSITION.md:9:| Ground a document revision in public evidence | reviseFromPublicResearch composes research and document revision |",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/evidence-inventory/WAVE0035_SEMANTIC_BOUNDARIES.md:30:- Base `reviseFromPublicResearch` passed an editing goal to a research-only child.",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1117:    \"program\": \"skills/open-user-goal/reviseFromPublicResearch.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1118:    \"callable\": \"reviseFromPublicResearch\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1137:    \"program\": \"skills/open-user-goal/reviseFromPublicResearch.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:1138:    \"callable\": \"reviseFromPublicResearch\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:593:    \"program\": \"skills/open-user-goal/reconcileGoogleRunbook.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:594:    \"callable\": \"reconcileGoogleRunbook\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:28:    \"reconcileGoogleRunbook\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:30:        \"reconcileGoogleRunbook/reviewCalendar/installed\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:31:        \"reconcileGoogleRunbook/reviseRunbook/installed\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:32:        \"reconcileGoogleRunbook/attributeBasis/installed\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:234:    \"reconcileGoogleRunbook/attributeBasis/installed\": \"skills/provenance-orientation\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:235:    \"reconcileGoogleRunbook/reviewCalendar/installed\": \"skills/open-calendar-goal/program\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:236:    \"reconcileGoogleRunbook/reviseRunbook/installed\": \"skills/workspace-document-revision\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:370:      \"reconcileGoogleRunbook.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:371:      \"reconcileGoogleRunbook/reviseRunbook.nl\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:465:    read(): Promise<import(\"./reconcileGoogleRunbook/contract.js\").RunbookBasis>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:466:    apply(calendar: unknown, proposal: import(\"./reconcileGoogleRunbook/contract.js\").RunbookDocument):",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/services.d.ts:467:      Promise<import(\"./reconcileGoogleRunbook/contract.js\").RunbookWrite>;",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:594:    \"program\": \"skills/open-user-goal/reconcileGoogleRunbook.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:595:    \"callable\": \"reconcileGoogleRunbook\","
+    ]
+  },
+  {
+    "entry": "skills/open-user-goal/correctVaultFromPdf.nl",
+    "consumerEvidence": [
+      "/home/werg/vibe-app-values-base/packages/natlang/src/semantic-library.test.ts:69:    expect(linked[\"correctVaultFromPdf/pdf/workOnPdfGoal.nl\"]).toBeDefined();",
+      "/home/werg/vibe-app-values-base/packages/natlang/src/semantic-library.test.ts:70:    expect(linked[\"correctVaultFromPdf/vault/workTowardVaultGoal.nl\"]).toBeDefined();",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:993:    \"program\": \"skills/open-user-goal/correctVaultFromPdf.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entries.json:994:    \"callable\": \"correctVaultFromPdf\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/DECOMPOSITION.md:8:| Read original PDF evidence and revise a vault | correctVaultFromPdf composes PDF inspection, authority interpretation and vault reconciliation |",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:220:    \"correctVaultFromPdf\": {",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:222:        \"correctVaultFromPdf/pdf\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:223:        \"correctVaultFromPdf/vault\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:357:    \"correctVaultFromPdf/pdf\": \"skills/pdf-intake\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/natlang.json:358:    \"correctVaultFromPdf/vault\": \"skills/spectrolite-review\"",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:994:    \"program\": \"skills/open-user-goal/correctVaultFromPdf.nl\",",
+      "/home/werg/vibe-app-values-base/skills/open-user-goal/entriesGenerated.ts:995:    \"callable\": \"correctVaultFromPdf\","
+    ]
+  }
+]
