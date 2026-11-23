@@ -252,6 +252,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     const params = (definition["params"] ?? []) as Array<{
       name: string;
       optional?: boolean;
+      rest?: boolean;
     }>;
     if (
       definition.site !== "named" ||
@@ -297,7 +298,12 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
             "call the function again with that input yourself"
         );
       }
-      args.push(JSON.parse(text));
+      const value = JSON.parse(text);
+      if (typedEntry && param.rest) {
+        if (param !== params.at(-1) || !Array.isArray(value))
+          throw new Error(`natlang.rerun: the recorded rest input ${param.name} must be the final parameter's complete array`);
+        args.push(...value);
+      } else args.push(value);
     }
     const loaded = await loader.load(
       programRoot ? `${programRoot}/${definition.source}` : definition.source
