@@ -223,7 +223,7 @@
         "correctVaultFromPdf/vault"
       ],
       "types": [
-        "PdfVaultCorrection"
+        "PdfVaultCorrectionResult"
       ]
     }
   },

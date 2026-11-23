@@ -174,12 +174,12 @@
         "handoff": "source citations application; bound directive internal",
         "vault": "application value"
       },
-      "result": "pending independent PDF observation API + actual Vault result",
-      "reason": "Successful native bind retains exact attested PDF report; held path needs independent PDF observation projection"
+      "result": "PdfVaultCorrectionResult",
+      "reason": "Native PDF observations independently verified; exact attested source citations and actual vault result returned"
     }
   ],
   "publicEntries": 15,
-  "migrated": 8,
+  "migrated": 9,
   "retainedApplicationValues": 5,
-  "pending": 2
+  "pending": 1
 }

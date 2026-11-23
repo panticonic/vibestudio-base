@@ -993,7 +993,7 @@ export default {
   "pdfVault": {
     "program": "skills/open-user-goal/correctVaultFromPdf.nl",
     "callable": "correctVaultFromPdf",
-    "resultType": "PdfVaultCorrection",
+    "resultType": "PdfVaultCorrectionResult",
     "skill": "pdfVault",
     "parameterNames": [
       "goal"
