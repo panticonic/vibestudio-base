@@ -426,10 +426,6 @@
         [
           "chooseNotificationAction",
           "./reviewNotificationState/chooseNotificationAction.nl"
-        ],
-        [
-          "finishNotificationReview",
-          "./reviewNotificationState/finishNotificationReview.nl"
         ]
       ],
       "actualNativeValues": "Native receipts and observations returned without model reconstruction; readbacks stay in trace.",

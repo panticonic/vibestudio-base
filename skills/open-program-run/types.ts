@@ -1,3 +1,5 @@
+import type {RuntimeProgramInput} from "@workspace-skills/runtime-evidence-review/types";
+export type {RuntimeProgramInput} from "@workspace-skills/runtime-evidence-review/types";
 export type RunSample = {
   id: string;
   label: string;
@@ -16,7 +18,7 @@ export type RunInspection = {
   programId: string;
   revision: string;
   callable: string | null;
-  evidence: unknown;
+  evidence: RuntimeProgramInput;
 };
 export type RunOutcome = "returned" | "rejected" | "interrupted";
 export type StartedRun = { id: string; status: RunOutcome };
@@ -29,7 +31,7 @@ export type ProgramOutputReceipt = {
   verification: "verified" | "unchecked" | "mismatch" | "stale" | "failed";
   output: unknown;
   error: string | null;
-  evidence: unknown;
+  evidence: RuntimeProgramInput;
 };
 export type SignedOutputReceipt = { path: string; sha256: string; receiptId: string; publicKey: string };
 export type ProgramRunReview = { kind: "program"; next: string; basis: string };

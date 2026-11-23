@@ -11,7 +11,7 @@ export default async function reviewDeployedInterface(goal:string):Promise<Deplo
  const survey=await discoverInterface();
  const observation=await selectInterface(goal,survey);
  const architecture=observation.architecture?await reviewArchitectureBoundary(observation.architecture):null;
- const finding=await decideReview(survey,observation,architecture);
+ const finding=await decideReview(goal,survey,observation,architecture);
  const handoff=(finding.decision==="reviewable"||finding.decision==="deployed-method-confirmed")&&await shouldRetainReview(goal)?await stageReview(observation,finding.decision):null;
  return {finding,handoff};
 }

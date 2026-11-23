@@ -1,3 +1,4 @@
+import type {AuthoringContract} from "@workspace-skills/natlang-authoring/types";
 export type AuthoringSource = {
   id: string;
   label: string;
@@ -9,7 +10,7 @@ export type AuthoringSource = {
 export type AuthoringSelection = { candidateId: string; baselineId: string | null };
 export type SelectedAuthoring = {
   selection: AuthoringSelection;
-  request: { goal: string; compare: boolean; contract: unknown };
+  request: { goal: string; compare: boolean; contract: AuthoringContract };
 };
 export type ObservedAuthoringReview = {
   status: "ready" | "changes-required" | "candidate-rejected" | "baseline-rejected";
