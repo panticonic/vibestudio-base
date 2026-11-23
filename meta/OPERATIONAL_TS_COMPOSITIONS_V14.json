@@ -1198,6 +1198,15 @@
         "validationUnit": "vibe-v14-local-delivery-wrapper-a",
         "testsPassed": 5,
         "outsideRootAudit": "Other direct wrappers in open-unit-rollout use exact unitId/revision; template-candidate and session-recovery outer TS compositions already pass their declared native signatures."
+      },
+      "iteration": "Recorded iterateOn with maxSteps40; semantic reconsider chooses further conversation or terminates. No two-extra-inspection route ceiling.",
+      "sourceSha256": "fc28f66d3eed576c823b21178eeed2a6866bf598824110c3139ec1d3513a98bf",
+      "validation": {
+        "unit": "vibe-v14-local-delivery-iteration-a",
+        "tests": 6,
+        "result": "passed",
+        "actualWorkerdRuntime": true,
+        "fiveConversations": true
       }
     },
     {

@@ -72,3 +72,16 @@ it("binds the actual local delivery native contract without wrapping or normaliz
  expect(await read({roomId:"owned-room",recipientPhrase:null})).toBe(actual);
  expect(inspect.mock.calls).toEqual([["owned-room","@actual-recipient"],["owned-room",null]]);
 });
+
+it("lets local delivery reconsider more than two additional conversations before deciding",async()=>{
+ const conversations=Array.from({length:5},(_,index)=>({id:"room-"+index,title:"Room "+index,maySend:false}));
+ const inspectConversation=vi.fn(async(choice:{roomId:string})=>({room:conversations.find(room=>room.id===choice.roomId),basis:"current",phrase:null,roster:[],resolution:null,prior:null}));
+ const reconsider=vi.fn(async(_:string,__:unknown,observations:unknown[])=>observations.length<5?{roomId:"room-"+observations.length,recipientPhrase:null}:null);
+ const decideDelivery=vi.fn(async(_:string,observations:unknown[])=>{expect(observations).toHaveLength(5);return {status:"verified",reason:"all requested conversations compared",evidence:[],sendRoomId:null};});
+ const report={status:"verified",reason:"all requested conversations compared",delivery:null};
+ const run=compose("../open-local-delivery/workTowardLocalDelivery.ts",{services:{localDeliveryCatalog:{discover:async()=>conversations}},chooseConversations:async()=>[{roomId:"room-0",recipientPhrase:null}],inspectConversation,reconsider,decideDelivery,bindReport:()=>report,completeDelivery:vi.fn()});
+ const runtime=natlang.createNatlangRuntime({platform:natlang.workerdPlatform({realm:{call(body:string,params:string[],args:unknown[]){return Function(...params,body)(...args);}}})});
+ expect(await runtime.run(()=>run("Compare all five owned conversations"))).toBe(report);
+ expect(inspectConversation).toHaveBeenCalledTimes(5);
+ expect(reconsider).toHaveBeenCalledTimes(5);
+});

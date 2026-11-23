@@ -87,7 +87,7 @@
     {
       "template": "base",
       "path": "skills/open-local-delivery/workTowardLocalDelivery.ts",
-      "sha256": "d04b6b9dbc807616bb9f13cfd54fd186f3e82aa2cf1ce94dbc58084a510b8ad9"
+      "sha256": "fc28f66d3eed576c823b21178eeed2a6866bf598824110c3139ec1d3513a98bf"
     },
     {
       "template": "base",
@@ -1274,20 +1274,10 @@
     }
   ],
   "validation": {
-    "sourcePolicyUnit": "vibe-v14-composition-lowering-delivery-a",
+    "unit": "vibe-v14-composition-lowering-iteration-a",
+    "files": 253,
     "errors": 0,
-    "scannedSkillTypescriptFiles": 253,
-    "ordinaryNativeExclusions": 3,
-    "typeDeclarationModules": 61,
-    "actualCallableModuleParses": 189,
-    "policyPeakMiB": 121.4,
-    "policyWallSeconds": 1.144,
-    "browserRuntimeUnit": "vibe-v14-local-delivery-wrapper-a",
-    "compositionTestsPassed": 5,
-    "runtimePeakMiB": 228.7,
-    "runtimeSeconds": 0.772,
-    "publicTypedBindings": 100,
-    "paidModelCalls": 0
+    "peakMiB": 105
   },
   "mechanism": {
     "policy": "Core checkConstrainedSource invoked on actual TypeScript ASTs.",
