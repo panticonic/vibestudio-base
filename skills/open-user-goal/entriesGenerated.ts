@@ -71,7 +71,7 @@ export default {
     "additionalArguments": {}
   },
   "coordinated-revision": {
-    "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+    "program": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
     "callable": "reviseCoordinatedDocuments",
     "resultType": "CoordinatedRevisionResult",
     "skill": "coordinatedRevision",
@@ -261,7 +261,7 @@ export default {
     "additionalArguments": {}
   },
   "demo-portfolio": {
-    "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
+    "program": "skills/open-user-goal/workOnDemoPortfolio.ts",
     "callable": "workOnDemoPortfolio",
     "resultType": "PortfolioResult",
     "skill": "demoPortfolio",
@@ -271,7 +271,7 @@ export default {
     "additionalArguments": {}
   },
   "regency-briefing": {
-    "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
+    "program": "skills/open-user-goal/workOnRegencyBriefing.ts",
     "callable": "workOnRegencyBriefing",
     "resultType": "RegencyResult",
     "skill": "regencyBriefing",
@@ -291,7 +291,7 @@ export default {
     "additionalArguments": {}
   },
   "image-candidate": {
-    "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+    "program": "skills/open-user-goal/workOnImageCandidateGoal.ts",
     "callable": "workOnImageCandidateGoal",
     "resultType": "ImageCandidateResult",
     "skill": "imageCandidate",

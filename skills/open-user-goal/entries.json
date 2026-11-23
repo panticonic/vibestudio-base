@@ -70,7 +70,7 @@
     "additionalArguments": {}
   },
   "coordinated-revision": {
-    "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+    "program": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
     "callable": "reviseCoordinatedDocuments",
     "resultType": "CoordinatedRevisionResult",
     "skill": "coordinatedRevision",
@@ -260,7 +260,7 @@
     "additionalArguments": {}
   },
   "demo-portfolio": {
-    "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
+    "program": "skills/open-user-goal/workOnDemoPortfolio.ts",
     "callable": "workOnDemoPortfolio",
     "resultType": "PortfolioResult",
     "skill": "demoPortfolio",
@@ -270,7 +270,7 @@
     "additionalArguments": {}
   },
   "regency-briefing": {
-    "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
+    "program": "skills/open-user-goal/workOnRegencyBriefing.ts",
     "callable": "workOnRegencyBriefing",
     "resultType": "RegencyResult",
     "skill": "regencyBriefing",
@@ -290,7 +290,7 @@
     "additionalArguments": {}
   },
   "image-candidate": {
-    "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+    "program": "skills/open-user-goal/workOnImageCandidateGoal.ts",
     "callable": "workOnImageCandidateGoal",
     "resultType": "ImageCandidateResult",
     "skill": "imageCandidate",
