@@ -1,0 +1,76 @@
+{
+  "taskGoalsChanged": false,
+  "taskIdsChanged": false,
+  "sourceGroupsChanged": false,
+  "splitsChanged": false,
+  "archivedCatalogsChanged": false,
+  "totalTasks": 2327,
+  "trainTasks": 1748,
+  "testTasks": 579,
+  "changes": [
+    {
+      "entry": "skills/open-user-goal/prepareContentProject.nl",
+      "oldReturn": "PreparedContentProjectReport",
+      "newReturn": "ContentProjectResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "ff53b86967ffbd4d534ac3e3c9e67e0064f44d92225387ae6e071c7274c2d6c2",
+      "newSourceSha256": "f0aa7f76988fb85e707c406be69506f271fa9902aa13cc01773b949ea675fcca"
+    },
+    {
+      "entry": "skills/open-user-goal/prepareNewsEditionReview.nl",
+      "oldReturn": "NewsEditionReviewReport",
+      "newReturn": "NewsEditionReviewResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "03b52b5496e674ca2e901c438e8b620ddb7ae5668203f573906c8b61cdb024b3",
+      "newSourceSha256": "cdeaaeea84aa033b476855440ff5cab741870e73d868b47b9fa116aff8ef63af"
+    },
+    {
+      "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+      "oldReturn": "NewsEvidenceReport",
+      "newReturn": "NewsEvidenceResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "661900ab011b85ad43817948837a881d32a25e505fe85ce11177075fa3df5fe4",
+      "newSourceSha256": "b76121fbdc29e6deb29eda6d1b31f86fa740c54717c16a3f2f37e45396950a5d"
+    },
+    {
+      "entry": "skills/open-user-goal/workOnEditorialPacket.nl",
+      "oldReturn": "PacketReport",
+      "newReturn": "EditorialPacketResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "07d33200e10bec077c3215160f69d8a02dc0762a26d9ae277840bafa144a1159",
+      "newSourceSha256": "f18262b6f4dcabc5867a7c7d66f89adf6957dd0338839e1ca395da80ea999490"
+    },
+    {
+      "entry": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+      "oldReturn": "ImageReport",
+      "newReturn": "ImageCandidateResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "8879e4cc952f69987bbd1cd2a8c60002abc837521b29dfd2be5413e0c4de8e49",
+      "newSourceSha256": "062f98031e61a5353a7e7596ad3a63f1b2f0ea60a4e39d7826f1c538416bf682"
+    },
+    {
+      "entry": "skills/open-user-goal/generateOwnedIllustration.nl",
+      "oldReturn": "OwnedIllustrationReport",
+      "newReturn": "OwnedIllustrationResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "6a630b99624c8b992512ec379288156d5022bf57747bd14e724135e3fc72faa8",
+      "newSourceSha256": "6a297614dfb4189d3fda3d4da21a4380e97dd5999f328bcafdfb943db0748d4a"
+    },
+    {
+      "entry": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+      "oldReturn": "DevelopmentAuditOutcome",
+      "newReturn": "DevelopmentAuditFindings",
+      "parametersChanged": false,
+      "oldSourceSha256": "e38cc2156ca3a6cf9646e4f9cded3bcc76d4d39449f346e4f0333ba98f3fc8b6",
+      "newSourceSha256": "5e3b48b9c974eac0d07b7dece9a7dc4339b3e6ce2b932f082e2945d95d588e7f"
+    },
+    {
+      "entry": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+      "oldReturn": "CoordinatedRevisionReport",
+      "newReturn": "CoordinatedRevisionResult",
+      "parametersChanged": false,
+      "oldSourceSha256": "13678fba56902b2642d8cf9dc64262ad86715aec4f2beb7ba7327aa132904a44",
+      "newSourceSha256": "c36517d26e337f25b931f6a6710ded32fb75f251bca77e50bc4eafe774d10ea3"
+    }
+  ]
+}
