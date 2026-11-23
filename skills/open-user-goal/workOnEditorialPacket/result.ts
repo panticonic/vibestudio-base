@@ -1,4 +1,4 @@
-import type {PacketReport,EditorialPacketResult} from "./types.js";
-export default function result(report:PacketReport):EditorialPacketResult {
- return {document:{path:report.edit.stored.path,version:report.edit.stored.version},decision:report.decision,note:report.note};
+import type {PacketDocument,PacketDecision,PacketReceipt,EditorialPacketResult} from "./types.js";
+export default function result(stored:PacketDocument,decision:PacketDecision,note:PacketReceipt|null):EditorialPacketResult {
+ return {document:{path:stored.path,version:stored.version},decision,note};
 }
