@@ -4,17 +4,17 @@ import path from "node:path";
 import {expect,it,vi} from "vitest";
 // Execute the actual typed composition with recorded native/policy boundaries.
 // The caller supplies judgments; these tests never invoke a model.
-const ts=createRequire(path.join(process.cwd(),"package.json"))("typescript");
+const {transformSync}=createRequire(path.join(process.cwd(),"package.json"))("esbuild");
 function compose(relative:string,mocks:Record<string,unknown>){
- const file=path.resolve(import.meta.dirname,relative),exports:Record<string,any>={};
- const {outputText}=ts.transpileModule(readFileSync(file,"utf8"),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}});
- new Function("require","exports",outputText)((id:string)=>{
+ const file=path.resolve(import.meta.dirname,relative),module:{exports:Record<string,any>}={exports:{}};
+ const {code}=transformSync(readFileSync(file,"utf8"),{loader:"ts",format:"cjs",target:"es2022"});
+ new Function("require","module","exports",code)((id:string)=>{
   if(id==="natlang:services")return mocks.services;
   const name=path.basename(id).replace(/\.(nl|js)$/,""),value=mocks[name];
   if(value===undefined)throw new Error("Unbound test boundary: "+id);
-  return {default:value};
- },exports);
- return exports.default as (...args:any[])=>Promise<any>;
+  return {__esModule:true,default:value};
+ },module,module.exports);
+ return module.exports.default as (...args:any[])=>Promise<any>;
 }
 it("returns the actual notification decision or native acknowledgment and rereads after acknowledgment",async()=>{
  const decision={action:"hold",finding:{id:null,revision:null},reason:"scope moved"};
