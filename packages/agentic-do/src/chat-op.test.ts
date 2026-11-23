@@ -898,6 +898,12 @@ describe("AgentVesselBase default automation authority", () => {
     const cancellations = remote.mock.calls.filter(([, method]) => method === "cancel").length;
     await instance.initializeAutomation({ ...input, quiesce: true });
     expect(remote.mock.calls.filter(([, method]) => method === "cancel")).toHaveLength(cancellations);
+    installed = { ...installed!, state: "active" };
+    remote.mockImplementation(async (target, method, args, options) => {
+      if (method === "cancel" || method === "get") return installed;
+      return normalDispatch(target, method, args, options);
+    });
+    await expect(instance.initializeAutomation({ ...input, quiesce: true })).rejects.toThrow("Default automation did not quiesce");
   });
 });
 
