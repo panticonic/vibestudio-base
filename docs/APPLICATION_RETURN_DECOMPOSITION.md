@@ -11,3 +11,7 @@ A callable returns the value its caller requested: a document, findings, answer,
 `open-goal-prepared-content-project-managed.ts` independently reads real source revisions, journal receipts, workspace files, privacy and commit state. It must verify the returned project handle against these observations. Old envelopes remain readable in archived verification; new qualification targets the new API and rejects invented handles. No runtime, exporter, Python decoder or vendor changes are required for this structural JSON API: they store arbitrary return values; task-specific shape interpretation lives in this verifier.
 
 Policy remains in the hierarchical NL entry and author/review stages. The TS projection from the actual finish is exact data selection, with no authorization or quality judgment.
+
+## Owned illustration
+
+`generateOwnedIllustration/contract.ts`: assignment and basis are internal owned-scope and CAS inputs, decision is semantic policy state. They are not the illustration. The application value is the real native job and verified original plus its saved/stale receipt; retain outcome and saved. The native managed verifier already observes basis, transport, original bytes and workspace independently; only its final value comparison must project the new application result. Its diagnostic output may retain those observations without asking the model to repeat them.

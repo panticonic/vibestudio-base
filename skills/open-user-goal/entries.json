@@ -432,7 +432,7 @@
   "native-image": {
     "program": "skills/open-user-goal/generateOwnedIllustration.nl",
     "callable": "generateOwnedIllustration",
-    "resultType": "OwnedIllustrationReport",
+    "resultType": "OwnedIllustrationResult",
     "skill": "nativeImage",
     "parameterNames": [
       "goal"

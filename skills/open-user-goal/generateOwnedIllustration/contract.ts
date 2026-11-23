@@ -7,5 +7,4 @@ export type IllustrationDecision = { action: "create" | "retry" | "reuse" | "hol
   reason: "new" | "retry" | "already-generated" | "busy" | "occupied" | "no-generation" | "no-retry" | "reference" };
 export type IllustrationOutcome = { job: IllustrationJob; original: {digest:string;bytes:number;mime:string} | null };
 export type IllustrationSave = { status: "saved" | "stale"; head: string; path: string; digest: string | null };
-export type OwnedIllustrationReport = { assignment: IllustrationAssignment; basis: IllustrationBasis; decision: IllustrationDecision;
-  outcome: IllustrationOutcome | null; saved: IllustrationSave | null };
+export type OwnedIllustrationResult = { outcome: IllustrationOutcome | null; saved: IllustrationSave | null };
