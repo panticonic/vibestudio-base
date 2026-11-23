@@ -214216,7 +214216,7 @@ function recordingServices(services, emit3) {
       },
       set: (_shell, property, value) => Reflect.set(object2, property, value),
       get(_shell, property, receiver) {
-        const value = Reflect.get(object2, property, receiver);
+        const value = Reflect.get(object2, property, object2);
         if (typeof property === "symbol") return value;
         if (typeof value === "function") {
           const recorded2 = (...given) => {
@@ -222687,13 +222687,20 @@ function failureError(failure2) {
 }
 function checkServiceResults(services, declared, check) {
   if (!Object.keys(declared).length) return services;
-  const wrap = (target, service2) => new Proxy(target, {
-    get(object2, property, receiver) {
-      const value = Reflect.get(object2, property, receiver);
+  const wrap = (target, service2) => new Proxy({}, {
+    has: (_shell, property) => Reflect.has(target, property),
+    ownKeys: () => Reflect.ownKeys(target),
+    getOwnPropertyDescriptor: (_shell, property) => {
+      const descriptor2 = Reflect.getOwnPropertyDescriptor(target, property);
+      return descriptor2 ? { ...descriptor2, configurable: true } : void 0;
+    },
+    get(_shell, property) {
+      const value = Reflect.get(target, property, target);
       const type = typeof property === "string" ? declared[`${service2}.${property}`] : void 0;
-      if (typeof value !== "function" || !type) return value;
+      if (typeof value !== "function") return value;
+      if (!type) return new Proxy(value, { apply: (fn, _receiver, args) => Reflect.apply(fn, target, args) });
       return async (...args) => {
-        const result = await value.apply(object2, args);
+        const result = await value.apply(target, args);
         await check(result, type, `${service2}.${String(property)}`);
         return result;
       };
@@ -228390,7 +228397,6 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         const capture = this.exactHostTraceCapture;
         if (capture && (!Number.isSafeInteger(capture.maxBytes) || capture.maxBytes < 1 || capture.maxBytes > 8e6 || !Array.isArray(capture.definitionSources) || !capture.definitionSources.length && capture.captureAllOutputs !== true || capture.captureAllOutputs !== void 0 && typeof capture.captureAllOutputs !== "boolean" || capture.definitionSources.some((source2) => typeof source2 !== "string" || !source2.endsWith(".nl")) || !Array.isArray(capture.inputArguments) || capture.inputArguments.some((name) => typeof name !== "string" || !name)))
           throw new RangeError("exact host trace capture requires source allowlist, argument names, and a bounded positive byte budget");
-        this.frame = options.frame;
         this.hooks = options.hooks;
         const services = options.services ?? {};
         const observe = options.observeEffect;
@@ -228400,6 +228406,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
           else graphNode(this.trace, "effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(this.options.runId), port: "caller" }]);
           return persisted;
         });
+        this.frame = options.frame ? { ...options.frame, services: this.services } : void 0;
         this.declarations = options.declarations ?? {};
         this.neuralese = options.neuralese;
         this.serviceScopes = options.serviceScopes ?? {};
