@@ -37,8 +37,7 @@ export type OpenSuiteRequest = {
   file: string | null;
   testName: string | null;
 };
-export type WorkspaceSuiteReport =
-  | { status: "suite-reviewed"; selection: OpenSuiteChoice; review: unknown }
+export type WorkspaceSuiteReport = | { status: "suite-reviewed"; review: unknown }
   | { status: "blocked"; reason: string };
 
 export type BrowserRow = { label: string; state: string; detail: string; controls: { id: string; label: string }[] };

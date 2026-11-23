@@ -7,9 +7,4 @@ export type LocalInventoryDocket = {
   preferences: { ref: string; label: string }[];
   purpose: string;
 };
-export type LocalInventoryOutcome = {
-  card: LocalInventoryCard | null;
-  plan: LocalTaskRequest | null;
-  report: LocalTaskReport | null;
-  reason: string;
-};
+export type LocalInventoryOutcome = { report: LocalTaskReport | null; reason: string };

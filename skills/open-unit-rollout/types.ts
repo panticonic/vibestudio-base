@@ -17,8 +17,4 @@ export type RolloutCommit =
   | { status: "changed"; revision: string }
   | { status: "committed"; verifiedRevision: string; revision: string; eventId: string };
 export type RolloutDecision = { action: "repair" | "check" | "commit" | "hold" | "report"; reason: string };
-export type UnitRolloutReport = {
-  status: "repaired" | "committed" | "verified" | "held";
-  unitId: string | null; revision: string | null; check: RolloutCheck | null;
-  release: RolloutCommit | null; reason: string;
-};
+export type UnitRolloutReport = { status: "repaired" | "committed" | "verified" | "held"; unitId: string | null; revision: string | null; release: RolloutCommit | null; reason: string };

@@ -15,4 +15,4 @@ export type EvalPick = {
     "partial-checkpoint" | "stale-checkpoint" | "stale-window" | "no-authorized-result";
 };
 export type EvalRecoveryReceipt = { observation: EvalUsefulResult; scopeId: string; resultDigest: string; recoveryRun: string | null; pages: number };
-export type SameTurnEvalOutcome = { assignment: EvalAssignment; evidence: EvalCellEvidence; pick: EvalPick; recovery: EvalRecoveryReceipt | null };
+export type SameTurnEvalOutcome = { pick: EvalPick; recovery: EvalRecoveryReceipt | null };

@@ -9,9 +9,4 @@ export type LiveTendrilTicket = {
   controls: { name: string; key: string; value: string | number | boolean }[];
   layouts: { candidate: string; build: string; heading: string }[];
 };
-export type LiveTendrilOutcome = {
-  card: LiveTendrilCard | null;
-  plan: TendrilRequest | null;
-  actual: TendrilReport | null;
-  reason: string;
-};
+export type LiveTendrilOutcome = { actual: TendrilReport | null; reason: string };

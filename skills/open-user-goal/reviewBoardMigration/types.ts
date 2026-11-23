@@ -45,10 +45,4 @@ export type BoardMigrationReceipt = {
   cards: BoardCard[];
 };
 
-export type BoardMigrationOutcome = {
-  disposition: "audit" | "held" | "retained" | "existing";
-  board: LegacyBoard | null;
-  selection: MigrationSelection | null;
-  receipt: BoardMigrationReceipt | null;
-  reason: string;
-};
+export type BoardMigrationOutcome = { disposition: "audit" | "held" | "retained" | "existing"; receipt: BoardMigrationReceipt | null; reason: string };

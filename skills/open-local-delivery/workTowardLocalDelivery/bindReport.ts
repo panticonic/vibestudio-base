@@ -9,5 +9,5 @@ export default function bindReport(decision: LocalDeliveryDecision, observations
   });
   if (new Set(evidence.map(({ roomId }) => roomId)).size !== evidence.length)
     throw new Error("Cite each local receipt at most once");
-  return { status: decision.status, reason: decision.reason, evidence, delivery: null };
+  return { status: decision.status, reason: decision.reason, delivery: null };
 }

@@ -1,10 +1,158 @@
 {
   "schema": "operational-application-contracts/1",
-  "status": "in-progress: 28 of 52 owned operational APIs complete;24 remain;30 of original82 delegated to app_values",
+  "status": "source-complete: all52 owned operational APIs classified;46 compacted and6 retained actual application values;30 original APIs delegated to app_values",
   "generatedEntryMetadataOwner": "app_values",
   "catalogGoalsAndSplitsChanged": false,
   "coreOrVendorChanged": false,
   "entries": [
+    {
+      "function": "auditAndroidGoal",
+      "callable": "auditAndroidGoal",
+      "kind": "android-audit",
+      "program": "skills/open-user-goal/auditAndroidGoal.nl",
+      "oldResultType": "AndroidGoalAuditReport",
+      "resultType": "AndroidGoalAuditReport",
+      "newResultType": "AndroidGoalAuditReport",
+      "typeDeclaration": "skills/open-user-goal/auditAndroidGoal/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "AndroidGoalAuditScope",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "request",
+          "type": "AndroidAuditRequest",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "report",
+          "type": "AndroidAuditReport",
+          "classification": "actual application result/handle, lifted directly from the installed child result"
+        }
+      ],
+      "retainedFields": [
+        "report"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "verifyAndroidDelivery",
+      "callable": "verifyAndroidDelivery",
+      "kind": "android-delivery",
+      "program": "skills/open-user-goal/verifyAndroidDelivery.nl",
+      "oldResultType": "AndroidDeliveryOutcome",
+      "resultType": "AndroidDeliveryOutcome",
+      "newResultType": "AndroidDeliveryOutcome",
+      "typeDeclaration": "skills/open-user-goal/verifyAndroidDelivery/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "scope",
+          "type": "AndroidDeliveryScope",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "request",
+          "type": "MobileAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "actual",
+          "type": "MobileReport",
+          "classification": "actual application result/handle, lifted directly from the installed child result"
+        }
+      ],
+      "retainedFields": [
+        "actual"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewDeliveryWake",
+      "program": "skills/open-user-goal/reviewDeliveryWake.nl",
+      "resultType": "DeliveryWakeReport",
+      "newResultType": "DeliveryWakeReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "choice",
+        "receipt"
+      ],
+      "removedEnvelope": "export type DeliveryWakeReport = { assignment: DeliveryWakeAssignment; evidence: DeliveryWakeEvidence;\n  choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewDeliveryWake",
+      "kind": "delivery-wake",
+      "oldResultType": "DeliveryWakeReport",
+      "typeDeclaration": "skills/open-user-goal/reviewDeliveryWake/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "DeliveryWakeAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "evidence",
+          "type": "DeliveryWakeEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "choice",
+          "type": "DeliveryWakeChoice",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "receipt",
+          "type": "DeliveryWakeReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "compareLiveLocalInventory",
+      "callable": "compareLiveLocalInventory",
+      "kind": "live-local-inventory",
+      "program": "skills/open-user-goal/compareLiveLocalInventory.nl",
+      "oldResultType": "LocalInventoryOutcome",
+      "resultType": "LocalInventoryOutcome",
+      "newResultType": "LocalInventoryOutcome",
+      "typeDeclaration": "skills/open-user-goal/compareLiveLocalInventory/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "card",
+          "type": "LocalInventoryCard",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "plan",
+          "type": "any",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "report",
+          "type": "any",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "report",
+        "reason"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
     {
       "kind": "intent-discovery",
       "program": "skills/open-user-goal/discoverScopedIntent.nl",
@@ -52,7 +200,140 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "discoverScopedIntent",
+      "newResultType": "IntentReport",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewBoardMigration",
+      "callable": "reviewBoardMigration",
+      "kind": "board-migration",
+      "program": "skills/open-user-goal/reviewBoardMigration.nl",
+      "oldResultType": "BoardMigrationOutcome",
+      "resultType": "BoardMigrationOutcome",
+      "newResultType": "BoardMigrationOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewBoardMigration/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "disposition",
+          "type": "\"audit\" | \"held\" | \"retained\" | \"existing\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "board",
+          "type": "LegacyBoard",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "selection",
+          "type": "MigrationSelection",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "receipt",
+          "type": "BoardMigrationReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "disposition",
+        "receipt",
+        "reason"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "workOnLiveTendrilBoard",
+      "callable": "workOnLiveTendrilBoard",
+      "kind": "live-tendril-board",
+      "program": "skills/open-user-goal/workOnLiveTendrilBoard.nl",
+      "oldResultType": "LiveTendrilOutcome",
+      "resultType": "LiveTendrilOutcome",
+      "newResultType": "LiveTendrilOutcome",
+      "typeDeclaration": "skills/open-user-goal/workOnLiveTendrilBoard/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "card",
+          "type": "LiveTendrilCard",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "plan",
+          "type": "TendrilRequest",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "actual",
+          "type": "TendrilReport",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "actual",
+        "reason"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "recoverCliRoute",
+      "callable": "recoverCliRoute",
+      "kind": "cli-route",
+      "program": "skills/open-user-goal/recoverCliRoute.nl",
+      "oldResultType": "CliRouteOutcome",
+      "resultType": "CliRouteOutcome",
+      "newResultType": "CliRouteOutcome",
+      "typeDeclaration": "skills/open-user-goal/recoverCliRoute/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"held\" | \"reviewed\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "docket",
+          "type": "CliDocket",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "gateway",
+          "type": "any",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "continuation",
+          "type": "any",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "status",
+        "gateway",
+        "continuation",
+        "reason"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "scaffoldReview",
@@ -96,7 +377,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "prepareOwnedScaffold",
+      "newResultType": "ScaffoldOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "localMethodExchange",
@@ -140,7 +424,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "reconcileOwnedMethodCall",
+      "newResultType": "LocalMethodOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "systemCandidateTriage",
@@ -194,7 +481,56 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "triageSystemTemplate",
+      "newResultType": "SystemCandidateOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "coordinateOwnedOperations",
+      "callable": "coordinateOwnedOperations",
+      "kind": "owned-operations",
+      "program": "skills/open-user-goal/coordinateOwnedOperations.nl",
+      "oldResultType": "OperationsGoalOutcome",
+      "resultType": "OperationsGoalOutcome",
+      "newResultType": "OperationsGoalOutcome",
+      "typeDeclaration": "skills/open-user-goal/coordinateOwnedOperations/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "docket",
+          "type": "OperationsDocket",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "operation",
+          "type": "OperationsReport",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "dossier",
+          "type": "OperationsDossier",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "disposition",
+          "type": "\"held\" | \"reviewed\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "operation",
+        "dossier",
+        "disposition",
+        "reason"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "examplesAdoption",
@@ -243,7 +579,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "reviewExamplesAdoption",
+      "newResultType": "AdoptionOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "grimoireScene",
@@ -292,7 +631,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "careForGrimoireScene",
+      "newResultType": "GrimoireSceneOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "phoneFirstRun",
@@ -321,7 +663,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "planPhoneFirstRun",
+      "newResultType": "PhoneFirstRunOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "skillMaintenance",
@@ -370,7 +715,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "maintainWorkspaceSkill",
+      "newResultType": "SkillMaintenanceOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "desktopReadiness",
@@ -399,7 +747,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "reviewDesktopReadiness",
+      "newResultType": "DesktopReadinessOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "notificationState",
@@ -438,7 +789,10 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "reviewNotificationState",
+      "newResultType": "NotificationStateOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "mobileContinuity",
@@ -477,7 +831,1197 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "reviewMobileContinuity",
+      "newResultType": "MobileContinuityOutcome",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewAssetIntegrity",
+      "callable": "reviewAssetIntegrity",
+      "kind": "assetIntegrity",
+      "program": "skills/open-user-goal/reviewAssetIntegrity.nl",
+      "oldResultType": "AssetIntegrityOutcome",
+      "resultType": "AssetIntegrityOutcome",
+      "newResultType": "AssetIntegrityOutcome",
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "publicShapeChanged": false,
+      "classification": "retained: actual requested application value",
+      "goalEvidence": "skills/system-testing/open-goal-asset-integrity-worlds.ts:294,310",
+      "callerEvidence": "skills/open-user-goal/reviewAssetIntegrity.nl",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"held\" | \"verified\" | \"staged\"",
+          "classification": "Requested verification/recovery disposition."
+        },
+        {
+          "name": "approved",
+          "type": "string",
+          "classification": "Exact signed edition coordinate being compared, part of the answer."
+        },
+        {
+          "name": "working",
+          "type": "string",
+          "classification": "Exact compared current coordinate; distinguishes moved versus replaced bytes."
+        },
+        {
+          "name": "findings",
+          "type": "AssetFinding[]",
+          "classification": "Requested per-asset byte/mode/location differences."
+        },
+        {
+          "name": "receipt",
+          "type": "AssetRecoveryReceipt",
+          "classification": "Actual private recovery artifact handle."
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "Requested explanation or precise blocker."
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewTendrilRoute",
+      "callable": "reviewTendrilRoute",
+      "kind": "tendrilRoute",
+      "program": "skills/open-user-goal/reviewTendrilRoute.nl",
+      "oldResultType": "TendrilRouteOutcome",
+      "resultType": "TendrilRouteOutcome",
+      "newResultType": "TendrilRouteOutcome",
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "publicShapeChanged": false,
+      "classification": "retained: actual requested application value",
+      "goalEvidence": "skills/system-testing/open-goal-tendril-route-worlds.ts",
+      "callerEvidence": "skills/open-user-goal/reviewTendrilRoute.nl",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"held\" | \"verified\"",
+          "classification": "Requested routing disposition."
+        },
+        {
+          "name": "finding",
+          "type": "TendrilRouteFinding",
+          "classification": "The actual resolved board/channel/audience/slot/utterance projection is the requested routing answer."
+        },
+        {
+          "name": "receipt",
+          "type": "TendrilRouteReceipt",
+          "classification": "Actual retained route evidence artifact."
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "Requested routing explanation or exact hold."
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewLocalPresentation",
+      "callable": "reviewLocalPresentation",
+      "kind": "localPresentation",
+      "program": "skills/open-user-goal/reviewLocalPresentation.nl",
+      "oldResultType": "LocalPresentationOutcome",
+      "resultType": "LocalPresentationOutcome",
+      "newResultType": "LocalPresentationOutcome",
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "publicShapeChanged": false,
+      "classification": "retained: actual requested application value",
+      "goalEvidence": "skills/system-testing/open-goal-local-presentation-worlds.ts",
+      "callerEvidence": "skills/open-user-goal/reviewLocalPresentation.nl",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"held\"",
+          "classification": "Actual visible/held presentation result."
+        },
+        {
+          "name": "receipt",
+          "type": "LocalPresentationReceipt",
+          "classification": "Actual installed source revision/view IDs/MDX digests identifying the visible presentation."
+        },
+        {
+          "name": "notes",
+          "type": "string[]",
+          "classification": "Requested presentation caveats."
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "Actual presentation blocker."
+        },
+        {
+          "name": "revision",
+          "type": "string",
+          "classification": "Changed or held source coordinate needed to explain why a preview cannot be claimed current."
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewDeployedInterface",
+      "program": "skills/open-user-goal/reviewDeployedInterface.nl",
+      "resultType": "DeployedInterfaceOutcome",
+      "newResultType": "DeployedInterfaceOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "handoff"
+      ],
+      "removedEnvelope": "export type DeployedInterfaceOutcome = {\n  survey: Survey; observation: Observation; architecture: Architecture | null; finding: InterfaceFinding; handoff: Handoff | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewDeployedInterface",
+      "kind": "deployed-interface",
+      "oldResultType": "DeployedInterfaceOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewDeployedInterface/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "survey",
+          "type": "InterfaceSurvey",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "observation",
+          "type": "InterfaceObservation",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "architecture",
+          "type": "ArchitectureReport",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "InterfaceFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "InterfaceHandoff",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewInstalledPackage",
+      "program": "skills/open-user-goal/reviewInstalledPackage.nl",
+      "resultType": "InstalledPackageOutcome",
+      "newResultType": "InstalledPackageOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "repair",
+        "verification"
+      ],
+      "removedEnvelope": "export type InstalledPackageOutcome = {\n  assignment: Assignment; observed: Observation; finding: PackageFinding; repair: Restore | null;\n  verification: Verification | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": "Installed-package verification is the user-requested current test route, not a claimed passed test. Build-incident current/baseline are the requested performance comparison analyses.",
+      "callable": "reviewInstalledPackage",
+      "kind": "installed-package",
+      "oldResultType": "InstalledPackageOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewInstalledPackage/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "PackageAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "observed",
+          "type": "PackageObservation",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "PackageFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "repair",
+          "type": "PackageRestore",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "verification",
+          "type": "SuiteReviewReport",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "compareTestkitCloseouts",
+      "callable": "compareTestkitCloseouts",
+      "kind": "testkit-closeout",
+      "program": "skills/open-user-goal/compareTestkitCloseouts.nl",
+      "oldResultType": "CloseoutReport",
+      "resultType": "CloseoutReport",
+      "newResultType": "CloseoutReport",
+      "typeDeclaration": "skills/open-user-goal/compareTestkitCloseouts/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "pair",
+          "type": "CloseoutPair",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "current",
+          "type": "CloseoutEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "prior",
+          "type": "CloseoutEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "decision",
+          "type": "CloseoutDecision",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "CloseoutReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "decision",
+        "handoff"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewWebhookAdmission",
+      "program": "skills/open-user-goal/reviewWebhookAdmission.nl",
+      "resultType": "WebhookAdmissionOutcome",
+      "newResultType": "WebhookAdmissionOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "assessment",
+        "handoff"
+      ],
+      "removedEnvelope": "export type WebhookAdmissionOutcome = {\n  assignment: WebhookAdmissionAssignment; evidence: WebhookAdmissionEvidence; binding: WebhookAdmissionBinding;\n  assessment: WebhookAdmissionAssessment; handoff: WebhookAdmissionReceipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewWebhookAdmission",
+      "kind": "webhook-admission",
+      "oldResultType": "WebhookAdmissionOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewWebhookAdmission/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "WebhookAdmissionAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "evidence",
+          "type": "WebhookAdmissionEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "binding",
+          "type": "WebhookAdmissionBinding",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "assessment",
+          "type": "WebhookAdmissionAssessment",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "WebhookAdmissionReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewRecordedQuestion",
+      "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
+      "resultType": "RecordedQuestionReport",
+      "newResultType": "RecordedQuestionReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "answer"
+      ],
+      "removedEnvelope": "export type RecordedQuestionReport = { assignment: RecordedQuestion; phrase: string; candidates: RecordedCandidate[];\n  selection: RecordedSelection; evidence: RecordedEvidence | null; answer: RecordedAnswer };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewRecordedQuestion",
+      "kind": "provenance-question",
+      "oldResultType": "RecordedQuestionReport",
+      "typeDeclaration": "skills/open-user-goal/reviewRecordedQuestion/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "RecordedQuestion",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "phrase",
+          "type": "string",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "candidates",
+          "type": "RecordedCandidate[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "selection",
+          "type": "RecordedSelection",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "evidence",
+          "type": "RecordedEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "answer",
+          "type": "RecordedAnswer",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewTranscriptSurface",
+      "program": "skills/open-user-goal/reviewTranscriptSurface.nl",
+      "resultType": "TranscriptSurfaceReport",
+      "newResultType": "TranscriptSurfaceReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type TranscriptSurfaceReport = { assignment: SurfaceAssignment; approvals: SurfaceApproval[]; selection: SurfaceSelection;\n  replay: SurfaceReplay | null; decision: SurfaceDecision; receipt: SurfaceReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewTranscriptSurface",
+      "kind": "transcript-surface",
+      "oldResultType": "TranscriptSurfaceReport",
+      "typeDeclaration": "skills/open-user-goal/reviewTranscriptSurface/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "SurfaceAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "approvals",
+          "type": "SurfaceApproval[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "selection",
+          "type": "SurfaceSelection",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "replay",
+          "type": "SurfaceReplay",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "decision",
+          "type": "SurfaceDecision",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "receipt",
+          "type": "SurfaceReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewSourceAttribution",
+      "program": "skills/open-user-goal/reviewSourceAttribution.nl",
+      "resultType": "SourceAttributionReport",
+      "newResultType": "SourceAttributionReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "conclusion",
+        "receipt"
+      ],
+      "removedEnvelope": "export type SourceAttributionReport = { assignment: SourceAttributionAssignment; files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[];\n  conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewSourceAttribution",
+      "kind": "source-attribution",
+      "oldResultType": "SourceAttributionReport",
+      "typeDeclaration": "skills/open-user-goal/reviewSourceAttribution/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "SourceAttributionAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "files",
+          "type": "SourceAttributionFile[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "evidence",
+          "type": "SourceAttributionEvidence[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "conclusion",
+          "type": "SourceAttributionConclusion",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "receipt",
+          "type": "SourceAttributionReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewWorkspaceSmoke",
+      "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
+      "resultType": "WorkspaceSmokeReport",
+      "newResultType": "WorkspaceSmokeReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type WorkspaceSmokeReport = { assignment: SmokeAssignment; source: SmokeSource; selection: SmokeSelection; runtime: SmokeRuntime | null;\n  decision: SmokeDecision; receipt: SmokeReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewWorkspaceSmoke",
+      "kind": "workspace-smoke",
+      "oldResultType": "WorkspaceSmokeReport",
+      "typeDeclaration": "skills/open-user-goal/reviewWorkspaceSmoke/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "SmokeAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "source",
+          "type": "SmokeSource",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "selection",
+          "type": "SmokeSelection",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "runtime",
+          "type": "SmokeRuntime",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "decision",
+          "type": "SmokeDecision",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "receipt",
+          "type": "SmokeReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "recoverSameTurnEval",
+      "callable": "recoverSameTurnEval",
+      "kind": "same-turn-eval",
+      "program": "skills/open-user-goal/recoverSameTurnEval.nl",
+      "oldResultType": "SameTurnEvalOutcome",
+      "resultType": "SameTurnEvalOutcome",
+      "newResultType": "SameTurnEvalOutcome",
+      "typeDeclaration": "skills/open-user-goal/recoverSameTurnEval/contract.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "EvalAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "evidence",
+          "type": "EvalCellEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "pick",
+          "type": "EvalPick",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "recovery",
+          "type": "EvalRecoveryReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "pick",
+        "recovery"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewLogFollower",
+      "program": "skills/open-user-goal/reviewLogFollower.nl",
+      "resultType": "LogFollowerOutcome",
+      "newResultType": "LogFollowerOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type LogFollowerOutcome = { assignment: FollowAssignment; capture: FollowCapture; joined: FollowJoin;\n  decision: FollowDecision; receipt: FollowReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewLogFollower",
+      "kind": "log-follower",
+      "oldResultType": "LogFollowerOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewLogFollower/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "FollowAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "capture",
+          "type": "FollowCapture",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "joined",
+          "type": "FollowJoin",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "decision",
+          "type": "FollowDecision",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "receipt",
+          "type": "FollowReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewPtyContinuity",
+      "program": "skills/open-user-goal/reviewPtyContinuity.nl",
+      "resultType": "PtyContinuityOutcome",
+      "newResultType": "PtyContinuityOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type PtyContinuityOutcome = { assignment: PtyAssignment; evidence: PtyPair; choice: PtyChoice; decision: PtyDecision; receipt: PtyReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewPtyContinuity",
+      "kind": "pty-continuity",
+      "oldResultType": "PtyContinuityOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewPtyContinuity/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "PtyAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "evidence",
+          "type": "PtyPair",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "choice",
+          "type": "PtyChoice",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "decision",
+          "type": "PtyDecision",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "receipt",
+          "type": "PtyReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "recoverContentArchive",
+      "callable": "recoverContentArchive",
+      "kind": "content-archive",
+      "program": "skills/open-user-goal/recoverContentArchive.nl",
+      "oldResultType": "ContentArchiveOutcome",
+      "resultType": "ContentArchiveOutcome",
+      "newResultType": "ContentArchiveOutcome",
+      "typeDeclaration": "skills/open-user-goal/recoverContentArchive/contract.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "ContentArchiveAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "observation",
+          "type": "ContentArchiveObservation",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "archive",
+          "type": "ContentArchiveChoice",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "plan",
+          "type": "ContentArchivePlan",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "receipt",
+          "type": "ContentArchiveReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "receipt"
+      ],
+      "nestedProjection": "Internal archive/path plan is projected to action and reason; native receipt remains actual.",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewSystemRelease",
+      "program": "skills/open-user-goal/reviewSystemRelease.nl",
+      "resultType": "SystemReleaseOutcome",
+      "newResultType": "SystemReleaseOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "assessment",
+        "handoff"
+      ],
+      "removedEnvelope": "export type SystemReleaseOutcome = {\n  assignment: ReleaseAssignment; runs: RetainedRunPair; choice: RunChoice; cases: CaseEvidence[];\n  assessment: ReleaseAssessment; handoff: ReleaseReceipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewSystemRelease",
+      "kind": "system-release",
+      "oldResultType": "SystemReleaseOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewSystemRelease/contract.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "ReleaseAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "runs",
+          "type": "RetainedRunPair",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "choice",
+          "type": "RunChoice",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "cases",
+          "type": "CaseEvidence[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "assessment",
+          "type": "ReleaseAssessment",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "ReleaseReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "migratePanelSource",
+      "callable": "migratePanelSource",
+      "kind": "panel-source-migration",
+      "program": "skills/open-user-goal/migratePanelSource.nl",
+      "oldResultType": "PanelSourceMigrationOutcome",
+      "resultType": "PanelSourceMigrationOutcome",
+      "newResultType": "PanelSourceMigrationOutcome",
+      "typeDeclaration": "skills/open-user-goal/migratePanelSource/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "PanelMigrationAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "observed",
+          "type": "MigrationObservation",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "MigrationFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "move",
+          "type": "MigrationReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "identity",
+          "type": "MigrationReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "consumers",
+          "type": "MigrationReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "current",
+          "type": "MigrationObservation",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        }
+      ],
+      "retainedFields": [
+        "finding",
+        "move",
+        "identity",
+        "consumers"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewWorkspaceShare",
+      "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
+      "resultType": "WorkspaceShareOutcome",
+      "newResultType": "WorkspaceShareOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "handoff"
+      ],
+      "removedEnvelope": "export type WorkspaceShareOutcome = { assignment: Assignment; observation: Observation; finding: ShareFinding; handoff: Receipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewWorkspaceShare",
+      "kind": "workspace-share",
+      "oldResultType": "WorkspaceShareOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewWorkspaceShare/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "ShareAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "observation",
+          "type": "ShareObservation",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "ShareFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "ShareReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "recoverAgentCapability",
+      "program": "skills/open-user-goal/recoverAgentCapability.nl",
+      "resultType": "AgentCapabilityOutcome",
+      "newResultType": "AgentCapabilityOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "continuation"
+      ],
+      "removedEnvelope": "export type AgentCapabilityOutcome = {\n  assignment: Assignment; evidence: AttemptPair; finding: ContinuationFinding; continuation: Result | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "recoverAgentCapability",
+      "kind": "agent-capability",
+      "oldResultType": "AgentCapabilityOutcome",
+      "typeDeclaration": "skills/open-user-goal/recoverAgentCapability/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "ActionAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "evidence",
+          "type": "AttemptPair",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "ContinuationFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "continuation",
+          "type": "Continuation",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewLocalExecutionWidth",
+      "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
+      "resultType": "LocalWidthOutcome",
+      "newResultType": "LocalWidthOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "handoff"
+      ],
+      "removedEnvelope": "export type LocalWidthOutcome = { survey: Survey; readiness: Readiness; finding: Finding; handoff: Handoff | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewLocalExecutionWidth",
+      "kind": "local-width",
+      "oldResultType": "LocalWidthOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewLocalExecutionWidth/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "survey",
+          "type": "WidthSurvey",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "readiness",
+          "type": "NativeReadiness",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "WidthFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "WidthHandoff",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewExtensionDossier",
+      "program": "skills/open-user-goal/reviewExtensionDossier.nl",
+      "resultType": "ExtensionDossierOutcome",
+      "newResultType": "ExtensionDossierOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "dossier"
+      ],
+      "removedEnvelope": "export type ExtensionDossierOutcome = {\n  assignment: DossierAssignment; review: Review; candidate: CandidateComparison; history: History;\n  finding: DossierFinding; dossier: Receipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null,
+      "callable": "reviewExtensionDossier",
+      "kind": "extension-dossier",
+      "oldResultType": "ExtensionDossierOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewExtensionDossier/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "assignment",
+          "type": "DossierAssignment",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "review",
+          "type": "ExtensionReleaseReview",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "candidate",
+          "type": "CandidateComparison",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "history",
+          "type": "ReleaseHistory",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "finding",
+          "type": "DossierFinding",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "dossier",
+          "type": "DossierReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewRetainedBuildIncident",
+      "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
+      "resultType": "BuildIncidentOutcome",
+      "newResultType": "BuildIncidentOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "current",
+        "baseline",
+        "disposition",
+        "handoff"
+      ],
+      "removedEnvelope": "export type BuildIncidentOutcome = {\n  subject: Survey[\"subject\"];\n  focus: Focus;\n  current: IncidentAssessment | null;\n  baseline: IncidentAssessment | null;\n  disposition: IncidentDisposition;\n  handoff: Receipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": "Installed-package verification is the user-requested current test route, not a claimed passed test. Build-incident current/baseline are the requested performance comparison analyses.",
+      "callable": "reviewRetainedBuildIncident",
+      "kind": "build-incident",
+      "oldResultType": "BuildIncidentOutcome",
+      "typeDeclaration": "skills/open-user-goal/reviewRetainedBuildIncident/types.ts",
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "subject",
+          "type": "{ title: string; source: string; owner: string; revision: string; }",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "focus",
+          "type": "IncidentFocus",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "current",
+          "type": "IncidentAssessment",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "baseline",
+          "type": "IncidentAssessment",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "disposition",
+          "type": "IncidentDisposition",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "handoff",
+          "type": "IncidentReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "workOnProblemReportGoal",
+      "callable": "workOnProblemReportGoal",
+      "kind": "problem-report",
+      "program": "skills/open-user-goal/workOnProblemReportGoal.nl",
+      "oldResultType": "OpenProblemOutcome",
+      "resultType": "OpenProblemOutcome",
+      "newResultType": "OpenProblemOutcome",
+      "typeDeclaration": "skills/open-user-goal/workOnProblemReportGoal/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "incident",
+          "type": "string",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "draft",
+          "type": "unknown",
+          "classification": "actual application result/handle, lifted directly from the installed child result"
+        }
+      ],
+      "retainedFields": [
+        "draft"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "reviewTemplateMigration",
+      "callable": "reviewTemplateMigration",
+      "kind": "templateMigration",
+      "program": "skills/template-candidate/reviewTemplateMigration.nl",
+      "oldResultType": "MigrationReport",
+      "resultType": "MigrationReport",
+      "newResultType": "MigrationReport",
+      "typeDeclaration": "skills/template-candidate/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "status",
+          "type": "MigrationStatus",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "candidateId",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "deployedMain",
+          "type": "string",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "dossierRevision",
+          "type": "string",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "readIds",
+          "type": "string[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "candidate",
+          "type": "CandidateReport",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "handoff",
+          "type": "MigrationHandoff",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "answer",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "status",
+        "candidateId",
+        "handoff",
+        "answer"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
+    },
+    {
+      "function": "repairWorkspaceUnit",
+      "callable": "repairWorkspaceUnit",
+      "kind": "unit-rollout",
+      "program": "skills/open-unit-rollout/repairWorkspaceUnit.nl",
+      "oldResultType": "UnitRolloutReport",
+      "resultType": "UnitRolloutReport",
+      "newResultType": "UnitRolloutReport",
+      "typeDeclaration": "skills/open-unit-rollout/types.ts",
+      "publicShapeChanged": true,
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"held\" | \"verified\" | \"repaired\" | \"committed\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "unitId",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "revision",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "check",
+          "type": "RolloutCheck",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "release",
+          "type": "RolloutCommit",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
+      ],
+      "retainedFields": [
+        "status",
+        "unitId",
+        "revision",
+        "release",
+        "reason"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
       "kind": "terminalAppRepair",
@@ -531,249 +2075,288 @@
         }
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
-      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+      "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending.",
+      "function": "workOnTerminalApp",
+      "newResultType": "TerminalRepairReport",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewDeliveryWake",
-      "program": "skills/open-user-goal/reviewDeliveryWake.nl",
-      "resultType": "DeliveryWakeReport",
-      "newResultType": "DeliveryWakeReport",
+      "function": "activateOwnedAutomation",
+      "callable": "activateOwnedAutomation",
+      "kind": "automationActivation",
+      "program": "skills/open-user-goal/activateOwnedAutomation.nl",
+      "oldResultType": "OwnedAutomationActivationReport",
+      "resultType": "OwnedAutomationActivationReport",
+      "newResultType": "OwnedAutomationActivationReport",
+      "typeDeclaration": "skills/open-user-goal/activateOwnedAutomation/types.ts",
       "publicShapeChanged": true,
-      "retainedFields": [
-        "choice",
-        "receipt"
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "evidence",
+          "type": "AutomationLaunchEvidence",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "plan",
+          "type": "LaunchPlan",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "decision",
+          "type": "AutomationLaunchChoice",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "activation",
+          "type": "AutomationActivation",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "readback",
+          "type": "{ missionId: string; owner: string; trigger: LaunchTrigger; revisionDigest: string; nextRunAt: number; runCount: number; state: \"active\" | \"paused\"; }",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        }
       ],
-      "removedEnvelope": "export type DeliveryWakeReport = { assignment: DeliveryWakeAssignment; evidence: DeliveryWakeEvidence;\n  choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewRecordedQuestion",
-      "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
-      "resultType": "RecordedQuestionReport",
-      "newResultType": "RecordedQuestionReport",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "answer"
-      ],
-      "removedEnvelope": "export type RecordedQuestionReport = { assignment: RecordedQuestion; phrase: string; candidates: RecordedCandidate[];\n  selection: RecordedSelection; evidence: RecordedEvidence | null; answer: RecordedAnswer };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewTranscriptSurface",
-      "program": "skills/open-user-goal/reviewTranscriptSurface.nl",
-      "resultType": "TranscriptSurfaceReport",
-      "newResultType": "TranscriptSurfaceReport",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "decision",
-        "receipt"
-      ],
-      "removedEnvelope": "export type TranscriptSurfaceReport = { assignment: SurfaceAssignment; approvals: SurfaceApproval[]; selection: SurfaceSelection;\n  replay: SurfaceReplay | null; decision: SurfaceDecision; receipt: SurfaceReceipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewSourceAttribution",
-      "program": "skills/open-user-goal/reviewSourceAttribution.nl",
-      "resultType": "SourceAttributionReport",
-      "newResultType": "SourceAttributionReport",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "conclusion",
-        "receipt"
-      ],
-      "removedEnvelope": "export type SourceAttributionReport = { assignment: SourceAttributionAssignment; files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[];\n  conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewLogFollower",
-      "program": "skills/open-user-goal/reviewLogFollower.nl",
-      "resultType": "LogFollowerOutcome",
-      "newResultType": "LogFollowerOutcome",
-      "publicShapeChanged": true,
       "retainedFields": [
         "decision",
-        "receipt"
+        "activation"
       ],
-      "removedEnvelope": "export type LogFollowerOutcome = { assignment: FollowAssignment; capture: FollowCapture; joined: FollowJoin;\n  decision: FollowDecision; receipt: FollowReceipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
+      "nestedProjection": "decision retains only action,basis,reason; consent is working native authority, not copied into public value.",
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewPtyContinuity",
-      "program": "skills/open-user-goal/reviewPtyContinuity.nl",
-      "resultType": "PtyContinuityOutcome",
-      "newResultType": "PtyContinuityOutcome",
+      "function": "workOnProgramRunGoal",
+      "callable": "workOnProgramRunGoal",
+      "kind": "program-run",
+      "program": "skills/open-user-goal/workOnProgramRunGoal.nl",
+      "oldResultType": "ProgramRunReport",
+      "resultType": "ProgramRunReport",
+      "newResultType": "ProgramRunReport",
+      "typeDeclaration": "skills/open-program-run/types.ts",
       "publicShapeChanged": true,
-      "retainedFields": [
-        "decision",
-        "receipt"
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"reviewed\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "\"program-unavailable\" | \"run-not-bound\" | \"receipt-unavailable\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "programId",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "review",
+          "type": "ProgramRunReview",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "receipts",
+          "type": "ProgramOutputReceipt[]",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "signed",
+          "type": "SignedOutputReceipt",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
       ],
-      "removedEnvelope": "export type PtyContinuityOutcome = { assignment: PtyAssignment; evidence: PtyPair; choice: PtyChoice; decision: PtyDecision; receipt: PtyReceipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
+      "retainedFields": [
+        "status",
+        "reason",
+        "programId",
+        "receipts",
+        "signed"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewWorkspaceSmoke",
-      "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
-      "resultType": "WorkspaceSmokeReport",
-      "newResultType": "WorkspaceSmokeReport",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "decision",
-        "receipt"
+      "function": "workOnAuthoringGoal",
+      "callable": "workOnAuthoringGoal",
+      "kind": "authoring",
+      "program": "skills/open-user-goal/workOnAuthoringGoal.nl",
+      "oldResultType": "AuthoringOpenOutcome",
+      "resultType": "AuthoringOpenOutcome",
+      "newResultType": "AuthoringOpenOutcome",
+      "typeDeclaration": "skills/open-authoring-goal/types.ts",
+      "publicShapeChanged": false,
+      "classification": "retained: actual requested application value",
+      "goalEvidence": "skills/system-testing/open-goal-authoring-worlds.ts",
+      "callerEvidence": "skills/open-user-goal/workOnAuthoringGoal.nl",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"reviewed\"",
+          "classification": "Actual compiler-review disposition."
+        },
+        {
+          "name": "reason",
+          "type": "MissingAuthoringRecord | \"cannot-bind-scope\" | \"source-kept-changing\"",
+          "classification": "Exact unresolved source/authority condition."
+        },
+        {
+          "name": "receipt",
+          "type": "AuthoringReceipt",
+          "classification": "Requested candidate/baseline compiler findings with their actual revision identities; not an activity/audit report."
+        },
+        {
+          "name": "artifact",
+          "type": "AuthoringHandoff",
+          "classification": "Actual requested authoring handoff artifact."
+        }
       ],
-      "removedEnvelope": "export type WorkspaceSmokeReport = { assignment: SmokeAssignment; source: SmokeSource; selection: SmokeSelection; runtime: SmokeRuntime | null;\n  decision: SmokeDecision; receipt: SmokeReceipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewDeployedInterface",
-      "program": "skills/open-user-goal/reviewDeployedInterface.nl",
-      "resultType": "DeployedInterfaceOutcome",
-      "newResultType": "DeployedInterfaceOutcome",
+      "function": "workTowardLocalDelivery",
+      "callable": "workTowardLocalDelivery",
+      "kind": "local-delivery",
+      "program": "skills/open-local-delivery/workTowardLocalDelivery.nl",
+      "oldResultType": "LocalDeliveryReport",
+      "resultType": "LocalDeliveryReport",
+      "newResultType": "LocalDeliveryReport",
+      "typeDeclaration": "skills/open-local-delivery/types.ts",
       "publicShapeChanged": true,
-      "retainedFields": [
-        "finding",
-        "handoff"
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "status",
+          "type": "LocalDisposition",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "evidence",
+          "type": "LocalDeliveryEvidence[]",
+          "classification": "native observation/input/authority state; retained in calls and independent verifier, not copied into final value"
+        },
+        {
+          "name": "delivery",
+          "type": "LocalDeliveryResult",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
       ],
-      "removedEnvelope": "export type DeployedInterfaceOutcome = {\n  survey: Survey; observation: Observation; architecture: Architecture | null; finding: InterfaceFinding; handoff: Handoff | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
+      "retainedFields": [
+        "status",
+        "reason",
+        "delivery"
+      ],
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewInstalledPackage",
-      "program": "skills/open-user-goal/reviewInstalledPackage.nl",
-      "resultType": "InstalledPackageOutcome",
-      "newResultType": "InstalledPackageOutcome",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "finding",
-        "repair",
-        "verification"
+      "function": "recoverSessionGoal",
+      "callable": "recoverSessionGoal",
+      "kind": "recovery",
+      "program": "skills/open-session-recovery/program/recoverSessionGoal.nl",
+      "oldResultType": "RecoveryReport",
+      "resultType": "RecoveryReport",
+      "newResultType": "RecoveryReport",
+      "typeDeclaration": "skills/open-session-recovery/program/types.ts",
+      "publicShapeChanged": false,
+      "classification": "retained: actual requested application value",
+      "goalEvidence": "skills/system-testing/open-goal-recovery-worlds.ts:10,42,56",
+      "callerEvidence": "skills/open-session-recovery/program/recoverSessionGoal.nl",
+      "fields": [
+        {
+          "name": "review",
+          "type": "RecoveryFinding",
+          "classification": "Requested recovered decision and exact source citations, e.g. signed mailroom cutoff; citation text is the answer content."
+        },
+        {
+          "name": "handoff",
+          "type": "RecoveryArtifact",
+          "classification": "Actual next-operator recovery note artifact."
+        }
       ],
-      "removedEnvelope": "export type InstalledPackageOutcome = {\n  assignment: Assignment; observed: Observation; finding: PackageFinding; repair: Restore | null;\n  verification: Verification | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": "Installed-package verification is the user-requested current test route, not a claimed passed test. Build-incident current/baseline are the requested performance comparison analyses."
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewWorkspaceShare",
-      "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
-      "resultType": "WorkspaceShareOutcome",
-      "newResultType": "WorkspaceShareOutcome",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "finding",
-        "handoff"
+      "function": "workInBrowser",
+      "callable": "workInBrowser",
+      "kind": "browser",
+      "program": "skills/open-user-goal/workInBrowser.nl",
+      "oldResultType": "BrowserGoalReport",
+      "resultType": "BrowserGoalReport",
+      "newResultType": "BrowserGoalReport",
+      "typeDeclaration": "skills/open-user-goal/types.ts",
+      "publicShapeChanged": false,
+      "classification": "retained: actual requested application value",
+      "goalEvidence": "skills/system-testing/open-goal-browser-worlds.ts",
+      "callerEvidence": "skills/open-user-goal/workInBrowser.nl",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"blocked\"",
+          "classification": "Actual observed/changed/blocked UI result."
+        },
+        {
+          "name": "revision",
+          "type": "string",
+          "classification": "Identity of the actual CDP-read page revision."
+        },
+        {
+          "name": "rows",
+          "type": "{ label: string; state: string; detail: string; }[]",
+          "classification": "User-requested visible row labels/state/details, application content."
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "Exact browser blocker."
+        }
       ],
-      "removedEnvelope": "export type WorkspaceShareOutcome = { assignment: Assignment; observation: Observation; finding: ShareFinding; handoff: Receipt | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     },
     {
-      "function": "reviewLocalExecutionWidth",
-      "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
-      "resultType": "LocalWidthOutcome",
-      "newResultType": "LocalWidthOutcome",
+      "function": "verifyWorkspaceSuite",
+      "callable": "verifyWorkspaceSuite",
+      "kind": "suite",
+      "program": "skills/open-user-goal/verifyWorkspaceSuite.nl",
+      "oldResultType": "WorkspaceSuiteReport",
+      "resultType": "WorkspaceSuiteReport",
+      "newResultType": "WorkspaceSuiteReport",
+      "typeDeclaration": "skills/open-user-goal/types.ts",
       "publicShapeChanged": true,
-      "retainedFields": [
-        "finding",
-        "handoff"
+      "classification": "converted: compact application value or exact native result/handle",
+      "fields": [
+        {
+          "name": "status",
+          "type": "\"blocked\"",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "selection",
+          "type": "OpenSuiteChoice",
+          "classification": "internal typed policy state"
+        },
+        {
+          "name": "review",
+          "type": "unknown",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "classification": "requested application answer, finding, status or actual native result/handle"
+        }
       ],
-      "removedEnvelope": "export type LocalWidthOutcome = { survey: Survey; readiness: Readiness; finding: Finding; handoff: Handoff | null };",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewExtensionDossier",
-      "program": "skills/open-user-goal/reviewExtensionDossier.nl",
-      "resultType": "ExtensionDossierOutcome",
-      "newResultType": "ExtensionDossierOutcome",
-      "publicShapeChanged": true,
       "retainedFields": [
-        "finding",
-        "dossier"
+        "status",
+        "review",
+        "reason"
       ],
-      "removedEnvelope": "export type ExtensionDossierOutcome = {\n  assignment: DossierAssignment; review: Review; candidate: CandidateComparison; history: History;\n  finding: DossierFinding; dossier: Receipt | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "recoverAgentCapability",
-      "program": "skills/open-user-goal/recoverAgentCapability.nl",
-      "resultType": "AgentCapabilityOutcome",
-      "newResultType": "AgentCapabilityOutcome",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "finding",
-        "continuation"
-      ],
-      "removedEnvelope": "export type AgentCapabilityOutcome = {\n  assignment: Assignment; evidence: AttemptPair; finding: ContinuationFinding; continuation: Result | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewSystemRelease",
-      "program": "skills/open-user-goal/reviewSystemRelease.nl",
-      "resultType": "SystemReleaseOutcome",
-      "newResultType": "SystemReleaseOutcome",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "assessment",
-        "handoff"
-      ],
-      "removedEnvelope": "export type SystemReleaseOutcome = {\n  assignment: ReleaseAssignment; runs: RetainedRunPair; choice: RunChoice; cases: CaseEvidence[];\n  assessment: ReleaseAssessment; handoff: ReleaseReceipt | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewWebhookAdmission",
-      "program": "skills/open-user-goal/reviewWebhookAdmission.nl",
-      "resultType": "WebhookAdmissionOutcome",
-      "newResultType": "WebhookAdmissionOutcome",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "assessment",
-        "handoff"
-      ],
-      "removedEnvelope": "export type WebhookAdmissionOutcome = {\n  assignment: WebhookAdmissionAssignment; evidence: WebhookAdmissionEvidence; binding: WebhookAdmissionBinding;\n  assessment: WebhookAdmissionAssessment; handoff: WebhookAdmissionReceipt | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": null
-    },
-    {
-      "function": "reviewRetainedBuildIncident",
-      "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
-      "resultType": "BuildIncidentOutcome",
-      "newResultType": "BuildIncidentOutcome",
-      "publicShapeChanged": true,
-      "retainedFields": [
-        "current",
-        "baseline",
-        "disposition",
-        "handoff"
-      ],
-      "removedEnvelope": "export type BuildIncidentOutcome = {\n  subject: Survey[\"subject\"];\n  focus: Focus;\n  current: IncidentAssessment | null;\n  baseline: IncidentAssessment | null;\n  disposition: IncidentDisposition;\n  handoff: Receipt | null;\n};",
-      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
-      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
-      "exception": "Installed-package verification is the user-requested current test route, not a claimed passed test. Build-incident current/baseline are the requested performance comparison analyses."
+      "outcomeRoles": "Explicit effects vs required application answer vs optional redundant result, with actual-root incorrectReturnValues selectors."
     }
   ],
   "testEvidence": {
@@ -784,7 +2367,28 @@
     "secondSignatureUnit": "vibe-v14-operational-signatures-20261123d",
     "secondNativeUnit": "vibe-v14-operational-second-tests-20261123c",
     "secondNativeTestsPassed": 56,
-    "secondNativeLimits": "24 transcript worlds through actual canonical projection/native journal DI; other15 new full native-world qualifications not yet executed."
+    "secondNativeLimits": "24 transcript worlds through actual canonical projection/native journal DI; other15 new full native-world qualifications not yet executed.",
+    "finalSignatureUnit": "vibe-v14-operational-signatures-20261123f",
+    "finalTargetedUnit": "vibe-v14-operational-final-tests-20261123d",
+    "finalTargetedTests": 66,
+    "parseUnit": "vibe-v14-operational-source-parse-20261123b",
+    "parseChangedTypeScriptFiles": 58,
+    "limits": "All116 actual public signatures compiled. Actual focused tests cover29 desktop worlds,24 transcript worlds, browser DOM/CDP adapter, authoring compiler evidence, suite routes, Tendril native evidence, phone and crisp receipt projections. Other native full-world reference qualifications are updated but have not been run. Generated *.d.nl.ts regeneration belongs final merged source qualification."
   },
-  "sharedMechanism": "Native journals/captured invocation values provide execution evidence. Public results do not duplicate requests, scope cards, observations, gates or readbacks."
+  "sharedMechanism": "Native journals/captured invocation values provide execution evidence. Public results do not duplicate requests, scope cards, observations, gates or readbacks.",
+  "ownedPublicApis": 52,
+  "compacted": 46,
+  "retainedApplicationValues": 6,
+  "mechanismInventory": {
+    "producers": "52 Base public lambda contracts and owned direct TS result/staging helpers; native Android audit is System skills/mobile-runtime-audit-bindings/managed.ts.",
+    "consumers": [
+      "SST owned managed verifiers and native qualifier procedures",
+      "System Android audit verifier",
+      "shared SST semantic-outcome-contract.ts uses explicit check roles",
+      "shared authored-teacher passes actual invocation observations; own private reference controls moved to third verify argument",
+      "Host exporter and Python/JS native IR consumers use generic incorrectReturnValues, unchanged format"
+    ],
+    "engines": "No model protocol, parser, codec or engine path changed: the existing compiler publishes the updated application schemas to every runtime. Node/Workerd and model engines consume the same language function types; engine-specific generation behavior is unchanged. New optional-TS-root Core fix is separately owned by residual/root.",
+    "preserved": "All raw trajectories, source data, actual native side effects/authority/ownership and Goal IDs/splits/sourceGroups preserved."
+  }
 }

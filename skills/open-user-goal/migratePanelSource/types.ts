@@ -5,5 +5,4 @@ export type MigrationObservation = Observation;
 export type MigrationDecision = Decision;
 export type MigrationReceipt = Receipt;
 export type MigrationFinding = { decision: Decision; reason: string };
-export type PanelSourceMigrationOutcome = { assignment: Assignment; observed: Observation; finding: MigrationFinding;
-  move: Receipt | null; identity: Receipt | null; consumers: Receipt | null; current: Observation };
+export type PanelSourceMigrationOutcome = { finding: MigrationFinding; move: Receipt | null; identity: Receipt | null; consumers: Receipt | null };

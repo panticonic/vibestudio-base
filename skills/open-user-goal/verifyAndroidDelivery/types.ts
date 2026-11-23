@@ -7,8 +7,4 @@ export type AndroidDeliveryScope = {
   deviceKind: "disposable-emulator";
   note: string;
 };
-export type AndroidDeliveryOutcome = {
-  scope: AndroidDeliveryScope;
-  request: MobileAssignment;
-  actual: MobileReport;
-};
+export type AndroidDeliveryOutcome = MobileReport;

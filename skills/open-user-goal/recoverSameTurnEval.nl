@@ -9,4 +9,6 @@ budget: { maxTurns: 35 }
 2. Call inspectSameTurnEval on that assignment. Preserve the native tool disposition and candidate provenance.
 3. Call chooseSameTurnRecovery with assignment and evidence.
 4. If the decision is held, leave recovery null. Otherwise call resolveSameTurnEval with assignment, evidence and pick, retaining its exact observation for the user.
-Return assignment, evidence, pick and recovery.
+Return pick and recovery.
+
+Return pick and actual recovery result or null. The assignment and native attempt observation remain working context.
