@@ -30,7 +30,7 @@ export function bindChannelReview(
     channelId,
     ...(branchId === undefined ? {} : { branchId }),
   };
-  let health: ChannelHealth | undefined;
+  const issuedHealth = new Map<string, ChannelHealth>();
 
   function claim(id: string, permitted: boolean) {
     if (!permitted || id !== operationId)
@@ -57,8 +57,8 @@ export function bindChannelReview(
             throw new Error(
               "GAD returned health for a different channel or branch",
             );
-          health = {
-            receipt: receipt("health"),
+          const health: ChannelHealth = {
+            receipt: receipt("health") + ":" + crypto.randomUUID(),
             channelId,
             branchId: snapshot.branchId,
             generatedAt: snapshot.generatedAt,
@@ -69,6 +69,7 @@ export function bindChannelReview(
               inspector: scopedInspector(finding.kind),
             })),
           };
+          issuedHealth.set(health.receipt, structuredClone(health));
           return structuredClone(health);
         },
       },
@@ -77,6 +78,7 @@ export function bindChannelReview(
           healthReceipt: string,
           kind: string,
         ): Promise<ChannelFollowUp> {
+          const health = issuedHealth.get(healthReceipt);
           if (
             view !== "triage" ||
             !health ||

@@ -68,6 +68,7 @@ describe("caller-bound GAD review", () => {
       roster: { summary: { activeParticipants: 1 } },
       storage: { rows: [] },
     });
+    runtimeMock.gad.inspectPublicationIntegrity.mockResolvedValue({summary:{missingMappings:1},rows:[]});
     runtimeMock.gad.inspectTurnState.mockResolvedValue({
       summary: { duplicateOpenedTurns: 1, openTurns: 0 },
       rows: [],
@@ -116,8 +117,22 @@ describe("caller-bound GAD review", () => {
         evidence.receipt,
         "missing-publication-mapping",
       ),
-    ).rejects.toThrow(/health receipt/);
-    expect(runtimeMock.gad.inspectPublicationIntegrity).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({inspector:"inspectPublicationIntegrity"});
+    expect(runtimeMock.gad.inspectPublicationIntegrity).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains each issued health branch and findings after a later observation", async () => {
+    const bound = bindChannelReview({channelId:"owned",goal:"Review channel state",view:"triage"});
+    const first = await bound.services.gadHealth.observe(bound.request.operationId);
+    const original = await runtimeMock.gad.inspectAgentHealth.mock.results[0]!.value;
+    runtimeMock.gad.inspectAgentHealth.mockResolvedValueOnce({...original,branchId:"later-branch",
+      publicationIntegrity:{summary:{},rows:[]},turnState:{summary:{openTurns:0,streamingMessages:0,duplicateOpenedTurns:0},rows:[]}});
+    const later = await bound.services.gadHealth.observe(bound.request.operationId);
+    expect(later.receipt).not.toBe(first.receipt);
+    await expect(bound.services.gadFollowUp.inspect(first.receipt,"duplicate-turn-opened")).resolves.toMatchObject({inspector:"inspectTurnState"});
+    expect(runtimeMock.gad.inspectTurnState).toHaveBeenLastCalledWith({trajectoryId:logIdForChannel("owned"),branchId:"observed-branch",limit:12});
+    await expect(bound.services.gadFollowUp.inspect(later.receipt,"duplicate-turn-opened")).rejects.toThrow(/observed finding/);
+    await expect(bound.services.gadFollowUp.inspect("foreign","duplicate-turn-opened")).rejects.toThrow(/health receipt/);
   });
 
   it("keeps the bounded channel tail out of a historical branch recap", async () => {
