@@ -435,7 +435,7 @@
     "notificationState": [
       "reviewNotificationState/locateNotificationLane.nl",
       "reviewNotificationState/readNotificationLifecycle.nl",
-      "reviewNotificationState/finishNotificationReview.nl"
+      "reviewNotificationState/finishNotificationReview.ts"
     ],
     "mobileContinuity": [],
     "assetHistory": [],
