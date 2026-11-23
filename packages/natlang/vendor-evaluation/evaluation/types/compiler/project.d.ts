@@ -19,6 +19,8 @@ export interface ProjectFiles {
 }
 export { NEUTRAL_RUNTIME_SPECIFIER };
 export type BuildOptions = {
+    /** Opt out of shared generated record modules (diagnostic/reference mode). */
+    inlineRecords?: boolean;
     /** Enforce the finite generated-program profile on every editable application module. */
     constrained?: boolean;
     services?: ProgramDescriptor['services'];

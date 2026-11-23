@@ -6525,13 +6525,13 @@ ${lanes.join("\n")}
         }
       }
       var nullTimer = { enter: noop, exit: noop };
-      var enabled2 = false;
+      var enabled3 = false;
       var timeorigin = timestamp();
       var marks = /* @__PURE__ */ new Map();
       var counts = /* @__PURE__ */ new Map();
       var durations = /* @__PURE__ */ new Map();
       function mark(markName) {
-        if (enabled2) {
+        if (enabled3) {
           const count = counts.get(markName) ?? 0;
           counts.set(markName, count + 1);
           marks.set(markName, timestamp());
@@ -6542,7 +6542,7 @@ ${lanes.join("\n")}
         }
       }
       function measure(measureName, startMarkName, endMarkName) {
-        if (enabled2) {
+        if (enabled3) {
           const end = (endMarkName !== void 0 ? marks.get(endMarkName) : void 0) ?? timestamp();
           const start = (startMarkName !== void 0 ? marks.get(startMarkName) : void 0) ?? timeorigin;
           const previousDuration = durations.get(measureName) || 0;
@@ -6578,12 +6578,12 @@ ${lanes.join("\n")}
         performanceImpl == null ? void 0 : performanceImpl.clearMarks(name);
       }
       function isEnabled() {
-        return enabled2;
+        return enabled3;
       }
       function enable(system = sys) {
         var _a3;
-        if (!enabled2) {
-          enabled2 = true;
+        if (!enabled3) {
+          enabled3 = true;
           perfHooks || (perfHooks = tryGetNativePerformanceHooks());
           if (perfHooks == null ? void 0 : perfHooks.performance) {
             timeorigin = perfHooks.performance.timeOrigin;
@@ -6595,12 +6595,12 @@ ${lanes.join("\n")}
         return true;
       }
       function disable() {
-        if (enabled2) {
+        if (enabled3) {
           marks.clear();
           counts.clear();
           durations.clear();
           performanceImpl = void 0;
-          enabled2 = false;
+          enabled3 = false;
         }
       }
       var tracing;
@@ -219781,6 +219781,35 @@ var init_selected_captures = __esm({
   }
 });
 
+// src/runtime/source-session.ts
+function withSourceLoadSession(files2, run) {
+  if (!enabled2(files2) || sessions.has(files2)) return run();
+  sessions.set(files2, /* @__PURE__ */ new Map());
+  try {
+    return run();
+  } finally {
+    sessions.delete(files2);
+  }
+}
+function sourceLoadMemo(files2, key, run) {
+  if (!enabled2(files2)) return run();
+  const memo = sessions.get(files2);
+  if (!memo) return withSourceLoadSession(files2, () => sourceLoadMemo(files2, key, run));
+  if (memo.has(key)) return memo.get(key);
+  const value = run();
+  memo.set(key, value);
+  return value;
+}
+var sessions, enabled2;
+var init_source_session = __esm({
+  "src/runtime/source-session.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    sessions = /* @__PURE__ */ new WeakMap();
+    enabled2 = (files2) => files2.sourceGraphReuse !== false && globalThis.process?.env?.NATLANG_SOURCE_GRAPH_REUSE !== "0";
+  }
+});
+
 // src/native/type-aliases.ts
 function readTypeAliases(source2) {
   const file = import_typescript11.default.createSourceFile("types.ts", source2, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
@@ -221775,6 +221804,9 @@ var init_representation = __esm({
 
 // src/runtime/linked-types.ts
 function readTypesFile(path2, files2) {
+  return { ...sourceLoadMemo(files2, "types:" + path2, () => readTypesFileInSession(path2, files2)) };
+}
+function readTypesFileInSession(path2, files2) {
   const modules2 = /* @__PURE__ */ new Map();
   function readModule(filePath) {
     const existing = modules2.get(filePath);
@@ -221881,6 +221913,7 @@ var init_linked_types = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     import_typescript13 = __toESM(require_typescript(), 1);
+    init_source_session();
     init_hash();
     init_type_aliases();
   }
@@ -222742,6 +222775,9 @@ function parseModule(path2, text3, inherited, files2, options = {}) {
   return moduleRecord;
 }
 function loadCallableFolder(dir, files2, inherited = {}) {
+  return withSourceLoadSession(files2, () => loadCallableFolderInSession(dir, files2, inherited));
+}
+function loadCallableFolderInSession(dir, files2, inherited) {
   if (!files2.isDirectory(dir)) return {};
   const typesFile = files2.join(dir, "types.ts");
   const types3 = { ...inherited, ...files2.isFile(typesFile) ? readTypesFile(typesFile, files2) : {} };
@@ -222822,6 +222858,9 @@ function folderNzData(dir, files2, items) {
   return data;
 }
 function loadNamedFunction(path2, files2) {
+  return sourceLoadMemo(files2, "named:" + normalizePath(path2), () => loadNamedFunctionInSession(path2, files2));
+}
+function loadNamedFunctionInSession(path2, files2) {
   if (!files2.isFile(path2) || files2.extname(path2) !== ".nl") throw new NatlangSourceError(path2, "expected a .nl file");
   const dir = files2.dirname(path2);
   const names = [files2.basename(path2, ".nl")];
@@ -222883,6 +222922,7 @@ var init_loader = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     import_typescript14 = __toESM(require_typescript(), 1);
+    init_source_session();
     init_hash();
     init_type_aliases();
     init_types();
@@ -228695,6 +228735,11 @@ async function nativeTextOperation(options, operation, body) {
     }
     if (imported.adapter_state_consumption)
       return failure("neuralese-native-source-integrity", "adapter-state receipt requires its explicit consumption mode");
+    if (imported.mode === "in-context-text") {
+      if (imported.observed_native_state_id !== imported.id)
+        return failure("neuralese-native-source-integrity", "in-context text import must name the state whose tokens it read");
+      continue;
+    }
     if (imported.mode === "best-effort-text-retokenization") {
       if (imported.observed_native_state_id)
         return failure("neuralese-native-source-integrity", "text fallback cannot attest an imported native KV artifact");
@@ -260299,6 +260344,7 @@ function refinedSlotsOf(source2, name, args, returns, types3) {
 
 // src/compiler/project.ts
 var import_typescript28 = __toESM(require_typescript(), 1);
+init_source_session();
 
 // src/compiler/rewrites.ts
 init_define_NATLANG_TS_LIBS();
@@ -260842,7 +260888,10 @@ function itemType(record3, known, references) {
 }
 function natlangDeclaration2(record3, runtimeSpecifier, references) {
   const collect = {};
+  const gathered = /* @__PURE__ */ new Set();
   const gather = (item) => {
+    if (gathered.has(item)) return;
+    gathered.add(item);
     if (item.kind !== "namespace") Object.assign(collect, item.types);
     for (const child of Object.values(item.codebase)) if (!references?.has(child)) gather(child);
   };
@@ -261029,10 +261078,13 @@ function findTsconfig(files2, project) {
   return files2.isFile(candidate) ? { configPath: candidate, root: absolute } : { root: absolute };
 }
 function compileProject(options) {
+  const files2 = sourceFiles(options.files, findTsconfig(options.files, options.project).root);
+  return withSourceLoadSession(files2, () => compileProjectInSession(options, files2));
+}
+function compileProjectInSession(options, files2) {
   const fs2 = options.files;
   const { configPath, root: root2 } = findTsconfig(fs2, options.project);
   const diagnostics = [];
-  const files2 = sourceFiles(fs2, root2);
   const rel = (path2) => relative(root2, path2);
   const problem = (file, message2, code = "callable-scope", line = 1, hint) => diagnostics.push({ file, start: 0, end: 0, line, column: 1, code, message: message2, severity: "error", ...hint ? { hint } : {} });
   const sourceProblem = (fallback, error) => error instanceof NatlangSourceError ? problem(rel(error.path), error.reason, "callable-scope", error.line, error.hint) : problem(rel(fallback), String(error));
@@ -261091,9 +261143,24 @@ function compileProject(options) {
       pendingSources.push(path2);
     }
   };
+  const scannedRecords = /* @__PURE__ */ new Set();
   const scanCodebase = (level) => {
     for (const record3 of Object.values(level)) {
+      if (scannedRecords.has(record3)) continue;
+      scannedRecords.add(record3);
       if (record3.kind === "module") enqueue(resolve(root2, record3.source));
+      if (record3.kind === "natlang") {
+        const path2 = resolve(root2, record3.source), owner = packageRoot(dirname2(path2), files2) ?? root2;
+        let ownedLayout = packageLayouts.get(owner);
+        if (!ownedLayout) {
+          ownedLayout = callableFolders(fs2, owner);
+          packageLayouts.set(owner, ownedLayout);
+        }
+        if (ownedLayout.named.includes(path2) && !namedRecords.has(path2)) {
+          namedRecords.set(path2, record3);
+          enqueue(path2);
+        }
+      }
       scanCodebase(record3.codebase);
     }
   };
@@ -261142,8 +261209,11 @@ function compileProject(options) {
     described.add(record3.source);
     optimizationComponents.push(namedDescriptor(programId, record3));
   };
+  const checkedItems = /* @__PURE__ */ new Set();
   const checkModules = (level) => {
     for (const item of Object.values(level)) {
+      if (checkedItems.has(item)) continue;
+      checkedItems.add(item);
       if (item.kind !== "namespace") item.programId = programId;
       if (collectAdaptation && item.kind !== "namespace") optimizationSources[item.source] = item.text;
       if (item.kind === "natlang") describeNamed(item);
@@ -261464,6 +261534,25 @@ function compileProject(options) {
     };
     const specifierFor = (commonjs) => bound ? commonjs && bound.path ? bound.path : bound.url : runtimeSpecifier;
     const byFile = new Map(sources.map((file) => [file.fileName, file]));
+    const sharedRecords = !options.inlineRecords && globalThis.process?.env?.NATLANG_INLINE_SOURCE_RECORDS !== "1";
+    const graphNodes = [], graphIds = /* @__PURE__ */ new Map(), graphModes = /* @__PURE__ */ new Set();
+    const graphId = (record3) => {
+      const prior = graphIds.get(record3);
+      if (prior !== void 0) return prior;
+      const id3 = graphNodes.length;
+      graphIds.set(record3, id3);
+      graphNodes.push(record3);
+      for (const child of Object.values(record3.codebase)) graphId(child);
+      return id3;
+    };
+    for (const record3 of namedRecords.values()) graphId(record3);
+    const contextIds = new Map([...contextRecords].map(([path2, codebase]) => [path2, graphId({ kind: "namespace", name: basename(path2), source: rel(path2), codebase })]));
+    const graphPath = (commonjs) => joinSourcePath(outDir, `.natlang-records.${commonjs ? "cjs" : "mjs"}`);
+    const graphSpecifier = (from, commonjs) => {
+      graphModes.add(commonjs);
+      const path2 = relative(dirname2(from), graphPath(commonjs));
+      return path2.startsWith("./") || path2.startsWith("../") ? path2 : `./${path2}`;
+    };
     const transformer = (context) => (file) => {
       const source2 = byFile.get(file.fileName);
       if (!source2) return file;
@@ -261475,7 +261564,12 @@ function compileProject(options) {
         ...[...rewrite.keys()].map((specifier) => [specifier, specifierFor(commonjs)]),
         ...stdSpecifiers.map((specifier) => [specifier, commonjs && stdModule.path ? stdModule.path : stdModule.url])
       ]);
-      return natlangTransformer({
+      const contextIndex = contextDir ? contextIds.get(contextDir) : void 0;
+      let contextName = "__natlang_context_records";
+      while (source2.text.includes(contextName)) contextName += "_";
+      const emittedPath = joinSourcePath(outDir, relative(compilerOptions.rootDir, source2.fileName)).replace(/\.[cm]?tsx?$/, ".js");
+      const graph = contextIndex !== void 0 && sharedRecords ? graphSpecifier(emittedPath, commonjs) : void 0;
+      const transformed = natlangTransformer({
         ...analysisLowering(
           { plans: filePlans, readouts: fileReadouts, instantiations: instantiations.get(source2) ?? [] },
           (item) => `${rel(file.fileName)}:${item.line}`
@@ -261483,13 +261577,20 @@ function compileProject(options) {
         fusionSites: fusionSitesOf(source2),
         checker: program.getTypeChecker(),
         runtime: "__natlang",
-        context: contextDir && contextRecords.has(contextDir) ? JSON.stringify(contextRecords.get(contextDir)) : void 0,
+        context: graph ? commonjs ? `require(${JSON.stringify(graph)}).records[${contextIndex}].codebase` : `${contextName}[${contextIndex}].codebase` : contextDir && contextRecords.has(contextDir) ? JSON.stringify(contextRecords.get(contextDir)) : void 0,
         constrained: options.constrained ?? false,
         guardPrefix: JSON.stringify([programId, rel(file.fileName)]),
         modulePath: rel(file.fileName),
         browser: options.target === "browser",
         module: { natlangImports: importsBySource.get(source2) ?? noNatlangImports, rewrite: rewriteFor }
       })(context)(file);
+      if (graph && !commonjs) {
+        const imported = import_typescript28.default.factory.createImportDeclaration(void 0, import_typescript28.default.factory.createImportClause(false, void 0, import_typescript28.default.factory.createNamedImports([
+          import_typescript28.default.factory.createImportSpecifier(false, import_typescript28.default.factory.createIdentifier("records"), import_typescript28.default.factory.createIdentifier(contextName))
+        ])), import_typescript28.default.factory.createStringLiteral(graph), void 0);
+        return import_typescript28.default.factory.updateSourceFile(transformed, [imported, ...transformed.statements]);
+      }
+      return transformed;
     };
     const rewriteGate = options.rewriteGate ?? loadRewriteGate(fs2, root2);
     const emit3 = (fileName, text3) => {
@@ -261519,7 +261620,9 @@ function compileProject(options) {
       return void 0;
     };
     for (const [path2, { record: record3, commonjs, target }] of generated) {
-      const specifier = JSON.stringify(specifierFor(commonjs)), json = JSON.stringify(record3);
+      const specifier = JSON.stringify(specifierFor(commonjs));
+      const graph = sharedRecords ? JSON.stringify(graphSpecifier(path2, commonjs)) : void 0;
+      const json = sharedRecords ? `__records[${graphId(record3)}]` : JSON.stringify(record3);
       const crisp = refinementsFor(target);
       let local = "";
       if (crisp) {
@@ -261529,13 +261632,40 @@ function compileProject(options) {
       }
       emit3(path2, commonjs ? `"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-` + (crisp ? `require(${specifier}).__natlang.registerCrisp(require(${local}).refinements, ${local});
+` + (graph ? `const __records=require(${graph}).records;
+` : "") + (crisp ? `require(${specifier}).__natlang.registerCrisp(require(${local}).refinements, ${local});
 ` : "") + `exports.default = require(${specifier}).__natlang.named(${JSON.stringify(record3.name)}, ${json});
 ` : `import { __natlang } from ${specifier};
-` + (crisp ? `import { refinements as __crisp } from ${local};
+` + (graph ? `import {records as __records} from ${graph};
+` : "") + (crisp ? `import { refinements as __crisp } from ${local};
 __natlang.registerCrisp(__crisp, ${local});
 ` : "") + `export default __natlang.named(${JSON.stringify(record3.name)}, ${json});
 `);
+    }
+    if (sharedRecords) for (const commonjs of graphModes) {
+      const aliases = [], aliasIds = /* @__PURE__ */ new Map();
+      const rows = graphNodes.map((record3) => {
+        const { codebase, ...body } = record3;
+        if ("types" in body) {
+          const text4 = JSON.stringify(body.types);
+          if (!aliasIds.has(text4)) {
+            aliasIds.set(text4, aliases.length);
+            aliases.push(text4);
+          }
+          delete body.types;
+        }
+        return body;
+      });
+      let text3 = `const __types=[${aliases.join(",")}];
+const records=${JSON.stringify(rows)};
+`;
+      graphNodes.forEach((record3, index) => {
+        text3 += `records[${index}].codebase={${Object.entries(record3.codebase).map(([key, child]) => `${JSON.stringify(key)}:records[${graphId(child)}]`).join(",")}};
+`;
+        if ("types" in record3) text3 += `records[${index}].types={...__types[${aliasIds.get(JSON.stringify(record3.types))}]};
+`;
+      });
+      emit3(graphPath(commonjs), text3 + (commonjs ? "exports.records=records;\n" : "export {records};\n"));
     }
     for (const [path2, { bytes: bytes2, commonjs }] of generatedNz) {
       const specifier = JSON.stringify(specifierFor(commonjs));
@@ -261700,6 +261830,7 @@ function compileVirtualProjectProduct(project, options) {
     guidance: options.guidance,
     importedGuidancePrograms: options.importedGuidancePrograms,
     services: options.services,
+    inlineRecords: options.inlineRecords,
     target: options.target,
     runtimeSpecifier: specifiers[0],
     write: true,

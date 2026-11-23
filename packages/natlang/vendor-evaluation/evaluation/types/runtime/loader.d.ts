@@ -10,6 +10,8 @@ export type SourceFiles = {
     isDirectory(path: string): boolean;
     read(path: string): string;
     list(path: string): string[];
+    /** Opt out of per-load graph sharing; source revisions are never shared across loads. */
+    sourceGraphReuse?: boolean;
     /** Display path relative to the loaded root. */
     relative?(path: string): string;
     /** Binary contents, for `.nz` files. Without it, `.nz` files in callable folders are not loaded. */
