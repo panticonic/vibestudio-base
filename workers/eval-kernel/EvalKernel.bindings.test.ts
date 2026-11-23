@@ -1,4 +1,6 @@
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
+import type { RpcClient } from "@vibestudio/rpc";
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * The eval owner bindings (`chat` + `agent`): present + forwarding for agent-owned
  * eval, ABSENT for non-agent (CLI/panel) eval.
@@ -117,14 +119,14 @@ it("scopes an inspector endpoint grant to the execution that requested it", asyn
   const kernel = instance as unknown as {
     activeEvalExecution: { run<T>(execution: object, callback: () => T): T };
     closedInspectionExecutions: WeakSet<object>;
-    createActiveRuntimeRpc(): { call(target: string, method: string, args: unknown[]): Promise<unknown> };
+    createActiveRuntimeRpc(): Pick<RpcClient, "call">;
     createEvalCdpSocketBinder(): (endpoint: { wsEndpoint: string; token: string }) => unknown;
   };
   const rpc = kernel.createActiveRuntimeRpc();
   const bind = kernel.createEvalCdpSocketBinder();
   await kernel.activeEvalExecution.run(execution, async () => {
     expect(() => bind(endpoint)).toThrow("issued endpoint grant");
-    await rpc.call("main", "workerdInspector.getEndpoint", []);
+    await rpc.call("main", mainRpcMethods["workerdInspector.getEndpoint"], ["/inspector"]);
     expect(bind(endpoint)).toEqual(expect.any(Function));
     expect(() => bind({ ...endpoint, token: "wrong" })).toThrow("issued endpoint grant");
   });
