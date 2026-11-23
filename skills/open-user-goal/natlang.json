@@ -71,7 +71,7 @@
         "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"
       ],
       "types": [
-        "CoordinatedRevisionReport"
+        "CoordinatedRevisionResult"
       ]
     },
     "prepareContentProject": {

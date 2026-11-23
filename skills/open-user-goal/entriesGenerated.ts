@@ -73,7 +73,7 @@ export default {
   "coordinated-revision": {
     "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
     "callable": "reviseCoordinatedDocuments",
-    "resultType": "CoordinatedRevisionReport",
+    "resultType": "CoordinatedRevisionResult",
     "skill": "coordinatedRevision",
     "parameterNames": [
       "goal"

@@ -19,3 +19,7 @@ Policy remains in the hierarchical NL entry and author/review stages. The TS pro
 ## Development audit
 
 `reviewDevelopmentAudit/contract.ts`: assignment, observed pair and choice are internal discovery/selection state. The requested audit findings are the selected run identity, assessment (including decisive journal sequence findings) and actual keep receipt. `open-goal-development-audit-managed.ts` owns the before/after native runs, read journal and paged cursors; those independently prove scope/evidence/transition instead of comparing copied observations. Qualification rejects a foreign returned run identity and an invented assessment while preserving native wrong-scope/stale-approval probes.
+
+## Coordinated documents
+
+`open-coordinated-revision/types.ts`: initial, initialAuthority, plan, first, updated, updatedAuthority, reconciled, final are internal reconciliation/CAS state. Readback files contain retained document bodies; consumers need their path/version handles and actual head, with the semantic final disposition/explanation. `reviseCoordinatedDocuments/result.ts` projects those fields exactly. The native verifier checks its recorded discovery snapshots, attempts/drafts/basis, race state and actual final bytes directly. It verifies returned document handles and disposition independently, including an invented-document negative. Semantic authority prose is no longer revalidated by requiring the model to reproduce its internal report; native unauthorized writes and wrong content still fail exact atomic-basis/content/private-main checks.
