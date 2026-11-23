@@ -3,6 +3,7 @@ import { type CallableDefinition, type CaptureCell, type Instantiation } from '.
 import { type Representation } from '../native/representation.js';
 import { type ItemRecord, type NatlangRecord } from './loader.js';
 import type { Platform } from './platform.js';
+import { type FunctionSignature } from '../native/types.js';
 export declare const NATLANG_CALLABLE: unique symbol;
 export type CallableMeta = {
     definition: CallableDefinition;
@@ -20,7 +21,9 @@ export type CallableMeta = {
     /** A compiler-owned inline `nl` recipe. Only these generated callables support `.with(record)`. */
     rebindInline?: (captures: Record<string, unknown>, origin?: import('./lowered.js').InlineInstructionOrigin, sources?: Record<string, 'input' | 'local' | 'block' | 'handle'>) => NatlangCallable;
     /** Run a call; `at` is the representation its result is used as (a compiled call site's, or a host's `invokeAt`). */
-    invoke(args: unknown[], frame: Frame, at?: Instantiation): Promise<unknown>;
+    invoke(args: unknown[], frame: Frame, at?: Instantiation, folder?: import('./kernel.js').InvokeOptions['folder']): Promise<unknown>;
+    /** `fn.in(context)` for a callable derived from another (`partial`): the derivation applied to the rebound original. */
+    inContext?: (context: unknown) => NatlangCallable;
 };
 /**
  * Installed by runtime/contexts.ts: `fn.in(context)`. Kept on a global symbol, not a module binding: contexts.ts and
@@ -53,6 +56,12 @@ export declare function defineChild(target: object, name: string, value: unknown
  * reader that consumes it. A function without a generic result runs only at the representation it declares.
  */
 export declare function invokeAt(fn: unknown, args: readonly unknown[], representation: Representation, site?: string): Promise<unknown>;
+/**
+ * The checked signature of a definition (native/types.ts NATLANG_SIGNATURE): its parameter and result types with the
+ * aliases they name. Undefined for an inline function that takes whatever each call passes, or a type text that does not
+ * parse (the call reports that).
+ */
+export declare function definitionSignature(definition: CallableDefinition): FunctionSignature | undefined;
 export declare function makeCallable(meta: CallableMeta): NatlangCallable;
 /** The kernel definition of a `.nl` record. */
 export declare function natlangDefinition(record: NatlangRecord): CallableDefinition;

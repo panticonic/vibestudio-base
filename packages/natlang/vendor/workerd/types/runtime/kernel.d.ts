@@ -28,7 +28,7 @@ export type CallableDefinition = {
     subtype: 'function' | 'directory-reducer';
     /** `decision`: the call scores its finite result values instead of running the tool loop (native/decision.ts).
      * `template`: the call's first reply is forced to `return_result`, its value written or decoded (template readout). */
-    readout?: 'decision' | 'template';
+    readout?: 'decision' | 'instant' | 'template';
     /** The runtime's model this definition runs on (`models`); the default model when absent or not configured. */
     model?: string;
     /** Tools this definition's own calls are not offered (`withhold:` frontmatter; loader WITHHOLDABLE_TOOLS). */
@@ -37,6 +37,14 @@ export type CallableDefinition = {
     protect?: readonly string[];
     /** The model work one call may take (`budget:` frontmatter); each bound replaces its model's own. */
     budget?: import('./loader.js').CallBudget;
+    /** `recursive: structural`: a call may run below itself on a smaller argument (runtime/context.ts `descend`). */
+    recursive?: 'structural';
+    /** `measure:`: a call may run below itself where this expression over the arguments, a non-negative whole number, falls. */
+    measure?: string;
+    /** `ensures:` postconditions over the result and the arguments (runtime/ensures.ts), judged before a result is accepted. */
+    ensures?: readonly import('./ensures.js').EnsuresClause[];
+    /** The record of a recursive definition: bound under its own name in its calls' eval scope. */
+    self?: import('./loader.js').NatlangRecord;
     revision?: string;
     description?: string;
     /** Source path for named definitions. */

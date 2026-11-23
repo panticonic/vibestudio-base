@@ -23,9 +23,13 @@ export declare const RETURN_RESULT_DESCRIPTION: string;
 /** The finishing tool's description before its sentence on negative answers; kept for migrating collected data. */
 export declare const RETURN_RESULT_DESCRIPTION_BEFORE: string;
 /** Named in every opening, so a model that looks for them knows they exist and where their documentation is. */
-export declare const BUILT_INS_LINE = "Eval also has the built-ins nl, iterateOn, transcript and decide; read_code shows how to use each.";
+/** NatlangContext (fn.in(context) in eval) joined the list on 2026-11-23; NATLANG_PROMPT_REVISION=2026-11-22 keeps the old line. */
+export declare const BUILT_INS_LINE: string;
+/** A call whose codebase is too large to read through (largeCallableScope) is also told of search_code (2026-11-23); under
+ * NATLANG_PROMPT_REVISION=2026-11-22 the line stays the old one. */
+export declare const SEARCH_BUILT_INS_LINE: string;
 /** Inline children have the same delegation tools as named calls. */
-export declare const INLINE_BUILT_INS_LINE = "Eval also has the built-ins nl, iterateOn, transcript and decide; read_code shows how to use each.";
+export declare const INLINE_BUILT_INS_LINE: string;
 export declare const NL_DEPTH_LIMIT_BUILT_INS_LINE: string;
 /**
  * What one call's opening message adds after its scope: the program's guidance, then the function-tools, folder and
@@ -43,6 +47,8 @@ export declare function callNotes(call: {
         writable: boolean;
         withheld?: readonly string[];
     };
+    /** The declared result type, when the result is a function (`(t: Ticket) => boolean`). */
+    functionResult?: string;
 }): string;
 /** A call's opening message with its notes (callNotes) as the last paragraph. */
 export declare const withCallNotes: (opening: string, notes: string) => string;
@@ -157,6 +163,9 @@ export declare class NativeToolAgent {
         decisionReadout?: 'declared' | 'finite-returns';
         /** Diagnostic opt-out: retain the ordinary tool loop when the backend cannot score decisions. */
         decisionGeneration?: 'json' | 'tool-loop';
+        /** Reasoning samples per `readout: decision` call (native/decision.ts `decisionSamples`; default
+         * DECISION_SAMPLES, `NATLANG_DECISION_SAMPLES`); 0 reads every decision out without reasoning, as `readout: instant`. */
+        decisionSamples?: number;
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -261,6 +270,9 @@ export declare class NativeToolAgent {
         decisionReadout?: 'declared' | 'finite-returns';
         /** Diagnostic opt-out: retain the ordinary tool loop when the backend cannot score decisions. */
         decisionGeneration?: 'json' | 'tool-loop';
+        /** Reasoning samples per `readout: decision` call (native/decision.ts `decisionSamples`; default
+         * DECISION_SAMPLES, `NATLANG_DECISION_SAMPLES`); 0 reads every decision out without reasoning, as `readout: instant`. */
+        decisionSamples?: number;
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -404,11 +416,19 @@ export declare class NativeToolAgent {
     private refinementGate;
     /**
      * Answer a finite-typed call by scoring each allowed value as the reply to its opening (native/decision.ts).
+     * Up to DECISION_JOINT_OPTIONS values are scored together, each the whole reply; a larger record type is scored field
+     * by field, each step's candidates as the start of the reply after the fields chosen before (`stepCandidates`).
      * Returns false when the readout does not apply, so the tool loop runs; a string is a failure, as from run.
      */
     private decisionReadout;
     /** One recording boundary for actual generation replies, shared by tool turns and JSON decision readouts. */
     private recordGeneratedTurn;
+    /**
+     * The reasoning of a reasoned decision readout: `samples` generation turns on the readout's own messages (no tools),
+     * as the model replies to them, each its own seed; the reasoning of each reply is kept (its answer after the reasoning
+     * is not: the options are scored after the reasoning instead). A string is a failure, as from run.
+     */
+    private decisionReasonings;
     /** Generate on the very same short JSON decision surface used by the scored student. No probabilities are inferred. */
     private generatedDecision;
     /** How program guidance states are primed: `call` (default: at their real position in the call that uses them) or

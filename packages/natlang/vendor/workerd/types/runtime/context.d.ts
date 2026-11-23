@@ -11,10 +11,18 @@ import type { FileHandle, Folder, FolderHandle } from '../native/scoped-fs.js';
 /** Root/named calls start at zero; five nested ad hoc calls may be active below them. */
 export declare const MAX_AD_HOC_NL_DEPTH = 5;
 export declare const canGenerateNl: (frame?: Frame) => boolean;
-/** The distribution a decision readout scored: each allowed reply (JSON text) and its probability. */
+/** The distribution a decision readout scored: each allowed reply (JSON text) and its probability. A record decision
+ * also has `fields`: per field each value (JSON text) and its probability, the marginal of a joint readout or the
+ * step's distribution of a field-by-field one (whose `options` is then the one value chosen, with its probability). */
 export type DecisionReadout = {
     options: string[];
     probabilities: number[];
+    fields?: Record<string, {
+        value: string;
+        probability: number;
+    }[]>;
+    /** The reasoning samples the probabilities average over (a reasoned readout); absent for an instant readout. */
+    reasoned?: number;
 };
 export type Frame = Readonly<{
     task: NatlangTask;
@@ -24,6 +32,8 @@ export type Frame = Readonly<{
     chain: readonly string[];
     /** The authored TypeScript functions currently active above this point, innermost first. */
     active?: ActiveCall;
+    /** The recursive `.nl` definitions (`recursive: structural` or `measure:`) active above this point, innermost first. */
+    nlActive?: ActiveCall;
     /** Call ID of the natlang invocation that created this frame, if any. */
     parentCallId?: string;
     programOwner?: string;
@@ -75,8 +85,12 @@ export type ActiveCall = {
     readonly descent?: readonly Descent[];
     /** Direct parts of an argument, collected the first time a re-entry is checked against it. */
     parts?: Map<number, Set<unknown>>;
+    /** The canonical texts of an argument's proper parts, when it is plain acyclic data (an equal copy of a part). */
+    shapes?: Map<number, Set<string> | null>;
+    /** A `.nl` definition's `measure:` value for this call: a non-negative whole number that each re-entry lowers. */
+    readonly measure?: number;
 };
-type Descent = {
+export type Descent = {
     readonly position: number;
     readonly kind: 'part' | 'length' | 'integer';
 };
@@ -140,4 +154,5 @@ export declare const guardName: (id: string) => string;
  * repeat, so every chain of re-entries ends (spec: Iteration and termination).
  */
 export declare function guard<T>(id: string, fn: () => T, args?: readonly unknown[], label?: string): T;
-export {};
+/** The argument positions on which a re-entry is smaller than `previous`, among those still decreasing. */
+export declare function descend(previous: ActiveCall, args: readonly unknown[]): Descent[];

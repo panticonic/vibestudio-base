@@ -19,6 +19,12 @@ export type ModelTurnRequest = {
         text: string;
         reasoning?: string;
     };
+    /** Host metadata, never sent: this turn samples reasoning `index` of a reasoned decision readout's `samples` (its reply
+     * after the reasoning is not the call's answer; the options are scored after the reasoning instead). */
+    decision_reasoning?: {
+        index: number;
+        samples: number;
+    };
     /** "required": the reply must be a tool call (a turn that offers exactly the tool it must use). Default "auto". */
     tool_choice?: 'auto' | 'required';
     /** Weight adapters bound in the calling function's context (Neuralese servers only; others refuse the call). */
@@ -239,6 +245,23 @@ export type DecisionRequest = {
      * opening before the argument values), so a server may checkpoint its memory where they end and continue later
      * prompts that share them from there (the llama.cpp fork's score endpoint does). */
     cache_messages?: number;
+    /** The options are the start of the reply, not the whole of it (a field-by-field step of a record decision): each is
+     * scored without the end of message. A scorer that cannot score open replies fails with `decision-open-unsupported`
+     * (never by scoring them closed). */
+    open_reply?: boolean;
+    /** The reply's reasoning, sampled before the options are scored (a reasoned readout, the default of `readout:
+     * decision`): every option is scored as the content after it, the template's rendering of an assistant message with
+     * this reasoning (LFM3 `<think>R</think>option`). A scorer that cannot condition on it fails with
+     * `decision-reasoning-unsupported` (never by scoring without it). */
+    reasoning?: string;
+    /** Host metadata, never sent: this request is sample `index` of a reasoned readout's `samples`, and `action` marks
+     * the one whose choice the call returns when the scorer samples (RL collection); the others only estimate the
+     * readout's probabilities. */
+    reasoning_sample?: {
+        index: number;
+        samples: number;
+        action: boolean;
+    };
     /** Set by the transport for a JOLT+ teacher attempt: the server renders this invocation's privileged block. */
     x_natlang_privileged_context?: Record<string, unknown>;
 };
@@ -251,6 +274,10 @@ export type DecisionScores = {
      * instead of the most probable one (its sampling receipt is recorded with the capture). */
     chosen?: number;
     native_decision_capture?: Record<string, unknown>;
+    /** The reply form an `auto` readout was read in and each form's total probability (natural log), decision-frame.ts
+     * `autoFramedScores`; absent when the form was fixed. */
+    reply_frame?: 'value' | 'result-object';
+    reply_masses?: Record<'value' | 'result-object', number>;
     /** Host-only association to the active learning recorder. */
     x_natlang_native_recorded_turn?: string;
     /** Set by a coalescing scorer: the batch this readout was scored in. */

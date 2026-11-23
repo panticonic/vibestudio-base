@@ -48,14 +48,23 @@ export declare class MemoryVerdictCache implements VerdictCache {
 }
 /** Stable JSON: object keys sorted, so equal values hash equally. */
 export declare function canonicalValue(value: unknown): string;
-export declare const verdictKey: (value: unknown, predicate: string, judge: string) => string;
+/** The cache key of a verdict; a relational verdict (`context`, an `ensures:` predicate) also keys on its context. */
+export declare const verdictKey: (value: unknown, predicate: string, judge: string, context?: Record<string, unknown>) => string;
+/** A relational judgement's context: each named value as the judge is shown it (untrusted text stays fenced). */
+export type JudgeContext = {
+    values: Record<string, unknown>;
+    rendered: {
+        name: string;
+        text: string;
+    }[];
+};
 export interface RefinementJudge {
     readonly id: string;
     /** `scorer`: one decision-readout scoring pass (preferred). `call`: an ordinary natural-language call returning a boolean. */
     readonly kind?: 'scorer' | 'call';
     /** P(the value satisfies the predicate), from one scoring pass. `turn` places a scoring pass in its caller's
      * execution graph as its own model turn (graph node, recorded-turn link, rollout identity). */
-    probability(value: unknown, predicate: string, signal?: AbortSignal, turn?: JudgeTurn): Promise<number>;
+    probability(value: unknown, predicate: string, signal?: AbortSignal, turn?: JudgeTurn, context?: JudgeContext): Promise<number>;
 }
 export declare const JUDGE_SYSTEM_PROMPT: string;
 /** Where a scored judgement runs: its own invocation identity, the calling invocation and that call's trace. */
@@ -71,12 +80,16 @@ export declare function decisionJudge(scorer: DecisionScorer, options: {
 }): RefinementJudge;
 /** The fixed instructions of the judge when it runs as an ordinary call: `holds(value, predicate): boolean`. */
 export declare const JUDGE_CALL_INSTRUCTIONS: string;
+/** The same, for a relational property: context holds the values the predicate names. */
+export declare const JUDGE_CALL_CONTEXT_INSTRUCTIONS: string;
 /** The judge for a driver that cannot score replies: `holds` as a normal tool-loop call. A verdict is 1 or 0. */
-export declare function callJudge(holds: (value: unknown, predicate: string, signal?: AbortSignal) => Promise<boolean>, id: string): RefinementJudge;
+export declare function callJudge(holds: (value: unknown, predicate: string, signal?: AbortSignal, context?: Record<string, unknown>) => Promise<boolean>, id: string): RefinementJudge;
+/** `context`: the named values a relational property refers to (`ensures:` predicates with `against:`). */
 export type Obligation = {
     path: string;
     predicate: string;
     value: unknown;
+    context?: Record<string, unknown>;
 };
 /**
  * The refined positions of `value` under `type`, each with its value: a refined slot, or a field, list element or
@@ -101,6 +114,10 @@ export type CheckContext = {
     signal?: AbortSignal;
     /** The judged call's trace: scored judgements become model turns of its execution graph. */
     trace?: NativeTraceRecorder;
+    /** Where untrusted text came from (native/untrusted.ts): a context string from outside is shown to the judge fenced. */
+    untrusted?: {
+        sourceOf(text: string): string | undefined;
+    };
 };
 export type RefinementCheckerOptions = {
     settings?: RefinementSettings;
@@ -111,8 +128,8 @@ export type RefinementCheckerOptions = {
     judge?: RefinementJudge;
     emit?: (kind: string, data: Record<string, unknown>) => void;
 };
-export declare const unsatisfiedMessage: (path: string, predicate: string, probability: number | undefined) => string;
-export declare const undecidedMessage: (path: string, predicate: string, probability: number | undefined) => string;
+export declare const unsatisfiedMessage: (path: string, predicate: string, probability: number | undefined, given?: readonly string[]) => string;
+export declare const undecidedMessage: (path: string, predicate: string, probability: number | undefined, given?: readonly string[]) => string;
 export declare class RefinementChecker {
     private readonly options;
     readonly cache: VerdictCache;

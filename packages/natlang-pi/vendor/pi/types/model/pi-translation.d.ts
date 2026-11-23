@@ -131,6 +131,12 @@ export declare function piAssistantContent(reply: PiAssistantMessage): {
         };
     }[];
 };
+/** The whole prompt of a Pi reply: uncached input plus cache reads and cache writes (Pi splits them). */
+export declare const piPromptTokens: (usage: {
+    input: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+}) => number;
 /**
  * A completed Pi assistant message as the model turn natlang's interpreter reads. A reply that ended in `error` or
  * `aborted` is a failed turn: it throws, carrying Pi's message (`provider` names the backend in the fallback text).

@@ -32,6 +32,8 @@ export type NativeRuntimeHooks = {
     };
     /** Reads of fields a value's declared type does not have, checked in every eval. */
     checkFields?(session: NativeSession, source: string): NatlangDiagnostic[];
+    /** The snippet with typed `refine<Is<T, "p">>(value)` / `assume<R>(value)` calls in their predicate form. */
+    lowerRefinements?(session: NativeSession, source: string): string;
 };
 export type NativeOutcome = {
     kind: 'done' | 'quiesced';
@@ -132,6 +134,25 @@ export declare function findCodebaseItem(codebase: Record<string, unknown>, name
     path: string[];
     record: ItemRecord;
 } | undefined;
+/** One structured match returned by `search_code(query)`. */
+export type CodeSearchMatch = {
+    name: string;
+    kind: 'natlang' | 'function' | 'value' | 'namespace' | 'type' | 'service';
+    signature?: string;
+    description?: string;
+    path?: string;
+};
+/**
+ * Lexical + signature search across a codebase tree, its `types.ts` aliases, and service declarations.
+ * Case-insensitive tokenized substring matching ranked by relevance, capped at `limit` (default 20).
+ */
+export declare function searchCodebase(query: string, codebase: Record<string, unknown>, options?: {
+    types?: Record<string, string>;
+    declarations?: Record<string, string>;
+    services?: Record<string, object>;
+    resolveItem?: (item: ItemRecord) => ItemRecord;
+    limit?: number;
+}): CodeSearchMatch[];
 /** The logical name of a run started without a run ID. */
 export declare const DEFAULT_RUN_LABEL = "native-run";
 /**
@@ -399,6 +420,8 @@ export declare class NativeSession {
      * episodes and got only "expected a scope-eval tool". Name the eval form instead.
      */
     private notATool;
+    /** Lexical + signature search across this call's codebase, type aliases, and service declarations. */
+    searchCode(query: string, limit?: number): CodeSearchMatch[];
     /** The services this call may use: all but those scoped to functions it is not running within. */
     /** What eval code in this call can use, for a model looking for something it does not have. */
     private scopeGuide;

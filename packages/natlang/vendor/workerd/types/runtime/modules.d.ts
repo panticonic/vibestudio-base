@@ -11,6 +11,7 @@ export declare class ModuleUnavailableError extends Error {
     readonly code = "module-unavailable";
     constructor(specifier: string, reason: string);
 }
+export declare function registerShippedModule(specifiers: readonly string[], factory: () => unknown): void;
 export declare function hasBuiltinModule(platform: Platform, specifier: string): boolean;
 export declare function builtinModule(platform: Platform, specifier: string): unknown;
 export declare class ModuleRealmChangedError extends Error {

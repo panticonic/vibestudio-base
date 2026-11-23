@@ -1,3 +1,4 @@
+import { type EnsuresClause } from './ensures.js';
 import { type GenericResult } from '../native/representation.js';
 export { readTypesFile } from './linked-types.js';
 export type SourceFiles = {
@@ -46,15 +47,18 @@ export type NatlangRecord = {
      * call site instantiates from the type its result is used as (native/representation.ts).
      */
     generic?: GenericResult;
-    /** `readout: decision` in the frontmatter: answer by scoring the finite result values (native/decision.ts). */
-    readout?: 'decision' | 'template';
+    /** `readout: decision` in the frontmatter: answer by scoring the finite result values after the model's own reasoning;
+     * `readout: instant`: score them without reasoning, in one pass (native/decision.ts). */
+    readout?: 'decision' | 'instant' | 'template';
     /** `model: NAME` in the frontmatter: the call runs on the runtime's model of that name (`models`), else the default. */
     model?: string;
     /**
-     * `uses: [dir/item]` in the frontmatter: package items this function may call besides its companion folder, by path
-     * from the package root. Each is in `codebase` under its base name.
+     * `uses:` in the frontmatter: package, relative (`./`, `../`), or `natlang.json` package-export items this function
+     * may call besides its companion folder. List form binds under basename; map form binds under explicit alias keys.
      */
     uses?: string[];
+    /** Canonical alias -> specifier map for `uses:` (populated for both list and map forms). */
+    usesMap?: Record<string, string>;
     /** `withhold: [delegate]` in the frontmatter: tools this function's own calls are not offered (WITHHOLDABLE_TOOLS). */
     withhold?: string[];
     /**
@@ -64,6 +68,12 @@ export type NatlangRecord = {
     protect?: string[];
     /** `budget: { maxTurns: 8 }` in the frontmatter: the model work one call may take, instead of its model's own budget. */
     budget?: CallBudget;
+    /** `recursive: structural` in the frontmatter: the function may call itself on a smaller argument (runtime/context.ts). */
+    recursive?: 'structural';
+    /** `measure: <TypeScript over the arguments>`: the function may call itself where this non-negative whole number falls. */
+    measure?: string;
+    /** `ensures:` in the frontmatter: postconditions relating the result to the arguments (runtime/ensures.ts). */
+    ensures?: EnsuresClause[];
     /**
      * Data entries of the companion folder bound by default (S0 §7): each `.nz` file's exports under the file's name,
      * as loaded (Neuralese references, data, soft-function specs). Its blocks are registered as imported blocks.
@@ -100,10 +110,11 @@ export declare class NatlangSourceError extends Error {
     readonly hint?: string | undefined;
     constructor(path: string, reason: string, line?: number | undefined, hint?: string | undefined);
 }
+export declare function moduleResolvedImports(record: ModuleRecord): Record<string, ItemRecord> | undefined;
 export declare const nodeKey: (record: NatlangRecord | ModuleRecord) => string;
 export declare function registerFileRecords(codebase: Record<string, ItemRecord> | ItemRecord): void;
 /** Whether an executable node and all its children come from files. */
-export declare function isFileRecord(record: ItemRecord): boolean;
+export declare function isFileRecord(record: ItemRecord, seen?: Set<ItemRecord>): boolean;
 /** What a `budget:` frontmatter map may bound: a call's turns, the reply tokens of one turn, all its tokens, its context window. */
 export declare const CALL_BUDGET_KEYS: readonly ["maxTurns", "turnTokens", "maxTokens", "contextTokens"];
 export type CallBudget = Partial<Record<typeof CALL_BUDGET_KEYS[number], number>>;
@@ -126,10 +137,16 @@ export declare function parseNatlang(path: string, text: string, inherited: Reco
 export declare function protectedSources(source: string, entries: readonly string[] | undefined): string[];
 /** Whether an item at `source` is one of `protectedList` (protectedSources) or inside a protected folder. */
 export declare function isProtectedSource(source: string, protectedList: readonly string[]): boolean;
-/** Every source a record tree protects: its natural-language functions' `protect:` lists, resolved. */
+/**
+ * Everything one function's frontmatter protects: its `protect:` list and the items its `ensures:` checks name (they
+ * judge its calls, so a call's edits can never weaken a postcondition), as sources (protectedSources).
+ */
+export declare function recordProtectedSources(record: Pick<NatlangRecord, 'source' | 'protect' | 'ensures' | 'args' | 'codebase'>): string[];
+/** Every source a record tree protects: its natural-language functions' `protect:` lists and `ensures:` checks, resolved. */
 export declare function treeProtectedSources(codebase: Record<string, ItemRecord>): string[];
-/** Parse a TypeScript module in a callable folder: its exports, imports, and type aliases. */
+/** Parse a TypeScript (or constrained JavaScript) module in a callable folder: its exports, imports, and type aliases. */
 export declare function parseModule(path: string, text: string, inherited: Record<string, string>, files: SourceFiles, options?: {
+    allowUntypedExports?: boolean;
     compiled?: boolean;
 }): ModuleRecord;
 /** Load a callable folder into a record tree. `inherited` holds type aliases from enclosing folders. */

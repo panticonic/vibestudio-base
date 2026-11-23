@@ -18,6 +18,11 @@ export declare function scopedFileToolNames(surface?: FileToolSurface, writable?
 export declare const DIRECTORY_REDUCER_DECLARATION = "This call is a directory reducer: folder is a private copy of its input folder, and the changes you have made to it when you call return_result are kept.";
 export declare function directoryReducerPrompt(surface?: FileToolSurface, allowAdHoc?: boolean, writable?: boolean, withheld?: readonly string[]): string;
 export declare const DIRECTORY_REDUCER_PROMPT: string;
+/**
+ * The call note of a function whose result is a function (`returns: (t: Ticket) => boolean`): a function is not JSON, so
+ * the call builds it in eval and finishes with it. Not under prompt revision 2026-11-22 (no such note then).
+ */
+export declare const functionResultNote: (type: string) => string;
 /** The final ad hoc layer keeps computation and named helpers, but offers no new ad hoc calls. */
 export declare const NL_DEPTH_LIMIT_NOTICE: string;
 export declare const TOOLS_PROMPT_AT_NL_DEPTH_LIMIT: string;

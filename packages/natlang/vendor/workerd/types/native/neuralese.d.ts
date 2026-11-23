@@ -64,6 +64,13 @@ export declare function isNativeTensorArtifactId(value: unknown): value is strin
 export declare function isTeacherTextNeuraleseId(value: unknown): value is string;
 export declare function isNativeStateId(value: unknown): value is string;
 export declare function nativeStateSentinel(id: string, stopGradient?: boolean, sourceOccurrence?: string): string;
+/**
+ * `value` (messages, parts, sentinel text, tool-call argument JSON) with each native-state use's `source_occurrence`
+ * dropped where `known(id, occurrence)` is false. A recorded trajectory names only writers it contains: a state whose
+ * writer ran outside the record (an earlier task, a context item, a .nz file) is an external input
+ * (spec/NEURALESE_GRAPH.md, "Record"), so the request, the server's capture and the graph events all agree on it.
+ */
+export declare function localNativeOccurrences<T>(value: T, known: (id: string, occurrence: string) => boolean): T;
 export declare function nativeStateSentinelIds(text: string): string[];
 export declare function runtimePartsToText(parts: readonly RuntimeContentPart[]): string;
 export declare function runtimeTextToParts(text: string): RuntimeContentPart[];

@@ -92,7 +92,7 @@ export declare class FolderHandle extends EntryHandle {
     walk(patternText?: string): AsyncIterable<EntryHandle>;
     snapshot(): FolderSnapshot;
     at(sourceId: string): FolderSnapshot;
-    propose<A extends unknown[], R>(reducer: (folder: any, ...args: A) => R | Promise<R>, ...args: A): Promise<FolderProposal<R>>;
+    propose<A extends unknown[], R>(reducer: (folder: FolderHandle, ...args: A) => R | Promise<R>, ...args: A): Promise<FolderProposal<R>>;
     propose<R = unknown>(reducer: unknown, ...args: unknown[]): Promise<FolderProposal<R>>;
     accept<R>(proposal: FolderProposal<R>): Promise<FolderSnapshot>;
     select(snapshot: FolderSnapshot): Promise<void>;
@@ -100,7 +100,7 @@ export declare class FolderHandle extends EntryHandle {
     diff(): Promise<ChangeSet>;
     beginTransaction(blocking?: boolean): Promise<FolderTransaction>;
     /** Run a directory reducer on this folder and install its committed changes; resolves to its typed result. */
-    apply<A extends unknown[], R>(reducer: (folder: any, ...args: A) => R | Promise<R>, ...args: A): Promise<R>;
+    apply<A extends unknown[], R>(reducer: (folder: FolderHandle, ...args: A) => R | Promise<R>, ...args: A): Promise<R>;
     apply(reducer: unknown, ...args: unknown[]): Promise<unknown>;
 }
 export declare class FolderTransaction {
@@ -155,9 +155,9 @@ export declare class Folder {
     dir(path?: string): FolderHandle;
     file(path: string): FileHandle;
     /** Run a directory reducer on the whole folder and install its committed changes. */
-    apply<A extends unknown[], R>(reducer: (folder: any, ...args: A) => R | Promise<R>, ...args: A): Promise<R>;
+    apply<A extends unknown[], R>(reducer: (folder: FolderHandle, ...args: A) => R | Promise<R>, ...args: A): Promise<R>;
     apply(reducer: unknown, ...args: unknown[]): Promise<unknown>;
-    propose<A extends unknown[], R>(reducer: (folder: any, ...args: A) => R | Promise<R>, ...args: A): Promise<FolderProposal<R>>;
+    propose<A extends unknown[], R>(reducer: (folder: FolderHandle, ...args: A) => R | Promise<R>, ...args: A): Promise<FolderProposal<R>>;
     propose<R = unknown>(reducer: unknown, ...args: unknown[]): Promise<FolderProposal<R>>;
     accept<R>(proposal: FolderProposal<R>): Promise<FolderSnapshot>;
     select(snapshot: FolderSnapshot): Promise<void>;

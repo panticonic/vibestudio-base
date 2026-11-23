@@ -16,6 +16,9 @@ export type NatlangCompilerHostOptions = {
     virtual?: ReadonlyMap<string, string>;
     files?: CompilerFiles;
     libs?: LibProvider;
+    /** Read `nl` called on literal instructions as the tag form (default true; a host that resolves symbols itself,
+     * compiler/host-cell.ts, rewrites only the built-in `nl` and passes false). */
+    desugarNl?: boolean;
     currentDirectory?: string;
 };
 /** A compiler host over real or virtual files, always including the natlang intrinsics. */

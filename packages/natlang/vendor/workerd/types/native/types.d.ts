@@ -15,15 +15,29 @@ export type Type = {
 } | {
     kind: 'list';
     element: Type;
-} | {
+}
+/** A fixed-length (optionally trailing-optional) tuple `[A, B]` or `[A, B?]`. `minLength`, when set, is the count of required leading elements. */
+ | {
+    kind: 'tuple';
+    elements: Type[];
+    minLength?: number;
+}
+/** A dictionary from string keys. `key` / `keyType` names the key of `Record<Kind, T>`: when it resolves to string literals,
+ * the type is the record with exactly those fields (TypeEnv.resolve), as in TypeScript. */
+ | {
     kind: 'dict';
     element: Type;
+    key?: string;
+    keyType?: Type;
 } | {
     kind: 'union';
     members: Type[];
-} | {
+}
+/** An alias. `unparsed` marks a definition the type grammar cannot read (parseAliases): using it reports why. */
+ | {
     kind: 'name';
     name: string;
+    unparsed?: string;
 } | {
     kind: 'lambda';
     params: Extract<Type, {
@@ -61,6 +75,17 @@ export type Type = {
     kind: 'index';
     base: Type;
     key: string;
+}
+/** `Partial<R>`, `Required<R>`, `Pick<R, K>`, `Omit<R, K>`: record transformations resolved in `TypeEnv.resolve`. */
+ | {
+    kind: 'utility';
+    op: 'Partial' | 'Required';
+    target: Type;
+} | {
+    kind: 'utility';
+    op: 'Pick' | 'Omit';
+    target: Type;
+    keys: Type;
 }
 /** `Untrusted<T>`: a `T` that came from outside the program. Structurally `base`; the model-facing renderer always
  * shows it as a quoted data block (native/untrusted.ts) and it never enters instruction text (plans/REFINEMENT_TYPES.md). */
@@ -106,7 +131,14 @@ export declare class TypeSyntaxError extends Error {
 /** A predicate with its whitespace collapsed: two predicates are the same when their normalized texts are equal. */
 export declare const normalizePredicate: (predicate: string) => string;
 export declare function parseType(text: string): Type;
-/** Parse a static declaration for internal read-only use. The public parser still creates a mutable tree. */
+/** A signature names an alias whose definition the type grammar cannot read. */
+export declare class UnreadableAliasError extends TypeSyntaxError {
+}
+/**
+ * Type alias definitions by name, parsed. A definition the grammar cannot read (a TypeScript-only type in `types.ts`)
+ * becomes a marker that reports why where it is used, so it breaks only the signatures that name it.
+ */
+export declare function parseAliases(texts: Readonly<Record<string, string>>, cached?: boolean): Record<string, Type>;
 export declare function parseTypeCached(text: string): Type;
 export declare function formatType(type: Type): string;
 /** A name that can be redefined by the lexical type environment. */
@@ -131,10 +163,38 @@ export declare class TypeEnv {
     /** The dialect a type's dialect name means here: `DefaultDialect` is the bound reader dialect, when there is one. */
     dialect(name: string): string;
     resolve(type: Type): Type;
+    /** `Record<Kind, T>`: the record with a field for each string literal `Kind` names, or a dictionary for `string`. */
+    private recordOfKeys;
     checkNames(type: Type): void;
     private resolveQuiet;
 }
 export declare function fitsType(source: Type, target: Type, env?: TypeEnv, seen?: Set<string>): boolean;
+/**
+ * The checked signature every natlang callable carries (non-enumerable, under this symbol): its function type and the
+ * type aliases its parameter and result types name, in the scope that defined it.
+ */
+export declare const NATLANG_SIGNATURE: unique symbol;
+export type FunctionSignature = {
+    readonly type: Extract<Type, {
+        kind: 'lambda';
+    }>;
+    readonly types: Readonly<Record<string, Type>>;
+};
+/** The signature a function carries, if it is a natlang callable or a function a typed slot already checked. */
+export declare function signatureOf(value: unknown): FunctionSignature | undefined;
+/** `type` with every alias name replaced by `rename(name)`. */
+export declare function renameTypeNames(type: Type, rename: (name: string) => string): Type;
+/**
+ * TypeScript text for a natlang type: a function type's result is a promise, since callers await natlang functions
+ * (`(t: Ticket) => boolean` is `(t: Ticket) => Promise<boolean>`); everything else is written as `formatType` writes it.
+ */
+export declare function formatTypeScript(type: Type): string;
+/**
+ * Whether a function with `signature` fits a slot of function type `wanted` in `env`. The signature's aliases are its
+ * definer's: one that `env` defines the same way is shared, and one it defines differently (or not at all) is compared
+ * by its own definition.
+ */
+export declare function signatureFits(signature: FunctionSignature, wanted: Type, env: TypeEnv): boolean;
 /** The predicates of a (possibly nested) refinement, outermost last, and the unrefined type beneath them. */
 export declare function refinementChain(type: Type, env: TypeEnv): {
     base: Type;

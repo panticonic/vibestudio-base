@@ -18,6 +18,8 @@ export interface NatlangStepError<M extends string> {
 type NatlangIsAny<T> = 0 extends (1 & T) ? true : false;
 export type NatlangStepState<A extends unknown[], R> = number extends A['length'] ? (NatlangIsAny<R> extends true ? any : A[0]) : A extends [infer S, ...unknown[]] ? ([R] extends [S] ? S : NatlangStepError<'iterateOn requires the step return type to be assignable to its first parameter'>) : NatlangStepError<'iterateOn requires a step whose first parameter is the state'>;
 export type NatlangStepArgs<A extends unknown[]> = number extends A['length'] ? any[] : A extends [unknown, ...infer Rest] ? Rest : never[];
+/** The parameters of a function after its first ones are bound to `B`. */
+export type NatlangDropBound<A extends unknown[], B extends unknown[]> = B extends [unknown, ...infer BR] ? (A extends [any?, ...infer AR] ? NatlangDropBound<AR, BR> : []) : A;
 /** Methods every compiled natlang callable provides. */
 export interface NatlangCallableMethods<A extends unknown[], R> {
     iterateOn(initial: NatlangStepState<A, R>, ...args: NatlangStepArgs<A>): Iteration<NatlangStepState<A, R>>;
@@ -27,6 +29,8 @@ export interface NatlangCallableMethods<A extends unknown[], R> {
     }): NatlangFunction<A, R>;
     /** The same function bound to another context, structurally checked against its context interface; a new function. */
     in(context: Context): NatlangFunction<A, R>;
+    /** The same function with its first parameters bound to these values (as `bind` binds them, checked now); a new function of the rest. */
+    partial<B extends Partial<A>>(...bound: B): NatlangFunction<NatlangDropBound<A, B>, R>;
 }
 /** A compiled natural-language function: asynchronous, typed, and monitored. */
 export type NatlangFunction<A extends unknown[] = any[], R = any> = ((...args: A) => Promise<R>) & NatlangCallableMethods<A, R>;
@@ -44,6 +48,7 @@ export type NatlangUntypedFunction = ((...args: any[]) => Promise<any>) & {
         model: string;
     }): NatlangUntypedFunction;
     in(context: Context): NatlangUntypedFunction;
+    partial(...bound: any[]): NatlangUntypedFunction;
 };
 export type NlResult<F> = [F] extends [NlUnspecified] ? NatlangUntypedFunction : [
     F
@@ -112,14 +117,18 @@ export type Untrusted<T> = T & {
  * `Untrusted<T>`. Every string inside the value is shown to a model as data from `source`.
  */
 export declare function untrusted<T>(value: T, source?: string): Untrusted<T>;
+/** `refine`'s options: `context` names the values a relational predicate refers to (judged with the value). */
+export type RefineOptions = {
+    context?: Record<string, unknown>;
+};
 /**
  * Check `value` against `predicate` with the judge and return it as an `Is<T, P>`; throws `refinement-unsatisfied` (or
  * `refinement-undecided` inside the uncertainty band). Must run inside a natlang task. `refine<Is<T, "p">>(value)` is
- * lowered by the compiler to `refine(value, "p")`.
+ * lowered by the compiler to `refine(value, "p")` (and stacked `Is<Is<T, "a">, "b">` to separate obligations).
  * @natlangIntrinsic refine
  */
-export declare function refine<T, P extends string>(value: T, predicate: P): Promise<Is<T, P>>;
-export declare function refine<R extends Is<unknown, string>>(value: unknown): Promise<R>;
+export declare function refine<T, P extends string>(value: T, predicate: P, options?: RefineOptions): Promise<Is<T, P>>;
+export declare function refine<R extends Is<unknown, string>>(value: unknown, options?: RefineOptions): Promise<R>;
 /**
  * Declare that `value` satisfies `predicate` without checking it. The assumption is recorded in the trace.
  * @natlangIntrinsic assume

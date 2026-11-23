@@ -53,6 +53,12 @@ export type BuildOptions = {
         url: string;
         types: string;
         path?: string;
+        /** The standard library bound with it (`<specifier>/std`); by default `std/index.js` beside an `index.js` runtime. */
+        std?: {
+            url: string;
+            types: string;
+            path?: string;
+        };
     };
     /** Type these runtime specifiers, and the neutral one, against the built-in surface declarations (virtual projects). */
     surfaceSpecifiers?: string[];
@@ -99,6 +105,12 @@ export type BuildResult = {
 };
 /** Generated declaration for `foo.nl`, read by TypeScript as `foo.d.nl.ts`. */
 export declare function natlangDeclaration(record: NatlangRecord, runtimeSpecifier: string): string;
+/**
+ * Build a `RewriteGate` from `natlang.json`'s optional `"rewrites": { "measurements": PATH }` entry (WS2 R5).
+ * Rules remain off by default whenever the key or measurements file is absent, malformed, or lacks a certified
+ * `no-harm` measurement for the active model and dialect.
+ */
+export declare function loadRewriteGate(files: ProjectFiles, root: string): RewriteGate;
 /** Check and optionally compile a project. File access comes from `options.files`. */
 export declare function compileProject(options: BuildOptions): BuildResult;
 /** Format diagnostics for a terminal. */

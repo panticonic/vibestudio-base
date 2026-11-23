@@ -19,12 +19,16 @@ function softmax(logProbs) {
   const total = weights.reduce((sum, value) => sum + value, 0);
   return weights.map((value) => value / total);
 }
-function promptLogprobRequest(messages, reply, extra = {}) {
+function promptLogprobRequest(messages, reply, extra = {}, open = false, reasoning) {
   return {
     ...extra,
-    messages: [...messages, { role: "assistant", content: reply }],
+    messages: [...messages, {
+      role: "assistant",
+      content: reply,
+      ...typeof reasoning === "string" ? { reasoning, reasoning_content: reasoning } : {}
+    }],
     add_generation_prompt: false,
-    continue_final_message: false,
+    continue_final_message: open,
     prompt_logprobs: 0,
     max_tokens: 1
   };
@@ -59,20 +63,33 @@ function batchScoreItem(item, extra) {
     messages: item.messages,
     continuations: item.options,
     ...item.cache_messages ? { cache_messages: item.cache_messages } : {},
+    ...item.open_reply ? { open_reply: true } : {},
+    ...typeof item.reasoning === "string" ? { reasoning: item.reasoning } : {},
     ...item.adapters?.length ? { adapters: item.adapters } : {},
     ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
     ...item.native_recording ? { native_recording: true } : {}
   };
 }
-function scoresFromBatchResult(result, replyCount) {
-  if (!result || typeof result.error === "string" || !Array.isArray(result.log_probs) || result.log_probs.length !== replyCount)
+function scoresFromBatchResult(result, item) {
+  if (!result || typeof result.error === "string" || !Array.isArray(result.log_probs) || result.log_probs.length !== item.options.length)
     throw new Error(result?.error ?? "batched scoring returned no scores for an item");
+  if (item.open_reply === true && result.open_reply !== true)
+    throw new Error("decision-open-unsupported: the server scored the replies of a field-by-field decision as closed (open_reply not served)");
+  if (typeof item.reasoning === "string" && result.reasoning !== true)
+    throw new Error("decision-reasoning-unsupported: the server scored the replies without the reasoning before them (reasoning not served)");
   return {
     log_probs: result.log_probs,
     ...result.tokens ? { tokens: result.tokens } : {},
     ...Number.isSafeInteger(result.prompt_tokens) ? { prompt_tokens: result.prompt_tokens } : {},
     ...result.native_decision_capture ? { native_decision_capture: result.native_decision_capture } : {}
   };
+}
+async function scoreAll(scorer, items, signal) {
+  if (items.length === 1) return [await scorer(items[0], signal)];
+  const settled = scorer.scoreMany ? await scorer.scoreMany(items, signal) : await Promise.allSettled(items.map((item) => scorer(item, signal)));
+  const failed = settled.find((result) => result.status === "rejected");
+  if (failed) throw failed.reason;
+  return settled.map((result) => result.value);
 }
 
 // src/model/chat-completion.ts
@@ -218,6 +235,8 @@ function piAssistantContent(reply) {
   }));
   return { calls, text, reasoning, rawCalls };
 }
+var piPromptTokens = (usage) => usage.input + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
+var piCacheReads = (usage) => usage.cacheRead || 0;
 function piAssistantToTurn(reply, provider) {
   if (reply.stopReason === "error" || reply.stopReason === "aborted")
     throw new Error(reply.errorMessage ?? `provider ${provider} failed`);
@@ -226,9 +245,12 @@ function piAssistantToTurn(reply, provider) {
     calls: calls.map((call) => [call.name, call.arguments]),
     raw_calls: rawCalls,
     text,
+    // Pi's `input` counts only uncached prompt tokens; a turn's prompt_tokens is the whole prompt (as OpenAI and
+    // llama.cpp report it), with the cache reads also given as cached_tokens.
     ...reasoning ? { reasoning } : {},
-    prompt_tokens: reply.usage.input,
+    prompt_tokens: piPromptTokens(reply.usage),
     completion_tokens: reply.usage.output,
+    ...piCacheReads(reply.usage) ? { cached_tokens: piCacheReads(reply.usage) } : {},
     ...reply.stopReason === "length" ? { truncated: true } : {},
     raw_response: { stop_reason: reply.stopReason, usage: reply.usage }
   };
@@ -236,11 +258,32 @@ function piAssistantToTurn(reply, provider) {
 
 // src/decision-frame.ts
 var DECISION_REPLIES = ["value", "result-object"];
+var DECISION_REPLY_SETTINGS = [...DECISION_REPLIES, "auto"];
 var decisionPrompt = (replies, frame = "value") => frame === "result-object" ? 'Answer this call now, without tools. Reply with exactly one JSON object {"result": VALUE} and nothing else, where VALUE is one of these JSON values: ' + replies.join(", ") + "." : "Answer this call now, without tools. Reply with exactly one of these JSON values and nothing else: " + replies.join(", ") + ".";
-var decisionReply = (json, frame = "value") => frame === "result-object" ? `{"result": ${json}}` : json;
+var decisionReply = (json, frame = "value", open = false) => frame === "result-object" ? `{"result": ${json}${open ? "" : "}"}` : json;
+var FIELDS_LEAD = "Answer this call now, without tools. Reply with exactly one JSON value of ";
+var FIELDS_ONE = "this form and nothing else: ";
+var FIELDS_MANY = "one of these forms and nothing else: ";
+var FIELDS_FRAMED = 'Answer this call now, without tools. Reply with exactly one JSON object {"result": VALUE} and nothing else, where VALUE is a JSON value of ';
+var decisionFieldsPrompt = (forms, frame = "value") => (frame === "result-object" ? FIELDS_FRAMED : FIELDS_LEAD) + (forms.length === 1 ? FIELDS_ONE : FIELDS_MANY) + forms.join(", ") + ".";
+function fieldsForms(content) {
+  if (!content.startsWith(FIELDS_LEAD) || !content.endsWith(".")) return void 0;
+  const rest = content.slice(FIELDS_LEAD.length);
+  return rest.startsWith(FIELDS_ONE) ? rest.slice(FIELDS_ONE.length) : rest.startsWith(FIELDS_MANY) ? rest.slice(FIELDS_MANY.length) : void 0;
+}
 function framedDecision(request, frame) {
   if (frame === void 0 || frame === "value") return request;
   const last = request.messages.at(-1);
+  if (request.open_reply) {
+    const forms = last?.role === "user" && typeof last.content === "string" ? fieldsForms(last.content) : void 0;
+    if (forms === void 0) return request;
+    const lead = last.content;
+    return {
+      ...request,
+      messages: [...request.messages.slice(0, -1), { ...last, content: FIELDS_FRAMED + lead.slice(FIELDS_LEAD.length) }],
+      options: request.options.map((option) => decisionReply(option, frame, true))
+    };
+  }
   if (last?.role !== "user" || last.content !== decisionPrompt(request.options)) return request;
   return {
     ...request,
@@ -248,18 +291,52 @@ function framedDecision(request, frame) {
     options: request.options.map((option) => decisionReply(option, frame))
   };
 }
+function decisionReplySetting(configured) {
+  const env = globalThis.process?.env?.NATLANG_DECISION_REPLY;
+  if (env === void 0 || env === "") return configured;
+  if (!DECISION_REPLY_SETTINGS.includes(env))
+    throw new Error(`NATLANG_DECISION_REPLY must be ${DECISION_REPLY_SETTINGS.join(", ")}, not ${env}`);
+  return env;
+}
+var logSumExp = (values) => {
+  const top = Math.max(...values);
+  return top === -Infinity ? top : top + Math.log(values.reduce((sum, value) => sum + Math.exp(value - top), 0));
+};
+async function autoFramedScores(request, reply, scoreAll2) {
+  const last = request.messages.at(-1);
+  const readout = last?.role === "user" && last.content === decisionPrompt(request.options);
+  if (reply !== "auto" || !readout || request.open_reply || typeof request.reasoning === "string" || request.options.length < 2)
+    return (await scoreAll2([framedDecision(request, reply === "auto" ? "value" : reply)]))[0];
+  const frames = DECISION_REPLIES.map((frame) => framedDecision(request, frame));
+  const alone = frames.flatMap((item) => item.options.map((option) => ({ ...item, options: [option] })));
+  const scored = await scoreAll2([...frames, ...alone]);
+  const k = request.options.length;
+  const masses = DECISION_REPLIES.map((_, index) => logSumExp(scored.slice(frames.length + index * k, frames.length + (index + 1) * k).map((scores) => scores.log_probs[0])));
+  const pick = masses[1] > masses[0] ? 1 : 0;
+  return {
+    ...scored[pick],
+    reply_frame: DECISION_REPLIES[pick],
+    reply_masses: Object.fromEntries(DECISION_REPLIES.map((frame, index) => [frame, masses[index]]))
+  };
+}
 export {
   DECISION_REPLIES,
+  DECISION_REPLY_SETTINGS,
+  autoFramedScores,
   batchScoreItem,
+  decisionFieldsPrompt,
   decisionPrompt,
   decisionReply,
+  decisionReplySetting,
   emptyPiUsage,
   framedDecision,
   piAssistantContent,
   piAssistantToTurn,
   piDeltaTranslator,
+  piPromptTokens,
   piToolChoiceOptions,
   promptLogprobRequest,
+  scoreAll,
   scoresFromBatchResult,
   scoresFromPromptLogprobs,
   softmax,

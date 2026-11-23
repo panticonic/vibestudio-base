@@ -1,6 +1,7 @@
 import { TypeEnv } from './types.js';
 import type { Type } from './types.js';
 import { FileHandle, Folder, FolderHandle, type FolderTransaction } from './scoped-fs.js';
+import { isPlainObject } from '../runtime/plain-object.js';
 export declare const MISSING: unique symbol;
 export type Missing = typeof MISSING;
 /** A live host object (Date, Map, class instance, function, ...) carried by identity. */
@@ -66,12 +67,14 @@ export type LambdaNode = {
     hostClasses?: ReadonlyMap<string, Function>;
     /** `decision`: answer by scoring the finite result values in one pass (native/decision.ts). `template`: the first
      * turn's reply is forced to `return_result` with the value written as a block (a Neuralese result) or decoded. */
-    readout?: 'decision' | 'template';
+    readout?: 'decision' | 'instant' | 'template';
     /** Tools this call is not offered: its definition's `withhold:` frontmatter (runtime/loader.ts WITHHOLDABLE_TOOLS). */
     withheldTools?: string[];
     /** Sources of the codebase this call can read but not edit: its definition's `protect:` frontmatter, resolved
      * (runtime/loader.ts protectedSources). */
     protectedSources?: string[];
+    /** The definition's `ensures:` postconditions on a proposed result (runtime/contracts.ts): empty when they hold. */
+    ensures?: (value: Value) => Promise<import('./refinement.js').RefinementFailure[]>;
 };
 export type Pending = LambdaNode;
 /** `text`, when set, is the whole model-facing line (a sentence without the `path: code` prefix); `code` stays for traces. */
@@ -86,7 +89,7 @@ export declare class Reject extends Error {
     readonly diagnostics: Diagnostic[];
     constructor(diagnostics: Diagnostic[]);
 }
-export declare const isPlainRecord: (value: unknown) => value is Record<string, unknown>;
+export declare const isPlainRecord: typeof isPlainObject;
 export declare const isPending: (value: unknown) => value is Pending;
 /** A value that is carried by identity: anything other than portable data, pending nodes, and folder/tree handles. */
 export declare const isLive: (value: unknown) => value is LiveObject;
@@ -103,6 +106,9 @@ export declare function liveLabel(value: object): string;
 export declare function hostCopy(value: unknown, seen?: Map<object, unknown>): unknown;
 export type CoerceOptions = {
     preserveRecordExtras?: boolean;
+    /** `keep`: a plain function stays itself at a function-typed slot (an eval's own locals), instead of being wrapped
+     * to check its calls; a natlang callable's signature is still checked. */
+    functions?: 'check' | 'keep';
 };
 export declare function coerce(raw: unknown, type: Type, env: TypeEnv, path?: string, options?: CoerceOptions): Value;
 export declare function buildPending(raw: unknown, env?: TypeEnv, path?: string): Pending;

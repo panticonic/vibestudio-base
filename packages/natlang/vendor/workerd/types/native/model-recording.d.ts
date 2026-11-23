@@ -56,9 +56,24 @@ export type RecordedTurn = {
     readonly reply: Record<string, unknown>;
     /** Write records of the blocks this turn wrote. */
     readonly blocks: readonly Record<string, unknown>[];
-    /** A decision readout instead of a generated reply: the options it scored (native/decision.ts). */
+    /** A decision readout instead of a generated reply: the options it scored (native/decision.ts), and for a reasoned
+     * readout the reasoning they were scored after and which of the readout's samples this is (`action`: the one whose
+     * choice the call returned when the scorer sampled). */
     readonly decision?: {
         readonly options: readonly string[];
+        readonly open_reply?: true;
+        readonly reasoning?: string;
+        readonly reasoning_sample?: {
+            readonly index: number;
+            readonly samples: number;
+            readonly action: boolean;
+        };
+    };
+    /** This generated turn sampled the reasoning of a reasoned decision readout (`index` of `samples`): its reply after the
+     * reasoning was not the call's answer (the readout's decision turns carry the scored options). */
+    readonly decision_reasoning?: {
+        readonly index: number;
+        readonly samples: number;
     };
     /** Exact named native coefficient actors and scales active for this recorded turn. */
     readonly adapters?: readonly NativeAdapterBinding[];
