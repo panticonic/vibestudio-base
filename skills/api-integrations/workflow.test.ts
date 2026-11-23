@@ -30,7 +30,7 @@ const second = {
 };
 afterEach(() => resolveCredential.mockReset());
 
-it("resolves sealed coordinates in order and projects only permitted lifecycle fields", async () => {
+it("resolves sealed coordinates in caller order and replays only public lifecycle fields", async () => {
   const assigned = { ...first };
   const { request, services } = bindIntegrationReview({
     goal: "Check access",
@@ -45,9 +45,8 @@ it("resolves sealed coordinates in order and projects only permitted lifecycle f
     { id: first.id, purpose: first.purpose, use: "fetch", required: true },
     { id: second.id, purpose: second.purpose, use: "publish", required: false },
   ]);
-  await expect(
-    services.integrationCredentialLookup.resolve(plan.receipt, second.id),
-  ).rejects.toThrow(/next destination/);
+  expect(await services.integrationPlanRead.observe(request.operationId)).toEqual(plan);
+  await expect(services.integrationCredentialLookup.resolve("foreign", second.id)).rejects.toThrow(/assigned/);
   resolveCredential.mockResolvedValueOnce(null).mockResolvedValueOnce({
     id: "private-id",
     scopes: ["sensitive-scope"],
@@ -55,29 +54,32 @@ it("resolves sealed coordinates in order and projects only permitted lifecycle f
     lifecycle: { state: "active", canRefresh: true },
   });
   expect(
-    await services.integrationCredentialLookup.resolve(plan.receipt, first.id),
-  ).toEqual({
-    id: first.id,
-    receipt: request.operationId + ":binding:" + first.id,
-    state: "missing",
-    canRefresh: null,
-  });
-  expect(
     await services.integrationCredentialLookup.resolve(plan.receipt, second.id),
   ).toEqual({
     id: second.id,
     receipt: request.operationId + ":binding:" + second.id,
+    state: "missing",
+    canRefresh: null,
+  });
+  expect(
+    await services.integrationCredentialLookup.resolve(plan.receipt, first.id),
+  ).toEqual({
+    id: first.id,
+    receipt: request.operationId + ":binding:" + first.id,
     state: "active",
     canRefresh: true,
   });
   expect(resolveCredential).toHaveBeenNthCalledWith(1, {
-    url: first.url,
-    use: first.use,
-  });
-  expect(resolveCredential).toHaveBeenNthCalledWith(2, {
     url: second.url,
     use: second.use,
   });
+  expect(resolveCredential).toHaveBeenNthCalledWith(2, {
+    url: first.url,
+    use: first.use,
+  });
+  const repeated = await services.integrationCredentialLookup.resolve(plan.receipt, second.id);
+  expect(repeated.state).toBe("missing");
+  expect(resolveCredential).toHaveBeenCalledTimes(2);
 });
 
 it("withholds a non-null failure and prevents continued lookup after it", async () => {
@@ -99,7 +101,7 @@ it("withholds a non-null failure and prevents continued lookup after it", async 
   expect(lookupFailure()).toBe(failure);
   await expect(
     services.integrationCredentialLookup.resolve(plan.receipt, second.id),
-  ).rejects.toThrow(/next destination/);
+  ).rejects.toThrow(/unverified/);
   expect(resolveCredential).toHaveBeenCalledTimes(1);
 });
 

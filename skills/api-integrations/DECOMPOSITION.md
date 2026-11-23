@@ -1,12 +1,7 @@
-# API integration readiness in Natlang
+# Sealed integration observations
 
-| Procedure | Form | Reason |
-| --- | --- | --- |
-| Match each destination and transport | Scoped host resolver | The host owns audience matching and credential-use authorization. |
-| Interpret the selected lifecycle | `reviewAudience` and `interpretBinding` | A canonical miss, an inaccessible result, and an observed lifecycle require different next steps. |
-| Combine the required and optional destinations | `summarizeCoverage` | A partial integration can support some operations. Its required destinations determine readiness. |
-| Describe recovery | `reviewIntegration` | The workflow can ask for public setup facts or advise retrying after authorization. The caller retains the account setup and HTTP effect capabilities. |
+The assignment seals destination IDs, URLs and transports. Native credential policy remains the authority; a model cannot retarget a URL, reveal credential fields or substitute an operation receipt. A plan read is repeatable observation, not a one-use permission. Destination selection belongs to the caller rather than a hidden array cursor.
 
-The TypeScript adapter seals the request coordinates. Model-visible results contain
-only outcome, lifecycle, refreshability, and local receipts. Callers that need
-quiet behavior run under their existing pregranted-only authority policy.
+Each destination has one operation-scoped native observation, including an in-flight observation. Replays join that observation and return copied public lifecycle fields. Native credential-policy requests are serialized because a failure can leave authorization unverified: queued new destinations then remain held, while already issued evidence can still be read. The native resolver receives the bound destination ID for correlation; the default credential RPC forwards only its actual URL/use contract.
+
+SST's quiet review fixture consumes the same binder. Its callback must join by destination ID and its verifier must compare authenticated observations by ID, rather than require a lookup route or count repeated reads. Explicit user goals that require leaving later checks held remain outcome requirements.
