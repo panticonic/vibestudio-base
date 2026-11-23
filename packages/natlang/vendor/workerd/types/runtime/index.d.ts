@@ -20,7 +20,7 @@ export { isNatlangCallable, namedCallable, callableTree, defineNatlang, invokeAt
 export type { Representation, GenericResult } from '../native/representation.js';
 export { Iteration, IterationDivergedError, IterationStepError, IterationLimitError, MemoryIterationStatistics, defaultProgressJudge } from './iterate.js';
 export type { IterationStatisticsStore, SiteStatistics, ProgressJudgeFunction, StepRecord } from './iterate.js';
-export { nl, iterateOn, refine, assume, untrusted } from './surface.js';
+export { nl, iterateOn, refine, assume, untrusted, decide } from './surface.js';
 export { builtin, builtinDefinition, builtinRecords } from './builtin.js';
 export { builtinNames } from '../builtin/index.js';
 export { pluggable, pluggableMode } from './pluggable.js';

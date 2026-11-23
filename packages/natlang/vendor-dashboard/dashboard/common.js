@@ -89,10 +89,27 @@ export function pageContext(host, el, scope, id) {
     /** Start a run on the run host, announce it and open it in the Runs page. */
     async startRun(spec) {
       try { const run = await host.runs.start(spec); toast(`Started: ${runLabel(run)}`); host.navigate(`runs-${run.id}`); return run; }
-      catch (error) { toast(error.message, true); }
+      catch (error) {
+        // The local model or runtime is not installed: ask before the run downloads it (the server adds --yes only then).
+        if (error.detail?.setup) return confirmSetup(ctx, error.detail.setup, () => ctx.startRun({ ...spec, download: true }));
+        toast(error.message, true);
+      }
     },
   };
   return ctx;
+}
+
+/** The setup a run needs before it can start: confirm the download and run, or switch to a hosted model. */
+function confirmSetup(ctx, setup, run) {
+  const { h } = ctx;
+  const label = setup.bytes ? `Download ${bytes(setup.bytes)} and run` : 'Install the runtime and run';
+  const dialog = h('dialog', {}, h('div', { class: 'stack' }, h('h2', {}, 'Set up the local model first'),
+    h('p', {}, setup.bytes ? `This run uses the built-in local model, which is not downloaded yet: a one-time download of ${bytes(setup.bytes)}${setup.runtime ? ' plus the llama.cpp runtime' : ''}.` :
+      'This run uses the built-in local model, and the llama.cpp runtime that serves it is not installed yet.'),
+    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => { dialog.close(); run(); } }, label),
+      ctx.can('models') ? h('button', { onclick: () => { dialog.close(); ctx.navigate('models'); } }, 'Use a hosted model instead') : null,
+      h('button', { class: 'ghost', onclick: () => dialog.close() }, 'Cancel'))));
+  ctx.modal(dialog);
 }
 
 /** Make `el` a styled dashboard root when no ancestor is one; returns the undo. */
@@ -124,7 +141,8 @@ export function definePage({ id, requires = [], runKinds = [], render }) {
 }
 
 // ---- formatting -----------------------------------------------------------------------------------------------------
-export const bytes = n => n == null ? '–' : n >= 2 ** 30 ? `${(n / 2 ** 30).toFixed(1)} GB` : n >= 2 ** 20 ? `${(n / 2 ** 20).toFixed(0)} MB` : `${Math.round(n / 1024)} KB`;
+/** Decimal units, as downloads and disks are sized (the default model is 1.8 GB everywhere natlang names it). */
+export const bytes = n => n == null ? '–' : n >= 1e9 ? `${(Math.floor(n / 1e8) / 10).toFixed(1)} GB` : n >= 1e6 ? `${Math.round(n / 1e6)} MB` : `${Math.round(n / 1e3)} KB`;
 export const ms = n => n == null ? '–' : n >= 60000 ? `${Math.floor(n / 60000)}m ${Math.round(n / 1000) % 60}s` : n >= 1000 ? `${(n / 1000).toFixed(1)} s` : `${n} ms`;
 export const tokens = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n ?? 0);
 export const ago = iso => { if (!iso) return '–'; const s = (Date.now() - Date.parse(iso)) / 1000;

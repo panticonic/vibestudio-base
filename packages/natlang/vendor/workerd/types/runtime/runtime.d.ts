@@ -162,6 +162,15 @@ export type NatlangRuntimeOptions = {
     };
     /** Drive interpreter sessions directly instead of through a model (fixtures, replay, tests). */
     agent?: import('../native/runtime.js').NativeAgent;
+    /**
+     * The model driver behind `agent` (the teacher collector's policy or teacher, a scripted replay). With no `model`,
+     * refinement judges score with its `decide`, else a `holds` call runs through `agent`; without it there is no judge.
+     */
+    agentDriver?: {
+        decide?: DecisionScorer;
+        model?: unknown;
+        name?: string;
+    };
     /** Typed host services, available to callable-folder code via `natlang:services` and to eval as named bindings. */
     services?: Services;
     /**
@@ -230,6 +239,7 @@ export type NatlangRuntimeOptions = {
     /** The program's `recording` settings (`natlang.json`): definitions (`dir/*.nl`) or arguments (`name.arg`) recorded by type only. */
     recording?: {
         exclude?: string[];
+        checkpoints?: boolean;
     };
     /** How far compilations may serve this runtime's calls; the machine setting bounds it (default: the machine setting). */
     specialization?: SpecializationMode;
@@ -347,7 +357,8 @@ export declare class NatlangTask {
     refinementChecker(): RefinementChecker;
     /**
      * The judge and the escalation judge for a call running on `model`: the configured `refinements.judge` model when
-     * there is one, else the call's own. Undefined when the driver cannot score replies.
+     * there is one, else the call's own. A task driven by `agent` with no model judges on the agent's driver
+     * (`agentDriver`): its scorer, else `holds` through the agent. Undefined when there is neither.
      */
     refinementJudges(model: ModelConfig | undefined, frame?: Frame): {
         judge?: RefinementJudge;

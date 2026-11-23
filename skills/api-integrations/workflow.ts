@@ -8,14 +8,14 @@ import type {
 
 type AssignedDestination = IntegrationDestination & { url: string };
 
-type ResolveIntegrationDestination = (input: {url:string;use:IntegrationDestination["use"]}) => Promise<{
+type ResolveIntegrationDestination = (input: {id:string;url:string;use:IntegrationDestination["use"]}) => Promise<{
   lifecycle: {state:"active"|"expired"|"revoked";canRefresh:boolean};
 } | null>;
 
 /** Use the caller's existing authority policy for one sealed integration review. */
 export function bindIntegrationReview(
   assignment: {goal:string;destinations:AssignedDestination[]},
-  resolveDestination: ResolveIntegrationDestination = input => credentials.resolveCredential(input),
+  resolveDestination: ResolveIntegrationDestination = ({url,use}) => credentials.resolveCredential({url,use}),
 ) {
   const destinations = structuredClone(assignment.destinations);
   const ids = new Set(destinations.map(({ id }) => id));
@@ -39,11 +39,10 @@ export function bindIntegrationReview(
   const operationId = crypto.randomUUID();
   const receipt = `${operationId}:integration`;
   const request: IntegrationRequest = { goal: assignment.goal, operationId };
-  let observed = false;
-  let running = false;
   let stopped = false;
-  let index = 0;
   let failure: unknown;
+  const observations = new Map<string, Promise<IntegrationObservation>>();
+  let pending: Promise<unknown> = Promise.resolve();
 
   return {
     request,
@@ -51,9 +50,8 @@ export function bindIntegrationReview(
     services: {
       integrationPlanRead: {
         async observe(id: string): Promise<IntegrationPlan> {
-          if (id !== operationId || observed)
-            throw new Error("Read the assigned integration plan once");
-          observed = true;
+          if (id !== operationId)
+            throw new Error("Read the assigned integration plan");
           return {
             receipt,
             destinations: destinations.map(
@@ -72,39 +70,28 @@ export function bindIntegrationReview(
           planReceipt: string,
           id: string,
         ): Promise<IntegrationObservation> {
-          const destination = destinations[index];
-          if (
-            !observed ||
-            running ||
-            stopped ||
-            planReceipt !== receipt ||
-            destination?.id !== id
-          )
-            throw new Error(
-              "Resolve only the next destination from the assigned integration plan",
-            );
-          running = true;
-          index++;
-          const evidence = { id, receipt: `${operationId}:binding:${id}` };
-          try {
-            const result = await resolveDestination({
-              url: destination.url,
-              use: destination.use,
-            });
-            return result === null
-              ? { ...evidence, state: "missing", canRefresh: null }
-              : {
-                  ...evidence,
-                  state: result.lifecycle.state,
-                  canRefresh: result.lifecycle.canRefresh,
-                };
-          } catch (error) {
-            failure = error;
-            stopped = true;
-            return { ...evidence, state: "unverified", canRefresh: null };
-          } finally {
-            running = false;
-          }
+          const destination = destinations.find(item => item.id === id);
+          if (planReceipt !== receipt || !destination)
+            throw new Error("Resolve a destination from the assigned integration plan");
+          const previous = observations.get(id);
+          if (previous) return structuredClone(await previous);
+          const observing = pending.then(async (): Promise<IntegrationObservation> => {
+            if (stopped) throw new Error("Authorization remains unverified; additional destinations are held");
+            const evidence = { id, receipt: `${operationId}:binding:${id}` };
+            try {
+              const result = await resolveDestination({ id, url: destination.url, use: destination.use });
+              return result === null
+                ? { ...evidence, state: "missing", canRefresh: null }
+                : { ...evidence, state: result.lifecycle.state, canRefresh: result.lifecycle.canRefresh };
+            } catch (error) {
+              failure = error;
+              stopped = true;
+              return { ...evidence, state: "unverified", canRefresh: null };
+            }
+          });
+          observations.set(id, observing);
+          pending = observing.then(() => undefined, () => undefined);
+          return structuredClone(await observing);
         },
       },
     },

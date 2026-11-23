@@ -2,6 +2,9 @@ import { type CallRecord, type CallStoreSettings, type CaseStats, type Compilati
 /** What the runtime needs of a call store. `CallStore` (Node) implements it; tests may pass their own. */
 export interface CallStoreLike {
     settings(): CallStoreSettings;
+    /** Exact evidence of an unfinished call; a durable store may acknowledge it asynchronously. */
+    checkpointRequired?: boolean;
+    checkpoint?(callId: string, state: Record<string, unknown>, blobs: ReadonlyMap<string, string>, events?: string): void | Promise<void>;
     record(record: CallRecord, blobs: ReadonlyMap<string, string>, events?: string): void;
     /** Note that a call started (shown as running until its record arrives). */
     begin?(row: Parameters<import('./store.js').CallStore['begin']>[0]): void;
@@ -54,6 +57,7 @@ export declare class CallCapture {
         programId: string | null;
         /** A root run's logical name (several runs share it; each has its own call ID). */
         runLabel?: string | null;
+        checkpoints?: boolean;
         buildHash: string | null;
         programRoot: string | null;
         definition: DefinitionIdentity;
@@ -89,6 +93,7 @@ export declare class CallCapture {
         programId: string | null;
         /** A root run's logical name (several runs share it; each has its own call ID). */
         runLabel?: string | null;
+        checkpoints?: boolean;
         buildHash: string | null;
         programRoot: string | null;
         definition: DefinitionIdentity;
@@ -103,6 +108,12 @@ export declare class CallCapture {
     /** The call ends without a record: its row of a running call is removed (a strict tier attempt that declined). */
     discard(): void;
     private watcher?;
+    private checkpointOrdinal;
+    private announced;
+    private eventSource?;
+    /** The last exact observation, explicitly not a completed record. */
+    checkpoint(): void | Promise<void>;
+    private backgroundCheckpoint;
     /** While the call runs, write its trace events so far every `intervalMs`, so a long call can be inspected live. */
     watch(events: () => readonly Record<string, unknown>[], intervalMs?: number): void;
     /** Snapshot a value into this record's blobs. */
@@ -132,7 +143,7 @@ export declare class CallCapture {
         error?: string;
         seq?: number;
         graph_order?: number;
-    }, by?: 'agent' | 'crisp'): void;
+    }, by?: 'agent' | 'crisp'): void | Promise<void>;
     /** Effects that completed so far, in the order they started. */
     completedEffects(by?: 'agent' | 'crisp'): EffectRecord[];
     /** Write the record. Never throws. */

@@ -92,6 +92,22 @@ export type FolderRecord = {
         after?: ValueRef;
     }[];
 };
+/** One committed edit_code revision: the item, its source path, hashes of the text before and after, the edit, and the
+ * whole edited text (`after`). `originalHash` is the program's file as built; `effectiveHash` the text the edit applied to. */
+export type CodeRevisionRecord = {
+    function: string;
+    source: string;
+    revision: number;
+    originalHash: string;
+    effectiveHash: string;
+    patchedHash: string;
+    patch: {
+        find: string;
+        replace_with: string;
+        fuzzy?: true;
+    };
+    after: ValueRef;
+};
 export type CallRecord = {
     version: typeof CALLS_VERSION;
     call_id: string;
@@ -134,6 +150,11 @@ export type CallRecord = {
         sha256: string;
     };
     folder: FolderRecord | null;
+    /**
+     * The source revisions a successful call committed with edit_code, in order (WS1 L3): proposals for the program, which
+     * `natlang improve adopt-call` checks, tests and installs. Absent when the call changed no code.
+     */
+    code_revisions?: CodeRevisionRecord[];
     /** The eval programs the agent ran, in order (successful and failed), and the hash of their normalized form. */
     approach: {
         evals: string[];

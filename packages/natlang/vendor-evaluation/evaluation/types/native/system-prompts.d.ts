@@ -13,7 +13,16 @@ export type SystemPromptBank = ReadonlyMap<string, {
     readonly text: string;
     readonly value: NeuraleseRef;
 }>;
-/** A bank from soft forms by piece ID; each piece's text comes from `pieces` (default: this runtime's pieces). */
+/**
+ * A scoped entry `<piece>@<scope>` is the piece's soft form for one site only: the learned operators each have their
+ * own state of the one site prompt they share (`view@compact-value`, `view@compact-params`; agent.ts `operatorWrite`).
+ * Scoped entries soften nothing outside their scope (`scopedBank`).
+ */
+export declare const PIECE_SCOPE = "@";
+/** The bank as one scope sees it: its `<piece>@<scope>` entries in place of the pieces', other scopes' entries dropped. */
+export declare function scopedBank(bank: SystemPromptBank | undefined, scope?: string): SystemPromptBank | undefined;
+/** A bank from soft forms by piece ID (or `<piece>@<scope>`); each piece's text comes from `pieces` (default: this
+ * runtime's pieces). */
 export declare function systemPromptBank(values: Readonly<Record<string, unknown>>, pieces?: readonly PromptPiece[]): SystemPromptBank;
 /** Where pieces occur in a text, longest pieces first and without overlaps: [start, end, piece]. */
 export declare function findPieces<P extends Pick<PromptPiece, 'id' | 'text'>>(text: string, pieces: readonly P[]): [number, number, P][];

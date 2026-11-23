@@ -75,9 +75,12 @@ function markdown(h, text) {
 
 // Where a run will go, in plain words, with the next step when something still has to happen first.
 const BACKEND = { 'managed-local': 'a local model on this machine', 'pi-provider': 'a hosted provider', external: 'your own model server' };
-function readinessText(ctx, model) {
+function readinessText(ctx, model, profile) {
   const { h } = ctx;
-  if (model.kind === 'managed-local') return [h('span', {}, 'Runs on '), h('strong', {}, model.model), `, ${BACKEND[model.kind]}: ${model.detail}`];
+  if (model.kind === 'managed-local') return [h('span', {}, 'Runs on '), h('strong', {}, model.model), `, ${BACKEND[model.kind]}: ${model.detail}`,
+    // Not installed yet: set it up now (the Run button would ask first), or switch to a hosted model.
+    model.setup ? h('div', { class: 'row' }, ctx.can('run:setup') ? h('button', { onclick: () => ctx.startRun({ kind: 'setup', profile: profile || undefined }) }, 'Set up now') : null,
+      ctx.can('models') ? h('button', { onclick: () => ctx.navigate('models') }, 'Use a hosted model instead') : null) : null];
   return [h('span', {}, 'Runs on '), h('strong', {}, model.model), `, ${BACKEND[model.kind] ?? model.kind}. `, ...(ctx.can('models') ? [h('a', { href: ctx.href('models') }, 'Test the connection on Models'), '.'] : [])];
 }
 
@@ -102,7 +105,7 @@ async function programDetail(ctx, path, container) {
       const refresh = async () => {
         const current = ++revision;
         try { const model = await api.programs.model(program.directory, chosen?.value ?? '');
-          if (revision === current) fill(readiness, readinessText(ctx, model));
+          if (revision === current) fill(readiness, readinessText(ctx, model, chosen?.value));
         } catch (error) { if (revision === current) readiness.textContent = error.message; }
       };
       profileSelect(ctx, `profile-${name}`, previous?.profile).then(select => {
@@ -117,9 +120,12 @@ async function programDetail(ctx, path, container) {
         h('div', { class: 'run-bar' }, h('div', { class: 'row' }, h('button', { class: 'primary', title: 'Run (Ctrl+Enter)', onclick: run }, 'Run'), profile,
           h('button', { class: 'ghost', onclick: () => form.reset() }, 'Reset inputs')), readiness));
     }) : h('div', { class: 'muted' }, 'This package has no targets; call its functions below.'));
-  const functions = h('section', { class: 'panel' }, h('h2', {}, 'Natural-language functions'),
+  const addable = ctx.can('programs') && !!api.programs.createFunction;
+  const functions = h('section', { class: 'panel' }, h('div', { class: 'row', style: 'justify-content: space-between' }, h('h2', {}, 'Natural-language functions'),
+      addable ? h('button', { onclick: () => functionDialog(ctx, program) }, 'New function') : null),
     program.functions.length ? h('div', { class: 'small muted' }, 'Call one function on its own with your inputs, edit its instructions, or save its result as a test.') : null,
-    program.functions.length ? h('div', { class: 'function-list' }, program.functions.map(fn => functionCard(ctx, program, fn))) : h('div', { class: 'muted' }, 'No .nl files.'));
+    program.functions.length ? h('div', { class: 'function-list' }, program.functions.map(fn => functionCard(ctx, program, fn))) :
+      h('div', { class: 'muted' }, addable ? 'No natural-language functions yet. New function adds one from a template.' : 'No natural-language functions (.nl files) yet.'));
   const warm = lock?.warm;
   const buildable = ctx.can('run:build');
   const build = h('section', { class: 'panel' }, h('div', { class: 'row', style: 'justify-content: space-between' }, h('h2', {}, 'Compiled program'),
@@ -147,6 +153,25 @@ async function programDetail(ctx, path, container) {
       ctx.can('run:test') ? h('button', { onclick: () => ctx.startRun({ kind: 'test', path: program.directory }) }, 'Run tests') : null),
     buildable || lock ? h('details', { class: 'panel' }, h('summary', {}, 'Build and warm-up details'), build) : null,
     program.readme ? h('section', { class: 'panel' }, h('h3', { class: 'muted small' }, program.readme.name), h('div', { class: 'prose' }, markdown(h, program.readme.text))) : null);
+}
+
+/** Ask for a new function's file name and create it from a template (`answer/x.nl` makes a helper answer.nl can call). */
+function functionDialog(ctx, program) {
+  const { h } = ctx;
+  const helperOf = program.functions.find(fn => !fn.source.includes('/'))?.source.replace(/\.nl$/, '');
+  const name = h('input', { value: 'classify.nl', required: true, pattern: '([A-Za-z_][A-Za-z0-9_]*/)*[A-Za-z_][A-Za-z0-9_]*\\.nl', 'aria-label': 'File name' });
+  const errorBox = h('div', { class: 'callout warn', hidden: true });
+  const dialog = h('dialog', {}, h('form', { class: 'stack', onsubmit: async event => {
+    event.preventDefault();
+    try { const created = await ctx.api.programs.createFunction({ path: program.directory, file: name.value.trim() });
+      dialog.close(); ctx.toast(`Created ${created.path}. Open it with Edit instructions.`); ctx.reload(); }
+    catch (error) { errorBox.textContent = error.message; errorBox.hidden = false; }
+  } }, h('h2', {}, 'New function'),
+  h('p', {}, 'Creates a .nl file with a typed signature and instructions to fill in.' +
+    (helperOf ? ` Put it in ${helperOf}/ (for example ${helperOf}/lookup.nl) to make it a helper ${helperOf}.nl can call.` : '')),
+  h('label', { class: 'field' }, 'File name', name), errorBox,
+  h('div', { class: 'row' }, h('button', { type: 'submit', class: 'primary' }, 'Create function'), h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'))));
+  ctx.modal(dialog); name.select();
 }
 
 function functionCard(ctx, program, fn) {

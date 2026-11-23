@@ -22,7 +22,7 @@ export function httpRunHost(api) {
     for (const subscriber of [...subscribers]) subscriber.listener(runs);
   };
   return {
-    kinds: ['run', 'call', 'ask', 'test', 'build', 'setup', 'runtime-build', 'tune', 'specialize'],
+    kinds: ['run', 'call', 'ask', 'test', 'build', 'setup', 'runtime-build', 'tune', 'specialize', 'adopt-call'],
     list: () => api.jobs.list(),
     async start(spec) { const run = await api.jobs.start(spec); refresh(); return run; },
     async stop(id) { const run = await api.jobs.stop(id); refresh(); return run; },

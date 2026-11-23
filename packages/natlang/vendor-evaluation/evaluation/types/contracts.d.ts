@@ -47,7 +47,8 @@ export type ModelTurnRequest = {
     guidance?: boolean | Record<string, unknown>;
     /**
      * Training guidance for this turn's call (native servers only; `x_natlang_privileged_context`): the
-     * `natlang.guidance-request/1` built by native/training-guidance.ts, which the engine renders into the prompt.
+     * `natlang.guidance-request/2` built by native/training-guidance.ts: its guidance message, which the engine renders
+     * after the leading system message and marks as the guidance turn.
      */
     privileged_context?: Record<string, unknown>;
     /** This turn belongs to the in-run guidance policy (native servers only; `x_natlang_guidance_policy`). */
@@ -147,8 +148,9 @@ export type ModelTurn = {
     execution_plan?: string | null;
     /** The reply stopped at max_tokens. */
     truncated?: boolean;
-    /** The reply held tool-call markup that is no complete call: `text` is the reply as sampled, `calls` is empty and
-     * this is the one sentence that tells the model what was wrong. Nothing ran. */
+    /** The reply held tool-call markup that is no complete call, or closed its reasoning a second time
+     * (`SECOND_THINK_CLOSE`): `text` is the reply as sampled, `calls` is empty (`raw_calls` keeps any call the server read,
+     * for the history) and this is the one sentence that tells the model what was wrong. Nothing ran. */
     malformed_call?: string;
     /** How the model scheduler batched this turn's request (batch id and size, requests in flight, queue wait). */
     scheduling?: {
@@ -210,7 +212,7 @@ export type ModelTurnOptions = {
  * `decide: DecisionScorer` property (`Object.assign(driver, { decide })`; wrappers copy it with the driver). The runtime
  * uses it for `readout: decision` functions, `decisionReadout: 'finite-returns'`, refinement judges and `decide(fn, ...)`
  * in eval, wherever the call's result type is finite. A driver without it, or whose `decide` fails with
- * `decision-unsupported`, gets the ordinary tool loop for that call; no other error is swallowed. Endpoint drivers
+ * `decision-unsupported`, generates one offered JSON value on the same decision prompt; no other error is swallowed. Endpoint drivers
  * implement it through `prompt_logprobs` (chat-completion.ts) or the llama.cpp fork's score endpoint (scoring.ts); a
  * gateway driver implements it by asking whatever service owns the model, and may declare `scoreMany` to batch.
  * `log_probs[i]` is the total log-probability of `options[i]`

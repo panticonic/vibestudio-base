@@ -6,6 +6,7 @@ export interface CompilerFiles {
     directoryExists?(path: string): boolean;
     getDirectories?(path: string): string[];
     realpath?(path: string): string;
+    readDirectory?(path: string, extensions?: readonly string[], excludes?: readonly string[], includes?: readonly string[], depth?: number): string[];
 }
 /** Returns declaration text for a TypeScript library file such as `lib.es2022.d.ts`. */
 export type LibProvider = (fileName: string) => string | undefined;

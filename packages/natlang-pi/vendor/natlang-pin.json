@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "50c9d1ea40664bd0ec5038a887176664a9c9d18c",
+  "commit": "3b30c78820b04d0d4120fb89a2297a5e98023c06",
   "dirty": false,
   "targets": [
     "pi"
@@ -13,7 +13,7 @@
   "files": {
     "pi/natlang-pi.d.ts": "59392afc1ccbd11483a9091a0b59ace6149df26eb707bd090a7205eb6fc569f9",
     "pi/natlang-pi.js": "3af7cf676b97ea04e0b4194af7cbe8250d63880e4a1a779f397d05446485eb54",
-    "pi/types/contracts.d.ts": "b735e3f50f886c04aefb363c3e63abbada7fffcf50ab55668c6b5cbf71245fd3",
+    "pi/types/contracts.d.ts": "a540ba8f82f94e6e64b85104e88f236860b241ee8f155b4f160fc1491213acea",
     "pi/types/decision-frame.d.ts": "3f9ec9a841d621d3cd4cac672636c298ba55cdec74539ad90f4233cf5a794a5f",
     "pi/types/entry/pi.d.ts": "85a98a1a3cd349d4ded16e24967e16e4cc45e45b3375d4eceaf602f460964119",
     "pi/types/model/decision-scoring.d.ts": "be604d901e5b2ccda140e8b2c86aa99b95208175bada3c9ace05de5099bb9bea",

@@ -22,7 +22,7 @@ export type BudgetLedger = {
         cost: number;
     };
 };
-/** A backend that cannot score replies declines with this error before doing any work; the call runs the tool loop instead. */
+/** A backend that cannot score replies declines with this error before doing any work; the runtime can generate the decision without charging a declined score request. */
 export declare const decisionDeclined: (error: unknown) => boolean;
 /** What a decision readout used: its prompt tokens as the scorer reports them, and no generated tokens. */
 export declare const decisionUsage: (scores: DecisionScores) => {

@@ -8,7 +8,7 @@ export function httpDashboardApi({ baseUrl = '', token, fetch: fetchImplementati
     const response = await fetchImplementation(baseUrl + path, { method, headers: { 'x-natlang-token': token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(signal ? { signal } : {}) });
     const value = await response.json().catch(() => ({}));
-    if (!response.ok) throw Object.assign(new Error(messageSummary(value.error) || `The request failed (${response.status}).`), { status: response.status });
+    if (!response.ok) throw Object.assign(new Error(messageSummary(value.error) || `The request failed (${response.status}).`), { status: response.status, detail: value });
     return value;
   }
   const get = (path, signal) => request('GET', path, undefined, signal);
@@ -48,6 +48,7 @@ export function httpDashboardApi({ baseUrl = '', token, fetch: fetchImplementati
       source: path => get(`/api/programs/source?path=${id(path)}`),
       saveSource: spec => request('PUT', '/api/programs/source', spec),
       saveExample: spec => request('POST', '/api/programs/example', spec),
+      createFunction: spec => request('POST', '/api/programs/function', spec),
     },
     traces: {
       list: (filters = {}) => get(`/api/traces?${query(Object.entries({ limit: 150, ...filters }))}`),

@@ -29,4 +29,4 @@ export declare const ONCE_EFFECTS: unique symbol;
  * Wrap services so each method call is recorded as an effect. Objects are wrapped one level deep
  * per property access; the original receiver is preserved.
  */
-export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => void): T;
+export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown): T;

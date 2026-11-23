@@ -3,6 +3,8 @@
  * `compiler/intrinsics.ts`, which supplies the same types to eval programs.
  */
 import { Iteration, type IterationEvent, type IterationTrajectory, type ProgressVerdict } from './iterate.js';
+import type { Context } from './contexts.js';
+import { type Decision } from './runtime.js';
 export { Deopt } from '../calls/dispatch.js';
 export type { IterationEvent, IterationTrajectory, ProgressVerdict };
 export type { Iteration };
@@ -23,6 +25,8 @@ export interface NatlangCallableMethods<A extends unknown[], R> {
     on(options: {
         model: string;
     }): NatlangFunction<A, R>;
+    /** The same function bound to another context, structurally checked against its context interface; a new function. */
+    in(context: Context): NatlangFunction<A, R>;
 }
 /** A compiled natural-language function: asynchronous, typed, and monitored. */
 export type NatlangFunction<A extends unknown[] = any[], R = any> = ((...args: A) => Promise<R>) & NatlangCallableMethods<A, R>;
@@ -39,6 +43,7 @@ export type NatlangUntypedFunction = ((...args: any[]) => Promise<any>) & {
     on(options: {
         model: string;
     }): NatlangUntypedFunction;
+    in(context: Context): NatlangUntypedFunction;
 };
 export type NlResult<F> = [F] extends [NlUnspecified] ? NatlangUntypedFunction : [
     F
@@ -78,6 +83,13 @@ export declare const nl: NlTag;
  * @natlangIntrinsic iterateOn
  */
 export declare function iterateOn<T, A extends unknown[]>(step: (state: T, ...args: A) => T | Promise<T>, initial: T, ...args: A): Iteration<T>;
+/**
+ * Call `fn` with `args` and return its answer with the probability of every allowed value: `{ value, probabilities,
+ * confidence, scored }`. A function with `readout: decision` on a finite result (a literal union or `boolean`) is scored
+ * in one pass; any other result has probability 1 and `scored: false`. The same `decide` eval code calls, here for
+ * host code: `const { value, confidence } = await decide(route, message)`.
+ */
+export declare function decide<A extends unknown[], T>(fn: (...args: A) => Promise<T>, ...args: A): Promise<Decision<T>>;
 /**
  * A `T` whose value satisfies the natural-language predicate `P` (plans/REFINEMENT_TYPES.md). It is a `T` everywhere;
  * crisp code obtains one from a refined natlang result, from `refine(value, predicate)` or from `assume(value, predicate)`.

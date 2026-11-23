@@ -33,6 +33,8 @@ export type CallableDefinition = {
     model?: string;
     /** Tools this definition's own calls are not offered (`withhold:` frontmatter; loader WITHHOLDABLE_TOOLS). */
     withhold?: readonly string[];
+    /** Items of the companion folder this definition's calls cannot edit (`protect:` frontmatter). */
+    protect?: readonly string[];
     /** The model work one call may take (`budget:` frontmatter); each bound replaces its model's own. */
     budget?: import('./loader.js').CallBudget;
     revision?: string;

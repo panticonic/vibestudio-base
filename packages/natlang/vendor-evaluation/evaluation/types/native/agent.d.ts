@@ -49,12 +49,26 @@ export declare const withCallNotes: (opening: string, notes: string) => string;
 export declare const OPENING_THOUGHT = "I'll start by reading this call's arguments into the eval scope.";
 export declare const FOLDER_THOUGHT = "Next I'll list the files in this call's folder.";
 export declare const DIFF_CODE_DESCRIPTION = "Show the changes made to functions of the program's codebase in this call.";
+/**
+ * The tool list from stable to variable (plans/semantic-fp/02 R0): LFM3's template writes the tools into the system turn
+ * after the system prompt, so every engine's prefix cache and the learner's prefix tree share a call's tool block only up
+ * to its first tool that differs. The tools every call has come first (STABLE_TOOLS), then the ones a run or a call
+ * shape adds (escalate, the code-editing tools, the file tools), then return_result, whose value schema is the call's
+ * declared result. Before 2026-11-23 (NATLANG_PROMPT_REVISION=2026-11-22) the file and code-editing tools sat between
+ * eval and compact_history, so calls of different shapes parted right after read_page or read_code.
+ */
+export declare const STABLE_TOOLS: readonly ["eval", "read_page", "read_code", "compact_history"];
+export declare function orderedTools<T extends {
+    function: {
+        name: string;
+    };
+}>(tools: T[]): T[];
 /** Assistant turns the model has taken, not counting the runtime's pre-filled scope calls. */
 export declare function modelTurnsSoFar(messages: readonly Record<string, unknown>[]): number;
 export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSignal, options?: ModelTurnOptions) => Promise<ModelTurn> | ModelTurn) & {
     /** Scripted host drivers may ask to route fixed answers by the actual native return contract. */
     readonly requiresResultContract?: boolean;
-    /** Optional decision readout (contracts.ts `DecisionRequest`); without it the call runs the tool loop. */
+    /** Optional scored decision readout; without it finite calls generate one JSON choice. */
     decide?: DecisionScorer;
     /** The backend continues a cut-off reply (`ModelTurnRequest.continue`; runtime.ts `ModelDriver`). */
     readonly continuesReplies?: boolean;
@@ -65,6 +79,8 @@ export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSigna
  * the same values in eval). A long value is cut off, and its name holds all of it; an argument the caller left out is undefined.
  */
 export declare function inputsListing(session: NativeSession, views?: Readonly<Record<string, string>>): string;
+/** One argument's line of the opening listing: its name, type and value as shown. */
+export declare function listingLine(name: string, type: string, shown: string): string;
 /**
  * The prompt size and context window a server states when it refuses a request as longer than its context, for the
  * servers we run: llama.cpp (`exceed_context_size_error` with `n_prompt_tokens`, `n_ctx`) and vLLM ("maximum context
@@ -139,6 +155,8 @@ export declare class NativeToolAgent {
         callAddendum?: string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
+        /** Diagnostic opt-out: retain the ordinary tool loop when the backend cannot score decisions. */
+        decisionGeneration?: 'json' | 'tool-loop';
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -176,10 +194,17 @@ export declare class NativeToolAgent {
          * How values the runtime would cut off are shown (a pluggable part, runtime/pluggable.ts): `crisp` keeps the text
          * cut; `nl` also shows the learned Neuralese operator's state of the whole value (cut-off tool outputs and
          * argument listings) and carries a compacted history state with `compact_history` notes, when the driver reads
-         * Neuralese and `neuralese.compactor` is configured. Default `crisp` until the live measurement
-         * (plans/MODEL_FACING_CHANGES.md 2026-11-03) adopts the learned path; env NATLANG_NEURALESE_COMPACTION overrides.
+         * Neuralese and `neuralese.capture` is configured. Default `crisp`; the model-facing variant `learned-compaction`
+         * selects `nl` (plans/neuralese/OPERATORS_RESTORE_20261117.md); env NATLANG_NEURALESE_COMPACTION overrides.
          */
         compaction?: PluggableSetting;
+        /**
+         * With `compaction` resolving to `nl` (or `shadow`), values longer than this many characters are cut and compacted
+         * whatever the context budget (default OPERATOR_COMPACT_CHARS, 8,000; env NATLANG_NEURALESE_COMPACTION_CHARS).
+         */
+        compactionChars?: number;
+        /** Program guidance states: `call` (default) primes them at their real position, `text` writes them from text alone. */
+        guidancePriming?: 'call' | 'text';
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -234,6 +259,8 @@ export declare class NativeToolAgent {
         callAddendum?: string;
         /** Which finite-typed calls answer by decision readout (native/decision.ts); default `declared`. */
         decisionReadout?: 'declared' | 'finite-returns';
+        /** Diagnostic opt-out: retain the ordinary tool loop when the backend cannot score decisions. */
+        decisionGeneration?: 'json' | 'tool-loop';
         /**
          * Guided generation on natlang's own servers (reference and llama.cpp fork; others never receive it): the reply
          * opens a tool call when one is required, call names are checked, and eval code is checked line by line for
@@ -271,10 +298,17 @@ export declare class NativeToolAgent {
          * How values the runtime would cut off are shown (a pluggable part, runtime/pluggable.ts): `crisp` keeps the text
          * cut; `nl` also shows the learned Neuralese operator's state of the whole value (cut-off tool outputs and
          * argument listings) and carries a compacted history state with `compact_history` notes, when the driver reads
-         * Neuralese and `neuralese.compactor` is configured. Default `crisp` until the live measurement
-         * (plans/MODEL_FACING_CHANGES.md 2026-11-03) adopts the learned path; env NATLANG_NEURALESE_COMPACTION overrides.
+         * Neuralese and `neuralese.capture` is configured. Default `crisp`; the model-facing variant `learned-compaction`
+         * selects `nl` (plans/neuralese/OPERATORS_RESTORE_20261117.md); env NATLANG_NEURALESE_COMPACTION overrides.
          */
         compaction?: PluggableSetting;
+        /**
+         * With `compaction` resolving to `nl` (or `shadow`), values longer than this many characters are cut and compacted
+         * whatever the context budget (default OPERATOR_COMPACT_CHARS, 8,000; env NATLANG_NEURALESE_COMPACTION_CHARS).
+         */
+        compactionChars?: number;
+        /** Program guidance states: `call` (default) primes them at their real position, `text` writes them from text alone. */
+        guidancePriming?: 'call' | 'text';
         /**
          * Receives the deltas of the call's model turns as they stream (plans/STREAMING.md §1.6), with the turn's number
          * (as its `model_request` trace events give it). A turn taken again after a failed request first gets a `reset`.
@@ -298,6 +332,30 @@ export declare class NativeToolAgent {
      * text cut. A failed operator keeps the cut and is traced; it never fails the call.
      */
     private compactRef;
+    /** The characters a message shows of one output: the budget's page, capped at the compaction threshold when learned
+     * compaction can run (operator-frames.ts `compactionPageChars`). */
+    private pageChars;
+    /** The `compaction` setting: the agent option, the runtime option, NATLANG_NEURALESE_COMPACTION, else `nl` under the
+     * model-facing variant `learned-compaction` (crisp by default). */
+    private compactionSetting;
+    /**
+     * compact-history in v3: the state of the model's own `compact_history` note, captured in place in the reply that
+     * wrote it, so its rows attend to the whole conversation the note replaces (OPERATORS_RESTORE_20261117.md §3.1). No
+     * extra model call. Undefined keeps the text note alone (crisp, no capture, or a failed capture, which is traced).
+     */
+    private noteRef;
+    /** The in-context capture of one model call's reply (its content, or the `select`ed text in it), recorded as a
+     * `block_write` node carrying the capture's `source_capture`. */
+    private capturedRef;
+    /** Operator calls per invocation, numbering their own invocation IDs. */
+    private readonly operatorCalls;
+    /**
+     * One learned operator write (OPERATORS_RESTORE_20261117.md §3.1): an ordinary model call at view's site (sampled
+     * and captured like every call, under its own invocation ID), then the in-context capture of its reply's content.
+     * The write is a `block_write` node with its `source_capture`, so the learners compute the state in-graph from the
+     * site and the reply (the pass-through) and train the operator call as a call of the episode.
+     */
+    private operatorWrite;
     /** The call's instructions as an operator's purpose text (bounded). */
     private purpose;
     private views;
@@ -324,6 +382,7 @@ export declare class NativeToolAgent {
     tools(session: NativeSession): unknown[];
     /** The call's signature line, the type aliases it references, and its instructions. */
     private callHeading;
+    private compactCallableScope;
     /** The call's opening message: its signature and instructions, then the names eval can use (the call's notes follow,
      * withCallNotes). */
     private scopeOpening;
@@ -348,6 +407,16 @@ export declare class NativeToolAgent {
      * Returns false when the readout does not apply, so the tool loop runs; a string is a failure, as from run.
      */
     private decisionReadout;
+    /** One recording boundary for actual generation replies, shared by tool turns and JSON decision readouts. */
+    private recordGeneratedTurn;
+    /** Generate on the very same short JSON decision surface used by the scored student. No probabilities are inferred. */
+    private generatedDecision;
+    /** How program guidance states are primed: `call` (default: at their real position in the call that uses them) or
+     * `text` (written from the text alone, from position 0): the agent option, else NATLANG_GUIDANCE_PRIMING. */
+    private guidancePriming;
+    /** Prime this call's program guidance in its opening (`runtimeProgramGuidance` left a text-written placeholder):
+     * the state the call and every later call of the same guidance read. A failed priming keeps the text write, traced. */
+    private primeGuidance;
     /** Encode stored policy against this runtime's exact native reader before any model call. */
     private runtimeProgramGuidance;
     run(session: NativeSession): Promise<string | void>;
