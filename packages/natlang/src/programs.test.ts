@@ -752,3 +752,18 @@ it("refuses an offloaded product belonging to different source",async()=>{
   const product=compileVirtualProjectProduct({files:{"main.ts":"export const value=1;"}},{target:"node",adaptation:false});
   expect(()=>compileProgram({platform:platform(),files:{"main.ts":"export const value=2;"},entry:"main.ts",label:"skills/native/main.ts",product})).toThrow("different source files");
 });
+
+it("keeps TS workspace branches and portable types conditional on their real mounted dependencies", async () => {
+  const files={
+    "skills/library/natlang.json":JSON.stringify({workspaceModules:{"release/input":"skills/release-input"},workspaceBranches:{release:{mounts:["release/input"],types:["ReleaseResult"]}}}),
+    "skills/library/overview.nl":BRIEF,
+    "skills/library/release.ts":'import read from "./release/input/read.nl"; export default async function release(text:string):Promise<string>{return await read(text);}',
+    "skills/library/release/types.ts":'export type ReleaseResult = {value:string};',
+  };
+  const missing=await new ProgramLoader({platform:platform(),bindings:{},runTask:run=>run(),fs:memoryFs(files)}).describe("skills/library/overview.nl");
+  expect(missing.functions.map(fn=>fn.source)).not.toContain("release.ts");
+  const ready=new ProgramLoader({platform:platform(),bindings:{},runTask:run=>run(),fs:memoryFs({...files,"skills/release-input/read.nl":BRIEF})});
+  const callable=await ready.load("skills/library/release.ts") as {default:(text:string)=>Promise<string>};
+  expect(typeof callable.default).toBe("function");
+  expect(callable.default.name).toBe("release");
+});
