@@ -29,3 +29,5 @@ export type { Type as NatlangType } from '../native/types.js';
 export { expandType } from '../native/expand-type.js';
 export type { ExpandedType } from '../native/expand-type.js';
 export { ONCE_EFFECTS } from '../native/effects.js';
+export { rewriteTypeModuleSpecifiers } from '../compiler/type-module-links.js';
+export { packageExportTarget } from '../runtime/loader.js';

@@ -1375,7 +1375,7 @@ var require_inspector = __commonJS({
 var require_typescript = __commonJS({
   "node_modules/typescript/lib/typescript.js"(exports, module) {
     init_define_NATLANG_TS_LIBS();
-    var ts31 = {};
+    var ts32 = {};
     ((module2) => {
       "use strict";
       var __defProp2 = Object.defineProperty;
@@ -212103,9 +212103,9 @@ Additional information: BADCLIENT: Bad error code, ${badCode} not found in range
         };
       }
     })({ get exports() {
-      return ts31;
+      return ts32;
     }, set exports(v10) {
-      ts31 = v10;
+      ts32 = v10;
       if (typeof module !== "undefined" && module.exports) {
         module.exports = v10;
       }
@@ -222345,23 +222345,23 @@ function readManifestExports(dir, files2, fileName) {
     return void 0;
   }
 }
-function exportTargetString(entry) {
+function exportTargetString(entry, conditions = ["natlang", "import", "default"]) {
   if (typeof entry === "string") return entry;
   if (entry && typeof entry === "object" && !Array.isArray(entry)) {
     const record3 = entry;
-    for (const key of ["natlang", "import", "default"])
+    for (const key of conditions)
       if (typeof record3[key] === "string") return record3[key];
   }
   return void 0;
 }
-function matchExportTarget(exportsMap, key) {
-  if (Object.hasOwn(exportsMap, key)) return exportTargetString(exportsMap[key]);
+function packageExportTarget(exportsMap, key, conditions) {
+  if (Object.hasOwn(exportsMap, key)) return exportTargetString(exportsMap[key], conditions);
   for (const [pattern2, rawTarget] of Object.entries(exportsMap)) {
     const star3 = pattern2.indexOf("*");
     if (star3 < 0 || pattern2.indexOf("*", star3 + 1) >= 0) continue;
     const prefix = pattern2.slice(0, star3), suffix = pattern2.slice(star3 + 1);
     if (!key.startsWith(prefix) || !key.endsWith(suffix) || key.length < prefix.length + suffix.length) continue;
-    const target = exportTargetString(rawTarget);
+    const target = exportTargetString(rawTarget, conditions);
     if (target) return target.replace("*", key.slice(prefix.length, key.length - suffix.length));
   }
   return void 0;
@@ -222392,7 +222392,7 @@ function resolvePackageExport(specifier, root2, files2, extensions) {
   };
   const rootManifest = readManifestExports(root2, files2, "natlang.json");
   if (rootManifest?.exports) {
-    const mapped = matchExportTarget(rootManifest.exports, specifier) ?? (rootManifest.name === pkgName ? matchExportTarget(rootManifest.exports, subpath) : void 0) ?? (!scoped2 ? matchExportTarget(rootManifest.exports, `./${specifier}`) : void 0);
+    const mapped = packageExportTarget(rootManifest.exports, specifier) ?? (rootManifest.name === pkgName ? packageExportTarget(rootManifest.exports, subpath) : void 0) ?? (!scoped2 ? packageExportTarget(rootManifest.exports, `./${specifier}`) : void 0);
     if (mapped) return resolveMapped(root2, mapped);
     if (rootManifest.name === pkgName) return { error: `package ${pkgName} does not export ${JSON.stringify(subpath)}` };
   }
@@ -222403,7 +222403,7 @@ function resolvePackageExport(specifier, root2, files2, extensions) {
       const pkgManifest = nlManifest?.exports ? nlManifest : readManifestExports(pkgDir, files2, "package.json");
       const exportsMap = nlManifest?.exports ?? pkgManifest?.exports;
       if (exportsMap) {
-        const mapped = matchExportTarget(exportsMap, subpath);
+        const mapped = packageExportTarget(exportsMap, subpath);
         if (mapped) return resolveMapped(pkgDir, mapped);
         if (nlManifest) return { error: `package ${pkgName} does not export ${JSON.stringify(subpath)}` };
       } else if (nlManifest) {
@@ -262334,6 +262334,35 @@ function expandType(type, env, docs = {}, path2 = []) {
 // src/core/index.ts
 init_effects();
 
+// src/compiler/type-module-links.ts
+init_define_NATLANG_TS_LIBS();
+var import_typescript30 = __toESM(require_typescript(), 1);
+function rewriteTypeModuleSpecifiers(source2, resolve2, fileName = "types.ts") {
+  const file = import_typescript30.default.createSourceFile(fileName, source2, import_typescript30.default.ScriptTarget.Latest, true, fileName.endsWith(".tsx") ? import_typescript30.default.ScriptKind.TSX : import_typescript30.default.ScriptKind.TS);
+  const edits = /* @__PURE__ */ new Map();
+  const link = (literal3) => {
+    const value = resolve2(literal3.text);
+    if (value !== void 0 && value !== literal3.text) edits.set(literal3.getStart(file), { start: literal3.getStart(file), end: literal3.end, text: JSON.stringify(value) });
+  };
+  const visit = (node) => {
+    if (import_typescript30.default.isImportDeclaration(node) && import_typescript30.default.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause, binding = clause?.namedBindings;
+      if (clause?.isTypeOnly || clause && !clause.name && binding && import_typescript30.default.isNamedImports(binding) && binding.elements.length > 0 && binding.elements.every((item) => item.isTypeOnly)) link(node.moduleSpecifier);
+    } else if (import_typescript30.default.isExportDeclaration(node) && node.moduleSpecifier && import_typescript30.default.isStringLiteral(node.moduleSpecifier)) {
+      if (node.isTypeOnly || node.exportClause && import_typescript30.default.isNamedExports(node.exportClause) && node.exportClause.elements.length > 0 && node.exportClause.elements.every((item) => item.isTypeOnly)) link(node.moduleSpecifier);
+    } else if (import_typescript30.default.isImportTypeNode(node) && import_typescript30.default.isLiteralTypeNode(node.argument) && import_typescript30.default.isStringLiteral(node.argument.literal)) link(node.argument.literal);
+    else if (import_typescript30.default.isImportEqualsDeclaration(node) && node.isTypeOnly && import_typescript30.default.isExternalModuleReference(node.moduleReference) && node.moduleReference.expression && import_typescript30.default.isStringLiteral(node.moduleReference.expression)) link(node.moduleReference.expression);
+    import_typescript30.default.forEachChild(node, visit);
+  };
+  visit(file);
+  let result = source2;
+  for (const edit of [...edits.values()].sort((a, b) => b.start - a.start)) result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
+  return result;
+}
+
+// src/core/index.ts
+init_loader();
+
 // src/native/folder-shell.ts
 init_define_NATLANG_TS_LIBS();
 
@@ -293084,7 +293113,7 @@ function zo(e10, t) {
   }
   return n.build();
 }
-function ts30(e10) {
+function ts31(e10) {
   if (e10 === "") return "''";
   if (/[\n\r\t\x00-\x1f\x7f']/.test(e10)) {
     let n = "$'";
@@ -293314,19 +293343,19 @@ async function K7(e10, t, n, r, s) {
 function Q7(e10, t, n, r, s) {
   e10.coverage?.hit("bash:expansion:transform");
   let i = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[[@*]\]$/);
-  if (i && s.operator === "Q") return xe(e10, i[1]).map(([, c]) => ts30(c)).join(" ");
+  if (i && s.operator === "Q") return xe(e10, i[1]).map(([, c]) => ts31(c)).join(" ");
   if (i && s.operator === "a") return ns(e10, i[1]);
   let o = t.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[.+\]$/);
   if (o && s.operator === "a") return ns(e10, o[1]);
   switch (s.operator) {
     case "Q":
-      return r ? "" : ts30(n);
+      return r ? "" : ts31(n);
     case "P":
       return zo(e10, n);
     case "a":
       return ns(e10, t);
     case "A":
-      return r ? "" : `${t}=${ts30(n)}`;
+      return r ? "" : `${t}=${ts31(n)}`;
     case "E":
       return n.replace(/\\([\\abefnrtv'"?])/g, (a, l) => {
         switch (l) {
@@ -293361,7 +293390,7 @@ function Q7(e10, t, n, r, s) {
       });
     case "K":
     case "k":
-      return r ? "" : ts30(n);
+      return r ? "" : ts31(n);
     case "u":
       return n.charAt(0).toUpperCase() + n.slice(1);
     case "U":
@@ -293998,7 +294027,7 @@ function uw(e10, t) {
           p = zo(e10, d);
           break;
         case "Q":
-          p = ts30(d);
+          p = ts31(d);
           break;
         default:
           p = d;
@@ -294019,7 +294048,7 @@ function uw(e10, t) {
         p = zo(e10, d);
         break;
       case "Q":
-        p = ts30(d);
+        p = ts31(d);
         break;
       case "u":
         p = d.charAt(0).toUpperCase() + d.slice(1);
@@ -303471,6 +303500,7 @@ export {
   namedCallable,
   nl,
   nzExports,
+  packageExportTarget,
   parseRefinementSettings,
   parseType,
   piAssistantContent,
@@ -303488,6 +303518,7 @@ export {
   refinements,
   resolveFrame,
   reviewPromotions,
+  rewriteTypeModuleSpecifiers,
   runFolderBash,
   sanitizeDecision,
   save,

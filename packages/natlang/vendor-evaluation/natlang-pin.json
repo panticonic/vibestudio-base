@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "9776718ffca5866b698f130ac70822055a8f3403",
+  "commit": "cf82182eecf4a19aa7ce29c8a0cba879bd70e865",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -149,7 +149,7 @@
     "evaluation/types/runtime/iterate.d.ts": "6cb76f0be8008f7719028abd03478e075d03d18616a8f916c2486ca53a9c91b1",
     "evaluation/types/runtime/kernel.d.ts": "8f4c7c171fc01a6ad09c26ad961ffe8c19976c167b7a78cac5d7e98556ff0b6e",
     "evaluation/types/runtime/linked-types.d.ts": "643aa879e7a57ea51c58bb8c90fc68942bf05b5b360a49f78b1083ed910567e9",
-    "evaluation/types/runtime/loader.d.ts": "539cda5ab978497ca0e7048a78acf5c9ee67418c14fb6b2a855f6d42a8bdc836",
+    "evaluation/types/runtime/loader.d.ts": "4c2eded7331c9427f0480e9d9aeb655f7d255557dd40bb89554e7aa8691176f9",
     "evaluation/types/runtime/lowered.d.ts": "a77239334b33df567c9d39f2f21bcc815973333aca87640fb586fefe1e38b166",
     "evaluation/types/runtime/modules.d.ts": "a190173f6f96298fc1e104cc047317f4868cdb528e42c87c054dd0f05c6d7cc2",
     "evaluation/types/runtime/node-files.d.ts": "dfc92b2d929903fbfe0c3e2160ed9a76bf302c62bcf707a146d9d0e1f20201e7",
