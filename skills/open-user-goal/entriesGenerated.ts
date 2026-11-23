@@ -341,7 +341,7 @@ export default {
     "additionalArguments": {}
   },
   "news-evidence": {
-    "program": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+    "program": "skills/open-user-goal/workOnNewsEvidenceGoal.ts",
     "callable": "workOnNewsEvidenceGoal",
     "resultType": "NewsEvidenceResult",
     "skill": "newsEvidence",

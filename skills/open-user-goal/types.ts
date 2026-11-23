@@ -1,3 +1,4 @@
+import type {SuiteReviewReport as WorkspaceSuiteReview} from "./verifyWorkspaceSuite/suites/types.js";
 export type GoalCandidate = { url: string; title?: string; snippet?: string };
 export type GoalSearchResult = {
   query: string;
@@ -37,7 +38,7 @@ export type OpenSuiteRequest = {
   file: string | null;
   testName: string | null;
 };
-export type WorkspaceSuiteReport = | { status: "suite-reviewed"; review: unknown }
+export type WorkspaceSuiteReport = | { status: "suite-reviewed"; review: WorkspaceSuiteReview }
   | { status: "blocked"; reason: string };
 
 export type BrowserRow = { label: string; state: string; detail: string; controls: { id: string; label: string }[] };
