@@ -295,15 +295,11 @@
       "entry": "skills/open-user-goal/correctVaultFromPdf.ts",
       "classification": "typed-functional-composition",
       "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
-      "sourceSha256": "02e8519666cf82d2d985c51e1c8de9a23080abf94184f1f08f988b5d04885894",
+      "sourceSha256": "3542b39232193b3bcc58b9c5d93e980f9180f5ca804017a6a7fdbf1027d7dd35",
       "semanticImports": [
         {
           "line": 2,
           "import": "import authorizePdfVaultHandoff from \"./authorizePdfVaultHandoff.nl\";"
-        },
-        {
-          "line": 3,
-          "import": "import workTowardVaultGoal from \"./correctVaultFromPdf/vault/workTowardVaultGoal.nl\";"
         }
       ],
       "originalSourceEvidence": {
