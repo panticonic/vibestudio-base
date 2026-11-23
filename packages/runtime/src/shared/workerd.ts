@@ -1,3 +1,5 @@
+import { bindNativeCdpSocket } from "./cdpSocket.js";
+import type { CdpSocketOpener } from "@workspace/cdp-client/socket";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 export { createDurableObjectServiceClient, resolveDurableObjectService } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
@@ -124,6 +126,8 @@ export type { ResolvedWorkspaceService } from "@vibestudio/workspace-contracts/w
 // ---------------------------------------------------------------------------
 
 export interface WorkerdClient {
+  /** Acquire one approval-gated inspector endpoint and its exact native transport capability. */
+  inspectorSocket(targetPath: string): Promise<{wsEndpoint:string;token:string;openSocket:CdpSocketOpener}>;
   /** List every launchable worker source and its real manifest entry point. */
   listSources(): Promise<WorkerSourceInfo[]>;
   /**
@@ -181,6 +185,10 @@ export function createWorkerdClient(rpc: RpcCaller): WorkerdClient {
   );
 
   return {
+    async inspectorSocket(targetPath) {
+      const endpoint=await rpc.call("main",mainRpcMethods["workerdInspector.getEndpoint"],[targetPath]);
+      return {...endpoint,openSocket:bindNativeCdpSocket(endpoint)};
+    },
     listSources: () => workers.listSources(),
     create: async (source, options = {}) => {
       const { ref, artifact, ...entityOptions } = options;

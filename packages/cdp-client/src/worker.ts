@@ -15,7 +15,6 @@ export type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserA
 // surface. Hosted downloads/popups use the owning panel lifecycle. Full network
 // interception (route) remains outside the page API; raw CDP is available.
 
-import { webSocketAuthProtocol } from "@vibestudio/rpc/protocol/webSocketAuthProtocol";
 import { FrameRegistry } from "./frames";
 import type { FrameTransport } from "./frames";
 import { NetworkObserver } from "./network";
@@ -265,82 +264,7 @@ function compileLocatorSelector(selector: string): LocatorStep {
   return { by: "text", value, exact: true };
 }
 
-type WebSocketCtor = new (
-  url: string,
-  protocols?: string | string[],
-) => WebSocket;
-
-type WorkerClientWebSocket = WebSocket & { accept?: () => void };
-
-function runsInFetchUpgradeWorker(): boolean {
-  // workerd exposes both WebSocket and WebSocketPair. The former is the
-  // server-side WebSocket surface and does not reliably route an outbound
-  // connection through Vibestudio's egress boundary. Fetch upgrades carry the
-  // internal grant through the boundary explicitly, so prefer that transport
-  // whenever the worker runtime is identifiable.
-  return (
-    typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair ===
-    "function"
-  );
-}
-
-async function openWebSocket(
-  wsEndpoint: string,
-  authToken?: string,
-  preferFetchUpgrade = false,
-  signal?: AbortSignal,
-): Promise<{ socket: WorkerClientWebSocket; waitForOpen: boolean }> {
-  const ctor = (globalThis as { WebSocket?: WebSocketCtor }).WebSocket;
-  if (ctor && !preferFetchUpgrade && !runsInFetchUpgradeWorker()) {
-    return {
-      socket: new ctor(
-        wsEndpoint,
-        authToken
-          ? [webSocketAuthProtocol("inspection", authToken)]
-          : undefined,
-      ),
-      waitForOpen: true,
-    };
-  }
-
-  if (typeof fetch !== "function") {
-    throw new Error(
-      "CDP WebSocket transport is unavailable: this runtime exposes neither WebSocket nor fetch",
-    );
-  }
-
-  const upgradeUrl = new URL(wsEndpoint);
-  if (upgradeUrl.protocol === "ws:") upgradeUrl.protocol = "http:";
-  else if (upgradeUrl.protocol === "wss:") upgradeUrl.protocol = "https:";
-  else {
-    throw new Error(
-      `CDP endpoint must use ws: or wss:, received ${upgradeUrl.protocol}`,
-    );
-  }
-  if (authToken) {
-    const headerPairs = JSON.stringify([["x-vibestudio-cdp-grant", authToken]]);
-    const encoded = btoa(headerPairs)
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
-    // Workerd's outbound WebSocket proxy cannot carry arbitrary upgrade
-    // headers directly. This transport metadata is decoded by the egress
-    // boundary, verified there, and removed before the upstream handshake.
-    upgradeUrl.searchParams.set("__vibestudio_ws_headers", encoded);
-  }
-
-  const response = (await fetch(upgradeUrl, {
-    headers: { Upgrade: "websocket" },
-    signal,
-  })) as Response & { webSocket?: WorkerClientWebSocket | null };
-  const socket = response.webSocket;
-  if (!socket)
-    throw new Error(
-      `CDP WebSocket upgrade failed with HTTP ${response.status}: response contained no WebSocket`,
-    );
-  socket.accept?.();
-  return { socket, waitForOpen: false };
-}
+import { openCdpWebSocket, type CdpSocketOpener } from "./socket.js";
 
 function once(
   ws: WebSocket,
@@ -594,10 +518,11 @@ export class CdpConnection {
     options: {
       signal?: AbortSignal;
       operationSignal?: () => AbortSignal | undefined;
+      openSocket?: CdpSocketOpener;
     } = {},
   ): Promise<CdpConnection> {
     options.signal?.throwIfAborted();
-    const { socket: ws, waitForOpen } = await openWebSocket(
+    const { socket: ws, waitForOpen } = await (options.openSocket ?? openCdpWebSocket)(
       wsEndpoint,
       authToken,
       preferFetchUpgrade,
@@ -3703,6 +3628,7 @@ export const BrowserImpl = {
       transportOptions?: { authToken?: string };
       /** Hosted EvalDO runtimes must use the egress-aware fetch upgrade. */
       preferFetchUpgrade?: boolean;
+      openSocket?: CdpSocketOpener;
       /** Cancels connection acquisition; the connected browser owns its lifetime. */
       signal?: AbortSignal;
       /** Current invocation owner, resolved anew for retained page handles. */
@@ -3723,6 +3649,7 @@ export const BrowserImpl = {
       {
         signal: options.signal ?? options.operationSignal?.(),
         operationSignal: options.operationSignal,
+        openSocket: options.openSocket,
       },
     );
     const page = new WorkerCdpPage(

@@ -1,3 +1,5 @@
+import { bindNativeCdpSocket } from "../shared/cdpSocket.js";
+import type { CdpSocketOpener } from "@workspace/cdp-client/socket";
 import { formatRpcFailure } from "@vibestudio/rpc";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import type { RpcClient } from "@vibestudio/rpc";
@@ -135,6 +137,7 @@ export function createCdpAutomation(
     const connectOptions: {
       isElectronWebview: boolean;
       preferFetchUpgrade: boolean;
+      openSocket: CdpSocketOpener;
       signal?: AbortSignal;
       operationSignal?: () => AbortSignal | undefined;
       transportOptions?: { authToken: string };
@@ -151,6 +154,7 @@ export function createCdpAutomation(
       // CDP through the egress-aware fetch-upgrade transport. Browser panels
       // use their native WebSocket implementation instead.
       preferFetchUpgrade: Boolean(options.loadModule),
+      openSocket: bindNativeCdpSocket(endpoint,Boolean(options.loadModule)),
       signal: activeSignal,
       operationSignal: options.operationSignal,
       browserOperation: (request, signal) => {

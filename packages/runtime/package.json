@@ -68,6 +68,8 @@
     "@workspace/pubsub": "workspace:*"
   },
   "devDependencies": {
-    "@vibestudio/workspace-contracts": "workspace:*"
+    "@vibestudio/workspace-contracts": "workspace:*",
+    "esbuild": "^0.25.0",
+    "ws": "^8.18.0"
   }
 }

@@ -1,3 +1,4 @@
+import type { CdpSocketOpener } from "./src/socket.js";
 export { CdpDownload } from "./src/download";
 export type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserAutomation";
 import type { BrowserPopup as CdpPopup } from "@vibestudio/shared/panel/browserAutomation";
@@ -475,6 +476,7 @@ export class CdpConnection {
     options?: {
       signal?: AbortSignal;
       operationSignal?: () => AbortSignal | undefined;
+      openSocket?: CdpSocketOpener;
     },
   ): Promise<CdpConnection>;
   send(
@@ -622,6 +624,7 @@ export const BrowserImpl: {
       /** Cancels connection acquisition; the connected browser owns its lifetime. */
       signal?: AbortSignal;
       operationSignal?: () => AbortSignal | undefined;
+      openSocket?: CdpSocketOpener;
       /** Observe completed input outcomes independently of caller return projections. */
       onInteraction?: (outcome: CdpInteractionOutcome) => void;
       inspectionIdentity?: CdpInspectionIdentity;

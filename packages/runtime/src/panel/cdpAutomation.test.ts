@@ -170,7 +170,7 @@ describe("createCdpAutomation screenshot", () => {
     const journal = new Journal();
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:profile",
@@ -223,7 +223,7 @@ describe("createCdpAutomation screenshot", () => {
     const journal = new Journal();
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:evaluate",
@@ -296,7 +296,7 @@ describe("createCdpAutomation screenshot", () => {
       }
       if (method === "panelCdp.screenshot") return image;
       if (method === "panelCdp.getCdpEndpoint")
-        return { wsEndpoint: "ws://panel" };
+        return { wsEndpoint: "ws://panel", token:"grant" };
       throw new Error(method);
     });
     const bytes = new Uint8Array([1, 2, 3]);
@@ -631,7 +631,7 @@ describe("createCdpAutomation screenshot", () => {
       );
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:race",
@@ -678,7 +678,7 @@ describe("createCdpAutomation screenshot", () => {
       );
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:close-during-bind",
@@ -727,7 +727,7 @@ describe("createCdpAutomation screenshot", () => {
       const connect = vi.fn();
       const cdp = createCdpAutomation(
         schemaRpcClientMock(
-          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
           "cdp-test",
         ),
         `panel:owner-abort-${operation}`,
@@ -778,7 +778,7 @@ describe("createCdpAutomation screenshot", () => {
       );
       const cdp = createCdpAutomation(
         schemaRpcClientMock(
-          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
           "cdp-test",
         ),
         `panel:verify-abort-${operation}`,
@@ -864,7 +864,7 @@ describe("createCdpAutomation screenshot", () => {
     };
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:workspace",
@@ -913,7 +913,7 @@ describe("createCdpAutomation screenshot", () => {
     };
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:browser",
@@ -957,7 +957,7 @@ describe("createCdpAutomation screenshot", () => {
       const connect = vi.fn(async () => connectedBrowser(page, browserClose));
       const cdp = createCdpAutomation(
         schemaRpcClientMock(
-          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+          { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
           "cdp-test",
         ),
         "panel:child",
@@ -1000,7 +1000,7 @@ describe("createCdpAutomation screenshot", () => {
     } as never;
     const cdp = createCdpAutomation(
       schemaRpcClientMock(
-        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel" })) },
+        { call: vi.fn(async () => ({ wsEndpoint: "ws://panel", token:"grant" })) },
         "cdp-test",
       ),
       "panel:child",

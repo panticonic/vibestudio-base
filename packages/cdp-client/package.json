@@ -14,7 +14,8 @@
       "worker": "./src/worker.ts",
       "workerd": "./src/worker.ts",
       "default": "./src/index.ts"
-    }
+    },
+    "./socket": "./src/socket.ts"
   },
   "devDependencies": {
     "@vibestudio/shared": "workspace:*"

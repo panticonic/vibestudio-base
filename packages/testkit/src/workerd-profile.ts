@@ -47,12 +47,8 @@ export async function workerdInspectorSession(
   target: string | WorkerdTarget
 ): Promise<CdpConnection> {
   const targetPath = await resolveTargetPath(target);
-  const endpoint = await rpc.call(
-    "main",
-    mainRpcMethods["workerdInspector.getEndpoint"],
-    [targetPath]
-  );
-  return CdpConnection.connect(endpoint.wsEndpoint, endpoint.token);
+  const endpoint = await workers.inspectorSocket(targetPath);
+  return CdpConnection.connect(endpoint.wsEndpoint, endpoint.token, false, {openSocket:endpoint.openSocket});
 }
 
 /** CPU-profile a workerd target while `run` executes. */
