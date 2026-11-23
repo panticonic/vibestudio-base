@@ -1,6 +1,6 @@
 import type {NewsEvidenceIndex,NewsEvidenceSnapshot,ReaderBoundary,ReaderState} from "./types.js";
 export default function checkNewsReaderBoundary(index:NewsEvidenceIndex,earlier:NewsEvidenceSnapshot,current:NewsEvidenceSnapshot):ReaderBoundary{
- const row=current.rows.findLast(row=>row.record.kind==="reader-state");
+ const row=[...current.rows].reverse().find(row=>row.record.kind==="reader-state");
  const message=row?.messageId??null,state=row?.record as ReaderState|undefined,scope=index.scope;
  if(scope.requestedReader!==scope.reader||state&&(state.reader!==scope.reader||state.contextId!==scope.contextId))return {message,reason:"foreign-reader"};
  if(!state)return {message,reason:"reader-unobserved"};

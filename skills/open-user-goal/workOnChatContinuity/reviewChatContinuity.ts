@@ -15,5 +15,7 @@ export default async function reviewChatContinuity(goal:string,index:ChatIndex,p
   membershipVerified:plan.requireWorker?!!worker?.active&&worker.objectKey===index.openingWorker?.objectKey&&worker.participantId===index.openingWorker?.participantId:scope,
   replayMeaningMatches:matched,settlement:!consumer.settled?"pending":matched?"delivered":"failed",
   accountedRetry:!current.retryId||current.retryId===receipt.messageId};
- return {request,review:await reviewConversation(request)};
+ const reviewed=await reviewConversation(request);
+ if(reviewed.kind!=="delivery")throw new Error("The installed conversation review returned a different evidence kind");
+ return {request,review:{kind:"delivery",basis:reviewed.basis,blockers:reviewed.blockers,ready:reviewed.ready}};
 }
