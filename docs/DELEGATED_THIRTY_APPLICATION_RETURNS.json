@@ -305,7 +305,19 @@
       "line": 590,
       "text": "export type LocalReconciliationGoalReport = {\n  integration: { status: \"integrated\" | \"held\"; head: string; reason: string };\n  window: { title: string; window: \"open\" | \"pending\" | \"closed\"; note: string; head: string };\n  handoff: { status: \"none\" | \"held\" | \"staged\"; artifact: { path: string; bytes: number } | null };\n  archive?: {\n    prior: { id: string; title: string; revision: string; setting: string; key: string; value: unknown; sha256: string };\n    current: { exists: boolean; value: unknown };\n    relation: \"matches\" | \"changed\";\n  } | null;\n};"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "Integration is actual native head/disposition; window is actual final query state; handoff is actual retained artifact; archive is the requested earlier/current setting comparison, including actual values, not an execution envelope.",
+    "fields": {
+      "integration": "actual requested subject/coverage, findings, query data or retained application receipt: Integration is actual native head/disposition; window is actual final query state; handoff is actual retained artifact; archive is the requested earlier/current setting comparison, including actual values, not an execution envelope.",
+      "window": "actual requested subject/coverage, findings, query data or retained application receipt: Integration is actual native head/disposition; window is actual final query state; handoff is actual retained artifact; archive is the requested earlier/current setting comparison, including actual values, not an execution envelope.",
+      "handoff": "actual requested subject/coverage, findings, query data or retained application receipt: Integration is actual native head/disposition; window is actual final query state; handoff is actual retained artifact; archive is the requested earlier/current setting comparison, including actual values, not an execution envelope.",
+      "archive": "actual requested subject/coverage, findings, query data or retained application receipt: Integration is actual native head/disposition; window is actual final query state; handoff is actual retained artifact; archive is the requested earlier/current setting comparison, including actual values, not an execution envelope."
+    },
+    "consumerEvidence": [
+      "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
+      "skills/open-user-goal/types.ts"
+    ],
+    "nativeConsumers": []
   },
   {
     "entry": "skills/open-user-goal/workOnCapabilityGoal.nl",
@@ -316,7 +328,22 @@
       "line": 35,
       "text": "export type CapabilityGoalReport = { plan: CapabilityPlan; handoff: CapabilityHandoff | null };"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "CapabilityPlan is the requested actionable plan: exact usable method signatures, ordered steps, source citations, missing capabilities, memo disposition and optional requested inventory. No raw discovered catalog or input memo is returned.",
+    "fields": {
+      "plan": "actual requested subject/coverage, findings, query data or retained application receipt: CapabilityPlan is the requested actionable plan: exact usable method signatures, ordered steps, source citations, missing capabilities, memo disposition and optional requested inventory. No raw discovered catalog or input memo is returned.",
+      "handoff": "actual requested subject/coverage, findings, query data or retained application receipt: CapabilityPlan is the requested actionable plan: exact usable method signatures, ordered steps, source citations, missing capabilities, memo disposition and optional requested inventory. No raw discovered catalog or input memo is returned."
+    },
+    "consumerEvidence": [
+      "skills/open-user-goal/workOnCapabilityGoal.nl",
+      "skills/open-doc-plan/types.ts"
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-capability-plan-managed.ts:7:  CapabilityGoalReport, CapabilityHandoff, CapabilityPlan, CatalogQuery, DetailedCapability,",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-capability-plan-managed.ts:232:  async function verifyEvidence(outcome: CapabilityGoalReport | null, negative: boolean) {",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-capability-plan-managed.ts:296:  async function proof(outcome: CapabilityGoalReport | null) {",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-capability-plan-managed.ts:309:    const response = report as CapabilityGoalReport | null;"
+    ]
   },
   {
     "entry": "skills/open-owned-task-recovery/recoverOwnedTask.nl",
@@ -327,7 +354,26 @@
       "line": 38,
       "text": "export type RecoveryReport = {\n  task: string;\n  revision: number;\n  status: TaskStatus;\n  original: MessageReceipt | null;\n  delivery: OwnerDelivery | null;\n  reason: string;\n} | { task: null; reason: string };"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned.",
+    "fields": {
+      "task": "actual requested subject/coverage, findings, query data or retained application receipt: The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned.",
+      "revision": "actual requested subject/coverage, findings, query data or retained application receipt: The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned.",
+      "status": "actual requested subject/coverage, findings, query data or retained application receipt: The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned.",
+      "original": "actual requested subject/coverage, findings, query data or retained application receipt: The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned.",
+      "delivery": "actual requested subject/coverage, findings, query data or retained application receipt: The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned.",
+      "reason": "actual requested subject/coverage, findings, query data or retained application receipt: The task handle/revision/status and original verified terminal content are requested recovered application data. Actual delivery attempt/readback receipts preserve recovery identity; no raw task observations or lane history is returned."
+    },
+    "consumerEvidence": [
+      "skills/open-owned-task-recovery/recoverOwnedTask.nl",
+      "skills/open-owned-task-recovery/types.ts"
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-recovery-managed.ts:9:  RecoveryNote, RecoveryReport, RecoverySource, RecoveryWindow,",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-recovery-managed.ts:212:    const envelope = value as RecoveryReport | null;",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-scheduled-recovery-managed.ts:443:      exactScheduledRecoveryReport: Boolean(reason) && world.expected.reason.every(term => reason.includes(term)) &&",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-owned-task-managed.ts:255:      exactTaskRecoveryReport: outcome?.task === primary.id && outcome?.revision === observed.revision && outcome.status === observed.status &&"
+    ]
   },
   {
     "entry": "skills/gad-context/natlang/reviewDurableQuestion.nl",
@@ -338,7 +384,25 @@
       "line": 159,
       "text": "export type DurableQuestionReport = {\n  historyReceipt: string;\n  rosterReceipt: string;\n  channelId: string;\n  question: DurableQuestionJudgment;\n  participant: DurableParticipantJudgment;\n  disposition: \"ready\" | \"hold\";\n  explanation: string;\n};"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+    "fields": {
+      "historyReceipt": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+      "rosterReceipt": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+      "channelId": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+      "question": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+      "participant": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+      "disposition": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer.",
+      "explanation": "actual requested subject/coverage, findings, query data or retained application receipt: Question/participant judgments are the requested review findings. History/roster receipts and channel identify exact citations without copying histories; disposition/explanation are the requested answer."
+    },
+    "consumerEvidence": [
+      "skills/gad-context/natlang/reviewDurableQuestion.nl",
+      "skills/gad-context/natlang/types.ts"
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-gad-durable-question-managed.ts:13:  DurableQuestionReport,",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-gad-durable-question-managed.ts:69:    const report = raw as DurableQuestionReport | null;"
+    ]
   },
   {
     "entry": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
@@ -360,7 +424,21 @@
       "line": 34,
       "text": "export type AssemblyReport = { plan: AssemblyPlan; handoff: AssemblyHandoff | null };"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "AssemblyPlan is requested package composition/build finding: selected root, dependency corrections/blockers, exact revision/build receipts, readiness disposition and rationale. Source file bodies and inventory observations remain internal.",
+    "fields": {
+      "plan": "actual requested subject/coverage, findings, query data or retained application receipt: AssemblyPlan is requested package composition/build finding: selected root, dependency corrections/blockers, exact revision/build receipts, readiness disposition and rationale. Source file bodies and inventory observations remain internal.",
+      "handoff": "actual requested subject/coverage, findings, query data or retained application receipt: AssemblyPlan is requested package composition/build finding: selected root, dependency corrections/blockers, exact revision/build receipts, readiness disposition and rationale. Source file bodies and inventory observations remain internal."
+    },
+    "consumerEvidence": [
+      "skills/open-user-goal/workOnAssemblyGoal.nl",
+      "skills/open-workspace-assembly/types.ts"
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-workspace-assembly-managed.ts:7:import type { AssemblyBuildReceipt, AssemblyHandoff, AssemblyInventory, AssemblyPlan, AssemblyReport, AssemblyRevision, AssemblyUnit, UnitSource } from \"@workspace-skills/open-workspace-assembly/types\";",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-workspace-assembly-managed.ts:273:  async function proof(outcome: AssemblyReport | null, negative: boolean) {",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-workspace-assembly-managed.ts:343:    const report = raw as AssemblyReport | null;"
+    ]
   },
   {
     "entry": "skills/open-owned-scheduled-recovery/recoverScheduledAutomation.nl",
@@ -371,7 +449,22 @@
       "line": 21,
       "text": "export type ScheduledOutcome = {\n  schedule: Schedule; authorization: Receipt | null; delivery: Receipt | null; reason: string;\n};"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "Schedule is the independently observed current settings query result. Authorization and delivery are the actual specifically relevant original receipt and retained handoff, with reason; alternatives/history remain internal.",
+    "fields": {
+      "schedule": "actual requested subject/coverage, findings, query data or retained application receipt: Schedule is the independently observed current settings query result. Authorization and delivery are the actual specifically relevant original receipt and retained handoff, with reason; alternatives/history remain internal.",
+      "authorization": "actual requested subject/coverage, findings, query data or retained application receipt: Schedule is the independently observed current settings query result. Authorization and delivery are the actual specifically relevant original receipt and retained handoff, with reason; alternatives/history remain internal.",
+      "delivery": "actual requested subject/coverage, findings, query data or retained application receipt: Schedule is the independently observed current settings query result. Authorization and delivery are the actual specifically relevant original receipt and retained handoff, with reason; alternatives/history remain internal.",
+      "reason": "actual requested subject/coverage, findings, query data or retained application receipt: Schedule is the independently observed current settings query result. Authorization and delivery are the actual specifically relevant original receipt and retained handoff, with reason; alternatives/history remain internal."
+    },
+    "consumerEvidence": [
+      "skills/open-owned-scheduled-recovery/recoverScheduledAutomation.nl",
+      "skills/open-owned-scheduled-recovery/types.ts"
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-scheduled-recovery-managed.ts:6:import type { Change, DecisionRecord, Lane, Receipt, Resolution, Schedule, ScheduledOutcome, Submission } from",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-scheduled-recovery-managed.ts:365:    const report = value as ScheduledOutcome | null;"
+    ]
   },
   {
     "entry": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
@@ -404,7 +497,21 @@
       "line": 177,
       "text": "export type OwnedPreviewReport =\n  | {\n      status: \"published\" | \"held\" | \"incomplete\";\n      targetId: string;\n      reason: string | null;\n      preflight: PublishPreflightReport | null;\n      receipt: OwnedPreviewReceipt | null;\n      hosted: OwnedPreviewReadback | null;\n    }\n  | { status: \"unresolved\"; reason: string };"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome.",
+    "fields": {
+      "status": "actual requested subject/coverage, findings, query data or retained application receipt: Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome.",
+      "targetId": "actual requested subject/coverage, findings, query data or retained application receipt: Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome.",
+      "reason": "actual requested subject/coverage, findings, query data or retained application receipt: Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome.",
+      "preflight": "actual requested subject/coverage, findings, query data or retained application receipt: Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome.",
+      "receipt": "actual requested subject/coverage, findings, query data or retained application receipt: Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome.",
+      "hosted": "actual requested subject/coverage, findings, query data or retained application receipt: Actual target/publication receipt/hosted readback are requested deployed preview values. Preflight contains actual readiness findings and blockers, not source observations. Status/reason identify the actual publication outcome."
+    },
+    "consumerEvidence": [
+      "skills/publish-preflight/publishOwnedPreviewGoal.nl",
+      "skills/publish-preflight/types.ts"
+    ],
+    "nativeConsumers": []
   },
   {
     "entry": "skills/pdf-intake/workOnPdfGoal.nl",
@@ -415,7 +522,30 @@
       "line": 121,
       "text": "export type PdfGoalReport =\n  | {\n    status: \"inspected\";\n    document: PdfGoalFile;\n    selection: PdfGoalSelection;\n    missingPages: number[];\n    text: PdfIntakeReport | null;\n    layouts: PdfLayoutReport[];\n    rendered: PdfGoalRender[];\n    recommendation: PdfGoalRecommendation;\n  }\n  | { status: \"blocked\"; reason: string };"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+    "fields": {
+      "status": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "document": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "selection": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "missingPages": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "text": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "layouts": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "rendered": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "recommendation": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned.",
+      "reason": "actual requested subject/coverage, findings, query data or retained application receipt: Document identity, selected inspection/page scope, actual missing pages, extracted text citations, per-page layout findings, rendered image handles and recommendation are the requested PDF inspection product. No native request or probe history is returned."
+    },
+    "consumerEvidence": [
+      "skills/pdf-intake/workOnPdfGoal.nl",
+      "skills/pdf-intake/types.ts"
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-pdf-managed.ts:8:  BatchReceipt, PdfGoalBinding, PdfGoalFile, PdfGoalRender, PdfGoalReport, PdfGoalSelection,",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-pdf-managed.ts:201:    const report = value as PdfGoalReport | null;",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-pdf-managed.ts:276:    const wrapper = value as Partial<PdfGoalReport> | null;",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-pdf-managed.ts:380:    const outcome: PdfGoalReport = { status: \"inspected\", document: request.document, selection: choice,",
+      "/home/werg/vibe-app-values-sst/skills/system-testing/open-goal-pdf-managed.ts:388:    const wrong: PdfGoalReport = { ...outcome, selection: { ...choice, document: `./${choice.document}` },"
+    ]
   },
   {
     "entry": "skills/publish-preflight/workTowardPublicationGoal.nl",
@@ -426,6 +556,19 @@
       "line": 135,
       "text": "export type PublicationGoalReport =\n  | {\n      status: \"reviewed\";\n      choice: PublicationGoalChoice;\n      preflight: PublishPreflightReport | null;\n      revision: PublicationRevisionReport | null;\n    }\n  | { status: \"blocked\"; reason: string };"
     },
-    "classification": "pending"
+    "classification": "retain genuine requested application value",
+    "reason": "Choice identifies requested target and coverage. Preflight and revision are the requested readiness and earlier/current review findings, not copied observation envelopes. Blocked reasons are actual missing-target/evidence findings.",
+    "fields": {
+      "status": "actual requested subject/coverage, findings, query data or retained application receipt: Choice identifies requested target and coverage. Preflight and revision are the requested readiness and earlier/current review findings, not copied observation envelopes. Blocked reasons are actual missing-target/evidence findings.",
+      "choice": "actual requested subject/coverage, findings, query data or retained application receipt: Choice identifies requested target and coverage. Preflight and revision are the requested readiness and earlier/current review findings, not copied observation envelopes. Blocked reasons are actual missing-target/evidence findings.",
+      "preflight": "actual requested subject/coverage, findings, query data or retained application receipt: Choice identifies requested target and coverage. Preflight and revision are the requested readiness and earlier/current review findings, not copied observation envelopes. Blocked reasons are actual missing-target/evidence findings.",
+      "revision": "actual requested subject/coverage, findings, query data or retained application receipt: Choice identifies requested target and coverage. Preflight and revision are the requested readiness and earlier/current review findings, not copied observation envelopes. Blocked reasons are actual missing-target/evidence findings.",
+      "reason": "actual requested subject/coverage, findings, query data or retained application receipt: Choice identifies requested target and coverage. Preflight and revision are the requested readiness and earlier/current review findings, not copied observation envelopes. Blocked reasons are actual missing-target/evidence findings."
+    },
+    "consumerEvidence": [
+      "skills/publish-preflight/workTowardPublicationGoal.nl",
+      "skills/publish-preflight/types.ts"
+    ],
+    "nativeConsumers": []
   }
 ]
