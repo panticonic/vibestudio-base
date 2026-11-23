@@ -1,6 +1,6 @@
 {
   "schema": "operational-application-contracts/1",
-  "status": "in-progress; 12 of retained52 completed, remaining40 continue",
+  "status": "in-progress: 28 of 52 owned operational APIs complete;24 remain;30 of original82 delegated to app_values",
   "generatedEntryMetadataOwner": "app_values",
   "catalogGoalsAndSplitsChanged": false,
   "coreOrVendorChanged": false,
@@ -532,13 +532,259 @@
       ],
       "goalEvidence": "Corresponding native world goal and actual writer/readback in SST; query answers required, an extra receipt copy optional for completed mutations",
       "qualification": "Native desktop29+phone1 and projection2 passed; all116 public signatures compile. Other native reference controls authored, actual full harness execution pending."
+    },
+    {
+      "function": "reviewDeliveryWake",
+      "program": "skills/open-user-goal/reviewDeliveryWake.nl",
+      "resultType": "DeliveryWakeReport",
+      "newResultType": "DeliveryWakeReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "choice",
+        "receipt"
+      ],
+      "removedEnvelope": "export type DeliveryWakeReport = { assignment: DeliveryWakeAssignment; evidence: DeliveryWakeEvidence;\n  choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewRecordedQuestion",
+      "program": "skills/open-user-goal/reviewRecordedQuestion.nl",
+      "resultType": "RecordedQuestionReport",
+      "newResultType": "RecordedQuestionReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "answer"
+      ],
+      "removedEnvelope": "export type RecordedQuestionReport = { assignment: RecordedQuestion; phrase: string; candidates: RecordedCandidate[];\n  selection: RecordedSelection; evidence: RecordedEvidence | null; answer: RecordedAnswer };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewTranscriptSurface",
+      "program": "skills/open-user-goal/reviewTranscriptSurface.nl",
+      "resultType": "TranscriptSurfaceReport",
+      "newResultType": "TranscriptSurfaceReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type TranscriptSurfaceReport = { assignment: SurfaceAssignment; approvals: SurfaceApproval[]; selection: SurfaceSelection;\n  replay: SurfaceReplay | null; decision: SurfaceDecision; receipt: SurfaceReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewSourceAttribution",
+      "program": "skills/open-user-goal/reviewSourceAttribution.nl",
+      "resultType": "SourceAttributionReport",
+      "newResultType": "SourceAttributionReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "conclusion",
+        "receipt"
+      ],
+      "removedEnvelope": "export type SourceAttributionReport = { assignment: SourceAttributionAssignment; files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[];\n  conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewLogFollower",
+      "program": "skills/open-user-goal/reviewLogFollower.nl",
+      "resultType": "LogFollowerOutcome",
+      "newResultType": "LogFollowerOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type LogFollowerOutcome = { assignment: FollowAssignment; capture: FollowCapture; joined: FollowJoin;\n  decision: FollowDecision; receipt: FollowReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewPtyContinuity",
+      "program": "skills/open-user-goal/reviewPtyContinuity.nl",
+      "resultType": "PtyContinuityOutcome",
+      "newResultType": "PtyContinuityOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type PtyContinuityOutcome = { assignment: PtyAssignment; evidence: PtyPair; choice: PtyChoice; decision: PtyDecision; receipt: PtyReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewWorkspaceSmoke",
+      "program": "skills/open-user-goal/reviewWorkspaceSmoke.nl",
+      "resultType": "WorkspaceSmokeReport",
+      "newResultType": "WorkspaceSmokeReport",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "decision",
+        "receipt"
+      ],
+      "removedEnvelope": "export type WorkspaceSmokeReport = { assignment: SmokeAssignment; source: SmokeSource; selection: SmokeSelection; runtime: SmokeRuntime | null;\n  decision: SmokeDecision; receipt: SmokeReceipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewDeployedInterface",
+      "program": "skills/open-user-goal/reviewDeployedInterface.nl",
+      "resultType": "DeployedInterfaceOutcome",
+      "newResultType": "DeployedInterfaceOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "handoff"
+      ],
+      "removedEnvelope": "export type DeployedInterfaceOutcome = {\n  survey: Survey; observation: Observation; architecture: Architecture | null; finding: InterfaceFinding; handoff: Handoff | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewInstalledPackage",
+      "program": "skills/open-user-goal/reviewInstalledPackage.nl",
+      "resultType": "InstalledPackageOutcome",
+      "newResultType": "InstalledPackageOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "repair",
+        "verification"
+      ],
+      "removedEnvelope": "export type InstalledPackageOutcome = {\n  assignment: Assignment; observed: Observation; finding: PackageFinding; repair: Restore | null;\n  verification: Verification | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": "Installed-package verification is the user-requested current test route, not a claimed passed test. Build-incident current/baseline are the requested performance comparison analyses."
+    },
+    {
+      "function": "reviewWorkspaceShare",
+      "program": "skills/open-user-goal/reviewWorkspaceShare.nl",
+      "resultType": "WorkspaceShareOutcome",
+      "newResultType": "WorkspaceShareOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "handoff"
+      ],
+      "removedEnvelope": "export type WorkspaceShareOutcome = { assignment: Assignment; observation: Observation; finding: ShareFinding; handoff: Receipt | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewLocalExecutionWidth",
+      "program": "skills/open-user-goal/reviewLocalExecutionWidth.nl",
+      "resultType": "LocalWidthOutcome",
+      "newResultType": "LocalWidthOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "handoff"
+      ],
+      "removedEnvelope": "export type LocalWidthOutcome = { survey: Survey; readiness: Readiness; finding: Finding; handoff: Handoff | null };",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewExtensionDossier",
+      "program": "skills/open-user-goal/reviewExtensionDossier.nl",
+      "resultType": "ExtensionDossierOutcome",
+      "newResultType": "ExtensionDossierOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "dossier"
+      ],
+      "removedEnvelope": "export type ExtensionDossierOutcome = {\n  assignment: DossierAssignment; review: Review; candidate: CandidateComparison; history: History;\n  finding: DossierFinding; dossier: Receipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "recoverAgentCapability",
+      "program": "skills/open-user-goal/recoverAgentCapability.nl",
+      "resultType": "AgentCapabilityOutcome",
+      "newResultType": "AgentCapabilityOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "finding",
+        "continuation"
+      ],
+      "removedEnvelope": "export type AgentCapabilityOutcome = {\n  assignment: Assignment; evidence: AttemptPair; finding: ContinuationFinding; continuation: Result | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewSystemRelease",
+      "program": "skills/open-user-goal/reviewSystemRelease.nl",
+      "resultType": "SystemReleaseOutcome",
+      "newResultType": "SystemReleaseOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "assessment",
+        "handoff"
+      ],
+      "removedEnvelope": "export type SystemReleaseOutcome = {\n  assignment: ReleaseAssignment; runs: RetainedRunPair; choice: RunChoice; cases: CaseEvidence[];\n  assessment: ReleaseAssessment; handoff: ReleaseReceipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewWebhookAdmission",
+      "program": "skills/open-user-goal/reviewWebhookAdmission.nl",
+      "resultType": "WebhookAdmissionOutcome",
+      "newResultType": "WebhookAdmissionOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "assessment",
+        "handoff"
+      ],
+      "removedEnvelope": "export type WebhookAdmissionOutcome = {\n  assignment: WebhookAdmissionAssignment; evidence: WebhookAdmissionEvidence; binding: WebhookAdmissionBinding;\n  assessment: WebhookAdmissionAssessment; handoff: WebhookAdmissionReceipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": null
+    },
+    {
+      "function": "reviewRetainedBuildIncident",
+      "program": "skills/open-user-goal/reviewRetainedBuildIncident.nl",
+      "resultType": "BuildIncidentOutcome",
+      "newResultType": "BuildIncidentOutcome",
+      "publicShapeChanged": true,
+      "retainedFields": [
+        "current",
+        "baseline",
+        "disposition",
+        "handoff"
+      ],
+      "removedEnvelope": "export type BuildIncidentOutcome = {\n  subject: Survey[\"subject\"];\n  focus: Focus;\n  current: IncidentAssessment | null;\n  baseline: IncidentAssessment | null;\n  disposition: IncidentDisposition;\n  handoff: Receipt | null;\n};",
+      "fieldClassification": "Retained fields are requested domain answers, analyses, or exact native artifact/operation receipts. Other former envelope fields are scope/input copies or native observation readbacks retained in the call tree and verifier journal.",
+      "nativeVerification": "Explicit independent effects and required-or-optional returned-value contract; wrong optional actual root is masked while native effects remain authoritative.",
+      "exception": "Installed-package verification is the user-requested current test route, not a claimed passed test. Build-incident current/baseline are the requested performance comparison analyses."
     }
   ],
   "testEvidence": {
     "signatureUnit": "vibe-v14-operational-signatures-20261123b",
     "signatures": 116,
     "nativeUnit": "vibe-v14-operational-native-first-20261123d",
-    "nativeTestsPassed": 32
+    "nativeTestsPassed": 32,
+    "secondSignatureUnit": "vibe-v14-operational-signatures-20261123d",
+    "secondNativeUnit": "vibe-v14-operational-second-tests-20261123c",
+    "secondNativeTestsPassed": 56,
+    "secondNativeLimits": "24 transcript worlds through actual canonical projection/native journal DI; other15 new full native-world qualifications not yet executed."
   },
   "sharedMechanism": "Native journals/captured invocation values provide execution evidence. Public results do not duplicate requests, scope cards, observations, gates or readbacks."
 }
