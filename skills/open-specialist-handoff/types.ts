@@ -78,7 +78,7 @@ export type SpecialistMembershipRequest = {
 };
 export type SpecialistMembership = {
   status: "observed" | "held";
-  state: Specialist["availability"];
+  state: Specialist["availability"] | "unavailable";
   participantId: string | null;
 };
 export type MembershipWitness = { request: SpecialistMembershipRequest; report: SpecialistMembership };
