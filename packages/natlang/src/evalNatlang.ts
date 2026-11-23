@@ -255,13 +255,28 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     }>;
     if (
       definition.site !== "named" ||
-      !definition.source?.endsWith(".nl") ||
-      programRoot === null
+      !(definition.source?.endsWith(".nl") ||
+        (definition.source?.endsWith(".ts") && !definition.source.endsWith(".d.ts"))) ||
+      programRoot == null
     ) {
       throw new Error(
         `natlang.rerun replays a workspace program's function; ${definition.name} is an ${definition.site} call whose ` +
           "captures were live values of its cell: call it again from your code, with .on({ model }) for another model"
       );
+    }
+    const typedEntry = definition.source.endsWith(".ts");
+    let exportName: string | undefined;
+    if (typedEntry) {
+      // Native entry identities encode the actual export; function display
+      // names (especially default exports) are not namespace selectors.
+      const prefix = `ts:${definition.source}#`;
+      if (typeof definition.id !== "string" || !definition.id.startsWith(prefix) ||
+          !(exportName = definition.id.slice(prefix.length))) {
+        throw new Error("natlang.rerun: the TypeScript call has no exact recorded export identity");
+      }
+      if (options.model !== undefined) {
+        throw new Error("natlang.rerun: a TypeScript entry is crisp code and has no model override; select models on its NL functions explicitly");
+      }
     }
     const args: unknown[] = [];
     for (const param of params) {
@@ -284,12 +299,19 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
       }
       args.push(JSON.parse(text));
     }
-    const loaded = (await loader.load(
+    const loaded = await loader.load(
       programRoot ? `${programRoot}/${definition.source}` : definition.source
-    )) as ((...values: unknown[]) => Promise<unknown>) & {
+    );
+    const selected = typedEntry
+      ? loaded !== null && typeof loaded === "object" && Object.hasOwn(loaded, exportName!)
+        ? (loaded as Record<string, unknown>)[exportName!] : undefined
+      : loaded;
+    if (typeof selected !== "function")
+      throw new Error(`natlang.rerun: the recorded export ${exportName ?? definition.name} is not callable in ${definition.source}`);
+    const callable = selected as ((...values: unknown[]) => Promise<unknown>) & {
       on(options: { model: string }): (...values: unknown[]) => Promise<unknown>;
     };
-    return (options.model === undefined ? loaded : loaded.on({ model: options.model }))(...args);
+    return (options.model === undefined ? callable : callable.on({ model: options.model }))(...args);
   }
 
   async function livePublisher(runId: string): Promise<LivePublisher | null> {

@@ -62,7 +62,7 @@ export async function linkWorkspaceModules(
       reject("workspaceBranches must map local callable paths to mounts and optional portable type names.");
     for (const [path, entry] of Object.entries(branchConfiguration!)) {
       if (!path.split("/").every(part => identifier.test(part)) ||
-          !Object.hasOwn(local, `${path}.nl`) || !entry || typeof entry !== "object" || Array.isArray(entry))
+          !(Object.hasOwn(local, `${path}.nl`) || Object.hasOwn(local, `${path}.ts`)) || !entry || typeof entry !== "object" || Array.isArray(entry))
         reject(`Invalid local callable branch ${path}.`);
       const { mounts, types } = entry as Branch;
       if (!Array.isArray(mounts) || !mounts.length ||
@@ -125,7 +125,7 @@ export async function linkWorkspaceModules(
   const present = new Set(modules.map(({ mount }) => mount));
   const unavailable = [...branches].filter(([, branch]) => branch.mounts.some(mount => !present.has(mount)))
     .map(([path]) => path);
-  const visible = (path: string) => !unavailable.some(branch => path === `${branch}.nl` || path.startsWith(`${branch}/`));
+  const visible = (path: string) => !unavailable.some(branch => path === `${branch}.nl` || path === `${branch}.ts` || path.startsWith(`${branch}/`));
   const linked = Object.fromEntries(Object.entries(local).filter(([path]) => visible(path)));
   for (const [path, branch] of branches) {
     if (!branch.types?.length || !visible(`${path}.nl`)) continue;
