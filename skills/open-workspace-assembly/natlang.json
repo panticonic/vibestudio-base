@@ -10,9 +10,7 @@
   "serviceBinding": "explicit",
   "serviceScopes": {
     "assemblyInventory": [],
-    "assemblySource": [
-      "readAssemblyUnits.nl"
-    ],
+    "assemblySource": [],
     "assemblyBuild": [],
     "assemblyDraft": []
   }

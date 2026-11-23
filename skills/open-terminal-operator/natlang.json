@@ -4,17 +4,13 @@
   "version": "0.1.0",
   "targets": {
     "main": {
-      "entry": "openTerminal.nl"
+      "entry": "openTerminal.ts"
     }
   },
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "openTerminalRead": [
-      "openTerminal.nl"
-    ],
-    "openTerminalInput": [
-      "applyChecklistChange.nl"
-    ],
+    "openTerminalRead": [],
+    "openTerminalInput": [],
     "openTerminalLifecycle": [],
     "openTerminalDiscovery": [
       "discoverTerminalOptions.nl"

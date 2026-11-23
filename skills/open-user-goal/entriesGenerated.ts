@@ -721,7 +721,7 @@ export default {
     "additionalArguments": {}
   },
   "terminal-handoff": {
-    "program": "skills/open-user-goal/workOnTerminalGoal.nl",
+    "program": "skills/open-user-goal/workOnTerminalGoal.ts",
     "callable": "workOnTerminalGoal",
     "resultType": "TerminalResult",
     "skill": "terminalHandoff",
@@ -731,7 +731,7 @@ export default {
     "additionalArguments": {}
   },
   "local-reconciliation": {
-    "program": "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
+    "program": "skills/open-user-goal/workOnLocalReconciliationGoal.ts",
     "callable": "workOnLocalReconciliationGoal",
     "resultType": "LocalReconciliationGoalReport",
     "skill": "localReconciliation",
@@ -771,7 +771,7 @@ export default {
     "additionalArguments": {}
   },
   "capability-plan": {
-    "program": "skills/open-user-goal/workOnCapabilityGoal.nl",
+    "program": "skills/open-user-goal/workOnCapabilityGoal.ts",
     "callable": "workOnCapabilityGoal",
     "resultType": "CapabilityGoalReport",
     "skill": "capabilityPlan",
@@ -831,7 +831,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-assembly": {
-    "program": "skills/open-user-goal/workOnAssemblyGoal.nl",
+    "program": "skills/open-user-goal/workOnAssemblyGoal.ts",
     "callable": "workOnAssemblyGoal",
     "resultType": "AssemblyReport",
     "skill": "workspaceAssembly",
