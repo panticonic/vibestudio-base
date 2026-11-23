@@ -55,13 +55,10 @@ export type PrivateProjectFinish = {
   candidate: PreparedContentSnapshot | null;
   event: {eventId:string; head:string} | null;
 };
-export type PreparedContentProjectReport = {
-  evidence: ProjectEvidenceReview;
-  decision: ProjectEvidenceDecision;
-  scope: ProjectScopeLease | null;
-  draft: AuthoredProjectDraft;
-  final: PrivateProjectFinish;
-  explanation: string;
+export type ContentProjectResult = {
+  outcome: PrivateProjectFinish["outcome"];
+  project: {contextId:string; repositoryId:string|null; repoPath:string; head:string; documents:string[]} | null;
+  event: {eventId:string;head:string} | null;
 };
 
 /** Semantic choices use local handles; native binding owns opaque identities. */
