@@ -2135,8 +2135,8 @@
     }
   ],
   "fieldSchemaClassifications": [
-    "docs/CREATIVE_APPLICATION_RETURN_CLASSIFICATION.json",
-    "docs/DELEGATED_THIRTY_APPLICATION_RETURNS.json",
+    "meta/application-values/CREATIVE_APPLICATION_RETURN_CLASSIFICATION.json",
+    "meta/application-values/DELEGATED_THIRTY_APPLICATION_RETURNS.json",
     "meta/OPERATIONAL_APPLICATION_VALUES_V14.json"
   ],
   "note": "Unchanged alias names can have intentionally smaller application schemas; their field classifications are recorded separately. This manifest records exact public execution-binding changes, without replacing archived catalogs."
