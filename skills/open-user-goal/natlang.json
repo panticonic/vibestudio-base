@@ -191,7 +191,7 @@
         "LocalWidthOutcome"
       ]
     },
-    "workOnNewsEvidenceGoal": {"types":["NewsEvidenceResult"]},
+    "workOnNewsEvidenceGoal": {"mounts":[],"types":["NewsEvidenceResult"]},
     "reviewNewsEvidence": {
       "mounts": [
         "reviewNewsEvidence/groundNewsEdition/reviewNewsDevelopments/installed",
