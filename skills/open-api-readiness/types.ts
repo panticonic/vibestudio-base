@@ -26,3 +26,5 @@ export type IntegrationReadinessPlan = {profileId:string|null;channelId:string;t
 export type ReadinessArtifact = {path:string;sha256:string;bytes:number};
 export type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietRequest;result:BoundReport}|null;
   audit:QuietAudit|null;handoff:ReadinessArtifact|null};
+
+export type ApiReadinessResult = {plan:IntegrationReadinessPlan;review:BoundReport|null;facts:LookupFact[];handoff:ReadinessArtifact|null};

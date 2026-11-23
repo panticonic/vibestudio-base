@@ -73,3 +73,5 @@ export type DictationGoalReport = {
   review: DictationDraftWitness | null;
   handoff: DictationArtifact | null;
 };
+
+export type DictationResult = {plan:DictationPlan;review:DraftReview|null;handoff:DictationArtifact|null};

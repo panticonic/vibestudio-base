@@ -209,7 +209,7 @@
         "workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer"
       ],
       "types": [
-        "WelcomeGoalReport"
+        "WelcomeGoalReport", "WelcomeResult"
       ]
     },
     "reviewDesktopReadiness": {

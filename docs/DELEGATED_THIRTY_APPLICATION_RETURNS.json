@@ -185,7 +185,14 @@
       "line": 26,
       "text": "export type ReadinessReport = {plan:IntegrationReadinessPlan;review:{request:QuietRequest;result:BoundReport}|null;\n  audit:QuietAudit|null;handoff:ReadinessArtifact|null};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "handoff": "actual requested findings/result/receipt retained without copied request inputs",
+      "plan": "actual requested findings/result/receipt retained without copied request inputs",
+      "review": "actual requested findings/result/receipt retained without copied request inputs",
+      "audit": "public lookup fact findings projected; policy-envelope constants stay native"
+    },
+    "nativeEvidence": "Original stage-admission contracts preserved; actual provider/readback observations validate compact findings; exact actual staged bytes retained independently"
   },
   {
     "entry": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
@@ -196,7 +203,13 @@
       "line": 65,
       "text": "export type WelcomeGoalReport = { plan: WelcomePlan; reviews: WelcomeReviews; handoff: WelcomeHandoff | null };"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "reviews": "actual setup/tour/probe results only; copied request/stop/frame witnesses omitted",
+      "handoff": "actual requested findings/result/receipt retained without copied request inputs",
+      "plan": "actual requested findings/result/receipt retained without copied request inputs"
+    },
+    "nativeEvidence": "Original stage-admission contracts preserved; actual provider/readback observations validate compact findings; exact actual staged bytes retained independently"
   },
   {
     "entry": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
@@ -218,7 +231,14 @@
       "line": 84,
       "text": "export type SpecialistGoalReport = {\n  plan: SpecialistPlan;\n  membership: MembershipWitness | null;\n  history: HistoryReview | null;\n  handoff: IntegrationArtifact | null;\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "membership": "actual membership report only; request omitted",
+      "handoff": "actual requested findings/result/receipt retained without copied request inputs",
+      "plan": "actual requested findings/result/receipt retained without copied request inputs",
+      "history": "actual contract/history findings; duplicated original text removed"
+    },
+    "nativeEvidence": "Original stage-admission contracts preserved; actual provider/readback observations validate compact findings; exact actual staged bytes retained independently"
   },
   {
     "entry": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
@@ -229,7 +249,13 @@
       "line": 70,
       "text": "export type DictationGoalReport = {\n  plan: DictationPlan;\n  review: DictationDraftWitness | null;\n  handoff: DictationArtifact | null;\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "handoff": "actual requested findings/result/receipt retained without copied request inputs",
+      "plan": "actual requested findings/result/receipt retained without copied request inputs",
+      "review": "actual requested findings/result/receipt retained without copied request inputs"
+    },
+    "nativeEvidence": "Original stage-admission contracts preserved; actual provider/readback observations validate compact findings; exact actual staged bytes retained independently"
   },
   {
     "entry": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
@@ -240,7 +266,13 @@
       "line": 9,
       "text": "export type ProviderGoalReport = Report & {\n  reviews: { approval: ApprovalReviewEvidence; delivery: DeliveryReviewEvidence };\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "handoff": "actual requested findings/result/receipt retained without copied request inputs",
+      "plan": "actual requested findings/result/receipt retained without copied request inputs",
+      "reviews": "internal approval/delivery review request/result witnesses omitted; settled plan already carries actual original result and decision"
+    },
+    "nativeEvidence": "Original stage-admission contracts preserved; actual provider/readback observations validate compact findings; exact actual staged bytes retained independently"
   },
   {
     "entry": "skills/open-user-goal/recoverOperatingHandoff.nl",

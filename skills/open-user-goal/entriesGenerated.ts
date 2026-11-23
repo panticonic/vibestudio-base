@@ -333,7 +333,7 @@ export default {
   "api-readiness": {
     "program": "skills/open-user-goal/workOnApiReadinessGoal.nl",
     "callable": "workOnApiReadinessGoal",
-    "resultType": "ApiReadinessReport",
+    "resultType": "ApiReadinessResult",
     "skill": "apiReadiness",
     "parameterNames": [
       "goal"
@@ -393,7 +393,7 @@ export default {
   "personal-welcome": {
     "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
     "callable": "workOnPersonalWelcomeGoal",
-    "resultType": "WelcomeGoalReport",
+    "resultType": "WelcomeResult",
     "skill": "personalWelcome",
     "parameterNames": [
       "goal"
@@ -643,7 +643,7 @@ export default {
   "specialist-handoff": {
     "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
     "callable": "workOnSpecialistHandoffGoal",
-    "resultType": "SpecialistGoalReport",
+    "resultType": "SpecialistResult",
     "skill": "specialistHandoff",
     "parameterNames": [
       "goal"
@@ -663,7 +663,7 @@ export default {
   "dictation-handoff": {
     "program": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
     "callable": "workOnDictationHandoffGoal",
-    "resultType": "DictationGoalReport",
+    "resultType": "DictationResult",
     "skill": "dictationHandoff",
     "parameterNames": [
       "goal"
@@ -673,7 +673,7 @@ export default {
   "provider-handoff": {
     "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
     "callable": "workOnProviderHandoffGoal",
-    "resultType": "ProviderGoalReport",
+    "resultType": "ProviderResult",
     "skill": "providerHandoff",
     "parameterNames": [
       "goal"

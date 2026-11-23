@@ -1,0 +1,2 @@
+import type {SpecialistResult,SpecialistPlan,MembershipWitness,HistoryReview,IntegrationArtifact} from "./types.js";
+export default function applicationResult(plan:SpecialistPlan,membership:MembershipWitness|null,history:HistoryReview|null,handoff:IntegrationArtifact|null):SpecialistResult {return {plan,membership:membership?.report??null,history:history?{units:history.units,result:history.result}:null,handoff};}

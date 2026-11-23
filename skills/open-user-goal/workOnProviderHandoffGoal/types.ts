@@ -17,3 +17,5 @@ export type RetainedDelivery = Delivery;
 export type ApprovalReviewEvidence = { request: ApprovalTransitionRequest; result: RetainedApproval };
 export type DeliveryReviewEvidence = { request: DeliveryInput; result: RetainedDelivery };
 export type ResultSelection = { decisionMessage: string | null; resultMessage: string | null; read: boolean };
+
+export type ProviderResult = Report;
