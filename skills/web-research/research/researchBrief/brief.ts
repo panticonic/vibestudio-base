@@ -1,5 +1,5 @@
 /**
- * The fixed sequence of a brief: read the pages, find the evidence window by window, write the answer from the
+ * The checked evidence operation for a selected source batch: read pages, find evidence window by window, synthesize the answer from the
  * verified claims, attach each statement's citations. The model reads and writes; every check is exact.
  */
 import gather from "./gather.js";
@@ -19,7 +19,7 @@ export default async function researchBrief(
   retrievedAt: number,
 ): Promise<CitedBrief> {
   const retrieved = new Date(retrievedAt).toISOString().slice(0, 10);
-  const { pages, notRead } = await gather(question, sources);
+  const { pages, notRead } = await gather(sources);
   let rejected = 0;
   const evidence: { claim: string; citation: WebCitation }[] = [];
   for (const page of pages) {

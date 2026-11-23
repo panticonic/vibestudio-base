@@ -1,50 +1,22 @@
-# researchBrief: decomposition
+# Public evidence research
 
-`researchBrief(question, sources, retrievedAt): CitedBrief` answers a question from web pages. Every statement carries the URL, the
-day the page was read, the page's own stated date when it has one, and the exact sentence that shows it. A statement
-without a valid citation does not exist in the result. The program reads the web (the `web` service: search, fetch,
-read; public sessions only, so nothing needs the browser-cookie approval); it sends nothing anywhere.
+The public research root decides which sources to pursue and when the question is covered. Search is one discovery tool, not an authorization prerequisite for reading an ordinary public page. A remembered URL remains a hypothesis until the fetched page supports the claim. No task-specific authority names, quotations or expected answers are supplied to the candidate.
 
-| Part                                       | Form                             | Why                                                                                                                                                                                                                                                                                     |
-| ------------------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Choose pages                               | crisp: `researchBrief/gather.ts` | The user's `sources` first, otherwise the first distinct results of searching the question. At most 3 pages, 9000 characters each (`fetch` head, then `read` for the rest). A page that cannot be read is reported in `notRead` with the service's own message; the others still count. |
-| Cut a page into windows                    | crisp: `verify.ts` `windows`     | A small model's context is bounded; 4500-character windows keep each call small.                                                                                                                                                                                                        |
-| Find what a window says about the question | its own function, `findEvidence` | Reading comprehension, per window, parallel. It returns the one fact that most directly bears on the question, a claim and one sentence copied from the text, or null (one fact per call since 2026-11-13: three claims with verbatim quotes did not fit the executor's turn). Page text is declared untrusted data in the instruction (a case carries an injected "reply HACKED" comment).                                                                     |
-| Check each quote                           | crisp: `checkedEvidence`         | The quote must be at least 20 characters and a substring of the page text (whitespace collapsed), and appear once. A claim whose quote is not in the page is dropped and counted in `rejected`. This is what makes "no uncited claims" exact rather than hoped for.                     |
-| Publication date                           | crisp: `statedDate`              | A date the page states beside "published/updated/posted" near its top; null otherwise. Never inferred.                                                                                                                                                                                  |
-| Write the answer                           | its own function, `writeBrief`   | Synthesis over numbered claims; each statement cites claim ids.                                                                                                                                                                                                                         |
-| Check the statements                       | crisp: `checkedStatements`       | Every cited id exists, there is at least one, and the statement shares a content word with a claim it cites. Others are dropped.                                                                                                                                                        |
-| Assemble citations                         | crisp, in `brief.ts`             | Each cite is `{ url, title, retrieved, published, quote }`, built from the verified evidence, never retyped by the model.                                                                                                                                                               |
-| No supported answer                        | typed result                     | `status: "insufficient"` with no statements, never a guess.                                                                                                                                                                                                                             |
+| Responsibility | Owner |
+| --- | --- |
+| Choose search, direct authority reading, or a different route after failure | researchBrief.nl and discoverSources.nl |
+| Preserve an explicit caller-supplied source scope | researchBrief.nl and discoverSources.nl |
+| Fetch a bounded batch, continue cached pages, expose failures | gather.ts |
+| Find what a page passage establishes | findEvidence.nl |
+| Check exact quote membership and citation references | verify.ts |
+| Synthesize supported claims | writeBrief.nl |
+| Combine checked batches without retyping citations | combineBriefs.ts |
+| Query providers and fail over within observed credential audiences | shared web-core search/provider mechanism |
+| Verify task outcomes independently from actual fetched evidence | System Testing public-research oracle |
 
-Search snippets are never cited (the web-research skill: uncited snippets only help find sources); only fetched page text is.
+The standard web runtime and agent web_search share web-core. Query failures remain separate, owner cancellation propagates, and a wholly failed provider batch can try another credential-authorized provider. Explicit source assignments remain within their supplied URLs. Provider blocks are not bypassed: ordinary public evidence can be read from a different source.
 
-## Measurement
-
-each case in `cases.jsonl` carries the recorded pages its `web` service replays (MDN excerpts, CC BY-SA 2.5, plus pages written for the dated, injected and off-topic
-cases); the `web` service is replayed from them, including a failing fetch and a failing search. Quality is coverage of
-the expected key points when the status, the absence of injected text, the date and `notRead` are right. Gates: 0.85 on validation and on the locked
-test split, and every citation exact (`cited`) in every case.
-
-## Status: not ported
-
-Collection invokes the `.nl` root through `brief` in `natlang.ts`, rather than bypassing it through its crisp child.
-The host-facing wrapper chooses `retrievedAt` once (Unix milliseconds); cases supply an explicit saved timestamp.
-The helper derives every citation's read date from that value, so replay on another day preserves the same result.
-Earlier measurements below exercised the crisp child and are not measurements of the complete root path.
-
-SKILL.md does not call this function: the gate is not met. Measured on the executor (LFM3 1.7B Q8_0, `pnpm natlang:eval`, validation split, suite settings 6 turns of 512 tokens):
-quality 0.25 (mean over 4 cases): `search-fails` 1.0 (the crisp path: no source, status `insufficient`), `503-retry`, `etag-conditional` and `one-source-404` 0 with
-`findEvidence` quiesced. 18 model calls, mean 48 minutes a case on the shared local model.
-
-The failure is the same in every case: with the full interpreter surface the model never reaches its answer. Each turn spends the whole token limit reasoning about how to read its arguments (the opening says their values are not shown and offers `eval` to read them) and ends without an action, so the call is `quiesced` after its last turn. `leafCalls: "direct"` (natlang `native/agent.ts` `leafOpening`: a short prompt that shows the arguments whole and offers only `return_result`) is the setting built for such data-only calls, but the Vibestudio runtime (`packages/natlang/src/evalNatlang.ts`) does not set it, so it was not measured and the functions are not called from SKILL.md. No instruction was sharpened: the misses are not about wording, and the test split was never run. Until the gate is met the agent performs this procedure itself.
+Earlier training captures retain their original program revisions. This source changes how new invocations investigate evidence; it does not rewrite old traces or substitute expected answers.
 
 
-## Assigned public research in the shared workflow
-
-`writeAssignedBrief` calls the same research program with the requested sources
-and a fixed read timestamp. The live task binds the existing web service to
-those public URLs and allows a bounded continuation only at the exact
-host-returned page coordinate. Live fetch receipts and cached readbacks support
-the case oracle. The older executor measurements still describe the standalone
-recorded suite.
+`gather` receives explicit selected URLs and never searches implicitly. A failed candidate does not consume a successful-page slot; later candidates can still supply evidence. Candidates left beyond the bounded batch are reported, so the semantic root can choose a next batch rather than silently losing them.

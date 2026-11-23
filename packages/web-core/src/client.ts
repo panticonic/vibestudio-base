@@ -6,7 +6,7 @@ import {
   type StandardSearchDeps,
 } from "./search.js";
 
-export interface WebClientDeps extends WebPageDeps, Partial<Pick<StandardSearchDeps, "hasCredentialForOrigin">> {
+export interface WebClientDeps extends WebPageDeps, Partial<Pick<StandardSearchDeps, "hasCredentialForOrigin" | "fallbackProviders">> {
   /**
    * Egress for search-provider requests. The host attaches the user's provider
    * key by URL audience, so callers pass their credentialed fetch here.
@@ -29,6 +29,7 @@ export function createWebClient(deps: WebClientDeps): WebClient {
       return searchStandard(
         {
           now,
+          fallbackProviders: deps.fallbackProviders,
           ...(deps.recordIngestion ? { recordIngestion: deps.recordIngestion } : {}),
           ...(deps.hasCredentialForOrigin ? { hasCredentialForOrigin: deps.hasCredentialForOrigin } : {}),
         },

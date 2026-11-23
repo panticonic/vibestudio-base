@@ -40,3 +40,12 @@ export async function selectSearchProvider(
   if (await probe(SEARCH_PROVIDER_ORIGINS.exa)) return "exa";
   return "duckduckgo";
 }
+
+/** Credential-authorized failover order; no provider receives a key for another audience. */
+export async function availableSearchProviders(probe: CredentialPresenceProbe | undefined): Promise<ProviderName[]> {
+  const providers: ProviderName[] = [];
+  if (probe) for (const provider of Object.keys(SEARCH_PROVIDER_ORIGINS) as Exclude<ProviderName, "duckduckgo">[]) {
+    if (await probe(SEARCH_PROVIDER_ORIGINS[provider])) providers.push(provider);
+  }
+  return [...providers, "duckduckgo"];
+}

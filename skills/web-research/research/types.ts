@@ -60,3 +60,6 @@ export type AssignedResearchRequest = {
   sources: string[];
   retrievedAt: number;
 };
+
+export type ResearchFailure = { url: string; reason: string };
+export type ResearchSourcePlan = { urls: string[]; notRead: ResearchFailure[] };

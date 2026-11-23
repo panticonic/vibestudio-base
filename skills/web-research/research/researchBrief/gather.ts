@@ -10,48 +10,20 @@ const CHARACTERS = 9000;
 
 const isWebUrl = (url: string) => /^https?:\/\//i.test(url);
 
-/** The URLs to read: the sources given, otherwise the first distinct results of searching the question. */
-async function candidates(
-  question: string,
-  sources: readonly string[],
-): Promise<{ urls: string[]; notRead: { url: string; reason: string }[] }> {
-  if (sources.length > 0)
-    return {
-      urls: sources.filter(isWebUrl).slice(0, PAGES),
-      notRead: sources
-        .filter((url) => !isWebUrl(url))
-        .map((url) => ({ url, reason: "not an http(s) URL" })),
-    };
-  const found = await web.search({ queries: [question.slice(0, 200)] });
-  const answer = found.results[0];
-  if (!answer || answer.error)
-    return {
-      urls: [],
-      notRead: [
-        {
-          url: "search",
-          reason: answer?.error ?? "the search returned no result",
-        },
-      ],
-    };
-  return {
-    urls: [
-      ...new Set(answer.sources.map((source) => source.url).filter(isWebUrl)),
-    ].slice(0, PAGES),
-    notRead: [],
-  };
-}
-
 export default async function gather(
-  question: string,
   sources: readonly string[],
 ): Promise<{
   pages: FetchedPage[];
   notRead: { url: string; reason: string }[];
 }> {
-  const { urls, notRead } = await candidates(question, sources);
+  const urls = [...new Set(sources.filter(isWebUrl))];
+  const notRead = sources.filter(url => !isWebUrl(url)).map(url => ({ url, reason: "not an http(s) URL" }));
   const pages: FetchedPage[] = [];
   for (const url of urls) {
+    if (pages.length >= PAGES) {
+      notRead.push({ url, reason: "Not read in this bounded page batch" });
+      continue;
+    }
     try {
       const page = await web.fetch({ url, session: "public" });
       let text = page.head;

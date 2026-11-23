@@ -31,6 +31,7 @@ export interface WebSearchDeps {
     classification: "external" | "derived";
   }) => Promise<void>;
   hasCredentialForOrigin?: CredentialPresenceProbe;
+  fallbackProviders?: boolean;
   /** Selects the schema and transport for the agent's configured primary provider. */
   searchBackend?: WebSearchBackend;
   /** Resolves a host-mediated session when searchBackend is codex. */
@@ -281,6 +282,7 @@ async function runStandardSearch(
   const outcome = await searchStandard(
     {
       now,
+      fallbackProviders: deps.fallbackProviders,
       ...(deps.recordIngestion ? { recordIngestion: deps.recordIngestion } : {}),
       ...(deps.hasCredentialForOrigin
         ? { hasCredentialForOrigin: deps.hasCredentialForOrigin }

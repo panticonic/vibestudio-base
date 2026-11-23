@@ -8,7 +8,7 @@ import { searchDuckDuckGo } from "./duckduckgo.js";
 import { searchTavily } from "./tavily.js";
 import { searchBrave } from "./brave.js";
 import { searchExa } from "./exa.js";
-import { selectSearchProvider, type CredentialPresenceProbe } from "./provider.js";
+import { availableSearchProviders, selectSearchProvider, type CredentialPresenceProbe } from "./provider.js";
 
 export const DEFAULT_SEARCH_LIMIT = 5;
 
@@ -23,6 +23,8 @@ export interface StandardSearchDeps {
   }) => Promise<void>;
   hasCredentialForOrigin?: CredentialPresenceProbe;
   now: () => number;
+  /** Disable automatic authorized-provider failover when the caller requires one provider. */
+  fallbackProviders?: boolean;
 }
 
 /** Trim and bound a query batch the way every search entry point requires. */
@@ -48,20 +50,39 @@ export async function searchStandard(
   signal: AbortSignal | undefined,
 ): Promise<StandardSearchOutcome> {
   const startedAt = deps.now();
-  const provider = await selectSearchProvider(deps.hasCredentialForOrigin);
+  const providers = deps.fallbackProviders === false
+    ? [await selectSearchProvider(deps.hasCredentialForOrigin)]
+    : await availableSearchProviders(deps.hasCredentialForOrigin);
   const requestFetcher = bindSignal(fetcher, signal);
-  const results = await Promise.all(
-    queries.map(async (query): Promise<WebSearchQueryResult> => {
-      const sources = await runProvider(provider, query, DEFAULT_SEARCH_LIMIT, requestFetcher);
-      return {
-        query,
-        text: formatSearchResults(sources, provider, query),
-        sources: sources.map(({ title, url, snippet }) => ({ title, url, snippet })),
-      };
-    }),
-  );
-  await recordSearchDomains(deps, results, provider);
-  return { provider, results, elapsedMs: deps.now() - startedAt };
+  const failures = queries.map(() => [] as string[]);
+  for (const provider of providers) {
+    signal?.throwIfAborted();
+    const results = await Promise.all(
+      queries.map(async (query, index): Promise<WebSearchQueryResult> => {
+        try {
+          const sources = await runProvider(provider, query, DEFAULT_SEARCH_LIMIT, requestFetcher);
+          return {
+            query,
+            text: formatSearchResults(sources, provider, query),
+            sources: sources.map(({ title, url, snippet }) => ({ title, url, snippet })),
+          };
+        } catch (error) {
+          if (signal?.aborted) throw signal.reason ?? error;
+          failures[index]!.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
+          const message = failures[index]!.join("; ");
+          return { query, text: message, sources: [], error: message };
+        }
+      }),
+    );
+    // Keep every successful query and its single-provider provenance. Only a
+    // wholly failed batch tries the next independently authorized provider.
+    if (results.some(result => !result.error) || provider === providers.at(-1)) {
+      await recordSearchDomains(deps, results, provider);
+      return { provider, results, elapsedMs: deps.now() - startedAt };
+    }
+  }
+  throw new Error("No public search provider is available");
+
 }
 
 export async function recordSearchDomains(
