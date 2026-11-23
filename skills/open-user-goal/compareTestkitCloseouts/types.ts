@@ -14,10 +14,4 @@ export type CloseoutDecision = {
   explanation: string;
 };
 export type CloseoutReceipt = { path: string; sha256: string; bytes: number };
-export type CloseoutReport = {
-  pair: CloseoutPair;
-  current: CloseoutEvidence;
-  prior: CloseoutEvidence;
-  decision: CloseoutDecision;
-  handoff: CloseoutReceipt | null;
-};
+export type CloseoutReport = {decision: CloseoutDecision; handoff: CloseoutReceipt | null};

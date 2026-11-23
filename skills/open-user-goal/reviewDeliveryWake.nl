@@ -9,4 +9,4 @@ budget: { maxTurns: 35 }
 2. Call inspectDeliveryWake on that assignment. Preserve the actual connection and native mailbox/cursor evidence.
 3. Call decideDeliveryWake with assignment and evidence.
 4. Only for advance, call applyDeliveryWake with assignment, evidence and choice. Return its actual receipt. Otherwise return a null receipt.
-Return assignment, evidence, choice and receipt exactly.
+Return choice and actual receipt. The working observations and authority checks stay in the call tree.

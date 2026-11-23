@@ -1,3 +1,4 @@
+import type { SaveProblemResult } from "./reporter/types.js";
 export type IncidentCard = {
   id: string;
   title: string;
@@ -5,4 +6,4 @@ export type IncidentCard = {
   state: "current" | "archived" | "recovered";
   observation: string;
 };
-export type OpenProblemOutcome = { incident: string | null; draft: unknown };
+export type OpenProblemOutcome = SaveProblemResult | null;

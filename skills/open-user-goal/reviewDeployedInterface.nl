@@ -9,4 +9,4 @@ budget: { maxTurns: 20 }
 2. If the observation includes an architecture request, pass it unchanged to architecture.reviewArchitectureBoundary. Keep that actual result, including a boundary move or declaration mismatch.
 3. Call decideReview with the survey, actual observation and architecture result. It separates the deployed evidence from installed declaration evidence and assesses the exact owner scope.
 4. If the user requests an authorized local review note and the decision is reviewable or deployed-method-confirmed, call stageReview with the exact observation and decision. Return its actual result; otherwise leave handoff null. Do not invoke the reviewed methods, edit source, or change deployment or authority.
-5. Return the exact survey, observation, architecture outcome or null, finding, and handoff.
+5. Return finding and actual handoff.

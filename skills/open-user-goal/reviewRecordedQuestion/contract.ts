@@ -6,5 +6,4 @@ export type RecordedCounteraction = { path: string; reason: string; attempted: s
 export type RecordedEvidence = { cohort: RecordedCohort; withdrawn: RecordedCounteraction[] };
 export type RecordedAnswer = { disposition: "supported" | "caution" | "missing" | "ambiguous";
   originalRationale: string | null; affected: string[]; withdrawn: string[]; reasons: string[] };
-export type RecordedQuestionReport = { assignment: RecordedQuestion; phrase: string; candidates: RecordedCandidate[];
-  selection: RecordedSelection; evidence: RecordedEvidence | null; answer: RecordedAnswer };
+export type RecordedQuestionReport = RecordedAnswer;

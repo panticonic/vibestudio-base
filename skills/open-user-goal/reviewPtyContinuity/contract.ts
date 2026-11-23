@@ -14,4 +14,4 @@ export type PtyChoice = { sessionId: string | null; blocker: PtyBlocker | null }
 export type PtyDisposition = PtyBlocker | "hold-running" | "hold-gap" | "hold-reset" | "hold-proof" | "report-failed" | "report-signal" | "report-good" | "stage-good";
 export type PtyDecision = { disposition: PtyDisposition; replayDigest: string | null; exitCode: number | null };
 export type PtyReceipt = { path: string; bytes: number; sha256: string };
-export type PtyContinuityOutcome = { assignment: PtyAssignment; evidence: PtyPair; choice: PtyChoice; decision: PtyDecision; receipt: PtyReceipt | null };
+export type PtyContinuityOutcome = { decision: PtyDecision; receipt: PtyReceipt | null };

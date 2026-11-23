@@ -29,7 +29,4 @@ export type ContentArchiveReceipt = {
   workingRevision: string; application: { id: string; changes: string[] } | null;
   files: ContentArchiveWorkingFile[];
 };
-export type ContentArchiveOutcome = {
-  assignment: ContentArchiveAssignment; observation: ContentArchiveObservation; archive: ContentArchiveChoice;
-  plan: ContentArchivePlan; receipt: ContentArchiveReceipt | null;
-};
+export type ContentArchiveOutcome = { action: ContentArchivePlan["action"]; reason: string; receipt: ContentArchiveReceipt | null };

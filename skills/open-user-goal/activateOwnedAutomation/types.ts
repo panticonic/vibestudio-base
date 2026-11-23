@@ -35,6 +35,4 @@ export type AutomationLaunchReadback = {
   nextRunAt:number|null;runCount:number;state:"active"|"paused";
 }|null;
 export type AutomationLaunchReview = {evidence:AutomationLaunchEvidence;plan:LaunchPlan|null;decision:AutomationLaunchChoice};
-export type OwnedAutomationActivationReport = AutomationLaunchReview & {
-  activation:AutomationActivation|null;readback:AutomationLaunchReadback;
-};
+export type OwnedAutomationActivationReport = { decision: Pick<AutomationLaunchChoice,"action"|"basis"|"reason">; activation: AutomationActivation | null };

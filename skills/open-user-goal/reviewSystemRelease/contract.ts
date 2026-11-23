@@ -40,7 +40,4 @@ export type ReleaseAssessment = {
   decisive: string[];
 };
 export type ReleaseReceipt = { path: string; bytes: number; sha256: string };
-export type SystemReleaseOutcome = {
-  assignment: ReleaseAssignment; runs: RetainedRunPair; choice: RunChoice; cases: CaseEvidence[];
-  assessment: ReleaseAssessment; handoff: ReleaseReceipt | null;
-};
+export type SystemReleaseOutcome = { assessment: ReleaseAssessment; handoff: ReleaseReceipt | null };

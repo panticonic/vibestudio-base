@@ -10,4 +10,4 @@ budget: { maxTurns: 45 }
 3. If the selection contains a current approved surface, read inspectNativeSurface(assignment, selection.approval). Otherwise replay is null.
 4. Decide the necessary native transcript effect with decideTranscriptEffect(assignment, selection, replay).
 5. Apply a non-none effect only with materializeTranscriptEffect(assignment, selection.approval, replay, decision). Always keep its exact receipt, including a stale outcome. Otherwise receipt is null.
-Return assignment, approvals, selection, replay, decision and receipt.
+Return decision and actual receipt. The working observations and authority checks stay in the call tree.

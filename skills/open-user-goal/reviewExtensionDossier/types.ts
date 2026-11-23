@@ -9,7 +9,4 @@ export type ManifestDelta = Delta;
 export type ReleaseHistory = History;
 export type DossierFinding = { decision: Decision; reason: string };
 export type CandidateComparison = { delta: Delta; compatibility: "invalid" | "authority-review" | "verification-needed" | "published-package" };
-export type ExtensionDossierOutcome = {
-  assignment: DossierAssignment; review: Review; candidate: CandidateComparison; history: History;
-  finding: DossierFinding; dossier: Receipt | null;
-};
+export type ExtensionDossierOutcome = { finding: DossierFinding; dossier: Receipt | null };

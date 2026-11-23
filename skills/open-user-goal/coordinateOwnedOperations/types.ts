@@ -18,10 +18,4 @@ export type OperationsDocketEvidence = {
 
 export type OperationsDossier = { path: string; digest: string };
 
-export type OperationsGoalOutcome = {
-  docket: OperationsDocket | null;
-  operation: OperationsReport | null;
-  dossier: OperationsDossier | null;
-  disposition: "reviewed" | "held";
-  reason: string;
-};
+export type OperationsGoalOutcome = { operation: OperationsReport | null; dossier: OperationsDossier | null; disposition: "reviewed" | "held"; reason: string };

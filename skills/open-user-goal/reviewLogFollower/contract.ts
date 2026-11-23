@@ -14,5 +14,4 @@ export type FollowJoin = { continuity: FollowContinuity; boot: string; through: 
 export type FollowFinding = { state: FollowState | "unobserved"; citations: number[] };
 export type FollowDecision = FollowFinding & { stage: boolean };
 export type FollowReceipt = { path: string; bytes: number; sha256: string };
-export type LogFollowerOutcome = { assignment: FollowAssignment; capture: FollowCapture; joined: FollowJoin;
-  decision: FollowDecision; receipt: FollowReceipt | null };
+export type LogFollowerOutcome = { decision: FollowDecision; receipt: FollowReceipt | null };

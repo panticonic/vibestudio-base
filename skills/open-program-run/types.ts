@@ -33,6 +33,5 @@ export type ProgramOutputReceipt = {
 };
 export type SignedOutputReceipt = { path: string; sha256: string; receiptId: string; publicKey: string };
 export type ProgramRunReview = { kind: "program"; next: string; basis: string };
-export type ProgramRunReport =
-  | { status: "unresolved"; reason: "program-unavailable" | "run-not-bound" | "receipt-unavailable" }
-  | { status: "reviewed"; programId: string; review: ProgramRunReview; receipts: ProgramOutputReceipt[]; signed: SignedOutputReceipt | null };
+export type ProgramRunReport = | { status: "unresolved"; reason: "program-unavailable" | "run-not-bound" | "receipt-unavailable" }
+  | { status: "reviewed"; programId: string; receipts: ProgramOutputReceipt[]; signed: SignedOutputReceipt | null };

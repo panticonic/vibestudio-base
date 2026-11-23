@@ -6,6 +6,4 @@ export type CapabilityDecision = Decision;
 export type Continuation = Result;
 export type AttemptPair = { current: Evidence; prior: Evidence };
 export type ContinuationFinding = { decision: Decision; reason: string };
-export type AgentCapabilityOutcome = {
-  assignment: Assignment; evidence: AttemptPair; finding: ContinuationFinding; continuation: Result | null;
-};
+export type AgentCapabilityOutcome = { finding: ContinuationFinding; continuation: Result | null };

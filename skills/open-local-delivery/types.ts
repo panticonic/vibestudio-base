@@ -19,7 +19,4 @@ export type LocalDeliveryDecision = {
 };
 export type LocalAttempt = { attemptId: string; response: "submitted" | "interrupted" };
 export type LocalDeliveryResult = { attempt: LocalAttempt; readback: LocalDeliveryEvidence | null };
-export type LocalDeliveryReport = {
-  status: LocalDisposition; reason: string; evidence: LocalDeliveryEvidence[];
-  delivery: LocalDeliveryResult | null;
-};
+export type LocalDeliveryReport = { status: LocalDisposition; reason: string; delivery: LocalDeliveryResult | null };

@@ -7,4 +7,4 @@ export type WidthSurvey = Survey;
 export type WidthReceipt = Witness;
 export type WidthFinding = Finding;
 export type WidthHandoff = Handoff;
-export type LocalWidthOutcome = { survey: Survey; readiness: Readiness; finding: Finding; handoff: Handoff | null };
+export type LocalWidthOutcome = { finding: Finding; handoff: Handoff | null };

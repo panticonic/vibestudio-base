@@ -10,4 +10,4 @@ budget: { maxTurns: 50 }
 3. Use traceSelectedSource for each relevant candidate and fragment. Include evidence for both halves when the question compares them. Stay within the assigned current state.
 4. Call explainSourceOrigin(goal, files, evidence). Preserve what each source proves and any limits.
 5. If the user authorized a receipt and the conclusion contains useful current evidence, call reviewAttributionHandoff(assignment, files, evidence, conclusion). Return the actual receipt or the reason native authority declined it. Otherwise return null receipt.
-Return the original assignment, observed files, evidence, conclusion and optional receipt.
+Return conclusion and actual receipt. The working observations and authority checks stay in the call tree.

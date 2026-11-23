@@ -9,5 +9,4 @@ export type SurfaceReplay = { channel: string; owner: string; cursor: number; ca
 export type SurfaceEffect = "publish-inline" | "refresh-inline" | "display-bar" | "clear-bar" | "none";
 export type SurfaceDecision = { effect: SurfaceEffect; reason: "ready" | "already-current" | "missing" | "competing" | "authority" };
 export type SurfaceReceipt = { channel: string; basis: number; status: "applied" | "stale"; envelope: string | null; sequence: number | null };
-export type TranscriptSurfaceReport = { assignment: SurfaceAssignment; approvals: SurfaceApproval[]; selection: SurfaceSelection;
-  replay: SurfaceReplay | null; decision: SurfaceDecision; receipt: SurfaceReceipt | null };
+export type TranscriptSurfaceReport = { decision: SurfaceDecision; receipt: SurfaceReceipt | null };

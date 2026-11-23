@@ -10,4 +10,4 @@ budget: { maxTurns: 40 }
 3. Call selectSmokeContract(assignment, source).
 4. When the selection has one approved plan, call exerciseInstalledSmoke(assignment, selection.plan). A blocked selection has null runtime.
 5. Call compareSmokeOutput(assignment, selection, runtime). If decision.mayRetain, call stageWorkspaceSmoke(assignment, selection, runtime, decision).
-Return assignment, source, selection, runtime, decision and the actual optional receipt.
+Return decision and actual receipt. The working observations and authority checks stay in the call tree.

@@ -113,13 +113,4 @@ export type MigrationDecision = {
   answer: string;
 };
 export type MigrationHandoff = { path: string; sha256: string; bytes: number };
-export type MigrationReport = {
-  status: MigrationStatus;
-  candidateId: string | null;
-  deployedMain: string;
-  dossierRevision: string;
-  readIds: string[];
-  candidate: CandidateReport | null;
-  handoff: MigrationHandoff | null;
-  answer: string;
-};
+export type MigrationReport = { status: MigrationStatus; candidateId: string | null; handoff: MigrationHandoff | null; answer: string };

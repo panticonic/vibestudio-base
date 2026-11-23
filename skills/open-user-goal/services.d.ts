@@ -382,7 +382,7 @@ declare module "natlang:services" {
 declare module "natlang:services" {
   export const testkitCloseout: {
     nominate(goal: string): Promise<import("./compareTestkitCloseouts/types.js").CloseoutPair>;
-    stage(report: import("./compareTestkitCloseouts/types.js").CloseoutReport):
+    stage(decision: import("./compareTestkitCloseouts/types.js").CloseoutDecision):
       Promise<import("./compareTestkitCloseouts/types.js").CloseoutReceipt>;
   };
   export const phoneFirstRun: {
