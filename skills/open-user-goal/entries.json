@@ -802,7 +802,7 @@
   "preparedContentProject": {
     "program": "skills/open-user-goal/prepareContentProject.nl",
     "callable": "prepareContentProject",
-    "resultType": "PreparedContentProjectReport",
+    "resultType": "ContentProjectResult",
     "skill": "preparedContentProject",
     "parameterNames": [
       "goal"
