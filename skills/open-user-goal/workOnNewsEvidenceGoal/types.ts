@@ -1,1 +1,1 @@
-export * from "./workspace/types.js";
+export type {NewsEvidenceResult} from "../reviewNewsEvidence/workspace/types.js";

@@ -35,3 +35,5 @@ export type NewsEvidenceReport = {plan:NewsEvidencePlan;readers:ReaderWitness[];
 export type NewsEvidencePlan = {channelId:string;through:number;readerMessage:string|null;topic:string;reason:string;
   action:"report"|"hold"|"stage";explanation:string};
 export type NewsEvidenceArtifact = {path:string;sha256:string;bytes:number};
+
+export type NewsEvidenceResult = {topic:string;action:NewsEvidencePlan["action"];explanation:string;readers:Review[];schedule:Review;briefing:Review|null;sources:{articleId:string;url:string;digest:string}[];handoff:NewsEvidenceArtifact|null};

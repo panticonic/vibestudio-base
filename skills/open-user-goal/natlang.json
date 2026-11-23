@@ -42,7 +42,7 @@
         "prepareNewsEditionReview/attributeBasis/installed"
       ],
       "types": [
-        "NewsEditionReviewReport"
+        "NewsEditionReviewResult"
       ]
     },
     "reviewUnitHandoffGoal": {
@@ -191,11 +191,12 @@
         "LocalWidthOutcome"
       ]
     },
-    "workOnNewsEvidenceGoal": {
+    "workOnNewsEvidenceGoal": {"types":["NewsEvidenceResult"]},
+    "reviewNewsEvidence": {
       "mounts": [
-        "workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed",
-        "workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed",
-        "workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed"
+        "reviewNewsEvidence/groundNewsEdition/reviewNewsDevelopments/installed",
+        "reviewNewsEvidence/reviewNewsOwnerCadence/installed",
+        "reviewNewsEvidence/reviewNewsReaderWindow/installed"
       ],
       "types": [
         "NewsEvidenceReport"
@@ -286,11 +287,11 @@
     "reviewDesktopReadiness/clientDevelopment": "skills/clientdev/natlang",
     "workOnApiReadinessGoal/workspace": "skills/open-api-readiness",
     "workOnApiReadinessGoal/reviewQuietCredentials/installed": "skills/api-integrations/natlang",
-    "workOnNewsEvidenceGoal/workspace": "skills/open-news-evidence",
-    "workOnNewsEvidenceGoal/groundNewsEdition/workspace": "skills/open-news-evidence",
-    "workOnNewsEvidenceGoal/groundNewsEdition/reviewNewsDevelopments/installed": "skills/news-workflows",
-    "workOnNewsEvidenceGoal/reviewNewsOwnerCadence/installed": "skills/news-workflows",
-    "workOnNewsEvidenceGoal/reviewNewsReaderWindow/installed": "skills/news-workflows",
+    "reviewNewsEvidence/workspace": "skills/open-news-evidence",
+    "reviewNewsEvidence/groundNewsEdition/workspace": "skills/open-news-evidence",
+    "reviewNewsEvidence/groundNewsEdition/reviewNewsDevelopments/installed": "skills/news-workflows",
+    "reviewNewsEvidence/reviewNewsOwnerCadence/installed": "skills/news-workflows",
+    "reviewNewsEvidence/reviewNewsReaderWindow/installed": "skills/news-workflows",
     "reviewLocalPresentation/visualize": "skills/visualize",
     "workOnPersonalWelcomeGoal/workspace": "skills/open-personal-welcome",
     "workOnPersonalWelcomeGoal/reviewWelcomeSetup/onboarding": "skills/onboarding/prepareSetup",

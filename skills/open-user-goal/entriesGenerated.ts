@@ -343,7 +343,7 @@ export default {
   "news-evidence": {
     "program": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
     "callable": "workOnNewsEvidenceGoal",
-    "resultType": "NewsEvidenceReport",
+    "resultType": "NewsEvidenceResult",
     "skill": "newsEvidence",
     "parameterNames": [
       "goal"
@@ -603,7 +603,7 @@ export default {
   "news-edition-review": {
     "program": "skills/open-user-goal/prepareNewsEditionReview.nl",
     "callable": "prepareNewsEditionReview",
-    "resultType": "NewsEditionReviewReport",
+    "resultType": "NewsEditionReviewResult",
     "skill": "newsEditionReview",
     "parameterNames": [
       "goal"
