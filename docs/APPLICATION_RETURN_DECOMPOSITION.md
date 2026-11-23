@@ -1,6 +1,6 @@
 # Application returns
 
-Inventory: PUBLIC_APPLICATION_RETURN_INVENTORY.json records all 116 callable source entries (118 workspace-entry bindings), their exact current definitions and named-type consumers. Archived catalogs and captures remain immutable. This inventory is evidence of existing contracts, not a claim of completed migration.
+Inventory: PUBLIC_APPLICATION_RETURN_INVENTORY.json records all 114 unique (template, entry) contracts (118 workspace-entry bindings; 116 qualified signatures), their exact current definitions and named-type consumers. Archived catalogs and captures remain immutable. This inventory is evidence of existing contracts, not a claim of completed migration.
 
 A callable returns the value its caller requested: a document, findings, answer, artifact handle, or application disposition. Observations, authority decisions and intermediate drafts remain typed internal dependencies. The native journal is the source of audit evidence. A large already-staged value is returned through native staged-answer completion; the model does not reconstruct it.
 
