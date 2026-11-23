@@ -212,13 +212,7 @@ export type MobileContinuityEvidence = {
   transport: MobileTransportEvidence;
   routes: MobileRouteEvidence;
 };
-export type MobileContinuityOutcome = {
-  profile: string;
-  action: "resume" | "rebuild-shell" | "reacquire-route" | "hold";
-  scope: "owned-fixture";
-  evidence: MobileContinuityEvidence;
-  reason: string;
-};
+export type MobileContinuityOutcome = { profile: string; action: "resume" | "rebuild-shell" | "reacquire-route" | "hold"; reason: string };
 
 export type NotificationLane = { id: string; label: string; generation: number };
 export type NotificationRecord = {
@@ -253,13 +247,7 @@ export type NotificationAcknowledgment = {
   status: "acknowledged" | "already-read" | "stale" | "unavailable";
   id: string; revision: number;
 };
-export type NotificationStateOutcome = {
-  scope: "owned-notification-fixture";
-  lifecycle: NotificationLifecycle;
-  decision: NotificationDecision;
-  acknowledgement: NotificationAcknowledgment | null;
-  final: NotificationSnapshot | null;
-};
+export type NotificationStateOutcome = NotificationAcknowledgment | NotificationDecision;
 
 export type DesktopDesk = { id: string; name: string; operationId: string };
 export type DesktopPane = { id: string; panelId: string; heightFr: number; minWidthOverride?: number };
@@ -291,10 +279,7 @@ export type DesktopReadinessDecision = {
     "review-rollback" | "restore-layout" | "hold-scope" | "wait-for-admission";
   reason: string;
 };
-export type DesktopReadinessOutcome = {
-  scope: "owned-desktop-readiness-fixture";
-  evidence: DesktopReadinessEvidence; decision: DesktopReadinessDecision;
-};
+export type DesktopReadinessOutcome = DesktopReadinessDecision;
 
 export type SkillMaintenanceCard = { id: string; label: string; edition: "working" | "archive" };
 export type SkillMaintenanceClause = { path: string; parameters: string[]; returns: string };
@@ -328,12 +313,7 @@ export type SkillMaintenanceReceipt = {
   disposition: "staged" | "stale" | "denied";
   paths: string[];
 };
-export type SkillMaintenanceOutcome = {
-  scope: "owned-working-skill";
-  observation: SkillMaintenanceObservation; authoring: unknown;
-  gate: SkillMaintenanceGate; decision: SkillMaintenanceDecision;
-  receipt: SkillMaintenanceReceipt | null; final: SkillMaintenanceCheck;
-};
+export type SkillMaintenanceOutcome = SkillMaintenanceReceipt | SkillMaintenanceDecision;
 
 export type PhoneFirstRunCard = { id: string; title: string; edition: "current" | "archive" };
 export type PhoneFirstRunAssignment = {
@@ -361,9 +341,7 @@ export type PhoneFirstRunDecision = {
     "open-owned-desktop" | "continue-existing-install" | "inspect-native-evidence";
   reason: string;
 };
-export type PhoneFirstRunOutcome = {
-  scope: "owned-phone-eligibility-rehearsal"; evidence: PhoneFirstRunEvidence; decision: PhoneFirstRunDecision;
-};
+export type PhoneFirstRunOutcome = PhoneFirstRunDecision;
 
 export type GrimoireDocket = { id: string; title: string; edition: "current" | "archive" };
 export type GrimoireSceneSource = {
@@ -390,10 +368,7 @@ export type GrimoireSceneReceipt = {
 export type GrimoireSceneReadback = {
   ownerId: string; frontier: string; sceneDigest: string; fileDigest: string | null;
 };
-export type GrimoireSceneOutcome = {
-  scope: "owned-grimoire-caretaker-draft"; docket: GrimoireDocket; evidence: GrimoireSceneEvidence;
-  plan: GrimoirePlan; gate: GrimoireSceneGate; receipt: GrimoireSceneReceipt | null; readback: GrimoireSceneReadback;
-};
+export type GrimoireSceneOutcome = GrimoireSceneReceipt | { action: GrimoirePlan["action"]; finding: string };
 
 export type AdoptionReviewCard = { id: string; title: string; event: string; edition: "staged" | "retired"; mayRecord: boolean };
 export type AdoptionInstalled = { repository: string; packageName: string; manifestDigest: string; templateDigest: string; main: string };
@@ -411,10 +386,7 @@ export type AdoptionPlan = {
 export type AdoptionGate = { event: string; status: "current" | "changed" };
 export type AdoptionReceipt = { path: string; digest: string; event: string };
 export type AdoptionReadback = { main: string; event: string; digest: string | null };
-export type AdoptionOutcome = {
-  scope: "owned-examples-composition-rehearsal"; card: AdoptionReviewCard; evidence: AdoptionEvidence;
-  plan: AdoptionPlan; gate: AdoptionGate; receipt: AdoptionReceipt | null; readback: AdoptionReadback;
-};
+export type AdoptionOutcome = AdoptionReceipt | { disposition: AdoptionPlan["disposition"]; finding: string };
 
 export type SystemCandidateCard = {
   id: string; title: string; usual: string; workingEvent: string; deltaId: string;
@@ -440,11 +412,7 @@ export type SystemCandidatePlan = { decision: SystemCandidateDecision; record: b
 export type SystemCandidateGate = { current: boolean; event: string; main: string };
 export type SystemCandidateReceipt = { path: string; digest: string; coordinate: string; event: string };
 export type SystemCandidateReadback = { event: string; main: string; artifactDigest: string | null };
-export type SystemCandidateOutcome = {
-  scope: "owned-system-template-conflict-review"; card: SystemCandidateCard; frontier: SystemCandidateFrontier;
-  preview: SystemCandidatePreview; plan: SystemCandidatePlan; gate: SystemCandidateGate;
-  receipt: SystemCandidateReceipt | null; readback: SystemCandidateReadback;
-};
+export type SystemCandidateOutcome = SystemCandidateReceipt | { decision: SystemCandidateDecision; finding: string };
 
 export type ScaffoldKind = "react" | "react-site" | "svelte" | "svelte-site" | "stateless" | "agentic" |
   "package" | "skill" | "content" | "web-client" | "terminal-client" | "native-client";
@@ -457,10 +425,7 @@ export type ScaffoldPlan = {
 export type ScaffoldDraftUnit = { target: string; kind: ScaffoldKind; files: string[]; manifestDigest: string | null; entry: string | null; portableEntry: string | null; hostAbi: string | null; authority: string[]; nativeTests: string[] };
 export type ScaffoldReceipt = { commandId: string; draft: string; publication: "unchanged"; runtime: "unchanged"; units: ScaffoldDraftUnit[] };
 export type ScaffoldReadback = { main: string; draft: string; units: ScaffoldDraftUnit[] };
-export type ScaffoldOutcome = {
-  scope: "owned-scaffold-draft"; card: ScaffoldCard; options: ScaffoldOptions; plan: ScaffoldPlan;
-  receipt: ScaffoldReceipt | null; readback: ScaffoldReadback;
-};
+export type ScaffoldOutcome = ScaffoldReceipt | { disposition: ScaffoldPlan["disposition"]; finding: string };
 
 export type LocalMethodKind = "inspect-counts" | "compare-template" | "verify-ownership" | "confirm-state";
 export type LocalMethodCard = { id: string; title: string; method: LocalMethodKind; edition: "current" | "retired" };
@@ -477,10 +442,7 @@ export type LocalMethodReport = {
   channel: string; transport: string; invocation: string; method: LocalMethodKind;
   outcome: "success" | "error"; detail: string; executed: number; start: number; terminal: number;
 };
-export type LocalMethodOutcome = {
-  scope: "owned-local-method-exchange"; card: LocalMethodCard; evidence: LocalMethodEvidence; plan: LocalMethodPlan;
-  attempt: LocalMethodAttempt | null; terminal: LocalMethodReport | null;
-};
+export type LocalMethodOutcome = LocalMethodReport | { action: LocalMethodPlan["action"]; finding: string };
 
 export type TerminalRepairApp = {
   id: string;
@@ -543,16 +505,7 @@ export type TerminalRepairPlan = {
   reason: string;
 };
 
-export type TerminalRepairReport = {
-  app: TerminalRepairApp;
-  initial: TerminalRepairCheck;
-  plans: TerminalRepairPlan[];
-  applied: TerminalRepairApplied[];
-  final: TerminalRepairCheck | null;
-  artifact: TerminalRepairArtifact | null;
-  outcome: "verified" | "already-ready" | "hold-edit" | "hold-test" | "hold-moved" | "blocked";
-  explanation: string;
-};
+export type TerminalRepairReport = { artifact: TerminalRepairArtifact | null; outcome: "verified" | "already-ready" | "hold-edit" | "hold-test" | "hold-moved" | "blocked"; explanation: string };
 
 export type { IntentReport } from "./discoverScopedIntent/types.js";
 export type { BoardMigrationOutcome } from "./reviewBoardMigration/types.js";

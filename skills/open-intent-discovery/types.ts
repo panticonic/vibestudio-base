@@ -8,5 +8,4 @@ export type IntentObservation={methodId:string;scope:string;status:"observed"|"m
   details:string[];digest:string|null};
 export type IntentOutcome={status:"observed"|"partial"|"unavailable";summary:string};
 export type IntentNote={path:string;digest:string};
-export type IntentReport={notice:IntentNotice;selection:IntentCapabilitySelection;capabilities:IntentDescription[];plan:IntentPlan;
-  evidence:IntentObservation[];outcome:IntentOutcome;handoff:IntentNote|null};
+export type IntentReport={outcome:IntentOutcome;handoff:IntentNote|null};

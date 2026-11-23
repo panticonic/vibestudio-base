@@ -1,5 +1,6 @@
 import {nativeIntentHandoff} from "natlang:services";
-import type {IntentNote,IntentReport} from "./types.js";
-export default async function stageIntentNote(report:IntentReport):Promise<IntentNote|null>{
- return nativeIntentHandoff.stage(report);
+import type {IntentNote,IntentOutcome} from "./types.js";
+/** Retain the conclusion against native observations already owned by this operation. */
+export default async function stageIntentNote(outcome:IntentOutcome):Promise<IntentNote|null>{
+ return nativeIntentHandoff.stage(outcome);
 }
