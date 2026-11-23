@@ -1,4 +1,5 @@
 import { web } from "@workspace/runtime";
+import { WEB_READ_DEFAULT_LIMIT, WEB_READ_MAX_LIMIT } from "@workspace/web-core/contract";
 
 type AssignedResearchRequest = {
   goal: string;
@@ -16,13 +17,8 @@ export function bindAssignedResearch(
   transport: Pick<typeof web, "fetch" | "read"> = web,
 ) {
   const request = structuredClone(input);
-  const assigned = [...request.sources];
-  if (
-    !assigned.length ||
-    assigned.length > 3 ||
-    new Set(assigned).size !== assigned.length
-  )
-    throw new Error("Assign one to three distinct public URLs");
+  const assigned = new Set(request.sources);
+  if (!assigned.size) throw new Error("Assign at least one public URL");
   for (const url of assigned) {
     const parsed = new URL(url);
     if (
@@ -34,8 +30,6 @@ export function bindAssignedResearch(
   }
 
   const fetched = new Map<string, FetchResult>();
-  let next = 0;
-  let pending = false;
   return {
     request,
     services: {
@@ -44,35 +38,21 @@ export function bindAssignedResearch(
           throw new Error("Search is outside this assigned source list");
         },
         async fetch(options: FetchInput): Promise<FetchResult> {
-          if (
-            pending ||
-            assigned[next] !== options.url ||
-            options.session !== "public"
-          )
-            throw new Error("Read only the next assigned public URL");
-          pending = true;
-          next++;
-          try {
-            const receipt = await transport.fetch(options);
-            fetched.set(receipt.digest, receipt);
-            return receipt;
-          } finally {
-            pending = false;
-          }
+          if (!assigned.has(options.url) || (options.session ?? "public") !== "public")
+            throw new Error("Read only assigned public URLs with the public session");
+          const receipt = await transport.fetch({ ...options, session: "public" });
+          if (receipt.session !== "public") throw new Error("Assigned source retrieval left the public session");
+          fetched.set(receipt.digest, receipt);
+          return receipt;
         },
         async read(options: ReadInput): ReturnType<typeof web.read> {
           const receipt = fetched.get(options.digest);
-          if (
-            !receipt ||
-            !receipt.truncated ||
-            options.offset !== receipt.headBytes ||
-            !options.limit ||
-            options.limit > 9000
-          )
-            throw new Error(
-              "Continue only the assigned public page at its returned offset",
-            );
-          return await transport.read(options);
+          const offset = options.offset ?? 0;
+          const limit = options.limit ?? WEB_READ_DEFAULT_LIMIT;
+          if (!receipt || !Number.isSafeInteger(offset) || offset < 0 || offset > receipt.size ||
+              !Number.isSafeInteger(limit) || limit < 1 || limit > WEB_READ_MAX_LIMIT)
+            throw new Error("Read a bounded byte range of an assigned page fetched in this invocation");
+          return await transport.read({ ...options, offset, limit });
         },
       },
     },

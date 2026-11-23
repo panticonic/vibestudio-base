@@ -1,4 +1,4 @@
-/** Read the pages that may answer the question: the user's own sources, or the first search results. Exact I/O only. */
+/** Read explicit public source candidates chosen by the semantic research hierarchy. Exact I/O only. */
 import { web } from "natlang:services";
 
 /** A fetched page, as many characters of it as the passages will use. */
