@@ -2,9 +2,8 @@ import {readFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import path from "node:path";
 import {expect,it,vi} from "vitest";
-import {pathToFileURL} from "node:url";
-// Load the real SDK directly; instrumenting its bundled compiler would dominate this fixture.
-const natlang=await import(/* @vite-ignore */ pathToFileURL(path.resolve(import.meta.dirname,"../../packages/natlang/vendor/workerd/natlang-workerd.js")).href);
+// Node24 loads this ESM SDK directly; Vite must not instrument its bundled compiler.
+const natlang=createRequire(import.meta.url)(path.resolve(import.meta.dirname,"../../packages/natlang/vendor/workerd/natlang-workerd.js"));
 // Execute the actual typed composition with recorded native/policy boundaries.
 // The caller supplies judgments; these tests never invoke a model.
 const {transformSync}=createRequire(path.join(process.cwd(),"package.json"))("esbuild");
