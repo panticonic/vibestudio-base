@@ -21,7 +21,7 @@ const deferred = () => {
 // Bundle the actual SDK and receiver into separate confined VMs. Only the
 // declared service client is endowed in the caller: no fetch or WebSocket.
 // The receiver's native connection is the explicit test boundary, not Chrome.
-async function fixture() {
+async function fixture(actualRunner = false) {
   const calls: string[] = [],
     handlers = new Map<string, (value: unknown) => void>();
   const native = {
@@ -45,6 +45,8 @@ async function fixture() {
   };
   const globals: any = {
     console,
+    AbortController,
+    DOMException,
     crypto: globalThis.crypto,
     setInterval,
     clearInterval,
@@ -66,7 +68,7 @@ async function fixture() {
         path: "profiles-store",
         namespace: "bounded",
       }));
-      b.onResolve({ filter: /\/run\.js$/ }, () => ({
+      b.onResolve({ filter: /\/run\.js$/ }, () => actualRunner ? undefined : ({
         path: "run",
         namespace: "bounded",
       }));
@@ -123,7 +125,10 @@ async function fixture() {
   const client = vm.createContext({ ...globals, __invoke: invoke });
   vm.runInContext(
     await bundle(
-      'import "./packages/testkit/src/driver.ts"; export * from "./packages/testkit/src/cdp.ts"; export * from "./packages/testkit/src/profile.ts"',
+      'import "./packages/testkit/src/driver.ts"; export * from "./packages/testkit/src/cdp.ts"; export * from "./packages/testkit/src/profile.ts"' +
+        (actualRunner
+          ? '; export {suite,runSuites} from "./packages/testkit/src/run.ts"'
+          : ""),
       "SDK",
     ),
     client,
@@ -302,6 +307,41 @@ describe("authorized raw panel CDP", () => {
     await result;
     await closing;
     expect(finished).toBe(true);
+  });
+  it("joins a late raw browser session after real runner cancellation before publishing", async () => {
+    const f = await fixture(true),
+      opened = deferred();
+    f.client.__invoke = async (method: string, args: any[]) => {
+      const result = await f.worker[method](...args);
+      if (method === "cdpOpen") await opened.promise;
+      return result;
+    };
+    let finished = false,
+      continued = false;
+    const pending = f.sdk
+      .runSuites(
+        f.sdk.suite("late raw CDP", { failOnSupervision: false }).test(
+          "owned",
+          async () => {
+            await f.sdk.rawCdpSession({ id: "allowed", kind: "browser" });
+            continued = true;
+          },
+          { timeoutMs: 2 },
+        ),
+      )
+      .then((result: any) => {
+        finished = true;
+        return result;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(finished).toBe(false);
+    expect((await f.worker.ping()).sessions).toBe(1);
+    opened.resolve();
+    const result = await pending;
+    expect(result.results[0].status).toBe("timeout");
+    expect(continued).toBe(false);
+    expect((await f.worker.ping()).sessions).toBe(0);
+    expect(f.calls.at(-1)).toBe("native-close");
   });
   it("registers pending acquisition with the active test context", async () => {
     const f = await fixture();
