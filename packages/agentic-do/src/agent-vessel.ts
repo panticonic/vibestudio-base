@@ -3546,8 +3546,11 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     contextId: string;
     definition: unknown;
     appVersion: string;
+    /** Host-owned disposable test workspaces must not run ambient defaults. */
+    quiesce?: boolean;
   }): Promise<MissionRecord> {
-    const definition = WorkspaceAutomationSchema.parse(input.definition);
+    const parsed = WorkspaceAutomationSchema.parse(input.definition);
+    const definition = input.quiesce ? { ...parsed, state: "paused" as const } : parsed;
     if (
       definition.source !== this.env["WORKER_SOURCE"] ||
       definition.className !== this.env["WORKER_CLASS_NAME"]
@@ -3557,6 +3560,16 @@ export abstract class AgentVesselBase extends NativeChannelOwner<NativeProductCh
     const target = await this.automationServiceTarget(this.rpc);
     const existing = await this.rpc.call(target, missionsRpcMethods["getDefault"], [input.id]);
     const reconcileHost = async (mission: MissionRecord, existed: boolean) => {
+      if (input.quiesce) {
+        // Only this declared default is touched, never scenario-created missions.
+        // Native cancel joins any previously started execution before return.
+        if (mission.state === "active")
+          await this.rpc.call(target, missionsRpcMethods["cancel"], [mission.missionId]);
+        const observed = await this.rpc.call(target, missionsRpcMethods["get"], [mission.missionId]);
+        if (!observed || observed.state === "active" || observed.nextRunAt !== undefined)
+          throw new Error("Default automation did not quiesce");
+        mission = observed;
+      }
       await reconcileDefaultAutomationHost({
         id: input.id,
         appVersion: input.appVersion,
