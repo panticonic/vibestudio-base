@@ -615,3 +615,5 @@ export * from "./workOnProviderHandoffGoal/types.js";
 
 export type ResearchRevision = { research: ResearchGoalReport; revision: WorkspaceEditReport | null };
 export type WorkspaceAnswer = { answer: string; citations: { path: string; version: string; quote: string }[]; unresolved: string[] };
+
+export type { NewsEvidenceResult } from "./workOnNewsEvidenceGoal/types.js";
