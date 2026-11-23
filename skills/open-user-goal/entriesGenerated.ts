@@ -431,7 +431,7 @@ export default {
     "additionalArguments": {}
   },
   "native-image": {
-    "program": "skills/open-user-goal/generateOwnedIllustration.nl",
+    "program": "skills/open-user-goal/generateOwnedIllustration.ts",
     "callable": "generateOwnedIllustration",
     "resultType": "OwnedIllustrationResult",
     "skill": "nativeImage",
@@ -511,7 +511,7 @@ export default {
     "additionalArguments": {}
   },
   "development-audit": {
-    "program": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+    "program": "skills/open-user-goal/reviewDevelopmentAudit.ts",
     "callable": "reviewDevelopmentAudit",
     "resultType": "DevelopmentAuditFindings",
     "skill": "developmentAudit",
@@ -691,7 +691,7 @@ export default {
     "additionalArguments": {}
   },
   "compound-recovery": {
-    "program": "skills/open-user-goal/recoverOperatingHandoff.nl",
+    "program": "skills/open-user-goal/recoverOperatingHandoff.ts",
     "callable": "recoverOperatingHandoff",
     "resultType": "RecoveryHandoffOutcome",
     "skill": "compoundRecovery",
@@ -801,7 +801,7 @@ export default {
     "additionalArguments": {}
   },
   "preparedContentProject": {
-    "program": "skills/open-user-goal/prepareContentProject.nl",
+    "program": "skills/open-user-goal/prepareContentProject.ts",
     "callable": "prepareContentProject",
     "resultType": "ContentProjectResult",
     "skill": "preparedContentProject",

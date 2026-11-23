@@ -487,9 +487,7 @@
     "logFollowerHandoff": [],
     "ptyContinuityEvidence": [],
     "ptyContinuityHandoff": [],
-    "developmentAuditEvidence": [
-      "reviewDevelopmentAudit/inspectDevelopmentRuns/readDevelopmentRun.nl"
-    ],
+    "developmentAuditEvidence": [],
     "developmentAuditKeep": [],
     "contentArchiveEvidence": [],
     "contentArchiveChange": [],
