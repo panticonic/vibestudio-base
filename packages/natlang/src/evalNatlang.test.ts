@@ -3,28 +3,57 @@ import { LOCAL_PROVIDER_ID } from "@workspace/model-catalog/catalog";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
 import { SERVICE_CATALOG } from "@workspace/natlang-services";
 import { createEvalNatlang } from "./evalNatlang.js";
-import { EXECUTOR_ENTRY, fakeRpc, testNewFunction, toolCallMessage, type FakeServices } from "./testSupport.js";
+import {
+  EXECUTOR_ENTRY,
+  fakeRpc,
+  testNewFunction,
+  toolCallMessage,
+  type FakeServices,
+} from "./testSupport.js";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
   ...args: string[]
 ) => (...values: unknown[]) => Promise<unknown>;
 
-const owner = { kind: "agent" as const, objectKey: "agent:test", agentRef: "agent-1", channelId: "chan-1" };
+const owner = {
+  kind: "agent" as const,
+  objectKey: "agent:test",
+  agentRef: "agent-1",
+  channelId: "chan-1",
+};
 
 /** The text of the last tool result a model turn was shown. */
 const lastToolText = (context: any): string =>
-  JSON.stringify(context.messages.filter((message: any) => message.role === "toolResult").at(-1)?.content ?? "");
+  JSON.stringify(
+    context.messages.filter((message: any) => message.role === "toolResult").at(-1)?.content ?? ""
+  );
 
-function setup(services: FakeServices, extra: { fs?: unknown; bindings?: Record<string, unknown> } = {}) {
+function setup(
+  services: FakeServices,
+  extra: { fs?: unknown; bindings?: Record<string, unknown> } = {}
+) {
   const { rpc, calls, gate } = fakeRpc(services);
+  const emergency: unknown[] = [];
   const natlang = createEvalNatlang({
     newFunction: testNewFunction(),
+    retainCaptureEvidence: async (evidence) => {
+      emergency.push(structuredClone(evidence));
+    },
     bindings: { rpc, fs: extra.fs ?? {}, ...extra.bindings },
     owner,
   });
   /** Lower, compile and run one cell the way the eval engine does. */
-  async function cell(source: string, scopeValues: Record<string, unknown> = {}, signal = new AbortController().signal) {
-    const lowered = natlang.lowerCell(source, { fileName: "cell.ts", jsx: false, ambientNames: ["fs", "scope"], scopeValues });
+  async function cell(
+    source: string,
+    scopeValues: Record<string, unknown> = {},
+    signal = new AbortController().signal
+  ) {
+    const lowered = natlang.lowerCell(source, {
+      fileName: "cell.ts",
+      jsx: false,
+      ambientNames: ["fs", "scope"],
+      scopeValues,
+    });
     expect(lowered.diagnostics).toEqual([]);
     const names = ["nl", "natlang", "__natlang", ...Object.keys(scopeValues)];
     const run = new AsyncFunction(...names, lowered.code);
@@ -33,7 +62,12 @@ function setup(services: FakeServices, extra: { fs?: unknown; bindings?: Record<
       async () => {
         gate.open = true;
         try {
-          return await run(natlang.ambient.nl, natlang.ambient.natlang, natlang.ambient.__natlang, ...Object.values(scopeValues));
+          return await run(
+            natlang.ambient.nl,
+            natlang.ambient.natlang,
+            natlang.ambient.__natlang,
+            ...Object.values(scopeValues)
+          );
         } finally {
           gate.open = false;
         }
@@ -41,14 +75,23 @@ function setup(services: FakeServices, extra: { fs?: unknown; bindings?: Record<
       { runId: "run-1", signal }
     );
   }
-  return { natlang, cell, calls, rpc, gate };
+  return { natlang, cell, calls, rpc, gate, emergency };
 }
 
 describe("createEvalNatlang", () => {
   it("lowers a cell that uses nl and leaves one that does not alone", () => {
     const { natlang } = setup({});
-    const plain = natlang.lowerCell("return 1 + 1;", { fileName: "cell.ts", jsx: false, ambientNames: [], scopeValues: {} });
-    expect(plain).toMatchObject({ usesNl: false, code: "return 1 + 1;", diagnostics: [] });
+    const plain = natlang.lowerCell("return 1 + 1;", {
+      fileName: "cell.ts",
+      jsx: false,
+      ambientNames: [],
+      scopeValues: {},
+    });
+    expect(plain).toMatchObject({
+      usesNl: false,
+      code: "return 1 + 1;",
+      diagnostics: [],
+    });
     const lowered = natlang.lowerCell("return await nl<string>`Greet ${name}.`(name);", {
       fileName: "cell.ts",
       jsx: false,
@@ -68,7 +111,11 @@ describe("createEvalNatlang", () => {
       scopeValues: {},
     });
     expect(lowered.diagnostics.length).toBeGreaterThan(0);
-    expect(lowered.diagnostics[0]).toMatchObject({ severity: "error", line: expect.any(Number), column: expect.any(Number) });
+    expect(lowered.diagnostics[0]).toMatchObject({
+      severity: "error",
+      line: expect.any(Number),
+      column: expect.any(Number),
+    });
     expect(lowered.code).toContain("nl`Greet.`");
   });
 
@@ -78,15 +125,28 @@ describe("createEvalNatlang", () => {
     const { cell } = setup({
       turn: async (input) => {
         turns.push(input);
-        return toolCallMessage("return_result", { status: "success", value: "hello, Ada" });
+        return toolCallMessage("return_result", {
+          status: "success",
+          value: "hello, Ada",
+        });
       },
-      records: { record: (input) => (records.push(input), { recordId: input.record.call_id }) },
+      records: {
+        begin: async () => {},
+        checkpoint: async () => {},
+        appendExchange: async () => {},
+        record: (input) => (records.push(input), { recordId: input.record.call_id }),
+      },
     });
-    const { value, calls } = await cell("return await nl<string>`Greet ${name} warmly.`(name);", { name: "Ada" });
+    const { value, calls } = await cell("return await nl<string>`Greet ${name} warmly.`(name);", {
+      name: "Ada",
+    });
     expect(value).toBe("hello, Ada");
     // The turn ran on the resolved executor ref, rendered as a Pi context with tools.
     expect(turns).toHaveLength(1);
-    expect(turns[0]).toMatchObject({ model: EXECUTOR_ENTRY.ref, context: { tools: expect.any(Array) } });
+    expect(turns[0]).toMatchObject({
+      model: EXECUTOR_ENTRY.ref,
+      context: { tools: expect.any(Array) },
+    });
     expect(turns[0].context.tools.map((tool: any) => tool.name)).toContain("return_result");
     // The cell reports its root call, with the record the records service stored.
     expect(calls).toHaveLength(1);
@@ -110,10 +170,15 @@ describe("createEvalNatlang", () => {
         turn: async (input) => {
           turn += 1;
           if (turn === 1) {
-            return toolCallMessage("eval", { code: "return [typeof serverLog, typeof gad, typeof fs, typeof credentials].join();" });
+            return toolCallMessage("eval", {
+              code: "return [typeof serverLog, typeof gad, typeof fs, typeof credentials].join();",
+            });
           }
           second = input.context;
-          return toolCallMessage("return_result", { status: "success", value: "ok" });
+          return toolCallMessage("return_result", {
+            status: "success",
+            value: "ok",
+          });
         },
       },
       { bindings: { fs: {}, gad: {}, credentials: {}, services: {} } }
@@ -124,18 +189,27 @@ describe("createEvalNatlang", () => {
 
   it("loads a workspace program that gets exactly its declared services", async () => {
     const serverLogMethods = SERVICE_CATALOG.find((entry) => entry.name === "serverLog")!.methods;
-    const serverLog = Object.fromEntries(serverLogMethods.map((method) => [method.name, async () => "log"]));
+    const serverLog = Object.fromEntries(
+      serverLogMethods.map((method) => [method.name, async () => "log"])
+    );
     const files: Record<string, string> = {
-      "skills/logs/probe.nl": "---\nargs: {}\nreturns: string\n---\nReport which services you can use.\n",
-      "skills/logs/services.d.ts": "declare module 'natlang:services' { export const serverLog: unknown; }",
+      "skills/logs/probe.nl":
+        "---\nargs: {}\nreturns: string\n---\nReport which services you can use.\n",
+      "skills/logs/services.d.ts":
+        "declare module 'natlang:services' { export const serverLog: unknown; }",
     };
     const memory = {
       readFile: async (path: string) => files[path]!,
       readdir: async (path: string) =>
         Object.keys(files)
           .filter((file) => file.startsWith(`${path}/`))
-          .map((file) => ({ name: file.slice(path.length + 1), isDirectory: () => false })),
-      stat: async (path: string) => ({ isDirectory: () => !path.endsWith(".nl") }),
+          .map((file) => ({
+            name: file.slice(path.length + 1),
+            isDirectory: () => false,
+          })),
+      stat: async (path: string) => ({
+        isDirectory: () => !path.endsWith(".nl"),
+      }),
     };
     let turn = 0;
     let shown: any;
@@ -144,15 +218,25 @@ describe("createEvalNatlang", () => {
         turn: async (input) => {
           turn += 1;
           if (turn === 1) {
-            return toolCallMessage("eval", { code: "return [typeof serverLog, typeof gad, typeof credentials].join();" });
+            return toolCallMessage("eval", {
+              code: "return [typeof serverLog, typeof gad, typeof credentials].join();",
+            });
           }
           shown = input.context;
-          return toolCallMessage("return_result", { status: "success", value: "probed" });
+          return toolCallMessage("return_result", {
+            status: "success",
+            value: "probed",
+          });
         },
       },
-      { fs: memory, bindings: { services: { serverLog }, gad: {}, credentials: {} } }
+      {
+        fs: memory,
+        bindings: { services: { serverLog }, gad: {}, credentials: {} },
+      }
     );
-    const { value, calls } = await cell("const probe = await natlang.load('skills/logs/probe.nl');\nreturn await probe();");
+    const { value, calls } = await cell(
+      "const probe = await natlang.load('skills/logs/probe.nl');\nreturn await probe();"
+    );
     expect(value).toBe("probed");
     expect(calls.map((call) => call.name)).toEqual(["probe"]);
     // The program's call saw its declared service and neither of the eval's other bindings.
@@ -171,9 +255,15 @@ describe("createEvalNatlang", () => {
           record: (input) => (recorded.push(input.record), { recordId: input.record.call_id }),
         },
       },
-      { fs: decisionProgramFiles({ "skills/logs/probe.nl": "---\nargs: {}\nreturns: string\n---\nSay ok.\n" }) }
+      {
+        fs: decisionProgramFiles({
+          "skills/logs/probe.nl": "---\nargs: {}\nreturns: string\n---\nSay ok.\n",
+        }),
+      }
     );
-    await cell("const probe = await natlang.load('skills/logs/probe.nl');\nawait probe();\nreturn await nl<string>`Say ok.`();");
+    await cell(
+      "const probe = await natlang.load('skills/logs/probe.nl');\nawait probe();\nreturn await nl<string>`Say ok.`();"
+    );
     const program = recorded.filter((record) => record.definition.name === "probe");
     const inline = recorded.filter((record) => record.definition.name !== "probe");
     expect(program.map((record) => record.program_root)).toEqual(["skills/logs"]);
@@ -187,23 +277,33 @@ describe("createEvalNatlang", () => {
     readdir: async (path: string) =>
       Object.keys(files)
         .filter((file) => file.startsWith(`${path}/`))
-        .map((file) => ({ name: file.slice(path.length + 1), isDirectory: () => false })),
-    stat: async (path: string) => ({ isDirectory: () => !path.endsWith(".nl") }),
+        .map((file) => ({
+          name: file.slice(path.length + 1),
+          isDirectory: () => false,
+        })),
+    stat: async (path: string) => ({
+      isDirectory: () => !path.endsWith(".nl"),
+    }),
   });
 
   /** A workspace program with one `readout: decision` function, `skills/triage/judge.nl`. */
   const decisionProgram = () => {
     const files: Record<string, string> = {
       "skills/triage/judge.nl":
-        "---\nargs:\n  note: string\nreturns: '\"urgent\" | \"normal\"'\nreadout: decision\n---\nDecide whether note is urgent.\n",
+        '---\nargs:\n  note: string\nreturns: \'"urgent" | "normal"\'\nreadout: decision\n---\nDecide whether note is urgent.\n',
     };
     return {
       readFile: async (path: string) => files[path]!,
       readdir: async (path: string) =>
         Object.keys(files)
           .filter((file) => file.startsWith(`${path}/`))
-          .map((file) => ({ name: file.slice(path.length + 1), isDirectory: () => false })),
-      stat: async (path: string) => ({ isDirectory: () => !path.endsWith(".nl") }),
+          .map((file) => ({
+            name: file.slice(path.length + 1),
+            isDirectory: () => false,
+          })),
+      stat: async (path: string) => ({
+        isDirectory: () => !path.endsWith(".nl"),
+      }),
     };
   };
 
@@ -212,7 +312,13 @@ describe("createEvalNatlang", () => {
     let turns = 0;
     const { cell } = setup(
       {
-        turn: async () => (turns += 1, toolCallMessage("return_result", { status: "success", value: "normal" })),
+        turn: async () => (
+          (turns += 1),
+          toolCallMessage("return_result", {
+            status: "success",
+            value: "normal",
+          })
+        ),
         score: async (input) => (scored.push(input), [-0.2, -3]),
       },
       { fs: decisionProgram() }
@@ -223,16 +329,28 @@ describe("createEvalNatlang", () => {
     expect(value).toBe("urgent");
     expect(turns).toBe(0);
     expect(scored).toHaveLength(1);
-    expect(scored[0]).toMatchObject({ model: EXECUTOR_ENTRY.ref, candidates: [expect.any(String), expect.any(String)] });
+    expect(scored[0]).toMatchObject({
+      model: EXECUTOR_ENTRY.ref,
+      candidates: [expect.any(String), expect.any(String)],
+    });
     expect(scored[0].context.tools).toBeUndefined();
     expect(JSON.stringify(scored[0].context)).toContain("The site is down.");
     expect(calls).toMatchObject([{ name: "judge", outcome: "done" }]);
   });
 
-  it("falls back to the tool loop when the model cannot score", async () => {
+  it("generates an offered JSON decision when the model cannot score", async () => {
     let turns = 0;
     const { cell } = setup(
-      { turn: async () => (turns += 1, toolCallMessage("return_result", { status: "success", value: "normal" })) },
+      {
+        turn: async () => (
+          (turns += 1),
+          {
+            ...toolCallMessage("unused", {}),
+            content: [{ type: "text", text: '"normal"' }],
+            stopReason: "stop",
+          }
+        ),
+      },
       { fs: decisionProgram() }
     );
     const { value } = await cell(
@@ -249,11 +367,15 @@ describe("createEvalNatlang", () => {
       turn: (_input, signal) =>
         new Promise((_, reject) => {
           seen = signal;
-          signal?.addEventListener("abort", () => reject(signal.reason ?? new Error("aborted")), { once: true });
+          signal?.addEventListener("abort", () => reject(signal.reason ?? new Error("aborted")), {
+            once: true,
+          });
           queueMicrotask(() => controller.abort(new Error("stop requested")));
         }),
     });
-    await expect(cell("return await nl<string>`Wait.`();", {}, controller.signal)).rejects.toThrow();
+    await expect(
+      cell("return await nl<string>`Wait.`();", {}, controller.signal)
+    ).rejects.toThrow();
     expect(seen?.aborted).toBe(true);
   });
 
@@ -277,8 +399,20 @@ describe("createEvalNatlang", () => {
     const { natlang } = setup({
       records: {
         getCall: (input) => ({
-          record: { call_id: input.callId, inputs: {}, outcome: "done", detail: '"hi"', output: null },
-          summary: { call_id: input.callId, parent_call_id: null, definition_name: "greet", outcome: "done", model_id: "test:executor-small" },
+          record: {
+            call_id: input.callId,
+            inputs: {},
+            outcome: "done",
+            detail: '"hi"',
+            output: null,
+          },
+          summary: {
+            call_id: input.callId,
+            parent_call_id: null,
+            definition_name: "greet",
+            outcome: "done",
+            model_id: "test:executor-small",
+          },
           events:
             '{"kind":"model_request"}\n{"kind":"proposal","phase":"generated","turn":1,"text":"","calls":[]}\n' +
             '{"kind":"action","name":"return_result","arguments":{"status":"success","value":"hi"},"outcome":"completed","result_text":"done"}',
@@ -293,12 +427,27 @@ describe("createEvalNatlang", () => {
       name: "greet",
       outcome: "done",
       children: [],
-      turns: [{ turn: 1, actions: [{ tool: "return_result", outcome: "completed", result: "done" }] }],
+      turns: [
+        {
+          turn: 1,
+          actions: [{ tool: "return_result", outcome: "completed", result: "done" }],
+        },
+      ],
     });
     expect(trace).not.toHaveProperty("reason");
-    const raw = await (natlang.ambient.natlang as any).trace("call-9", { raw: true });
-    expect(raw).toMatchObject({ callId: "call-9", name: "greet", outcome: "done" });
-    expect(raw.events.map((event: any) => event.kind)).toEqual(["model_request", "proposal", "action"]);
+    const raw = await (natlang.ambient.natlang as any).trace("call-9", {
+      raw: true,
+    });
+    expect(raw).toMatchObject({
+      callId: "call-9",
+      name: "greet",
+      outcome: "done",
+    });
+    expect(raw.events.map((event: any) => event.kind)).toEqual([
+      "model_request",
+      "proposal",
+      "action",
+    ]);
   });
 
   it("describes nl and natlang in help()", () => {
@@ -320,20 +469,29 @@ describe("serving a local model", () => {
   });
 
   it("asks a local model for guided generation and the call's seed, and a hosted model for neither", async () => {
-    for (const [entry, local] of [[LOCAL_ENTRY, true], [EXECUTOR_ENTRY, false]] as const) {
+    for (const [entry, local] of [
+      [LOCAL_ENTRY, true],
+      [EXECUTOR_ENTRY, false],
+    ] as const) {
       const turns: any[] = [];
       const { cell } = setup({
         roleResolution: { model: entry },
         turn: async (input) => {
           turns.push(input);
-          return toolCallMessage("return_result", { status: "success", value: "ok" });
+          return toolCallMessage("return_result", {
+            status: "success",
+            value: "ok",
+          });
         },
       });
       await cell("return await nl<string>`Say ok.`();");
       expect(turns).toHaveLength(1);
       expect(turns[0].model).toBe(entry.ref);
       if (local) {
-        expect(turns[0].options.samplingParams).toMatchObject({ guidance: true, seed: expect.any(Number) });
+        expect(turns[0].options.samplingParams).toMatchObject({
+          guidance: true,
+          seed: expect.any(Number),
+        });
       } else {
         expect(turns[0].options?.samplingParams).toBeUndefined();
       }
@@ -341,39 +499,137 @@ describe("serving a local model", () => {
   });
 });
 
-
 describe("owned eval model exchange capture", () => {
   it("captures only an explicitly opted-in run with actual invocation and gateway context", async () => {
     const records: any[] = [];
     const { cell } = setup({
-      turn: async () => toolCallMessage("return_result", { status: "success", value: "observed" }),
-      records: { record: (input) => (records.push(input), { recordId: input.record.call_id }) },
+      turn: async () =>
+        toolCallMessage("return_result", {
+          status: "success",
+          value: "observed",
+        }),
+      records: {
+        begin: async () => {},
+        checkpoint: async () => {},
+        appendExchange: async () => {},
+        record: (input) => (records.push(input), { recordId: input.record.call_id }),
+      },
     });
-    await cell('return await nl<string>`Return observed.`();');
+    await cell("return await nl<string>`Return observed.`();");
     expect(records[0].record.model_turns).toBeUndefined();
-    await cell('natlang.captureModelTurns(); return await nl<string>`Return observed.`();');
+    await cell("natlang.captureModelTurns(); return await nl<string>`Return observed.`();");
     const record = records[1].record;
     expect(record.model_turns).toHaveLength(1);
-    expect(record.model_turns[0]).toMatchObject({schema:"natlang.model-exchange/1",kind:"generation",
-      request:{invocation_id:record.call_id},reply:{raw_response:{vibestudio:{model:EXECUTOR_ENTRY.ref,context:expect.any(Object),response:expect.any(Object)}}}});
-    await cell('return await nl<string>`Return observed.`();');
+    expect(record.model_turns[0]).toMatchObject({
+      schema: "natlang.model-exchange/1",
+      kind: "generation",
+      request: { invocation_id: record.call_id },
+      reply: {
+        raw_response: {
+          vibestudio: {
+            model: EXECUTOR_ENTRY.ref,
+            context: expect.any(Object),
+            response: expect.any(Object),
+          },
+        },
+      },
+    });
+    await cell("return await nl<string>`Return observed.`();");
     expect(records[2].record.model_turns).toBeUndefined();
   });
 });
 
-
 describe("owned teacher executor selection", () => {
   it("runs root and nested default executor calls on the actual selected teacher and resets afterward", async () => {
-    const teacher = makeTestCatalogEntry({ ref:"test:teacher",id:"teacher",name:"teacher",provider:"test",baseUrl:"http://test.invalid/v1" });
+    const teacher = makeTestCatalogEntry({
+      ref: "test:teacher",
+      id: "teacher",
+      name: "teacher",
+      provider: "test",
+      baseUrl: "http://test.invalid/v1",
+    });
     const asked: string[] = [];
-    const { cell } = setup({ models:[teacher], turn:async input=>{
-      asked.push(input.model);
-      return asked.length===1 ? toolCallMessage("eval",{code:'return await nl<string>`Return child.`();',finish:true}) :
-        toolCallMessage("return_result",{status:"success",value:"child"});
-    }});
-    const {value} = await cell('natlang.captureModelTurns({executorModel:"test:teacher"}); return await nl<string>`Call the child.`();');
-    expect(value).toBe("child"); expect(asked).toEqual([teacher.ref,teacher.ref]);
-    await cell('return await nl<string>`Return child.`();');
+    const { cell } = setup({
+      models: [teacher],
+      turn: async (input) => {
+        asked.push(input.model);
+        return asked.length === 1
+          ? toolCallMessage("eval", {
+              code: "return await nl<string>`Return child.`();",
+              finish: true,
+            })
+          : toolCallMessage("return_result", {
+              status: "success",
+              value: "child",
+            });
+      },
+    });
+    const { value } = await cell(
+      'natlang.captureModelTurns({executorModel:"test:teacher"}); return await nl<string>`Call the child.`();'
+    );
+    expect(value).toBe("child");
+    expect(asked).toEqual([teacher.ref, teacher.ref]);
+    await cell("return await nl<string>`Return child.`();");
     expect(asked.at(-1)).toBe(EXECUTOR_ENTRY.ref);
   });
+});
+
+it("detaches a storage-failed cell and captures the next cell with the same runId", async () => {
+  let failOnce = true;
+  const { cell, emergency } = setup({
+    turn: async () =>
+      toolCallMessage("return_result", {
+        status: "success",
+        value: "observed",
+      }),
+    records: {
+      begin: async () => {},
+      checkpoint: async () => {},
+      appendExchange: async () => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("first cell storage unavailable");
+        }
+      },
+      record: (input) => ({ recordId: input.record.call_id }),
+    },
+  });
+  await expect(
+    cell("natlang.captureModelTurns(); return await nl<string>`Return observed.`();")
+  ).rejects.toThrow("storage unavailable");
+  expect(emergency).toMatchObject([
+    {
+      schema: "natlang.pending-model-exchanges/1",
+      runId: "run-1",
+      calls: expect.any(Array),
+    },
+  ]);
+  const next = await cell(
+    "natlang.captureModelTurns(); return await nl<string>`Return observed.`();"
+  );
+  expect(next.value).toBe("observed");
+});
+
+it("blocks explicit alternate model calls inside a teacher capture before the gateway", async () => {
+  const teacher = makeTestCatalogEntry({
+    ref: "test:teacher",
+    id: "teacher",
+    name: "teacher",
+    provider: "test",
+    baseUrl: "http://test.invalid/v1",
+  });
+  const requested: string[] = [];
+  const { cell } = setup({
+    models: [teacher],
+    turn: async (input) => {
+      requested.push(input.model);
+      return toolCallMessage("return_result", { status: "success", value: "wrong model" });
+    },
+  });
+  await expect(
+    cell(
+      `natlang.captureModelTurns({executorModel:"test:teacher"}); return await nl<string>\`Do the work.\`.on({model:${JSON.stringify(EXECUTOR_ENTRY.ref)}})();`
+    )
+  ).rejects.toThrow("pinned to test:teacher");
+  expect(requested).toEqual([]);
 });

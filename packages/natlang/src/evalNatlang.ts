@@ -64,17 +64,31 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
   const gateway = createModelGatewayClient(rpc);
   const records = createNatlangRecordsClient(rpc);
   const directory = new ModelDirectory(rpc);
-  const store = new RecordsStore(records, host.owner, (message) => console.error(message));
-  const { executor, executorIdentity, pinExecutor: nameExecutor, models } = modelsFor({
+  const retainEvidence = host.retainCaptureEvidence?.bind(host);
+  const store = new RecordsStore(
+    records,
+    host.owner,
+    (message) => console.error(message),
+    retainEvidence
+  );
+  const {
+    executor,
+    executorIdentity,
+    pinExecutor: nameExecutor,
+    models,
+  } = modelsFor({
     gateway,
     captureModelTurns: () => store.capturesModelTurns,
     executorModel: () => store.capturedExecutorModel,
-    recordExchange: (exchange) => store.captureModelExchange(exchange),
+    prepareCapture: (request) => store.prepareModelExchange(request),
     directory,
     turnPrefix: crypto.randomUUID().slice(0, 8),
   });
   const platform: Platform = {
-    ...core.workerdPlatform({ realm: confinedRealm(host.newFunction), callStore: () => store }),
+    ...core.workerdPlatform({
+      realm: confinedRealm(host.newFunction),
+      callStore: () => store,
+    }),
     runFolderBash: folderBash,
   };
   const runtime = core.createNatlangRuntime({
@@ -115,7 +129,12 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     if ("error" in outcome) {
       failure = callFailure(outcome.error, run?.calls);
       if (failure instanceof NatlangCallFailure && failure.callId) {
-        store.annotate(failure.callId, FAILURE_ANNOTATION, { reason: failure.reason }, "vibestudio");
+        store.annotate(
+          failure.callId,
+          FAILURE_ANNOTATION,
+          { reason: failure.reason },
+          "vibestudio"
+        );
       }
     }
     await run?.live?.drain();
@@ -161,16 +180,25 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     }
   };
 
-  const loader = new ProgramLoader({ platform, fs, bindings: host.bindings, runTask });
+  const loader = new ProgramLoader({
+    platform,
+    fs,
+    bindings: host.bindings,
+    runTask,
+  });
 
   const natlang = Object.freeze({
     /** Explicitly record actual model exchanges for this eval run only; normal calls keep their existing retention. */
     captureModelTurns: (options?: { executorModel?: string }) => {
-      if (!active || active.prepared) throw new Error("enable model turn capture before the first natlang call of the executing eval run");
+      if (!active || active.prepared)
+        throw new Error(
+          "enable model turn capture before the first natlang call of the executing eval run"
+        );
       store.enableModelTurnCapture(options);
     },
     /** Load a workspace natlang program (a `.nl` file, a `.ts` module, or a folder). */
-    load: (path: string, options?: { services?: Record<string, object> }) => loader.load(path, options),
+    load: (path: string, options?: { services?: Record<string, object> }) =>
+      loader.load(path, options),
     /** A workspace program's functions with their typed signatures (from the compilation `load` runs). */
     describe: (path: string) => loader.describe(path),
     /**
@@ -193,8 +221,16 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
           annotations: detail.annotations,
         };
       }
-      const children = await records.listCalls({ parentCallId: callId, limit: CHILDREN_LISTED });
-      return traceDigest({ detail, events, children, value: (hash) => records.getValue(hash) });
+      const children = await records.listCalls({
+        parentCallId: callId,
+        limit: CHILDREN_LISTED,
+      });
+      return traceDigest({
+        detail,
+        events,
+        children,
+        value: (hash) => records.getValue(hash),
+      });
     },
     /** This owner's recorded calls: a call's children (`parentCallId`), a run's calls (`run`), root calls (`roots`). */
     async calls(query: NatlangCallsQuery = {}) {
@@ -212,8 +248,15 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     const detail = await records.getCall(callId);
     if (!detail?.record) throw new Error(`no natlang call ${JSON.stringify(callId)} is recorded`);
     const { definition, program_root: programRoot, inputs } = detail.record;
-    const params = (definition["params"] ?? []) as Array<{ name: string; optional?: boolean }>;
-    if (definition.site !== "named" || !definition.source?.endsWith(".nl") || programRoot === null) {
+    const params = (definition["params"] ?? []) as Array<{
+      name: string;
+      optional?: boolean;
+    }>;
+    if (
+      definition.site !== "named" ||
+      !definition.source?.endsWith(".nl") ||
+      programRoot === null
+    ) {
       throw new Error(
         `natlang.rerun replays a workspace program's function; ${definition.name} is an ${definition.site} call whose ` +
           "captures were live values of its cell: call it again from your code, with .on({ model }) for another model"
@@ -221,7 +264,9 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     }
     const args: unknown[] = [];
     for (const param of params) {
-      const ref = inputs[param.name] as { complete?: boolean; hash?: string; reason?: string } | undefined;
+      const ref = inputs[param.name] as
+        | { complete?: boolean; hash?: string; reason?: string }
+        | undefined;
       if (ref === undefined) {
         if (param.optional) {
           args.push(undefined);
@@ -238,9 +283,11 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
       }
       args.push(JSON.parse(text));
     }
-    const loaded = (await loader.load(programRoot ? `${programRoot}/${definition.source}` : definition.source)) as ((
-      ...values: unknown[]
-    ) => Promise<unknown>) & { on(options: { model: string }): (...values: unknown[]) => Promise<unknown> };
+    const loaded = (await loader.load(
+      programRoot ? `${programRoot}/${definition.source}` : definition.source
+    )) as ((...values: unknown[]) => Promise<unknown>) & {
+      on(options: { model: string }): (...values: unknown[]) => Promise<unknown>;
+    };
     return (options.model === undefined ? loaded : loaded.on({ model: options.model }))(...args);
   }
 
@@ -281,8 +328,11 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     Object.defineProperty(call, "name", { value: callable.name });
     return call as unknown as F;
   };
-  const inline = (core.nl as unknown as { __inline(...plan: unknown[]): (...args: never[]) => unknown })
-    .__inline;
+  const inline = (
+    core.nl as unknown as {
+      __inline(...plan: unknown[]): (...args: never[]) => unknown;
+    }
+  ).__inline;
   const ambientNl = Object.defineProperties(
     (...args: unknown[]) => (core.nl as unknown as (...values: unknown[]) => unknown)(...args),
     {
@@ -324,8 +374,14 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
       options: { runId: string; signal: AbortSignal }
     ): Promise<{ value: T; calls: EvalNatlangCallSummary[] }> {
       if (closed) throw new Error("natlang: this owner's natlang instance is closed");
+      if (active) throw new Error("natlang: this owner already has an executing cell");
       options.signal.throwIfAborted();
-      const run: ActiveRun = { runId: options.runId, calls: [], signal: options.signal, live: null };
+      const run: ActiveRun = {
+        runId: options.runId,
+        calls: [],
+        signal: options.signal,
+        live: null,
+      };
       active = run;
       store.attach(run);
       try {
@@ -337,12 +393,20 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
         return { value, calls: run.calls };
       } finally {
         // Whatever a detached call still had queued; the calls the cell awaited are durable already.
-        await run.live?.drain();
-        await store.flush();
-        store.attach(null);
-        active = null;
+        try {
+          try {
+            await run.live?.drain();
+          } finally {
+            await store.settleCaptures(run);
+          }
+        } finally {
+          store.attach(null);
+          active = null;
+        }
       }
     },
+
+    pendingCaptureEvidence: () => store.pendingCaptureEvidence(),
 
     close(): void {
       closed = true;

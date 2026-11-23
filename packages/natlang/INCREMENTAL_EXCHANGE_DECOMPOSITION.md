@@ -37,3 +37,38 @@ explicit historical behavior. Native reference checks exclude the model_turns
 payload itself, whose arbitrary user/model JSON is evidence rather than native
 ValueRef structure. Completed record retries can reuse acknowledged referenced
 values without retransmitting or orphaning their bytes.
+
+## Attachment ownership, native reply custody and teacher authorization
+
+Capture belongs to an attachment object, not its reusable runId string. Before a
+paid request, `driver.ts` acquires a `ModelCaptureSession` from RecordsStore.
+That session owns preflight, a snapshotted teacher identity, the response callback
+and its completion barrier. The callback keeps its original epoch after detach;
+old faults and old active call IDs cannot contaminate another attachment.
+`runCell` joins capture sessions and always detaches in finally, including failed
+live publication or failed record flushes. Normal uncaptured calls keep their
+existing diagnostic-only recording behavior.
+
+Original paid exchanges and native checkpoint/record values remain buffered until
+acknowledgement; enqueue and detach never erase them. On a failed write, the
+private native Host `retainCaptureEvidence` callback receives exact pending data,
+owner and run identity and is awaited. Host ABI 3 binds and retains that evidence
+outside the failed records service and finite execution disposal. The provider
+also exposes private pendingCaptureEvidence for recovery. Capture-enabled requests
+require this native sink before inference; these buffers and emergency artifacts
+are evidence, never successful trajectories or automatic training admission.
+
+The driver snapshots the native gateway result before translating it, so a
+provider error/partial reply rejected by normalization is retained with its error
+and raw provider bytes, without inventing a successful model completion. Both
+score and generation paths use this mechanism. Captured teacher requests also
+compare the resolved actual model against the attachment's pinned teacher before
+either gateway method. Explicit model names and alternate roles cannot bypass the
+pin, and repeated opt-in cannot clear or replace it. Unpinned user capture retains
+its application-selected model behavior; independent review uses its own owner.
+
+`captureOwnership.test.ts` covers detach/late reply, delayed old write failure,
+failed append plus final write, blocked preflight, pending-session teardown,
+raw provider normalization failure, absent custody, and teacher authorization.
+`evalNatlang.test.ts` runs real lowered cells through the native runtime, including
+a failed storage cell followed by a successful captured cell with the same runId.

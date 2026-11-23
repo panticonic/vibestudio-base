@@ -260,6 +260,7 @@ export const natlangAppendExchangeInputSchema = z.object({
     kind: z.enum(["generation", "score"]),
     request: z.unknown(),
     reply: z.unknown().optional(),
+    provider: z.unknown().optional(),
     error: z.object({name:z.string(),message:z.string()}).strict().optional(),
   }).strict(),
 }).strict();

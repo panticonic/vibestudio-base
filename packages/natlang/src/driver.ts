@@ -1,4 +1,4 @@
-import { captureExchange, type ModelExchange } from './modelTurnCapture.js';
+import { captureExchange, type ModelCaptureSession } from "./modelTurnCapture.js";
 import type { Context } from "@panticonic/pi-ai";
 import type { ModelGatewayClient } from "@workspace/model-gateway/client";
 import type { ModelGatewayTurnOptions } from "@workspace/model-gateway/contract";
@@ -41,17 +41,31 @@ export function gatewayDriver(options: {
   model: string;
   /** Prefix of this driver's turn ids; unique among the caller's in-flight turns. */
   turnPrefix: string;
-  recordExchange?: (exchange: ModelExchange) => void;
+  prepareCapture?: (request: unknown) => Promise<ModelCaptureSession>;
   captureModelTurns?: () => boolean;
 }): ModelDriver {
   const { gateway, resolver, model, turnPrefix } = options;
   let turns = 0;
   const nextTurnId = () => `${turnPrefix}:${(turns += 1)}`;
-  const turn = async (request: ModelTurnRequest, signal?: AbortSignal) => {
+  const turn = async (
+    request: ModelTurnRequest,
+    signal?: AbortSignal,
+    evidence?: { value?: unknown },
+    capturing = false,
+    requiredModel?: string
+  ) => {
     signal?.throwIfAborted();
     const entry = await resolver.resolve(model);
+    if (requiredModel && entry.ref !== requiredModel)
+      throw new Error(
+        `Captured teacher inference is pinned to ${requiredModel}; refusing ${entry.ref}`
+      );
     const api = entry.modelSpec.api;
-    const context = toPiContext(request, { api, provider: entry.provider, id: entry.id });
+    const context = toPiContext(request, {
+      api,
+      provider: entry.provider,
+      id: entry.id,
+    });
     const turnId = nextTurnId();
     const result = await gateway.turn(
       {
@@ -62,6 +76,17 @@ export function gatewayDriver(options: {
       },
       signal ? { signal } : undefined
     );
+    if (evidence)
+      evidence.value = {
+        kind: "generation",
+        request: {
+          turnId,
+          model: entry.ref,
+          context,
+          options: turnOptions(request, entry),
+        },
+        result,
+      };
     const modelTurn = piAssistantToTurn(result.message, entry.provider);
     return {
       ...modelTurn,
@@ -72,46 +97,104 @@ export function gatewayDriver(options: {
           model: result.model,
           ...(result.role ? { role: result.role } : {}),
           attribution: result.attribution,
-          ...(options.captureModelTurns?.() ? { context: structuredClone(context), response: structuredClone(result.message), api } : {}),
+          ...(capturing
+            ? {
+                context: structuredClone(context),
+                response: structuredClone(result.message),
+                api,
+              }
+            : {}),
         },
       },
     };
   };
-  const decide = async (readout: DecisionRequest, signal?: AbortSignal): Promise<DecisionScores> => {
+  const decide = async (
+    readout: DecisionRequest,
+    signal?: AbortSignal,
+    evidence?: { value?: unknown },
+    requiredModel?: string
+  ): Promise<DecisionScores> => {
     signal?.throwIfAborted();
     const entry = await resolver.resolve(model);
+    if (requiredModel && entry.ref !== requiredModel)
+      throw new Error(
+        `Captured teacher inference is pinned to ${requiredModel}; refusing ${entry.ref}`
+      );
     // A local model is a stock instruction model, not one natlang trained on the bare-value reply the readout asks for:
     // it is asked for, and scored on, the form it answers in (the same one natlang's own managed stock models use).
-    const request = framedDecision(readout, entry.provider === LOCAL_PROVIDER_ID ? LOCAL_DECISION_REPLY : undefined);
+    const request = framedDecision(
+      readout,
+      entry.provider === LOCAL_PROVIDER_ID ? LOCAL_DECISION_REPLY : undefined
+    );
     const { messages } = toPiContext(
       { messages: request.messages, tools: [], seed: null, max_tokens: null },
       { api: entry.modelSpec.api, provider: entry.provider, id: entry.id }
     );
     // The gateway takes the system prompt beside the messages, as Pi's context does.
     const system = messages.filter((message) => message.role === "system");
-    const scored = await gateway.score(
-      {
-        turnId: nextTurnId(),
-        model: entry.ref,
-        context: {
-          ...(system.length > 0
-            ? { systemPrompt: system.map((message) => message.content).join("\n\n") }
-            : {}),
-          messages: messages.filter((message) => message.role !== "system"),
-        } as unknown as Context,
-        candidates: request.options,
-      },
-      signal ? { signal } : undefined
-    );
+    const nativeRequest = {
+      turnId: nextTurnId(),
+      model: entry.ref,
+      context: {
+        ...(system.length > 0
+          ? {
+              systemPrompt: system.map((message) => message.content).join("\n\n"),
+            }
+          : {}),
+        messages: messages.filter((message) => message.role !== "system"),
+      } as unknown as Context,
+      candidates: request.options,
+    };
+    const scored = await gateway.score(nativeRequest, signal ? { signal } : undefined);
+    if (evidence)
+      evidence.value = {
+        kind: "score",
+        request: nativeRequest,
+        result: scored,
+      };
     return {
       log_probs: scored.logProbs,
       ...(scored.tokens ? { tokens: scored.tokens } : {}),
       ...(scored.promptTokens !== undefined ? { prompt_tokens: scored.promptTokens } : {}),
     };
   };
+  const captured = async <T>(
+    kind: "generation" | "score",
+    request: unknown,
+    execute: (
+      evidence?: { value?: unknown },
+      capturing?: boolean,
+      requiredModel?: string
+    ) => Promise<T>
+  ): Promise<T> => {
+    const capturing = options.captureModelTurns?.() === true;
+    if (capturing && !options.prepareCapture)
+      throw new Error("Captured inference requires its durable capture owner");
+    const session = capturing ? await options.prepareCapture!(request) : undefined;
+    const evidence = session ? ({} as { value?: unknown }) : undefined;
+    try {
+      return await captureExchange(
+        kind,
+        request,
+        () => execute(evidence, capturing, session?.executorModel),
+        session?.record,
+        () => evidence?.value
+      );
+    } finally {
+      session?.finish();
+    }
+  };
   return Object.assign(
-    (request: ModelTurnRequest, signal?: AbortSignal) => captureExchange("generation", request, () => turn(request, signal), options.captureModelTurns?.() ? options.recordExchange : undefined),
-    { decide: (request: DecisionRequest, signal?: AbortSignal) => captureExchange("score", request, () => decide(request, signal), options.captureModelTurns?.() ? options.recordExchange : undefined) }
+    (request: ModelTurnRequest, signal?: AbortSignal) =>
+      captured("generation", request, (evidence, capturing, required) =>
+        turn(request, signal, evidence, capturing, required)
+      ),
+    {
+      decide: (request: DecisionRequest, signal?: AbortSignal) =>
+        captured("score", request, (evidence, _capturing, required) =>
+          decide(request, signal, evidence, required)
+        ),
+    }
   );
 }
 
