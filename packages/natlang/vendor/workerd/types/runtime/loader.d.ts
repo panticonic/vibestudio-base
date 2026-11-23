@@ -129,7 +129,9 @@ export declare function isProtectedSource(source: string, protectedList: readonl
 /** Every source a record tree protects: its natural-language functions' `protect:` lists, resolved. */
 export declare function treeProtectedSources(codebase: Record<string, ItemRecord>): string[];
 /** Parse a TypeScript module in a callable folder: its exports, imports, and type aliases. */
-export declare function parseModule(path: string, text: string, inherited: Record<string, string>, files: SourceFiles): ModuleRecord;
+export declare function parseModule(path: string, text: string, inherited: Record<string, string>, files: SourceFiles, options?: {
+    compiled?: boolean;
+}): ModuleRecord;
 /** Load a callable folder into a record tree. `inherited` holds type aliases from enclosing folders. */
 export declare function loadCallableFolder(dir: string, files: SourceFiles, inherited?: Record<string, string>): Record<string, ItemRecord>;
 /** Load a named `.nl` function with its companion folder as its callable context. */

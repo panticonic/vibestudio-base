@@ -185,6 +185,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     fs,
     bindings: host.bindings,
     runTask,
+    ...(host.compileProgramProduct?{compileProduct:host.compileProgramProduct.bind(host)}:{}),
   });
 
   const natlang = Object.freeze({

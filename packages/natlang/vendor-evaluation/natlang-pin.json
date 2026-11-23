@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "e6f63390365a998f145d59e9d8fce5a7a770ca0b",
+  "commit": "9f67815f920684a2e95691c26999dc96c6ccaadd",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -148,18 +148,18 @@
     "evaluation/types/runtime/iterate.d.ts": "6cb76f0be8008f7719028abd03478e075d03d18616a8f916c2486ca53a9c91b1",
     "evaluation/types/runtime/kernel.d.ts": "06fc094527ad00b9aba0c6b8f04ca53f4b4bcfedbac27ab35fb4d3817368a1ea",
     "evaluation/types/runtime/linked-types.d.ts": "643aa879e7a57ea51c58bb8c90fc68942bf05b5b360a49f78b1083ed910567e9",
-    "evaluation/types/runtime/loader.d.ts": "7d01524369e1246e08acc8ce27c02ee701d639d2329efa5816dfee0da77fcbc5",
+    "evaluation/types/runtime/loader.d.ts": "ed389efeeef010e9ed996583ebffa4b7437eba7b3f7afc34c63a6db5aeac1b8b",
     "evaluation/types/runtime/lowered.d.ts": "a77239334b33df567c9d39f2f21bcc815973333aca87640fb586fefe1e38b166",
-    "evaluation/types/runtime/modules.d.ts": "a224faa452a8e79b31da41345aac1134562fa4510b2e28ca98cafc243bddc192",
+    "evaluation/types/runtime/modules.d.ts": "cf81b7e137235a32fa0158c98e896bcf20566c57b4929c5c17369b32cb6fd427",
     "evaluation/types/runtime/node-files.d.ts": "dfc92b2d929903fbfe0c3e2160ed9a76bf302c62bcf707a146d9d0e1f20201e7",
     "evaluation/types/runtime/node.d.ts": "016464a72e975dda8f1dd88f8f54230d93cd9d3a2b6f783e994d2da80f98d4b8",
     "evaluation/types/runtime/platform.d.ts": "f38205568f5239a43dcdb60d5cefe2736241c33e9e41fcba56f18d03ef2bc557",
     "evaluation/types/runtime/pluggable.d.ts": "f66f2a2cd915eb769c802f07a9821cf64e7f89b2d88fc5ef5ae9030bc29a69eb",
     "evaluation/types/runtime/promotion.d.ts": "2e5948cd1f5a9439d288bd0051cfd0809728092d980ae3059ca554f564c5a565",
-    "evaluation/types/runtime/runtime.d.ts": "ed80fbb7af17cb6eba7bece7e60466cbe3c076c810c5e7a28d1e203d765a7cda",
+    "evaluation/types/runtime/runtime.d.ts": "088e4e9755a6507b44cb4a321dfc931780cdd31685e6bd4bd0092a460098196a",
     "evaluation/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
     "evaluation/types/runtime/surface.d.ts": "72008d3b8752e218c704de74414e41aea0f90d87d6d6a01e1dc4fd07931a4abb",
     "evaluation/types/runtime/target-arguments.d.ts": "d64d5e48fe21ca7d4b6c6a5af8a9fea99aa7431872fd2b679755faad21b84a77",
-    "evaluation/types/runtime/virtual-project.d.ts": "27554db5520d62e98616afae727d26330c0baa15833605a93905c9596547f491"
+    "evaluation/types/runtime/virtual-project.d.ts": "955066429e8d2d042c6d8e8d557e65465b26163e91884bcc94dd94cbf3a8d2cc"
   }
 }

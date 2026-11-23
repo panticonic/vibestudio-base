@@ -25,6 +25,7 @@ export type ModuleTarget = 'default' | 'await-restoring';
 export declare const moduleTarget: (platform: Platform) => ModuleTarget;
 /** Compile one module to CommonJS-style JavaScript for evaluation. */
 export declare function compileModule(record: ModuleRecord, level: Record<string, ItemRecord>, inventory?: (plans: InlineLambdaPlan[]) => void, target?: ModuleTarget): string;
+export declare const servicesModule: any;
 /** The live exports of a module in its folder `level` (its sibling items). */
 export declare function moduleInstance(platform: Platform, record: ModuleRecord, level: Record<string, ItemRecord>): Record<string, unknown>;
 export declare function moduleRealmUsesAsync(platform: Platform): boolean;

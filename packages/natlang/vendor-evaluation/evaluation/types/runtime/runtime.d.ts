@@ -240,6 +240,7 @@ export type NatlangRuntimeOptions = {
     recording?: {
         exclude?: string[];
         checkpoints?: boolean;
+        nativeRoots?: boolean;
     };
     /** How far compilations may serve this runtime's calls; the machine setting bounds it (default: the machine setting). */
     specialization?: SpecializationMode;

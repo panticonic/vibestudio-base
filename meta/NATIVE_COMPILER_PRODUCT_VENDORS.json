@@ -1,0 +1,58 @@
+{
+  "schema": "native-compiler-product-vendors/1",
+  "core": "9f67815f920684a2e95691c26999dc96c6ccaadd",
+  "includesNativeRootFix": "1f1e152df5fa07b8ba154415d3b6deb5045f8237",
+  "reproductionLedger": "vibe0035-all-vendor-reproduction-20261123a",
+  "vendors": [
+    {
+      "label": "base-workerd",
+      "path": "packages/natlang/vendor",
+      "targets": [
+        "workerd"
+      ],
+      "files": 87,
+      "bytes": 14993495,
+      "pinSha256": "09f3425c6c2f0fc3d9cbd5a0f097275900dc1cebdf21691cccc7339bf7e891b4"
+    },
+    {
+      "label": "base-evaluation",
+      "path": "packages/natlang/vendor-evaluation",
+      "targets": [
+        "evaluation"
+      ],
+      "files": 150,
+      "bytes": 593876,
+      "pinSha256": "da1885be9b6a5bc31a823c5ec5ffff69aa08f60040b28bc63d719fdf2769a8d0"
+    },
+    {
+      "label": "base-dashboard",
+      "path": "packages/natlang/vendor-dashboard",
+      "targets": [
+        "dashboard"
+      ],
+      "files": 18,
+      "bytes": 259619,
+      "pinSha256": "6e4f971d4728b6489e640d10d688a67d01595c3c602f7cb1de1e279110f59b24"
+    },
+    {
+      "label": "base-pi",
+      "path": "packages/natlang-pi/vendor",
+      "targets": [
+        "pi"
+      ],
+      "files": 7,
+      "bytes": 35812,
+      "pinSha256": "09cfcd377708f6da4d4c5d8e58d5cd7f29aa4209da2ab7ec3d3a62449e121d4a"
+    },
+    {
+      "label": "system-llama",
+      "path": "extensions/local-models/vendor",
+      "targets": [
+        "llama"
+      ],
+      "files": 17,
+      "bytes": 110105,
+      "pinSha256": "d076f80172b9ca18071493f494732cf8c4f978378e96431bc3619b6d714c9682"
+    }
+  ]
+}

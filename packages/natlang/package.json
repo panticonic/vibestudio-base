@@ -19,7 +19,8 @@
     },
     "./model": {
       "types": "./vendor-evaluation/evaluation/natlang-evaluation.d.ts"
-    }
+    },
+    "./compiler": "./src/compiler.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "e6f63390365a998f145d59e9d8fce5a7a770ca0b",
+  "commit": "9f67815f920684a2e95691c26999dc96c6ccaadd",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "914143523521cb5c66637578ac2ac659cba7b39f62c7836dfc7307637ec4f9d6",
+    "workerd/natlang-workerd.js": "1d899373776dfc24b4e5152f94aff8ea76d68cda2a354d31e74149b315415460",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -38,7 +38,7 @@
     "workerd/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "workerd/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
     "workerd/types/contracts.d.ts": "a540ba8f82f94e6e64b85104e88f236860b241ee8f155b4f160fc1491213acea",
-    "workerd/types/core/index.d.ts": "fa04ac1d2470f96e58673680673a630ed50721bfe0857e6ebd8edad31b0f5d00",
+    "workerd/types/core/index.d.ts": "86b40bd64f28f49c2f47a88cf0c0312012623229965e7c72e47b1914f1c897c1",
     "workerd/types/core/workerd-bundle.d.ts": "4a40511caffe0ea52c76599f739f6eb52a8848aec79695aac0184450fb359275",
     "workerd/types/core/workerd.d.ts": "e2f6ed23cfa7e3843720b07d627571e656c727f5e950ef904ad39587c242c896",
     "workerd/types/guidance/program.d.ts": "aa74b06c4ea8f94a18915431e7f89c4570f65b00100269f1a591762af69d036a",
@@ -88,15 +88,15 @@
     "workerd/types/runtime/iterate.d.ts": "6cb76f0be8008f7719028abd03478e075d03d18616a8f916c2486ca53a9c91b1",
     "workerd/types/runtime/kernel.d.ts": "06fc094527ad00b9aba0c6b8f04ca53f4b4bcfedbac27ab35fb4d3817368a1ea",
     "workerd/types/runtime/linked-types.d.ts": "643aa879e7a57ea51c58bb8c90fc68942bf05b5b360a49f78b1083ed910567e9",
-    "workerd/types/runtime/loader.d.ts": "7d01524369e1246e08acc8ce27c02ee701d639d2329efa5816dfee0da77fcbc5",
+    "workerd/types/runtime/loader.d.ts": "ed389efeeef010e9ed996583ebffa4b7437eba7b3f7afc34c63a6db5aeac1b8b",
     "workerd/types/runtime/lowered.d.ts": "a77239334b33df567c9d39f2f21bcc815973333aca87640fb586fefe1e38b166",
-    "workerd/types/runtime/modules.d.ts": "a224faa452a8e79b31da41345aac1134562fa4510b2e28ca98cafc243bddc192",
+    "workerd/types/runtime/modules.d.ts": "cf81b7e137235a32fa0158c98e896bcf20566c57b4929c5c17369b32cb6fd427",
     "workerd/types/runtime/platform.d.ts": "f38205568f5239a43dcdb60d5cefe2736241c33e9e41fcba56f18d03ef2bc557",
     "workerd/types/runtime/pluggable.d.ts": "f66f2a2cd915eb769c802f07a9821cf64e7f89b2d88fc5ef5ae9030bc29a69eb",
     "workerd/types/runtime/promotion.d.ts": "2e5948cd1f5a9439d288bd0051cfd0809728092d980ae3059ca554f564c5a565",
-    "workerd/types/runtime/runtime.d.ts": "ed80fbb7af17cb6eba7bece7e60466cbe3c076c810c5e7a28d1e203d765a7cda",
+    "workerd/types/runtime/runtime.d.ts": "088e4e9755a6507b44cb4a321dfc931780cdd31685e6bd4bd0092a460098196a",
     "workerd/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
     "workerd/types/runtime/surface.d.ts": "72008d3b8752e218c704de74414e41aea0f90d87d6d6a01e1dc4fd07931a4abb",
-    "workerd/types/runtime/virtual-project.d.ts": "27554db5520d62e98616afae727d26330c0baa15833605a93905c9596547f491"
+    "workerd/types/runtime/virtual-project.d.ts": "955066429e8d2d042c6d8e8d557e65465b26163e91884bcc94dd94cbf3a8d2cc"
   }
 }

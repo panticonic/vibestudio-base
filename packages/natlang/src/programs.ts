@@ -3,6 +3,8 @@ import type { FsProgramSourcesRequest, FsProgramSourcesResult } from "@vibestudi
 import * as core from "../vendor/workerd/natlang-workerd.js";
 import {
   compileVirtualProject,
+  instantiateVirtualProjectProduct,
+  type VirtualProjectProduct,
   formatDiagnostics,
   loadVirtualCallables,
   loadVirtualNatlang,
@@ -215,6 +217,7 @@ export function compileProgram(options: {
   label: string;
   /** The workspace folder the files are relative to: diagnostics name workspace paths. */
   root?: string;
+  product?: VirtualProjectProduct;
 }): CompiledProgram {
   const { platform, files, entry, label, root = "" } = options;
   const services = declaredServiceNames(files);
@@ -225,18 +228,14 @@ export function compileProgram(options: {
   }
   // Native source entries load their callables from the original files after validation.
   const sourceEntry = !entry || entry.endsWith(".nl");
-  const compiled = compileVirtualProject(
-    { files, root: PROJECT_ROOT },
-    core as unknown as Record<string, unknown>,
-    {
-      platform,
-      emit: !sourceEntry,
-      // VibeStudio executes the program without program-adaptation bindings.
-      adaptation: false,
-      programId: label,
-      ...(services.length > 0 ? { services: { declarations: declarationsFor(services), scopes: serviceScopes } } : {}),
-    }
-  );
+  const input=programProductInput({files,entry,label});
+  if(options.product && (options.product.schema!=="natlang.virtual-project-product/1" ||
+      (options.product.project.root??"/project")!==PROJECT_ROOT ||
+      programKey(options.product.project.files,services)!==programKey(files,services)))
+    throw new NatlangProgramError("Native compiler returned a product for different source files",label,"does-not-compile");
+  const compiled = options.product
+    ? instantiateVirtualProjectProduct(options.product,core as unknown as Record<string,unknown>,{platform})
+    : compileVirtualProject(input.project,core as unknown as Record<string,unknown>,{...input.options,platform});
   if (!compiled.ok) {
     // The compiler names files in the in-memory project (relative to it, or under its mount point); the author
     // knows them by their workspace paths.
@@ -263,6 +262,14 @@ export function compileProgram(options: {
     ])
   );
   return { value, services, serviceScopes, explicitServiceBindings: binding === "explicit", declarations };
+}
+
+/** All frontend inputs are explicit; runtime services themselves never leave this owner. */
+export function programProductInput({files,entry,label}:{files:Record<string,string>;entry:string;label:string}) {
+  const services=declaredServiceNames(files);
+  const scopes=declaredServiceScopes(files,services,label);
+  return {project:{files,root:PROJECT_ROOT},options:{target:"node" as const,emit:!!entry&&!entry.endsWith(".nl"),adaptation:false,programId:label,
+    ...(services.length?{services:{declarations:declarationsFor(services),scopes}}:{})}};
 }
 
 /** Runs one call of a program as a task of its own, with the program's services. */
@@ -329,6 +336,7 @@ export class ProgramLoader {
       fs: WorkspaceFs;
       bindings: Readonly<Record<string, unknown>>;
       runTask: TaskRunner;
+      compileProduct?: (input:ReturnType<typeof programProductInput>)=>Promise<unknown | undefined>;
     }
   ) {}
 
@@ -385,7 +393,9 @@ export class ProgramLoader {
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
       try {
-        program = compileProgram({ platform, files, entry, label: path, root });
+        const product=await this.options.compileProduct?.(programProductInput({files,entry,label:path}));
+        program = compileProgram({ platform, files, entry, label: path, root,
+          ...(product===undefined?{}:{product:product as VirtualProjectProduct}) });
       } catch (error) {
         if (!(error instanceof NatlangSourceError)) throw error;
         const relative = error.path.replace(/^\/?project\//u, "");

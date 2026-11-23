@@ -213582,6 +213582,860 @@ var init_context = __esm({
   }
 });
 
+// src/calls/graph-custody.ts
+function graphCustodyDigest(taskId, callId, parentCallId, children2, effects) {
+  const value = {
+    schema: "natlang.call-graph-chronology/1",
+    task_id: taskId,
+    call_id: callId,
+    parent_call_id: parentCallId,
+    child_call_ids: children2,
+    effects
+  };
+  const text3 = JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+  return hexDigest(text3);
+}
+var init_graph_custody = __esm({
+  "src/calls/graph-custody.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+  }
+});
+
+// src/calls/snapshot.ts
+function plainPrototype(prototype) {
+  if (prototype === null || prototype === Object.prototype) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  return typeof constructor === "function" && Object.getOwnPropertyDescriptor(constructor, "prototype")?.value === prototype && Function.prototype.toString.call(constructor) === objectConstructorSource;
+}
+function portable(value, seen, depth2) {
+  if (depth2 > 64) return false;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return value.every((item) => portable(item, seen, depth2 + 1));
+    if (!plainPrototype(Object.getPrototypeOf(value))) return false;
+    return Object.entries(value).every(([, item]) => item !== void 0 && portable(item, seen, depth2 + 1));
+  } finally {
+    seen.delete(value);
+  }
+}
+function snapshot(value, maxBytes, excluded2 = false) {
+  if (excluded2) return { ref: { complete: false, reason: "excluded", type: typeLabel(value) } };
+  if (value === void 0) value = null;
+  if (!portable(value, /* @__PURE__ */ new Set(), 0)) {
+    let shown;
+    try {
+      shown = preview(String(value));
+    } catch {
+    }
+    return { ref: { complete: false, reason: "nonportable", type: typeLabel(value), ...shown ? { preview: shown } : {} } };
+  }
+  const text3 = JSON.stringify(value);
+  const bytes2 = new TextEncoder().encode(text3).byteLength;
+  const hash2 = hexDigest(text3);
+  if (bytes2 > maxBytes) return { ref: { complete: false, reason: "oversize", hash: hash2, bytes: bytes2, type: typeLabel(value), preview: preview(text3) } };
+  return { ref: { complete: true, hash: hash2, bytes: bytes2 }, text: text3 };
+}
+function tokens(text3) {
+  return [...new Set(text3.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])].slice(0, MAX_TOKENS_PER_STRING);
+}
+function inputFeatures(inputs) {
+  const out = {};
+  const put = (key, value) => {
+    if (Object.keys(out).length < MAX_FEATURES) out[key] = value;
+  };
+  const visit = (value, path2, depth2) => {
+    if (depth2 > 4 || Object.keys(out).length >= MAX_FEATURES) return;
+    if (value === null || value === void 0) {
+      put(`null:${path2}`, true);
+      return;
+    }
+    if (typeof value === "string") {
+      put(`len:${path2}`, value.length);
+      if (value.length <= CATEGORICAL_CHARS) put(`str:${path2}`, value);
+      for (const token of tokens(value)) put(`tok:${path2}:${token}`, true);
+      for (const [name, pattern2] of Object.entries(VALUE_CLASSES)) if (pattern2.test(value)) put(`cls:${path2}:${name}`, true);
+      return;
+    }
+    if (typeof value === "number") {
+      put(`num:${path2}`, value);
+      return;
+    }
+    if (typeof value === "boolean") {
+      put(`bool:${path2}`, value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      put(`arr:${path2}`, value.length);
+      value.slice(0, 3).forEach((item, index) => visit(item, `${path2}[${index}]`, depth2 + 1));
+      return;
+    }
+    if (typeof value === "object") {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) {
+        put(`type:${path2}`, typeLabel(value));
+        return;
+      }
+      put(`keys:${path2}`, Object.keys(value).sort().join(","));
+      for (const [key, item] of Object.entries(value))
+        visit(item, /^[A-Za-z_$][\w$]*$/.test(key) ? `${path2}.${key}` : `${path2}[${JSON.stringify(key)}]`, depth2 + 1);
+    }
+  };
+  for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
+  return out;
+}
+var typeLabel, objectConstructorSource, preview, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
+var init_snapshot = __esm({
+  "src/calls/snapshot.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    typeLabel = (value) => {
+      if (value === null) return "null";
+      if (Array.isArray(value)) return "array";
+      if (typeof value !== "object") return typeof value;
+      const name = value.constructor?.name;
+      return name && name !== "Object" ? name : "object";
+    };
+    objectConstructorSource = Function.prototype.toString.call(Object);
+    preview = (text3) => text3.length > 200 ? `${text3.slice(0, 200)}\u2026` : text3;
+    MAX_FEATURES = 600;
+    MAX_TOKENS_PER_STRING = 120;
+    CATEGORICAL_CHARS = 48;
+    VALUE_CLASSES = {
+      number: /^\s*-?\d+(?:\.\d+)?\s*$/,
+      date: /\b\d{4}-\d{2}-\d{2}\b/,
+      url: /\bhttps?:\/\/\S+/i,
+      email: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/,
+      path: /(?:^|\s)(?:\.{0,2}\/)?[\w.-]+\/[\w./-]+/,
+      multiline: /\n/,
+      empty: /^\s*$/
+    };
+  }
+});
+
+// src/calls/normalize.ts
+function inputLeaves(inputs) {
+  const leaves = /* @__PURE__ */ new Map();
+  const put = (key, path2) => {
+    const known = leaves.get(key);
+    if (!known || path2.length < known.length) leaves.set(key, path2);
+  };
+  const visit = (value, path2, depth2) => {
+    if (depth2 > 6) return;
+    if (typeof value === "string" || typeof value === "number") {
+      put(`${typeof value}:${value}`, path2);
+      if (typeof value === "string") {
+        for (const part of value.match(/[\p{L}\p{N}_-]+/gu) ?? [])
+          if (/\d/.test(part) || part.length >= 4) put(`part:${part.toLowerCase()}`, path2);
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.slice(0, 50).forEach((item, index) => visit(item, `${path2}[${index}]`, depth2 + 1));
+      return;
+    }
+    if (value && typeof value === "object" && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null))
+      for (const [key, item] of Object.entries(value).slice(0, 100))
+        visit(item, /^[A-Za-z_$][\w$]*$/.test(key) ? `${path2}.${key}` : `${path2}[${JSON.stringify(key)}]`, depth2 + 1);
+  };
+  for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
+  return leaves;
+}
+function replaceParts(text3, leaves) {
+  return text3.replace(/[\p{L}\p{N}_-]+/gu, (word) => {
+    const path2 = /\d/.test(word) || word.length >= 4 ? leaves.get(`part:${word.toLowerCase()}`) : void 0;
+    return path2 ? `\${$part.${path2}}` : word;
+  });
+}
+function normalizeProgram(code, inputs = {}, leaves = inputLeaves(inputs)) {
+  const scanner = import_typescript3.default.createScanner(import_typescript3.default.ScriptTarget.ES2022, true, import_typescript3.default.LanguageVariant.Standard, code);
+  const tokens2 = [];
+  const braces = [];
+  for (let kind = scanner.scan(); kind !== import_typescript3.default.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    if (kind === import_typescript3.default.SyntaxKind.OpenBraceToken && braces.length) braces[braces.length - 1]++;
+    else if (kind === import_typescript3.default.SyntaxKind.CloseBraceToken && braces.length) {
+      if (braces.at(-1) > 0) braces[braces.length - 1]--;
+      else {
+        braces.pop();
+        kind = scanner.reScanTemplateToken(false);
+      }
+    }
+    if (kind === import_typescript3.default.SyntaxKind.TemplateHead || kind === import_typescript3.default.SyntaxKind.TemplateMiddle) braces.push(0);
+    tokens2.push({ kind, text: scanner.getTokenText(), value: scanner.getTokenValue() });
+  }
+  const renamed = /* @__PURE__ */ new Map();
+  const out = [];
+  let previous;
+  for (let index = 0; index < tokens2.length; index++) {
+    const token = tokens2[index];
+    if (token.kind === import_typescript3.default.SyntaxKind.Identifier && token.text === "console" && tokens2[index + 1]?.kind === import_typescript3.default.SyntaxKind.DotToken && tokens2[index + 3]?.kind === import_typescript3.default.SyntaxKind.OpenParenToken) {
+      let depth2 = 0, end = index + 3;
+      for (; end < tokens2.length; end++) {
+        if (tokens2[end].kind === import_typescript3.default.SyntaxKind.OpenParenToken) depth2++;
+        if (tokens2[end].kind === import_typescript3.default.SyntaxKind.CloseParenToken && --depth2 === 0) break;
+      }
+      index = tokens2[end + 1]?.kind === import_typescript3.default.SyntaxKind.SemicolonToken ? end + 1 : end;
+      continue;
+    }
+    if (DROPPED.has(token.kind)) continue;
+    const next2 = tokens2[index + 1]?.kind;
+    if (token.kind === import_typescript3.default.SyntaxKind.Identifier && (previous === void 0 || previous === import_typescript3.default.SyntaxKind.SemicolonToken || previous === import_typescript3.default.SyntaxKind.CloseBraceToken) && (next2 === void 0 || next2 === import_typescript3.default.SyntaxKind.SemicolonToken)) {
+      index++;
+      continue;
+    }
+    let text3 = token.text;
+    if (token.kind === import_typescript3.default.SyntaxKind.Identifier) {
+      if (previous !== void 0 && DECLARING.has(previous) && !renamed.has(text3)) renamed.set(text3, `v${renamed.size}`);
+      const name = renamed.get(text3);
+      if (name && previous !== import_typescript3.default.SyntaxKind.DotToken) text3 = name;
+    } else if (token.kind === import_typescript3.default.SyntaxKind.StringLiteral || token.kind === import_typescript3.default.SyntaxKind.NoSubstitutionTemplateLiteral) {
+      const path2 = leaves.get(`string:${token.value}`) ?? leaves.get(`part:${token.value.toLowerCase()}`);
+      text3 = path2 ? `$${leaves.get(`string:${token.value}`) ? "in" : "part"}.${path2}` : JSON.stringify(replaceParts(token.value, leaves));
+    } else if (TEMPLATE_TEXT.has(token.kind)) {
+      text3 = replaceParts(text3, leaves);
+    } else if (token.kind === import_typescript3.default.SyntaxKind.NumericLiteral) {
+      const number = Number(token.value);
+      const path2 = leaves.get(`number:${number}`) ?? leaves.get(`part:${token.value}`);
+      if (path2 && number !== 0 && number !== 1) text3 = `$${leaves.get(`number:${number}`) ? "in" : "part"}.${path2}`;
+    } else if (token.kind === import_typescript3.default.SyntaxKind.SemicolonToken && (previous === import_typescript3.default.SyntaxKind.SemicolonToken || previous === void 0)) continue;
+    out.push(text3);
+    previous = token.kind;
+  }
+  while (out.at(-1) === ";") out.pop();
+  return out.join(" ");
+}
+function approachHash(evals, inputs) {
+  const leaves = inputLeaves(inputs);
+  const programs = evals.map((code) => normalizeProgram(code, inputs, leaves)).filter(Boolean);
+  if (!programs.length) return "answer-only";
+  return hexDigest(programs.join("\n;;\n")).slice(0, 24);
+}
+var import_typescript3, DECLARING, DROPPED, TEMPLATE_TEXT;
+var init_normalize = __esm({
+  "src/calls/normalize.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    import_typescript3 = __toESM(require_typescript(), 1);
+    init_hash();
+    DECLARING = /* @__PURE__ */ new Set([import_typescript3.default.SyntaxKind.ConstKeyword, import_typescript3.default.SyntaxKind.LetKeyword, import_typescript3.default.SyntaxKind.VarKeyword, import_typescript3.default.SyntaxKind.FunctionKeyword]);
+    DROPPED = /* @__PURE__ */ new Set([import_typescript3.default.SyntaxKind.AwaitKeyword, import_typescript3.default.SyntaxKind.ReturnKeyword]);
+    TEMPLATE_TEXT = /* @__PURE__ */ new Set([
+      import_typescript3.default.SyntaxKind.TemplateHead,
+      import_typescript3.default.SyntaxKind.TemplateMiddle,
+      import_typescript3.default.SyntaxKind.TemplateTail,
+      import_typescript3.default.SyntaxKind.NoSubstitutionTemplateLiteral
+    ]);
+  }
+});
+
+// src/calls/types.ts
+var CALLS_VERSION, DEFAULT_SETTINGS;
+var init_types2 = __esm({
+  "src/calls/types.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    CALLS_VERSION = "natlang.calls/1";
+    DEFAULT_SETTINGS = {
+      maxValueBytes: 1 << 20,
+      maxStoreBytes: 50 * 2 ** 30,
+      minFreeBytes: 20 * 2 ** 30,
+      specialization: "on",
+      auditRate: 0.05,
+      acceptanceBound: 0.05,
+      promotionComparisons: 10,
+      promotionLiveComparisons: 3,
+      minCalls: 20,
+      promotionPolicy: "crisp",
+      targetPolicy: "crisp",
+      declinePolicy: "crisp"
+    };
+  }
+});
+
+// src/calls/recorder.ts
+function reportStoreFailure(store, error) {
+  if (reported.has(store)) return;
+  reported.add(store);
+  console.warn(`natlang: call recording failed and is skipped for this store: ${error instanceof Error ? error.message : String(error)}`);
+}
+function definitionKey(definition) {
+  return hexDigest(JSON.stringify({
+    id: definition.id,
+    body: definition.body,
+    params: definition.params,
+    returns: definition.returns,
+    types: definition.types,
+    subtype: definition.subtype,
+    readout: definition.readout ?? null,
+    ...definition.declaredParameters ? { declaredParameters: true } : {}
+  })).slice(0, 32);
+}
+function interfaceHash(codebase) {
+  const entries = [];
+  const visit = (level, prefix) => {
+    for (const [name, item] of Object.entries(level)) {
+      if (!item || typeof item !== "object" || !("kind" in item)) continue;
+      if (item.kind === "namespace") {
+        visit(item.codebase, `${prefix}${name}.`);
+        continue;
+      }
+      entries.push(`${prefix}${name}=${item.kind}@${item.revision}`);
+      visit(item.codebase, `${prefix}${name}/`);
+    }
+  };
+  visit(codebase, "");
+  return hexDigest(entries.sort().join("\n")).slice(0, 32);
+}
+function excluded(patterns, definition, argument) {
+  if (!patterns?.length) return false;
+  const glob = (pattern2) => new RegExp(`^${pattern2.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\0").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*").replace(/\?/g, ".")}$`);
+  return patterns.some((pattern2) => {
+    if (definition.source && glob(pattern2).test(definition.source)) return true;
+    if (argument === void 0) return false;
+    return pattern2 === `${definition.name}.${argument}` || definition.source !== null && pattern2 === `${definition.source}:${argument}`;
+  });
+}
+function codeRevisions(events, ref) {
+  const revisions2 = events.filter((event) => event.kind === "code_revision" && typeof event.text === "string").map((event) => ({
+    function: String(event.function),
+    source: String(event.source),
+    revision: Number(event.revision),
+    originalHash: String(event.originalHash),
+    effectiveHash: String(event.effectiveHash),
+    patchedHash: String(event.patchedHash),
+    patch: event.patch,
+    after: ref(event.text)
+  }));
+  return revisions2.length ? { code_revisions: revisions2 } : {};
+}
+var reported, CallCapture;
+var init_recorder = __esm({
+  "src/calls/recorder.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_hash();
+    init_graph_custody();
+    init_snapshot();
+    init_normalize();
+    init_types2();
+    reported = /* @__PURE__ */ new WeakSet();
+    CallCapture = class {
+      constructor(store, settings, base) {
+        this.store = store;
+        this.settings = settings;
+        this.base = base;
+        this.executor = { kind: "agent", model_id: base.model.id, model_revision: base.model.revision };
+      }
+      store;
+      settings;
+      base;
+      blobs = /* @__PURE__ */ new Map();
+      effects = [];
+      pending = [];
+      order = 0;
+      started = Date.now();
+      startedAt = (/* @__PURE__ */ new Date()).toISOString();
+      inputs = {};
+      captures = {};
+      captureWrites = [];
+      features = {};
+      /** Exact host inputs by name, for features and dispatch. */
+      hostInputs = {};
+      executor;
+      auditOf = null;
+      folder = null;
+      /** Tell the store the call is running. */
+      announce() {
+        try {
+          const definition = this.base.definition;
+          this.store.begin?.({
+            callId: this.base.callId,
+            parentCallId: this.base.parentCallId,
+            parentActionIndex: this.base.parentActionIndex,
+            taskId: this.base.taskId,
+            programId: this.base.programId,
+            programRoot: this.base.programRoot,
+            ...this.base.runLabel ? { runLabel: this.base.runLabel } : {},
+            definition: {
+              id: definition.id,
+              name: definition.name,
+              source: definition.source,
+              key: definition.key,
+              interface: definition.interface,
+              site: definition.site
+            },
+            modelId: this.base.model.id,
+            startedAt: this.startedAt,
+            auditOf: this.auditOf
+          });
+          this.announced = true;
+          this.backgroundCheckpoint();
+        } catch (error) {
+          reportStoreFailure(this.store, error);
+        }
+      }
+      /** The call ends without a record: its row of a running call is removed (a strict tier attempt that declined). */
+      discard() {
+        if (this.watcher) clearInterval(this.watcher);
+        try {
+          this.store.discard?.(this.base.callId);
+        } catch (error) {
+          reportStoreFailure(this.store, error);
+        }
+      }
+      watcher;
+      checkpointOrdinal = 0;
+      announced = false;
+      eventSource;
+      /** The last exact observation, explicitly not a completed record. */
+      checkpoint() {
+        if (!this.announced || this.base.checkpoints === false || !this.store.checkpoint) return;
+        const state = {
+          version: "natlang.call-checkpoint/1",
+          ordinal: this.checkpointOrdinal++,
+          call_id: this.base.callId,
+          parent_call_id: this.base.parentCallId,
+          parent_action_index: this.base.parentActionIndex,
+          task_id: this.base.taskId,
+          program_id: this.base.programId,
+          program_root: this.base.programRoot,
+          definition: this.base.definition,
+          executor: { ...this.executor },
+          started_at: this.startedAt,
+          inputs: { ...this.inputs },
+          captures: { ...this.captures },
+          effects: this.completedEffects(),
+          capture_writes: [...this.captureWrites],
+          pending_effects: this.pending.map((row) => ({ ...row }))
+        };
+        const events = this.eventSource?.();
+        try {
+          const persisted = this.store.checkpoint(
+            this.base.callId,
+            state,
+            new Map(this.blobs),
+            events?.length ? events.map((event) => JSON.stringify(event)).join("\n") + "\n" : void 0
+          );
+          if (persisted) return persisted.catch((error) => {
+            if (this.store.checkpointRequired) throw error;
+            reportStoreFailure(this.store, error);
+          });
+        } catch (error) {
+          if (this.store.checkpointRequired) throw error;
+          reportStoreFailure(this.store, error);
+        }
+      }
+      backgroundCheckpoint() {
+        try {
+          const pending = this.checkpoint();
+          if (pending) void pending.catch((error) => reportStoreFailure(this.store, error));
+        } catch (error) {
+          reportStoreFailure(this.store, error);
+        }
+      }
+      /** While the call runs, write its trace events so far every `intervalMs`, so a long call can be inspected live. */
+      watch(events, intervalMs = 3e4) {
+        this.eventSource = events;
+        if (!this.store.progress) return;
+        let written = 0;
+        this.watcher = setInterval(() => {
+          const current = events();
+          if (current.length === written) return;
+          written = current.length;
+          try {
+            this.store.progress(this.base.callId, current.map((event) => JSON.stringify(event)).join("\n") + "\n");
+          } catch (error) {
+            reportStoreFailure(this.store, error);
+          }
+        }, intervalMs);
+        this.watcher.unref?.();
+      }
+      /** Snapshot a value into this record's blobs. */
+      ref(value, excludedValue = false) {
+        const taken = snapshot(value, this.settings.maxValueBytes, excludedValue);
+        if (taken.text !== void 0 && taken.ref.complete) this.blobs.set(taken.ref.hash, taken.text);
+        return taken.ref;
+      }
+      setInputs(values, captures = {}) {
+        const definition = { name: this.base.definition.name, source: this.base.definition.source };
+        this.hostInputs = { ...captures, ...values };
+        this.inputs = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, this.ref(value, excluded(this.base.exclude, definition, name))]));
+        this.captures = Object.fromEntries(Object.entries(captures).map(([name, value]) => [name, this.ref(value, excluded(this.base.exclude, definition, name))]));
+        const visible = Object.fromEntries(Object.entries(this.hostInputs).filter(([name]) => !excluded(this.base.exclude, definition, name)));
+        try {
+          this.features = inputFeatures(visible);
+        } catch {
+          this.features = {};
+        }
+        this.backgroundCheckpoint();
+      }
+      /**
+       * A directory reducer's folder as it was when the call started: each file's text by hash, so a replay can rebuild it.
+       * A folder larger than sixteen value bounds is recorded by its listing only.
+       */
+      setFolderInput(folder2) {
+        try {
+          const listing = folder2.listFiles("");
+          const total = listing.reduce((sum, entry) => sum + entry.bytes, 0);
+          if (total > 16 * this.settings.maxValueBytes) {
+            this.inputs.folder = {
+              complete: false,
+              reason: "oversize",
+              type: "Folder",
+              bytes: total,
+              preview: listing.slice(0, 20).map((entry) => entry.path).join(", ")
+            };
+            return;
+          }
+          const decoder = new TextDecoder("utf-8", { fatal: true });
+          const files2 = {};
+          for (const entry of listing) {
+            const bytes2 = folder2.readBytesSync(entry.path);
+            let text3;
+            try {
+              text3 = decoder.decode(bytes2);
+            } catch {
+              files2[entry.path] = { complete: false, reason: "nonportable", type: "bytes", bytes: bytes2.byteLength };
+              continue;
+            }
+            files2[entry.path] = this.ref(text3);
+          }
+          this.inputs.folder = this.ref({ $folder: files2 });
+        } catch (error) {
+          this.inputs.folder = { complete: false, reason: "nonportable", type: "Folder", preview: error instanceof Error ? error.message : String(error) };
+        }
+      }
+      /** One recording-services event (`native/effects.ts`), with its exact arguments and result. */
+      effect(event, by2 = "agent") {
+        if (event.phase === "requested") {
+          this.pending.push({ service: event.service, method: event.method, args: this.ref(event.exact?.args ?? []), by: by2, order: this.order++, seq: event.seq, graph_order: event.graph_order });
+          this.backgroundCheckpoint();
+          return;
+        }
+        const index = event.seq !== void 0 ? this.pending.findIndex((item) => item.seq === event.seq) : this.pending.findIndex((item) => item.service === event.service && item.method === event.method);
+        const started = index >= 0 ? this.pending.splice(index, 1)[0] : { service: event.service, method: event.method, args: this.ref([]), by: by2, order: this.order++ };
+        const { seq: _seq, ...effect } = started;
+        this.effects.push({
+          ...effect,
+          ...event.phase === "completed" ? { result: this.ref(event.exact?.result) } : { error: event.error ?? "failed" },
+          ...event.exact?.async !== void 0 ? { async: event.exact.async } : {}
+        });
+        if (event.exact?.async) return this.checkpoint();
+        this.backgroundCheckpoint();
+      }
+      /** Effects that completed so far, in the order they started. */
+      completedEffects(by2) {
+        return this.effects.filter((effect) => !by2 || effect.by === by2).sort((a, b) => a.order - b.order);
+      }
+      /** Write the record. Never throws. */
+      finish(result) {
+        if (this.watcher) clearInterval(this.watcher);
+        try {
+          const events = result.events;
+          const actions = events.filter((event) => event.kind === "action" && event.name === "eval").map((event) => {
+            const code = event.arguments?.code;
+            return { code: typeof code === "string" ? code : JSON.stringify(code ?? null), ok: !["error", "rejected"].includes(String(event.outcome)) };
+          });
+          const evals = actions.map((action) => action.code);
+          const requests = events.filter((event) => event.kind === "model_request" && event.phase === "end" || event.kind === "decision_readout" && event.phase === "scored");
+          const definition = this.base.definition;
+          const output = result.hasOutput ? this.ref(
+            result.output,
+            excluded(this.base.exclude, { name: definition.name, source: definition.source }, "return")
+          ) : null;
+          const effects = [...this.effects, ...this.pending.map(({ seq: _seq, ...item }) => ({ ...item, error: "did not finish" }))].sort((a, b) => a.order - b.order);
+          const record3 = {
+            version: CALLS_VERSION,
+            call_id: this.base.callId,
+            parent_call_id: this.base.parentCallId,
+            parent_action_index: this.base.parentActionIndex,
+            task_id: this.base.taskId,
+            program_id: this.base.programId,
+            ...this.base.runLabel ? { run_label: this.base.runLabel } : {},
+            build_hash: this.base.buildHash,
+            program_root: this.base.programRoot,
+            definition,
+            executor: this.executor,
+            inputs: this.inputs,
+            captures: this.captures,
+            capture_writes: this.captureWrites,
+            output,
+            outcome: result.outcome,
+            detail: result.detail.slice(0, 4e3),
+            started_at: this.startedAt,
+            ended_at: (/* @__PURE__ */ new Date()).toISOString(),
+            ...result.graphChildren ? { graph_custody: {
+              schema: "natlang.call-graph-chronology/1",
+              task_id: this.base.taskId,
+              child_call_ids: result.graphChildren,
+              sha256: graphCustodyDigest(this.base.taskId, this.base.callId, this.base.parentCallId, result.graphChildren, effects)
+            } } : {},
+            effects,
+            folder: this.folder,
+            ...result.outcome === "done" ? codeRevisions(events, (text3) => this.ref(text3)) : {},
+            approach: { evals, hash: this.executor.kind === "agent" && result.outcome === "done" ? approachHash(actions.filter((action) => action.ok).map((action) => action.code), this.hostInputs) : null },
+            cost: {
+              model_requests: requests.length,
+              turns: requests.length,
+              evals: evals.length,
+              wall_ms: Date.now() - this.started,
+              tokens_in: requests.reduce((sum, event) => sum + (Number(event.prompt_tokens) || 0), 0),
+              tokens_out: requests.reduce((sum, event) => sum + (Number(event.completion_tokens) || 0), 0)
+            },
+            features: this.features,
+            audit_of: this.auditOf,
+            events: null
+          };
+          this.store.record(record3, this.blobs, events.length ? events.map((event) => JSON.stringify(event)).join("\n") + "\n" : void 0);
+          return record3;
+        } catch (error) {
+          reportStoreFailure(this.store, error);
+          return void 0;
+        }
+      }
+    };
+  }
+});
+
+// src/native/effects.ts
+function argumentsKey(method, args) {
+  let plain3 = true;
+  const text3 = JSON.stringify([method, args], (_key, value) => {
+    if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") plain3 = false;
+    else if (value && typeof value === "object" && !Array.isArray(value)) {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== null && Object.getPrototypeOf(prototype) !== null) plain3 = false;
+    }
+    return value;
+  });
+  return plain3 ? text3 : void 0;
+}
+function recordingServices(services, emit3) {
+  const preview4 = (value) => {
+    try {
+      const text3 = JSON.stringify(value);
+      return text3 === void 0 ? String(value) : text3.length > 400 ? `${text3.slice(0, 400)} \u2026 (${text3.length} chars)` : JSON.parse(text3);
+    } catch {
+      return String(value);
+    }
+  };
+  let sequence2 = 0;
+  const wrap = (target, label) => {
+    const object2 = target;
+    const proxy = new Proxy(Object.create(Object.getPrototypeOf(target)), {
+      has: (_shell, property) => Reflect.has(object2, property),
+      ownKeys: () => Reflect.ownKeys(object2),
+      getOwnPropertyDescriptor: (_shell, property) => {
+        const descriptor2 = Reflect.getOwnPropertyDescriptor(object2, property);
+        return descriptor2 && { ...descriptor2, configurable: true };
+      },
+      set: (_shell, property, value) => Reflect.set(object2, property, value),
+      get(_shell, property, receiver) {
+        const value = Reflect.get(object2, property, object2);
+        if (typeof property === "symbol") return value;
+        if (typeof value === "function") {
+          const recorded2 = (...given) => {
+            const args = given.map((item) => hostCopy(item));
+            const seq = sequence2++;
+            emit3({ phase: "requested", service: label, method: property, args: preview4(args), seq, exact: { args } });
+            const once = object2[ONCE_EFFECTS];
+            const key = Array.isArray(once) && once.includes(property) ? argumentsKey(property, args) : void 0;
+            let results = key === void 0 ? void 0 : onceResults.get(object2);
+            if (key !== void 0 && !results) onceResults.set(object2, results = /* @__PURE__ */ new Map());
+            if (key !== void 0 && results.has(key)) {
+              const earlier = results.get(key);
+              if (earlier && typeof earlier.then === "function")
+                return Promise.resolve(earlier).then(async (resolved) => {
+                  await emit3({
+                    phase: "completed",
+                    service: label,
+                    method: property,
+                    result: preview4(resolved),
+                    seq,
+                    exact: { result: resolved, async: true }
+                  });
+                  return resolved;
+                }, async (error) => {
+                  await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
+                  throw error;
+                });
+              emit3({
+                phase: "completed",
+                service: label,
+                method: property,
+                result: preview4(earlier),
+                seq,
+                exact: { result: earlier, async: false }
+              });
+              return earlier;
+            }
+            try {
+              let result = value.apply(object2, args);
+              if (key !== void 0) {
+                if (result && typeof result.then === "function")
+                  result = Promise.resolve(result).catch((error) => {
+                    results.delete(key);
+                    throw error;
+                  });
+                results.set(key, result);
+              }
+              if (result && typeof result.then === "function")
+                return Promise.resolve(result).then(
+                  async (resolved) => {
+                    await emit3({
+                      phase: "completed",
+                      service: label,
+                      method: property,
+                      result: preview4(resolved),
+                      seq,
+                      exact: { result: resolved, async: true }
+                    });
+                    return resolved;
+                  },
+                  async (error) => {
+                    await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
+                    throw error;
+                  }
+                );
+              emit3({ phase: "completed", service: label, method: property, result: preview4(result), seq, exact: { result, async: false } });
+              return result;
+            } catch (error) {
+              emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
+              throw error;
+            }
+          };
+          Object.defineProperty(recorded2, /* @__PURE__ */ Symbol.for("natlang.native-call-kind"), { value: Object.getOwnPropertyDescriptor(value, /* @__PURE__ */ Symbol.for("natlang.native-call-kind"))?.value ?? (Object.getPrototypeOf(value)?.constructor?.name === "AsyncFunction" ? "promise" : "synchronous") });
+          return recorded2;
+        }
+        return value;
+      }
+    });
+    const surface = /* @__PURE__ */ Object.create(null);
+    for (const key of Object.getOwnPropertyNames(target)) {
+      const descriptor2 = Object.getOwnPropertyDescriptor(target, key);
+      if ("value" in descriptor2 && typeof descriptor2.value === "function")
+        Object.defineProperty(surface, key, { value: Reflect.get(proxy, key), enumerable: true });
+      else Object.defineProperty(surface, key, {
+        get: () => Reflect.get(proxy, key),
+        ...descriptor2.set || "value" in descriptor2 && descriptor2.writable ? { set: (value) => Reflect.set(proxy, key, value) } : {},
+        enumerable: true
+      });
+    }
+    selectedSurfaces.set(proxy, surface);
+    return proxy;
+  };
+  const wrapped = Object.fromEntries(Object.entries(services).map(([name, service2]) => [name, service2 && typeof service2 === "object" ? wrap(service2, name) : service2]));
+  Object.defineProperty(wrapped, RECORDED, { value: true });
+  return Object.freeze(wrapped);
+}
+var RECORDED, isRecording, selectedSurfaces, ONCE_EFFECTS, onceResults;
+var init_effects = __esm({
+  "src/native/effects.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_values();
+    RECORDED = /* @__PURE__ */ Symbol("natlang.recorded-services");
+    isRecording = (services) => Object.hasOwn(services, RECORDED);
+    selectedSurfaces = /* @__PURE__ */ new WeakMap();
+    ONCE_EFFECTS = /* @__PURE__ */ Symbol.for("natlang.once-effects");
+    onceResults = /* @__PURE__ */ new WeakMap();
+  }
+});
+
+// src/runtime/native-entry.ts
+function invokeNativeEntry(record3, exportName, args, invoke) {
+  const frame = currentFrame();
+  if (!frame || frame.parentCallId || frame.task.runtime.options.recording?.nativeRoots === false) return invoke();
+  const task = frame.task, store = task.runtime.callStore();
+  if (!store) return invoke();
+  const declared = record3.exports[exportName];
+  const spec = declared?.kind === "function" ? declared : { args: Object.fromEntries(args.map((_10, index) => [`arg${index}`, "unknown"])), returns: "unknown" };
+  const callId = task.nextCallId(), name = exportName === "default" ? record3.name : exportName;
+  const params = Object.entries(spec.args).map(([name2, type]) => ({ name: name2.replace(/\?$/, ""), type }));
+  const identity = {
+    id: `${record3.id}#${exportName}`,
+    name,
+    source: record3.source,
+    key: definitionKey({ id: `${record3.id}#${exportName}`, body: record3.text, params, returns: spec.returns, types: record3.types, subtype: "function" }),
+    interface: interfaceHash(record3.codebase),
+    site: "named",
+    subtype: "function",
+    params,
+    returns: spec.returns,
+    types: record3.types,
+    instructions: { complete: false, reason: "excluded" }
+  };
+  let capture;
+  try {
+    capture = new CallCapture(store, store.settings(), {
+      callId,
+      parentCallId: null,
+      parentActionIndex: null,
+      taskId: task.id,
+      programId: task.programView.program?.id ?? null,
+      buildHash: task.programView.program?.buildHash ?? null,
+      programRoot: task.runtime.options.programRoot ?? null,
+      definition: identity,
+      model: { id: null, revision: null },
+      checkpoints: task.runtime.options.recording?.checkpoints,
+      exclude: task.runtime.options.recording?.exclude
+    });
+    capture.executor = { kind: "crisp", model_id: null, model_revision: null };
+    identity.instructions = capture.ref(record3.text);
+    capture.setInputs(Object.fromEntries(params.map((param, index) => [param.name, args[index]]).filter(([, value]) => value !== void 0)));
+    capture.announce();
+  } catch (error) {
+    reportStoreFailure(store, error);
+    return invoke();
+  }
+  task.registerGraphCall(callId, null);
+  const services = recordingServices(task.services, (event) => capture.effect({
+    ...event,
+    ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {}
+  }, "crisp"));
+  const finish = (outcome, value, error) => {
+    capture.finish({
+      outcome,
+      detail: error instanceof Error ? error.message : error === void 0 ? "" : String(error),
+      output: value,
+      hasOutput: outcome === "done",
+      events: [],
+      graphChildren: task.graphChildren(callId)
+    });
+  };
+  try {
+    const value = runInFrame({ ...frame, parentCallId: callId, services }, invoke);
+    if (value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function")
+      return Promise.resolve(value).then((result) => {
+        finish("done", result);
+        return result;
+      }, (error) => {
+        finish("error", void 0, error);
+        throw error;
+      });
+    finish("done", value);
+    return value;
+  } catch (error) {
+    finish("error", void 0, error);
+    throw error;
+  }
+}
+var init_native_entry = __esm({
+  "src/runtime/native-entry.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_recorder();
+    init_effects();
+    init_context();
+  }
+});
+
 // src/guidance/program.ts
 function nativeProgramGuidance(input, programId) {
   if (typeof input !== "string") {
@@ -214182,165 +215036,20 @@ var init_pages = __esm({
   }
 });
 
-// src/native/effects.ts
-function argumentsKey(method, args) {
-  let plain3 = true;
-  const text3 = JSON.stringify([method, args], (_key, value) => {
-    if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") plain3 = false;
-    else if (value && typeof value === "object" && !Array.isArray(value)) {
-      const prototype = Object.getPrototypeOf(value);
-      if (prototype !== null && Object.getPrototypeOf(prototype) !== null) plain3 = false;
-    }
-    return value;
-  });
-  return plain3 ? text3 : void 0;
-}
-function recordingServices(services, emit3) {
-  const preview4 = (value) => {
-    try {
-      const text3 = JSON.stringify(value);
-      return text3 === void 0 ? String(value) : text3.length > 400 ? `${text3.slice(0, 400)} \u2026 (${text3.length} chars)` : JSON.parse(text3);
-    } catch {
-      return String(value);
-    }
-  };
-  let sequence2 = 0;
-  const wrap = (target, label) => {
-    const object2 = target;
-    const proxy = new Proxy(Object.create(Object.getPrototypeOf(target)), {
-      has: (_shell, property) => Reflect.has(object2, property),
-      ownKeys: () => Reflect.ownKeys(object2),
-      getOwnPropertyDescriptor: (_shell, property) => {
-        const descriptor2 = Reflect.getOwnPropertyDescriptor(object2, property);
-        return descriptor2 && { ...descriptor2, configurable: true };
-      },
-      set: (_shell, property, value) => Reflect.set(object2, property, value),
-      get(_shell, property, receiver) {
-        const value = Reflect.get(object2, property, object2);
-        if (typeof property === "symbol") return value;
-        if (typeof value === "function") {
-          const recorded2 = (...given) => {
-            const args = given.map((item) => hostCopy(item));
-            const seq = sequence2++;
-            emit3({ phase: "requested", service: label, method: property, args: preview4(args), seq, exact: { args } });
-            const once = object2[ONCE_EFFECTS];
-            const key = Array.isArray(once) && once.includes(property) ? argumentsKey(property, args) : void 0;
-            let results = key === void 0 ? void 0 : onceResults.get(object2);
-            if (key !== void 0 && !results) onceResults.set(object2, results = /* @__PURE__ */ new Map());
-            if (key !== void 0 && results.has(key)) {
-              const earlier = results.get(key);
-              if (earlier && typeof earlier.then === "function")
-                return Promise.resolve(earlier).then(async (resolved) => {
-                  await emit3({
-                    phase: "completed",
-                    service: label,
-                    method: property,
-                    result: preview4(resolved),
-                    seq,
-                    exact: { result: resolved, async: true }
-                  });
-                  return resolved;
-                }, async (error) => {
-                  await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
-                  throw error;
-                });
-              emit3({
-                phase: "completed",
-                service: label,
-                method: property,
-                result: preview4(earlier),
-                seq,
-                exact: { result: earlier, async: false }
-              });
-              return earlier;
-            }
-            try {
-              let result = value.apply(object2, args);
-              if (key !== void 0) {
-                if (result && typeof result.then === "function")
-                  result = Promise.resolve(result).catch((error) => {
-                    results.delete(key);
-                    throw error;
-                  });
-                results.set(key, result);
-              }
-              if (result && typeof result.then === "function")
-                return Promise.resolve(result).then(
-                  async (resolved) => {
-                    await emit3({
-                      phase: "completed",
-                      service: label,
-                      method: property,
-                      result: preview4(resolved),
-                      seq,
-                      exact: { result: resolved, async: true }
-                    });
-                    return resolved;
-                  },
-                  async (error) => {
-                    await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
-                    throw error;
-                  }
-                );
-              emit3({ phase: "completed", service: label, method: property, result: preview4(result), seq, exact: { result, async: false } });
-              return result;
-            } catch (error) {
-              emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
-              throw error;
-            }
-          };
-          Object.defineProperty(recorded2, /* @__PURE__ */ Symbol.for("natlang.native-call-kind"), { value: Object.getOwnPropertyDescriptor(value, /* @__PURE__ */ Symbol.for("natlang.native-call-kind"))?.value ?? (Object.getPrototypeOf(value)?.constructor?.name === "AsyncFunction" ? "promise" : "synchronous") });
-          return recorded2;
-        }
-        return value;
-      }
-    });
-    const surface = /* @__PURE__ */ Object.create(null);
-    for (const key of Object.getOwnPropertyNames(target)) {
-      const descriptor2 = Object.getOwnPropertyDescriptor(target, key);
-      if ("value" in descriptor2 && typeof descriptor2.value === "function")
-        Object.defineProperty(surface, key, { value: Reflect.get(proxy, key), enumerable: true });
-      else Object.defineProperty(surface, key, {
-        get: () => Reflect.get(proxy, key),
-        ...descriptor2.set || "value" in descriptor2 && descriptor2.writable ? { set: (value) => Reflect.set(proxy, key, value) } : {},
-        enumerable: true
-      });
-    }
-    selectedSurfaces.set(proxy, surface);
-    return proxy;
-  };
-  const wrapped = Object.fromEntries(Object.entries(services).map(([name, service2]) => [name, service2 && typeof service2 === "object" ? wrap(service2, name) : service2]));
-  Object.defineProperty(wrapped, RECORDED, { value: true });
-  return Object.freeze(wrapped);
-}
-var RECORDED, isRecording, selectedSurfaces, ONCE_EFFECTS, onceResults;
-var init_effects = __esm({
-  "src/native/effects.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    init_values();
-    RECORDED = /* @__PURE__ */ Symbol("natlang.recorded-services");
-    isRecording = (services) => Object.hasOwn(services, RECORDED);
-    selectedSurfaces = /* @__PURE__ */ new WeakMap();
-    ONCE_EFFECTS = /* @__PURE__ */ Symbol.for("natlang.once-effects");
-    onceResults = /* @__PURE__ */ new WeakMap();
-  }
-});
-
 // src/native/eval-types.ts
 function evalTypeDeclarations(code) {
-  const file = import_typescript3.default.createSourceFile("eval.ts", code, import_typescript3.default.ScriptTarget.ES2022, true);
+  const file = import_typescript4.default.createSourceFile("eval.ts", code, import_typescript4.default.ScriptTarget.ES2022, true);
   const declared = /* @__PURE__ */ Object.create(null);
   const namespaces = /* @__PURE__ */ new Map();
   const walk = (statements, namespace = "") => {
     for (const statement of statements) {
-      if (import_typescript3.default.isModuleDeclaration(statement) && statement.body && import_typescript3.default.isModuleBlock(statement.body)) {
+      if (import_typescript4.default.isModuleDeclaration(statement) && statement.body && import_typescript4.default.isModuleBlock(statement.body)) {
         walk(statement.body.statements, namespace + statement.name.text + ".");
         continue;
       }
       let text3;
-      if (import_typescript3.default.isTypeAliasDeclaration(statement) && !statement.typeParameters) text3 = statement.type.getText(file);
-      else if (import_typescript3.default.isInterfaceDeclaration(statement) && !statement.typeParameters && !statement.heritageClauses)
+      if (import_typescript4.default.isTypeAliasDeclaration(statement) && !statement.typeParameters) text3 = statement.type.getText(file);
+      else if (import_typescript4.default.isInterfaceDeclaration(statement) && !statement.typeParameters && !statement.heritageClauses)
         text3 = `{ ${statement.members.map((member) => member.getText(file).replace(/[;,]\s*$/, "")).join("; ")} }`;
       else continue;
       const name = namespace + statement.name.text;
@@ -214402,12 +215111,12 @@ function inlineDeclaredTypes(type, declared, seen = /* @__PURE__ */ new Set()) {
       return type;
   }
 }
-var import_typescript3;
+var import_typescript4;
 var init_eval_types = __esm({
   "src/native/eval-types.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript3 = __toESM(require_typescript(), 1);
+    import_typescript4 = __toESM(require_typescript(), 1);
     init_types();
   }
 });
@@ -214612,7 +215321,7 @@ function cachedSourceFile(fileName, text3, target) {
   const key = `${target}\0${fileName}`;
   const found = sharedSourceFiles.get(key);
   if (found && found.text === text3) return found.file;
-  const file = import_typescript4.default.createSourceFile(fileName, text3, target, true);
+  const file = import_typescript5.default.createSourceFile(fileName, text3, target, true);
   sharedSourceFiles.set(key, { text: text3, file });
   return file;
 }
@@ -214620,10 +215329,10 @@ function createNatlangCompilerHost(config) {
   const virtual = new Map(config.virtual ?? []);
   virtual.set(INTRINSICS_FILE, INTRINSICS_GLOBAL_DTS);
   virtual.set(SURFACE_MODULE_FILE, INTRINSICS_MODULE_DTS);
-  const files2 = config.files ?? import_typescript4.default.sys;
-  const system = import_typescript4.default.sys;
+  const files2 = config.files ?? import_typescript5.default.sys;
+  const system = import_typescript5.default.sys;
   const libs = config.libs ?? embeddedLibs ?? (system ? void 0 : () => void 0);
-  const libDir = libs ? VIRTUAL_LIB_DIR : dirname(import_typescript4.default.getDefaultLibFilePath(config.options));
+  const libDir = libs ? VIRTUAL_LIB_DIR : dirname(import_typescript5.default.getDefaultLibFilePath(config.options));
   const read = (fileName) => {
     const direct = virtual.get(fileName);
     if (direct !== void 0) return direct;
@@ -214646,14 +215355,14 @@ function createNatlangCompilerHost(config) {
       const text3 = read(fileName);
       if (text3 === void 0) return void 0;
       const target = typeof languageVersion === "number" ? languageVersion : languageVersion.languageVersion;
-      return isShared(fileName) ? cachedSourceFile(fileName, text3, target) : import_typescript4.default.createSourceFile(fileName, text3, languageVersion, true);
+      return isShared(fileName) ? cachedSourceFile(fileName, text3, target) : import_typescript5.default.createSourceFile(fileName, text3, languageVersion, true);
     },
-    getDefaultLibFileName: (options) => `${libDir}/${import_typescript4.default.getDefaultLibFileName(options)}`,
+    getDefaultLibFileName: (options) => `${libDir}/${import_typescript5.default.getDefaultLibFileName(options)}`,
     getDefaultLibLocation: () => libDir,
     writeFile: () => {
       throw new Error("natlang compiler hosts do not write through TypeScript emit");
     },
-    getCurrentDirectory: () => config.currentDirectory ?? (import_typescript4.default.sys && files2 === import_typescript4.default.sys ? import_typescript4.default.sys.getCurrentDirectory() : "/"),
+    getCurrentDirectory: () => config.currentDirectory ?? (import_typescript5.default.sys && files2 === import_typescript5.default.sys ? import_typescript5.default.sys.getCurrentDirectory() : "/"),
     getDirectories: (path2) => files2?.getDirectories?.(path2) ?? [],
     getCanonicalFileName: (name) => name,
     useCaseSensitiveFileNames: () => true,
@@ -214665,15 +215374,15 @@ function createNatlangCompilerHost(config) {
   };
 }
 function createVirtualProgram(files2, options = EVAL_COMPILER_OPTIONS, roots = Object.keys(files2), base) {
-  const host = createNatlangCompilerHost({ options, virtual: new Map(Object.entries(files2)), files: base ?? import_typescript4.default.sys });
-  return import_typescript4.default.createProgram({ rootNames: [INTRINSICS_FILE, ...roots], options, host });
+  const host = createNatlangCompilerHost({ options, virtual: new Map(Object.entries(files2)), files: base ?? import_typescript5.default.sys });
+  return import_typescript5.default.createProgram({ rootNames: [INTRINSICS_FILE, ...roots], options, host });
 }
-var import_typescript4, VIRTUAL_LIB_DIR, dirname, embeddedLibs, sharedSourceFiles, isShared, EVAL_COMPILER_OPTIONS;
+var import_typescript5, VIRTUAL_LIB_DIR, dirname, embeddedLibs, sharedSourceFiles, isShared, EVAL_COMPILER_OPTIONS;
 var init_host = __esm({
   "src/compiler/host.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript4 = __toESM(require_typescript(), 1);
+    import_typescript5 = __toESM(require_typescript(), 1);
     init_intrinsics();
     VIRTUAL_LIB_DIR = "/__natlang__/lib";
     dirname = (path2) => {
@@ -214684,9 +215393,9 @@ var init_host = __esm({
     sharedSourceFiles = /* @__PURE__ */ new Map();
     isShared = (fileName) => fileName.startsWith("/__natlang__/") || /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]*\.d\.ts$/.test(fileName);
     EVAL_COMPILER_OPTIONS = {
-      target: import_typescript4.default.ScriptTarget.ES2022,
-      module: import_typescript4.default.ModuleKind.ESNext,
-      moduleResolution: import_typescript4.default.ModuleResolutionKind.Bundler,
+      target: import_typescript5.default.ScriptTarget.ES2022,
+      module: import_typescript5.default.ModuleKind.ESNext,
+      moduleResolution: import_typescript5.default.ModuleResolutionKind.Bundler,
       lib: ["lib.es2022.d.ts"],
       strict: true,
       noEmit: true,
@@ -214743,7 +215452,7 @@ function solveHoles(program, sites) {
       return position - shifted;
     };
     const require2 = (node, type, strong, why, id3) => {
-      const statement = import_typescript5.default.findAncestor(node, (candidate) => import_typescript5.default.isStatement(candidate) && !import_typescript5.default.isBlock(candidate)) ?? node;
+      const statement = import_typescript6.default.findAncestor(node, (candidate) => import_typescript6.default.isStatement(candidate) && !import_typescript6.default.isBlock(candidate)) ?? node;
       const quoted = statement.getText().split("\n")[0].replace(/\s+/g, " ").trim();
       uses.set(id3, [...uses.get(id3) ?? [], {
         type,
@@ -214755,11 +215464,11 @@ function solveHoles(program, sites) {
       }]);
     };
     const visit = (node) => {
-      if (import_typescript5.default.isExpression(node) && !isBindingName(node) && !isPropertyName(node) && !import_typescript5.default.isTaggedTemplateExpression(node.parent)) {
+      if (import_typescript6.default.isExpression(node) && !isBindingName(node) && !isPropertyName(node) && !import_typescript6.default.isTaggedTemplateExpression(node.parent)) {
         const type = checker.getTypeAtLocation(node);
         if (holesIn(checker, type).size) collect(node, type);
       }
-      import_typescript5.default.forEachChild(node, visit);
+      import_typescript6.default.forEachChild(node, visit);
     };
     const collect = (node, type) => {
       const expected = checker.getContextualType(node);
@@ -214769,48 +215478,48 @@ function solveHoles(program, sites) {
       const outer = skipParentheses(node);
       const parent = outer.parent;
       if (inTruthinessPosition(outer)) require2(node, checker.getBooleanType(), true, "tested as a condition", hole);
-      if (import_typescript5.default.isPrefixUnaryExpression(parent) && [
-        import_typescript5.default.SyntaxKind.MinusToken,
-        import_typescript5.default.SyntaxKind.PlusToken,
-        import_typescript5.default.SyntaxKind.TildeToken,
-        import_typescript5.default.SyntaxKind.PlusPlusToken,
-        import_typescript5.default.SyntaxKind.MinusMinusToken
+      if (import_typescript6.default.isPrefixUnaryExpression(parent) && [
+        import_typescript6.default.SyntaxKind.MinusToken,
+        import_typescript6.default.SyntaxKind.PlusToken,
+        import_typescript6.default.SyntaxKind.TildeToken,
+        import_typescript6.default.SyntaxKind.PlusPlusToken,
+        import_typescript6.default.SyntaxKind.MinusMinusToken
       ].includes(parent.operator))
         require2(node, checker.getNumberType(), true, "used as a number", hole);
-      if (import_typescript5.default.isBinaryExpression(parent)) {
+      if (import_typescript6.default.isBinaryExpression(parent)) {
         const other = parent.left === outer ? parent.right : parent.left;
         const otherType = checker.getTypeAtLocation(other);
         const kind = parent.operatorToken.kind;
         if (ARITHMETIC2.has(kind)) require2(node, checker.getNumberType(), true, "used as a number", hole);
-        else if (kind === import_typescript5.default.SyntaxKind.PlusToken || kind === import_typescript5.default.SyntaxKind.PlusEqualsToken || RELATIONAL.has(kind)) {
-          if (otherType.flags & import_typescript5.default.TypeFlags.NumberLike) require2(node, checker.getNumberType(), true, "used as a number", hole);
-          else if (otherType.flags & import_typescript5.default.TypeFlags.StringLike) require2(node, checker.getStringType(), false, "used as text", hole);
+        else if (kind === import_typescript6.default.SyntaxKind.PlusToken || kind === import_typescript6.default.SyntaxKind.PlusEqualsToken || RELATIONAL.has(kind)) {
+          if (otherType.flags & import_typescript6.default.TypeFlags.NumberLike) require2(node, checker.getNumberType(), true, "used as a number", hole);
+          else if (otherType.flags & import_typescript6.default.TypeFlags.StringLike) require2(node, checker.getStringType(), false, "used as text", hole);
         } else if (EQUALITY.has(kind) && !holesIn(checker, otherType).size) {
           const base = baseType(checker, otherType);
           if (base) require2(node, base, false, "compared with a value", hole);
         }
       }
-      if (import_typescript5.default.isTemplateSpan(parent) && parent.expression === outer || isDisplayed(outer))
+      if (import_typescript6.default.isTemplateSpan(parent) && parent.expression === outer || isDisplayed(outer))
         require2(node, checker.getStringType(), false, "used as text", hole);
-      if (import_typescript5.default.isSwitchStatement(parent) && parent.expression === outer) {
-        for (const clause of parent.caseBlock.clauses) if (import_typescript5.default.isCaseClause(clause)) {
+      if (import_typescript6.default.isSwitchStatement(parent) && parent.expression === outer) {
+        for (const clause of parent.caseBlock.clauses) if (import_typescript6.default.isCaseClause(clause)) {
           const base = baseType(checker, checker.getTypeAtLocation(clause.expression));
           if (base) require2(clause.expression, base, false, "compared with a value", hole);
         }
       }
-      if (import_typescript5.default.isPropertyAccessExpression(parent) && parent.expression === outer) {
+      if (import_typescript6.default.isPropertyAccessExpression(parent) && parent.expression === outer) {
         const name = parent.name.text;
-        const called = import_typescript5.default.isCallExpression(parent.parent) && parent.parent.expression === parent;
+        const called = import_typescript6.default.isCallExpression(parent.parent) && parent.parent.expression === parent;
         if (called && STRING_METHODS.has(name)) require2(node, checker.getStringType(), true, `given .${name}()`, hole);
         else if (called && NUMBER_METHODS.has(name)) require2(node, checker.getNumberType(), true, `given .${name}()`, hole);
         else fields.set(hole, /* @__PURE__ */ new Set([...fields.get(hole) ?? [], name]));
       }
-      if (import_typescript5.default.isVariableDeclaration(parent) && parent.initializer === outer && import_typescript5.default.isObjectBindingPattern(parent.name))
+      if (import_typescript6.default.isVariableDeclaration(parent) && parent.initializer === outer && import_typescript6.default.isObjectBindingPattern(parent.name))
         for (const element of parent.name.elements) {
           const name = element.propertyName ?? element.name;
-          if (import_typescript5.default.isIdentifier(name)) fields.set(hole, /* @__PURE__ */ new Set([...fields.get(hole) ?? [], name.text]));
+          if (import_typescript6.default.isIdentifier(name)) fields.set(hole, /* @__PURE__ */ new Set([...fields.get(hole) ?? [], name.text]));
         }
-      if (import_typescript5.default.isElementAccessExpression(parent) && parent.expression === outer || import_typescript5.default.isForOfStatement(parent) && parent.expression === outer) indexed.add(hole);
+      if (import_typescript6.default.isElementAccessExpression(parent) && parent.expression === outer || import_typescript6.default.isForOfStatement(parent) && parent.expression === outer) indexed.add(hole);
     };
     visit(file);
   }
@@ -214840,8 +215549,8 @@ function rebuild(program, texts) {
   const libDir = defaultLib ? defaultLib.slice(0, defaultLib.lastIndexOf("/")) : "/";
   const known = (fileName) => texts.get(fileName) ?? program.getSourceFile(fileName)?.text;
   const host = {
-    getSourceFile: (fileName, version) => texts.has(fileName) ? import_typescript5.default.createSourceFile(fileName, texts.get(fileName), version, true) : program.getSourceFile(fileName),
-    getDefaultLibFileName: (compilerOptions) => `${libDir}/${import_typescript5.default.getDefaultLibFileName(compilerOptions)}`,
+    getSourceFile: (fileName, version) => texts.has(fileName) ? import_typescript6.default.createSourceFile(fileName, texts.get(fileName), version, true) : program.getSourceFile(fileName),
+    getDefaultLibFileName: (compilerOptions) => `${libDir}/${import_typescript6.default.getDefaultLibFileName(compilerOptions)}`,
     getDefaultLibLocation: () => libDir,
     writeFile: () => void 0,
     getCurrentDirectory: () => program.getCurrentDirectory(),
@@ -214853,7 +215562,7 @@ function rebuild(program, texts) {
     readFile: known
   };
   try {
-    return import_typescript5.default.createProgram({ rootNames: program.getRootFileNames(), options, host, oldProgram: program });
+    return import_typescript6.default.createProgram({ rootNames: program.getRootFileNames(), options, host, oldProgram: program });
   } catch {
     return;
   }
@@ -214870,13 +215579,13 @@ function holesIn(checker, type, depth2 = 0, found = /* @__PURE__ */ new Set()) {
     return found;
   }
   if (type.isUnionOrIntersection()) for (const member of type.types) holesIn(checker, member, depth2 + 1, found);
-  else if (type.flags & import_typescript5.default.TypeFlags.Object) {
+  else if (type.flags & import_typescript6.default.TypeFlags.Object) {
     const object2 = type;
-    if (object2.objectFlags & import_typescript5.default.ObjectFlags.Reference)
+    if (object2.objectFlags & import_typescript6.default.ObjectFlags.Reference)
       for (const argument of checker.getTypeArguments(type)) holesIn(checker, argument, depth2 + 1, found);
-    const index = checker.getIndexInfoOfType(type, import_typescript5.default.IndexKind.String);
+    const index = checker.getIndexInfoOfType(type, import_typescript6.default.IndexKind.String);
     if (index) holesIn(checker, index.type, depth2 + 1, found);
-    if (object2.objectFlags & import_typescript5.default.ObjectFlags.Anonymous) {
+    if (object2.objectFlags & import_typescript6.default.ObjectFlags.Anonymous) {
       for (const property of type.getProperties().slice(0, 32)) holesIn(checker, checker.getTypeOfSymbol(property), depth2 + 1, found);
       for (const signature of type.getCallSignatures()) holesIn(checker, signature.getReturnType(), depth2 + 1, found);
     }
@@ -214895,7 +215604,7 @@ function unify(checker, source2, target, require2, depth2 = 0) {
     unify(checker, awaitedType(checker, source2).type, awaitedType(checker, target).type, require2, depth2 + 1);
     return;
   }
-  const shape2 = (candidate) => checker.isArrayType(candidate) || checker.isTupleType(candidate) ? "array" : candidate.getCallSignatures().length ? "function" : candidate.flags & import_typescript5.default.TypeFlags.Object ? "object" : "other";
+  const shape2 = (candidate) => checker.isArrayType(candidate) || checker.isTupleType(candidate) ? "array" : candidate.getCallSignatures().length ? "function" : candidate.flags & import_typescript6.default.TypeFlags.Object ? "object" : "other";
   const kind = shape2(source2);
   if (target.isUnion()) {
     const matching = target.types.filter((member) => shape2(member) === kind && !isPromiseLike(checker, member));
@@ -214915,8 +215624,8 @@ function unify(checker, source2, target, require2, depth2 = 0) {
     const [from] = source2.getCallSignatures(), [to2] = target.getCallSignatures();
     if (from && to2) unify(checker, from.getReturnType(), to2.getReturnType(), require2, depth2 + 1);
   } else if (kind === "object") {
-    const sourceIndex = checker.getIndexInfoOfType(source2, import_typescript5.default.IndexKind.String);
-    const targetIndex = checker.getIndexInfoOfType(target, import_typescript5.default.IndexKind.String);
+    const sourceIndex = checker.getIndexInfoOfType(source2, import_typescript6.default.IndexKind.String);
+    const targetIndex = checker.getIndexInfoOfType(target, import_typescript6.default.IndexKind.String);
     if (sourceIndex && targetIndex) unify(checker, sourceIndex.type, targetIndex.type, require2, depth2 + 1);
     for (const property of source2.getProperties()) {
       const goal = target.getProperty(property.name);
@@ -214930,55 +215639,55 @@ function withoutPromises(checker, type) {
   return members.length === type.types.length || members.length !== 1 ? type : members[0];
 }
 function baseType(checker, type) {
-  if (!usable(type) || type.flags & (import_typescript5.default.TypeFlags.Null | import_typescript5.default.TypeFlags.Undefined)) return;
-  if (type.flags & import_typescript5.default.TypeFlags.Literal && !type.aliasSymbol) return checker.getBaseTypeOfLiteralType(type);
+  if (!usable(type) || type.flags & (import_typescript6.default.TypeFlags.Null | import_typescript6.default.TypeFlags.Undefined)) return;
+  if (type.flags & import_typescript6.default.TypeFlags.Literal && !type.aliasSymbol) return checker.getBaseTypeOfLiteralType(type);
   return type;
 }
 function skipParentheses(node) {
-  while (node.parent && import_typescript5.default.isParenthesizedExpression(node.parent)) node = node.parent;
+  while (node.parent && import_typescript6.default.isParenthesizedExpression(node.parent)) node = node.parent;
   return node;
 }
 function inTruthinessPosition(node) {
   const parent = node.parent;
   if (!parent) return false;
-  if (import_typescript5.default.isParenthesizedExpression(parent)) return inTruthinessPosition(parent);
-  if ((import_typescript5.default.isIfStatement(parent) || import_typescript5.default.isWhileStatement(parent) || import_typescript5.default.isDoStatement(parent)) && parent.expression === node) return true;
-  if (import_typescript5.default.isForStatement(parent) && parent.condition === node) return true;
-  if (import_typescript5.default.isConditionalExpression(parent) && parent.condition === node) return true;
-  if (import_typescript5.default.isPrefixUnaryExpression(parent) && parent.operator === import_typescript5.default.SyntaxKind.ExclamationToken) return true;
-  if (import_typescript5.default.isBinaryExpression(parent) && [import_typescript5.default.SyntaxKind.AmpersandAmpersandToken, import_typescript5.default.SyntaxKind.BarBarToken].includes(parent.operatorToken.kind))
+  if (import_typescript6.default.isParenthesizedExpression(parent)) return inTruthinessPosition(parent);
+  if ((import_typescript6.default.isIfStatement(parent) || import_typescript6.default.isWhileStatement(parent) || import_typescript6.default.isDoStatement(parent)) && parent.expression === node) return true;
+  if (import_typescript6.default.isForStatement(parent) && parent.condition === node) return true;
+  if (import_typescript6.default.isConditionalExpression(parent) && parent.condition === node) return true;
+  if (import_typescript6.default.isPrefixUnaryExpression(parent) && parent.operator === import_typescript6.default.SyntaxKind.ExclamationToken) return true;
+  if (import_typescript6.default.isBinaryExpression(parent) && [import_typescript6.default.SyntaxKind.AmpersandAmpersandToken, import_typescript6.default.SyntaxKind.BarBarToken].includes(parent.operatorToken.kind))
     return inTruthinessPosition(parent);
-  const callback = import_typescript5.default.isArrowFunction(parent) && parent.body === node ? parent : import_typescript5.default.isReturnStatement(parent) ? import_typescript5.default.findAncestor(parent, import_typescript5.default.isFunctionLike) : void 0;
-  if (callback && callback.parent && import_typescript5.default.isCallExpression(callback.parent) && callback.parent.arguments.includes(callback)) {
+  const callback = import_typescript6.default.isArrowFunction(parent) && parent.body === node ? parent : import_typescript6.default.isReturnStatement(parent) ? import_typescript6.default.findAncestor(parent, import_typescript6.default.isFunctionLike) : void 0;
+  if (callback && callback.parent && import_typescript6.default.isCallExpression(callback.parent) && callback.parent.arguments.includes(callback)) {
     const callee = callback.parent.expression;
-    return import_typescript5.default.isPropertyAccessExpression(callee) && PREDICATE_METHODS.has(callee.name.text);
+    return import_typescript6.default.isPropertyAccessExpression(callee) && PREDICATE_METHODS.has(callee.name.text);
   }
   return false;
 }
 function isDisplayed(node) {
   const parent = node.parent;
-  if (parent && import_typescript5.default.isCallExpression(parent) && parent.arguments.includes(node)) {
+  if (parent && import_typescript6.default.isCallExpression(parent) && parent.arguments.includes(node)) {
     const callee = parent.expression;
-    return import_typescript5.default.isPropertyAccessExpression(callee) && import_typescript5.default.isIdentifier(callee.expression) && callee.expression.text === "console";
+    return import_typescript6.default.isPropertyAccessExpression(callee) && import_typescript6.default.isIdentifier(callee.expression) && callee.expression.text === "console";
   }
-  if (!parent || !import_typescript5.default.isExpressionStatement(parent)) return false;
+  if (!parent || !import_typescript6.default.isExpressionStatement(parent)) return false;
   const body = parent.parent;
-  return import_typescript5.default.isBlock(body) && body.statements.at(-1) === parent && import_typescript5.default.isFunctionDeclaration(body.parent) && body.parent.name?.text === EVAL_WRAPPER;
+  return import_typescript6.default.isBlock(body) && body.statements.at(-1) === parent && import_typescript6.default.isFunctionDeclaration(body.parent) && body.parent.name?.text === EVAL_WRAPPER;
 }
 function isBindingName(node) {
   const parent = node.parent;
-  return !!parent && ((import_typescript5.default.isVariableDeclaration(parent) || import_typescript5.default.isParameter(parent) || import_typescript5.default.isBindingElement(parent) || import_typescript5.default.isFunctionDeclaration(parent) || import_typescript5.default.isPropertyAssignment(parent)) && parent.name === node);
+  return !!parent && ((import_typescript6.default.isVariableDeclaration(parent) || import_typescript6.default.isParameter(parent) || import_typescript6.default.isBindingElement(parent) || import_typescript6.default.isFunctionDeclaration(parent) || import_typescript6.default.isPropertyAssignment(parent)) && parent.name === node);
 }
 function isPropertyName(node) {
   const parent = node.parent;
-  return !!parent && import_typescript5.default.isPropertyAccessExpression(parent) && parent.name === node;
+  return !!parent && import_typescript6.default.isPropertyAccessExpression(parent) && parent.name === node;
 }
-var import_typescript5, HOLE, EVAL_WRAPPER, STRING_METHODS, NUMBER_METHODS, PREDICATE_METHODS, ARITHMETIC2, RELATIONAL, EQUALITY, usable;
+var import_typescript6, HOLE, EVAL_WRAPPER, STRING_METHODS, NUMBER_METHODS, PREDICATE_METHODS, ARITHMETIC2, RELATIONAL, EQUALITY, usable;
 var init_holes = __esm({
   "src/compiler/holes.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript5 = __toESM(require_typescript(), 1);
+    import_typescript6 = __toESM(require_typescript(), 1);
     init_targets();
     HOLE = "__NlHole";
     EVAL_WRAPPER = "__natlang_scope";
@@ -215007,29 +215716,29 @@ var init_holes = __esm({
     NUMBER_METHODS = /* @__PURE__ */ new Set(["toFixed", "toPrecision", "toExponential"]);
     PREDICATE_METHODS = /* @__PURE__ */ new Set(["filter", "some", "every", "find", "findIndex", "findLast", "findLastIndex"]);
     ARITHMETIC2 = /* @__PURE__ */ new Set([
-      import_typescript5.default.SyntaxKind.MinusToken,
-      import_typescript5.default.SyntaxKind.AsteriskToken,
-      import_typescript5.default.SyntaxKind.SlashToken,
-      import_typescript5.default.SyntaxKind.PercentToken,
-      import_typescript5.default.SyntaxKind.AsteriskAsteriskToken,
-      import_typescript5.default.SyntaxKind.MinusEqualsToken,
-      import_typescript5.default.SyntaxKind.AsteriskEqualsToken,
-      import_typescript5.default.SyntaxKind.SlashEqualsToken,
-      import_typescript5.default.SyntaxKind.PercentEqualsToken
+      import_typescript6.default.SyntaxKind.MinusToken,
+      import_typescript6.default.SyntaxKind.AsteriskToken,
+      import_typescript6.default.SyntaxKind.SlashToken,
+      import_typescript6.default.SyntaxKind.PercentToken,
+      import_typescript6.default.SyntaxKind.AsteriskAsteriskToken,
+      import_typescript6.default.SyntaxKind.MinusEqualsToken,
+      import_typescript6.default.SyntaxKind.AsteriskEqualsToken,
+      import_typescript6.default.SyntaxKind.SlashEqualsToken,
+      import_typescript6.default.SyntaxKind.PercentEqualsToken
     ]);
     RELATIONAL = /* @__PURE__ */ new Set([
-      import_typescript5.default.SyntaxKind.LessThanToken,
-      import_typescript5.default.SyntaxKind.GreaterThanToken,
-      import_typescript5.default.SyntaxKind.LessThanEqualsToken,
-      import_typescript5.default.SyntaxKind.GreaterThanEqualsToken
+      import_typescript6.default.SyntaxKind.LessThanToken,
+      import_typescript6.default.SyntaxKind.GreaterThanToken,
+      import_typescript6.default.SyntaxKind.LessThanEqualsToken,
+      import_typescript6.default.SyntaxKind.GreaterThanEqualsToken
     ]);
     EQUALITY = /* @__PURE__ */ new Set([
-      import_typescript5.default.SyntaxKind.EqualsEqualsEqualsToken,
-      import_typescript5.default.SyntaxKind.ExclamationEqualsEqualsToken,
-      import_typescript5.default.SyntaxKind.EqualsEqualsToken,
-      import_typescript5.default.SyntaxKind.ExclamationEqualsToken
+      import_typescript6.default.SyntaxKind.EqualsEqualsEqualsToken,
+      import_typescript6.default.SyntaxKind.ExclamationEqualsEqualsToken,
+      import_typescript6.default.SyntaxKind.EqualsEqualsToken,
+      import_typescript6.default.SyntaxKind.ExclamationEqualsToken
     ]);
-    usable = (type) => !(type.flags & (import_typescript5.default.TypeFlags.Any | import_typescript5.default.TypeFlags.Unknown | import_typescript5.default.TypeFlags.Never | import_typescript5.default.TypeFlags.TypeParameter | import_typescript5.default.TypeFlags.Void));
+    usable = (type) => !(type.flags & (import_typescript6.default.TypeFlags.Any | import_typescript6.default.TypeFlags.Unknown | import_typescript6.default.TypeFlags.Never | import_typescript6.default.TypeFlags.TypeParameter | import_typescript6.default.TypeFlags.Void));
   }
 });
 
@@ -215037,7 +215746,7 @@ var init_holes = __esm({
 function fromTypeScript(diagnostic, file) {
   const start = diagnostic.start ?? 0;
   const position = diagnostic.file && diagnostic.start !== void 0 ? diagnostic.file.getLineAndCharacterOfPosition(start) : { line: 0, character: 0 };
-  const [message2 = "", ...rest] = import_typescript6.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n").split("\n").map((line) => line.trim());
+  const [message2 = "", ...rest] = import_typescript7.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n").split("\n").map((line) => line.trim());
   const detail = rest.filter((line, index) => line && line !== message2 && rest.indexOf(line) === index).join("\n");
   return {
     file,
@@ -215052,20 +215761,20 @@ function fromTypeScript(diagnostic, file) {
   };
 }
 function softBodyOf(template) {
-  if (!import_typescript6.default.isTemplateExpression(template) || template.templateSpans.length !== 1 || template.head.text !== "" || template.templateSpans[0].literal.text !== "") return;
+  if (!import_typescript7.default.isTemplateExpression(template) || template.templateSpans.length !== 1 || template.head.text !== "" || template.templateSpans[0].literal.text !== "") return;
   const expression = template.templateSpans[0].expression;
-  if (!import_typescript6.default.isCallExpression(expression) || !import_typescript6.default.isPropertyAccessExpression(expression.expression)) return;
+  if (!import_typescript7.default.isCallExpression(expression) || !import_typescript7.default.isPropertyAccessExpression(expression.expression)) return;
   const callee = expression.expression;
-  return import_typescript6.default.isIdentifier(callee.expression) && callee.expression.text === "__neuralese" && callee.name.text === "body" ? nativeLiteralUse(expression.arguments)?.id : void 0;
+  return import_typescript7.default.isIdentifier(callee.expression) && callee.expression.text === "__neuralese" && callee.name.text === "body" ? nativeLiteralUse(expression.arguments)?.id : void 0;
 }
 function softBodyUse(template) {
-  if (!softBodyOf(template) || !import_typescript6.default.isTemplateExpression(template)) return;
+  if (!softBodyOf(template) || !import_typescript7.default.isTemplateExpression(template)) return;
   return nativeLiteralUse(template.templateSpans[0].expression.arguments);
 }
 function withCallOf(checker, tag) {
-  if (!import_typescript6.default.isCallExpression(tag) || !import_typescript6.default.isPropertyAccessExpression(tag.expression) || tag.expression.name.text !== "with") return;
+  if (!import_typescript7.default.isCallExpression(tag) || !import_typescript7.default.isPropertyAccessExpression(tag.expression) || tag.expression.name.text !== "with") return;
   if (checker) return resolveIntrinsic(checker, tag.expression) === "nl.with" ? tag : void 0;
-  return import_typescript6.default.isIdentifier(tag.expression.expression) && tag.expression.expression.text === "nl" ? tag : void 0;
+  return import_typescript7.default.isIdentifier(tag.expression.expression) && tag.expression.expression.text === "nl" ? tag : void 0;
 }
 function isUntrustedType(checker, type) {
   if (type.isUnion()) return type.types.some((member) => isUntrustedType(checker, member));
@@ -215077,69 +215786,69 @@ function untrustedSplice(checker, expression) {
   if (!isTextType(type)) return void 0;
   let found;
   const visit = (node) => {
-    if (found || import_typescript6.default.isFunctionLike(node)) return;
-    if (import_typescript6.default.isExpression(node) && node !== expression && isUntrustedType(checker, checker.getTypeAtLocation(node))) {
+    if (found || import_typescript7.default.isFunctionLike(node)) return;
+    if (import_typescript7.default.isExpression(node) && node !== expression && isUntrustedType(checker, checker.getTypeAtLocation(node))) {
       found = node;
       return;
     }
-    import_typescript6.default.forEachChild(node, visit);
+    import_typescript7.default.forEachChild(node, visit);
   };
   visit(expression);
   return found;
 }
 function suffixWithCallOf(node) {
   const member = node.parent;
-  if (!member || !import_typescript6.default.isPropertyAccessExpression(member) || member.expression !== node || member.name.text !== "with") return;
+  if (!member || !import_typescript7.default.isPropertyAccessExpression(member) || member.expression !== node || member.name.text !== "with") return;
   const call = member.parent;
-  return call && import_typescript6.default.isCallExpression(call) && call.expression === member ? call : void 0;
+  return call && import_typescript7.default.isCallExpression(call) && call.expression === member ? call : void 0;
 }
 function suffixWithInvocation(call) {
   if (!call) return;
   const parent = call.parent;
-  return parent && import_typescript6.default.isCallExpression(parent) && parent.expression === call ? parent : void 0;
+  return parent && import_typescript7.default.isCallExpression(parent) && parent.expression === call ? parent : void 0;
 }
 function liveTargetOf(checker, expression) {
-  while (import_typescript6.default.isParenthesizedExpression(expression)) expression = expression.expression;
-  if (!import_typescript6.default.isCallExpression(expression)) return;
-  const isLive2 = checker ? resolveIntrinsic(checker, expression.expression) === "live" : import_typescript6.default.isIdentifier(expression.expression) && expression.expression.text === "live";
+  while (import_typescript7.default.isParenthesizedExpression(expression)) expression = expression.expression;
+  if (!import_typescript7.default.isCallExpression(expression)) return;
+  const isLive2 = checker ? resolveIntrinsic(checker, expression.expression) === "live" : import_typescript7.default.isIdentifier(expression.expression) && expression.expression.text === "live";
   return isLive2 ? expression.arguments[0] ?? expression : void 0;
 }
 function intrinsicOf(declaration) {
   if (!declaration) return;
-  for (const tag of import_typescript6.default.getJSDocTags(declaration)) {
+  for (const tag of import_typescript7.default.getJSDocTags(declaration)) {
     if (tag.tagName.text !== "natlangIntrinsic") continue;
-    const comment = typeof tag.comment === "string" ? tag.comment : import_typescript6.default.getTextOfJSDocComment(tag.comment);
+    const comment = typeof tag.comment === "string" ? tag.comment : import_typescript7.default.getTextOfJSDocComment(tag.comment);
     return comment?.trim().split(/\s+/)[0];
   }
   return;
 }
 function ambientNlDeclaration(declaration, checker) {
-  if (!import_typescript6.default.isVariableDeclaration(declaration) && !import_typescript6.default.isFunctionDeclaration(declaration)) return false;
-  if (!declaration.name || !import_typescript6.default.isIdentifier(declaration.name) || declaration.name.text !== "nl") return false;
-  if (import_typescript6.default.isVariableDeclaration(declaration) && declaration.initializer || import_typescript6.default.isFunctionDeclaration(declaration) && declaration.body) return false;
-  const statement = import_typescript6.default.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration;
-  const ambient = declaration.getSourceFile().isDeclarationFile || !!(import_typescript6.default.getCombinedModifierFlags(statement) & import_typescript6.default.ModifierFlags.Ambient);
+  if (!import_typescript7.default.isVariableDeclaration(declaration) && !import_typescript7.default.isFunctionDeclaration(declaration)) return false;
+  if (!declaration.name || !import_typescript7.default.isIdentifier(declaration.name) || declaration.name.text !== "nl") return false;
+  if (import_typescript7.default.isVariableDeclaration(declaration) && declaration.initializer || import_typescript7.default.isFunctionDeclaration(declaration) && declaration.body) return false;
+  const statement = import_typescript7.default.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration;
+  const ambient = declaration.getSourceFile().isDeclarationFile || !!(import_typescript7.default.getCombinedModifierFlags(statement) & import_typescript7.default.ModifierFlags.Ambient);
   if (!ambient) return false;
   const type = checker.getTypeAtLocation(declaration.name);
   const withMember = type.getProperty("with");
   return type.getCallSignatures().length > 0 || !!(withMember && checker.getTypeOfSymbolAtLocation(withMember, declaration.name).getCallSignatures().length > 0);
 }
 function ambientNlBinding(checker, expression) {
-  if (!import_typescript6.default.isIdentifier(expression) || expression.text !== "nl") return false;
+  if (!import_typescript7.default.isIdentifier(expression) || expression.text !== "nl") return false;
   const symbol = checker.getSymbolAtLocation(expression);
-  if (!symbol || symbol.flags & import_typescript6.default.SymbolFlags.Alias) return false;
+  if (!symbol || symbol.flags & import_typescript7.default.SymbolFlags.Alias) return false;
   const declarations = symbol.declarations ?? [];
   return declarations.length > 0 && declarations.every((declaration) => ambientNlDeclaration(declaration, checker));
 }
 function resolveIntrinsic(checker, expression) {
-  let symbol = checker.getSymbolAtLocation(import_typescript6.default.isPropertyAccessExpression(expression) ? expression.name : expression);
-  if (symbol && symbol.flags & import_typescript6.default.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  let symbol = checker.getSymbolAtLocation(import_typescript7.default.isPropertyAccessExpression(expression) ? expression.name : expression);
+  if (symbol && symbol.flags & import_typescript7.default.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   for (const declaration of symbol?.declarations ?? []) {
     const name = intrinsicOf(declaration);
     if (name) return name;
   }
   if (ambientNlBinding(checker, expression)) return "nl";
-  if (import_typescript6.default.isPropertyAccessExpression(expression) && expression.name.text === "with" && ambientNlBinding(checker, expression.expression)) return "nl.with";
+  if (import_typescript7.default.isPropertyAccessExpression(expression) && expression.name.text === "with" && ambientNlBinding(checker, expression.expression)) return "nl.with";
   return;
 }
 function spanOf(node, displayPath = (file) => file.fileName, start = node.getStart(), end = node.getEnd()) {
@@ -215157,41 +215866,41 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   const scopeFiles = new Set(options.scopeFiles ?? []);
   const report = (node, code, message2, severity = "error") => diagnostics.push({ ...spanOf(node, displayPath), code, message: message2, severity });
   const target = (type, node, what, allowHost = true, within = { program, location: node }) => {
-    if (type.flags & (import_typescript6.default.TypeFlags.Any | import_typescript6.default.TypeFlags.Unknown)) return { text: "any", natlang: "unknown", aliases: {} };
+    if (type.flags & (import_typescript7.default.TypeFlags.Any | import_typescript7.default.TypeFlags.Unknown)) return { text: "any", natlang: "unknown", aliases: {} };
     try {
       return describeTarget(within.program, within.program.getTypeChecker(), type, { allowHost, location: within.location });
     } catch (error) {
       if (!(error instanceof TargetError)) throw error;
-      const annotation2 = checker.getSignaturesOfType(type, import_typescript6.default.SignatureKind.Call).length ? "Use an explicit Neuralese callable type, such as `Neuralese<(input: Input) => Promise<Result>>`, with your declared parameter and result types, rather than the inferred callable/intersection type." : "Annotate it.";
+      const annotation2 = checker.getSignaturesOfType(type, import_typescript7.default.SignatureKind.Call).length ? "Use an explicit Neuralese callable type, such as `Neuralese<(input: Input) => Promise<Result>>`, with your declared parameter and result types, rather than the inferred callable/intersection type." : "Annotate it.";
       report(node, what === "return" ? "nl-unknown-return" : "nl-unknown-parameter", what === "return" ? `Return type of this \`nl\` expression is unknown (${error.message}); annotate the target or write \`nl<Verdict>\`.` : `Type of ${what} for this \`nl\` expression cannot be used (${error.message}); ${annotation2}`);
       return;
     }
   };
-  const widen = (type) => type.flags & import_typescript6.default.TypeFlags.Literal && !(type.flags & import_typescript6.default.TypeFlags.EnumLiteral) ? checker.getBaseTypeOfLiteralType(type) : type;
+  const widen = (type) => type.flags & import_typescript7.default.TypeFlags.Literal && !(type.flags & import_typescript7.default.TypeFlags.EnumLiteral) ? checker.getBaseTypeOfLiteralType(type) : type;
   const resultContext = (outer, awaited) => {
-    if (outer.parent && import_typescript6.default.isReturnStatement(outer.parent)) {
+    if (outer.parent && import_typescript7.default.isReturnStatement(outer.parent)) {
       let fn = outer.parent;
-      while (fn && !import_typescript6.default.isFunctionLike(fn)) fn = fn.parent;
-      if (fn && import_typescript6.default.isFunctionLike(fn) && import_typescript6.default.getCombinedModifierFlags(fn) & import_typescript6.default.ModifierFlags.Async) {
-        const contextual2 = !fn.type && (import_typescript6.default.isArrowFunction(fn) || import_typescript6.default.isFunctionExpression(fn)) ? checker.getContextualType(fn)?.getCallSignatures() : void 0;
+      while (fn && !import_typescript7.default.isFunctionLike(fn)) fn = fn.parent;
+      if (fn && import_typescript7.default.isFunctionLike(fn) && import_typescript7.default.getCombinedModifierFlags(fn) & import_typescript7.default.ModifierFlags.Async) {
+        const contextual2 = !fn.type && (import_typescript7.default.isArrowFunction(fn) || import_typescript7.default.isFunctionExpression(fn)) ? checker.getContextualType(fn)?.getCallSignatures() : void 0;
         const signature = fn.type ? checker.getSignatureFromDeclaration(fn) : contextual2?.length === 1 ? contextual2[0] : void 0;
         const declared = signature && awaitedType(checker, checker.getReturnTypeOfSignature(signature)).type;
-        if (declared && !(declared.flags & import_typescript6.default.TypeFlags.Any)) return declared;
+        if (declared && !(declared.flags & import_typescript7.default.TypeFlags.Any)) return declared;
       }
     }
     const contextual = checker.getContextualType(outer);
-    if (!contextual || contextual.flags & import_typescript6.default.TypeFlags.Any) return;
+    if (!contextual || contextual.flags & import_typescript7.default.TypeFlags.Any) return;
     const result = awaited ? contextual : awaitedType(checker, contextual).type;
-    const open = (type) => !!(type.flags & (import_typescript6.default.TypeFlags.TypeParameter | import_typescript6.default.TypeFlags.Unknown | import_typescript6.default.TypeFlags.Any)) || type.isUnion() && type.types.some(open);
+    const open = (type) => !!(type.flags & (import_typescript7.default.TypeFlags.TypeParameter | import_typescript7.default.TypeFlags.Unknown | import_typescript7.default.TypeFlags.Any)) || type.isUnion() && type.types.some(open);
     return open(result) ? void 0 : result;
   };
   const laterUses = (declaration) => {
-    if (!import_typescript6.default.isIdentifier(declaration.name)) return [];
+    if (!import_typescript7.default.isIdentifier(declaration.name)) return [];
     const symbol = checker.getSymbolAtLocation(declaration.name);
     const found = [];
     const visit = (node) => {
-      if (import_typescript6.default.isIdentifier(node) && node !== declaration.name && node.text === declaration.name.getText() && checker.getSymbolAtLocation(node) === symbol) found.push(node);
-      import_typescript6.default.forEachChild(node, visit);
+      if (import_typescript7.default.isIdentifier(node) && node !== declaration.name && node.text === declaration.name.getText() && checker.getSymbolAtLocation(node) === symbol) found.push(node);
+      import_typescript7.default.forEachChild(node, visit);
     };
     visit(declaration.getSourceFile());
     return found;
@@ -215210,27 +215919,27 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     const outerTag = unwrapParentheses(node);
     const suffixCall = suffixWithCallOf(node);
     const suffixInvocation = suffixWithInvocation(suffixCall);
-    let call = suffixCall ? suffixInvocation : outerTag.parent && import_typescript6.default.isCallExpression(outerTag.parent) && outerTag.parent.expression === outerTag ? outerTag.parent : void 0;
+    let call = suffixCall ? suffixInvocation : outerTag.parent && import_typescript7.default.isCallExpression(outerTag.parent) && outerTag.parent.expression === outerTag ? outerTag.parent : void 0;
     withCall ??= suffixCall;
     const signature = { origin: "none" };
     const arrow = outerTag.parent;
-    const mappedNl = arrow && import_typescript6.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript6.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow) && import_typescript6.default.isPropertyAccessExpression(arrow.parent.expression) && arrow.parent.expression.name.text === "map" && arrow.parent.parent && import_typescript6.default.isVariableDeclaration(arrow.parent.parent) && arrow.parent.parent.initializer === arrow.parent ? arrow.parent.parent : void 0;
+    const mappedNl = arrow && import_typescript7.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript7.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow) && import_typescript7.default.isPropertyAccessExpression(arrow.parent.expression) && arrow.parent.expression.name.text === "map" && arrow.parent.parent && import_typescript7.default.isVariableDeclaration(arrow.parent.parent) && arrow.parent.parent.initializer === arrow.parent ? arrow.parent.parent : void 0;
     const indexedCalls = mappedNl ? laterUses(mappedNl).flatMap((use) => {
       const indexed = use.parent;
-      if (!indexed || !import_typescript6.default.isElementAccessExpression(indexed) || indexed.expression !== use) return [];
+      if (!indexed || !import_typescript7.default.isElementAccessExpression(indexed) || indexed.expression !== use) return [];
       const invocation = indexed.parent;
-      return invocation && import_typescript6.default.isCallExpression(invocation) && invocation.expression === indexed ? [invocation] : [];
+      return invocation && import_typescript7.default.isCallExpression(invocation) && invocation.expression === indexed ? [invocation] : [];
     }) : [];
-    if (arrow && import_typescript6.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript6.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow)) {
+    if (arrow && import_typescript7.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript7.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow)) {
       if (indexedCalls.length) call = indexedCalls[0];
       else {
         report(node, "nl-not-called", "This arrow returns the `nl` function itself, never called: nl`...` creates a function. Call it, and await the results: `await Promise.all(items.map(item => nl`Does item \u2026?`(item)))`, or save the callables and invoke them later.");
         return;
       }
     }
-    if (outerTag.parent && import_typescript6.default.isAwaitExpression(outerTag.parent)) {
+    if (outerTag.parent && import_typescript7.default.isAwaitExpression(outerTag.parent)) {
       const awaited = outerTag.parent;
-      const declaration = awaited.parent && import_typescript6.default.isVariableDeclaration(awaited.parent) && awaited.parent.initializer === awaited ? awaited.parent : void 0;
+      const declaration = awaited.parent && import_typescript7.default.isVariableDeclaration(awaited.parent) && awaited.parent.initializer === awaited ? awaited.parent : void 0;
       const contextual = checker.getContextualType(awaited);
       const savedCallable = !!declaration && (!contextual || contextual.getCallSignatures().length > 0);
       if (!savedCallable) {
@@ -215248,11 +215957,11 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       let unresolved;
       const findUnresolved = (typeNode) => {
         if (unresolved) return;
-        if (import_typescript6.default.isTypeReferenceNode(typeNode) && !checker.getSymbolAtLocation(typeNode.typeName)) {
+        if (import_typescript7.default.isTypeReferenceNode(typeNode) && !checker.getSymbolAtLocation(typeNode.typeName)) {
           unresolved = typeNode;
           return;
         }
-        import_typescript6.default.forEachChild(typeNode, findUnresolved);
+        import_typescript7.default.forEachChild(typeNode, findUnresolved);
       };
       findUnresolved(annotation2);
       if (unresolved) {
@@ -215260,11 +215969,11 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         report(unresolved, "nl-undeclared-type", `Type name ${JSON.stringify(name)} is not declared in this eval scope, so the inline result is untyped; declare it in scope or use a type written in this annotation.`);
         return;
       }
-      if (import_typescript6.default.isFunctionTypeNode(annotation2)) {
+      if (import_typescript7.default.isFunctionTypeNode(annotation2)) {
         signature.parameters = [];
         signature.declaredParameters = true;
         for (const parameter of annotation2.parameters) {
-          if (!import_typescript6.default.isIdentifier(parameter.name) || parameter.dotDotDotToken) {
+          if (!import_typescript7.default.isIdentifier(parameter.name) || parameter.dotDotDotToken) {
             report(parameter, "nl-spread", "Annotated `nl` parameters must be named identifiers without rest syntax.");
             return;
           }
@@ -215280,11 +215989,11 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     const iteration = signature.origin === "none" ? iterationArguments(checker, outerTag) : void 0;
     if (iteration) {
       const [initial, ...rest] = iteration;
-      if (!initial || rest.some(import_typescript6.default.isSpreadElement) || import_typescript6.default.isSpreadElement(initial)) {
+      if (!initial || rest.some(import_typescript7.default.isSpreadElement) || import_typescript7.default.isSpreadElement(initial)) {
         report(node, "nl-spread", "An `nl` iteration step needs an initial state and plainly listed arguments, or an explicit signature.");
         return;
       }
-      const name = (argument, index) => import_typescript6.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "state";
+      const name = (argument, index) => import_typescript7.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "state";
       signature.parameters = [initial, ...rest].map((argument, index) => ({ name: name(argument, index), type: widen(checker.getTypeAtLocation(argument)) }));
       signature.returns = signature.parameters[0].type;
       signature.origin = "iteration";
@@ -215302,14 +216011,14 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       if (only) {
         const returnType = only.getReturnType();
         const members = returnType.isUnion() ? returnType.types : [returnType];
-        if (!softSlot && !(returnType.flags & import_typescript6.default.TypeFlags.Any) && !members.some((member) => isPromiseLike(checker, member))) {
+        if (!softSlot && !(returnType.flags & import_typescript7.default.TypeFlags.Any) && !members.some((member) => isPromiseLike(checker, member))) {
           report(node, "nl-sync-callback", "This callback slot expects a synchronous result, but an `nl` function returns a Promise. Use an async map and then an ordinary filter or loop.");
           return;
         }
         signature.declaredParameters = true;
         signature.parameters = only.getParameters().map((parameter) => {
           const declaration = parameter.valueDeclaration;
-          if (declaration && import_typescript6.default.isParameter(declaration) && declaration.dotDotDotToken)
+          if (declaration && import_typescript7.default.isParameter(declaration) && declaration.dotDotDotToken)
             report(node, "nl-spread", "A rest-parameter callback slot needs an explicit `nl<(...) => R>` signature.");
           return { name: parameter.name, type: checker.getTypeOfSymbolAtLocation(parameter, node) };
         });
@@ -215329,7 +216038,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       const types3 = [];
       let generated = 0;
       for (const argument of call.arguments) {
-        if (import_typescript6.default.isSpreadElement(argument)) {
+        if (import_typescript7.default.isSpreadElement(argument)) {
           const spread = checker.getTypeAtLocation(argument.expression);
           if (!checker.isTupleType(spread)) {
             report(argument, "nl-spread", "A spread argument to an `nl` call needs a statically known tuple or an explicit signature.");
@@ -215341,7 +216050,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
           continue;
         }
-        names.push(import_typescript6.default.isIdentifier(argument) ? argument.text : generated++ ? `input${generated}` : "input");
+        names.push(import_typescript7.default.isIdentifier(argument) ? argument.text : generated++ ? `input${generated}` : "input");
         types3.push(widen(checker.getTypeAtLocation(argument)));
       }
       if (!signature.parameters) signature.parameters = names.map((name, index) => ({ name, type: types3[index] }));
@@ -215351,13 +216060,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       }
       if (!signature.returns) {
         const outer = unwrapParentheses(call);
-        const awaitNode = outer.parent && import_typescript6.default.isAwaitExpression(outer.parent) ? unwrapParentheses(outer.parent) : void 0;
+        const awaitNode = outer.parent && import_typescript7.default.isAwaitExpression(outer.parent) ? unwrapParentheses(outer.parent) : void 0;
         signature.returns = resultContext(awaitNode ?? outer, !!awaitNode);
       }
     } else if (!signature.parameters) {
       const holder = outerTag.parent;
-      if (holder && import_typescript6.default.isVariableDeclaration(holder) && !holder.type) {
-        const calls = laterUses(holder).map((use) => unwrapParentheses(use)).map((use) => use.parent).filter((parent) => !!parent && import_typescript6.default.isCallExpression(parent));
+      if (holder && import_typescript7.default.isVariableDeclaration(holder) && !holder.type) {
+        const calls = laterUses(holder).map((use) => unwrapParentheses(use)).map((use) => use.parent).filter((parent) => !!parent && import_typescript7.default.isCallExpression(parent));
         if (!signature.parameters && calls.length) {
           const arity = new Set(calls.map((item) => item.arguments.length));
           if (arity.size > 1) {
@@ -215366,7 +216075,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
           const first = calls[0];
           signature.parameters = first.arguments.map((argument, index) => ({
-            name: import_typescript6.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "input",
+            name: import_typescript7.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "input",
             type: uniqueType(
               calls.map((item) => widen(checker.getTypeAtLocation(item.arguments[index]))),
               node,
@@ -215395,14 +216104,14 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       return;
     }
     const captureSchemaNode = withCall === node.tag && withCall.typeArguments?.length === 2 ? withCall.typeArguments[0] : void 0;
-    const fromRecord = !import_typescript6.default.isObjectLiteralExpression(argument);
+    const fromRecord = !import_typescript7.default.isObjectLiteralExpression(argument);
     const properties = [];
     const actualTypes = /* @__PURE__ */ new Map();
     if (fromRecord) {
       const recordType = checker.getTypeAtLocation(argument);
-      const finite2 = !!(recordType.flags & import_typescript6.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript6.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript6.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript6.default.IndexKind.Number);
+      const finite2 = !!(recordType.flags & import_typescript7.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript7.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript7.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript7.default.IndexKind.Number);
       const members = checker.getPropertiesOfType(recordType);
-      if (!finite2 || !members.length || members.some((member) => !(member.declarations ?? []).some((declaration) => import_typescript6.default.isPropertySignature(declaration) || import_typescript6.default.isPropertyDeclaration(declaration) || import_typescript6.default.isPropertyAssignment(declaration)))) {
+      if (!finite2 || !members.length || members.some((member) => !(member.declarations ?? []).some((declaration) => import_typescript7.default.isPropertySignature(declaration) || import_typescript7.default.isPropertyDeclaration(declaration) || import_typescript7.default.isPropertyAssignment(declaration)))) {
         report(argument, "nl-explicit-captures", "nl.with needs a record expression with a finite set of known fields; use an object literal or give the record a type with named data fields.");
         return;
       }
@@ -215430,20 +216139,20 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           described2 = { text: checker.typeToString(type2, node), aliases: {}, host: { kind: "shape", members: [] } };
         }
         let recordRoot = argument;
-        while (import_typescript6.default.isParenthesizedExpression(recordRoot) || import_typescript6.default.isAsExpression(recordRoot) || import_typescript6.default.isNonNullExpression(recordRoot) || import_typescript6.default.isSatisfiesExpression(recordRoot)) recordRoot = recordRoot.expression;
-        while (import_typescript6.default.isPropertyAccessExpression(recordRoot)) recordRoot = recordRoot.expression;
-        const recordSymbol = import_typescript6.default.isIdentifier(recordRoot) ? checker.getSymbolAtLocation(recordRoot) : void 0;
+        while (import_typescript7.default.isParenthesizedExpression(recordRoot) || import_typescript7.default.isAsExpression(recordRoot) || import_typescript7.default.isNonNullExpression(recordRoot) || import_typescript7.default.isSatisfiesExpression(recordRoot)) recordRoot = recordRoot.expression;
+        while (import_typescript7.default.isPropertyAccessExpression(recordRoot)) recordRoot = recordRoot.expression;
+        const recordSymbol = import_typescript7.default.isIdentifier(recordRoot) ? checker.getSymbolAtLocation(recordRoot) : void 0;
         const recordDeclaration = recordSymbol?.valueDeclaration ?? recordSymbol?.declarations?.[0];
-        const source3 = (recordDeclaration && options.classify?.(recordDeclaration)) ?? (described2.host ? "handle" : recordDeclaration && import_typescript6.default.isParameter(recordDeclaration) ? "input" : recordDeclaration && isTopLevel(recordDeclaration) ? "local" : "block");
+        const source3 = (recordDeclaration && options.classify?.(recordDeclaration)) ?? (described2.host ? "handle" : recordDeclaration && import_typescript7.default.isParameter(recordDeclaration) ? "input" : recordDeclaration && isTopLevel(recordDeclaration) ? "local" : "block");
         captures.push({ name: name2, type: described2, mutable: false, source: source3, mentionSpan: argument.getStart(), mode: "snapshot" });
         continue;
       }
       const property = entry.property;
       let name, expression;
-      if (import_typescript6.default.isShorthandPropertyAssignment(property)) {
+      if (import_typescript7.default.isShorthandPropertyAssignment(property)) {
         name = property.name.text;
         expression = property.name;
-      } else if (import_typescript6.default.isPropertyAssignment(property) && (import_typescript6.default.isIdentifier(property.name) || import_typescript6.default.isStringLiteral(property.name))) {
+      } else if (import_typescript7.default.isPropertyAssignment(property) && (import_typescript7.default.isIdentifier(property.name) || import_typescript7.default.isStringLiteral(property.name))) {
         name = property.name.text;
         expression = property.initializer;
       } else {
@@ -215458,9 +216167,9 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       let declaration;
       const liveTarget = liveTargetOf(checker, expression);
       if (liveTarget) {
-        const symbol = import_typescript6.default.isIdentifier(liveTarget) ? checker.getSymbolAtLocation(liveTarget) : void 0;
+        const symbol = import_typescript7.default.isIdentifier(liveTarget) ? checker.getSymbolAtLocation(liveTarget) : void 0;
         declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
-        if (!import_typescript6.default.isIdentifier(liveTarget) || liveTarget.text !== name) {
+        if (!import_typescript7.default.isIdentifier(liveTarget) || liveTarget.text !== name) {
           report(property, "nl-explicit-captures", `A live capture names its own binding: write \`${name}: live(${name})\`.`);
           return;
         }
@@ -215471,7 +216180,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         mode = "live";
         mutable = true;
         expression = liveTarget;
-      } else if (import_typescript6.default.isIdentifier(expression)) {
+      } else if (import_typescript7.default.isIdentifier(expression)) {
         const symbol = checker.getSymbolAtLocation(expression);
         declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
       }
@@ -215484,13 +216193,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         if (!(error instanceof TargetError)) throw error;
         described = { text: checker.typeToString(type, node), aliases: {}, host: { kind: "shape", members: [] } };
       }
-      const source2 = (declaration && options.classify?.(declaration)) ?? (described.host ? "handle" : declaration && import_typescript6.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
+      const source2 = (declaration && options.classify?.(declaration)) ?? (described.host ? "handle" : declaration && import_typescript7.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
       captures.push({ name, type: described, mutable, source: source2, mentionSpan: property.getStart(), mode });
     }
     if (captureSchemaNode) {
       const schema = checker.getTypeFromTypeNode(captureSchemaNode);
       const schemaMembers = checker.getPropertiesOfType(schema);
-      const schemaFinite = !schema.isUnion() && !!(schema.flags & import_typescript6.default.TypeFlags.Object) && !checker.getIndexTypeOfType(schema, import_typescript6.default.IndexKind.String) && !checker.getIndexTypeOfType(schema, import_typescript6.default.IndexKind.Number) && schemaMembers.every((member) => (member.declarations ?? []).some((declaration) => import_typescript6.default.isPropertySignature(declaration) || import_typescript6.default.isPropertyDeclaration(declaration) || import_typescript6.default.isPropertyAssignment(declaration)));
+      const schemaFinite = !schema.isUnion() && !!(schema.flags & import_typescript7.default.TypeFlags.Object) && !checker.getIndexTypeOfType(schema, import_typescript7.default.IndexKind.String) && !checker.getIndexTypeOfType(schema, import_typescript7.default.IndexKind.Number) && schemaMembers.every((member) => (member.declarations ?? []).some((declaration) => import_typescript7.default.isPropertySignature(declaration) || import_typescript7.default.isPropertyDeclaration(declaration) || import_typescript7.default.isPropertyAssignment(declaration)));
       if (!schemaFinite) {
         report(captureSchemaNode, "nl-explicit-captures", "The first `nl.with` type argument must be a finite record schema with named data fields.");
         return;
@@ -215501,7 +216210,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         report(withCall, "nl-explicit-captures", `Capture ${JSON.stringify(unknown)} is not declared by the \`nl.with\` capture schema.`);
         return;
       }
-      const missing = schemaMembers.find((member) => !(member.flags & import_typescript6.default.SymbolFlags.Optional) && !actualTypes.has(member.getName()));
+      const missing = schemaMembers.find((member) => !(member.flags & import_typescript7.default.SymbolFlags.Optional) && !actualTypes.has(member.getName()));
       if (missing) {
         report(withCall, "nl-explicit-captures", `Required capture ${JSON.stringify(missing.getName())} is missing from the \`nl.with\` capture record.`);
         return;
@@ -215539,7 +216248,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     const literalParts = [];
     const strings2 = [];
     const template = node.template;
-    if (import_typescript6.default.isNoSubstitutionTemplateLiteral(template)) {
+    if (import_typescript7.default.isNoSubstitutionTemplateLiteral(template)) {
       literalParts.push({ text: template.rawText ?? template.text, offset: template.getStart() + 1 });
       strings2.push(template.text);
     } else {
@@ -215551,7 +216260,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       }
     }
     const templateSpan = spanOf(template, displayPath);
-    const interpolations = import_typescript6.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map(({ expression }) => {
+    const interpolations = import_typescript7.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map(({ expression }) => {
       const provenance = { expression: expression.getText(file), sourceSpan: spanOf(expression, displayPath) };
       try {
         return { ...provenance, type: describeTarget(
@@ -215565,7 +216274,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         return { ...provenance, type: null, unsupported: error.message };
       }
     });
-    if (!import_typescript6.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
+    if (!import_typescript7.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
       const culprit = untrustedSplice(checker, span.expression);
       if (culprit) report(culprit, "untrusted-instruction", `\`${culprit.getText(file)}\` is untrusted data (Untrusted<T>) and cannot be interpolated into the text of an \`nl\` call; pass it as an argument instead, as in nl\`Summarize the message.\`(message), so the model reads it as quoted data.`);
     }
@@ -215614,7 +216323,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       return;
     }
     const candidates = /* @__PURE__ */ new Map();
-    for (const symbol of checker.getSymbolsInScope(node, import_typescript6.default.SymbolFlags.Value | import_typescript6.default.SymbolFlags.Alias)) {
+    for (const symbol of checker.getSymbolsInScope(node, import_typescript7.default.SymbolFlags.Value | import_typescript7.default.SymbolFlags.Alias)) {
       const name = symbol.name;
       if (excluded2.has(name) || name.startsWith("__natlang") || explicit.has(name) || candidates.has(name)) continue;
       const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
@@ -215622,9 +216331,9 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       const declarationFile = declaration.getSourceFile();
       if (declarationFile !== file && !scopeFiles.has(declarationFile)) continue;
       if (declarationFile === file && declaration.getEnd() > node.getStart() && !isEnclosingParameter(declaration, node)) continue;
-      if (symbol.flags & import_typescript6.default.SymbolFlags.Alias) {
+      if (symbol.flags & import_typescript7.default.SymbolFlags.Alias) {
         const aliased = checker.getAliasedSymbol(symbol);
-        if (!(aliased.flags & import_typescript6.default.SymbolFlags.Value)) continue;
+        if (!(aliased.flags & import_typescript7.default.SymbolFlags.Value)) continue;
       }
       candidates.set(name, symbol);
     }
@@ -215645,16 +216354,16 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       }
     }
     const slotCaptures = /* @__PURE__ */ new Set();
-    if (!import_typescript6.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
+    if (!import_typescript7.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
       const visit = (child) => {
-        if (import_typescript6.default.isIdentifier(child) && !(import_typescript6.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
+        if (import_typescript7.default.isIdentifier(child) && !(import_typescript7.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
           const symbol = checker.getSymbolAtLocation(child);
           if (symbol && candidates.get(child.text) === symbol) {
             slotCaptures.add(child.text);
             if (!mentions2.has(child.text)) mentions2.set(child.text, child.getStart());
           }
         }
-        import_typescript6.default.forEachChild(child, visit);
+        import_typescript7.default.forEachChild(child, visit);
       };
       visit(span.expression);
     }
@@ -215671,7 +216380,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         described = { text: checker.typeToString(type, node), aliases: {}, host: { kind: "shape", members: [] } };
       }
       const mutable = isMutableBinding(declaration);
-      const source2 = options.classify?.(declaration) ?? (described.host ? "handle" : import_typescript6.default.isParameter(declaration) ? "input" : isTopLevel(declaration) ? "local" : "block");
+      const source2 = options.classify?.(declaration) ?? (described.host ? "handle" : import_typescript7.default.isParameter(declaration) ? "input" : isTopLevel(declaration) ? "local" : "block");
       captures.push({ name, type: described, mutable, source: source2, mentionSpan: offset });
     }
     let adaptation;
@@ -215689,7 +216398,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         return;
       }
       if (label) labels.add(labelKey);
-      const expressions = import_typescript6.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map((span) => span.expression.getText(file));
+      const expressions = import_typescript7.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map((span) => span.expression.getText(file));
       const slotBindings = [...slotCaptures].sort();
       adaptation = {
         ...label ? { label } : {},
@@ -215721,34 +216430,34 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   const TAG_FORM = 'write the instructions as a template, nl`...`, and pass the values as arguments, for example await nl<{ amount: number }>`Read the amount paid on receipt.`(receipt). read_code("nl") shows more.';
   const misuse = (node) => {
     const parent = node.parent;
-    if (import_typescript6.default.isCallExpression(parent) && parent.expression === node) {
+    if (import_typescript7.default.isCallExpression(parent) && parent.expression === node) {
       const file = node.getSourceFile();
       const typeArgs = parent.typeArguments ? `<${parent.typeArguments.map((arg) => arg.getText(file)).join(", ")}>` : "";
       const only = parent.arguments.length === 1 ? parent.arguments[0] : void 0;
-      const isTemplate = (expr) => import_typescript6.default.isNoSubstitutionTemplateLiteral(expr) || import_typescript6.default.isTemplateExpression(expr);
-      const rewritten = only && import_typescript6.default.isCallExpression(only) && isTemplate(only.expression) ? `nl${typeArgs}${only.expression.getText(file)}(${only.arguments.map((arg) => arg.getText(file)).join(", ")})` : only && isTemplate(only) ? `nl${typeArgs}${only.getText(file)}(...)` : void 0;
+      const isTemplate = (expr) => import_typescript7.default.isNoSubstitutionTemplateLiteral(expr) || import_typescript7.default.isTemplateExpression(expr);
+      const rewritten = only && import_typescript7.default.isCallExpression(only) && isTemplate(only.expression) ? `nl${typeArgs}${only.expression.getText(file)}(${only.arguments.map((arg) => arg.getText(file)).join(", ")})` : only && isTemplate(only) ? `nl${typeArgs}${only.getText(file)}(...)` : void 0;
       report(parent, "nl-not-tag", rewritten && rewritten.length <= 240 ? `nl is a template tag, not a function taking a string: put the template right after nl and the arguments after it, as in ${rewritten}. read_code("nl") shows more.` : `nl is a template tag, not a function taking a string: ${TAG_FORM}`);
     } else report(node, "nl-not-tag", `nl is a template tag with no value of its own to inspect or pass around: ${TAG_FORM}`);
   };
   for (const file of files2) {
     const visit = (node) => {
-      if (import_typescript6.default.isTaggedTemplateExpression(node) && resolveIntrinsic(checker, node.tag) === "nl") analyze(node);
-      else if (import_typescript6.default.isTaggedTemplateExpression(node) && withCallOf(checker, node.tag)) analyze(node, withCallOf(checker, node.tag));
-      else if (import_typescript6.default.isTaggedTemplateExpression(node) && suffixWithCallOf(node) && resolveIntrinsic(checker, node.tag) === "nl")
+      if (import_typescript7.default.isTaggedTemplateExpression(node) && resolveIntrinsic(checker, node.tag) === "nl") analyze(node);
+      else if (import_typescript7.default.isTaggedTemplateExpression(node) && withCallOf(checker, node.tag)) analyze(node, withCallOf(checker, node.tag));
+      else if (import_typescript7.default.isTaggedTemplateExpression(node) && suffixWithCallOf(node) && resolveIntrinsic(checker, node.tag) === "nl")
         analyze(node, suffixWithCallOf(node));
-      else if (import_typescript6.default.isIdentifier(node) && node.text === "nl") {
+      else if (import_typescript7.default.isIdentifier(node) && node.text === "nl") {
         const parent = node.parent;
-        const declared = (import_typescript6.default.isVariableDeclaration(parent) || import_typescript6.default.isFunctionDeclaration(parent) || import_typescript6.default.isParameter(parent) || import_typescript6.default.isClassDeclaration(parent)) && parent.name === node;
-        if (import_typescript6.default.isImportSpecifier(parent) || import_typescript6.default.isExportSpecifier(parent) || import_typescript6.default.isImportClause(parent) || import_typescript6.default.isNamespaceImport(parent)) {
+        const declared = (import_typescript7.default.isVariableDeclaration(parent) || import_typescript7.default.isFunctionDeclaration(parent) || import_typescript7.default.isParameter(parent) || import_typescript7.default.isClassDeclaration(parent)) && parent.name === node;
+        if (import_typescript7.default.isImportSpecifier(parent) || import_typescript7.default.isExportSpecifier(parent) || import_typescript7.default.isImportClause(parent) || import_typescript7.default.isNamespaceImport(parent)) {
         } else if (declared && ambientNlDeclaration(parent, checker)) {
         } else if (declared) {
           if (!options.allowShadowing) report(node, "nl-shadowed", `nl is built in; declaring your own nl hides it. ${TAG_FORM}`);
-        } else if (import_typescript6.default.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "with" && import_typescript6.default.isCallExpression(parent.parent) && parent.parent.expression === parent && import_typescript6.default.isTaggedTemplateExpression(parent.parent.parent) && parent.parent.parent.tag === parent.parent) {
-        } else if (!(import_typescript6.default.isTaggedTemplateExpression(parent) && parent.tag === node) && !import_typescript6.default.isPropertyAccessExpression(parent) || import_typescript6.default.isPropertyAccessExpression(parent) && parent.expression === node && !import_typescript6.default.isTaggedTemplateExpression(parent.parent)) {
+        } else if (import_typescript7.default.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "with" && import_typescript7.default.isCallExpression(parent.parent) && parent.parent.expression === parent && import_typescript7.default.isTaggedTemplateExpression(parent.parent.parent) && parent.parent.parent.tag === parent.parent) {
+        } else if (!(import_typescript7.default.isTaggedTemplateExpression(parent) && parent.tag === node) && !import_typescript7.default.isPropertyAccessExpression(parent) || import_typescript7.default.isPropertyAccessExpression(parent) && parent.expression === node && !import_typescript7.default.isTaggedTemplateExpression(parent.parent)) {
           if (resolveIntrinsic(checker, node) === "nl") misuse(node);
         }
       }
-      import_typescript6.default.forEachChild(node, visit);
+      import_typescript7.default.forEachChild(node, visit);
     };
     visit(file);
   }
@@ -215790,10 +216499,10 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   const planAt = (tag) => plans.find((plan) => plan.sourceSpan.file === displayPath(tag.getSourceFile()) && plan.sourceSpan.start === tag.getStart());
   const captureSource = (expression) => {
     let root2 = expression;
-    while (import_typescript6.default.isParenthesizedExpression(root2) || import_typescript6.default.isAsExpression(root2) || import_typescript6.default.isNonNullExpression(root2) || import_typescript6.default.isSatisfiesExpression(root2))
+    while (import_typescript7.default.isParenthesizedExpression(root2) || import_typescript7.default.isAsExpression(root2) || import_typescript7.default.isNonNullExpression(root2) || import_typescript7.default.isSatisfiesExpression(root2))
       root2 = root2.expression;
-    while (import_typescript6.default.isPropertyAccessExpression(root2) || import_typescript6.default.isElementAccessExpression(root2)) root2 = root2.expression;
-    const symbol = import_typescript6.default.isIdentifier(root2) ? checker.getSymbolAtLocation(root2) : void 0;
+    while (import_typescript7.default.isPropertyAccessExpression(root2) || import_typescript7.default.isElementAccessExpression(root2)) root2 = root2.expression;
+    const symbol = import_typescript7.default.isIdentifier(root2) ? checker.getSymbolAtLocation(root2) : void 0;
     const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
     let host = false;
     try {
@@ -215801,38 +216510,38 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     } catch (error) {
       if (!(error instanceof TargetError)) throw error;
     }
-    return (declaration && options.classify?.(declaration)) ?? (host ? "handle" : declaration && import_typescript6.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
+    return (declaration && options.classify?.(declaration)) ?? (host ? "handle" : declaration && import_typescript7.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
   };
   for (const file of files2) {
     const findTags = (node) => {
-      if (import_typescript6.default.isVariableDeclaration(node) && import_typescript6.default.isIdentifier(node.name) && node.initializer) {
+      if (import_typescript7.default.isVariableDeclaration(node) && import_typescript7.default.isIdentifier(node.name) && node.initializer) {
         let initializer = node.initializer;
-        while (import_typescript6.default.isParenthesizedExpression(initializer) || import_typescript6.default.isAsExpression(initializer) || import_typescript6.default.isNonNullExpression(initializer))
+        while (import_typescript7.default.isParenthesizedExpression(initializer) || import_typescript7.default.isAsExpression(initializer) || import_typescript7.default.isNonNullExpression(initializer))
           initializer = initializer.expression;
         const symbol = checker.getSymbolAtLocation(node.name);
-        if (symbol && import_typescript6.default.isTaggedTemplateExpression(initializer) && resolveIntrinsic(checker, initializer.tag) === "nl") {
+        if (symbol && import_typescript7.default.isTaggedTemplateExpression(initializer) && resolveIntrinsic(checker, initializer.tag) === "nl") {
           const plan = planAt(initializer);
           if (plan) tagPlans.set(symbol, { tag: initializer, plan });
-        } else if (symbol && import_typescript6.default.isIdentifier(initializer) && import_typescript6.default.isVariableDeclarationList(node.parent) && node.parent.flags & import_typescript6.default.NodeFlags.Const) {
+        } else if (symbol && import_typescript7.default.isIdentifier(initializer) && import_typescript7.default.isVariableDeclarationList(node.parent) && node.parent.flags & import_typescript7.default.NodeFlags.Const) {
           const original = tagPlans.get(checker.getSymbolAtLocation(initializer));
           if (original) tagPlans.set(symbol, original);
         }
       }
-      import_typescript6.default.forEachChild(node, findTags);
+      import_typescript7.default.forEachChild(node, findTags);
     };
     findTags(file);
   }
   const tagBindingFor = (expression) => {
-    while (import_typescript6.default.isParenthesizedExpression(expression) || import_typescript6.default.isAsExpression(expression) || import_typescript6.default.isNonNullExpression(expression))
+    while (import_typescript7.default.isParenthesizedExpression(expression) || import_typescript7.default.isAsExpression(expression) || import_typescript7.default.isNonNullExpression(expression))
       expression = expression.expression;
-    if (import_typescript6.default.isIdentifier(expression)) return tagPlans.get(checker.getSymbolAtLocation(expression));
-    if (import_typescript6.default.isCallExpression(expression) && import_typescript6.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "with")
+    if (import_typescript7.default.isIdentifier(expression)) return tagPlans.get(checker.getSymbolAtLocation(expression));
+    if (import_typescript7.default.isCallExpression(expression) && import_typescript7.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "with")
       return tagBindingFor(expression.expression.expression);
     return void 0;
   };
   for (const file of files2) {
     const findRebinds = (node) => {
-      if (import_typescript6.default.isCallExpression(node) && import_typescript6.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
+      if (import_typescript7.default.isCallExpression(node) && import_typescript7.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
         const binding = tagBindingFor(node.expression.expression);
         if (binding) {
           const argument = node.arguments[0];
@@ -215840,13 +216549,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
             report(node, "nl-explicit-captures", "Saved inline .with(...) takes one finite record of capture values.");
           } else {
             let valid2 = true;
-            if (import_typescript6.default.isObjectLiteralExpression(argument) && argument.properties.some((property) => !import_typescript6.default.isPropertyAssignment(property) && !import_typescript6.default.isShorthandPropertyAssignment(property))) {
+            if (import_typescript7.default.isObjectLiteralExpression(argument) && argument.properties.some((property) => !import_typescript7.default.isPropertyAssignment(property) && !import_typescript7.default.isShorthandPropertyAssignment(property))) {
               report(argument, "nl-explicit-captures", "Saved inline .with(record) uses named data fields; spreads, methods and computed names are not captures.");
               valid2 = false;
             }
             const recordType = checker.getTypeAtLocation(argument);
             const fields = checker.getPropertiesOfType(recordType);
-            const finite2 = !!(recordType.flags & import_typescript6.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript6.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript6.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript6.default.IndexKind.Number) && fields.every((field) => (field.declarations ?? []).some((declaration) => import_typescript6.default.isPropertySignature(declaration) || import_typescript6.default.isPropertyDeclaration(declaration) || import_typescript6.default.isPropertyAssignment(declaration) || import_typescript6.default.isShorthandPropertyAssignment(declaration)));
+            const finite2 = !!(recordType.flags & import_typescript7.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript7.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript7.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript7.default.IndexKind.Number) && fields.every((field) => (field.declarations ?? []).some((declaration) => import_typescript7.default.isPropertySignature(declaration) || import_typescript7.default.isPropertyDeclaration(declaration) || import_typescript7.default.isPropertyAssignment(declaration) || import_typescript7.default.isShorthandPropertyAssignment(declaration)));
             if (!finite2) {
               report(argument, "nl-explicit-captures", "Saved inline .with(record) needs a finite record with named data fields.");
               valid2 = false;
@@ -215858,15 +216567,15 @@ function analyzeInlineLambdas(program, files2, options = {}) {
               valid2 = false;
             }
             const incompatible = binding.plan.captures.find((capture) => {
-              const original = checker.getSymbolsInScope(binding.tag, import_typescript6.default.SymbolFlags.Value | import_typescript6.default.SymbolFlags.Alias).find((candidate) => candidate.name === capture.name);
+              const original = checker.getSymbolsInScope(binding.tag, import_typescript7.default.SymbolFlags.Value | import_typescript7.default.SymbolFlags.Alias).find((candidate) => candidate.name === capture.name);
               const originalDeclaration = original?.valueDeclaration ?? original?.declarations?.[0];
               const wanted = original && originalDeclaration ? checker.getTypeOfSymbolAtLocation(original, originalDeclaration) : void 0;
               const property = checker.getPropertyOfType(recordType, capture.name);
               const propertyDeclaration = property?.valueDeclaration ?? property?.declarations?.[0];
               const actualType = property && propertyDeclaration ? checker.getTypeOfSymbolAtLocation(property, propertyDeclaration) : void 0;
-              if (import_typescript6.default.isObjectLiteralExpression(argument)) {
-                const entry = argument.properties.find((item) => (import_typescript6.default.isPropertyAssignment(item) || import_typescript6.default.isShorthandPropertyAssignment(item)) && (import_typescript6.default.isIdentifier(item.name) || import_typescript6.default.isStringLiteral(item.name)) && item.name.text === capture.name);
-                if (entry) return !wanted || !checker.isTypeAssignableTo(import_typescript6.default.isPropertyAssignment(entry) ? checker.getTypeAtLocation(entry.initializer) : checker.getTypeAtLocation(entry.name ?? entry), wanted);
+              if (import_typescript7.default.isObjectLiteralExpression(argument)) {
+                const entry = argument.properties.find((item) => (import_typescript7.default.isPropertyAssignment(item) || import_typescript7.default.isShorthandPropertyAssignment(item)) && (import_typescript7.default.isIdentifier(item.name) || import_typescript7.default.isStringLiteral(item.name)) && item.name.text === capture.name);
+                if (entry) return !wanted || !checker.isTypeAssignableTo(import_typescript7.default.isPropertyAssignment(entry) ? checker.getTypeAtLocation(entry.initializer) : checker.getTypeAtLocation(entry.name ?? entry), wanted);
               }
               return !wanted || !actualType || !checker.isTypeAssignableTo(actualType, wanted);
             });
@@ -215877,10 +216586,10 @@ function analyzeInlineLambdas(program, files2, options = {}) {
             if (valid2) {
               const captureSources = Object.fromEntries(binding.plan.captures.map((capture) => {
                 let expression;
-                if (import_typescript6.default.isObjectLiteralExpression(argument)) {
-                  const entry = argument.properties.find((item) => (import_typescript6.default.isPropertyAssignment(item) || import_typescript6.default.isShorthandPropertyAssignment(item)) && (import_typescript6.default.isIdentifier(item.name) || import_typescript6.default.isStringLiteral(item.name)) && item.name.text === capture.name);
-                  if (entry && import_typescript6.default.isPropertyAssignment(entry)) expression = entry.initializer;
-                  else if (entry && import_typescript6.default.isShorthandPropertyAssignment(entry)) expression = entry.name;
+                if (import_typescript7.default.isObjectLiteralExpression(argument)) {
+                  const entry = argument.properties.find((item) => (import_typescript7.default.isPropertyAssignment(item) || import_typescript7.default.isShorthandPropertyAssignment(item)) && (import_typescript7.default.isIdentifier(item.name) || import_typescript7.default.isStringLiteral(item.name)) && item.name.text === capture.name);
+                  if (entry && import_typescript7.default.isPropertyAssignment(entry)) expression = entry.initializer;
+                  else if (entry && import_typescript7.default.isShorthandPropertyAssignment(entry)) expression = entry.name;
                 }
                 return [capture.name, captureSource(expression ?? argument)];
               }));
@@ -215895,7 +216604,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
         }
       }
-      import_typescript6.default.forEachChild(node, findRebinds);
+      import_typescript7.default.forEachChild(node, findRebinds);
     };
     findRebinds(file);
   }
@@ -215903,45 +216612,45 @@ function analyzeInlineLambdas(program, files2, options = {}) {
 }
 function iterationArguments(checker, expression) {
   const parent = expression.parent;
-  if (parent && import_typescript6.default.isPropertyAccessExpression(parent) && parent.expression === expression && parent.name.text === "iterateOn" && import_typescript6.default.isCallExpression(parent.parent) && parent.parent.expression === parent) return parent.parent.arguments;
-  if (parent && import_typescript6.default.isCallExpression(parent) && parent.arguments[0] === expression && resolveIntrinsic(checker, parent.expression) === "iterateOn")
+  if (parent && import_typescript7.default.isPropertyAccessExpression(parent) && parent.expression === expression && parent.name.text === "iterateOn" && import_typescript7.default.isCallExpression(parent.parent) && parent.parent.expression === parent) return parent.parent.arguments;
+  if (parent && import_typescript7.default.isCallExpression(parent) && parent.arguments[0] === expression && resolveIntrinsic(checker, parent.expression) === "iterateOn")
     return parent.arguments.slice(1);
   return;
 }
 function isEnclosingParameter(declaration, node) {
-  if (!import_typescript6.default.isParameter(declaration)) return false;
+  if (!import_typescript7.default.isParameter(declaration)) return false;
   for (let current = node.parent; current; current = current.parent)
     if (current === declaration.parent) return true;
   return false;
 }
 function isMutableBinding(declaration) {
-  if (import_typescript6.default.isParameter(declaration)) return true;
-  if (import_typescript6.default.isBindingElement(declaration)) {
+  if (import_typescript7.default.isParameter(declaration)) return true;
+  if (import_typescript7.default.isBindingElement(declaration)) {
     let current = declaration;
-    while (import_typescript6.default.isBindingElement(current) || import_typescript6.default.isObjectBindingPattern(current) || import_typescript6.default.isArrayBindingPattern(current)) current = current.parent;
-    return import_typescript6.default.isParameter(current) || import_typescript6.default.isVariableDeclaration(current) && isMutableBinding(current);
+    while (import_typescript7.default.isBindingElement(current) || import_typescript7.default.isObjectBindingPattern(current) || import_typescript7.default.isArrayBindingPattern(current)) current = current.parent;
+    return import_typescript7.default.isParameter(current) || import_typescript7.default.isVariableDeclaration(current) && isMutableBinding(current);
   }
-  if (import_typescript6.default.isVariableDeclaration(declaration)) {
+  if (import_typescript7.default.isVariableDeclaration(declaration)) {
     const list = declaration.parent;
-    return import_typescript6.default.isVariableDeclarationList(list) && !(list.flags & (import_typescript6.default.NodeFlags.Const | import_typescript6.default.NodeFlags.Using));
+    return import_typescript7.default.isVariableDeclarationList(list) && !(list.flags & (import_typescript7.default.NodeFlags.Const | import_typescript7.default.NodeFlags.Using));
   }
   return false;
 }
 function isTopLevel(declaration) {
   let current = declaration;
-  while (current.parent && !import_typescript6.default.isSourceFile(current.parent)) {
+  while (current.parent && !import_typescript7.default.isSourceFile(current.parent)) {
     current = current.parent;
-    if (import_typescript6.default.isBlock(current) || import_typescript6.default.isFunctionLike(current) || import_typescript6.default.isForStatement(current) || import_typescript6.default.isForOfStatement(current))
+    if (import_typescript7.default.isBlock(current) || import_typescript7.default.isFunctionLike(current) || import_typescript7.default.isForStatement(current) || import_typescript7.default.isForOfStatement(current))
       return false;
   }
   return true;
 }
-var import_typescript6, IDENTIFIER_TOKEN, BACKTICK_MENTION, IDENTIFIER_NAME, isTextType, unwrapParentheses;
+var import_typescript7, IDENTIFIER_TOKEN, BACKTICK_MENTION, IDENTIFIER_NAME, isTextType, unwrapParentheses;
 var init_inline = __esm({
   "src/compiler/inline.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript6 = __toESM(require_typescript(), 1);
+    import_typescript7 = __toESM(require_typescript(), 1);
     init_hash();
     init_holes();
     init_targets();
@@ -215949,9 +216658,9 @@ var init_inline = __esm({
     IDENTIFIER_TOKEN = /(?<![A-Za-z0-9_$])[A-Za-z_$][A-Za-z0-9_$]*(?![A-Za-z0-9_$])/g;
     BACKTICK_MENTION = /\\`([A-Za-z_$][A-Za-z0-9_$]*)\\`/g;
     IDENTIFIER_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-    isTextType = (type) => type.isUnion() ? type.types.every(isTextType) : !!(type.flags & (import_typescript6.default.TypeFlags.StringLike | import_typescript6.default.TypeFlags.TemplateLiteral)) || type.isIntersection() && type.types.some(isTextType);
+    isTextType = (type) => type.isUnion() ? type.types.every(isTextType) : !!(type.flags & (import_typescript7.default.TypeFlags.StringLike | import_typescript7.default.TypeFlags.TemplateLiteral)) || type.isIntersection() && type.types.some(isTextType);
     unwrapParentheses = (node) => {
-      while (node.parent && (import_typescript6.default.isParenthesizedExpression(node.parent) || import_typescript6.default.isAsExpression(node.parent) || import_typescript6.default.isNonNullExpression(node.parent) || import_typescript6.default.isSatisfiesExpression(node.parent))) node = node.parent;
+      while (node.parent && (import_typescript7.default.isParenthesizedExpression(node.parent) || import_typescript7.default.isAsExpression(node.parent) || import_typescript7.default.isNonNullExpression(node.parent) || import_typescript7.default.isSatisfiesExpression(node.parent))) node = node.parent;
       return node;
     };
   }
@@ -215960,32 +216669,32 @@ var init_inline = __esm({
 // src/compiler/policy.ts
 function isNameOnly(node) {
   const parent = node.parent;
-  return (import_typescript7.default.isPropertyAccessExpression(parent) || import_typescript7.default.isPropertyAssignment(parent) || import_typescript7.default.isMethodDeclaration(parent) || import_typescript7.default.isPropertyDeclaration(parent) || import_typescript7.default.isPropertySignature(parent) || import_typescript7.default.isMethodSignature(parent)) && parent.name === node || (import_typescript7.default.isVariableDeclaration(parent) || import_typescript7.default.isParameter(parent) || import_typescript7.default.isFunctionDeclaration(parent)) && parent.name === node;
+  return (import_typescript8.default.isPropertyAccessExpression(parent) || import_typescript8.default.isPropertyAssignment(parent) || import_typescript8.default.isMethodDeclaration(parent) || import_typescript8.default.isPropertyDeclaration(parent) || import_typescript8.default.isPropertySignature(parent) || import_typescript8.default.isMethodSignature(parent)) && parent.name === node || (import_typescript8.default.isVariableDeclaration(parent) || import_typescript8.default.isParameter(parent) || import_typescript8.default.isFunctionDeclaration(parent)) && parent.name === node;
 }
 function guardArguments(node) {
   const names = [];
   const bind = (name) => {
-    if (import_typescript7.default.isIdentifier(name)) names.push(name.text);
-    else for (const element of name.elements) if (!import_typescript7.default.isOmittedExpression(element)) bind(element.name);
+    if (import_typescript8.default.isIdentifier(name)) names.push(name.text);
+    else for (const element of name.elements) if (!import_typescript8.default.isOmittedExpression(element)) bind(element.name);
   };
-  if (import_typescript7.default.isMethodDeclaration(node) || import_typescript7.default.isGetAccessorDeclaration(node) || import_typescript7.default.isSetAccessorDeclaration(node) || import_typescript7.default.isFunctionExpression(node)) names.push("this");
-  for (const parameter of node.parameters) if (!(import_typescript7.default.isIdentifier(parameter.name) && parameter.name.text === "this")) bind(parameter.name);
+  if (import_typescript8.default.isMethodDeclaration(node) || import_typescript8.default.isGetAccessorDeclaration(node) || import_typescript8.default.isSetAccessorDeclaration(node) || import_typescript8.default.isFunctionExpression(node)) names.push("this");
+  for (const parameter of node.parameters) if (!(import_typescript8.default.isIdentifier(parameter.name) && parameter.name.text === "this")) bind(parameter.name);
   return names;
 }
 function makesCalls(node) {
   let found = false;
   const visit = (child) => {
     if (found) return;
-    if (import_typescript7.default.isCallExpression(child) || import_typescript7.default.isNewExpression(child) || import_typescript7.default.isTaggedTemplateExpression(child) || import_typescript7.default.isAwaitExpression(child) || import_typescript7.default.isYieldExpression(child) || import_typescript7.default.isDecorator(child) || import_typescript7.default.isForOfStatement(child) && child.awaitModifier) {
+    if (import_typescript8.default.isCallExpression(child) || import_typescript8.default.isNewExpression(child) || import_typescript8.default.isTaggedTemplateExpression(child) || import_typescript8.default.isAwaitExpression(child) || import_typescript8.default.isYieldExpression(child) || import_typescript8.default.isDecorator(child) || import_typescript8.default.isForOfStatement(child) && child.awaitModifier) {
       found = true;
       return;
     }
-    if (import_typescript7.default.isFunctionLike(child)) {
+    if (import_typescript8.default.isFunctionLike(child)) {
       for (const parameter of child.parameters) if (parameter.initializer) visit(parameter.initializer);
-      if (child.name && import_typescript7.default.isComputedPropertyName(child.name)) visit(child.name);
+      if (child.name && import_typescript8.default.isComputedPropertyName(child.name)) visit(child.name);
       return;
     }
-    import_typescript7.default.forEachChild(child, visit);
+    import_typescript8.default.forEachChild(child, visit);
   };
   for (const parameter of node.parameters) if (parameter.initializer) visit(parameter.initializer);
   const body = node.body;
@@ -215995,17 +216704,17 @@ function makesCalls(node) {
 function ownDeclarations(node) {
   const names = [];
   const bind = (name) => {
-    if (import_typescript7.default.isIdentifier(name)) names.push(name.text);
-    else for (const element of name.elements) if (!import_typescript7.default.isOmittedExpression(element)) bind(element.name);
+    if (import_typescript8.default.isIdentifier(name)) names.push(name.text);
+    else for (const element of name.elements) if (!import_typescript8.default.isOmittedExpression(element)) bind(element.name);
   };
   const list = (declarations) => {
-    if (declarations && import_typescript7.default.isVariableDeclarationList(declarations)) for (const declaration of declarations.declarations) bind(declaration.name);
+    if (declarations && import_typescript8.default.isVariableDeclarationList(declarations)) for (const declaration of declarations.declarations) bind(declaration.name);
   };
-  if (import_typescript7.default.isForStatement(node) || import_typescript7.default.isForOfStatement(node) || import_typescript7.default.isForInStatement(node)) list(node.initializer);
-  else if (import_typescript7.default.isBlock(node)) {
-    for (const statement of node.statements) if (import_typescript7.default.isVariableStatement(statement)) list(statement.declarationList);
-  } else if (import_typescript7.default.isFunctionLike(node)) for (const parameter of node.parameters) bind(parameter.name);
-  else if (import_typescript7.default.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
+  if (import_typescript8.default.isForStatement(node) || import_typescript8.default.isForOfStatement(node) || import_typescript8.default.isForInStatement(node)) list(node.initializer);
+  else if (import_typescript8.default.isBlock(node)) {
+    for (const statement of node.statements) if (import_typescript8.default.isVariableStatement(statement)) list(statement.declarationList);
+  } else if (import_typescript8.default.isFunctionLike(node)) for (const parameter of node.parameters) bind(parameter.name);
+  else if (import_typescript8.default.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
   return names;
 }
 function assignedIdentifiers(node) {
@@ -216014,10 +216723,10 @@ function assignedIdentifiers(node) {
     const own = ownDeclarations(child);
     if (own.length) shadowed = /* @__PURE__ */ new Set([...shadowed, ...own]);
     let target;
-    if (import_typescript7.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript7.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript7.default.SyntaxKind.LastAssignment) target = child.left;
-    if ((import_typescript7.default.isPrefixUnaryExpression(child) || import_typescript7.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript7.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript7.default.SyntaxKind.MinusMinusToken)) target = child.operand;
-    if (target && import_typescript7.default.isIdentifier(target) && !shadowed.has(target.text)) names.add(target.text);
-    import_typescript7.default.forEachChild(child, (next2) => visit(next2, shadowed));
+    if (import_typescript8.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript8.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript8.default.SyntaxKind.LastAssignment) target = child.left;
+    if ((import_typescript8.default.isPrefixUnaryExpression(child) || import_typescript8.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript8.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript8.default.SyntaxKind.MinusMinusToken)) target = child.operand;
+    if (target && import_typescript8.default.isIdentifier(target) && !shadowed.has(target.text)) names.add(target.text);
+    import_typescript8.default.forEachChild(child, (next2) => visit(next2, shadowed));
   };
   visit(node, /* @__PURE__ */ new Set());
   return names;
@@ -216025,33 +216734,33 @@ function assignedIdentifiers(node) {
 function grownReceivers(node) {
   const names = /* @__PURE__ */ new Set();
   const visit = (child) => {
-    if (import_typescript7.default.isCallExpression(child) && import_typescript7.default.isPropertyAccessExpression(child.expression) && GROWING_METHODS.has(child.expression.name.text)) {
+    if (import_typescript8.default.isCallExpression(child) && import_typescript8.default.isPropertyAccessExpression(child.expression) && GROWING_METHODS.has(child.expression.name.text)) {
       let root2 = child.expression.expression;
-      while (import_typescript7.default.isPropertyAccessExpression(root2) || import_typescript7.default.isElementAccessExpression(root2)) root2 = root2.expression;
-      if (import_typescript7.default.isIdentifier(root2)) names.add(root2.text);
+      while (import_typescript8.default.isPropertyAccessExpression(root2) || import_typescript8.default.isElementAccessExpression(root2)) root2 = root2.expression;
+      if (import_typescript8.default.isIdentifier(root2)) names.add(root2.text);
     }
-    import_typescript7.default.forEachChild(child, visit);
+    import_typescript8.default.forEachChild(child, visit);
   };
   visit(node);
   return names;
 }
 function rootIdentifier(expression) {
   let root2 = expression;
-  while (import_typescript7.default.isPropertyAccessExpression(root2) || import_typescript7.default.isElementAccessExpression(root2) || import_typescript7.default.isParenthesizedExpression(root2))
+  while (import_typescript8.default.isPropertyAccessExpression(root2) || import_typescript8.default.isElementAccessExpression(root2) || import_typescript8.default.isParenthesizedExpression(root2))
     root2 = root2.expression;
-  return import_typescript7.default.isIdentifier(root2) ? root2.text : void 0;
+  return import_typescript8.default.isIdentifier(root2) ? root2.text : void 0;
 }
 function constNumericLiteralBefore(node, name) {
   const list = node.parent;
-  if (!import_typescript7.default.isBlock(list) && !import_typescript7.default.isSourceFile(list)) return;
+  if (!import_typescript8.default.isBlock(list) && !import_typescript8.default.isSourceFile(list)) return;
   const loopIndex = list.statements.indexOf(node);
   if (loopIndex < 0) return;
   for (let i = loopIndex - 1; i >= 0; i--) {
     const statement = list.statements[i];
-    if (!import_typescript7.default.isVariableStatement(statement)) continue;
+    if (!import_typescript8.default.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (!import_typescript7.default.isIdentifier(declaration.name) || declaration.name.text !== name) continue;
-      if (!(statement.declarationList.flags & import_typescript7.default.NodeFlags.Const) || !declaration.initializer || !import_typescript7.default.isNumericLiteral(declaration.initializer)) return;
+      if (!import_typescript8.default.isIdentifier(declaration.name) || declaration.name.text !== name) continue;
+      if (!(statement.declarationList.flags & import_typescript8.default.NodeFlags.Const) || !declaration.initializer || !import_typescript8.default.isNumericLiteral(declaration.initializer)) return;
       const value = Number(declaration.initializer.text.replaceAll("_", ""));
       return Number.isFinite(value) && value > 0 ? value : void 0;
     }
@@ -216060,17 +216769,17 @@ function constNumericLiteralBefore(node, name) {
 }
 function finiteCounterComparison(condition, counter) {
   const unwrapped = (expression) => {
-    while (import_typescript7.default.isParenthesizedExpression(expression)) expression = expression.expression;
+    while (import_typescript8.default.isParenthesizedExpression(expression)) expression = expression.expression;
     return expression;
   };
   const isCounterComparison = (expression) => {
     const candidate = unwrapped(expression);
-    return import_typescript7.default.isBinaryExpression(candidate) && COMPARATORS.has(candidate.operatorToken.kind) && (import_typescript7.default.isIdentifier(candidate.left) && candidate.left.text === counter) !== (import_typescript7.default.isIdentifier(candidate.right) && candidate.right.text === counter);
+    return import_typescript8.default.isBinaryExpression(candidate) && COMPARATORS.has(candidate.operatorToken.kind) && (import_typescript8.default.isIdentifier(candidate.left) && candidate.left.text === counter) !== (import_typescript8.default.isIdentifier(candidate.right) && candidate.right.text === counter);
   };
   if (!condition) return;
   const root2 = unwrapped(condition);
   if (isCounterComparison(root2)) return { comparison: unwrapped(root2) };
-  if (!import_typescript7.default.isBinaryExpression(root2) || root2.operatorToken.kind !== import_typescript7.default.SyntaxKind.AmpersandAmpersandToken) return;
+  if (!import_typescript8.default.isBinaryExpression(root2) || root2.operatorToken.kind !== import_typescript8.default.SyntaxKind.AmpersandAmpersandToken) return;
   const left = isCounterComparison(root2.left);
   const right = isCounterComparison(root2.right);
   if (!left && !right) return;
@@ -216079,26 +216788,26 @@ function finiteCounterComparison(condition, counter) {
 }
 function canonicalFor(node) {
   const initializer = node.initializer;
-  if (!initializer || !import_typescript7.default.isVariableDeclarationList(initializer) || initializer.declarations.length !== 1 || !(initializer.flags & import_typescript7.default.NodeFlags.Let))
+  if (!initializer || !import_typescript8.default.isVariableDeclarationList(initializer) || initializer.declarations.length !== 1 || !(initializer.flags & import_typescript8.default.NodeFlags.Let))
     return "declare exactly one `let` counter in the loop initializer";
   const declaration = initializer.declarations[0];
-  if (!import_typescript7.default.isIdentifier(declaration.name) || !declaration.initializer) return "initialize a single named counter";
+  if (!import_typescript8.default.isIdentifier(declaration.name) || !declaration.initializer) return "initialize a single named counter";
   const counter = declaration.name.text;
   const condition = node.condition;
   const boundedCondition = finiteCounterComparison(condition, counter);
   if (!boundedCondition)
     return "compare the counter with one bound using <, <=, > or >=, optionally joined by && to an early-exit condition such as `i < n && !found`";
   const comparison = boundedCondition.comparison;
-  const counterLeft = import_typescript7.default.isIdentifier(comparison.left) && comparison.left.text === counter;
+  const counterLeft = import_typescript8.default.isIdentifier(comparison.left) && comparison.left.text === counter;
   const bound = counterLeft ? comparison.right : comparison.left;
   const kind = comparison.operatorToken.kind;
-  const upward = counterLeft ? kind === import_typescript7.default.SyntaxKind.LessThanToken || kind === import_typescript7.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript7.default.SyntaxKind.GreaterThanToken || kind === import_typescript7.default.SyntaxKind.GreaterThanEqualsToken;
+  const upward = counterLeft ? kind === import_typescript8.default.SyntaxKind.LessThanToken || kind === import_typescript8.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript8.default.SyntaxKind.GreaterThanToken || kind === import_typescript8.default.SyntaxKind.GreaterThanEqualsToken;
   const step = node.incrementor;
   let direction;
-  if (step && (import_typescript7.default.isPostfixUnaryExpression(step) || import_typescript7.default.isPrefixUnaryExpression(step)) && import_typescript7.default.isIdentifier(step.operand) && step.operand.text === counter)
-    direction = step.operator === import_typescript7.default.SyntaxKind.PlusPlusToken ? "up" : step.operator === import_typescript7.default.SyntaxKind.MinusMinusToken ? "down" : void 0;
-  else if (step && import_typescript7.default.isBinaryExpression(step) && import_typescript7.default.isIdentifier(step.left) && step.left.text === counter && (step.operatorToken.kind === import_typescript7.default.SyntaxKind.PlusEqualsToken || step.operatorToken.kind === import_typescript7.default.SyntaxKind.MinusEqualsToken) && (import_typescript7.default.isNumericLiteral(step.right) && Number(step.right.text.replaceAll("_", "")) > 0 || import_typescript7.default.isIdentifier(step.right) && step.right.text !== counter && constNumericLiteralBefore(node, step.right.text) !== void 0))
-    direction = step.operatorToken.kind === import_typescript7.default.SyntaxKind.PlusEqualsToken ? "up" : "down";
+  if (step && (import_typescript8.default.isPostfixUnaryExpression(step) || import_typescript8.default.isPrefixUnaryExpression(step)) && import_typescript8.default.isIdentifier(step.operand) && step.operand.text === counter)
+    direction = step.operator === import_typescript8.default.SyntaxKind.PlusPlusToken ? "up" : step.operator === import_typescript8.default.SyntaxKind.MinusMinusToken ? "down" : void 0;
+  else if (step && import_typescript8.default.isBinaryExpression(step) && import_typescript8.default.isIdentifier(step.left) && step.left.text === counter && (step.operatorToken.kind === import_typescript8.default.SyntaxKind.PlusEqualsToken || step.operatorToken.kind === import_typescript8.default.SyntaxKind.MinusEqualsToken) && (import_typescript8.default.isNumericLiteral(step.right) && Number(step.right.text.replaceAll("_", "")) > 0 || import_typescript8.default.isIdentifier(step.right) && step.right.text !== counter && constNumericLiteralBefore(node, step.right.text) !== void 0))
+    direction = step.operatorToken.kind === import_typescript8.default.SyntaxKind.PlusEqualsToken ? "up" : "down";
   if (!direction) return "step the counter with ++, --, += n or -= n for a positive numeric literal or a same-scope const numeric literal";
   if (direction === "up" !== upward) return "step the counter toward its bound";
   const assigned = assignedIdentifiers(node.statement);
@@ -216125,43 +216834,43 @@ function checkConstrainedSource(file, options = {}) {
   const report = (node, code, message2) => diagnostics.push({ ...spanOf(node, displayPath), code, message: message2, severity: "error" });
   const loopHint = " Use `for (const item of array)` or `for (const [index, item] of array.entries())` (also `keys()` and `values()` of an array, Map or Set, and `string.matchAll(regex)`) for bounded collections, `for (const key in record)` for enumerable string keys, a counter `for (let i = 0; i < n; i++)`, an array method, or `step.iterateOn(initial).until(done)` for open-ended iteration.";
   const visit = (node) => {
-    if (import_typescript7.default.isWhileStatement(node)) report(node, "forbidden-loop", "`while` loops are not allowed here." + loopHint);
-    else if (import_typescript7.default.isDoStatement(node)) report(node, "forbidden-loop", "`do ... while` loops are not allowed here." + loopHint);
-    else if (import_typescript7.default.isForStatement(node)) {
+    if (import_typescript8.default.isWhileStatement(node)) report(node, "forbidden-loop", "`while` loops are not allowed here." + loopHint);
+    else if (import_typescript8.default.isDoStatement(node)) report(node, "forbidden-loop", "`do ... while` loops are not allowed here." + loopHint);
+    else if (import_typescript8.default.isForStatement(node)) {
       const problem = canonicalFor(node);
       if (problem) report(node, "forbidden-loop", `This \`for\` loop is not a checked finite counter loop: ${problem}.` + loopHint);
-    } else if ((import_typescript7.default.isFunctionDeclaration(node) || import_typescript7.default.isFunctionExpression(node) || import_typescript7.default.isMethodDeclaration(node)) && node.asteriskToken)
+    } else if ((import_typescript8.default.isFunctionDeclaration(node) || import_typescript8.default.isFunctionExpression(node) || import_typescript8.default.isMethodDeclaration(node)) && node.asteriskToken)
       report(node, "forbidden-loop", "Generator functions are not allowed here." + loopHint);
-    else if (import_typescript7.default.isYieldExpression(node)) report(node, "forbidden-loop", "`yield` is not allowed here.");
-    else if (import_typescript7.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !(import_typescript7.default.isPropertyAccessExpression(node.parent) && node.parent.name === node) && !((import_typescript7.default.isVariableDeclaration(node.parent) || import_typescript7.default.isParameter(node.parent) || import_typescript7.default.isFunctionDeclaration(node.parent)) && node.parent.name === node))
+    else if (import_typescript8.default.isYieldExpression(node)) report(node, "forbidden-loop", "`yield` is not allowed here.");
+    else if (import_typescript8.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !(import_typescript8.default.isPropertyAccessExpression(node.parent) && node.parent.name === node) && !((import_typescript8.default.isVariableDeclaration(node.parent) || import_typescript8.default.isParameter(node.parent) || import_typescript8.default.isFunctionDeclaration(node.parent)) && node.parent.name === node))
       report(node, "forbidden-dynamic-code", `\`${node.text}\` is not allowed here.`);
-    else if (import_typescript7.default.isIdentifier(node) && node.text === "setInterval" && (!isNameOnly(node) || import_typescript7.default.isPropertyAccessExpression(node.parent) && import_typescript7.default.isIdentifier(node.parent.expression) && GLOBALS.has(node.parent.expression.text)))
+    else if (import_typescript8.default.isIdentifier(node) && node.text === "setInterval" && (!isNameOnly(node) || import_typescript8.default.isPropertyAccessExpression(node.parent) && import_typescript8.default.isIdentifier(node.parent.expression) && GLOBALS.has(node.parent.expression.text)))
       report(node, "forbidden-loop", "`setInterval` is not available here; repeat with `iterateOn(step, initial).withLimit({ maxSteps })` and wait inside the step with `await new Promise(r => setTimeout(r, ms))`.");
-    else if (import_typescript7.default.isPropertyAccessExpression(node) && import_typescript7.default.isIdentifier(node.expression) && (node.expression.text === "Symbol" && ITERATOR_SYMBOLS.has(node.name.text) || node.expression.text === "Iterator" && node.name.text === "from"))
+    else if (import_typescript8.default.isPropertyAccessExpression(node) && import_typescript8.default.isIdentifier(node.expression) && (node.expression.text === "Symbol" && ITERATOR_SYMBOLS.has(node.name.text) || node.expression.text === "Iterator" && node.name.text === "from"))
       report(node, "forbidden-loop", ITERATOR_REFUSAL);
-    else if (import_typescript7.default.isHeritageClause(node) && node.token === import_typescript7.default.SyntaxKind.ExtendsKeyword && node.types.some((type) => import_typescript7.default.isIdentifier(type.expression) && ["Iterator", "AsyncIterator"].includes(type.expression.text)))
+    else if (import_typescript8.default.isHeritageClause(node) && node.token === import_typescript8.default.SyntaxKind.ExtendsKeyword && node.types.some((type) => import_typescript8.default.isIdentifier(type.expression) && ["Iterator", "AsyncIterator"].includes(type.expression.text)))
       report(node, "forbidden-loop", ITERATOR_REFUSAL);
-    else if (import_typescript7.default.isCallExpression(node) && node.expression.kind === import_typescript7.default.SyntaxKind.ImportKeyword && !options.allowDynamicImport)
+    else if (import_typescript8.default.isCallExpression(node) && node.expression.kind === import_typescript8.default.SyntaxKind.ImportKeyword && !options.allowDynamicImport)
       report(node, "forbidden-dynamic-code", "Dynamic `import()` is not allowed here; use a static import.");
-    else if (import_typescript7.default.isForOfStatement(node) && options.checker) {
+    else if (import_typescript8.default.isForOfStatement(node) && options.checker) {
       const type = options.checker.getTypeAtLocation(node.expression);
       const collectionIteratorCall = (expression) => {
-        while (import_typescript7.default.isParenthesizedExpression(expression) || import_typescript7.default.isAsExpression(expression) || import_typescript7.default.isTypeAssertionExpression(expression) || import_typescript7.default.isNonNullExpression(expression)) expression = expression.expression;
-        if (!import_typescript7.default.isCallExpression(expression) || !import_typescript7.default.isPropertyAccessExpression(expression.expression)) return false;
+        while (import_typescript8.default.isParenthesizedExpression(expression) || import_typescript8.default.isAsExpression(expression) || import_typescript8.default.isTypeAssertionExpression(expression) || import_typescript8.default.isNonNullExpression(expression)) expression = expression.expression;
+        if (!import_typescript8.default.isCallExpression(expression) || !import_typescript8.default.isPropertyAccessExpression(expression.expression)) return false;
         const method = expression.expression.name.text;
         const receiver = options.checker.getTypeAtLocation(expression.expression.expression);
         const every = (candidate, test) => candidate.isUnion() ? candidate.types.every((item) => every(item, test)) : test(candidate);
         if (expression.arguments.length === 0 && ["entries", "keys", "values"].includes(method))
           return every(receiver, (candidate) => options.checker.isArrayType(candidate) || options.checker.isTupleType(candidate) || ["Map", "Set", "ReadonlyMap", "ReadonlySet"].includes(candidate.getSymbol()?.name ?? ""));
         if (method === "matchAll" && expression.arguments.length === 1)
-          return every(receiver, (candidate) => !!(candidate.flags & import_typescript7.default.TypeFlags.StringLike));
+          return every(receiver, (candidate) => !!(candidate.flags & import_typescript8.default.TypeFlags.StringLike));
         return false;
       };
-      const acceptable = (candidate) => candidate.isUnion() ? candidate.types.every(acceptable) : !!(candidate.flags & (import_typescript7.default.TypeFlags.Any | import_typescript7.default.TypeFlags.StringLike)) || options.checker.isArrayType(candidate) || options.checker.isTupleType(candidate) || ["Map", "Set", "ReadonlyMap", "ReadonlySet"].includes(candidate.getSymbol()?.name ?? "");
+      const acceptable = (candidate) => candidate.isUnion() ? candidate.types.every(acceptable) : !!(candidate.flags & (import_typescript8.default.TypeFlags.Any | import_typescript8.default.TypeFlags.StringLike)) || options.checker.isArrayType(candidate) || options.checker.isTupleType(candidate) || ["Map", "Set", "ReadonlyMap", "ReadonlySet"].includes(candidate.getSymbol()?.name ?? "");
       if (!acceptable(type) && !collectionIteratorCall(node.expression))
         report(node.expression, "forbidden-loop", "`for ... of` here must iterate an array, string, Map or Set." + loopHint);
     }
-    import_typescript7.default.forEachChild(node, visit);
+    import_typescript8.default.forEachChild(node, visit);
   };
   visit(file);
   return diagnostics;
@@ -216169,32 +216878,32 @@ function checkConstrainedSource(file, options = {}) {
 function authoredCallables(file, idPrefix) {
   const found = [];
   const nameOf = (node) => {
-    if ((import_typescript7.default.isFunctionDeclaration(node) || import_typescript7.default.isFunctionExpression(node) || import_typescript7.default.isMethodDeclaration(node) || import_typescript7.default.isGetAccessorDeclaration(node) || import_typescript7.default.isSetAccessorDeclaration(node)) && node.name) return node.name.getText();
-    if (import_typescript7.default.isConstructorDeclaration(node)) return "constructor";
+    if ((import_typescript8.default.isFunctionDeclaration(node) || import_typescript8.default.isFunctionExpression(node) || import_typescript8.default.isMethodDeclaration(node) || import_typescript8.default.isGetAccessorDeclaration(node) || import_typescript8.default.isSetAccessorDeclaration(node)) && node.name) return node.name.getText();
+    if (import_typescript8.default.isConstructorDeclaration(node)) return "constructor";
     const parent = node.parent;
-    if (parent && (import_typescript7.default.isVariableDeclaration(parent) || import_typescript7.default.isPropertyAssignment(parent) || import_typescript7.default.isPropertyDeclaration(parent)) && parent.name) return parent.name.getText();
+    if (parent && (import_typescript8.default.isVariableDeclaration(parent) || import_typescript8.default.isPropertyAssignment(parent) || import_typescript8.default.isPropertyDeclaration(parent)) && parent.name) return parent.name.getText();
     return "anonymous";
   };
   const visit = (node) => {
-    if ((import_typescript7.default.isFunctionDeclaration(node) || import_typescript7.default.isFunctionExpression(node) || import_typescript7.default.isArrowFunction(node) || import_typescript7.default.isMethodDeclaration(node) || import_typescript7.default.isGetAccessorDeclaration(node) || import_typescript7.default.isSetAccessorDeclaration(node) || import_typescript7.default.isConstructorDeclaration(node)) && node.body)
+    if ((import_typescript8.default.isFunctionDeclaration(node) || import_typescript8.default.isFunctionExpression(node) || import_typescript8.default.isArrowFunction(node) || import_typescript8.default.isMethodDeclaration(node) || import_typescript8.default.isGetAccessorDeclaration(node) || import_typescript8.default.isSetAccessorDeclaration(node) || import_typescript8.default.isConstructorDeclaration(node)) && node.body)
       found.push({ id: `${idPrefix}#${nameOf(node)}@${node.getStart()}`, name: nameOf(node), node, file });
-    import_typescript7.default.forEachChild(node, visit);
+    import_typescript8.default.forEachChild(node, visit);
   };
   visit(file);
   return found;
 }
-var import_typescript7, COMPARATORS, GROWING_METHODS, ITERATOR_SYMBOLS, GLOBALS, ITERATOR_REFUSAL, parsedFile;
+var import_typescript8, COMPARATORS, GROWING_METHODS, ITERATOR_SYMBOLS, GLOBALS, ITERATOR_REFUSAL, parsedFile;
 var init_policy = __esm({
   "src/compiler/policy.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript7 = __toESM(require_typescript(), 1);
+    import_typescript8 = __toESM(require_typescript(), 1);
     init_inline();
     COMPARATORS = /* @__PURE__ */ new Set([
-      import_typescript7.default.SyntaxKind.LessThanToken,
-      import_typescript7.default.SyntaxKind.LessThanEqualsToken,
-      import_typescript7.default.SyntaxKind.GreaterThanToken,
-      import_typescript7.default.SyntaxKind.GreaterThanEqualsToken
+      import_typescript8.default.SyntaxKind.LessThanToken,
+      import_typescript8.default.SyntaxKind.LessThanEqualsToken,
+      import_typescript8.default.SyntaxKind.GreaterThanToken,
+      import_typescript8.default.SyntaxKind.GreaterThanEqualsToken
     ]);
     GROWING_METHODS = /* @__PURE__ */ new Set(["push", "unshift", "splice", "concat"]);
     ITERATOR_SYMBOLS = /* @__PURE__ */ new Set(["iterator", "asyncIterator"]);
@@ -216203,7 +216912,7 @@ var init_policy = __esm({
     parsedFile = (node) => {
       if (node.pos < 0) return void 0;
       let at = node;
-      while (at && !import_typescript7.default.isSourceFile(at)) at = at.parent;
+      while (at && !import_typescript8.default.isSourceFile(at)) at = at.parent;
       return at;
     };
   }
@@ -216211,17 +216920,17 @@ var init_policy = __esm({
 
 // src/scope-compiler.ts
 function namesOf(name) {
-  if (import_typescript8.default.isIdentifier(name)) return [name];
-  return name.elements.flatMap((element) => import_typescript8.default.isOmittedExpression(element) ? [] : namesOf(element.name));
+  if (import_typescript9.default.isIdentifier(name)) return [name];
+  return name.elements.flatMap((element) => import_typescript9.default.isOmittedExpression(element) ? [] : namesOf(element.name));
 }
 function bindingInitializerProjections(name, initializer) {
   const projections = /* @__PURE__ */ new Map();
-  const file = import_typescript8.default.createSourceFile("initializer.ts", initializer, import_typescript8.default.ScriptTarget.Latest, true, import_typescript8.default.ScriptKind.TS);
-  const root2 = file.statements.find(import_typescript8.default.isExpressionStatement)?.expression;
+  const file = import_typescript9.default.createSourceFile("initializer.ts", initializer, import_typescript9.default.ScriptTarget.Latest, true, import_typescript9.default.ScriptKind.TS);
+  const root2 = file.statements.find(import_typescript9.default.isExpressionStatement)?.expression;
   const staticScopePath = (node) => {
-    if (import_typescript8.default.isIdentifier(node)) return true;
-    if (import_typescript8.default.isPropertyAccessExpression(node)) return staticScopePath(node.expression);
-    if (import_typescript8.default.isElementAccessExpression(node)) return !!node.argumentExpression && (import_typescript8.default.isStringLiteral(node.argumentExpression) || import_typescript8.default.isNumericLiteral(node.argumentExpression)) && staticScopePath(node.expression);
+    if (import_typescript9.default.isIdentifier(node)) return true;
+    if (import_typescript9.default.isPropertyAccessExpression(node)) return staticScopePath(node.expression);
+    if (import_typescript9.default.isElementAccessExpression(node)) return !!node.argumentExpression && (import_typescript9.default.isStringLiteral(node.argumentExpression) || import_typescript9.default.isNumericLiteral(node.argumentExpression)) && staticScopePath(node.expression);
     return false;
   };
   if (!root2 || !staticScopePath(root2)) return projections;
@@ -216232,18 +216941,18 @@ function bindingInitializerProjections(name, initializer) {
   };
   const propertyKey = (element) => {
     const property = element.propertyName;
-    if (!property) return import_typescript8.default.isIdentifier(element.name) ? element.name.text : void 0;
-    if (import_typescript8.default.isIdentifier(property) || import_typescript8.default.isStringLiteral(property) || import_typescript8.default.isNumericLiteral(property)) return property.text;
-    if (import_typescript8.default.isComputedPropertyName(property) && (import_typescript8.default.isStringLiteral(property.expression) || import_typescript8.default.isNumericLiteral(property.expression)))
+    if (!property) return import_typescript9.default.isIdentifier(element.name) ? element.name.text : void 0;
+    if (import_typescript9.default.isIdentifier(property) || import_typescript9.default.isStringLiteral(property) || import_typescript9.default.isNumericLiteral(property)) return property.text;
+    if (import_typescript9.default.isComputedPropertyName(property) && (import_typescript9.default.isStringLiteral(property.expression) || import_typescript9.default.isNumericLiteral(property.expression)))
       return property.expression.text;
     return;
   };
   const visit = (pattern2, base) => {
-    if (import_typescript8.default.isIdentifier(pattern2)) {
+    if (import_typescript9.default.isIdentifier(pattern2)) {
       projections.set(pattern2.text, base);
       return;
     }
-    if (import_typescript8.default.isObjectBindingPattern(pattern2)) {
+    if (import_typescript9.default.isObjectBindingPattern(pattern2)) {
       for (const element of pattern2.elements) {
         if (element.dotDotDotToken) continue;
         if (element.initializer) continue;
@@ -216254,12 +216963,12 @@ function bindingInitializerProjections(name, initializer) {
     }
     let index = 0;
     for (const element of pattern2.elements) {
-      if (import_typescript8.default.isOmittedExpression(element)) {
+      if (import_typescript9.default.isOmittedExpression(element)) {
         index++;
         continue;
       }
       if (element.dotDotDotToken) {
-        if (import_typescript8.default.isIdentifier(element.name)) projections.set(element.name.text, `${base}.slice(${index})`);
+        if (import_typescript9.default.isIdentifier(element.name)) projections.set(element.name.text, `${base}.slice(${index})`);
         continue;
       }
       if (element.initializer) {
@@ -216275,49 +216984,49 @@ function bindingInitializerProjections(name, initializer) {
 }
 function portableAnnotation(node, file) {
   const primitive = /* @__PURE__ */ new Map([
-    [import_typescript8.default.SyntaxKind.StringKeyword, "string"],
-    [import_typescript8.default.SyntaxKind.NumberKeyword, "number"],
-    [import_typescript8.default.SyntaxKind.BooleanKeyword, "boolean"],
-    [import_typescript8.default.SyntaxKind.NullKeyword, "null"]
+    [import_typescript9.default.SyntaxKind.StringKeyword, "string"],
+    [import_typescript9.default.SyntaxKind.NumberKeyword, "number"],
+    [import_typescript9.default.SyntaxKind.BooleanKeyword, "boolean"],
+    [import_typescript9.default.SyntaxKind.NullKeyword, "null"]
   ]);
   const direct = primitive.get(node.kind);
   if (direct) return direct;
-  if (import_typescript8.default.isLiteralTypeNode(node)) return node.literal.getText(file);
-  if (import_typescript8.default.isParenthesizedTypeNode(node)) {
+  if (import_typescript9.default.isLiteralTypeNode(node)) return node.literal.getText(file);
+  if (import_typescript9.default.isParenthesizedTypeNode(node)) {
     const inner = portableAnnotation(node.type, file);
     return inner ? `(${inner})` : void 0;
   }
-  if (import_typescript8.default.isArrayTypeNode(node)) {
+  if (import_typescript9.default.isArrayTypeNode(node)) {
     const element = portableAnnotation(node.elementType, file);
     return element ? `(${element})[]` : void 0;
   }
-  if (import_typescript8.default.isUnionTypeNode(node)) {
+  if (import_typescript9.default.isUnionTypeNode(node)) {
     const members = node.types.map((type) => portableAnnotation(type, file));
     return members.every(Boolean) ? members.join(" | ") : void 0;
   }
-  if (import_typescript8.default.isTypeLiteralNode(node)) {
+  if (import_typescript9.default.isTypeLiteralNode(node)) {
     const fields = [];
     for (const member of node.members) {
-      if (!import_typescript8.default.isPropertySignature(member) || !member.type || !member.name) return;
+      if (!import_typescript9.default.isPropertySignature(member) || !member.type || !member.name) return;
       const type = portableAnnotation(member.type, file);
       if (!type) return;
       fields.push(`${member.name.getText(file)}${member.questionToken ? "?" : ""}: ${type}`);
     }
     return `{ ${fields.join(", ")} }`;
   }
-  if (import_typescript8.default.isTypeOperatorNode(node) && node.operator === import_typescript8.default.SyntaxKind.ReadonlyKeyword)
+  if (import_typescript9.default.isTypeOperatorNode(node) && node.operator === import_typescript9.default.SyntaxKind.ReadonlyKeyword)
     return portableAnnotation(node.type, file);
-  if (import_typescript8.default.isTypeReferenceNode(node)) {
+  if (import_typescript9.default.isTypeReferenceNode(node)) {
     const name = node.typeName.getText(file), args = node.typeArguments ?? [];
     if ((name === "Array" || name === "ReadonlyArray") && args.length === 1) {
       const element = portableAnnotation(args[0], file);
       return element ? `(${element})[]` : void 0;
     }
-    if (name === "Is" && args.length === 2 && import_typescript8.default.isLiteralTypeNode(args[1]) && import_typescript8.default.isStringLiteral(args[1].literal)) {
+    if (name === "Is" && args.length === 2 && import_typescript9.default.isLiteralTypeNode(args[1]) && import_typescript9.default.isStringLiteral(args[1].literal)) {
       const base = portableAnnotation(args[0], file);
       return base ? `Is<${base}, ${args[1].literal.getText(file)}>` : void 0;
     }
-    if (name === "Neuralese" && (args.length === 1 || args.length === 2 && import_typescript8.default.isLiteralTypeNode(args[1]) && import_typescript8.default.isStringLiteral(args[1].literal))) {
+    if (name === "Neuralese" && (args.length === 1 || args.length === 2 && import_typescript9.default.isLiteralTypeNode(args[1]) && import_typescript9.default.isStringLiteral(args[1].literal))) {
       const element = portableAnnotation(args[0], file);
       return element ? `Neuralese<${element}${args.length === 2 ? `, ${args[1].getText(file)}` : ""}>` : void 0;
     }
@@ -216325,7 +217034,7 @@ function portableAnnotation(node, file) {
       const base = portableAnnotation(args[0], file);
       return base ? `Untrusted<${base}>` : void 0;
     }
-    if (name === "Record" && args.length === 2 && args[0].kind === import_typescript8.default.SyntaxKind.StringKeyword) {
+    if (name === "Record" && args.length === 2 && args[0].kind === import_typescript9.default.SyntaxKind.StringKeyword) {
       const value = portableAnnotation(args[1], file);
       return value ? `Record<string, ${value}>` : void 0;
     }
@@ -216352,23 +217061,23 @@ function unsupportedUtilityAnnotation(node, file) {
   let unsupported;
   const visit = (current) => {
     if (unsupported) return;
-    if (import_typescript8.default.isTypeReferenceNode(current) && import_typescript8.default.isIdentifier(current.typeName) && names.has(current.typeName.text) && (current.typeArguments?.length ?? 0) > 0) {
+    if (import_typescript9.default.isTypeReferenceNode(current) && import_typescript9.default.isIdentifier(current.typeName) && names.has(current.typeName.text) && (current.typeArguments?.length ?? 0) > 0) {
       unsupported = current;
       return;
     }
-    import_typescript8.default.forEachChild(current, visit);
+    import_typescript9.default.forEachChild(current, visit);
   };
   visit(node);
   return unsupported?.getText(file);
 }
 function isPropertyName2(node) {
   const parent = node.parent;
-  return import_typescript8.default.isPropertyAccessExpression(parent) && parent.name === node || // `typeof task.passes`: the right side of a qualified name in a type query is a property, not a variable.
-  import_typescript8.default.isQualifiedName(parent) && parent.right === node || (import_typescript8.default.isPropertyAssignment(parent) || import_typescript8.default.isMethodDeclaration(parent) || import_typescript8.default.isPropertyDeclaration(parent) || import_typescript8.default.isPropertySignature(parent) || import_typescript8.default.isMethodSignature(parent) || import_typescript8.default.isBindingElement(parent)) && parent.name === node || import_typescript8.default.isLabeledStatement(parent) && parent.label === node || (import_typescript8.default.isBreakStatement(parent) || import_typescript8.default.isContinueStatement(parent)) && parent.label === node;
+  return import_typescript9.default.isPropertyAccessExpression(parent) && parent.name === node || // `typeof task.passes`: the right side of a qualified name in a type query is a property, not a variable.
+  import_typescript9.default.isQualifiedName(parent) && parent.right === node || (import_typescript9.default.isPropertyAssignment(parent) || import_typescript9.default.isMethodDeclaration(parent) || import_typescript9.default.isPropertyDeclaration(parent) || import_typescript9.default.isPropertySignature(parent) || import_typescript9.default.isMethodSignature(parent) || import_typescript9.default.isBindingElement(parent)) && parent.name === node || import_typescript9.default.isLabeledStatement(parent) && parent.label === node || (import_typescript9.default.isBreakStatement(parent) || import_typescript9.default.isContinueStatement(parent)) && parent.label === node;
 }
 function isDeclarationName(node) {
   const parent = node.parent;
-  return (import_typescript8.default.isVariableDeclaration(parent) || import_typescript8.default.isParameter(parent) || import_typescript8.default.isFunctionDeclaration(parent) || import_typescript8.default.isFunctionExpression(parent) || import_typescript8.default.isArrowFunction(parent) || import_typescript8.default.isClassDeclaration(parent) || import_typescript8.default.isClassExpression(parent) || import_typescript8.default.isTypeAliasDeclaration(parent) || import_typescript8.default.isInterfaceDeclaration(parent) || import_typescript8.default.isEnumDeclaration(parent) || import_typescript8.default.isImportClause(parent) || import_typescript8.default.isImportSpecifier(parent) || import_typescript8.default.isNamespaceImport(parent) || import_typescript8.default.isBindingElement(parent)) && parent.name === node;
+  return (import_typescript9.default.isVariableDeclaration(parent) || import_typescript9.default.isParameter(parent) || import_typescript9.default.isFunctionDeclaration(parent) || import_typescript9.default.isFunctionExpression(parent) || import_typescript9.default.isArrowFunction(parent) || import_typescript9.default.isClassDeclaration(parent) || import_typescript9.default.isClassExpression(parent) || import_typescript9.default.isTypeAliasDeclaration(parent) || import_typescript9.default.isInterfaceDeclaration(parent) || import_typescript9.default.isEnumDeclaration(parent) || import_typescript9.default.isImportClause(parent) || import_typescript9.default.isImportSpecifier(parent) || import_typescript9.default.isNamespaceImport(parent) || import_typescript9.default.isBindingElement(parent)) && parent.name === node;
 }
 function persistentHelperFreeNames(fn, checker, sourceFile) {
   const names = /* @__PURE__ */ new Set();
@@ -216379,17 +217088,17 @@ function persistentHelperFreeNames(fn, checker, sourceFile) {
   };
   const typePosition = (node) => {
     for (let parent = node.parent; parent; parent = parent.parent) {
-      if (import_typescript8.default.isTypeQueryNode(parent)) return false;
-      if (import_typescript8.default.isTypeNode(parent)) return true;
-      if (import_typescript8.default.isExpression(parent) || import_typescript8.default.isStatement(parent)) return false;
+      if (import_typescript9.default.isTypeQueryNode(parent)) return false;
+      if (import_typescript9.default.isTypeNode(parent)) return true;
+      if (import_typescript9.default.isExpression(parent) || import_typescript9.default.isStatement(parent)) return false;
     }
     return false;
   };
   const visit = (node) => {
-    if (import_typescript8.default.isArrowFunction(node) || import_typescript8.default.isFunctionExpression(node) || import_typescript8.default.isFunctionDeclaration(node)) {
+    if (import_typescript9.default.isArrowFunction(node) || import_typescript9.default.isFunctionExpression(node) || import_typescript9.default.isFunctionDeclaration(node)) {
       if (node !== fn) nested = true;
     }
-    if (import_typescript8.default.isIdentifier(node) && !isDeclarationName(node) && !isPropertyName2(node) && !typePosition(node)) {
+    if (import_typescript9.default.isIdentifier(node) && !isDeclarationName(node) && !isPropertyName2(node) && !typePosition(node)) {
       const symbol = checker.getSymbolAtLocation(node);
       const declarations = symbol?.declarations ?? [];
       const lexical = declarations.some((declaration) => declaration.getSourceFile() === sourceFile && insideHelper(declaration));
@@ -216397,95 +217106,95 @@ function persistentHelperFreeNames(fn, checker, sourceFile) {
       const global2 = symbol !== void 0 && declarations.every((declaration) => declaration.getSourceFile() !== sourceFile);
       if (!lexical && !global2 || sameFileOuter) names.add(node.text);
     }
-    import_typescript8.default.forEachChild(node, visit);
+    import_typescript9.default.forEachChild(node, visit);
   };
   visit(fn);
   return { names: [...names].sort(), nested };
 }
 function checkerFor(sourceFile) {
-  const compilerOptions = { target: import_typescript8.default.ScriptTarget.ES2022, noEmit: true, skipLibCheck: true };
+  const compilerOptions = { target: import_typescript9.default.ScriptTarget.ES2022, noEmit: true, skipLibCheck: true };
   const path2 = `/__natlang__/eval/${sourceFile.fileName.replace(/\\/g, "/").replace(/^\.?\//, "")}`;
   const host = createNatlangCompilerHost({ options: compilerOptions, virtual: /* @__PURE__ */ new Map([[path2, sourceFile.text]]), currentDirectory: "/" });
   const getSourceFile = host.getSourceFile.bind(host);
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => fileName === path2 ? sourceFile : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-  return import_typescript8.default.createProgram([path2], compilerOptions, host).getTypeChecker();
+  return import_typescript9.default.createProgram([path2], compilerOptions, host).getTypeChecker();
 }
 function persistentHelperTypeNames(node) {
   const names = /* @__PURE__ */ new Set();
   const typeParameters = /* @__PURE__ */ new Set();
   const visit = (item) => {
-    if (import_typescript8.default.isTypeParameterDeclaration(item)) typeParameters.add(item.name.text);
-    const constAssertion = import_typescript8.default.isTypeReferenceNode(item) && import_typescript8.default.isIdentifier(item.typeName) && item.typeName.text === "const" && !item.typeArguments?.length && item.parent !== void 0 && (import_typescript8.default.isAsExpression(item.parent) || import_typescript8.default.isTypeAssertionExpression(item.parent)) && item.parent.type === item;
-    if (import_typescript8.default.isTypeReferenceNode(item) && import_typescript8.default.isIdentifier(item.typeName) && !constAssertion && !typeParameters.has(item.typeName.text) && !PERSISTENT_HELPER_TYPES.has(item.typeName.text)) names.add(item.typeName.text);
-    import_typescript8.default.forEachChild(item, visit);
+    if (import_typescript9.default.isTypeParameterDeclaration(item)) typeParameters.add(item.name.text);
+    const constAssertion = import_typescript9.default.isTypeReferenceNode(item) && import_typescript9.default.isIdentifier(item.typeName) && item.typeName.text === "const" && !item.typeArguments?.length && item.parent !== void 0 && (import_typescript9.default.isAsExpression(item.parent) || import_typescript9.default.isTypeAssertionExpression(item.parent)) && item.parent.type === item;
+    if (import_typescript9.default.isTypeReferenceNode(item) && import_typescript9.default.isIdentifier(item.typeName) && !constAssertion && !typeParameters.has(item.typeName.text) && !PERSISTENT_HELPER_TYPES.has(item.typeName.text)) names.add(item.typeName.text);
+    import_typescript9.default.forEachChild(item, visit);
   };
   visit(node);
   return [...names].sort();
 }
 function helperFunction(statement) {
-  if (import_typescript8.default.isFunctionDeclaration(statement) && statement.name)
+  if (import_typescript9.default.isFunctionDeclaration(statement) && statement.name)
     return { name: statement.name.text, fn: statement };
-  if (!import_typescript8.default.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) return;
+  if (!import_typescript9.default.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) return;
   const declaration = statement.declarationList.declarations[0];
-  if (!import_typescript8.default.isIdentifier(declaration.name) || !declaration.initializer) return;
+  if (!import_typescript9.default.isIdentifier(declaration.name) || !declaration.initializer) return;
   let initializer = declaration.initializer;
-  while (import_typescript8.default.isAwaitExpression(initializer) || import_typescript8.default.isParenthesizedExpression(initializer) || import_typescript8.default.isAsExpression(initializer) || import_typescript8.default.isSatisfiesExpression(initializer)) initializer = initializer.expression;
-  return import_typescript8.default.isArrowFunction(initializer) || import_typescript8.default.isFunctionExpression(initializer) ? { name: declaration.name.text, fn: initializer } : void 0;
+  while (import_typescript9.default.isAwaitExpression(initializer) || import_typescript9.default.isParenthesizedExpression(initializer) || import_typescript9.default.isAsExpression(initializer) || import_typescript9.default.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+  return import_typescript9.default.isArrowFunction(initializer) || import_typescript9.default.isFunctionExpression(initializer) ? { name: declaration.name.text, fn: initializer } : void 0;
 }
 function propertyText(expression) {
-  if (import_typescript8.default.isPropertyAccessExpression(expression)) return expression.name.text;
-  if (import_typescript8.default.isElementAccessExpression(expression) && expression.argumentExpression && (import_typescript8.default.isStringLiteral(expression.argumentExpression) || import_typescript8.default.isNoSubstitutionTemplateLiteral(expression.argumentExpression)))
+  if (import_typescript9.default.isPropertyAccessExpression(expression)) return expression.name.text;
+  if (import_typescript9.default.isElementAccessExpression(expression) && expression.argumentExpression && (import_typescript9.default.isStringLiteral(expression.argumentExpression) || import_typescript9.default.isNoSubstitutionTemplateLiteral(expression.argumentExpression)))
     return expression.argumentExpression.text;
   return void 0;
 }
 function assignmentTarget(node) {
-  if (import_typescript8.default.isBinaryExpression(node) && node.operatorToken.kind >= import_typescript8.default.SyntaxKind.FirstAssignment && node.operatorToken.kind <= import_typescript8.default.SyntaxKind.LastAssignment) return node.left;
-  if (import_typescript8.default.isDeleteExpression(node)) return node.expression;
-  if ((import_typescript8.default.isPrefixUnaryExpression(node) || import_typescript8.default.isPostfixUnaryExpression(node)) && (node.operator === import_typescript8.default.SyntaxKind.PlusPlusToken || node.operator === import_typescript8.default.SyntaxKind.MinusMinusToken))
+  if (import_typescript9.default.isBinaryExpression(node) && node.operatorToken.kind >= import_typescript9.default.SyntaxKind.FirstAssignment && node.operatorToken.kind <= import_typescript9.default.SyntaxKind.LastAssignment) return node.left;
+  if (import_typescript9.default.isDeleteExpression(node)) return node.expression;
+  if ((import_typescript9.default.isPrefixUnaryExpression(node) || import_typescript9.default.isPostfixUnaryExpression(node)) && (node.operator === import_typescript9.default.SyntaxKind.PlusPlusToken || node.operator === import_typescript9.default.SyntaxKind.MinusMinusToken))
     return node.operand;
   return void 0;
 }
 function uncalledInlineFunctions(file) {
   const ends = [];
   const visit = (node) => {
-    if (import_typescript8.default.isTaggedTemplateExpression(node) && import_typescript8.default.isIdentifier(node.tag) && node.tag.text === "nl") {
+    if (import_typescript9.default.isTaggedTemplateExpression(node) && import_typescript9.default.isIdentifier(node.tag) && node.tag.text === "nl") {
       let outer = node;
-      while (outer.parent && import_typescript8.default.isParenthesizedExpression(outer.parent)) outer = outer.parent;
-      if (outer.parent && import_typescript8.default.isAwaitExpression(outer.parent)) ends.push(node.getEnd());
+      while (outer.parent && import_typescript9.default.isParenthesizedExpression(outer.parent)) outer = outer.parent;
+      if (outer.parent && import_typescript9.default.isAwaitExpression(outer.parent)) ends.push(node.getEnd());
     }
-    import_typescript8.default.forEachChild(node, visit);
+    import_typescript9.default.forEachChild(node, visit);
   };
   visit(file);
   return ends;
 }
 function literalValue(node) {
-  if (import_typescript8.default.isStringLiteral(node) || import_typescript8.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (import_typescript8.default.isNumericLiteral(node)) return Number(node.text);
-  if (import_typescript8.default.isPrefixUnaryExpression(node) && node.operator === import_typescript8.default.SyntaxKind.MinusToken && import_typescript8.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
-  if (node.kind === import_typescript8.default.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === import_typescript8.default.SyntaxKind.FalseKeyword) return false;
-  if (import_typescript8.default.isParenthesizedExpression(node)) return literalValue(node.expression);
+  if (import_typescript9.default.isStringLiteral(node) || import_typescript9.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (import_typescript9.default.isNumericLiteral(node)) return Number(node.text);
+  if (import_typescript9.default.isPrefixUnaryExpression(node) && node.operator === import_typescript9.default.SyntaxKind.MinusToken && import_typescript9.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
+  if (node.kind === import_typescript9.default.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === import_typescript9.default.SyntaxKind.FalseKeyword) return false;
+  if (import_typescript9.default.isParenthesizedExpression(node)) return literalValue(node.expression);
   return void 0;
 }
 function jsonLiteral(node) {
   const primitive = literalValue(node);
   if (primitive !== void 0) return primitive;
-  if (node.kind === import_typescript8.default.SyntaxKind.NullKeyword) return null;
-  if (import_typescript8.default.isParenthesizedExpression(node) || import_typescript8.default.isAsExpression(node) || import_typescript8.default.isSatisfiesExpression(node)) return jsonLiteral(node.expression);
-  if (import_typescript8.default.isArrayLiteralExpression(node)) {
+  if (node.kind === import_typescript9.default.SyntaxKind.NullKeyword) return null;
+  if (import_typescript9.default.isParenthesizedExpression(node) || import_typescript9.default.isAsExpression(node) || import_typescript9.default.isSatisfiesExpression(node)) return jsonLiteral(node.expression);
+  if (import_typescript9.default.isArrayLiteralExpression(node)) {
     const items = [];
     for (const element of node.elements) {
-      const value = import_typescript8.default.isSpreadElement(element) || import_typescript8.default.isOmittedExpression(element) ? NOT_LITERAL : jsonLiteral(element);
+      const value = import_typescript9.default.isSpreadElement(element) || import_typescript9.default.isOmittedExpression(element) ? NOT_LITERAL : jsonLiteral(element);
       if (value === NOT_LITERAL) return NOT_LITERAL;
       items.push(value);
     }
     return items;
   }
-  if (import_typescript8.default.isObjectLiteralExpression(node)) {
+  if (import_typescript9.default.isObjectLiteralExpression(node)) {
     const record3 = {};
     for (const property of node.properties) {
-      if (!import_typescript8.default.isPropertyAssignment(property)) return NOT_LITERAL;
-      const key = import_typescript8.default.isIdentifier(property.name) || import_typescript8.default.isStringLiteral(property.name) || import_typescript8.default.isNumericLiteral(property.name) ? property.name.text : void 0;
+      if (!import_typescript9.default.isPropertyAssignment(property)) return NOT_LITERAL;
+      const key = import_typescript9.default.isIdentifier(property.name) || import_typescript9.default.isStringLiteral(property.name) || import_typescript9.default.isNumericLiteral(property.name) ? property.name.text : void 0;
       const value = key === void 0 ? NOT_LITERAL : jsonLiteral(property.initializer);
       if (value === NOT_LITERAL) return NOT_LITERAL;
       record3[key] = value;
@@ -216525,7 +217234,7 @@ function foreignCodeHint(source2) {
 function compileScopeSnippet(source2, options = {}) {
   const result = compileScopeSnippetUnhinted(source2, options);
   if (!result.ok && typeof source2 === "string") {
-    const parsed = import_typescript8.default.createSourceFile("eval-source.ts", source2, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
+    const parsed = import_typescript9.default.createSourceFile("eval-source.ts", source2, import_typescript9.default.ScriptTarget.ES2022, true, import_typescript9.default.ScriptKind.TS);
     if ((parsed.parseDiagnostics ?? []).length) {
       const hint = foreignCodeHint(source2);
       if (hint) result.diagnostics.splice(0, result.diagnostics.length, hint, ...result.diagnostics.slice(0, 4));
@@ -216536,23 +217245,23 @@ function compileScopeSnippet(source2, options = {}) {
 function compileScopeSnippetUnhinted(source2, options = {}) {
   if (typeof source2 !== "string") throw new TypeError("scope source must be a string");
   if (options.allowModules) {
-    const module = import_typescript8.default.createSourceFile("imports.ts", source2, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
-    const imports = module.statements.filter(import_typescript8.default.isImportDeclaration);
+    const module = import_typescript9.default.createSourceFile("imports.ts", source2, import_typescript9.default.ScriptTarget.ES2022, true, import_typescript9.default.ScriptKind.TS);
+    const imports = module.statements.filter(import_typescript9.default.isImportDeclaration);
     if (imports.length) {
       let lowered = source2;
       for (const statement of [...imports].reverse()) {
         const clause = statement.importClause;
         let text3 = "";
-        const typeOnlyBindings = clause?.namedBindings && import_typescript8.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
+        const typeOnlyBindings = clause?.namedBindings && import_typescript9.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
         if (!clause?.isTypeOnly && !(typeOnlyBindings && !clause?.name)) {
           const call = `await import(${statement.moduleSpecifier.getText(module)})`;
           const fields = [];
           if (clause?.name) fields.push(`default: ${clause.name.text}`);
           const bindings3 = clause?.namedBindings;
-          if (bindings3 && import_typescript8.default.isNamedImports(bindings3)) for (const binding of bindings3.elements) {
+          if (bindings3 && import_typescript9.default.isNamedImports(bindings3)) for (const binding of bindings3.elements) {
             if (!binding.isTypeOnly) fields.push(`${binding.propertyName?.text ?? binding.name.text}: ${binding.name.text}`);
           }
-          if (bindings3 && import_typescript8.default.isNamespaceImport(bindings3)) {
+          if (bindings3 && import_typescript9.default.isNamespaceImport(bindings3)) {
             text3 = `const ${bindings3.name.text} = ${call};`;
             if (clause?.name) text3 += ` const {default: ${clause.name.text}} = ${call};`;
           } else text3 = fields.length ? `const { ${fields.join(", ")} } = ${call};` : `${call};`;
@@ -216567,7 +217276,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   const helperPrefix = persistentHelpers.map((helper) => helper.source).join("\n") + (persistentHelpers.length ? "\n" : "");
   const analysisSource = helperPrefix + snippetSource;
   const wrapped = PREFIX + analysisSource + SUFFIX;
-  const file = import_typescript8.default.createSourceFile("natlang-scope.ts", wrapped, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
+  const file = import_typescript9.default.createSourceFile("natlang-scope.ts", wrapped, import_typescript9.default.ScriptTarget.ES2022, true, import_typescript9.default.ScriptKind.TS);
   const userStart = PREFIX.length + helperPrefix.length;
   const uncalled = uncalledInlineFunctions(file).filter((end) => end >= userStart);
   if (uncalled.length) {
@@ -216575,11 +217284,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     for (const end of uncalled.sort((a, b) => b - a)) called = called.slice(0, end - userStart) + "()" + called.slice(end - userStart);
     return compileScopeSnippetUnhinted(called, options);
   }
-  const fn = file.statements.find(import_typescript8.default.isFunctionDeclaration);
+  const fn = file.statements.find(import_typescript9.default.isFunctionDeclaration);
   if (!fn?.body) throw new Error("internal scope compiler wrapper failure");
   const diagnostics = [];
   const repairs = [];
-  const sourceFile = import_typescript8.default.createSourceFile("eval-source.ts", snippetSource, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
+  const sourceFile = import_typescript9.default.createSourceFile("eval-source.ts", snippetSource, import_typescript9.default.ScriptTarget.ES2022, true, import_typescript9.default.ScriptKind.TS);
   const span = (nodeOrStart, length) => {
     const absolute = typeof nodeOrStart === "number" ? nodeOrStart : nodeOrStart.getStart(file);
     if (absolute < userStart) {
@@ -216608,11 +217317,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   };
   const parseDiagnostics = file.parseDiagnostics ?? [];
   if (parseDiagnostics.length) {
-    const scanner = import_typescript8.default.createScanner(import_typescript8.default.ScriptTarget.Latest, true, import_typescript8.default.LanguageVariant.Standard, file.text);
+    const scanner = import_typescript9.default.createScanner(import_typescript9.default.ScriptTarget.Latest, true, import_typescript9.default.LanguageVariant.Standard, file.text);
     const errorStarts = new Set(parseDiagnostics.map((diagnostic) => diagnostic.start));
-    let previous = import_typescript8.default.SyntaxKind.Unknown;
-    for (let token = scanner.scan(); token !== import_typescript8.default.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-      if ((previous === import_typescript8.default.SyntaxKind.ConstKeyword || previous === import_typescript8.default.SyntaxKind.LetKeyword || previous === import_typescript8.default.SyntaxKind.VarKeyword) && token >= import_typescript8.default.SyntaxKind.FirstKeyword && token <= import_typescript8.default.SyntaxKind.LastReservedWord && errorStarts.has(scanner.getTokenPos())) {
+    let previous = import_typescript9.default.SyntaxKind.Unknown;
+    for (let token = scanner.scan(); token !== import_typescript9.default.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+      if ((previous === import_typescript9.default.SyntaxKind.ConstKeyword || previous === import_typescript9.default.SyntaxKind.LetKeyword || previous === import_typescript9.default.SyntaxKind.VarKeyword) && token >= import_typescript9.default.SyntaxKind.FirstKeyword && token <= import_typescript9.default.SyntaxKind.LastReservedWord && errorStarts.has(scanner.getTokenPos())) {
         diagnostics.push({
           code: "typescript-syntax",
           message: `Reserved word ${JSON.stringify(scanner.getTokenText())} cannot be a variable name. Choose a different name and use it consistently in this eval.`,
@@ -216626,7 +217335,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     if (diagnostic.start === void 0) continue;
     diagnostics.push({
       code: "typescript-syntax",
-      message: import_typescript8.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+      message: import_typescript9.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
       ...span(diagnostic.start, diagnostic.length)
     });
   }
@@ -216645,11 +217354,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   const helperCandidates = [];
   for (const statement of fn.body.statements) {
     if (statement.getStart(file) < userStart) continue;
-    if (import_typescript8.default.isVariableStatement(statement)) {
+    if (import_typescript9.default.isVariableStatement(statement)) {
       const declarations = statement.declarationList.declarations;
       if (declarations.length === 1) {
         const declaration = declarations[0];
-        if (import_typescript8.default.isIdentifier(declaration.name) && declaration.initializer && import_typescript8.default.isIdentifier(declaration.initializer) && declaration.name.text === declaration.initializer.text && injectedNames.has(declaration.name.text)) {
+        if (import_typescript9.default.isIdentifier(declaration.name) && declaration.initializer && import_typescript9.default.isIdentifier(declaration.initializer) && declaration.name.text === declaration.initializer.text && injectedNames.has(declaration.name.text)) {
           const location = span(statement);
           redundantAliases.push(location);
           repairs.push({
@@ -216659,7 +217368,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
           });
           continue;
         }
-        const bound = import_typescript8.default.isIdentifier(declaration.name) ? declaration.name.text : "";
+        const bound = import_typescript9.default.isIdentifier(declaration.name) ? declaration.name.text : "";
         const role = options.inputBindings?.includes(bound) ? "input" : captureNames.includes(bound) ? "captured value" : void 0;
         if (role && declaration.initializer && options.boundValues && Object.hasOwn(options.boundValues, bound) && sameJson(jsonLiteral(declaration.initializer), options.boundValues[bound])) {
           const location = span(statement);
@@ -216673,21 +217382,21 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         }
       }
       const flags = statement.declarationList.flags;
-      const kind = flags & import_typescript8.default.NodeFlags.Const ? "const" : flags & import_typescript8.default.NodeFlags.Let ? "let" : "var";
+      const kind = flags & import_typescript9.default.NodeFlags.Const ? "const" : flags & import_typescript9.default.NodeFlags.Let ? "let" : "var";
       for (const declaration of statement.declarationList.declarations) for (const name of namesOf(declaration.name)) {
-        const annotation2 = import_typescript8.default.isIdentifier(declaration.name) && declaration.type ? portableAnnotation(declaration.type, file) : void 0;
-        const unsupportedAnnotation = import_typescript8.default.isIdentifier(declaration.name) && declaration.type && !annotation2 ? unsupportedUtilityAnnotation(declaration.type, file) : void 0;
+        const annotation2 = import_typescript9.default.isIdentifier(declaration.name) && declaration.type ? portableAnnotation(declaration.type, file) : void 0;
+        const unsupportedAnnotation = import_typescript9.default.isIdentifier(declaration.name) && declaration.type && !annotation2 ? unsupportedUtilityAnnotation(declaration.type, file) : void 0;
         if (unsupportedAnnotation) diagnostics.push({
           ...span(declaration.type),
           code: "unsupported-type-annotation",
           message: `Eval cannot type-check the TypeScript utility annotation ${JSON.stringify(unsupportedAnnotation)}. Remove this local annotation and let the value expression infer its type, for example \`const rows = await service.getRows()\`. Use a structural record or array type only when an explicit local annotation is needed; ordinary \`const\` inference usually makes \`as const\` unnecessary.`
         });
         const initializerText = declaration.initializer?.getText(file);
-        const bindingInitializer = declaration.initializer && initializerText ? import_typescript8.default.isIdentifier(declaration.name) ? initializerText : bindingInitializerProjections(declaration.name, initializerText).get(name.text) : void 0;
+        const bindingInitializer = declaration.initializer && initializerText ? import_typescript9.default.isIdentifier(declaration.name) ? initializerText : bindingInitializerProjections(declaration.name, initializerText).get(name.text) : void 0;
         let initial = declaration.initializer;
-        while (initial && (import_typescript8.default.isAwaitExpression(initial) || import_typescript8.default.isParenthesizedExpression(initial) || import_typescript8.default.isPropertyAccessExpression(initial))) initial = initial.expression;
-        const transient = !!(initial && (import_typescript8.default.isArrowFunction(initial) || import_typescript8.default.isFunctionExpression(initial) || import_typescript8.default.isCallExpression(initial) && (options.allowModules && initial.expression.kind === import_typescript8.default.SyntaxKind.ImportKeyword || options.allowNetwork && import_typescript8.default.isIdentifier(initial.expression) && initial.expression.text === "fetch") || false));
-        if (initial && import_typescript8.default.isCallExpression(initial) && initial.expression.kind === import_typescript8.default.SyntaxKind.ImportKeyword) importedNames.add(name.text);
+        while (initial && (import_typescript9.default.isAwaitExpression(initial) || import_typescript9.default.isParenthesizedExpression(initial) || import_typescript9.default.isPropertyAccessExpression(initial))) initial = initial.expression;
+        const transient = !!(initial && (import_typescript9.default.isArrowFunction(initial) || import_typescript9.default.isFunctionExpression(initial) || import_typescript9.default.isCallExpression(initial) && (options.allowModules && initial.expression.kind === import_typescript9.default.SyntaxKind.ImportKeyword || options.allowNetwork && import_typescript9.default.isIdentifier(initial.expression) && initial.expression.text === "fetch") || false));
+        if (initial && import_typescript9.default.isCallExpression(initial) && initial.expression.kind === import_typescript9.default.SyntaxKind.ImportKeyword) importedNames.add(name.text);
         bindings2.push({
           name: name.text,
           kind,
@@ -216699,7 +217408,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
           end: span(name).end
         });
       }
-    } else if (import_typescript8.default.isFunctionDeclaration(statement) && statement.name) {
+    } else if (import_typescript9.default.isFunctionDeclaration(statement) && statement.name) {
       bindings2.push({
         name: statement.name.text,
         kind: "function",
@@ -216825,27 +217534,27 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       });
   }
   const visit = (node) => {
-    if (import_typescript8.default.isImportDeclaration(node) || import_typescript8.default.isImportEqualsDeclaration(node) || import_typescript8.default.isExportDeclaration(node) || import_typescript8.default.isExportAssignment(node) || import_typescript8.default.isMetaProperty(node))
+    if (import_typescript9.default.isImportDeclaration(node) || import_typescript9.default.isImportEqualsDeclaration(node) || import_typescript9.default.isExportDeclaration(node) || import_typescript9.default.isExportAssignment(node) || import_typescript9.default.isMetaProperty(node))
       add("forbidden-dynamic-code", "Modules are resolved by the codebase loader; imports and exports are unavailable in eval.", node);
-    else if (import_typescript8.default.isCallExpression(node) && node.expression.kind === import_typescript8.default.SyntaxKind.ImportKeyword && !options.allowModules)
+    else if (import_typescript9.default.isCallExpression(node) && node.expression.kind === import_typescript9.default.SyntaxKind.ImportKeyword && !options.allowModules)
       add("forbidden-dynamic-code", "Dynamic import is unavailable in eval.", node);
-    else if (import_typescript8.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !isPropertyName2(node) && !isDeclarationName(node))
+    else if (import_typescript9.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !isPropertyName2(node) && !isDeclarationName(node))
       add("forbidden-dynamic-code", `${node.text} is unavailable in eval.`, node);
-    else if (import_typescript8.default.isIdentifier(node) && (MODULE_AMBIENTS.has(node.text) || node.text === "fetch" && !options.allowNetwork) && !topLevelNames.has(node.text) && !isPropertyName2(node) && !isDeclarationName(node))
+    else if (import_typescript9.default.isIdentifier(node) && (MODULE_AMBIENTS.has(node.text) || node.text === "fetch" && !options.allowNetwork) && !topLevelNames.has(node.text) && !isPropertyName2(node) && !isDeclarationName(node))
       add("forbidden-ambient", node.text === "fetch" ? "Network access is turned off for this runtime, so fetch is unavailable." : `${node.text} is unavailable in eval: eval code works with this call's scope, not the host's files, processes or system (npm packages of the project can be imported; Node's own modules cannot).`, node);
     const target = assignmentTarget(node);
     const targetProperty = target && propertyText(target);
     if (targetProperty === "prototype" || targetProperty === "__proto__")
       add("forbidden-prototype-mutation", `Mutation of ${targetProperty} is unavailable in eval.`, node);
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && ((node.expression.expression.getText(file) === "Object" || node.expression.expression.getText(file) === "Reflect") && ["setPrototypeOf", "defineProperty", "defineProperties"].includes(node.expression.name.text)))
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && ((node.expression.expression.getText(file) === "Object" || node.expression.expression.getText(file) === "Reflect") && ["setPrototypeOf", "defineProperty", "defineProperties"].includes(node.expression.name.text)))
       add("forbidden-prototype-mutation", "Prototype and property-descriptor mutation is unavailable in eval.", node);
     if (target) {
       let root2 = target;
-      while (import_typescript8.default.isPropertyAccessExpression(root2) || import_typescript8.default.isElementAccessExpression(root2)) root2 = root2.expression;
-      if (import_typescript8.default.isIdentifier(root2) && (deeplyReadonly.has(root2.text) || root2 === target && immutable2.has(root2.text)))
+      while (import_typescript9.default.isPropertyAccessExpression(root2) || import_typescript9.default.isElementAccessExpression(root2)) root2 = root2.expression;
+      if (import_typescript9.default.isIdentifier(root2) && (deeplyReadonly.has(root2.text) || root2 === target && immutable2.has(root2.text)))
         add("invalid-binding", inputNames.includes(root2.text) ? `${root2.text} is a parameter and cannot be changed; declare a new variable for a changed value.` : `Binding ${JSON.stringify(root2.text)} is immutable in eval.`, target);
     }
-    import_typescript8.default.forEachChild(node, visit);
+    import_typescript9.default.forEachChild(node, visit);
   };
   for (const statement of fn.body.statements) visit(statement);
   const toRaw = (item, wrappedOffsets = false) => {
@@ -216912,7 +217621,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   const statements = [...fn.body.statements];
   let finalExpression;
   const last = statements.at(-1);
-  if (last && import_typescript8.default.isExpressionStatement(last)) finalExpression = span(last.expression);
+  if (last && import_typescript9.default.isExpressionStatement(last)) finalExpression = span(last.expression);
   let plans = [];
   const planCoordinates = /* @__PURE__ */ new Map();
   const literalCalls = /(?<![.\w$])__neuralese\(/.test(analysisSource);
@@ -216931,7 +217640,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     for (const plan of plans) planCoordinates.set(plan, { start: plan.sourceSpan.start, end: plan.sourceSpan.end });
     let helperOffset = 0;
     for (const helper of persistentHelpers) {
-      const sourceFile2 = import_typescript8.default.createSourceFile(`saved-helper-${helper.name}.ts`, helper.source, import_typescript8.default.ScriptTarget.ES2022, true, import_typescript8.default.ScriptKind.TS);
+      const sourceFile2 = import_typescript9.default.createSourceFile(`saved-helper-${helper.name}.ts`, helper.source, import_typescript9.default.ScriptTarget.ES2022, true, import_typescript9.default.ScriptKind.TS);
       const fileName = `saved-helper:${helper.name}@${helper.sourceHash}`;
       const localSpan = (item) => {
         if (!Number.isSafeInteger(item.start) || !Number.isSafeInteger(item.end) || item.start < helperOffset || item.end <= item.start || item.end > helperOffset + helper.source.length) return item;
@@ -216958,12 +217667,12 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       }
       helperOffset += helper.source.length + 1;
     }
-    const snippetFile = import_typescript8.default.createSourceFile(
+    const snippetFile = import_typescript9.default.createSourceFile(
       "natlang-eval-action.ts",
       snippetSource,
-      import_typescript8.default.ScriptTarget.ES2022,
+      import_typescript9.default.ScriptTarget.ES2022,
       true,
-      import_typescript8.default.ScriptKind.TS
+      import_typescript9.default.ScriptKind.TS
     );
     const snippetSpan = (item) => {
       const start = item.start - helperOffset, end = item.end - helperOffset;
@@ -217025,7 +217734,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && arrayMapReadouts.has(`${rel(node).start}:${rel(node).end}`) && node.arguments[0]) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && arrayMapReadouts.has(`${rel(node).start}:${rel(node).end}`) && node.arguments[0]) {
       const readout = arrayMapReadouts.get(`${rel(node).start}:${rel(node).end}`);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -217046,7 +217755,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && stringReplaces.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && stringReplaces.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = stringReplaces.get(`${rel(node).start}:${rel(node).end}`);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -217060,7 +217769,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await (async (${receiverName}: any) => { const ${textName} = await __live.${reader}(${receiverName}); const ${methodName} = ${textName}.replace; const ${argsName} = [${args}]; return { value: __live.invokeWithReceiver(${methodName}, ${textName}, ${argsName}) }; })(${receiver})).value` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && scalarConversions.has(`${rel(node).start}:${rel(node).end}`) && node.arguments.length) {
+    if (import_typescript9.default.isCallExpression(node) && scalarConversions.has(`${rel(node).start}:${rel(node).end}`) && node.arguments.length) {
       const readout = scalarConversions.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       lowerNodes(node.expression);
@@ -217073,7 +217782,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${calleeName}(...${argsName}); })([${args}]))(${callee}))` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
       const site2 = rebindAt.get(`${rel(node).start}:${rel(node).end}`);
       if (site2 && node.arguments[0]) {
         lowerNodes(node.expression.expression);
@@ -217082,7 +217791,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         return;
       }
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && stringArguments.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && stringArguments.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = stringArguments.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       lowerNodes(node.expression.expression);
@@ -217096,7 +217805,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => ((${methodName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${methodName}.call(${receiverName}, ...${argsName}); })([${args}]))(${receiverName}.${node.expression.name.text}))(${receiver}))` });
       return;
     }
-    if ((import_typescript8.default.isCallExpression(node) || import_typescript8.default.isNewExpression(node)) && node.arguments?.length && errorReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
+    if ((import_typescript9.default.isCallExpression(node) || import_typescript9.default.isNewExpression(node)) && node.arguments?.length && errorReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = errorReadouts.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       const callee = lowerSpan(rel(node.expression).start, rel(node.expression).end);
@@ -217104,11 +217813,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       const calleeName = `__natlang_error_constructor_${rel(node).start}`;
       const argsName = `__natlang_error_args_${rel(node).start}`;
       const reader = readout.conditional ? "readNeuraleseIfReference" : "readNeuralese";
-      const invoke = import_typescript8.default.isNewExpression(node) ? `new ${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))` : `${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))`;
+      const invoke = import_typescript9.default.isNewExpression(node) ? `new ${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))` : `${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))`;
       primitive.push({ ...rel(node), composed: true, text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => ${invoke})([${args}]))(${callee}))` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && jsonReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && jsonReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = jsonReadouts.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       const receiver = lowerSpan(rel(node.expression.expression).start, rel(node.expression.expression).end);
@@ -217125,14 +217834,14 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${callName}: [any, any], ${argsName}: any[]) => ${callName}[1].call(${callName}[0], await __live.${reader}(${argsName}[0])${args.slice(1).map((_arg, index) => `, ${argsName}[${index + 1}]`).join("")}))([${receiverName}, ${receiverName}.stringify], [${args.join(", ")}]))(${receiver}))` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && concats.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && concats.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = lowerSpan(rel(node.expression.expression).start, rel(node.expression.expression).end);
       const values = node.arguments.map((argument) => lowerSpan(rel(argument).start, rel(argument).end)).join(", ");
       const temp = `__natlang_concat_receiver_${rel(node).start}`;
       primitive.push({ ...rel(node), composed: true, text: `await ((${temp}: any) => { const __method = ${temp}.concat; const __values = [${values}]; return __live.concatNeuralese(${temp}, __method, __values, async (__value: any) => await __live.readNeuralese(__value)); })(${receiver})` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && arrayStrings.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && arrayStrings.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = rel(node.expression.expression);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -217143,7 +217852,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.arrayToStringNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_array_string_value: any) => await __live.readNeuralese(__natlang_array_string_value))).value)(${receiverName}.toString, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && joins.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && joins.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = rel(node.expression.expression);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -217154,40 +217863,40 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.joinNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_join_value: any) => await __live.readNeuralese(__natlang_join_value))).value)(${receiverName}.join, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
       return;
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with" && import_typescript8.default.isTaggedTemplateExpression(node.expression.expression)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with" && import_typescript9.default.isTaggedTemplateExpression(node.expression.expression)) {
       const tagged = node.expression.expression, at = rel(tagged), index = planAt.get(`${at.start}:${at.end}`);
       if (index !== void 0 && plans[index].explicitCaptures) {
         const plan = plans[index], listing = node.arguments[0];
-        const properties = listing && import_typescript8.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
-        const recordTemp = listing && !import_typescript8.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
+        const properties = listing && import_typescript9.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
+        const recordTemp = listing && !import_typescript9.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
         const accessors = plan.captures.map((capture2) => {
-          const property = properties.find((item) => (import_typescript8.default.isShorthandPropertyAssignment(item) || import_typescript8.default.isPropertyAssignment(item)) && (import_typescript8.default.isIdentifier(item.name) || import_typescript8.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
+          const property = properties.find((item) => (import_typescript9.default.isShorthandPropertyAssignment(item) || import_typescript9.default.isPropertyAssignment(item)) && (import_typescript9.default.isIdentifier(item.name) || import_typescript9.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
           if (capture2.mode === "live") return immutable2.has(capture2.name) ? `${capture2.name}: [() => ${capture2.name}]` : `${capture2.name}: [() => ${capture2.name}, (__v: any) => { ${capture2.name} = __v; }]`;
-          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript8.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
+          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript9.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
           return `${capture2.name}: [() => (${value})]`;
         });
-        const values = !plan.softBody && import_typescript8.default.isTemplateExpression(tagged.template) ? tagged.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
+        const values = !plan.softBody && import_typescript9.default.isTemplateExpression(tagged.template) ? tagged.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
         const accessorObject = recordTemp && listing ? `((${recordTemp}: any) => ({ ${accessors.join(", ")} }))(${lowerSpan(rel(listing).start, rel(listing).end)})` : `{ ${accessors.join(", ")} }`;
         const text3 = `__natlang_inline(${index}, [${values.join(", ")}], ${accessorObject})`;
         primitive.push({ start: at.start, end: rel(node).end, text: text3 });
         return;
       }
     }
-    if (import_typescript8.default.isTaggedTemplateExpression(node)) {
+    if (import_typescript9.default.isTaggedTemplateExpression(node)) {
       const at = rel(node), index = planAt.get(`${at.start}:${at.end}`);
       if (index !== void 0 && plans[index].explicitCaptures) {
         const plan = plans[index];
-        const withCall = import_typescript8.default.isCallExpression(node.tag) ? node.tag : void 0;
+        const withCall = import_typescript9.default.isCallExpression(node.tag) ? node.tag : void 0;
         const listing = withCall?.arguments[0];
-        const properties = listing && import_typescript8.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
-        const recordTemp = listing && !import_typescript8.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
+        const properties = listing && import_typescript9.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
+        const recordTemp = listing && !import_typescript9.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
         const accessors = plan.captures.map((capture2) => {
-          const property = properties.find((item) => (import_typescript8.default.isShorthandPropertyAssignment(item) || import_typescript8.default.isPropertyAssignment(item)) && (import_typescript8.default.isIdentifier(item.name) || import_typescript8.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
+          const property = properties.find((item) => (import_typescript9.default.isShorthandPropertyAssignment(item) || import_typescript9.default.isPropertyAssignment(item)) && (import_typescript9.default.isIdentifier(item.name) || import_typescript9.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
           if (capture2.mode === "live") return immutable2.has(capture2.name) ? `${capture2.name}: [() => ${capture2.name}]` : `${capture2.name}: [() => ${capture2.name}, (__v: any) => { ${capture2.name} = __v; }]`;
-          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript8.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
+          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript9.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
           return `${capture2.name}: [() => (${value})]`;
         });
-        const values = !plan.softBody && import_typescript8.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
+        const values = !plan.softBody && import_typescript9.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
         const accessorObject = recordTemp && listing ? `((${recordTemp}: any) => ({ ${accessors.join(", ")} }))(${lowerSpan(rel(listing).start, rel(listing).end)})` : `{ ${accessors.join(", ")} }`;
         const text3 = `__natlang_inline(${index}, [${values.join(", ")}], ${accessorObject})`;
         primitive.push({ ...rel(node), text: text3 });
@@ -217195,41 +217904,41 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       }
       if (index !== void 0) {
         const plan = plans[index];
-        const values = import_typescript8.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
+        const values = import_typescript9.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
         const accessors = plan.captures.map((capture2) => capture2.mutable && !immutable2.has(capture2.name) ? `${capture2.name}: [() => ${capture2.name}, (__v: any) => { ${capture2.name} = __v; }]` : `${capture2.name}: [() => ${capture2.name}]`);
         primitive.push({ ...at, text: `__natlang_inline(${index}, [${values.join(", ")}], { ${accessors.join(", ")} })` });
         return;
       }
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isIdentifier(node.expression) && node.expression.text === "__neuralese") {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isIdentifier(node.expression) && node.expression.text === "__neuralese") {
       const at = rel(node), literal3 = literals.find((item) => item.start === at.start && item.end === at.end);
       if (literal3) {
         primitive.push({ ...at, text: `({ $neuralese: { type: ${JSON.stringify(literal3.type)}, id: ${JSON.stringify(literal3.id)}${literal3.stopGradient ? ", stop_gradient: true" : ""}${literal3.sourceOccurrence ? ", source_occurrence: " + JSON.stringify(literal3.sourceOccurrence) : ""} } })` });
         return;
       }
     }
-    const chainedMethodCall = import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.parent) && node.parent.expression === node && import_typescript8.default.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent;
-    const iterateOnCall = import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn";
-    const instance = import_typescript8.default.isCallExpression(node) ? instantiationAt.get(`${rel(node).start}:${rel(node).end}`) : void 0;
+    const chainedMethodCall = import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.parent) && node.parent.expression === node && import_typescript9.default.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent;
+    const iterateOnCall = import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn";
+    const instance = import_typescript9.default.isCallExpression(node) ? instantiationAt.get(`${rel(node).start}:${rel(node).end}`) : void 0;
     const inIterateOnChain = (call) => {
       let expression = call.expression;
       while (true) {
-        if (import_typescript8.default.isPropertyAccessExpression(expression)) expression = expression.expression;
-        else if (import_typescript8.default.isCallExpression(expression)) {
-          if (import_typescript8.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "iterateOn") return true;
+        if (import_typescript9.default.isPropertyAccessExpression(expression)) expression = expression.expression;
+        else if (import_typescript9.default.isCallExpression(expression)) {
+          if (import_typescript9.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "iterateOn") return true;
           expression = expression.expression;
         } else return false;
       }
     };
-    const promiseConstruction = import_typescript8.default.isNewExpression(node) && import_typescript8.default.isIdentifier(node.expression) && node.expression.text === "Promise";
-    if (import_typescript8.default.isCallExpression(node) && !instance && !chainedMethodCall && !iterateOnCall && !inIterateOnChain(node) || promiseConstruction) {
+    const promiseConstruction = import_typescript9.default.isNewExpression(node) && import_typescript9.default.isIdentifier(node.expression) && node.expression.text === "Promise";
+    if (import_typescript9.default.isCallExpression(node) && !instance && !chainedMethodCall && !iterateOnCall && !inIterateOnChain(node) || promiseConstruction) {
       const at = rel(node);
       primitive.push(
         { start: at.start, end: at.start, text: "__natlang_own((", owner: at },
         { start: at.end, end: at.end, text: "))", owner: at }
       );
     }
-    if (instance && import_typescript8.default.isCallExpression(node)) {
+    if (instance && import_typescript9.default.isCallExpression(node)) {
       const callee = rel(node.expression);
       primitive.push(
         { start: callee.start, end: callee.start, text: "__live.instantiate(", owner: callee },
@@ -217241,19 +217950,19 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         { start: at.end, end: at.end, text: "))", owner: at }
       );
     }
-    if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript8.default.isTaggedTemplateExpression(node.expression.expression)) {
+    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript9.default.isTaggedTemplateExpression(node.expression.expression)) {
       const receiver = rel(node.expression.expression), argumentsStart = node.arguments.pos - PREFIX.length;
       primitive.push(
         { start: receiver.start, end: receiver.start, text: "__natlang_iterate(" },
         { start: receiver.end, end: argumentsStart, text: node.arguments.length ? ", " : "" }
       );
     }
-    if (import_typescript8.default.isForOfStatement(node)) {
+    if (import_typescript9.default.isForOfStatement(node)) {
       const at = rel(node.expression);
       let iterableExpression = node.expression;
-      while (import_typescript8.default.isParenthesizedExpression(iterableExpression) || import_typescript8.default.isAsExpression(iterableExpression) || import_typescript8.default.isTypeAssertionExpression(iterableExpression) || import_typescript8.default.isNonNullExpression(iterableExpression))
+      while (import_typescript9.default.isParenthesizedExpression(iterableExpression) || import_typescript9.default.isAsExpression(iterableExpression) || import_typescript9.default.isTypeAssertionExpression(iterableExpression) || import_typescript9.default.isNonNullExpression(iterableExpression))
         iterableExpression = iterableExpression.expression;
-      if (!node.awaitModifier && import_typescript8.default.isCallExpression(iterableExpression) && iterableExpression.arguments.length === 0 && import_typescript8.default.isPropertyAccessExpression(iterableExpression.expression) && ["entries", "keys", "values"].includes(iterableExpression.expression.name.text)) {
+      if (!node.awaitModifier && import_typescript9.default.isCallExpression(iterableExpression) && iterableExpression.arguments.length === 0 && import_typescript9.default.isPropertyAccessExpression(iterableExpression.expression) && ["entries", "keys", "values"].includes(iterableExpression.expression.name.text)) {
         const method = iterableExpression.expression.name.text;
         const receiver = iterableExpression.expression.expression;
         lowerNodes(receiver);
@@ -217270,15 +217979,15 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       lowerNodes(node.statement);
       return;
     }
-    if (import_typescript8.default.isForStatement(node) && node.initializer && import_typescript8.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
+    if (import_typescript9.default.isForStatement(node) && node.initializer && import_typescript9.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
       const declaration = node.initializer.declarations[0];
-      const boundedCondition = import_typescript8.default.isIdentifier(declaration.name) ? finiteCounterComparison(node.condition, declaration.name.text) : void 0;
-      if (import_typescript8.default.isIdentifier(declaration.name) && boundedCondition) {
+      const boundedCondition = import_typescript9.default.isIdentifier(declaration.name) ? finiteCounterComparison(node.condition, declaration.name.text) : void 0;
+      if (import_typescript9.default.isIdentifier(declaration.name) && boundedCondition) {
         const counter = declaration.name.text;
         const comparison = boundedCondition.comparison;
-        const left = import_typescript8.default.isIdentifier(comparison.left) && comparison.left.text === counter;
+        const left = import_typescript9.default.isIdentifier(comparison.left) && comparison.left.text === counter;
         const kind = comparison.operatorToken.kind;
-        const upward = left ? kind === import_typescript8.default.SyntaxKind.LessThanToken || kind === import_typescript8.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript8.default.SyntaxKind.GreaterThanToken || kind === import_typescript8.default.SyntaxKind.GreaterThanEqualsToken;
+        const upward = left ? kind === import_typescript9.default.SyntaxKind.LessThanToken || kind === import_typescript9.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript9.default.SyntaxKind.GreaterThanToken || kind === import_typescript9.default.SyntaxKind.GreaterThanEqualsToken;
         const loop = `__natlang_loop_${++loops}`, bound = rel(left ? comparison.right : comparison.left);
         primitive.push(
           { start: rel(declaration).end, end: rel(declaration).end, text: `, ${loop} = __natlang_counted(${upward})` },
@@ -217287,13 +217996,13 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         );
       }
     }
-    if ((import_typescript8.default.isFunctionDeclaration(node) || import_typescript8.default.isFunctionExpression(node) || import_typescript8.default.isArrowFunction(node) || import_typescript8.default.isMethodDeclaration(node) || import_typescript8.default.isGetAccessorDeclaration(node) || import_typescript8.default.isSetAccessorDeclaration(node)) && node.body && node !== fn && makesCalls(node)) {
+    if ((import_typescript9.default.isFunctionDeclaration(node) || import_typescript9.default.isFunctionExpression(node) || import_typescript9.default.isArrowFunction(node) || import_typescript9.default.isMethodDeclaration(node) || import_typescript9.default.isGetAccessorDeclaration(node) || import_typescript9.default.isSetAccessorDeclaration(node)) && node.body && node !== fn && makesCalls(node)) {
       const callable = authored.find((item) => item.node === node);
       if (callable) {
         const id3 = JSON.stringify(callable.id);
-        const isAsync = !!node.modifiers?.some((modifier) => modifier.kind === import_typescript8.default.SyntaxKind.AsyncKeyword) || asyncMapCallbacks.has(`${rel(node).start}:${rel(node).end}`);
+        const isAsync = !!node.modifiers?.some((modifier) => modifier.kind === import_typescript9.default.SyntaxKind.AsyncKeyword) || asyncMapCallbacks.has(`${rel(node).start}:${rel(node).end}`);
         const body2 = rel(node.body), args = `[${guardArguments(node).join(", ")}]`;
-        if (import_typescript8.default.isBlock(node.body)) {
+        if (import_typescript9.default.isBlock(node.body)) {
           primitive.push(
             { start: body2.start, end: body2.start + 1, text: `{ return __natlang_guard(${id3}, ${isAsync ? "async " : ""}() => {` },
             { start: body2.end - 1, end: body2.end, text: `}, ${args}); }` }
@@ -217307,7 +218016,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         }
       }
     }
-    import_typescript8.default.forEachChild(node, lowerNodes);
+    import_typescript9.default.forEachChild(node, lowerNodes);
   };
   const lowerSpan = (start, end) => {
     let text3 = analysisSource.slice(start, end);
@@ -217320,12 +218029,12 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   for (const statement of statements) lowerNodes(statement);
   const returns = [];
   const findReturns = (node) => {
-    if (import_typescript8.default.isFunctionLike(node)) return;
-    if (import_typescript8.default.isReturnStatement(node)) {
+    if (import_typescript9.default.isFunctionLike(node)) return;
+    if (import_typescript9.default.isReturnStatement(node)) {
       returns.push(node);
       return;
     }
-    import_typescript8.default.forEachChild(node, findReturns);
+    import_typescript9.default.forEachChild(node, findReturns);
   };
   for (const statement of statements) findReturns(statement);
   const persisted = [
@@ -217362,7 +218071,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     version: SCOPE_COMPILE_VERSION,
     ok: diagnostics.length === 0,
     producesResult,
-    resultBindings: [...new Set(returns.flatMap((statement) => statement.expression && import_typescript8.default.isIdentifier(statement.expression) ? [statement.expression.text] : []))],
+    resultBindings: [...new Set(returns.flatMap((statement) => statement.expression && import_typescript9.default.isIdentifier(statement.expression) ? [statement.expression.text] : []))],
     entrypoint: ENTRYPOINT,
     bindings: bindings2,
     ...savedHelpers.length ? { persistentHelpers: savedHelpers } : {},
@@ -217391,22 +218100,22 @@ ${body}
 return __natlang_finish(undefined);
 }
 `;
-  const emitted = import_typescript8.default.transpileModule(typescript, {
+  const emitted = import_typescript9.default.transpileModule(typescript, {
     fileName: "natlang-scope.ts",
     reportDiagnostics: true,
     compilerOptions: {
-      target: import_typescript8.default.ScriptTarget.ES2022,
-      module: import_typescript8.default.ModuleKind.None,
+      target: import_typescript9.default.ScriptTarget.ES2022,
+      module: import_typescript9.default.ModuleKind.None,
       isolatedModules: true,
       removeComments: false
     }
   });
-  const emitErrors = (emitted.diagnostics ?? []).filter((item) => item.category === import_typescript8.default.DiagnosticCategory.Error);
+  const emitErrors = (emitted.diagnostics ?? []).filter((item) => item.category === import_typescript9.default.DiagnosticCategory.Error);
   if (emitErrors.length) {
     result.ok = false;
     for (const diagnostic of emitErrors) result.diagnostics.push({
       code: "typescript-syntax",
-      message: import_typescript8.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+      message: import_typescript9.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
       start: 0,
       end: 0,
       line: 1,
@@ -217420,12 +218129,12 @@ return __natlang_finish(undefined);
   result.program = emitted.outputText;
   return result;
 }
-var import_typescript8, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, NOT_LITERAL, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, TYPESCRIPT_ONLY;
+var import_typescript9, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, NOT_LITERAL, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, TYPESCRIPT_ONLY;
 var init_scope_compiler = __esm({
   "src/scope-compiler.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript8 = __toESM(require_typescript(), 1);
+    import_typescript9 = __toESM(require_typescript(), 1);
     init_host();
     init_policy();
     SCOPE_COMPILE_VERSION = 3;
@@ -217730,36 +218439,36 @@ var init_untrusted = __esm({
 // src/compiler/nl-call.ts
 function desugarNlCalls(source2) {
   if (!/\bnl\s*(?:<[^()]*>)?\s*\(/.test(source2)) return source2;
-  return applyNlCallEdits(source2, nlCallEdits(import_typescript9.default.createSourceFile("snippet.ts", source2, import_typescript9.default.ScriptTarget.ES2022, true)));
+  return applyNlCallEdits(source2, nlCallEdits(import_typescript10.default.createSourceFile("snippet.ts", source2, import_typescript10.default.ScriptTarget.ES2022, true)));
 }
 function nlCallEdits(file, accept = () => true) {
   const source2 = file.text;
   const edits = [];
   const visit = (node) => {
-    if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length === 1 && accept(node.expression)) {
+    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length === 1 && accept(node.expression)) {
       const argument = node.arguments[0];
       let template;
-      if (import_typescript9.default.isNoSubstitutionTemplateLiteral(argument) || import_typescript9.default.isTemplateExpression(argument)) template = argument.getText(file);
-      else if (import_typescript9.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
+      if (import_typescript10.default.isNoSubstitutionTemplateLiteral(argument) || import_typescript10.default.isTemplateExpression(argument)) template = argument.getText(file);
+      else if (import_typescript10.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
       const open = node.arguments.pos - 1;
       if (template !== void 0 && template.length === argument.getText(file).length && source2[open] === "(") {
-        const applied = import_typescript9.default.isCallExpression(node.parent) && node.parent.expression === node;
+        const applied = import_typescript10.default.isCallExpression(node.parent) && node.parent.expression === node;
         edits.push({ start: open, end: node.getEnd(), text: applied ? `${template}  ` : `${template}()` });
         if (applied) for (const outer of node.parent.arguments) visit(outer);
         return;
       }
     }
-    import_typescript9.default.forEachChild(node, visit);
+    import_typescript10.default.forEachChild(node, visit);
   };
   visit(file);
   return edits;
 }
-var import_typescript9, applyNlCallEdits;
+var import_typescript10, applyNlCallEdits;
 var init_nl_call = __esm({
   "src/compiler/nl-call.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript9 = __toESM(require_typescript(), 1);
+    import_typescript10 = __toESM(require_typescript(), 1);
     applyNlCallEdits = (source2, edits) => [...edits].reverse().reduce((text3, edit) => text3.slice(0, edit.start) + edit.text + text3.slice(edit.end), source2);
   }
 });
@@ -218374,24 +219083,24 @@ var init_selected_captures = __esm({
 
 // src/native/type-aliases.ts
 function readTypeAliases(source2) {
-  const file = import_typescript10.default.createSourceFile("types.ts", source2, import_typescript10.default.ScriptTarget.ES2022, true, import_typescript10.default.ScriptKind.TS);
+  const file = import_typescript11.default.createSourceFile("types.ts", source2, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
   const errors = file.parseDiagnostics ?? [];
-  if (errors.length) throw new Error(`type alias syntax: ${errors.map((item) => import_typescript10.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; ")}`);
+  if (errors.length) throw new Error(`type alias syntax: ${errors.map((item) => import_typescript11.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; ")}`);
   const result = {};
   for (const statement of file.statements) {
-    if (!import_typescript10.default.isTypeAliasDeclaration(statement) || statement.typeParameters?.length) continue;
+    if (!import_typescript11.default.isTypeAliasDeclaration(statement) || statement.typeParameters?.length) continue;
     const name = statement.name.text;
     if (Object.hasOwn(result, name)) throw new Error(`duplicate type alias ${name}`);
     result[name] = statement.type.getText(file);
   }
   return result;
 }
-var import_typescript10;
+var import_typescript11;
 var init_type_aliases = __esm({
   "src/native/type-aliases.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript10 = __toESM(require_typescript(), 1);
+    import_typescript11 = __toESM(require_typescript(), 1);
   }
 });
 
@@ -220083,26 +220792,26 @@ function readTypesFile(path2, files2) {
       module.exported.set(name, alias);
     }
     if (!/\b(?:import|export)\b[^;]*\bfrom\b/u.test(text3)) return module;
-    const source2 = import_typescript11.default.createSourceFile("types.ts", text3, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
+    const source2 = import_typescript12.default.createSourceFile("types.ts", text3, import_typescript12.default.ScriptTarget.ES2022, true, import_typescript12.default.ScriptKind.TS);
     for (const statement of source2.statements) {
-      if (!import_typescript11.default.isImportDeclaration(statement) && !import_typescript11.default.isExportDeclaration(statement)) continue;
+      if (!import_typescript12.default.isImportDeclaration(statement) && !import_typescript12.default.isExportDeclaration(statement)) continue;
       const specifier = statement.moduleSpecifier;
-      const clause = import_typescript11.default.isImportDeclaration(statement) ? statement.importClause?.namedBindings : statement.exportClause;
-      if (specifier && (!import_typescript11.default.isStringLiteral(specifier) || !specifier.text.startsWith("."))) continue;
+      const clause = import_typescript12.default.isImportDeclaration(statement) ? statement.importClause?.namedBindings : statement.exportClause;
+      if (specifier && (!import_typescript12.default.isStringLiteral(specifier) || !specifier.text.startsWith("."))) continue;
       let target = module;
-      if (specifier && import_typescript11.default.isStringLiteral(specifier)) {
+      if (specifier && import_typescript12.default.isStringLiteral(specifier)) {
         const base = files2.join(files2.dirname(filePath), specifier.text.replace(/\.(?:[cm]?js|ts)$/u, ""));
         const candidate = [`${base}.ts`, files2.join(base, "index.ts")].find((entry) => files2.isFile(entry));
         if (!candidate) continue;
         target = readModule(candidate);
       }
-      if (clause && (import_typescript11.default.isNamedImports(clause) || import_typescript11.default.isNamedExports(clause))) {
-        const bindings2 = import_typescript11.default.isNamedImports(clause) ? module.local : module.exported;
+      if (clause && (import_typescript12.default.isNamedImports(clause) || import_typescript12.default.isNamedExports(clause))) {
+        const bindings2 = import_typescript12.default.isNamedImports(clause) ? module.local : module.exported;
         for (const element of clause.elements) {
           const from = (element.propertyName ?? element.name).text;
           if (!bindings2.has(element.name.text)) bindings2.set(element.name.text, { module: target, from });
         }
-      } else if (!clause && specifier && import_typescript11.default.isExportDeclaration(statement)) {
+      } else if (!clause && specifier && import_typescript12.default.isExportDeclaration(statement)) {
         for (const [name, binding] of target.exported) {
           if (!module.exported.has(name)) module.exported.set(name, binding);
         }
@@ -220132,10 +220841,10 @@ function readTypesFile(path2, files2) {
     const cached = rewritten.get(alias);
     if (cached !== void 0) return cached;
     const prefix = "type Linked = ";
-    const source2 = import_typescript11.default.createSourceFile("types.ts", prefix + alias.body, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
+    const source2 = import_typescript12.default.createSourceFile("types.ts", prefix + alias.body, import_typescript12.default.ScriptTarget.ES2022, true, import_typescript12.default.ScriptKind.TS);
     const replacements = [];
     function visit(node) {
-      if (import_typescript11.default.isTypeReferenceNode(node) && import_typescript11.default.isIdentifier(node.typeName)) {
+      if (import_typescript12.default.isTypeReferenceNode(node) && import_typescript12.default.isIdentifier(node.typeName)) {
         const name = node.typeName.text;
         const dependency = resolve2(alias.module.local.get(name) ?? alias.module.exported.get(name));
         if (dependency) {
@@ -220155,9 +220864,9 @@ function readTypesFile(path2, files2) {
           });
         }
       }
-      import_typescript11.default.forEachChild(node, visit);
+      import_typescript12.default.forEachChild(node, visit);
     }
-    import_typescript11.default.forEachChild(source2, visit);
+    import_typescript12.default.forEachChild(source2, visit);
     let body = alias.body;
     for (const { start, end, name } of replacements.reverse()) body = body.slice(0, start) + name + body.slice(end);
     rewritten.set(alias, body);
@@ -220169,12 +220878,12 @@ function readTypesFile(path2, files2) {
   }
   return Object.fromEntries(result);
 }
-var import_typescript11;
+var import_typescript12;
 var init_linked_types = __esm({
   "src/runtime/linked-types.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript11 = __toESM(require_typescript(), 1);
+    import_typescript12 = __toESM(require_typescript(), 1);
     init_hash();
     init_type_aliases();
   }
@@ -220228,16 +220937,16 @@ function unquoteType(text3) {
   return trimmed;
 }
 function typeLiteralMap(key, text3) {
-  const file = import_typescript12.default.createSourceFile("frontmatter.ts", `type __ = ${text3};`, import_typescript12.default.ScriptTarget.Latest, true);
+  const file = import_typescript13.default.createSourceFile("frontmatter.ts", `type __ = ${text3};`, import_typescript13.default.ScriptTarget.Latest, true);
   const alias = file.statements[0];
   const diagnostics = file.parseDiagnostics ?? [];
-  if (diagnostics.length || file.statements.length !== 1 || !alias || !import_typescript12.default.isTypeAliasDeclaration(alias) || !import_typescript12.default.isTypeLiteralNode(alias.type))
+  if (diagnostics.length || file.statements.length !== 1 || !alias || !import_typescript13.default.isTypeAliasDeclaration(alias) || !import_typescript13.default.isTypeLiteralNode(alias.type))
     throw new Error(`${key} must map names to types, as \`${key}: { name: string }\` or one \`name: type\` per indented line`);
   const map = {};
   for (const member of alias.type.members) {
-    if (!import_typescript12.default.isPropertySignature(member) || !member.type || !(import_typescript12.default.isIdentifier(member.name) || import_typescript12.default.isStringLiteral(member.name)))
+    if (!import_typescript13.default.isPropertySignature(member) || !member.type || !(import_typescript13.default.isIdentifier(member.name) || import_typescript13.default.isStringLiteral(member.name)))
       throw new Error(`${key}: each entry needs a name and a type`);
-    const type = import_typescript12.default.isLiteralTypeNode(member.type) && import_typescript12.default.isStringLiteral(member.type.literal) ? member.type.literal.text : member.type.getText(file);
+    const type = import_typescript13.default.isLiteralTypeNode(member.type) && import_typescript13.default.isStringLiteral(member.type.literal) ? member.type.literal.text : member.type.getText(file);
     map[member.name.text + (member.questionToken ? "?" : "")] = type;
   }
   return map;
@@ -220490,93 +221199,94 @@ function attachUses(record3, path2, files2) {
     }
   }
 }
-function functionRecord(path2, node, file, label) {
+function functionRecord(path2, node, file, label, compiled2 = false) {
   const args = {};
   for (const parameter of node.parameters) {
-    if (!import_typescript12.default.isIdentifier(parameter.name) || !parameter.type || parameter.dotDotDotToken)
+    if (!compiled2 && (!import_typescript13.default.isIdentifier(parameter.name) || !parameter.type || parameter.dotDotDotToken))
       throw new NatlangSourceError(path2, `${label}: parameters need names and explicit types`);
-    args[parameter.name.text + (parameter.questionToken || parameter.initializer ? "?" : "")] = parameter.type.getText(file);
+    const name = import_typescript13.default.isIdentifier(parameter.name) ? parameter.name.text : `arg${node.parameters.indexOf(parameter)}`;
+    args[name + (parameter.questionToken || parameter.initializer ? "?" : "")] = parameter.type?.getText(file) ?? "unknown";
   }
-  if (!node.type) throw new NatlangSourceError(path2, `${label}: an exported function needs an explicit return type`);
-  let returns = node.type.getText(file);
-  const promised = import_typescript12.default.isTypeReferenceNode(node.type) && import_typescript12.default.isIdentifier(node.type.typeName) && node.type.typeName.text === "Promise" && node.type.typeArguments?.length === 1;
+  if (!node.type && !compiled2) throw new NatlangSourceError(path2, `${label}: an exported function needs an explicit return type`);
+  let returns = node.type?.getText(file) ?? "unknown";
+  const promised = node.type && import_typescript13.default.isTypeReferenceNode(node.type) && import_typescript13.default.isIdentifier(node.type.typeName) && node.type.typeName.text === "Promise" && node.type.typeArguments?.length === 1;
   if (promised) returns = node.type.typeArguments[0].getText(file);
-  const isAsync = promised || !!import_typescript12.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript12.default.SyntaxKind.AsyncKeyword);
+  const isAsync = promised || !!import_typescript13.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript13.default.SyntaxKind.AsyncKeyword);
   const doc = docComment(node);
   return { kind: "function", args, returns, async: isAsync, ...doc ? { doc } : {} };
 }
 function docComment(node) {
-  const owner = import_typescript12.default.isFunctionDeclaration(node) ? node : node.parent && import_typescript12.default.isVariableDeclaration(node.parent) ? node.parent.parent?.parent : void 0;
+  const owner = import_typescript13.default.isFunctionDeclaration(node) ? node : node.parent && import_typescript13.default.isVariableDeclaration(node.parent) ? node.parent.parent?.parent : void 0;
   const docs = owner ? owner.jsDoc ?? [] : [];
-  const text3 = docs.map((doc) => import_typescript12.default.getTextOfJSDocComment(doc.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
+  const text3 = docs.map((doc) => import_typescript13.default.getTextOfJSDocComment(doc.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
   return text3 || void 0;
 }
 function declaredTypes(file) {
   const types3 = {}, declarations = {};
   const doc = (node, indent) => {
-    const text3 = (node.jsDoc ?? []).map((item) => import_typescript12.default.getTextOfJSDocComment(item.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
+    const text3 = (node.jsDoc ?? []).map((item) => import_typescript13.default.getTextOfJSDocComment(item.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
     return text3 ? [`${indent}/** ${text3} */`] : [];
   };
-  const hidden = (member) => import_typescript12.default.getModifiers(member)?.some((modifier) => [import_typescript12.default.SyntaxKind.PrivateKeyword, import_typescript12.default.SyntaxKind.ProtectedKeyword, import_typescript12.default.SyntaxKind.StaticKeyword].includes(modifier.kind)) || member.name !== void 0 && import_typescript12.default.isPrivateIdentifier(member.name);
+  const hidden = (member) => import_typescript13.default.getModifiers(member)?.some((modifier) => [import_typescript13.default.SyntaxKind.PrivateKeyword, import_typescript13.default.SyntaxKind.ProtectedKeyword, import_typescript13.default.SyntaxKind.StaticKeyword].includes(modifier.kind)) || member.name !== void 0 && import_typescript13.default.isPrivateIdentifier(member.name);
   for (const statement of file.statements) {
-    if (import_typescript12.default.isClassDeclaration(statement) && statement.name) {
+    if (import_typescript13.default.isClassDeclaration(statement) && statement.name) {
       const name = statement.name.text, lines = [`declare class ${name} {`];
       for (const member of statement.members) {
-        if (hidden(member) || !member.name || !import_typescript12.default.isIdentifier(member.name)) continue;
-        const readonly = import_typescript12.default.getModifiers(member)?.some((modifier) => modifier.kind === import_typescript12.default.SyntaxKind.ReadonlyKeyword);
-        if (import_typescript12.default.isMethodDeclaration(member)) {
+        if (hidden(member) || !member.name || !import_typescript13.default.isIdentifier(member.name)) continue;
+        const readonly = import_typescript13.default.getModifiers(member)?.some((modifier) => modifier.kind === import_typescript13.default.SyntaxKind.ReadonlyKeyword);
+        if (import_typescript13.default.isMethodDeclaration(member)) {
           const params = member.parameters.map((parameter) => `${parameter.name.getText(file)}${parameter.questionToken || parameter.initializer ? "?" : ""}: ${parameter.type?.getText(file) ?? "unknown"}`);
           lines.push(...doc(member, "  "), `  ${member.name.text}(${params.join(", ")}): ${member.type?.getText(file) ?? "unknown"};`);
-        } else if (import_typescript12.default.isPropertyDeclaration(member) && member.type)
+        } else if (import_typescript13.default.isPropertyDeclaration(member) && member.type)
           lines.push(...doc(member, "  "), `  ${readonly ? "readonly " : ""}${member.name.text}: ${member.type.getText(file)};`);
       }
       lines.push("}");
       types3[name] = `Live<${JSON.stringify(name)}, "class", ${JSON.stringify(name)}>`;
       declarations[name] = lines.join("\n");
-    } else if (import_typescript12.default.isInterfaceDeclaration(statement) && !statement.typeParameters?.length && !statement.heritageClauses?.length) {
+    } else if (import_typescript13.default.isInterfaceDeclaration(statement) && !statement.typeParameters?.length && !statement.heritageClauses?.length) {
       const name = statement.name.text, members = statement.members;
-      const fields = members.map((member) => import_typescript12.default.isPropertySignature(member) && member.type && (import_typescript12.default.isIdentifier(member.name) || import_typescript12.default.isStringLiteral(member.name)) ? `${member.name.text}${member.questionToken ? "?" : ""}: ${member.type.getText(file)}` : void 0);
+      const fields = members.map((member) => import_typescript13.default.isPropertySignature(member) && member.type && (import_typescript13.default.isIdentifier(member.name) || import_typescript13.default.isStringLiteral(member.name)) ? `${member.name.text}${member.questionToken ? "?" : ""}: ${member.type.getText(file)}` : void 0);
       if (fields.every((field) => field !== void 0)) {
         types3[name] = `{ ${fields.join(", ")} }`;
         continue;
       }
-      types3[name] = `Live<${JSON.stringify(name)}, "shape", ${JSON.stringify(members.flatMap((member) => member.name && (import_typescript12.default.isIdentifier(member.name) || import_typescript12.default.isStringLiteral(member.name)) ? [member.name.text] : []).join(","))}>`;
+      types3[name] = `Live<${JSON.stringify(name)}, "shape", ${JSON.stringify(members.flatMap((member) => member.name && (import_typescript13.default.isIdentifier(member.name) || import_typescript13.default.isStringLiteral(member.name)) ? [member.name.text] : []).join(","))}>`;
       declarations[name] = statement.getText(file).replace(/^export\s+/, "");
     }
   }
   return { types: types3, declarations };
 }
-function parseModule(path2, text3, inherited, files2) {
-  const file = import_typescript12.default.createSourceFile(path2, text3, import_typescript12.default.ScriptTarget.ES2022, true, import_typescript12.default.ScriptKind.TS);
+function parseModule(path2, text3, inherited, files2, options = {}) {
+  const file = import_typescript13.default.createSourceFile(path2, text3, import_typescript13.default.ScriptTarget.ES2022, true, import_typescript13.default.ScriptKind.TS);
   const errors = file.parseDiagnostics ?? [];
-  if (errors.length) throw new NatlangSourceError(path2, errors.map((item) => import_typescript12.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; "));
-  const policy = checkConstrainedSource(file);
+  if (errors.length) throw new NatlangSourceError(path2, errors.map((item) => import_typescript13.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; "));
+  const policy = options.compiled ? [] : checkConstrainedSource(file);
   if (policy.length) throw new NatlangSourceError(path2, policy.map((item) => `${item.line}:${item.column} ${item.message}`).join("\n"));
   const exports = {};
   const imports = [];
   const locals = /* @__PURE__ */ new Map();
   for (const statement of file.statements) {
-    if (import_typescript12.default.isFunctionDeclaration(statement) && statement.name) locals.set(statement.name.text, statement);
-    if (import_typescript12.default.isVariableStatement(statement)) {
+    if (import_typescript13.default.isFunctionDeclaration(statement) && statement.name) locals.set(statement.name.text, statement);
+    if (import_typescript13.default.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations)
-        if (import_typescript12.default.isIdentifier(declaration.name)) locals.set(declaration.name.text, declaration);
+        if (import_typescript13.default.isIdentifier(declaration.name)) locals.set(declaration.name.text, declaration);
     }
   }
   const literalType = (expression) => {
     let node = expression;
-    while (import_typescript12.default.isAsExpression(node) || import_typescript12.default.isSatisfiesExpression(node) || import_typescript12.default.isParenthesizedExpression(node)) node = node.expression;
-    if (import_typescript12.default.isStringLiteral(node) || import_typescript12.default.isNoSubstitutionTemplateLiteral(node) || import_typescript12.default.isTemplateExpression(node)) return "string";
-    if (import_typescript12.default.isNumericLiteral(node) || import_typescript12.default.isPrefixUnaryExpression(node) && import_typescript12.default.isNumericLiteral(node.operand)) return "number";
-    if (node.kind === import_typescript12.default.SyntaxKind.TrueKeyword || node.kind === import_typescript12.default.SyntaxKind.FalseKeyword) return "boolean";
-    if (node.kind === import_typescript12.default.SyntaxKind.NullKeyword) return "null";
-    if (import_typescript12.default.isArrayLiteralExpression(node)) {
+    while (import_typescript13.default.isAsExpression(node) || import_typescript13.default.isSatisfiesExpression(node) || import_typescript13.default.isParenthesizedExpression(node)) node = node.expression;
+    if (import_typescript13.default.isStringLiteral(node) || import_typescript13.default.isNoSubstitutionTemplateLiteral(node) || import_typescript13.default.isTemplateExpression(node)) return "string";
+    if (import_typescript13.default.isNumericLiteral(node) || import_typescript13.default.isPrefixUnaryExpression(node) && import_typescript13.default.isNumericLiteral(node.operand)) return "number";
+    if (node.kind === import_typescript13.default.SyntaxKind.TrueKeyword || node.kind === import_typescript13.default.SyntaxKind.FalseKeyword) return "boolean";
+    if (node.kind === import_typescript13.default.SyntaxKind.NullKeyword) return "null";
+    if (import_typescript13.default.isArrayLiteralExpression(node)) {
       const kinds = [...new Set(node.elements.map((element) => literalType(element)))];
       return kinds.length === 1 && kinds[0] ? `${kinds[0].includes(" ") ? `(${kinds[0]})` : kinds[0]}[]` : void 0;
     }
-    if (import_typescript12.default.isObjectLiteralExpression(node)) {
+    if (import_typescript13.default.isObjectLiteralExpression(node)) {
       const fields = [];
       for (const property of node.properties) {
-        if (!import_typescript12.default.isPropertyAssignment(property) || !(import_typescript12.default.isIdentifier(property.name) || import_typescript12.default.isStringLiteral(property.name))) return;
+        if (!import_typescript13.default.isPropertyAssignment(property) || !(import_typescript13.default.isIdentifier(property.name) || import_typescript13.default.isStringLiteral(property.name))) return;
         const type = literalType(property.initializer);
         if (!type) return;
         fields.push(`${property.name.text}: ${type}`);
@@ -220586,43 +221296,43 @@ function parseModule(path2, text3, inherited, files2) {
     return;
   };
   const describe2 = (name2, node) => {
-    if (import_typescript12.default.isFunctionDeclaration(node)) return functionRecord(path2, node, file, name2);
-    if (import_typescript12.default.isVariableDeclaration(node)) {
+    if (import_typescript13.default.isFunctionDeclaration(node)) return functionRecord(path2, node, file, name2, options.compiled);
+    if (import_typescript13.default.isVariableDeclaration(node)) {
       const initializer = node.initializer;
-      if (initializer && (import_typescript12.default.isArrowFunction(initializer) || import_typescript12.default.isFunctionExpression(initializer)))
-        return functionRecord(path2, initializer, file, name2);
+      if (initializer && (import_typescript13.default.isArrowFunction(initializer) || import_typescript13.default.isFunctionExpression(initializer)))
+        return functionRecord(path2, initializer, file, name2, options.compiled);
       const type = node.type ? node.type.getText(file) : initializer ? literalType(initializer) : void 0;
       return { kind: "value", ...type ? { type } : {} };
     }
     return { kind: "value" };
   };
-  const isExported = (node) => !!import_typescript12.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript12.default.SyntaxKind.ExportKeyword);
-  const isDefault = (node) => !!import_typescript12.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript12.default.SyntaxKind.DefaultKeyword);
+  const isExported = (node) => !!import_typescript13.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript13.default.SyntaxKind.ExportKeyword);
+  const isDefault = (node) => !!import_typescript13.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript13.default.SyntaxKind.DefaultKeyword);
   for (const statement of file.statements) {
-    if (import_typescript12.default.isImportDeclaration(statement) && import_typescript12.default.isStringLiteral(statement.moduleSpecifier)) {
+    if (import_typescript13.default.isImportDeclaration(statement) && import_typescript13.default.isStringLiteral(statement.moduleSpecifier)) {
       if (!statement.importClause?.isTypeOnly) imports.push(statement.moduleSpecifier.text);
-    } else if (import_typescript12.default.isFunctionDeclaration(statement) && isExported(statement)) {
+    } else if (import_typescript13.default.isFunctionDeclaration(statement) && isExported(statement)) {
       const name2 = isDefault(statement) ? "default" : statement.name?.text;
       if (!name2) throw new NatlangSourceError(path2, "exported functions need names");
       exports[name2] = describe2(name2, statement);
-    } else if (import_typescript12.default.isVariableStatement(statement) && isExported(statement)) {
+    } else if (import_typescript13.default.isVariableStatement(statement) && isExported(statement)) {
       for (const declaration of statement.declarationList.declarations)
-        if (import_typescript12.default.isIdentifier(declaration.name)) exports[declaration.name.text] = describe2(declaration.name.text, declaration);
-    } else if (import_typescript12.default.isExportAssignment(statement) && !statement.isExportEquals) {
-      const target = import_typescript12.default.isIdentifier(statement.expression) ? locals.get(statement.expression.text) : void 0;
+        if (import_typescript13.default.isIdentifier(declaration.name)) exports[declaration.name.text] = describe2(declaration.name.text, declaration);
+    } else if (import_typescript13.default.isExportAssignment(statement) && !statement.isExportEquals) {
+      const target = import_typescript13.default.isIdentifier(statement.expression) ? locals.get(statement.expression.text) : void 0;
       exports.default = target ? describe2("default", target) : { kind: "value" };
-    } else if (import_typescript12.default.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause && import_typescript12.default.isNamedExports(statement.exportClause) && !statement.isTypeOnly) {
+    } else if (import_typescript13.default.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause && import_typescript13.default.isNamedExports(statement.exportClause) && !statement.isTypeOnly) {
       for (const element of statement.exportClause.elements) {
         if (element.isTypeOnly) continue;
         const local = locals.get((element.propertyName ?? element.name).text);
         exports[element.name.text] = local ? describe2(element.name.text, local) : { kind: "value" };
       }
-    } else if (import_typescript12.default.isExportDeclaration(statement) && statement.moduleSpecifier)
+    } else if (import_typescript13.default.isExportDeclaration(statement) && statement.moduleSpecifier && !options.compiled)
       throw new NatlangSourceError(path2, "re-exports from other modules are not supported; import and export explicitly");
   }
-  for (const name2 of Object.keys(exports)) if (name2 !== "default") checkName(path2, name2);
+  for (const name2 of Object.keys(exports)) if (!options.compiled && name2 !== "default") checkName(path2, name2);
   const name = files2.basename(path2, ".ts");
-  checkName(path2, name);
+  if (!options.compiled) checkName(path2, name);
   const declared = declaredTypes(file);
   const types3 = { ...inherited, ...declared.types, ...readTypeAliases(text3) };
   for (const record3 of Object.values(exports)) if (record3.kind === "function") {
@@ -220779,12 +221489,12 @@ function findApplicationContext(start, files2) {
     dir = parent;
   }
 }
-var import_typescript12, NatlangSourceError, atLine, lineOf, PLAIN_TYPES, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
+var import_typescript13, NatlangSourceError, atLine, lineOf, PLAIN_TYPES, FILE_NODES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, ATTACHING, LOADING, LOADING_EDGES, reaches, cycleMessage, isSource, PATH_ONLY;
 var init_loader = __esm({
   "src/runtime/loader.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript12 = __toESM(require_typescript(), 1);
+    import_typescript13 = __toESM(require_typescript(), 1);
     init_hash();
     init_type_aliases();
     init_types();
@@ -220877,9 +221587,9 @@ function refinementPredicates(checker, node) {
 }
 function enclosingSymbolName(node) {
   for (let current = node.parent; current; current = current.parent) {
-    if ((import_typescript13.default.isFunctionDeclaration(current) || import_typescript13.default.isClassDeclaration(current) || import_typescript13.default.isMethodDeclaration(current)) && current.name)
+    if ((import_typescript14.default.isFunctionDeclaration(current) || import_typescript14.default.isClassDeclaration(current) || import_typescript14.default.isMethodDeclaration(current)) && current.name)
       return current.name.getText();
-    if (import_typescript13.default.isVariableDeclaration(current) && import_typescript13.default.isIdentifier(current.name)) return current.name.text;
+    if (import_typescript14.default.isVariableDeclaration(current) && import_typescript14.default.isIdentifier(current.name)) return current.name.text;
   }
   return "module";
 }
@@ -220931,15 +221641,15 @@ function plainInlineCall(f, site2, tag, template) {
   ]);
 }
 function explicitInlineCall(f, site2, receiver, listing, template) {
-  const properties = listing && import_typescript13.default.isObjectLiteralExpression(listing) ? listing.properties : f.createNodeArray();
-  const recordTemp = listing && !import_typescript13.default.isObjectLiteralExpression(listing) ? f.createUniqueName("__natlang_capture_record") : void 0;
+  const properties = listing && import_typescript14.default.isObjectLiteralExpression(listing) ? listing.properties : f.createNodeArray();
+  const recordTemp = listing && !import_typescript14.default.isObjectLiteralExpression(listing) ? f.createUniqueName("__natlang_capture_record") : void 0;
   const evaluated = [];
   const accessors = site2.plan.captures.map((capture) => {
-    const property = properties.find((item) => (import_typescript13.default.isShorthandPropertyAssignment(item) || import_typescript13.default.isPropertyAssignment(item)) && (import_typescript13.default.isIdentifier(item.name) || import_typescript13.default.isStringLiteral(item.name)) && item.name.text === capture.name);
+    const property = properties.find((item) => (import_typescript14.default.isShorthandPropertyAssignment(item) || import_typescript14.default.isPropertyAssignment(item)) && (import_typescript14.default.isIdentifier(item.name) || import_typescript14.default.isStringLiteral(item.name)) && item.name.text === capture.name);
     const valueOf = (item) => {
       if (recordTemp) return f.createPropertyAccessExpression(recordTemp, capture.name);
       if (!item) return f.createIdentifier("undefined");
-      if (import_typescript13.default.isShorthandPropertyAssignment(item)) return f.createIdentifier(item.name.text);
+      if (import_typescript14.default.isShorthandPropertyAssignment(item)) return f.createIdentifier(item.name.text);
       const name = f.createUniqueName("__natlang_snapshot");
       evaluated.push({ name, value: site2.lower(item.initializer) });
       return name;
@@ -220997,11 +221707,11 @@ function natlangTransformer(options) {
       siteCounts.set(base, count);
       return count === 1 ? base : `${base}@${count}`;
     };
-    const original = (node) => import_typescript13.default.getOriginalNode(node);
+    const original = (node) => import_typescript14.default.getOriginalNode(node);
     const inlineSite = (plan) => ({
       plan,
       context: options.context,
-      lower: (expression) => import_typescript13.default.visitNode(expression, visit)
+      lower: (expression) => import_typescript14.default.visitNode(expression, visit)
     });
     const readNeuraleseValue = (value, conditional) => {
       const result = f.createCallExpression(runtime(conditional ? "readNeuraleseIfReference" : "readNeuralese"), void 0, [value]);
@@ -221016,13 +221726,13 @@ function natlangTransformer(options) {
       return f.createAwaitExpression(result);
     };
     const readNeuralese2 = (expression) => {
-      const lowered2 = import_typescript13.default.visitEachChild(expression, visit, context);
+      const lowered2 = import_typescript14.default.visitEachChild(expression, visit, context);
       const conditional = options.conditionalReadouts?.has(`${original(expression).getStart(file)}:${original(expression).getEnd()}`);
       return readNeuraleseValue(lowered2, conditional);
     };
     const rebuilt = /* @__PURE__ */ new WeakSet();
     const passthrough = (node) => {
-      const result = import_typescript13.default.visitEachChild(node, visit, context);
+      const result = import_typescript14.default.visitEachChild(node, visit, context);
       rebuilt.add(result);
       return result;
     };
@@ -221034,9 +221744,9 @@ function natlangTransformer(options) {
     };
     const lowerNode = (node) => {
       const source2 = original(node);
-      const instance = import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && source2.pos >= 0 ? options.instantiations?.get(`${source2.getStart(file)}:${source2.getEnd()}`) : void 0;
-      if (instance && import_typescript13.default.isCallExpression(node)) {
-        const visited = import_typescript13.default.visitEachChild(node, visit, context);
+      const instance = import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && source2.pos >= 0 ? options.instantiations?.get(`${source2.getStart(file)}:${source2.getEnd()}`) : void 0;
+      if (instance && import_typescript14.default.isCallExpression(node)) {
+        const visited = import_typescript14.default.visitEachChild(node, visit, context);
         const callee = f.createCallExpression(
           runtime("instantiate"),
           void 0,
@@ -221050,7 +221760,7 @@ function natlangTransformer(options) {
           f.createArrowFunction(
             void 0,
             void 0,
-            [f.createParameterDeclaration(void 0, f.createToken(import_typescript13.default.SyntaxKind.DotDotDotToken), rest)],
+            [f.createParameterDeclaration(void 0, f.createToken(import_typescript14.default.SyntaxKind.DotDotDotToken), rest)],
             void 0,
             void 0,
             f.createCallExpression(callee, void 0, [f.createSpreadElement(rest)])
@@ -221058,16 +221768,16 @@ function natlangTransformer(options) {
           ...visited.arguments
         ]);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && import_typescript13.default.isPropertyAccessExpression(node.expression) && options.arrayMaps?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && node.arguments[0]) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && import_typescript14.default.isPropertyAccessExpression(node.expression) && options.arrayMaps?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && node.arguments[0]) {
         const receiver = f.createUniqueName("__natlang_map_receiver");
         const method = f.createUniqueName("__natlang_map_method");
         const args = f.createUniqueName("__natlang_map_args");
-        const callback = import_typescript13.default.visitNode(node.arguments[0], visit);
+        const callback = import_typescript14.default.visitNode(node.arguments[0], visit);
         const makeAsync = (expression) => {
-          if (import_typescript13.default.isParenthesizedExpression(expression)) return f.updateParenthesizedExpression(expression, makeAsync(expression.expression));
-          if (import_typescript13.default.isArrowFunction(expression)) {
+          if (import_typescript14.default.isParenthesizedExpression(expression)) return f.updateParenthesizedExpression(expression, makeAsync(expression.expression));
+          if (import_typescript14.default.isArrowFunction(expression)) {
             const modifiers = [...expression.modifiers ?? []];
-            if (!modifiers.some((item) => item.kind === import_typescript13.default.SyntaxKind.AsyncKeyword)) modifiers.unshift(f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword));
+            if (!modifiers.some((item) => item.kind === import_typescript14.default.SyntaxKind.AsyncKeyword)) modifiers.unshift(f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword));
             return f.updateArrowFunction(
               expression,
               modifiers,
@@ -221078,9 +221788,9 @@ function natlangTransformer(options) {
               expression.body
             );
           }
-          if (import_typescript13.default.isFunctionExpression(expression)) {
+          if (import_typescript14.default.isFunctionExpression(expression)) {
             const modifiers = [...expression.modifiers ?? []];
-            if (!modifiers.some((item) => item.kind === import_typescript13.default.SyntaxKind.AsyncKeyword)) modifiers.unshift(f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword));
+            if (!modifiers.some((item) => item.kind === import_typescript14.default.SyntaxKind.AsyncKeyword)) modifiers.unshift(f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword));
             return f.updateFunctionExpression(
               expression,
               modifiers,
@@ -221098,13 +221808,13 @@ function natlangTransformer(options) {
         const body = f.createBlock([
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(method, void 0, void 0, f.createPropertyAccessExpression(receiver, "map"))
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(args, void 0, void 0, f.createArrayLiteralExpression([
               asyncCallback,
-              ...node.arguments.slice(1).map((argument) => import_typescript13.default.visitNode(argument, visit))
+              ...node.arguments.slice(1).map((argument) => import_typescript14.default.visitNode(argument, visit))
             ]))
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createReturnStatement(f.createCallExpression(runtime("mapNeuraleseReadout"), void 0, [receiver, method, args]))
         ], true);
         const lower = f.createCallExpression(
@@ -221117,7 +221827,7 @@ function natlangTransformer(options) {
             body
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         if (options.browser) {
           const bound = f.createCallExpression(
@@ -221129,7 +221839,7 @@ function natlangTransformer(options) {
         }
         return f.createAwaitExpression(lower);
       }
-      if ((import_typescript13.default.isCallExpression(node) || import_typescript13.default.isNewExpression(node)) && (import_typescript13.default.isCallExpression(source2) || import_typescript13.default.isNewExpression(source2)) && options.errors?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && node.arguments?.length) {
+      if ((import_typescript14.default.isCallExpression(node) || import_typescript14.default.isNewExpression(node)) && (import_typescript14.default.isCallExpression(source2) || import_typescript14.default.isNewExpression(source2)) && options.errors?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && node.arguments?.length) {
         const callee = f.createUniqueName("__natlang_error_constructor");
         const args = f.createUniqueName("__natlang_error_args");
         const message2 = readNeuraleseValue(
@@ -221141,10 +221851,10 @@ function natlangTransformer(options) {
           void 0,
           [f.createNumericLiteral(1)]
         ));
-        const invoke = import_typescript13.default.isNewExpression(node) ? f.createNewExpression(callee, void 0, [message2, rest]) : f.createCallExpression(callee, void 0, [message2, rest]);
+        const invoke = import_typescript14.default.isNewExpression(node) ? f.createNewExpression(callee, void 0, [message2, rest]) : f.createCallExpression(callee, void 0, [message2, rest]);
         const inner = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
-            [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+            [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
             void 0,
             [f.createParameterDeclaration(void 0, void 0, args)],
             void 0,
@@ -221152,7 +221862,7 @@ function natlangTransformer(options) {
             invoke
           )),
           void 0,
-          [f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit)))]
+          [f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit)))]
         );
         const outer = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
@@ -221164,18 +221874,18 @@ function natlangTransformer(options) {
             inner
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression, visit)]
         );
         return f.createAwaitExpression(outer);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && options.scalarConversions?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && node.arguments.length) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && options.scalarConversions?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && node.arguments.length) {
         const site2 = options.scalarConversions.get(`${source2.getStart(file)}:${source2.getEnd()}`);
         const callee = f.createUniqueName("__natlang_scalar_constructor");
         const args = f.createUniqueName("__natlang_scalar_args");
         const reader = site2.conditional ? "readNeuraleseIfReference" : "readNeuralese";
         const convert = f.createBinaryExpression(
           f.createElementAccessExpression(args, f.createNumericLiteral(site2.argument)),
-          f.createToken(import_typescript13.default.SyntaxKind.EqualsToken),
+          f.createToken(import_typescript14.default.SyntaxKind.EqualsToken),
           f.createAwaitExpression(f.createCallExpression(
             runtime(reader),
             void 0,
@@ -221185,7 +221895,7 @@ function natlangTransformer(options) {
         const invoke = f.createCallExpression(callee, void 0, [f.createSpreadElement(args)]);
         const inner = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
-            [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+            [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
             void 0,
             [f.createParameterDeclaration(void 0, void 0, args)],
             void 0,
@@ -221193,7 +221903,7 @@ function natlangTransformer(options) {
             f.createBlock([f.createExpressionStatement(convert), f.createReturnStatement(invoke)], true)
           )),
           void 0,
-          [f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit)))]
+          [f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit)))]
         );
         return f.createAwaitExpression(f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
@@ -221205,10 +221915,10 @@ function natlangTransformer(options) {
             inner
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression, visit)]
         ));
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && import_typescript13.default.isPropertyAccessExpression(node.expression) && options.stringReplaces?.has(`${source2.getStart(file)}:${source2.getEnd()}`)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && import_typescript14.default.isPropertyAccessExpression(node.expression) && options.stringReplaces?.has(`${source2.getStart(file)}:${source2.getEnd()}`)) {
         const site2 = options.stringReplaces.get(`${source2.getStart(file)}:${source2.getEnd()}`);
         const receiver = f.createUniqueName("__natlang_replace_receiver");
         const text3 = f.createUniqueName("__natlang_replace_text");
@@ -221223,20 +221933,20 @@ function natlangTransformer(options) {
         const body = f.createBlock([
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(text3, void 0, void 0, read)
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(method, void 0, void 0, f.createPropertyAccessExpression(text3, "replace"))
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(args, void 0, void 0, f.createArrayLiteralExpression(
-              node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit))
+              node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit))
             ))
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createReturnStatement(result)
         ], true);
         const invocation = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
-            [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+            [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
             void 0,
             [f.createParameterDeclaration(void 0, void 0, receiver)],
             void 0,
@@ -221244,11 +221954,11 @@ function natlangTransformer(options) {
             body
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         return f.createPropertyAccessExpression(f.createAwaitExpression(invocation), "value");
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && import_typescript13.default.isPropertyAccessExpression(node.expression) && options.stringArguments?.has(`${source2.getStart(file)}:${source2.getEnd()}`)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && import_typescript14.default.isPropertyAccessExpression(node.expression) && options.stringArguments?.has(`${source2.getStart(file)}:${source2.getEnd()}`)) {
         const receiver = f.createUniqueName("__natlang_text_receiver");
         const method = f.createUniqueName("__natlang_text_method");
         const args = f.createUniqueName("__natlang_text_args");
@@ -221265,14 +221975,14 @@ function natlangTransformer(options) {
         const body = f.createBlock([
           f.createExpressionStatement(f.createBinaryExpression(
             f.createElementAccessExpression(args, f.createNumericLiteral(index)),
-            f.createToken(import_typescript13.default.SyntaxKind.EqualsToken),
+            f.createToken(import_typescript14.default.SyntaxKind.EqualsToken),
             reader
           )),
           f.createReturnStatement(invoke)
         ], true);
         const withArgs = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
-            [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+            [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
             void 0,
             [f.createParameterDeclaration(void 0, void 0, method), f.createParameterDeclaration(void 0, void 0, args)],
             void 0,
@@ -221282,7 +221992,7 @@ function natlangTransformer(options) {
           void 0,
           [
             f.createPropertyAccessExpression(receiver, node.expression.name),
-            f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit)))
+            f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit)))
           ]
         );
         const applyReceiver = f.createCallExpression(
@@ -221295,11 +222005,11 @@ function natlangTransformer(options) {
             withArgs
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         return f.createAwaitExpression(applyReceiver);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && options.jsons?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript13.default.isPropertyAccessExpression(node.expression) && node.arguments.length > 0) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && options.jsons?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript14.default.isPropertyAccessExpression(node.expression) && node.arguments.length > 0) {
         const readoutCall = `${source2.getStart(file)}:${source2.getEnd()}`;
         const conditional = options.conditionalReadouts?.has(readoutCall);
         const receiver = f.createUniqueName("__natlang_json_receiver");
@@ -221317,7 +222027,7 @@ function natlangTransformer(options) {
           ]
         );
         const inner = f.createCallExpression(f.createParenthesizedExpression(f.createArrowFunction(
-          [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+          [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
           void 0,
           [f.createParameterDeclaration(void 0, void 0, call), f.createParameterDeclaration(void 0, void 0, args)],
           void 0,
@@ -221325,7 +222035,7 @@ function natlangTransformer(options) {
           invoke
         )), void 0, [
           f.createArrayLiteralExpression([receiver, f.createPropertyAccessExpression(receiver, "stringify")]),
-          f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit)))
+          f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit)))
         ]);
         const lower = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
@@ -221337,17 +222047,17 @@ function natlangTransformer(options) {
             inner
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         return f.createAwaitExpression(lower);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && options.joins?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript13.default.isPropertyAccessExpression(node.expression)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && options.joins?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript14.default.isPropertyAccessExpression(node.expression)) {
         const receiver = f.createUniqueName("__natlang_join_receiver");
         const method = f.createUniqueName("__natlang_join_method");
         const args = f.createUniqueName("__natlang_join_args");
         const value = f.createUniqueName("__natlang_join_value");
         const reader = f.createArrowFunction(
-          [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+          [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
           void 0,
           [f.createParameterDeclaration(void 0, void 0, value)],
           void 0,
@@ -221357,7 +222067,7 @@ function natlangTransformer(options) {
         const helper = f.createCallExpression(runtime("joinNeuralese"), void 0, [receiver, method, args, reader]);
         const body = f.createPropertyAccessExpression(f.createAwaitExpression(helper), "value");
         const invoke = f.createCallExpression(f.createParenthesizedExpression(f.createArrowFunction(
-          [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+          [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
           void 0,
           [f.createParameterDeclaration(void 0, void 0, method), f.createParameterDeclaration(void 0, void 0, args)],
           void 0,
@@ -221365,7 +222075,7 @@ function natlangTransformer(options) {
           body
         )), void 0, [
           f.createPropertyAccessExpression(receiver, "join"),
-          f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit)))
+          f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit)))
         ]);
         const lower = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
@@ -221377,17 +222087,17 @@ function natlangTransformer(options) {
             invoke
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         return f.createAwaitExpression(lower);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && options.arrayStrings?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript13.default.isPropertyAccessExpression(node.expression)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && options.arrayStrings?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript14.default.isPropertyAccessExpression(node.expression)) {
         const receiver = f.createUniqueName("__natlang_array_string_receiver");
         const method = f.createUniqueName("__natlang_array_string_method");
         const args = f.createUniqueName("__natlang_array_string_args");
         const value = f.createUniqueName("__natlang_array_string_value");
         const reader = f.createArrowFunction(
-          [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+          [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
           void 0,
           [f.createParameterDeclaration(void 0, void 0, value)],
           void 0,
@@ -221397,7 +222107,7 @@ function natlangTransformer(options) {
         const helper = f.createCallExpression(runtime("arrayToStringNeuralese"), void 0, [receiver, method, args, reader]);
         const body = f.createPropertyAccessExpression(f.createAwaitExpression(helper), "value");
         const invoke = f.createCallExpression(f.createParenthesizedExpression(f.createArrowFunction(
-          [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+          [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
           void 0,
           [f.createParameterDeclaration(void 0, void 0, method), f.createParameterDeclaration(void 0, void 0, args)],
           void 0,
@@ -221405,7 +222115,7 @@ function natlangTransformer(options) {
           body
         )), void 0, [
           f.createPropertyAccessExpression(receiver, "toString"),
-          f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit)))
+          f.createArrayLiteralExpression(node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit)))
         ]);
         const lower = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
@@ -221417,17 +222127,17 @@ function natlangTransformer(options) {
             invoke
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         return f.createAwaitExpression(lower);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && options.concats?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript13.default.isPropertyAccessExpression(node.expression)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && options.concats?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript14.default.isPropertyAccessExpression(node.expression)) {
         const receiver = f.createUniqueName("__natlang_concat_receiver");
         const method = f.createUniqueName("__natlang_concat_method");
         const values = f.createUniqueName("__natlang_concat_values");
         const value = f.createUniqueName("__natlang_concat_value");
         const reader = f.createArrowFunction(
-          [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+          [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
           void 0,
           [f.createParameterDeclaration(void 0, void 0, value)],
           void 0,
@@ -221437,17 +222147,17 @@ function natlangTransformer(options) {
         const statements2 = [
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(method, void 0, void 0, f.createPropertyAccessExpression(receiver, "concat"))
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createVariableStatement(void 0, f.createVariableDeclarationList([
             f.createVariableDeclaration(values, void 0, void 0, f.createArrayLiteralExpression(
-              node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit))
+              node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit))
             ))
-          ], import_typescript13.default.NodeFlags.Const)),
+          ], import_typescript14.default.NodeFlags.Const)),
           f.createReturnStatement(f.createCallExpression(runtime("concatNeuralese"), void 0, [receiver, method, values, reader]))
         ];
         const invoke = f.createCallExpression(
           f.createParenthesizedExpression(f.createArrowFunction(
-            [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)],
+            [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)],
             void 0,
             [f.createParameterDeclaration(void 0, void 0, receiver)],
             void 0,
@@ -221455,19 +222165,19 @@ function natlangTransformer(options) {
             f.createBlock(statements2)
           )),
           void 0,
-          [import_typescript13.default.visitNode(node.expression.expression, visit)]
+          [import_typescript14.default.visitNode(node.expression.expression, visit)]
         );
         return f.createAwaitExpression(invoke);
       }
-      if (options.readouts?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript13.default.isExpression(node))
+      if (options.readouts?.has(`${source2.getStart(file)}:${source2.getEnd()}`) && import_typescript14.default.isExpression(node))
         return readNeuralese2(node);
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && !source2.questionDotToken && options.fusionSites?.has(`${source2.getStart(file)}:${source2.getEnd()}`)) {
-        const visited = import_typescript13.default.visitEachChild(node, visit, context);
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && !source2.questionDotToken && options.fusionSites?.has(`${source2.getStart(file)}:${source2.getEnd()}`)) {
+        const visited = import_typescript14.default.visitEachChild(node, visit, context);
         const rest = f.createUniqueName("__natlang_fuse_args");
         const call = f.createArrowFunction(
           void 0,
           void 0,
-          [f.createParameterDeclaration(void 0, f.createToken(import_typescript13.default.SyntaxKind.DotDotDotToken), rest)],
+          [f.createParameterDeclaration(void 0, f.createToken(import_typescript14.default.SyntaxKind.DotDotDotToken), rest)],
           void 0,
           void 0,
           f.createCallExpression(visited.expression, void 0, [f.createSpreadElement(rest)])
@@ -221478,42 +222188,42 @@ function natlangTransformer(options) {
           [f.createStringLiteral(options.fusionSites.get(`${source2.getStart(file)}:${source2.getEnd()}`)), call, ...visited.arguments]
         );
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2) && import_typescript13.default.isPropertyAccessExpression(source2.expression) && source2.expression.name.text === "with" && import_typescript13.default.isTaggedTemplateExpression(source2.expression.expression)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2) && import_typescript14.default.isPropertyAccessExpression(source2.expression) && source2.expression.name.text === "with" && import_typescript14.default.isTaggedTemplateExpression(source2.expression.expression)) {
         const tagged = source2.expression.expression;
         const plan = options.plans.get(`${tagged.getStart(file)}:${tagged.getEnd()}`);
         if (plan?.explicitCaptures && suffixWithCallOf(tagged) === source2)
-          return explicitInlineCall(f, inlineSite(plan), import_typescript13.default.visitNode(tagged.tag, visit), source2.arguments[0], tagged.template);
+          return explicitInlineCall(f, inlineSite(plan), import_typescript14.default.visitNode(tagged.tag, visit), source2.arguments[0], tagged.template);
       }
-      if (import_typescript13.default.isTaggedTemplateExpression(node) && import_typescript13.default.isTaggedTemplateExpression(source2)) {
+      if (import_typescript14.default.isTaggedTemplateExpression(node) && import_typescript14.default.isTaggedTemplateExpression(source2)) {
         const plan = options.plans.get(`${source2.getStart(file)}:${source2.getEnd()}`);
         if (plan?.explicitCaptures) {
-          const withCall = import_typescript13.default.isCallExpression(source2.tag) ? source2.tag : void 0;
-          const receiver = withCall && import_typescript13.default.isPropertyAccessExpression(withCall.expression) ? import_typescript13.default.visitNode(withCall.expression.expression, visit) : f.createIdentifier("nl");
+          const withCall = import_typescript14.default.isCallExpression(source2.tag) ? source2.tag : void 0;
+          const receiver = withCall && import_typescript14.default.isPropertyAccessExpression(withCall.expression) ? import_typescript14.default.visitNode(withCall.expression.expression, visit) : f.createIdentifier("nl");
           return explicitInlineCall(f, inlineSite(plan), receiver, withCall?.arguments[0], source2.template);
         }
-        if (plan) return plainInlineCall(f, inlineSite(plan), import_typescript13.default.visitNode(node.tag, visit), source2.template);
+        if (plan) return plainInlineCall(f, inlineSite(plan), import_typescript14.default.visitNode(node.tag, visit), source2.template);
       }
-      if (import_typescript13.default.isCallExpression(node) && import_typescript13.default.isCallExpression(source2)) {
+      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isCallExpression(source2)) {
         const callee = source2.expression;
         const isTypedRead = options.checker && resolveIntrinsic(options.checker, callee) === "read";
         if (isTypedRead) {
-          const args = node.arguments.map((argument) => import_typescript13.default.visitNode(argument, visit));
+          const args = node.arguments.map((argument) => import_typescript14.default.visitNode(argument, visit));
           return f.createCallExpression(runtime("readNeuralese"), void 0, args);
         }
         const refinement = options.checker && source2.typeArguments?.length === 1 && source2.arguments.length === 1 ? resolveIntrinsic(options.checker, callee) : void 0;
         if (options.checker && (refinement === "refine" || refinement === "assume")) {
           const predicates = refinementPredicates(options.checker, source2.typeArguments[0]);
           if (predicates.length) return f.createCallExpression(
-            import_typescript13.default.visitNode(callee, visit),
+            import_typescript14.default.visitNode(callee, visit),
             void 0,
-            [import_typescript13.default.visitNode(node.arguments[0], visit), f.createStringLiteral(predicates.join("; and "))]
+            [import_typescript14.default.visitNode(node.arguments[0], visit), f.createStringLiteral(predicates.join("; and "))]
           );
         }
-        const isMethod = import_typescript13.default.isPropertyAccessExpression(callee) && callee.name.text === "iterateOn";
+        const isMethod = import_typescript14.default.isPropertyAccessExpression(callee) && callee.name.text === "iterateOn";
         const isFree = !isMethod && options.checker && resolveIntrinsic(options.checker, callee) === "iterateOn";
-        const isFreeUnchecked = !isMethod && !options.checker && import_typescript13.default.isIdentifier(callee) && callee.text === "iterateOn";
+        const isFreeUnchecked = !isMethod && !options.checker && import_typescript14.default.isIdentifier(callee) && callee.text === "iterateOn";
         if (isMethod || isFree || isFreeUnchecked) {
-          const lowered2 = import_typescript13.default.visitEachChild(node, visit, context);
+          const lowered2 = import_typescript14.default.visitEachChild(node, visit, context);
           const value = f.createUniqueName("__natlang_iteration");
           return f.createCallExpression(f.createParenthesizedExpression(f.createArrowFunction(
             void 0,
@@ -221525,10 +222235,10 @@ function natlangTransformer(options) {
               f.createBinaryExpression(
                 f.createTypeOfExpression(f.createPropertyAccessChain(
                   value,
-                  f.createToken(import_typescript13.default.SyntaxKind.QuestionDotToken),
+                  f.createToken(import_typescript14.default.SyntaxKind.QuestionDotToken),
                   "withCompilerSite"
                 )),
-                import_typescript13.default.SyntaxKind.EqualsEqualsEqualsToken,
+                import_typescript14.default.SyntaxKind.EqualsEqualsEqualsToken,
                 f.createStringLiteral("function")
               ),
               void 0,
@@ -221539,21 +222249,21 @@ function natlangTransformer(options) {
           )), void 0, [lowered2]);
         }
       }
-      if (options.constrained && import_typescript13.default.isForStatement(node) && node.initializer && import_typescript13.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
+      if (options.constrained && import_typescript14.default.isForStatement(node) && node.initializer && import_typescript14.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
         const declaration = node.initializer.declarations[0];
-        if (import_typescript13.default.isIdentifier(declaration.name)) {
+        if (import_typescript14.default.isIdentifier(declaration.name)) {
           const counter = declaration.name;
           const boundedCondition = finiteCounterComparison(node.condition, counter.text);
           if (!boundedCondition) return passthrough(node);
           const comparison = boundedCondition.comparison;
-          const left = import_typescript13.default.isIdentifier(comparison.left) && comparison.left.text === counter.text;
+          const left = import_typescript14.default.isIdentifier(comparison.left) && comparison.left.text === counter.text;
           const bound = f.createUniqueName("__natlang_bound");
           const progress = f.createUniqueName("__natlang_progress");
           const kind = comparison.operatorToken.kind;
-          const upward = left ? kind === import_typescript13.default.SyntaxKind.LessThanToken || kind === import_typescript13.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript13.default.SyntaxKind.GreaterThanToken || kind === import_typescript13.default.SyntaxKind.GreaterThanEqualsToken;
+          const upward = left ? kind === import_typescript14.default.SyntaxKind.LessThanToken || kind === import_typescript14.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript14.default.SyntaxKind.GreaterThanToken || kind === import_typescript14.default.SyntaxKind.GreaterThanEqualsToken;
           const initializer = f.updateVariableDeclarationList(node.initializer, [
-            import_typescript13.default.visitNode(declaration, visit),
-            f.createVariableDeclaration(bound, void 0, void 0, import_typescript13.default.visitNode(left ? comparison.right : comparison.left, visit)),
+            import_typescript14.default.visitNode(declaration, visit),
+            f.createVariableDeclaration(bound, void 0, void 0, import_typescript14.default.visitNode(left ? comparison.right : comparison.left, visit)),
             f.createVariableDeclaration(
               progress,
               void 0,
@@ -221561,8 +222271,8 @@ function natlangTransformer(options) {
               f.createCallExpression(runtime("numericProgress"), void 0, [counter, bound, upward ? f.createTrue() : f.createFalse()])
             )
           ]);
-          const body = import_typescript13.default.visitNode(node.statement, visit);
-          const condition = import_typescript13.default.visitNode(node.condition, function replaceBoundedComparison(child) {
+          const body = import_typescript14.default.visitNode(node.statement, visit);
+          const condition = import_typescript14.default.visitNode(node.condition, function replaceBoundedComparison(child) {
             if (child === comparison)
               return f.updateBinaryExpression(
                 comparison,
@@ -221570,67 +222280,67 @@ function natlangTransformer(options) {
                 comparison.operatorToken,
                 left ? bound : counter
               );
-            return import_typescript13.default.visitEachChild(child, replaceBoundedComparison, context);
+            return import_typescript14.default.visitEachChild(child, replaceBoundedComparison, context);
           });
           return f.updateForStatement(
             node,
             initializer,
             condition,
-            import_typescript13.default.visitNode(node.incrementor, visit),
+            import_typescript14.default.visitNode(node.incrementor, visit),
             f.createBlock([
               f.createExpressionStatement(f.createCallExpression(progress, void 0, [counter])),
-              ...import_typescript13.default.isBlock(body) ? body.statements : [body]
+              ...import_typescript14.default.isBlock(body) ? body.statements : [body]
             ], true)
           );
         }
       }
-      if (options.constrained && import_typescript13.default.isForOfStatement(node)) {
+      if (options.constrained && import_typescript14.default.isForOfStatement(node)) {
         let iterated = node.expression;
-        while (import_typescript13.default.isParenthesizedExpression(iterated) || import_typescript13.default.isAsExpression(iterated) || import_typescript13.default.isTypeAssertionExpression(iterated) || import_typescript13.default.isNonNullExpression(iterated)) iterated = iterated.expression;
-        if (!node.awaitModifier && import_typescript13.default.isCallExpression(iterated) && iterated.arguments.length === 0 && import_typescript13.default.isPropertyAccessExpression(iterated.expression) && ["entries", "keys", "values"].includes(iterated.expression.name.text)) {
-          const receiver = import_typescript13.default.visitNode(iterated.expression.expression, visit);
+        while (import_typescript14.default.isParenthesizedExpression(iterated) || import_typescript14.default.isAsExpression(iterated) || import_typescript14.default.isTypeAssertionExpression(iterated) || import_typescript14.default.isNonNullExpression(iterated)) iterated = iterated.expression;
+        if (!node.awaitModifier && import_typescript14.default.isCallExpression(iterated) && iterated.arguments.length === 0 && import_typescript14.default.isPropertyAccessExpression(iterated.expression) && ["entries", "keys", "values"].includes(iterated.expression.name.text)) {
+          const receiver = import_typescript14.default.visitNode(iterated.expression.expression, visit);
           return f.updateForOfStatement(
             node,
             node.awaitModifier,
-            import_typescript13.default.visitNode(node.initializer, visit),
+            import_typescript14.default.visitNode(node.initializer, visit),
             f.createCallExpression(
               runtime("finiteArrayIterator"),
               void 0,
               [receiver, f.createStringLiteral(iterated.expression.name.text), f.createStringLiteral(loopLabel(node.expression))]
             ),
-            import_typescript13.default.visitNode(node.statement, visit)
+            import_typescript14.default.visitNode(node.statement, visit)
           );
         }
-        const expression = import_typescript13.default.visitNode(node.expression, visit);
+        const expression = import_typescript14.default.visitNode(node.expression, visit);
         return f.updateForOfStatement(
           node,
           node.awaitModifier,
-          import_typescript13.default.visitNode(node.initializer, visit),
+          import_typescript14.default.visitNode(node.initializer, visit),
           f.createCallExpression(
             runtime(node.awaitModifier ? "finiteAsync" : "finite"),
             void 0,
             [expression, f.createStringLiteral(loopLabel(node.expression))]
           ),
-          import_typescript13.default.visitNode(node.statement, visit)
+          import_typescript14.default.visitNode(node.statement, visit)
         );
       }
       const guardId = guardIds.get(source2);
-      if (guardId && (import_typescript13.default.isFunctionDeclaration(node) || import_typescript13.default.isFunctionExpression(node) || import_typescript13.default.isArrowFunction(node) || import_typescript13.default.isMethodDeclaration(node) || import_typescript13.default.isGetAccessorDeclaration(node) || import_typescript13.default.isSetAccessorDeclaration(node)) && node.body && makesCalls(source2)) {
-        const visited = import_typescript13.default.visitEachChild(node, visit, context);
-        const isAsync = !!visited.modifiers?.some((modifier) => modifier.kind === import_typescript13.default.SyntaxKind.AsyncKeyword) || options.arrayMapCallbacks?.has(`${source2.getStart(source2.getSourceFile())}:${source2.getEnd()}`) === true;
+      if (guardId && (import_typescript14.default.isFunctionDeclaration(node) || import_typescript14.default.isFunctionExpression(node) || import_typescript14.default.isArrowFunction(node) || import_typescript14.default.isMethodDeclaration(node) || import_typescript14.default.isGetAccessorDeclaration(node) || import_typescript14.default.isSetAccessorDeclaration(node)) && node.body && makesCalls(source2)) {
+        const visited = import_typescript14.default.visitEachChild(node, visit, context);
+        const isAsync = !!visited.modifiers?.some((modifier) => modifier.kind === import_typescript14.default.SyntaxKind.AsyncKeyword) || options.arrayMapCallbacks?.has(`${source2.getStart(source2.getSourceFile())}:${source2.getEnd()}`) === true;
         const body = visited.body;
         const inner = f.createArrowFunction(
-          isAsync ? [f.createModifier(import_typescript13.default.SyntaxKind.AsyncKeyword)] : void 0,
+          isAsync ? [f.createModifier(import_typescript14.default.SyntaxKind.AsyncKeyword)] : void 0,
           void 0,
           [],
           void 0,
           void 0,
-          import_typescript13.default.isBlock(body) ? body : f.createParenthesizedExpression(body)
+          import_typescript14.default.isBlock(body) ? body : f.createParenthesizedExpression(body)
         );
         const args = f.createArrayLiteralExpression(guardArguments(source2).map((name) => name === "this" ? f.createThis() : f.createIdentifier(name)));
         const guarded = f.createCallExpression(runtime("guard"), void 0, [f.createStringLiteral(guardId), inner, args]);
         const block = f.createBlock([f.createReturnStatement(guarded)], true);
-        if (import_typescript13.default.isFunctionDeclaration(visited)) return f.updateFunctionDeclaration(
+        if (import_typescript14.default.isFunctionDeclaration(visited)) return f.updateFunctionDeclaration(
           visited,
           visited.modifiers,
           visited.asteriskToken,
@@ -221640,7 +222350,7 @@ function natlangTransformer(options) {
           visited.type,
           block
         );
-        if (import_typescript13.default.isFunctionExpression(visited)) return f.updateFunctionExpression(
+        if (import_typescript14.default.isFunctionExpression(visited)) return f.updateFunctionExpression(
           visited,
           visited.modifiers,
           visited.asteriskToken,
@@ -221650,7 +222360,7 @@ function natlangTransformer(options) {
           visited.type,
           block
         );
-        if (import_typescript13.default.isMethodDeclaration(visited)) return f.updateMethodDeclaration(
+        if (import_typescript14.default.isMethodDeclaration(visited)) return f.updateMethodDeclaration(
           visited,
           visited.modifiers,
           visited.asteriskToken,
@@ -221661,7 +222371,7 @@ function natlangTransformer(options) {
           visited.type,
           block
         );
-        if (import_typescript13.default.isGetAccessorDeclaration(visited)) return f.updateGetAccessorDeclaration(
+        if (import_typescript14.default.isGetAccessorDeclaration(visited)) return f.updateGetAccessorDeclaration(
           visited,
           visited.modifiers,
           visited.name,
@@ -221669,7 +222379,7 @@ function natlangTransformer(options) {
           visited.type,
           block
         );
-        if (import_typescript13.default.isSetAccessorDeclaration(visited)) return f.updateSetAccessorDeclaration(
+        if (import_typescript14.default.isSetAccessorDeclaration(visited)) return f.updateSetAccessorDeclaration(
           visited,
           visited.modifiers,
           visited.name,
@@ -221686,8 +222396,8 @@ function natlangTransformer(options) {
           guarded
         );
       }
-      if (options.browser && import_typescript13.default.isAwaitExpression(node)) {
-        const operand2 = import_typescript13.default.visitNode(node.expression, visit);
+      if (options.browser && import_typescript14.default.isAwaitExpression(node)) {
+        const operand2 = import_typescript14.default.visitNode(node.expression, visit);
         return f.createCallExpression(f.createParenthesizedExpression(f.createAwaitExpression(
           f.createCallExpression(
             f.createPropertyAccessExpression(f.createIdentifier("globalThis"), "__natlang_bindAwait"),
@@ -221698,31 +222408,31 @@ function natlangTransformer(options) {
       }
       return passthrough(node);
     };
-    const lowered = import_typescript13.default.visitNode(file, visit);
+    const lowered = import_typescript14.default.visitNode(file, visit);
     const module = options.module;
     if (!module) return lowered;
     let changed = false;
     const statements = lowered.statements.map((statement) => {
-      if (!import_typescript13.default.isImportDeclaration(statement) && !import_typescript13.default.isExportDeclaration(statement) || !statement.moduleSpecifier || !import_typescript13.default.isStringLiteral(statement.moduleSpecifier)) return statement;
+      if (!import_typescript14.default.isImportDeclaration(statement) && !import_typescript14.default.isExportDeclaration(statement) || !statement.moduleSpecifier || !import_typescript14.default.isStringLiteral(statement.moduleSpecifier)) return statement;
       const specifier = statement.moduleSpecifier.text;
       const target = module.natlangImports.has(specifier) ? `${specifier}.js` : module.rewrite?.get(specifier);
       if (!target) return statement;
       changed = true;
-      return import_typescript13.default.isImportDeclaration(statement) ? f.updateImportDeclaration(statement, statement.modifiers, statement.importClause, f.createStringLiteral(target), statement.attributes) : f.updateExportDeclaration(statement, statement.modifiers, statement.isTypeOnly, statement.exportClause, f.createStringLiteral(target), statement.attributes);
+      return import_typescript14.default.isImportDeclaration(statement) ? f.updateImportDeclaration(statement, statement.modifiers, statement.importClause, f.createStringLiteral(target), statement.attributes) : f.updateExportDeclaration(statement, statement.modifiers, statement.isTypeOnly, statement.exportClause, f.createStringLiteral(target), statement.attributes);
     });
     return changed ? f.updateSourceFile(lowered, statements) : lowered;
   };
 }
-var import_typescript13, literal, interpolationValues, contextArgument;
+var import_typescript14, literal, interpolationValues, contextArgument;
 var init_lower = __esm({
   "src/compiler/lower.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript13 = __toESM(require_typescript(), 1);
+    import_typescript14 = __toESM(require_typescript(), 1);
     init_inline();
     init_policy();
-    literal = (value) => import_typescript13.default.factory.createIdentifier(JSON.stringify(value));
-    interpolationValues = (site2, template) => !site2.plan.softBody && import_typescript13.default.isTemplateExpression(template) ? template.templateSpans.map((span) => site2.lower(span.expression)) : [];
+    literal = (value) => import_typescript14.default.factory.createIdentifier(JSON.stringify(value));
+    interpolationValues = (site2, template) => !site2.plan.softBody && import_typescript14.default.isTemplateExpression(template) ? template.templateSpans.map((span) => site2.lower(span.expression)) : [];
     contextArgument = (f, site2) => site2.context ? f.createIdentifier(site2.context) : f.createIdentifier("undefined");
   }
 });
@@ -221807,12 +222517,12 @@ function analyzeEvalSnippet(source2, scope) {
     } while (source2.includes(helper) || helperNames.has(helper));
     const edits = [];
     const visit = (node) => {
-      if (import_typescript14.default.isCallExpression(node) && import_typescript14.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript14.default.isTaggedTemplateExpression(node.expression.expression)) {
+      if (import_typescript15.default.isCallExpression(node) && import_typescript15.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript15.default.isTaggedTemplateExpression(node.expression.expression)) {
         const receiver = node.expression.expression;
         const declaredMethod = checker.getSymbolAtLocation(node.expression.name);
         const receiverType = checker.getTypeAtLocation(receiver);
-        const isOpaque = (receiverType.flags & (import_typescript14.default.TypeFlags.Any | import_typescript14.default.TypeFlags.Unknown)) !== 0;
-        const callable = checker.getSignaturesOfType(receiverType, import_typescript14.default.SignatureKind.Call).length > 0;
+        const isOpaque = (receiverType.flags & (import_typescript15.default.TypeFlags.Any | import_typescript15.default.TypeFlags.Unknown)) !== 0;
+        const callable = checker.getSignaturesOfType(receiverType, import_typescript15.default.SignatureKind.Call).length > 0;
         if (!declaredMethod && !isOpaque && callable) {
           const start = receiver.getStart(initialSnippet), end = node.arguments.pos;
           const generic = node.typeArguments?.length ? `<${node.typeArguments.map((item) => item.getText(initialSnippet)).join(", ")}>` : "";
@@ -221826,7 +222536,7 @@ function analyzeEvalSnippet(source2, scope) {
             });
         }
       }
-      import_typescript14.default.forEachChild(node, visit);
+      import_typescript15.default.forEachChild(node, visit);
     };
     visit(initialSnippet);
     if (edits.length) {
@@ -221843,7 +222553,7 @@ function analyzeEvalSnippet(source2, scope) {
     scopeFiles: [scopeFile],
     displayPath: () => "eval",
     recursiveTypes: true,
-    classify: (declaration) => declaration.getSourceFile() === scopeFile ? import_typescript14.default.isVariableDeclaration(declaration) && import_typescript14.default.isIdentifier(declaration.name) && inputs.has(declaration.name.text) ? "input" : "local" : isSnippetTopLevel(declaration) ? "local" : "block"
+    classify: (declaration) => declaration.getSourceFile() === scopeFile ? import_typescript15.default.isVariableDeclaration(declaration) && import_typescript15.default.isIdentifier(declaration.name) && inputs.has(declaration.name.text) ? "input" : "local" : isSnippetTopLevel(declaration) ? "local" : "block"
   });
   const offset = prefix.length;
   const shift = (item) => ({ ...item, start: item.start - offset, end: item.end - offset, line: Math.max(1, item.line - 1) });
@@ -221881,10 +222591,10 @@ function checkEvalFields(source2, scope) {
   const inferred = new Set([...scope.locals, ...scope.captures].map((item) => item.name));
   const declared = (declaration) => {
     const file = declaration.getSourceFile();
-    if (file === snippet) return import_typescript14.default.isTypeAliasDeclaration(declaration) || import_typescript14.default.isInterfaceDeclaration(declaration) || !!import_typescript14.default.findAncestor(declaration, (node) => import_typescript14.default.isTypeAliasDeclaration(node) || import_typescript14.default.isInterfaceDeclaration(node));
+    if (file === snippet) return import_typescript15.default.isTypeAliasDeclaration(declaration) || import_typescript15.default.isInterfaceDeclaration(declaration) || !!import_typescript15.default.findAncestor(declaration, (node) => import_typescript15.default.isTypeAliasDeclaration(node) || import_typescript15.default.isInterfaceDeclaration(node));
     if (file !== scopeFile) return false;
-    const variable = import_typescript14.default.findAncestor(declaration, import_typescript14.default.isVariableDeclaration);
-    return !(variable && import_typescript14.default.isIdentifier(variable.name) && inferred.has(variable.name.text));
+    const variable = import_typescript15.default.findAncestor(declaration, import_typescript15.default.isVariableDeclaration);
+    return !(variable && import_typescript15.default.isIdentifier(variable.name) && inferred.has(variable.name.text));
   };
   const declaredType = (type) => {
     const symbol = type.aliasSymbol ?? type.getSymbol();
@@ -221917,11 +222627,11 @@ function checkEvalFields(source2, scope) {
   for (const diagnostic of program.getSemanticDiagnostics(snippet)) {
     if ((diagnostic.code === 2367 || diagnostic.code === 2678) && diagnostic.start !== void 0) {
       let node = innermostNode(snippet, diagnostic.start);
-      while (node && !import_typescript14.default.isBinaryExpression(node) && !import_typescript14.default.isCaseClause(node)) node = node.parent;
+      while (node && !import_typescript15.default.isBinaryExpression(node) && !import_typescript15.default.isCaseClause(node)) node = node.parent;
       if (!node) continue;
-      const key = import_typescript14.default.isCaseClause(node) ? node.parent.parent : node;
+      const key = import_typescript15.default.isCaseClause(node) ? node.parent.parent : node;
       if (comparisons.has(key)) continue;
-      const sides = import_typescript14.default.isBinaryExpression(node) ? [node.left, node.right] : [node.parent.parent.expression];
+      const sides = import_typescript15.default.isBinaryExpression(node) ? [node.left, node.right] : [node.parent.parent.expression];
       const decision = sides.find(isDecision);
       if (decision) {
         comparisons.add(key);
@@ -221932,8 +222642,8 @@ function checkEvalFields(source2, scope) {
     if (diagnostic.code !== 2339 && diagnostic.code !== 2551 || diagnostic.start === void 0) continue;
     const name = findNode(snippet, diagnostic.start);
     const access = name?.parent;
-    if (!name || !access || !import_typescript14.default.isPropertyAccessExpression(access) || access.name !== name) continue;
-    if (import_typescript14.default.isBinaryExpression(access.parent) && access.parent.left === access && access.parent.operatorToken.kind >= import_typescript14.default.SyntaxKind.FirstAssignment && access.parent.operatorToken.kind <= import_typescript14.default.SyntaxKind.LastAssignment) continue;
+    if (!name || !access || !import_typescript15.default.isPropertyAccessExpression(access) || access.name !== name) continue;
+    if (import_typescript15.default.isBinaryExpression(access.parent) && access.parent.left === access && access.parent.operatorToken.kind >= import_typescript15.default.SyntaxKind.FirstAssignment && access.parent.operatorToken.kind <= import_typescript15.default.SyntaxKind.LastAssignment) continue;
     const receiver = checker.getNonNullableType(checker.getTypeAtLocation(access.expression));
     if (RESERVED_CALLABLE_PROPERTIES.has(name.text) && receiver.getCallSignatures().length) continue;
     const members = receiver.isUnion() ? receiver.types : [receiver];
@@ -221963,7 +222673,7 @@ function innermostNode(file, position) {
   const visit = (node) => {
     if (position < node.getStart(file) || position >= node.getEnd()) return;
     found = node;
-    import_typescript14.default.forEachChild(node, visit);
+    import_typescript15.default.forEachChild(node, visit);
   };
   visit(file);
   return found;
@@ -221972,8 +222682,8 @@ function findNode(file, position) {
   let found;
   const visit = (node) => {
     if (position < node.getStart(file) || position >= node.getEnd()) return;
-    if (import_typescript14.default.isIdentifier(node)) found = node;
-    import_typescript14.default.forEachChild(node, visit);
+    if (import_typescript15.default.isIdentifier(node)) found = node;
+    import_typescript15.default.forEachChild(node, visit);
   };
   visit(file);
   return found;
@@ -221982,19 +222692,19 @@ function isSnippetTopLevel(declaration) {
   let current = declaration;
   while (current.parent) {
     const parent = current.parent;
-    if (import_typescript14.default.isBlock(parent) && parent.parent && import_typescript14.default.isFunctionDeclaration(parent.parent) && parent.parent.name?.text === "__natlang_scope")
+    if (import_typescript15.default.isBlock(parent) && parent.parent && import_typescript15.default.isFunctionDeclaration(parent.parent) && parent.parent.name?.text === "__natlang_scope")
       return true;
-    if (import_typescript14.default.isBlock(parent) || import_typescript14.default.isFunctionLike(parent)) return false;
+    if (import_typescript15.default.isBlock(parent) || import_typescript15.default.isFunctionLike(parent)) return false;
     current = parent;
   }
   return false;
 }
-var import_typescript14, evalWrapperPrefix, SCOPE_FILE, SNIPPET_FILE, GLOBAL_TYPES;
+var import_typescript15, evalWrapperPrefix, SCOPE_FILE, SNIPPET_FILE, GLOBAL_TYPES;
 var init_eval_check = __esm({
   "src/compiler/eval-check.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript14 = __toESM(require_typescript(), 1);
+    import_typescript15 = __toESM(require_typescript(), 1);
     init_host();
     init_inline();
     init_hash();
@@ -222173,7 +222883,7 @@ var init_program_view = __esm({
 
 // src/adaptation/types.ts
 var ADAPTATION_SCHEMA;
-var init_types2 = __esm({
+var init_types3 = __esm({
   "src/adaptation/types.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
@@ -222276,7 +222986,7 @@ var init_schema = __esm({
   "src/adaptation/schema.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    init_types2();
+    init_types3();
     init_identity();
     AdaptationError = class extends Error {
       constructor(message2) {
@@ -222366,12 +223076,12 @@ var init_compatibility = __esm({
 
 // src/native/external.ts
 function declarationNamespace(name, declarations) {
-  const file = import_typescript15.default.createSourceFile(`${name}.d.ts`, declarations, import_typescript15.default.ScriptTarget.ES2022, true);
+  const file = import_typescript16.default.createSourceFile(`${name}.d.ts`, declarations, import_typescript16.default.ScriptTarget.ES2022, true);
   const members = [];
   for (const statement of file.statements) {
-    if (import_typescript15.default.isExportDeclaration(statement)) continue;
-    const exported = import_typescript15.default.canHaveModifiers(statement) && import_typescript15.default.getModifiers(statement)?.some((modifier) => modifier.kind === import_typescript15.default.SyntaxKind.ExportKeyword);
-    if (!exported && !import_typescript15.default.isTypeAliasDeclaration(statement) && !import_typescript15.default.isInterfaceDeclaration(statement)) continue;
+    if (import_typescript16.default.isExportDeclaration(statement)) continue;
+    const exported = import_typescript16.default.canHaveModifiers(statement) && import_typescript16.default.getModifiers(statement)?.some((modifier) => modifier.kind === import_typescript16.default.SyntaxKind.ExportKeyword);
+    if (!exported && !import_typescript16.default.isTypeAliasDeclaration(statement) && !import_typescript16.default.isInterfaceDeclaration(statement)) continue;
     const text3 = statement.getFullText().replace(/^\s*\n/, "").replace(/\b(export\s+)?declare\s+/, "$1");
     members.push(text3.split("\n").map((line) => line ? `  ${line}` : line).join("\n"));
   }
@@ -222379,38 +223089,38 @@ function declarationNamespace(name, declarations) {
 ${members.join("\n")}
 }`;
 }
-var import_typescript15;
+var import_typescript16;
 var init_external = __esm({
   "src/native/external.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript15 = __toESM(require_typescript(), 1);
+    import_typescript16 = __toESM(require_typescript(), 1);
   }
 });
 
 // src/calls/compilations.ts
 function caseSources(text3) {
-  const file = import_typescript16.default.createSourceFile("cases.ts", text3, import_typescript16.default.ScriptTarget.ES2022, true, import_typescript16.default.ScriptKind.TS);
+  const file = import_typescript17.default.createSourceFile("cases.ts", text3, import_typescript17.default.ScriptTarget.ES2022, true, import_typescript17.default.ScriptKind.TS);
   for (const statement of file.statements) {
-    if (!import_typescript16.default.isVariableStatement(statement) || !import_typescript16.default.getModifiers(statement)?.some((item) => item.kind === import_typescript16.default.SyntaxKind.ExportKeyword)) continue;
+    if (!import_typescript17.default.isVariableStatement(statement) || !import_typescript17.default.getModifiers(statement)?.some((item) => item.kind === import_typescript17.default.SyntaxKind.ExportKeyword)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (!import_typescript16.default.isIdentifier(declaration.name) || declaration.name.text !== "cases" || !declaration.initializer) continue;
+      if (!import_typescript17.default.isIdentifier(declaration.name) || declaration.name.text !== "cases" || !declaration.initializer) continue;
       let initializer = declaration.initializer;
-      while (import_typescript16.default.isAsExpression(initializer) || import_typescript16.default.isSatisfiesExpression(initializer) || import_typescript16.default.isParenthesizedExpression(initializer))
+      while (import_typescript17.default.isAsExpression(initializer) || import_typescript17.default.isSatisfiesExpression(initializer) || import_typescript17.default.isParenthesizedExpression(initializer))
         initializer = initializer.expression;
-      if (!import_typescript16.default.isArrayLiteralExpression(initializer)) throw new Error("cases.ts: `export const cases` must be an array literal of { when, run } objects");
+      if (!import_typescript17.default.isArrayLiteralExpression(initializer)) throw new Error("cases.ts: `export const cases` must be an array literal of { when, run } objects");
       return initializer.elements.map((element) => element.getText(file));
     }
   }
   throw new Error("cases.ts must export `const cases = [{ when, run }, ...]`");
 }
 function caseServices(text3) {
-  const file = import_typescript16.default.createSourceFile("cases.ts", text3, import_typescript16.default.ScriptTarget.ES2022, true, import_typescript16.default.ScriptKind.TS);
+  const file = import_typescript17.default.createSourceFile("cases.ts", text3, import_typescript17.default.ScriptTarget.ES2022, true, import_typescript17.default.ScriptKind.TS);
   const imported = /* @__PURE__ */ new Map();
   for (const statement of file.statements)
-    if (import_typescript16.default.isImportDeclaration(statement) && import_typescript16.default.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === "natlang:services") {
+    if (import_typescript17.default.isImportDeclaration(statement) && import_typescript17.default.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === "natlang:services") {
       const bindings2 = statement.importClause?.namedBindings;
-      if (bindings2 && import_typescript16.default.isNamedImports(bindings2))
+      if (bindings2 && import_typescript17.default.isNamedImports(bindings2))
         for (const element of bindings2.elements) imported.set(element.name.text, (element.propertyName ?? element.name).text);
     }
   return caseSources(text3).map((source2) => [...imported].filter(([local]) => new RegExp(`(?<![\\w$.])${local.replace(/\$/g, "\\$")}(?![\\w$])`).test(source2)).map(([, name]) => name));
@@ -222437,12 +223147,12 @@ function specializerOutput(store, definitionKey2, interfaceHash2) {
   const guidance = row.files["instructions.md"];
   return { cases: row.cases.filter((item) => item.tier === "active").length, ...guidance ? { guidance } : {} };
 }
-var import_typescript16, CompilationCache;
+var import_typescript17, CompilationCache;
 var init_compilations = __esm({
   "src/calls/compilations.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript16 = __toESM(require_typescript(), 1);
+    import_typescript17 = __toESM(require_typescript(), 1);
     init_hash();
     init_loader();
     init_modules();
@@ -222708,7 +223418,7 @@ function checkServiceResults(services, declared, check) {
   });
   return Object.freeze(Object.fromEntries(Object.entries(services).map(([name, service2]) => [name, service2 && typeof service2 === "object" ? wrap(service2, name) : service2])));
 }
-var RefinementError, MemoryVerdictCache, verdictKey, JUDGE_SYSTEM_PROMPT, renderForJudge, JUDGE_CALL_INSTRUCTIONS, structurallyFits, preview, unsatisfiedMessage, undecidedMessage, RefinementChecker, failureFeedback, refinementCodeOf;
+var RefinementError, MemoryVerdictCache, verdictKey, JUDGE_SYSTEM_PROMPT, renderForJudge, JUDGE_CALL_INSTRUCTIONS, structurallyFits, preview2, unsatisfiedMessage, undecidedMessage, RefinementChecker, failureFeedback, refinementCodeOf;
 var init_refinement = __esm({
   "src/native/refinement.ts"() {
     "use strict";
@@ -222761,7 +223471,7 @@ var init_refinement = __esm({
         throw error;
       }
     };
-    preview = (value) => {
+    preview2 = (value) => {
       const text3 = renderForJudge(value);
       return text3.length > 400 ? `${text3.slice(0, 400)} \u2026 (${text3.length} chars)` : text3;
     };
@@ -222825,7 +223535,7 @@ var init_refinement = __esm({
           phase: context.phase,
           path: path2,
           predicate,
-          value: preview(value),
+          value: preview2(value),
           value_sha256: hexDigest(canonicalValue(value)),
           threshold: settings.threshold,
           ...settings.band ? { band: settings.band } : {},
@@ -222872,7 +223582,7 @@ var init_refinement = __esm({
               call_id: context.callId ?? null,
               path: path2,
               predicate,
-              value: preview(value),
+              value: preview2(value),
               crisp: shadowCrisp,
               nl: nl4,
               probability,
@@ -223721,7 +224431,7 @@ function moduleHost(platform) {
   return host;
 }
 function containsTaggedTemplate(node) {
-  return import_typescript17.default.isTaggedTemplateExpression(node) || !!import_typescript17.default.forEachChild(node, containsTaggedTemplate);
+  return import_typescript18.default.isTaggedTemplateExpression(node) || !!import_typescript18.default.forEachChild(node, containsTaggedTemplate);
 }
 function natlangDeclaration(record3) {
   if (record3.kind !== "natlang") return "";
@@ -223755,7 +224465,7 @@ function compileModule(record3, level, inventory, target = "default") {
   const path2 = `${FOLDER}/${record3.name}.ts`;
   const softTypes = JSON.stringify(record3.types);
   const generic = Object.values(level).some((item) => item.kind === "natlang" && !!item.generic);
-  const parsed = import_typescript17.default.createSourceFile(path2, record3.text, import_typescript17.default.ScriptTarget.ES2022, true);
+  const parsed = import_typescript18.default.createSourceFile(path2, record3.text, import_typescript18.default.ScriptTarget.ES2022, true);
   if (containsTaggedTemplate(parsed) || FOR_OF.test(record3.text) || /\bNeuralese\s*</.test(`${record3.text}
 ${softTypes}`) || generic) {
     const files2 = { [path2]: record3.text };
@@ -223768,10 +224478,10 @@ ${softTypes}`) || generic) {
     files2[`${FOLDER}/__types.d.ts`] = Object.entries(record3.types).map(([name, text3]) => `type ${name} = ${typeScriptText(text3, known)};`).join("\n") + "\n";
     files2[`${FOLDER}/types.ts`] ??= Object.entries(record3.types).map(([name, text3]) => `export type ${name} = ${typeScriptText(text3, known)};`).join("\n") + "\nexport {};\n";
     const external = /* @__PURE__ */ new Map();
-    for (const statement of parsed.statements) if (import_typescript17.default.isImportDeclaration(statement) && import_typescript17.default.isStringLiteral(statement.moduleSpecifier) && !statement.moduleSpecifier.text.startsWith(".")) {
+    for (const statement of parsed.statements) if (import_typescript18.default.isImportDeclaration(statement) && import_typescript18.default.isStringLiteral(statement.moduleSpecifier) && !statement.moduleSpecifier.text.startsWith(".")) {
       const names = external.get(statement.moduleSpecifier.text) ?? /* @__PURE__ */ new Set();
       const bindings2 = statement.importClause?.namedBindings;
-      if (bindings2 && import_typescript17.default.isNamedImports(bindings2)) for (const element of bindings2.elements) names.add((element.propertyName ?? element.name).text);
+      if (bindings2 && import_typescript18.default.isNamedImports(bindings2)) for (const element of bindings2.elements) names.add((element.propertyName ?? element.name).text);
       external.set(statement.moduleSpecifier.text, names);
     }
     files2[`${FOLDER}/__external.d.ts`] = [...external].filter(([specifier]) => !/^@natlang\//.test(specifier) && specifier !== NEUTRAL_RUNTIME_SPECIFIER).map(([specifier, names]) => `declare module ${JSON.stringify(specifier)} {
@@ -223820,10 +224530,10 @@ ${[...names].map((name) => `  export const ${name}: any;`).join("\n")}
     plans = new Map(analysis.plans.map((plan) => [`${plan.sourceSpan.start}:${plan.sourceSpan.end}`, plan]));
     checker = program.getTypeChecker();
   }
-  const output = import_typescript17.default.transpileModule(record3.text, {
+  const output = import_typescript18.default.transpileModule(record3.text, {
     fileName: `${record3.name}.ts`,
     reportDiagnostics: true,
-    compilerOptions: { target: import_typescript17.default.ScriptTarget.ES2022, module: import_typescript17.default.ModuleKind.CommonJS, esModuleInterop: true, isolatedModules: true },
+    compilerOptions: { target: import_typescript18.default.ScriptTarget.ES2022, module: import_typescript18.default.ModuleKind.CommonJS, esModuleInterop: true, isolatedModules: true },
     transformers: { before: [natlangTransformer({
       plans,
       checker,
@@ -223848,8 +224558,8 @@ ${[...names].map((name) => `  export const ${name}: any;`).join("\n")}
       browser: target === "await-restoring"
     })] }
   });
-  const errors = (output.diagnostics ?? []).filter((item) => item.category === import_typescript17.default.DiagnosticCategory.Error);
-  if (errors.length) throw new NatlangSourceError(record3.source, errors.map((item) => import_typescript17.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; "));
+  const errors = (output.diagnostics ?? []).filter((item) => item.category === import_typescript18.default.DiagnosticCategory.Error);
+  if (errors.length) throw new NatlangSourceError(record3.source, errors.map((item) => import_typescript18.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; "));
   return output.outputText;
 }
 function compiledCode(record3, level, target) {
@@ -223882,12 +224592,12 @@ function compiledCode(record3, level, target) {
   return code;
 }
 function selectedServicesModule(record3) {
-  const file = import_typescript17.default.createSourceFile(record3.source, record3.text, import_typescript17.default.ScriptTarget.ES2022, true);
+  const file = import_typescript18.default.createSourceFile(record3.source, record3.text, import_typescript18.default.ScriptTarget.ES2022, true);
   const names = /* @__PURE__ */ new Set();
   for (const statement of file.statements) {
-    if (!import_typescript17.default.isImportDeclaration(statement) || !import_typescript17.default.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "natlang:services") continue;
+    if (!import_typescript18.default.isImportDeclaration(statement) || !import_typescript18.default.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "natlang:services") continue;
     const bindings2 = statement.importClause?.namedBindings;
-    if (bindings2 && import_typescript17.default.isNamedImports(bindings2)) for (const binding of bindings2.elements)
+    if (bindings2 && import_typescript18.default.isNamedImports(bindings2)) for (const binding of bindings2.elements)
       names.add((binding.propertyName ?? binding.name).text);
     else for (const name of Object.keys(currentFrame()?.task.services ?? {})) names.add(name);
   }
@@ -224183,12 +224893,12 @@ async function moduleInstanceAsync(platform, record3, level) {
     scope.pending.delete(record3);
   }
 }
-var import_typescript17, ModuleUnavailableError, ModuleRealmChangedError, ModuleHost, moduleHosts, FOR_OF, FOLDER, moduleTarget, compiled, servicesModule;
+var import_typescript18, ModuleUnavailableError, ModuleRealmChangedError, ModuleHost, moduleHosts, FOR_OF, FOLDER, moduleTarget, compiled, servicesModule;
 var init_modules = __esm({
   "src/runtime/modules.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript17 = __toESM(require_typescript(), 1);
+    import_typescript18 = __toESM(require_typescript(), 1);
     init_context();
     init_host();
     init_inline();
@@ -227451,23 +228161,23 @@ var init_return_errors = __esm({
 
 // src/native/pseudo-call.ts
 function literal2(node) {
-  if (import_typescript18.default.isParenthesizedExpression(node)) return literal2(node.expression);
-  if (import_typescript18.default.isStringLiteral(node) || import_typescript18.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (import_typescript18.default.isNumericLiteral(node)) return Number(node.text);
-  if (import_typescript18.default.isPrefixUnaryExpression(node) && node.operator === import_typescript18.default.SyntaxKind.MinusToken && import_typescript18.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
-  if (node.kind === import_typescript18.default.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === import_typescript18.default.SyntaxKind.FalseKeyword) return false;
-  if (node.kind === import_typescript18.default.SyntaxKind.NullKeyword) return null;
-  if (import_typescript18.default.isArrayLiteralExpression(node)) {
-    const items = node.elements.map((element) => import_typescript18.default.isSpreadElement(element) ? NO_VALUE : literal2(element));
+  if (import_typescript19.default.isParenthesizedExpression(node)) return literal2(node.expression);
+  if (import_typescript19.default.isStringLiteral(node) || import_typescript19.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (import_typescript19.default.isNumericLiteral(node)) return Number(node.text);
+  if (import_typescript19.default.isPrefixUnaryExpression(node) && node.operator === import_typescript19.default.SyntaxKind.MinusToken && import_typescript19.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
+  if (node.kind === import_typescript19.default.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === import_typescript19.default.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === import_typescript19.default.SyntaxKind.NullKeyword) return null;
+  if (import_typescript19.default.isArrayLiteralExpression(node)) {
+    const items = node.elements.map((element) => import_typescript19.default.isSpreadElement(element) ? NO_VALUE : literal2(element));
     return items.includes(NO_VALUE) ? NO_VALUE : items;
   }
-  if (import_typescript18.default.isObjectLiteralExpression(node)) {
+  if (import_typescript19.default.isObjectLiteralExpression(node)) {
     const out = {};
     for (const property of node.properties) {
-      if (!import_typescript18.default.isPropertyAssignment(property)) return NO_VALUE;
+      if (!import_typescript19.default.isPropertyAssignment(property)) return NO_VALUE;
       const name = property.name;
-      const key = import_typescript18.default.isIdentifier(name) || import_typescript18.default.isStringLiteral(name) || import_typescript18.default.isNumericLiteral(name) ? name.text : void 0;
+      const key = import_typescript19.default.isIdentifier(name) || import_typescript19.default.isStringLiteral(name) || import_typescript19.default.isNumericLiteral(name) ? name.text : void 0;
       if (key === void 0) return NO_VALUE;
       const value = literal2(property.initializer);
       if (value === NO_VALUE) return NO_VALUE;
@@ -227484,24 +228194,24 @@ function literalText(text3) {
   }
   const trimmed = text3.trim();
   if (!trimmed || trimmed.length > 2e5) return void 0;
-  const source2 = import_typescript18.default.createSourceFile("value.ts", `(${trimmed}
-)`, import_typescript18.default.ScriptTarget.ES2022, false, import_typescript18.default.ScriptKind.TS);
+  const source2 = import_typescript19.default.createSourceFile("value.ts", `(${trimmed}
+)`, import_typescript19.default.ScriptTarget.ES2022, false, import_typescript19.default.ScriptKind.TS);
   if ((source2.parseDiagnostics ?? []).length) return void 0;
   if (source2.statements.length !== 1) return void 0;
   const statement = source2.statements[0];
-  if (!import_typescript18.default.isExpressionStatement(statement)) return void 0;
+  if (!import_typescript19.default.isExpressionStatement(statement)) return void 0;
   const value = literal2(statement.expression);
   return value === NO_VALUE ? void 0 : { value };
 }
 function writtenReturnResult(text3) {
   const trimmed = text3.trim().replace(/^```(?:ts|typescript|js|javascript)?\s*\n([\s\S]*?)\n```$/, "$1").trim();
   if (!/^return_result\s*\(/.test(trimmed) || trimmed.length > 2e5) return void 0;
-  const source2 = import_typescript18.default.createSourceFile("reply.ts", trimmed, import_typescript18.default.ScriptTarget.ES2022, false, import_typescript18.default.ScriptKind.TS);
+  const source2 = import_typescript19.default.createSourceFile("reply.ts", trimmed, import_typescript19.default.ScriptTarget.ES2022, false, import_typescript19.default.ScriptKind.TS);
   if (source2.statements.length !== 1) return void 0;
   const statement = source2.statements[0];
-  if (!import_typescript18.default.isExpressionStatement(statement) || !import_typescript18.default.isCallExpression(statement.expression)) return void 0;
+  if (!import_typescript19.default.isExpressionStatement(statement) || !import_typescript19.default.isCallExpression(statement.expression)) return void 0;
   const call = statement.expression;
-  if (!import_typescript18.default.isIdentifier(call.expression) || call.expression.text !== "return_result" || call.arguments.length !== 1) return void 0;
+  if (!import_typescript19.default.isIdentifier(call.expression) || call.expression.text !== "return_result" || call.arguments.length !== 1) return void 0;
   const request = literal2(call.arguments[0]);
   if (!request || typeof request !== "object" || Array.isArray(request)) return void 0;
   const fields = request;
@@ -227509,12 +228219,12 @@ function writtenReturnResult(text3) {
   if (fields.reason !== void 0 && typeof fields.reason !== "string") return void 0;
   return fields;
 }
-var import_typescript18, NO_VALUE;
+var import_typescript19, NO_VALUE;
 var init_pseudo_call = __esm({
   "src/native/pseudo-call.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript18 = __toESM(require_typescript(), 1);
+    import_typescript19 = __toESM(require_typescript(), 1);
     NO_VALUE = /* @__PURE__ */ Symbol("not a literal");
   }
 });
@@ -227550,23 +228260,23 @@ function isPlainJson(value, depth2 = 0) {
   return (proto === Object.prototype || proto === null) && Object.values(value).every((item) => isPlainJson(item, depth2 + 1));
 }
 function computedNeuraleseMarkerConcatenation(code, codebase, isNeuraleseType, neuraleseResult) {
-  const source2 = import_typescript19.default.createSourceFile("natlang-eval.ts", code, import_typescript19.default.ScriptTarget.Latest, true, import_typescript19.default.ScriptKind.TS);
-  const partsOf2 = (expression) => import_typescript19.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript19.default.SyntaxKind.PlusToken ? [...partsOf2(expression.left), ...partsOf2(expression.right)] : [expression];
+  const source2 = import_typescript20.default.createSourceFile("natlang-eval.ts", code, import_typescript20.default.ScriptTarget.Latest, true, import_typescript20.default.ScriptKind.TS);
+  const partsOf2 = (expression) => import_typescript20.default.isBinaryExpression(expression) && expression.operatorToken.kind === import_typescript20.default.SyntaxKind.PlusToken ? [...partsOf2(expression.left), ...partsOf2(expression.right)] : [expression];
   const hasComputedMarker = (expression) => {
-    if (import_typescript19.default.isTemplateExpression(expression)) {
+    if (import_typescript20.default.isTemplateExpression(expression)) {
       const templateText = expression.head.text + expression.templateSpans.map((span) => span.literal.text).join("");
       return expression.templateSpans.length > 0 && templateText.includes("<|neuralese|>") && templateText.includes("<|/neuralese|>");
     }
     const parts = partsOf2(expression);
-    const literalText2 = parts.filter(import_typescript19.default.isStringLiteralLike).map((part) => part.text);
+    const literalText2 = parts.filter(import_typescript20.default.isStringLiteralLike).map((part) => part.text);
     const hasOpen = literalText2.some((text3) => text3.includes("<|neuralese|>"));
     const hasClose = literalText2.some((text3) => text3.includes("<|/neuralese|>"));
-    const hasComputedPart = parts.some((part) => !import_typescript19.default.isStringLiteralLike(part) && !import_typescript19.default.isNoSubstitutionTemplateLiteral(part));
+    const hasComputedPart = parts.some((part) => !import_typescript20.default.isStringLiteralLike(part) && !import_typescript20.default.isNoSubstitutionTemplateLiteral(part));
     return hasOpen && hasClose && hasComputedPart;
   };
   const expressionPath = (expression) => {
-    if (import_typescript19.default.isIdentifier(expression)) return [expression.text];
-    if (import_typescript19.default.isPropertyAccessExpression(expression)) {
+    if (import_typescript20.default.isIdentifier(expression)) return [expression.text];
+    if (import_typescript20.default.isPropertyAccessExpression(expression)) {
       const base = expressionPath(expression.expression);
       return base ? [...base, expression.name.text] : void 0;
     }
@@ -227591,29 +228301,29 @@ function computedNeuraleseMarkerConcatenation(code, codebase, isNeuraleseType, n
   let found;
   const computedVariables = /* @__PURE__ */ new Set();
   const collectComputedVariables = (node) => {
-    if (import_typescript19.default.isVariableDeclaration(node) && import_typescript19.default.isIdentifier(node.name) && node.initializer && hasComputedMarker(node.initializer))
+    if (import_typescript20.default.isVariableDeclaration(node) && import_typescript20.default.isIdentifier(node.name) && node.initializer && hasComputedMarker(node.initializer))
       computedVariables.add(node.name.text);
-    import_typescript19.default.forEachChild(node, collectComputedVariables);
+    import_typescript20.default.forEachChild(node, collectComputedVariables);
   };
   collectComputedVariables(source2);
   const visit = (node) => {
     if (found) return;
-    if (import_typescript19.default.isReturnStatement(node) && node.expression && neuraleseResult && (hasComputedMarker(node.expression) || import_typescript19.default.isIdentifier(node.expression) && computedVariables.has(node.expression.text))) {
+    if (import_typescript20.default.isReturnStatement(node) && node.expression && neuraleseResult && (hasComputedMarker(node.expression) || import_typescript20.default.isIdentifier(node.expression) && computedVariables.has(node.expression.text))) {
       found = node.expression;
       return;
     }
-    if (import_typescript19.default.isVariableDeclaration(node) && node.type && isNeuraleseType(node.type.getText(source2)) && node.initializer && hasComputedMarker(node.initializer)) {
+    if (import_typescript20.default.isVariableDeclaration(node) && node.type && isNeuraleseType(node.type.getText(source2)) && node.initializer && hasComputedMarker(node.initializer)) {
       found = node.initializer;
       return;
     }
-    if (import_typescript19.default.isCallExpression(node)) {
+    if (import_typescript20.default.isCallExpression(node)) {
       const parameters = callableArgumentTypes(node.expression);
-      for (const [index, argument] of node.arguments.entries()) if (parameters?.[index] && isNeuraleseType(parameters[index]) && (hasComputedMarker(argument) || import_typescript19.default.isIdentifier(argument) && computedVariables.has(argument.text))) {
+      for (const [index, argument] of node.arguments.entries()) if (parameters?.[index] && isNeuraleseType(parameters[index]) && (hasComputedMarker(argument) || import_typescript20.default.isIdentifier(argument) && computedVariables.has(argument.text))) {
         found = argument;
         return;
       }
     }
-    import_typescript19.default.forEachChild(node, visit);
+    import_typescript20.default.forEachChild(node, visit);
   };
   visit(source2);
   return found;
@@ -228163,7 +228873,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, PROTECT_LIST_ERROR, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript20, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, PROTECT_LIST_ERROR, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -228200,7 +228910,7 @@ var init_runtime2 = __esm({
     init_pseudo_call();
     init_staged_result();
     init_model_facing();
-    import_typescript19 = __toESM(require_typescript(), 1);
+    import_typescript20 = __toESM(require_typescript(), 1);
     init_hash();
     SELF_CALL_ADVICE = "Do what its instructions ask here. For a judgment, decide it yourself from the inputs and return the answer with return_result; use eval only for exact work the instructions need.";
     oneLine = (value, holder, liveIdentity, untrusted2) => renderValue(value, { holder, budget: 80, liveIdentity, untrusted: untrusted2 });
@@ -233790,627 +234500,6 @@ var init_fusion = __esm({
   }
 });
 
-// src/calls/graph-custody.ts
-function graphCustodyDigest(taskId, callId, parentCallId, children2, effects) {
-  const value = {
-    schema: "natlang.call-graph-chronology/1",
-    task_id: taskId,
-    call_id: callId,
-    parent_call_id: parentCallId,
-    child_call_ids: children2,
-    effects
-  };
-  const text3 = JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
-  return hexDigest(text3);
-}
-var init_graph_custody = __esm({
-  "src/calls/graph-custody.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    init_hash();
-  }
-});
-
-// src/calls/snapshot.ts
-function plainPrototype(prototype) {
-  if (prototype === null || prototype === Object.prototype) return true;
-  if (Object.getPrototypeOf(prototype) !== null) return false;
-  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
-  return typeof constructor === "function" && Object.getOwnPropertyDescriptor(constructor, "prototype")?.value === prototype && Function.prototype.toString.call(constructor) === objectConstructorSource;
-}
-function portable(value, seen, depth2) {
-  if (depth2 > 64) return false;
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object" || seen.has(value)) return false;
-  seen.add(value);
-  try {
-    if (Array.isArray(value)) return value.every((item) => portable(item, seen, depth2 + 1));
-    if (!plainPrototype(Object.getPrototypeOf(value))) return false;
-    return Object.entries(value).every(([, item]) => item !== void 0 && portable(item, seen, depth2 + 1));
-  } finally {
-    seen.delete(value);
-  }
-}
-function snapshot(value, maxBytes, excluded2 = false) {
-  if (excluded2) return { ref: { complete: false, reason: "excluded", type: typeLabel(value) } };
-  if (value === void 0) value = null;
-  if (!portable(value, /* @__PURE__ */ new Set(), 0)) {
-    let shown;
-    try {
-      shown = preview2(String(value));
-    } catch {
-    }
-    return { ref: { complete: false, reason: "nonportable", type: typeLabel(value), ...shown ? { preview: shown } : {} } };
-  }
-  const text3 = JSON.stringify(value);
-  const bytes2 = new TextEncoder().encode(text3).byteLength;
-  const hash2 = hexDigest(text3);
-  if (bytes2 > maxBytes) return { ref: { complete: false, reason: "oversize", hash: hash2, bytes: bytes2, type: typeLabel(value), preview: preview2(text3) } };
-  return { ref: { complete: true, hash: hash2, bytes: bytes2 }, text: text3 };
-}
-function tokens(text3) {
-  return [...new Set(text3.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])].slice(0, MAX_TOKENS_PER_STRING);
-}
-function inputFeatures(inputs) {
-  const out = {};
-  const put = (key, value) => {
-    if (Object.keys(out).length < MAX_FEATURES) out[key] = value;
-  };
-  const visit = (value, path2, depth2) => {
-    if (depth2 > 4 || Object.keys(out).length >= MAX_FEATURES) return;
-    if (value === null || value === void 0) {
-      put(`null:${path2}`, true);
-      return;
-    }
-    if (typeof value === "string") {
-      put(`len:${path2}`, value.length);
-      if (value.length <= CATEGORICAL_CHARS) put(`str:${path2}`, value);
-      for (const token of tokens(value)) put(`tok:${path2}:${token}`, true);
-      for (const [name, pattern2] of Object.entries(VALUE_CLASSES)) if (pattern2.test(value)) put(`cls:${path2}:${name}`, true);
-      return;
-    }
-    if (typeof value === "number") {
-      put(`num:${path2}`, value);
-      return;
-    }
-    if (typeof value === "boolean") {
-      put(`bool:${path2}`, value);
-      return;
-    }
-    if (Array.isArray(value)) {
-      put(`arr:${path2}`, value.length);
-      value.slice(0, 3).forEach((item, index) => visit(item, `${path2}[${index}]`, depth2 + 1));
-      return;
-    }
-    if (typeof value === "object") {
-      const prototype = Object.getPrototypeOf(value);
-      if (prototype !== Object.prototype && prototype !== null) {
-        put(`type:${path2}`, typeLabel(value));
-        return;
-      }
-      put(`keys:${path2}`, Object.keys(value).sort().join(","));
-      for (const [key, item] of Object.entries(value))
-        visit(item, /^[A-Za-z_$][\w$]*$/.test(key) ? `${path2}.${key}` : `${path2}[${JSON.stringify(key)}]`, depth2 + 1);
-    }
-  };
-  for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
-  return out;
-}
-var typeLabel, objectConstructorSource, preview2, MAX_FEATURES, MAX_TOKENS_PER_STRING, CATEGORICAL_CHARS, VALUE_CLASSES;
-var init_snapshot = __esm({
-  "src/calls/snapshot.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    init_hash();
-    typeLabel = (value) => {
-      if (value === null) return "null";
-      if (Array.isArray(value)) return "array";
-      if (typeof value !== "object") return typeof value;
-      const name = value.constructor?.name;
-      return name && name !== "Object" ? name : "object";
-    };
-    objectConstructorSource = Function.prototype.toString.call(Object);
-    preview2 = (text3) => text3.length > 200 ? `${text3.slice(0, 200)}\u2026` : text3;
-    MAX_FEATURES = 600;
-    MAX_TOKENS_PER_STRING = 120;
-    CATEGORICAL_CHARS = 48;
-    VALUE_CLASSES = {
-      number: /^\s*-?\d+(?:\.\d+)?\s*$/,
-      date: /\b\d{4}-\d{2}-\d{2}\b/,
-      url: /\bhttps?:\/\/\S+/i,
-      email: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/,
-      path: /(?:^|\s)(?:\.{0,2}\/)?[\w.-]+\/[\w./-]+/,
-      multiline: /\n/,
-      empty: /^\s*$/
-    };
-  }
-});
-
-// src/calls/normalize.ts
-function inputLeaves(inputs) {
-  const leaves = /* @__PURE__ */ new Map();
-  const put = (key, path2) => {
-    const known = leaves.get(key);
-    if (!known || path2.length < known.length) leaves.set(key, path2);
-  };
-  const visit = (value, path2, depth2) => {
-    if (depth2 > 6) return;
-    if (typeof value === "string" || typeof value === "number") {
-      put(`${typeof value}:${value}`, path2);
-      if (typeof value === "string") {
-        for (const part of value.match(/[\p{L}\p{N}_-]+/gu) ?? [])
-          if (/\d/.test(part) || part.length >= 4) put(`part:${part.toLowerCase()}`, path2);
-      }
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.slice(0, 50).forEach((item, index) => visit(item, `${path2}[${index}]`, depth2 + 1));
-      return;
-    }
-    if (value && typeof value === "object" && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null))
-      for (const [key, item] of Object.entries(value).slice(0, 100))
-        visit(item, /^[A-Za-z_$][\w$]*$/.test(key) ? `${path2}.${key}` : `${path2}[${JSON.stringify(key)}]`, depth2 + 1);
-  };
-  for (const [name, value] of Object.entries(inputs)) visit(value, name, 0);
-  return leaves;
-}
-function replaceParts(text3, leaves) {
-  return text3.replace(/[\p{L}\p{N}_-]+/gu, (word) => {
-    const path2 = /\d/.test(word) || word.length >= 4 ? leaves.get(`part:${word.toLowerCase()}`) : void 0;
-    return path2 ? `\${$part.${path2}}` : word;
-  });
-}
-function normalizeProgram(code, inputs = {}, leaves = inputLeaves(inputs)) {
-  const scanner = import_typescript20.default.createScanner(import_typescript20.default.ScriptTarget.ES2022, true, import_typescript20.default.LanguageVariant.Standard, code);
-  const tokens2 = [];
-  const braces = [];
-  for (let kind = scanner.scan(); kind !== import_typescript20.default.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
-    if (kind === import_typescript20.default.SyntaxKind.OpenBraceToken && braces.length) braces[braces.length - 1]++;
-    else if (kind === import_typescript20.default.SyntaxKind.CloseBraceToken && braces.length) {
-      if (braces.at(-1) > 0) braces[braces.length - 1]--;
-      else {
-        braces.pop();
-        kind = scanner.reScanTemplateToken(false);
-      }
-    }
-    if (kind === import_typescript20.default.SyntaxKind.TemplateHead || kind === import_typescript20.default.SyntaxKind.TemplateMiddle) braces.push(0);
-    tokens2.push({ kind, text: scanner.getTokenText(), value: scanner.getTokenValue() });
-  }
-  const renamed = /* @__PURE__ */ new Map();
-  const out = [];
-  let previous;
-  for (let index = 0; index < tokens2.length; index++) {
-    const token = tokens2[index];
-    if (token.kind === import_typescript20.default.SyntaxKind.Identifier && token.text === "console" && tokens2[index + 1]?.kind === import_typescript20.default.SyntaxKind.DotToken && tokens2[index + 3]?.kind === import_typescript20.default.SyntaxKind.OpenParenToken) {
-      let depth2 = 0, end = index + 3;
-      for (; end < tokens2.length; end++) {
-        if (tokens2[end].kind === import_typescript20.default.SyntaxKind.OpenParenToken) depth2++;
-        if (tokens2[end].kind === import_typescript20.default.SyntaxKind.CloseParenToken && --depth2 === 0) break;
-      }
-      index = tokens2[end + 1]?.kind === import_typescript20.default.SyntaxKind.SemicolonToken ? end + 1 : end;
-      continue;
-    }
-    if (DROPPED.has(token.kind)) continue;
-    const next2 = tokens2[index + 1]?.kind;
-    if (token.kind === import_typescript20.default.SyntaxKind.Identifier && (previous === void 0 || previous === import_typescript20.default.SyntaxKind.SemicolonToken || previous === import_typescript20.default.SyntaxKind.CloseBraceToken) && (next2 === void 0 || next2 === import_typescript20.default.SyntaxKind.SemicolonToken)) {
-      index++;
-      continue;
-    }
-    let text3 = token.text;
-    if (token.kind === import_typescript20.default.SyntaxKind.Identifier) {
-      if (previous !== void 0 && DECLARING.has(previous) && !renamed.has(text3)) renamed.set(text3, `v${renamed.size}`);
-      const name = renamed.get(text3);
-      if (name && previous !== import_typescript20.default.SyntaxKind.DotToken) text3 = name;
-    } else if (token.kind === import_typescript20.default.SyntaxKind.StringLiteral || token.kind === import_typescript20.default.SyntaxKind.NoSubstitutionTemplateLiteral) {
-      const path2 = leaves.get(`string:${token.value}`) ?? leaves.get(`part:${token.value.toLowerCase()}`);
-      text3 = path2 ? `$${leaves.get(`string:${token.value}`) ? "in" : "part"}.${path2}` : JSON.stringify(replaceParts(token.value, leaves));
-    } else if (TEMPLATE_TEXT.has(token.kind)) {
-      text3 = replaceParts(text3, leaves);
-    } else if (token.kind === import_typescript20.default.SyntaxKind.NumericLiteral) {
-      const number = Number(token.value);
-      const path2 = leaves.get(`number:${number}`) ?? leaves.get(`part:${token.value}`);
-      if (path2 && number !== 0 && number !== 1) text3 = `$${leaves.get(`number:${number}`) ? "in" : "part"}.${path2}`;
-    } else if (token.kind === import_typescript20.default.SyntaxKind.SemicolonToken && (previous === import_typescript20.default.SyntaxKind.SemicolonToken || previous === void 0)) continue;
-    out.push(text3);
-    previous = token.kind;
-  }
-  while (out.at(-1) === ";") out.pop();
-  return out.join(" ");
-}
-function approachHash(evals, inputs) {
-  const leaves = inputLeaves(inputs);
-  const programs = evals.map((code) => normalizeProgram(code, inputs, leaves)).filter(Boolean);
-  if (!programs.length) return "answer-only";
-  return hexDigest(programs.join("\n;;\n")).slice(0, 24);
-}
-var import_typescript20, DECLARING, DROPPED, TEMPLATE_TEXT;
-var init_normalize = __esm({
-  "src/calls/normalize.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    import_typescript20 = __toESM(require_typescript(), 1);
-    init_hash();
-    DECLARING = /* @__PURE__ */ new Set([import_typescript20.default.SyntaxKind.ConstKeyword, import_typescript20.default.SyntaxKind.LetKeyword, import_typescript20.default.SyntaxKind.VarKeyword, import_typescript20.default.SyntaxKind.FunctionKeyword]);
-    DROPPED = /* @__PURE__ */ new Set([import_typescript20.default.SyntaxKind.AwaitKeyword, import_typescript20.default.SyntaxKind.ReturnKeyword]);
-    TEMPLATE_TEXT = /* @__PURE__ */ new Set([
-      import_typescript20.default.SyntaxKind.TemplateHead,
-      import_typescript20.default.SyntaxKind.TemplateMiddle,
-      import_typescript20.default.SyntaxKind.TemplateTail,
-      import_typescript20.default.SyntaxKind.NoSubstitutionTemplateLiteral
-    ]);
-  }
-});
-
-// src/calls/types.ts
-var CALLS_VERSION, DEFAULT_SETTINGS;
-var init_types3 = __esm({
-  "src/calls/types.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    CALLS_VERSION = "natlang.calls/1";
-    DEFAULT_SETTINGS = {
-      maxValueBytes: 1 << 20,
-      maxStoreBytes: 50 * 2 ** 30,
-      minFreeBytes: 20 * 2 ** 30,
-      specialization: "on",
-      auditRate: 0.05,
-      acceptanceBound: 0.05,
-      promotionComparisons: 10,
-      promotionLiveComparisons: 3,
-      minCalls: 20,
-      promotionPolicy: "crisp",
-      targetPolicy: "crisp",
-      declinePolicy: "crisp"
-    };
-  }
-});
-
-// src/calls/recorder.ts
-function reportStoreFailure(store, error) {
-  if (reported.has(store)) return;
-  reported.add(store);
-  console.warn(`natlang: call recording failed and is skipped for this store: ${error instanceof Error ? error.message : String(error)}`);
-}
-function definitionKey(definition) {
-  return hexDigest(JSON.stringify({
-    id: definition.id,
-    body: definition.body,
-    params: definition.params,
-    returns: definition.returns,
-    types: definition.types,
-    subtype: definition.subtype,
-    readout: definition.readout ?? null,
-    ...definition.declaredParameters ? { declaredParameters: true } : {}
-  })).slice(0, 32);
-}
-function interfaceHash(codebase) {
-  const entries = [];
-  const visit = (level, prefix) => {
-    for (const [name, item] of Object.entries(level)) {
-      if (!item || typeof item !== "object" || !("kind" in item)) continue;
-      if (item.kind === "namespace") {
-        visit(item.codebase, `${prefix}${name}.`);
-        continue;
-      }
-      entries.push(`${prefix}${name}=${item.kind}@${item.revision}`);
-      visit(item.codebase, `${prefix}${name}/`);
-    }
-  };
-  visit(codebase, "");
-  return hexDigest(entries.sort().join("\n")).slice(0, 32);
-}
-function excluded(patterns, definition, argument) {
-  if (!patterns?.length) return false;
-  const glob = (pattern2) => new RegExp(`^${pattern2.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\0").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*").replace(/\?/g, ".")}$`);
-  return patterns.some((pattern2) => {
-    if (definition.source && glob(pattern2).test(definition.source)) return true;
-    if (argument === void 0) return false;
-    return pattern2 === `${definition.name}.${argument}` || definition.source !== null && pattern2 === `${definition.source}:${argument}`;
-  });
-}
-function codeRevisions(events, ref) {
-  const revisions2 = events.filter((event) => event.kind === "code_revision" && typeof event.text === "string").map((event) => ({
-    function: String(event.function),
-    source: String(event.source),
-    revision: Number(event.revision),
-    originalHash: String(event.originalHash),
-    effectiveHash: String(event.effectiveHash),
-    patchedHash: String(event.patchedHash),
-    patch: event.patch,
-    after: ref(event.text)
-  }));
-  return revisions2.length ? { code_revisions: revisions2 } : {};
-}
-var reported, CallCapture;
-var init_recorder = __esm({
-  "src/calls/recorder.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    init_hash();
-    init_graph_custody();
-    init_snapshot();
-    init_normalize();
-    init_types3();
-    reported = /* @__PURE__ */ new WeakSet();
-    CallCapture = class {
-      constructor(store, settings, base) {
-        this.store = store;
-        this.settings = settings;
-        this.base = base;
-        this.executor = { kind: "agent", model_id: base.model.id, model_revision: base.model.revision };
-      }
-      store;
-      settings;
-      base;
-      blobs = /* @__PURE__ */ new Map();
-      effects = [];
-      pending = [];
-      order = 0;
-      started = Date.now();
-      startedAt = (/* @__PURE__ */ new Date()).toISOString();
-      inputs = {};
-      captures = {};
-      captureWrites = [];
-      features = {};
-      /** Exact host inputs by name, for features and dispatch. */
-      hostInputs = {};
-      executor;
-      auditOf = null;
-      folder = null;
-      /** Tell the store the call is running. */
-      announce() {
-        try {
-          const definition = this.base.definition;
-          this.store.begin?.({
-            callId: this.base.callId,
-            parentCallId: this.base.parentCallId,
-            parentActionIndex: this.base.parentActionIndex,
-            taskId: this.base.taskId,
-            programId: this.base.programId,
-            programRoot: this.base.programRoot,
-            ...this.base.runLabel ? { runLabel: this.base.runLabel } : {},
-            definition: {
-              id: definition.id,
-              name: definition.name,
-              source: definition.source,
-              key: definition.key,
-              interface: definition.interface,
-              site: definition.site
-            },
-            modelId: this.base.model.id,
-            startedAt: this.startedAt,
-            auditOf: this.auditOf
-          });
-          this.announced = true;
-          this.backgroundCheckpoint();
-        } catch (error) {
-          reportStoreFailure(this.store, error);
-        }
-      }
-      /** The call ends without a record: its row of a running call is removed (a strict tier attempt that declined). */
-      discard() {
-        if (this.watcher) clearInterval(this.watcher);
-        try {
-          this.store.discard?.(this.base.callId);
-        } catch (error) {
-          reportStoreFailure(this.store, error);
-        }
-      }
-      watcher;
-      checkpointOrdinal = 0;
-      announced = false;
-      eventSource;
-      /** The last exact observation, explicitly not a completed record. */
-      checkpoint() {
-        if (!this.announced || this.base.checkpoints === false || !this.store.checkpoint) return;
-        const state = {
-          version: "natlang.call-checkpoint/1",
-          ordinal: this.checkpointOrdinal++,
-          call_id: this.base.callId,
-          parent_call_id: this.base.parentCallId,
-          parent_action_index: this.base.parentActionIndex,
-          task_id: this.base.taskId,
-          program_id: this.base.programId,
-          program_root: this.base.programRoot,
-          definition: this.base.definition,
-          executor: { ...this.executor },
-          started_at: this.startedAt,
-          inputs: { ...this.inputs },
-          captures: { ...this.captures },
-          effects: this.completedEffects(),
-          capture_writes: [...this.captureWrites],
-          pending_effects: this.pending.map((row) => ({ ...row }))
-        };
-        const events = this.eventSource?.();
-        try {
-          const persisted = this.store.checkpoint(
-            this.base.callId,
-            state,
-            new Map(this.blobs),
-            events?.length ? events.map((event) => JSON.stringify(event)).join("\n") + "\n" : void 0
-          );
-          if (persisted) return persisted.catch((error) => {
-            if (this.store.checkpointRequired) throw error;
-            reportStoreFailure(this.store, error);
-          });
-        } catch (error) {
-          if (this.store.checkpointRequired) throw error;
-          reportStoreFailure(this.store, error);
-        }
-      }
-      backgroundCheckpoint() {
-        try {
-          const pending = this.checkpoint();
-          if (pending) void pending.catch((error) => reportStoreFailure(this.store, error));
-        } catch (error) {
-          reportStoreFailure(this.store, error);
-        }
-      }
-      /** While the call runs, write its trace events so far every `intervalMs`, so a long call can be inspected live. */
-      watch(events, intervalMs = 3e4) {
-        this.eventSource = events;
-        if (!this.store.progress) return;
-        let written = 0;
-        this.watcher = setInterval(() => {
-          const current = events();
-          if (current.length === written) return;
-          written = current.length;
-          try {
-            this.store.progress(this.base.callId, current.map((event) => JSON.stringify(event)).join("\n") + "\n");
-          } catch (error) {
-            reportStoreFailure(this.store, error);
-          }
-        }, intervalMs);
-        this.watcher.unref?.();
-      }
-      /** Snapshot a value into this record's blobs. */
-      ref(value, excludedValue = false) {
-        const taken = snapshot(value, this.settings.maxValueBytes, excludedValue);
-        if (taken.text !== void 0 && taken.ref.complete) this.blobs.set(taken.ref.hash, taken.text);
-        return taken.ref;
-      }
-      setInputs(values, captures = {}) {
-        const definition = { name: this.base.definition.name, source: this.base.definition.source };
-        this.hostInputs = { ...captures, ...values };
-        this.inputs = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, this.ref(value, excluded(this.base.exclude, definition, name))]));
-        this.captures = Object.fromEntries(Object.entries(captures).map(([name, value]) => [name, this.ref(value, excluded(this.base.exclude, definition, name))]));
-        const visible = Object.fromEntries(Object.entries(this.hostInputs).filter(([name]) => !excluded(this.base.exclude, definition, name)));
-        try {
-          this.features = inputFeatures(visible);
-        } catch {
-          this.features = {};
-        }
-        this.backgroundCheckpoint();
-      }
-      /**
-       * A directory reducer's folder as it was when the call started: each file's text by hash, so a replay can rebuild it.
-       * A folder larger than sixteen value bounds is recorded by its listing only.
-       */
-      setFolderInput(folder2) {
-        try {
-          const listing = folder2.listFiles("");
-          const total = listing.reduce((sum, entry) => sum + entry.bytes, 0);
-          if (total > 16 * this.settings.maxValueBytes) {
-            this.inputs.folder = {
-              complete: false,
-              reason: "oversize",
-              type: "Folder",
-              bytes: total,
-              preview: listing.slice(0, 20).map((entry) => entry.path).join(", ")
-            };
-            return;
-          }
-          const decoder = new TextDecoder("utf-8", { fatal: true });
-          const files2 = {};
-          for (const entry of listing) {
-            const bytes2 = folder2.readBytesSync(entry.path);
-            let text3;
-            try {
-              text3 = decoder.decode(bytes2);
-            } catch {
-              files2[entry.path] = { complete: false, reason: "nonportable", type: "bytes", bytes: bytes2.byteLength };
-              continue;
-            }
-            files2[entry.path] = this.ref(text3);
-          }
-          this.inputs.folder = this.ref({ $folder: files2 });
-        } catch (error) {
-          this.inputs.folder = { complete: false, reason: "nonportable", type: "Folder", preview: error instanceof Error ? error.message : String(error) };
-        }
-      }
-      /** One recording-services event (`native/effects.ts`), with its exact arguments and result. */
-      effect(event, by2 = "agent") {
-        if (event.phase === "requested") {
-          this.pending.push({ service: event.service, method: event.method, args: this.ref(event.exact?.args ?? []), by: by2, order: this.order++, seq: event.seq, graph_order: event.graph_order });
-          this.backgroundCheckpoint();
-          return;
-        }
-        const index = event.seq !== void 0 ? this.pending.findIndex((item) => item.seq === event.seq) : this.pending.findIndex((item) => item.service === event.service && item.method === event.method);
-        const started = index >= 0 ? this.pending.splice(index, 1)[0] : { service: event.service, method: event.method, args: this.ref([]), by: by2, order: this.order++ };
-        const { seq: _seq, ...effect } = started;
-        this.effects.push({
-          ...effect,
-          ...event.phase === "completed" ? { result: this.ref(event.exact?.result) } : { error: event.error ?? "failed" },
-          ...event.exact?.async !== void 0 ? { async: event.exact.async } : {}
-        });
-        if (event.exact?.async) return this.checkpoint();
-        this.backgroundCheckpoint();
-      }
-      /** Effects that completed so far, in the order they started. */
-      completedEffects(by2) {
-        return this.effects.filter((effect) => !by2 || effect.by === by2).sort((a, b) => a.order - b.order);
-      }
-      /** Write the record. Never throws. */
-      finish(result) {
-        if (this.watcher) clearInterval(this.watcher);
-        try {
-          const events = result.events;
-          const actions = events.filter((event) => event.kind === "action" && event.name === "eval").map((event) => {
-            const code = event.arguments?.code;
-            return { code: typeof code === "string" ? code : JSON.stringify(code ?? null), ok: !["error", "rejected"].includes(String(event.outcome)) };
-          });
-          const evals = actions.map((action) => action.code);
-          const requests = events.filter((event) => event.kind === "model_request" && event.phase === "end" || event.kind === "decision_readout" && event.phase === "scored");
-          const definition = this.base.definition;
-          const output = result.hasOutput ? this.ref(
-            result.output,
-            excluded(this.base.exclude, { name: definition.name, source: definition.source }, "return")
-          ) : null;
-          const effects = [...this.effects, ...this.pending.map(({ seq: _seq, ...item }) => ({ ...item, error: "did not finish" }))].sort((a, b) => a.order - b.order);
-          const record3 = {
-            version: CALLS_VERSION,
-            call_id: this.base.callId,
-            parent_call_id: this.base.parentCallId,
-            parent_action_index: this.base.parentActionIndex,
-            task_id: this.base.taskId,
-            program_id: this.base.programId,
-            ...this.base.runLabel ? { run_label: this.base.runLabel } : {},
-            build_hash: this.base.buildHash,
-            program_root: this.base.programRoot,
-            definition,
-            executor: this.executor,
-            inputs: this.inputs,
-            captures: this.captures,
-            capture_writes: this.captureWrites,
-            output,
-            outcome: result.outcome,
-            detail: result.detail.slice(0, 4e3),
-            started_at: this.startedAt,
-            ended_at: (/* @__PURE__ */ new Date()).toISOString(),
-            ...result.graphChildren ? { graph_custody: {
-              schema: "natlang.call-graph-chronology/1",
-              task_id: this.base.taskId,
-              child_call_ids: result.graphChildren,
-              sha256: graphCustodyDigest(this.base.taskId, this.base.callId, this.base.parentCallId, result.graphChildren, effects)
-            } } : {},
-            effects,
-            folder: this.folder,
-            ...result.outcome === "done" ? codeRevisions(events, (text3) => this.ref(text3)) : {},
-            approach: { evals, hash: this.executor.kind === "agent" && result.outcome === "done" ? approachHash(actions.filter((action) => action.ok).map((action) => action.code), this.hostInputs) : null },
-            cost: {
-              model_requests: requests.length,
-              turns: requests.length,
-              evals: evals.length,
-              wall_ms: Date.now() - this.started,
-              tokens_in: requests.reduce((sum, event) => sum + (Number(event.prompt_tokens) || 0), 0),
-              tokens_out: requests.reduce((sum, event) => sum + (Number(event.completion_tokens) || 0), 0)
-            },
-            features: this.features,
-            audit_of: this.auditOf,
-            events: null
-          };
-          this.store.record(record3, this.blobs, events.length ? events.map((event) => JSON.stringify(event)).join("\n") + "\n" : void 0);
-          return record3;
-        } catch (error) {
-          reportStoreFailure(this.store, error);
-          return void 0;
-        }
-      }
-    };
-  }
-});
-
 // src/calls/evidence.ts
 function crispPolicy(summary) {
   const { evidence: e10, rule } = summary;
@@ -234668,7 +234757,7 @@ var init_tiers = __esm({
     init_dispatch();
     init_refinement();
     init_evidence();
-    init_types3();
+    init_types2();
     ModelTier = class {
       constructor(level, model, check, shadowable = false) {
         this.level = level;
@@ -236695,7 +236784,7 @@ function moduleValue(record3, level, bound, home) {
       if (typeof target !== "function") throw new TypeError(
         `Module ${record3.source} has no callable ${exportName} export`
       );
-      return target(...args);
+      return invokeNativeEntry(record3, exportName, args, () => target(...args));
     };
     const value = instance();
     const result = value instanceof Promise ? value.then(invokeExport) : invokeExport(value);
@@ -236774,6 +236863,7 @@ var init_callable = __esm({
   "src/runtime/callable.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_native_entry();
     init_intrinsics();
     init_scoped_fs();
     init_context();
@@ -258458,6 +258548,7 @@ ${item.detail.split("\n").map((line) => `  ${line}`).join("\n")}` : "") + (item.
 
 // src/runtime/virtual-project.ts
 init_define_NATLANG_TS_LIBS();
+init_native_entry();
 init_runtime_specifier();
 init_loader();
 init_source_path();
@@ -258540,12 +258631,12 @@ function loadVirtualNatlang(files2, path2, root2 = "/project", platform) {
 function loadVirtualCallables(files2, dir = "", root2 = "/project", platform) {
   return callableTree(loadCallableFolder(dir ? `${root2}/${dir}` : root2, virtualSourceFiles(files2, root2)), void 0, platform);
 }
-function compileVirtualProject(project, runtime, options) {
-  const { platform } = options;
-  const root2 = project.root ?? "/project";
-  const files2 = virtualProjectFiles(project.files, root2);
-  const specifiers = options.runtimeSpecifiers ?? ["@natlang/browser", "@natlang/node"];
-  const result = compileProject({
+function compileVirtualProjectProduct(project, options) {
+  const snapshot3 = structuredClone(project);
+  const root2 = snapshot3.root ?? "/project";
+  const files2 = virtualProjectFiles(snapshot3.files, root2);
+  const specifiers = [...options.runtimeSpecifiers ?? ["@natlang/browser", "@natlang/node"]];
+  const build = compileProject({
     project: root2,
     constrained: options.constrained,
     programId: options.programId,
@@ -258555,13 +258646,20 @@ function compileVirtualProject(project, runtime, options) {
     guidance: options.guidance,
     importedGuidancePrograms: options.importedGuidancePrograms,
     services: options.services,
-    target: options.target ?? (moduleTarget(platform) === "await-restoring" ? "browser" : "node"),
+    target: options.target,
     runtimeSpecifier: specifiers[0],
     write: true,
     emit: options.emit,
     adaptation: options.adaptation,
     surfaceSpecifiers: specifiers
   });
+  return { schema: "natlang.virtual-project-product/1", project: snapshot3, runtimeSpecifiers: specifiers, build };
+}
+function instantiateVirtualProjectProduct(product, runtime, options) {
+  const { project, build: result, runtimeSpecifiers: specifiers } = structuredClone(product);
+  if (product.schema !== "natlang.virtual-project-product/1") throw new Error("unsupported virtual project product");
+  const { platform } = options;
+  const root2 = project.root ?? "/project";
   const cache = /* @__PURE__ */ new Map();
   const load = (path2) => {
     const found = cache.get(path2);
@@ -258571,6 +258669,7 @@ function compileVirtualProject(project, runtime, options) {
     const module = { exports: {} };
     cache.set(path2, module);
     const require2 = (specifier) => {
+      if (specifier === "natlang:services") return servicesModule;
       if (specifiers.includes(specifier) || specifier === NEUTRAL_RUNTIME_SPECIFIER) return runtime;
       if (options.modules && Object.hasOwn(options.modules, specifier)) return options.modules[specifier];
       if (hasBuiltinModule(platform, specifier)) return builtinModule(platform, specifier);
@@ -258584,11 +258683,55 @@ function compileVirtualProject(project, runtime, options) {
     platformModuleRealm(platform).evaluateModule(text3, { exports: module.exports, require: require2, module });
     return module.exports;
   };
+  const exported = /* @__PURE__ */ new Map();
   return { ...result, require: (path2) => {
     const absolute = path2.startsWith("/") ? path2 : `${root2}/${path2}`;
     const emitted = `${root2}/.natlang/build/${absolute.slice(root2.length + 1)}`.replace(/\.m?ts$/, ".js");
-    return load(emitted);
+    const prior = exported.get(absolute);
+    if (prior) return prior;
+    const raw = load(emitted), source2 = project.files[absolute] ?? project.files[absolute.slice(root2.length + 1)];
+    if (source2 === void 0) return raw;
+    const record3 = parseModule(absolute, source2, {}, virtualSourceFiles(project.files, root2), { compiled: true });
+    const bound = Object.create(Object.getPrototypeOf(raw)), wrappers = /* @__PURE__ */ new Map();
+    const wrap = (key, value) => {
+      if (typeof value !== "function") return value;
+      let cache2 = wrappers.get(key);
+      if (!cache2) {
+        cache2 = /* @__PURE__ */ new WeakMap();
+        wrappers.set(key, cache2);
+      }
+      let wrapped = cache2.get(value);
+      if (!wrapped) {
+        wrapped = new Proxy(value, { apply(fn, thisArg, args) {
+          return invokeNativeEntry(record3, key, args, () => Reflect.apply(fn, thisArg, args));
+        } });
+        cache2.set(value, wrapped);
+      }
+      return wrapped;
+    };
+    for (const key of Reflect.ownKeys(raw)) {
+      const descriptor2 = Object.getOwnPropertyDescriptor(raw, key);
+      if (typeof key === "string") {
+        if ("value" in descriptor2) descriptor2.value = wrap(key, descriptor2.value);
+        else if (descriptor2.get) {
+          const get = descriptor2.get;
+          descriptor2.get = function() {
+            return wrap(key, Reflect.apply(get, this, []));
+          };
+        }
+      }
+      Object.defineProperty(bound, key, descriptor2);
+    }
+    exported.set(absolute, bound);
+    return bound;
   } };
+}
+function compileVirtualProject(project, runtime, options) {
+  const product = compileVirtualProjectProduct(project, {
+    ...options,
+    target: options.target ?? (moduleTarget(options.platform) === "await-restoring" ? "browser" : "node")
+  });
+  return instantiateVirtualProjectProduct(product, runtime, options);
 }
 
 // src/core/index.ts
@@ -300095,6 +300238,7 @@ export {
   compileEval,
   compileProject,
   compileVirtualProject,
+  compileVirtualProjectProduct,
   constructorRealm,
   contextInterface,
   createNatlangRuntime,
@@ -300114,6 +300258,7 @@ export {
   formatDiagnostics,
   formatType,
   importedNativeArtifacts,
+  instantiateVirtualProjectProduct,
   invokeAt,
   invokeDefinition,
   isModelOutcomeFailure,

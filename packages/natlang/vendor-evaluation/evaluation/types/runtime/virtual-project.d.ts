@@ -50,4 +50,20 @@ export type VirtualProjectOptions = {
  * with `runtime`, so a host binds the project to its one runtime instance by passing it here. `target` says whether
  * awaits restore the natlang task (`browser`); by default the platform's context store decides.
  */
+/** A serializable frontend product. It contains no runtime, service, realm or module instance. */
+export type VirtualProjectProduct = {
+    schema: 'natlang.virtual-project-product/1';
+    project: VirtualProject;
+    runtimeSpecifiers: string[];
+    build: BuildResult;
+};
+export type VirtualProjectProductOptions = Omit<VirtualProjectOptions, 'platform' | 'modules' | 'target'> & {
+    /** Explicit: a compiler worker has no runtime platform from which to infer this. */
+    target: 'node' | 'browser';
+};
+/** Pure frontend compilation, suitable for an isolated worker and an exact-input shared cache. */
+export declare function compileVirtualProjectProduct(project: VirtualProject, options: VirtualProjectProductOptions): VirtualProjectProduct;
+/** Bind a reusable frontend product to this owner's runtime and fresh module/realm state. */
+export declare function instantiateVirtualProjectProduct(product: VirtualProjectProduct, runtime: Record<string, unknown>, options: Pick<VirtualProjectOptions, 'platform' | 'modules'>): CompiledProject;
+/** Default local composition; hosts can offload only the pure first stage. */
 export declare function compileVirtualProject(project: VirtualProject, runtime: Record<string, unknown>, options: VirtualProjectOptions): CompiledProject;

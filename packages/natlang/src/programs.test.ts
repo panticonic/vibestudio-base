@@ -653,8 +653,9 @@ it("compiles the semantic function library with its installed research skill and
     pdfVaultBridge: ["authorizePdfVaultHandoff.nl"],
     pdfGoalDocuments: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.nl", "pdf/workOnPdfGoal.nl"],
     pdfGoalVisual: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.nl", "pdf/workOnPdfGoal/readRenderedPages.nl"],
-    pdfIntakeProbe: ["workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/probeDocument.nl", "pdf/extractPdfEvidence/probeDocument.nl"],
-    pdfIntakeRead: ["workOnEditorialPacket/reviewPacketSource/pdf/extractPdfEvidence/readBatch.nl", "pdf/extractPdfEvidence/readBatch.nl"],
+    // Exact native passthroughs run through typed TS/service bindings; they grant no model-facing NL authority.
+    pdfIntakeProbe: [],
+    pdfIntakeRead: [],
     pdfLayoutRead: ["workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl", "pdf/reviewPdfLayout.nl"],
     ownedPreviewPublication: ["publication/publishOwnedPreviewGoal.nl", "publication/publishOwnedPreviewGoal/deliverPreview.nl"],
     publicationGoal: ["publication/workTowardPublicationGoal.nl"],
@@ -732,3 +733,22 @@ it("mounts installed open-goal skills with their own service scopes", async () =
     }
   }
 }, OPEN_GOAL_COMPILE_TEST_MS);
+
+it("offloaded pure frontend products preserve each ProgramLoader's runtime module state",async()=>{
+  const {compileVirtualProjectProduct}=await import("../vendor/workerd/natlang-workerd.js");
+  let compilerCalls=0;
+  const fs=memoryFs({"skills/native/main.ts":"let n=0; export function next():number{return ++n;}"});
+  const products=new Map<string,unknown>();
+  const compileProduct=async(input:any)=>{
+    const key=JSON.stringify(input);if(!products.has(key)){compilerCalls++;products.set(key,compileVirtualProjectProduct(input.project,input.options));}
+    return structuredClone(products.get(key));
+  };
+  const make=()=>new ProgramLoader({platform:platform(),fs,bindings:{},runTask:run=>run(),compileProduct});
+  const [a,b]=await Promise.all([make().load("skills/native/main.ts"),make().load("skills/native/main.ts")]) as any[];
+  expect(compilerCalls).toBe(1);expect(await a.next()).toBe(1);expect(await a.next()).toBe(2);expect(await b.next()).toBe(1);
+});
+it("refuses an offloaded product belonging to different source",async()=>{
+  const {compileVirtualProjectProduct}=await import("../vendor/workerd/natlang-workerd.js");
+  const product=compileVirtualProjectProduct({files:{"main.ts":"export const value=1;"}},{target:"node",adaptation:false});
+  expect(()=>compileProgram({platform:platform(),files:{"main.ts":"export const value=2;"},entry:"main.ts",label:"skills/native/main.ts",product})).toThrow("different source files");
+});
