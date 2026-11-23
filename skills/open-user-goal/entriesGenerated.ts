@@ -433,7 +433,7 @@ export default {
   "native-image": {
     "program": "skills/open-user-goal/generateOwnedIllustration.nl",
     "callable": "generateOwnedIllustration",
-    "resultType": "OwnedIllustrationReport",
+    "resultType": "OwnedIllustrationResult",
     "skill": "nativeImage",
     "parameterNames": [
       "goal"
@@ -513,7 +513,7 @@ export default {
   "development-audit": {
     "program": "skills/open-user-goal/reviewDevelopmentAudit.nl",
     "callable": "reviewDevelopmentAudit",
-    "resultType": "DevelopmentAuditOutcome",
+    "resultType": "DevelopmentAuditFindings",
     "skill": "developmentAudit",
     "parameterNames": [
       "goal"
@@ -803,7 +803,7 @@ export default {
   "preparedContentProject": {
     "program": "skills/open-user-goal/prepareContentProject.nl",
     "callable": "prepareContentProject",
-    "resultType": "PreparedContentProjectReport",
+    "resultType": "ContentProjectResult",
     "skill": "preparedContentProject",
     "parameterNames": [
       "goal"

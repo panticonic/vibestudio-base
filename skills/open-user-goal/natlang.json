@@ -85,7 +85,7 @@
         "PreparedContentSnapshot",
         "AuthoredProjectDraft",
         "PrivateProjectFinish",
-        "PreparedContentProjectReport"
+        "ContentProjectResult"
       ]
     },
     "reviewRetainedMemory": {
