@@ -1,5 +1,5 @@
 export * from "./portfolio/types.js";
 
-import type {PortfolioReport} from "./portfolio/types.js";
+import type {PortfolioProjection,GardenResult,RealmResult,PortfolioDecision,PortfolioNote} from "./portfolio/types.js";
 
-export type PortfolioResult = {projection:PortfolioReport["projection"];garden:PortfolioReport["garden"];realm:PortfolioReport["realm"];decision:PortfolioReport["decision"];note:PortfolioReport["note"]};
+export type PortfolioResult = {projection:PortfolioProjection|null;garden:GardenResult[];realm:RealmResult[];decision:PortfolioDecision;note:PortfolioNote|null};

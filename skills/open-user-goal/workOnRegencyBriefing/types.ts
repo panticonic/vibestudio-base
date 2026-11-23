@@ -1,5 +1,5 @@
 export * from "./realm/types.js";
 
-import type {RegencyReport} from "./realm/types.js";
+import type {RegencyForecast,RegencyFinding,RegencyDecision,RegencyAdvance,RegencyNote} from "./realm/types.js";
 
-export type RegencyResult = {forecasts:RegencyReport["forecasts"];findings:RegencyReport["findings"];decision:RegencyReport["decision"];advance:RegencyReport["advance"];note:RegencyReport["note"]};
+export type RegencyResult = {forecasts:RegencyForecast[];findings:RegencyFinding[];decision:RegencyDecision;advance:RegencyAdvance|null;note:RegencyNote|null};

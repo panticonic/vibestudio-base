@@ -89,5 +89,5 @@ export type SpecialistGoalReport = {
   handoff: IntegrationArtifact | null;
 };
 
-export type SpecialistHistoryResult = {units:HistoryReview["units"];result:HistoryReview["result"]};
+export type SpecialistHistoryResult = {units:{owner:ProductUnit|null;consumers:ProductUnit[];blockers:string[]};result:{persistedContract:boolean;retainedHistoryChecks:string[]}};
 export type SpecialistResult = {plan:SpecialistPlan;membership:SpecialistMembership|null;history:SpecialistHistoryResult|null;handoff:IntegrationArtifact|null};

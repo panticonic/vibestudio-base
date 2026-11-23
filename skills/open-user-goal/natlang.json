@@ -30,9 +30,6 @@
         "reconcileGoogleRunbook/reviewCalendar/installed",
         "reconcileGoogleRunbook/reviseRunbook/installed",
         "reconcileGoogleRunbook/attributeBasis/installed"
-      ],
-      "types": [
-        "GoogleRunbookResult"
       ]
     },
     "prepareNewsEditionReview": {
@@ -40,9 +37,6 @@
         "prepareNewsEditionReview/designEditorPacket/installed",
         "prepareNewsEditionReview/reviewBriefing/installed",
         "prepareNewsEditionReview/attributeBasis/installed"
-      ],
-      "types": [
-        "NewsEditionReviewResult"
       ]
     },
     "reviewUnitHandoffGoal": {
@@ -51,7 +45,7 @@
         "reviewUnitHandoffGoal/reviewIdentity/installed"
       ],
       "types": [
-        "UnitHandoffReport", "UnitHandoffResult"
+        "UnitHandoffReport"
       ]
     },
     "chooseAudienceResponse": {
@@ -60,7 +54,7 @@
         "chooseAudienceResponse/prepareAudienceVisual/visualize"
       ],
       "types": [
-        "AudienceReport", "AudienceResult"
+        "AudienceReport"
       ]
     },
     "reviseCoordinatedDocuments": {
@@ -69,9 +63,6 @@
         "reviseCoordinatedDocuments/assessRevisionAuthority/evidenceRules",
         "reviseCoordinatedDocuments/planCoordinatedRevision/policy",
         "reviseCoordinatedDocuments/reconcileCoordinatedRevision/policy"
-      ],
-      "types": [
-        "CoordinatedRevisionResult"
       ]
     },
     "prepareContentProject": {
@@ -84,8 +75,7 @@
         "ProjectScopeLease",
         "PreparedContentSnapshot",
         "AuthoredProjectDraft",
-        "PrivateProjectFinish",
-        "ContentProjectResult"
+        "PrivateProjectFinish"
       ]
     },
     "reviewRetainedMemory": {
@@ -95,7 +85,7 @@
         "reviewRetainedMemory/resolveMemoryEvidence/evidence"
       ],
       "types": [
-        "RetainedMemoryReport", "MemoryResult"
+        "RetainedMemoryReport"
       ]
     },
     "compareLiveLocalInventory": {
@@ -112,7 +102,7 @@
         "reconcileWorkspaceConfig/collectConfigEvidence/settings"
       ],
       "types": [
-        "ConfigReport", "ConfigResult"
+        "ConfigReport"
       ]
     },
     "auditAndroidGoal": {
@@ -154,7 +144,7 @@
         "workOnDemoPortfolio/reviewPortfolioRealm/reviewer"
       ],
       "types": [
-        "PortfolioReport", "PortfolioResult"
+        "PortfolioReport"
       ]
     },
     "workOnRegencyBriefing": {
@@ -163,7 +153,7 @@
         "workOnRegencyBriefing/qualifyRegencyClaim/reviewer"
       ],
       "types": [
-        "RegencyReport", "RegencyResult"
+        "RegencyReport"
       ]
     },
     "workOnEditorialPacket": {
@@ -172,7 +162,7 @@
         "workOnEditorialPacket/reviewPacketSource/packet"
       ],
       "types": [
-        "PacketReport", "EditorialPacketResult"
+        "PacketReport"
       ]
     },
     "reviewRetainedBuildIncident": {
@@ -208,7 +198,7 @@
         "workOnPersonalWelcomeGoal/retryWelcomeProbe/explorer"
       ],
       "types": [
-        "WelcomeGoalReport", "WelcomeResult"
+        "WelcomeGoalReport"
       ]
     },
     "reviewDesktopReadiness": {
@@ -220,9 +210,6 @@
       "mounts": [
         "correctVaultFromPdf/pdf",
         "correctVaultFromPdf/vault"
-      ],
-      "types": [
-        "PdfVaultCorrectionResult"
       ]
     }
   },

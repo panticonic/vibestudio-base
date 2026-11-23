@@ -56,7 +56,7 @@ export type PrivateProjectFinish = {
   event: {eventId:string; head:string} | null;
 };
 export type ContentProjectResult = {
-  outcome: PrivateProjectFinish["outcome"];
+  outcome: "committed"|"draft"|"held"|"held-moved"|"review-needed";
   project: {contextId:string; repositoryId:string|null; repoPath:string; head:string; documents:string[]} | null;
   event: {eventId:string;head:string} | null;
 };

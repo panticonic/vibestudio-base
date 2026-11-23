@@ -65,4 +65,4 @@ export type WelcomeHandoff = { path: string; bytes: number; sha256: string };
 export type WelcomeReviews = { setup: SetupWitness | null; tour: TourWitness | null; probe: ExplorerWitness | null };
 export type WelcomeGoalReport = { plan: WelcomePlan; reviews: WelcomeReviews; handoff: WelcomeHandoff | null };
 
-export type WelcomeResult = {plan:WelcomePlan;setup:SetupReview|null;tour:TourWitness["result"]|null;probe:ExplorerReport|null;handoff:WelcomeHandoff|null};
+export type WelcomeResult = {plan:WelcomePlan;setup:SetupReview|null;tour:{frame:TourFrame;stage:"verified"|"mismatch"}|null;probe:ExplorerReport|null;handoff:WelcomeHandoff|null};

@@ -168,4 +168,4 @@ export type DurableQuestionReport = {
   explanation: string;
 };
 
-export type ClientDiagnosticResult = {channel:ClientDiagnosticsReport["channel"];decision:ClientDiagnosticsReport["decision"];handoff:ClientDiagnosticsReport["handoff"]};
+export type ClientDiagnosticResult = {channel:ChannelReview|null;decision:ClientDecision;handoff:ClientHandoff|null};

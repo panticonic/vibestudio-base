@@ -1,2 +1,2 @@
-import type {RegencyResult} from "./types.js";
-export default function applicationResult(forecasts:RegencyResult["forecasts"],findings:RegencyResult["findings"],decision:RegencyResult["decision"],advance:RegencyResult["advance"],note:RegencyResult["note"]):RegencyResult {return {forecasts,findings,decision,advance,note};}
+import type {RegencyResult,RegencyForecast,RegencyFinding,RegencyDecision,RegencyAdvance,RegencyNote} from "./types.js";
+export default function applicationResult(forecasts:RegencyForecast[],findings:RegencyFinding[],decision:RegencyDecision,advance:RegencyAdvance|null,note:RegencyNote|null):RegencyResult {return {forecasts,findings,decision,advance,note};}

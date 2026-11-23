@@ -1,6 +1,6 @@
 import type {
   ConversationCard as Card, ConversationRead as Read, OutputReadback as Output,
-  ProviderGoalReport as Report, ProviderPlan as Plan,
+  ProviderGoalReport as Report, ProviderPlan as Plan, ProviderHandoff,
 } from "./workspace/types.js";
 import type { ApprovalTransitionReport as Transition, ApprovalTransitionRequest } from "./reviewRetainedApproval/authority/types.js";
 import type { ConversationReport as Delivery, DeliveryInput } from "./reviewRetainedDelivery/conversation/types.js";
@@ -18,4 +18,5 @@ export type ApprovalReviewEvidence = { request: ApprovalTransitionRequest; resul
 export type DeliveryReviewEvidence = { request: DeliveryInput; result: RetainedDelivery };
 export type ResultSelection = { decisionMessage: string | null; resultMessage: string | null; read: boolean };
 
-export type ProviderResult = Report;
+export type {ProviderHandoff};
+export type ProviderResult = {plan:ProviderPlan;handoff:ProviderHandoff|null};

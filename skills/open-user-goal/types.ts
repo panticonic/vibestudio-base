@@ -617,3 +617,55 @@ export type ResearchRevision = { research: ResearchGoalReport; revision: Workspa
 export type WorkspaceAnswer = { answer: string; citations: { path: string; version: string; quote: string }[]; unresolved: string[] };
 
 export type { NewsEvidenceResult } from "./workOnNewsEvidenceGoal/types.js";
+
+export type { ConfigResult } from "./reconcileWorkspaceConfig/types.js";
+
+export type { AudienceResult } from "./chooseAudienceResponse/types.js";
+
+export type { CoordinatedRevisionResult } from "./reviseCoordinatedDocuments/types.js";
+
+export type { MemoryResult } from "./reviewRetainedMemory/types.js";
+
+export type { RouteResult } from "./chooseAuthorizedEvidenceRoute/types.js";
+
+export type { LaunchResult } from "./reconcilePanelLaunchState/types.js";
+
+export type { ClaimResult } from "./reviewWorkspaceClaims/types.js";
+
+export type { BridgeResult } from "./workOnBridgeDelivery/types.js";
+
+export type { ChatResult } from "./workOnChatContinuity/types.js";
+
+export type { EditorialPacketResult } from "./workOnEditorialPacket/types.js";
+
+export type { PortfolioResult } from "./workOnDemoPortfolio/types.js";
+
+export type { RegencyResult } from "./workOnRegencyBriefing/types.js";
+
+export type { ImageCandidateResult } from "./workOnImageCandidateGoal/types.js";
+
+export type { ApiReadinessResult } from "./workOnApiReadinessGoal/types.js";
+
+export type { WelcomeResult } from "./workOnPersonalWelcomeGoal/types.js";
+
+export type { OwnedIllustrationResult } from "./generateOwnedIllustration/types.js";
+
+export type { DevelopmentAuditFindings } from "./reviewDevelopmentAudit/types.js";
+
+export type { GoogleRunbookResult } from "./reconcileGoogleRunbook/types.js";
+
+export type { NewsEditionReviewResult } from "./prepareNewsEditionReview/types.js";
+
+export type { UnitHandoffResult } from "./reviewUnitHandoffGoal/types.js";
+
+export type { SpecialistResult } from "./workOnSpecialistHandoffGoal/types.js";
+
+export type { DictationResult } from "./workOnDictationHandoffGoal/types.js";
+
+export type { ProviderResult } from "./workOnProviderHandoffGoal/types.js";
+
+export type { TerminalResult } from "./workOnTerminalGoal/types.js";
+
+export type { ContentProjectResult } from "./prepareContentProject/types.js";
+
+export type { PdfVaultCorrectionResult } from "./correctVaultFromPdf/types.js";

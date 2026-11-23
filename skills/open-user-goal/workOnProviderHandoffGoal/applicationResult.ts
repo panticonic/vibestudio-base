@@ -1,2 +1,2 @@
-import type {ProviderResult,ProviderPlan} from "./types.js";
-export default function applicationResult(plan:ProviderPlan,handoff:ProviderResult["handoff"]):ProviderResult {return {plan,handoff};}
+import type {ProviderResult,ProviderPlan,ProviderHandoff} from "./types.js";
+export default function applicationResult(plan:ProviderPlan,handoff:ProviderHandoff|null):ProviderResult {return {plan,handoff};}
