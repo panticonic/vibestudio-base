@@ -14,6 +14,8 @@ import {
   NATLANG_EVALUATION_MAX_BYTES,
   NATLANG_LIST_LIMIT_DEFAULT,
   natlangAnnotateInputSchema,
+  natlangAppendExchangeInputSchema,
+  natlangCheckpointInputSchema,
   natlangBeginInputSchema,
   natlangDiscardInputSchema,
   natlangFeedbackInputSchema,
@@ -34,6 +36,9 @@ import {
   type CallRecordJson,
   type CallSummary,
   type NatlangAnnotateInput,
+  type NatlangAppendExchangeInput,
+  type NatlangCheckpointInput,
+  type NatlangCallCheckpointState,
   type NatlangBeginInput,
   type NatlangDiscardInput,
   type NatlangEvaluation,
@@ -288,6 +293,88 @@ export class NatlangRecordsDO
     this.evict();
   }
 
+  /** Durably acknowledge a completed model response before its next action. */
+  @rpc({website:WEBSITE_CLOSED,principals:["host","user","code","session","mission"],
+    effect:{kind:"open"},tier:"open",sensitivity:"write"})
+  async appendExchange(input: NatlangAppendExchangeInput): Promise<void> {
+    const {callId,ordinal,exchange} = natlangAppendExchangeInputSchema.parse(input);
+    if ((exchange.request as {invocation_id?:unknown})?.invocation_id !== callId)
+      throw new Error("Captured exchange invocation identity differs");
+    this.write(() => {
+      const call = this.one(`SELECT record_hash FROM calls WHERE call_id = ?`, callId);
+      if (!call) throw new Error(`No call ${callId}`);
+      const text = JSON.stringify(exchange);
+      const final = call["record_hash"] ? this.readRecord(callId) : null;
+      const turns = final?.model_turns as unknown[] | undefined;
+      if (turns) {
+        if (JSON.stringify(turns[ordinal]) !== text) throw new Error("Captured exchange differs from completed record");
+        return;
+      }
+      const rows = this.sql.exec(`SELECT value FROM annotations WHERE call_id = ? AND kind = 'model-exchange' ORDER BY id`,callId).toArray();
+      if (ordinal < rows.length) {
+        if (rows[ordinal]!["value"] !== text) throw new Error("Captured exchange ordinal conflict");
+        return;
+      }
+      if (ordinal !== rows.length || call["record_hash"]) throw new Error("Captured exchange ordinal is not the next running response");
+      this.sql.exec(`INSERT INTO annotations(call_id,kind,value,source,created_at) VALUES (?, 'model-exchange', ?, 'natlang-model-adapter', ?)`,callId,text,new Date().toISOString());
+      this.sql.exec(`UPDATE calls SET pinned = 1 WHERE call_id = ?`,callId);
+    });
+  }
+
+  /** Store the latest original native graph and all its acknowledged values. */
+  @rpc({ website: WEBSITE_CLOSED, principals: ["host", "user", "code", "session", "mission"],
+    effect: { kind: "open" }, tier: "open", sensitivity: "write" })
+  async checkpoint(input: NatlangCheckpointInput): Promise<void> {
+    const checked = natlangCheckpointInputSchema.parse(input);
+    for (const [hash, text] of Object.entries(checked.blobs))
+      if (sha256HexSyncText(text) !== hash) throw new Error(`Blob ${hash} is not the SHA-256 of its text`);
+    this.write(() => {
+      const {callId, state} = checked;
+      if (state.call_id !== callId) throw new Error("Checkpoint call identity differs");
+      const running = this.one(`SELECT * FROM calls WHERE call_id = ?`, callId);
+      if (!running) throw new Error(`No call ${callId}`);
+      this.assertCaptureIdentity(running, state);
+      if (running["record_hash"]) throw new Error("Cannot checkpoint a completed call");
+      for (const [hash, text] of Object.entries(checked.blobs)) {
+        this.putBlob(text, hash);
+        this.sql.exec(`INSERT OR IGNORE INTO call_blobs(call_id,hash,kind) VALUES (?,?,'capture')`, callId, hash);
+      }
+      // A missing native value makes this snapshot incomplete. Earlier captures
+      // may supply a value; completion is never invented from an absent blob.
+      const verifyRefs = (value: unknown): void => {
+        if (!value || typeof value !== "object") return;
+        const ref = value as Record<string, unknown>;
+        if (ref["complete"] === true && typeof ref["hash"] === "string" && this.blob(ref["hash"]) === null)
+          throw new Error(`Checkpoint value ${ref["hash"]} is unavailable`);
+        if (ref["complete"] === true && typeof ref["hash"] === "string")
+          this.sql.exec(`INSERT OR IGNORE INTO call_blobs(call_id,hash,kind) VALUES (?,?,'capture')`, callId, ref["hash"]);
+        for (const nested of Object.values(ref)) verifyRefs(nested);
+      };
+      if (checked.events !== undefined) this.putBlob(checked.events);
+      const {model_turns: _turns, ...nativeState} = state;
+      verifyRefs(nativeState);
+      this.sql.exec(`DELETE FROM annotations WHERE call_id = ? AND kind = 'call-checkpoint'`, callId);
+      this.sql.exec(`INSERT INTO annotations(call_id,kind,value,source,created_at) VALUES (?,'call-checkpoint',?,'natlang-native-capture',?)`, callId, JSON.stringify(state), new Date().toISOString());
+      if (checked.events !== undefined) {
+        const previous = running["events_hash"] as string | null;
+        const hash = this.putBlob(checked.events);
+        this.sql.exec(`UPDATE calls SET events_hash = ? WHERE call_id = ?`, hash, callId);
+        this.sql.exec(`DELETE FROM call_blobs WHERE call_id = ? AND kind = 'events'`, callId);
+        this.sql.exec(`INSERT OR IGNORE INTO call_blobs(call_id,hash,kind) VALUES (?,?,'events')`, callId, hash);
+        if (previous) this.collect([previous]);
+      }
+      this.sql.exec(`UPDATE calls SET pinned = 1 WHERE call_id = ?`, callId);
+    });
+    this.evict();
+  }
+
+  private assertCaptureIdentity(row: Record<string, unknown>, state: NatlangCallCheckpointState): void {
+    if (row["call_id"] !== state.call_id || row["task_id"] !== state.task_id)
+      throw new Error("Captured call/task identity differs from begin");
+    for (const [field, column] of Object.entries({id:"definition_id",name:"definition_name",source:"definition_source",key:"definition_key",interface:"interface_hash",site:"site"}))
+      if (row[column] !== state.definition[field]) throw new Error(`Captured definition ${field} differs from begin`);
+  }
+
   /** Drop the row of a call that started and will not be recorded. */
   @rpc({
     website: WEBSITE_CLOSED,
@@ -301,6 +388,7 @@ export class NatlangRecordsDO
     this.write(() => {
       if (!this.one(`SELECT 1 AS present FROM calls WHERE call_id = ? AND outcome = 'running'`, callId))
         return;
+      if (this.one(`SELECT 1 AS present FROM annotations WHERE call_id = ? AND kind IN ('model-exchange','call-checkpoint')`,callId)) return;
       this.deleteCall(callId);
     });
   }
@@ -321,7 +409,16 @@ export class NatlangRecordsDO
         throw new Error(`Blob ${hash} is not the SHA-256 of its text`);
     this.write(() => {
       const callId = record.call_id;
-      const prior = this.one(`SELECT pinned FROM calls WHERE call_id = ?`, callId);
+      const committed = this.sql.exec(`SELECT value FROM annotations WHERE call_id = ? AND kind = 'model-exchange' ORDER BY id`,callId).toArray().map(row => JSON.parse(row["value"] as string));
+      const completedRecord = this.readRecord(callId);
+      const completedTurns = completedRecord?.model_turns;
+      const immutableCapture = Array.isArray(completedTurns) && completedTurns.length > 0;
+      const protectedTurns = Array.isArray(completedTurns) ? completedTurns : committed;
+      if (protectedTurns.length && (!Array.isArray(record.model_turns) || JSON.stringify(record.model_turns.slice(0,protectedTurns.length)) !== JSON.stringify(protectedTurns)))
+        throw new Error("Completed call model turns differ from its committed exchanges");
+      const prior = this.one(`SELECT * FROM calls WHERE call_id = ?`, callId);
+      if (prior) this.assertCaptureIdentity(prior, record);
+      const capturedValues = this.sql.exec(`SELECT hash FROM call_blobs WHERE call_id = ? AND (kind = 'capture' OR (? = 1 AND kind = 'value'))`, callId, immutableCapture ? 1 : 0).toArray().map(row => row["hash"] as string);
       const priorBlobs = this.sql
         .exec(`SELECT hash FROM call_blobs WHERE call_id = ?`, callId)
         .toArray()
@@ -336,6 +433,24 @@ export class NatlangRecordsDO
           events: { complete: true, hash: eventsHash, bytes: byteLength(checked.events) },
         };
       }
+      if (checked.events === undefined && record.events && typeof record.events === "object") {
+        const ref = record.events as Record<string,unknown>;
+        if (ref["complete"] === true && typeof ref["hash"] === "string") eventsHash = ref["hash"];
+      }
+      if (immutableCapture && canonicalJson(stored) !== canonicalJson(completedRecord))
+        throw new Error("Completed captured record is immutable; append a separate reassessment");
+      const referencedValues = new Set<string>();
+      const verifyRefs = (value: unknown): void => {
+        if (!value || typeof value !== "object") return;
+        const ref = value as Record<string, unknown>;
+        if (ref["complete"] === true && typeof ref["hash"] === "string") {
+          if (this.blob(ref["hash"]) === null) throw new Error(`Completed call value ${ref["hash"]} is unavailable`);
+          referencedValues.add(ref["hash"]);
+        }
+        for (const nested of Object.values(ref)) verifyRefs(nested);
+      };
+      const {model_turns: _turns, ...nativeState} = stored;
+      verifyRefs(nativeState);
       const recordHash = this.putBlob(JSON.stringify(stored));
       const { definition, cost } = record;
       this.sql.exec(
@@ -389,7 +504,8 @@ export class NatlangRecordsDO
         );
       link(recordHash, "record");
       if (eventsHash) link(eventsHash, "events");
-      for (const hash of values) link(hash, "value");
+      for (const hash of [...values, ...capturedValues, ...referencedValues]) link(hash, "value");
+      this.sql.exec(`DELETE FROM annotations WHERE call_id = ? AND kind IN ('model-exchange','call-checkpoint')`,callId);
       this.collect(priorBlobs);
     });
     this.evict();
@@ -406,6 +522,7 @@ export class NatlangRecordsDO
   })
   async annotate(input: NatlangAnnotateInput): Promise<void> {
     const checked = natlangAnnotateInputSchema.parse(input);
+    if (checked.kind === "model-exchange" || checked.kind === "call-checkpoint") throw new Error("Use appendExchange or checkpoint for reserved capture journals");
     if (!this.one(`SELECT 1 AS present FROM calls WHERE call_id = ?`, checked.callId))
       throw new Error(`No call ${checked.callId}`);
     this.annotateCall(checked.callId, checked.kind, checked.value, checked.source);
@@ -595,6 +712,11 @@ export class NatlangRecordsDO
     return {
       record: recordText ? (JSON.parse(recordText) as CallRecordJson) : null,
       summary: summary as unknown as CallSummary,
+      ...(!recordText ? (() => {
+        const turns = this.sql.exec(`SELECT value FROM annotations WHERE call_id = ? AND kind = 'model-exchange' ORDER BY id`,callId).toArray().map(row => JSON.parse(row["value"] as string));
+        const checkpoint = this.one(`SELECT value FROM annotations WHERE call_id = ? AND kind = 'call-checkpoint' ORDER BY id DESC LIMIT 1`,callId);
+        return {...(turns.length ? {model_turns: turns} : {}), ...(checkpoint ? {capture_state: JSON.parse(checkpoint["value"] as string) as NatlangCallCheckpointState} : {})};
+      })() : {}),
       events: eventsHash ? this.blob(eventsHash) : null,
       annotations: this.sql
         .exec(`SELECT kind, value, source, created_at FROM annotations WHERE call_id = ? ORDER BY id`, callId)

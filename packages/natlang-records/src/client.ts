@@ -8,6 +8,8 @@ import {
   type CallDetail,
   type CallSummary,
   type NatlangAnnotateInput,
+  type NatlangAppendExchangeInput,
+  type NatlangCheckpointInput,
   type NatlangBeginInput,
   type NatlangFeedbackInput,
   type NatlangFeedbackResult,
@@ -46,6 +48,8 @@ export interface NatlangLiveSubscription {
 export interface NatlangRecordsClient {
   begin(input: NatlangBeginInput): Promise<void>;
   progress(callId: string, events: string): Promise<void>;
+  appendExchange(input: NatlangAppendExchangeInput): Promise<void>;
+  checkpoint(input: NatlangCheckpointInput): Promise<void>;
   discard(callId: string): Promise<void>;
   record(input: NatlangRecordInput): Promise<NatlangRecordResult>;
   listCalls(filter?: NatlangListCallsFilter): Promise<CallSummary[]>;
@@ -80,6 +84,8 @@ export function createNatlangRecordsClient(rpc: NatlangRecordsRpcCaller): Natlan
   return {
     begin: (input) => service.call("begin", input),
     progress: (callId, events) => service.call("progress", { callId, events }),
+    appendExchange: (input) => service.call("appendExchange", input),
+    checkpoint: (input) => service.call("checkpoint", input),
     discard: (callId) => service.call("discard", { callId }),
     record: (input) => service.call("record", input),
     listCalls: (filter) => service.call("listCalls", filter ?? {}),

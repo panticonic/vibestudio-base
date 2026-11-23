@@ -157,3 +157,18 @@ describe("createNatlangRecordsClient", () => {
     expect(listed.map((entry) => [entry.evaluationId, entry.program])).toEqual([[evaluationId, "skills/triage"]]);
   });
 });
+
+it("round-trips unfinished native checkpoints and model exchange journals",async()=>{
+  const {rpc}=await connect();
+  const client=createNatlangRecordsClient(rpc);
+  const definition={id:"domain",name:"workOnGoal",source:"workOnGoal.nl",key:"k",interface:"i",site:"named"};
+  await client.begin({owner:OWNER,callId:"unfinished",parentCallId:null,parentActionIndex:null,taskId:"task",programId:null,programRoot:null,definition,modelId:"teacher:luna",startedAt:"2026-11-23T00:00:00.000Z",auditOf:null});
+  const value='{"actual":"native receipt"}',hash=sha256HexSyncText(value);
+  const state={call_id:"unfinished",task_id:"task",definition,output:{complete:true,hash}};
+  await client.checkpoint({callId:"unfinished",state,blobs:{[hash]:value}});
+  const exchange={schema:"natlang.model-exchange/1" as const,kind:"generation" as const,request:{invocation_id:"unfinished"},reply:{content:"actual model response"}};
+  await client.appendExchange({callId:"unfinished",ordinal:0,exchange});
+  await client.discard("unfinished");
+  expect(await client.getCall("unfinished")).toMatchObject({record:null,capture_state:state,model_turns:[exchange]});
+  expect(await client.getValue(hash)).toBe(value);
+});
