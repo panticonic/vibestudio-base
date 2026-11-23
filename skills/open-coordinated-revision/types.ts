@@ -9,10 +9,6 @@ export type RevisionReceipt = {
 export type RevisionReadback = {
   head: string; protectedMain: string; files: RevisionFile[];
 };
-export type CoordinatedRevisionReport = {
-  initial: RevisionScope; initialAuthority: RevisionAuthority; plan: RevisionPlan; first: RevisionReceipt | null;
-  updated: RevisionScope | null; updatedAuthority: RevisionAuthority | null; reconciled: RevisionPlan | null;
-  final: RevisionReceipt | null; readback: RevisionReadback;
-};
+
 
 export type CoordinatedRevisionResult = { status: "updated"|"unchanged"|"held"|"unavailable"; head: string; documents: {path:string;version:string}[]; explanation:string };
