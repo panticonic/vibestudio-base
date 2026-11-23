@@ -27,7 +27,4 @@ export type WebhookAdmissionDecision = "stage-audit" | "report-only" | "hold-rec
   "hold-replay-window" | "hold-retry" | "hold-malformed" | "hold-status";
 export type WebhookAdmissionAssessment = { disposition: WebhookAdmissionDecision; reason: string };
 export type WebhookAdmissionReceipt = { path: string; bytes: number; sha256: string };
-export type WebhookAdmissionOutcome = {
-  assignment: WebhookAdmissionAssignment; evidence: WebhookAdmissionEvidence; binding: WebhookAdmissionBinding;
-  assessment: WebhookAdmissionAssessment; handoff: WebhookAdmissionReceipt | null;
-};
+export type WebhookAdmissionOutcome = { assessment: WebhookAdmissionAssessment; handoff: WebhookAdmissionReceipt | null };

@@ -6,5 +6,4 @@ export type SmokeSelection = { plan: SmokePlan | null; blocker: "hold-source" | 
 export type SmokeRuntime = { packageName: string; exportName: string; callable: boolean; value: unknown; runDigest: string };
 export type SmokeDecision = { disposition: "accepted" | "regression" | "hold-source" | "hold-ambiguity" | "hold-export"; mayRetain: boolean };
 export type SmokeReceipt = { path: string; bytes: number; sha256: string };
-export type WorkspaceSmokeReport = { assignment: SmokeAssignment; source: SmokeSource; selection: SmokeSelection; runtime: SmokeRuntime | null;
-  decision: SmokeDecision; receipt: SmokeReceipt | null };
+export type WorkspaceSmokeReport = { decision: SmokeDecision; receipt: SmokeReceipt | null };

@@ -12,11 +12,4 @@ export type IncidentReceipt = Receipt;
 export type IncidentSelection = { focus: Focus; current: Profile | null; baseline: Profile | null };
 export type IncidentAssessment = { checkpoint: Profile["checkpoint"]; trace: Profile["trace"]; diagnostic: Profile["diagnostic"]; review: Review };
 export type IncidentDisposition = { finding: Finding; blocker: Blocker | null; reason: string };
-export type BuildIncidentOutcome = {
-  subject: Survey["subject"];
-  focus: Focus;
-  current: IncidentAssessment | null;
-  baseline: IncidentAssessment | null;
-  disposition: IncidentDisposition;
-  handoff: Receipt | null;
-};
+export type BuildIncidentOutcome = { current: IncidentAssessment | null; baseline: IncidentAssessment | null; disposition: IncidentDisposition; handoff: Receipt | null };

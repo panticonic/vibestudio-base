@@ -10,4 +10,4 @@ budget: { maxTurns: 30 }
 3. Call choosePtyGeneration with assignment and evidence.
 4. Call judgePtyContinuity with assignment, evidence and choice.
 5. Only for stage-good, call stagePtyReceipt with the exact chosen observation and decision. Otherwise set receipt to null.
-Return the five exact values as assignment, evidence, choice, decision and receipt.
+Return decision and actual receipt. The working observations and authority checks stay in the call tree.

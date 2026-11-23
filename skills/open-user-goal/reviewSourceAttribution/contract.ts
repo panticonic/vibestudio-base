@@ -11,5 +11,4 @@ export type SourceAttributionEvidence = { selected: SourceAttributionSelection; 
 export type SourceAttributionClaim = { fragment: string; span: string; origin: "external" | "native" | "unresolved"; intent: string | null; refs: string[] };
 export type SourceAttributionConclusion = { disposition: "supported" | "partial" | "unverifiable"; claims: SourceAttributionClaim[] };
 export type SourceAttributionReceipt = { state: string; status: "retained" | "authority-closed" | "stale"; path: string | null; sha256: string | null };
-export type SourceAttributionReport = { assignment: SourceAttributionAssignment; files: SourceAttributionFile[]; evidence: SourceAttributionEvidence[];
-  conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };
+export type SourceAttributionReport = { conclusion: SourceAttributionConclusion; receipt: SourceAttributionReceipt | null };

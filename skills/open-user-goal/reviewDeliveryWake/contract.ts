@@ -14,5 +14,4 @@ export type DeliveryMatch = { event: DeliveryEnvelope | null; mailbox: DeliveryM
 export type DeliveryWakeChoice = { disposition: DeliveryWakeOutcome; event: DeliveryEnvelope | null };
 export type DeliveryWakeReceipt = { event: string; deliveryId: string; revision: number; cursor: number; newRows: number;
   repeatRows: number; contextRows: number; contextCopies: number };
-export type DeliveryWakeReport = { assignment: DeliveryWakeAssignment; evidence: DeliveryWakeEvidence;
-  choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };
+export type DeliveryWakeReport = { choice: DeliveryWakeChoice; receipt: DeliveryWakeReceipt | null };

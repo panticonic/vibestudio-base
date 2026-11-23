@@ -10,4 +10,4 @@ budget: { maxTurns: 35 }
 3. Call reconcileLogFollower with the assignment and capture.
 4. Call classifyLogOperation with the assignment and joined result.
 5. Call stageLogFollower only when the decision says to stage. Otherwise receipt is null.
-Return the exact assignment, capture, joined, decision, and receipt.
+Return decision and actual receipt. The working observations and authority checks stay in the call tree.

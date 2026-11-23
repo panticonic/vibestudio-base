@@ -9,6 +9,4 @@ export type ArchitectureReport = Architecture;
 export type InterfaceDecision = Decision;
 export type InterfaceHandoff = Handoff;
 export type InterfaceFinding = { decision: Decision; reason: string };
-export type DeployedInterfaceOutcome = {
-  survey: Survey; observation: Observation; architecture: Architecture | null; finding: InterfaceFinding; handoff: Handoff | null;
-};
+export type DeployedInterfaceOutcome = { finding: InterfaceFinding; handoff: Handoff | null };
