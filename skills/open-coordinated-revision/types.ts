@@ -15,4 +15,4 @@ export type CoordinatedRevisionReport = {
   final: RevisionReceipt | null; readback: RevisionReadback;
 };
 
-export type CoordinatedRevisionResult = { status: RevisionPlan["status"]; head: string; documents: {path:string;version:string}[]; explanation:string };
+export type CoordinatedRevisionResult = { status: "updated"|"unchanged"|"held"|"unavailable"; head: string; documents: {path:string;version:string}[]; explanation:string };
