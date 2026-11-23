@@ -1,8 +1,8 @@
 {
   "schema": "native-compiler-product-vendors/1",
-  "core": "9f67815f920684a2e95691c26999dc96c6ccaadd",
+  "core": "a87d41d495270a4271c7e548a45ad2083dd8bb7f",
   "includesNativeRootFix": "1f1e152df5fa07b8ba154415d3b6deb5045f8237",
-  "reproductionLedger": "vibe0035-all-vendor-reproduction-20261123a",
+  "reproductionLedger": "vibe-v13-a87-vendors-20261123a + vibe-v13-evaluation-reproduction-20261123a",
   "vendors": [
     {
       "label": "base-workerd",
@@ -10,9 +10,9 @@
       "targets": [
         "workerd"
       ],
-      "files": 87,
-      "bytes": 14993495,
-      "pinSha256": "09f3425c6c2f0fc3d9cbd5a0f097275900dc1cebdf21691cccc7339bf7e891b4"
+      "files": 89,
+      "bytes": 15183708,
+      "pinSha256": "4c93d98de066e6789c1b835ff7eed0f146ab8d7420490babf58f7920351ba701"
     },
     {
       "label": "base-evaluation",
@@ -20,9 +20,9 @@
       "targets": [
         "evaluation"
       ],
-      "files": 150,
-      "bytes": 593876,
-      "pinSha256": "da1885be9b6a5bc31a823c5ec5ffff69aa08f60040b28bc63d719fdf2769a8d0"
+      "files": 152,
+      "bytes": 630162,
+      "pinSha256": "76fe87aae15887fcbf93d38e7c883d08fa1806072a84239249179f81c9ad47df"
     },
     {
       "label": "base-dashboard",
@@ -32,7 +32,7 @@
       ],
       "files": 18,
       "bytes": 259619,
-      "pinSha256": "6e4f971d4728b6489e640d10d688a67d01595c3c602f7cb1de1e279110f59b24"
+      "pinSha256": "3f80a91f866109c62644face973b6d922386c852c6a1b6cd28b101d2ee56495b"
     },
     {
       "label": "base-pi",
@@ -41,8 +41,8 @@
         "pi"
       ],
       "files": 7,
-      "bytes": 35812,
-      "pinSha256": "09cfcd377708f6da4d4c5d8e58d5cd7f29aa4209da2ab7ec3d3a62449e121d4a"
+      "bytes": 46778,
+      "pinSha256": "d211cf2053fb141ea21f3b51a6acd83837744b531776e9ee5bf8947b820913ef"
     },
     {
       "label": "system-llama",
@@ -51,8 +51,10 @@
         "llama"
       ],
       "files": 17,
-      "bytes": 110105,
-      "pinSha256": "d076f80172b9ca18071493f494732cf8c4f978378e96431bc3619b6d714c9682"
+      "bytes": 112553,
+      "pinSha256": "7b117b91eb2376f5a27b02e9cbf9e1a9b39b9b365527a42fc1acf9b0e517fd0d"
     }
-  ]
+  ],
+  "includesTupleParserFix": "b7d0647e3",
+  "compilerABI": 4
 }
