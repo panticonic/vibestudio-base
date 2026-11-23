@@ -1,0 +1,820 @@
+{
+  "schema": "semantic-application-execution-binding-changes/1",
+  "baselineBase": "170bdd61212912ac166393cd38a6aed357cb0229",
+  "taskGoalsChanged": false,
+  "taskIdsChanged": false,
+  "sourceGroupsChanged": false,
+  "splitsChanged": false,
+  "archivedCatalogsChanged": false,
+  "totalTasks": 2327,
+  "trainTasks": 1748,
+  "testTasks": 579,
+  "bindingCountBefore": 116,
+  "bindingCountAfter": 116,
+  "changes": [
+    {
+      "id": "workspace-config",
+      "before": {
+        "program": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
+        "callable": "reconcileWorkspaceConfig",
+        "resultType": "ConfigReport | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reconcileWorkspaceConfig.ts",
+        "callable": "reconcileWorkspaceConfig",
+        "resultType": "ConfigResult | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "audience-response",
+      "before": {
+        "program": "skills/open-user-goal/chooseAudienceResponse.nl",
+        "callable": "chooseAudienceResponse",
+        "resultType": "AudienceReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/chooseAudienceResponse.ts",
+        "callable": "chooseAudienceResponse",
+        "resultType": "AudienceResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "coordinated-revision",
+      "before": {
+        "program": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+        "callable": "reviseCoordinatedDocuments",
+        "resultType": "CoordinatedRevisionReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
+        "callable": "reviseCoordinatedDocuments",
+        "resultType": "CoordinatedRevisionResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "retained-memory",
+      "before": {
+        "program": "skills/open-user-goal/reviewRetainedMemory.nl",
+        "callable": "reviewRetainedMemory",
+        "resultType": "RetainedMemoryReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reviewRetainedMemory.ts",
+        "callable": "reviewRetainedMemory",
+        "resultType": "MemoryResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "route-authority",
+      "before": {
+        "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
+        "callable": "chooseAuthorizedEvidenceRoute",
+        "resultType": "OwnedRouteReview",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.ts",
+        "callable": "chooseAuthorizedEvidenceRoute",
+        "resultType": "RouteResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "launch-state",
+      "before": {
+        "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+        "callable": "reconcilePanelLaunchState",
+        "resultType": "LaunchReport | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+        "callable": "reconcilePanelLaunchState",
+        "resultType": "LaunchResult | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "workspace-claims",
+      "before": {
+        "program": "skills/open-user-goal/reviewWorkspaceClaims.nl",
+        "callable": "reviewWorkspaceClaims",
+        "resultType": "WorkspaceClaimReview | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reviewWorkspaceClaims.ts",
+        "callable": "reviewWorkspaceClaims",
+        "resultType": "ClaimResult | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "bridge-delivery",
+      "before": {
+        "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
+        "callable": "workOnBridgeDelivery",
+        "resultType": "BridgeDeliveryReport | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnBridgeDelivery.nl",
+        "callable": "workOnBridgeDelivery",
+        "resultType": "BridgeResult | null",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "chat-continuity",
+      "before": {
+        "program": "skills/open-user-goal/workOnChatContinuity.nl",
+        "callable": "workOnChatContinuity",
+        "resultType": "ChatContinuityReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnChatContinuity.nl",
+        "callable": "workOnChatContinuity",
+        "resultType": "ChatResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "editorial-packet",
+      "before": {
+        "program": "skills/open-user-goal/workOnEditorialPacket.nl",
+        "callable": "workOnEditorialPacket",
+        "resultType": "PacketReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnEditorialPacket.ts",
+        "callable": "workOnEditorialPacket",
+        "resultType": "EditorialPacketResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "demo-portfolio",
+      "before": {
+        "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
+        "callable": "workOnDemoPortfolio",
+        "resultType": "PortfolioReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnDemoPortfolio.ts",
+        "callable": "workOnDemoPortfolio",
+        "resultType": "PortfolioResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "regency-briefing",
+      "before": {
+        "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
+        "callable": "workOnRegencyBriefing",
+        "resultType": "RegencyReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnRegencyBriefing.ts",
+        "callable": "workOnRegencyBriefing",
+        "resultType": "RegencyResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "image-candidate",
+      "before": {
+        "program": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+        "callable": "workOnImageCandidateGoal",
+        "resultType": "ImageReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnImageCandidateGoal.ts",
+        "callable": "workOnImageCandidateGoal",
+        "resultType": "ImageCandidateResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "api-readiness",
+      "before": {
+        "program": "skills/open-user-goal/workOnApiReadinessGoal.nl",
+        "callable": "workOnApiReadinessGoal",
+        "resultType": "ApiReadinessReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnApiReadinessGoal.ts",
+        "callable": "workOnApiReadinessGoal",
+        "resultType": "ApiReadinessResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "news-evidence",
+      "before": {
+        "program": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+        "callable": "workOnNewsEvidenceGoal",
+        "resultType": "NewsEvidenceReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnNewsEvidenceGoal.ts",
+        "callable": "workOnNewsEvidenceGoal",
+        "resultType": "NewsEvidenceResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "personal-welcome",
+      "before": {
+        "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+        "callable": "workOnPersonalWelcomeGoal",
+        "resultType": "WelcomeGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+        "callable": "workOnPersonalWelcomeGoal",
+        "resultType": "WelcomeResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "native-image",
+      "before": {
+        "program": "skills/open-user-goal/generateOwnedIllustration.nl",
+        "callable": "generateOwnedIllustration",
+        "resultType": "OwnedIllustrationReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/generateOwnedIllustration.ts",
+        "callable": "generateOwnedIllustration",
+        "resultType": "OwnedIllustrationResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "development-audit",
+      "before": {
+        "program": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+        "callable": "reviewDevelopmentAudit",
+        "resultType": "DevelopmentAuditOutcome",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reviewDevelopmentAudit.ts",
+        "callable": "reviewDevelopmentAudit",
+        "resultType": "DevelopmentAuditFindings",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "google-runbook",
+      "before": {
+        "program": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+        "callable": "reconcileGoogleRunbook",
+        "resultType": "GoogleRunbookReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reconcileGoogleRunbook.ts",
+        "callable": "reconcileGoogleRunbook",
+        "resultType": "GoogleRunbookResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "news-edition-review",
+      "before": {
+        "program": "skills/open-user-goal/prepareNewsEditionReview.nl",
+        "callable": "prepareNewsEditionReview",
+        "resultType": "NewsEditionReviewReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/prepareNewsEditionReview.ts",
+        "callable": "prepareNewsEditionReview",
+        "resultType": "NewsEditionReviewResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "unit-handoff",
+      "before": {
+        "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+        "callable": "reviewUnitHandoffGoal",
+        "resultType": "UnitHandoffReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+        "callable": "reviewUnitHandoffGoal",
+        "resultType": "UnitHandoffResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "specialist-handoff",
+      "before": {
+        "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+        "callable": "workOnSpecialistHandoffGoal",
+        "resultType": "SpecialistGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+        "callable": "workOnSpecialistHandoffGoal",
+        "resultType": "SpecialistResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "dictation-handoff",
+      "before": {
+        "program": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
+        "callable": "workOnDictationHandoffGoal",
+        "resultType": "DictationGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
+        "callable": "workOnDictationHandoffGoal",
+        "resultType": "DictationResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "provider-handoff",
+      "before": {
+        "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+        "callable": "workOnProviderHandoffGoal",
+        "resultType": "ProviderGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+        "callable": "workOnProviderHandoffGoal",
+        "resultType": "ProviderResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "compound-recovery",
+      "before": {
+        "program": "skills/open-user-goal/recoverOperatingHandoff.nl",
+        "callable": "recoverOperatingHandoff",
+        "resultType": "RecoveryHandoffOutcome",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/recoverOperatingHandoff.ts",
+        "callable": "recoverOperatingHandoff",
+        "resultType": "RecoveryHandoffOutcome",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "terminal-handoff",
+      "before": {
+        "program": "skills/open-user-goal/workOnTerminalGoal.nl",
+        "callable": "workOnTerminalGoal",
+        "resultType": "TerminalGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnTerminalGoal.ts",
+        "callable": "workOnTerminalGoal",
+        "resultType": "TerminalResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "local-reconciliation",
+      "before": {
+        "program": "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
+        "callable": "workOnLocalReconciliationGoal",
+        "resultType": "LocalReconciliationGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnLocalReconciliationGoal.ts",
+        "callable": "workOnLocalReconciliationGoal",
+        "resultType": "LocalReconciliationGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "capability-plan",
+      "before": {
+        "program": "skills/open-user-goal/workOnCapabilityGoal.nl",
+        "callable": "workOnCapabilityGoal",
+        "resultType": "CapabilityGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnCapabilityGoal.ts",
+        "callable": "workOnCapabilityGoal",
+        "resultType": "CapabilityGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "gadDurableQuestion",
+      "before": {
+        "program": "skills/gad-context/natlang/reviewDurableQuestion.nl",
+        "callable": "reviewDurableQuestion",
+        "resultType": "DurableQuestionReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/gad-context/natlang/reviewDurableQuestion.ts",
+        "callable": "reviewDurableQuestion",
+        "resultType": "DurableQuestionReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "preparedContentProject",
+      "before": {
+        "program": "skills/open-user-goal/prepareContentProject.nl",
+        "callable": "prepareContentProject",
+        "resultType": "PreparedContentProjectReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/prepareContentProject.ts",
+        "callable": "prepareContentProject",
+        "resultType": "ContentProjectResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "clientDiagnostics",
+      "before": {
+        "program": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
+        "callable": "workOnClientDiagnostics",
+        "resultType": "ClientDiagnosticsReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
+        "callable": "workOnClientDiagnostics",
+        "resultType": "ClientDiagnosticResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "workspace-assembly",
+      "before": {
+        "program": "skills/open-user-goal/workOnAssemblyGoal.nl",
+        "callable": "workOnAssemblyGoal",
+        "resultType": "AssemblyReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnAssemblyGoal.ts",
+        "callable": "workOnAssemblyGoal",
+        "resultType": "AssemblyReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "eval-handoff",
+      "before": {
+        "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+        "callable": "workOnEvalHandoffGoal",
+        "resultType": "EvalHandoffGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+        "callable": "workOnEvalHandoffGoal",
+        "resultType": "EvalRecoveryResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "visualRecovery",
+      "before": {
+        "program": "skills/panel-health/recoverPanelGoal.nl",
+        "callable": "recoverPanelGoal",
+        "resultType": "RecoveryReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/panel-health/recoverPanelGoal.ts",
+        "callable": "recoverPanelGoal",
+        "resultType": "PanelRecoveryResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "ownedPreview",
+      "before": {
+        "program": "skills/publish-preflight/publishOwnedPreviewGoal.nl",
+        "callable": "publishOwnedPreviewGoal",
+        "resultType": "OwnedPreviewReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/publish-preflight/publishOwnedPreviewGoal.ts",
+        "callable": "publishOwnedPreviewGoal",
+        "resultType": "OwnedPreviewReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "pdfVault",
+      "before": {
+        "program": "skills/open-user-goal/correctVaultFromPdf.nl",
+        "callable": "correctVaultFromPdf",
+        "resultType": "PdfVaultCorrection",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/open-user-goal/correctVaultFromPdf.ts",
+        "callable": "correctVaultFromPdf",
+        "resultType": "PdfVaultCorrectionResult",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "pdf",
+      "before": {
+        "program": "skills/pdf-intake/workOnPdfGoal.nl",
+        "callable": "workOnPdfGoal",
+        "resultType": "PdfGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/pdf-intake/workOnPdfGoal.ts",
+        "callable": "workOnPdfGoal",
+        "resultType": "PdfGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    },
+    {
+      "id": "publication",
+      "before": {
+        "program": "skills/publish-preflight/workTowardPublicationGoal.nl",
+        "callable": "workTowardPublicationGoal",
+        "resultType": "PublicationGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      },
+      "after": {
+        "program": "skills/publish-preflight/workTowardPublicationGoal.ts",
+        "callable": "workTowardPublicationGoal",
+        "resultType": "PublicationGoalReport",
+        "parameterNames": [
+          "goal"
+        ],
+        "additionalArguments": {}
+      }
+    }
+  ],
+  "fieldSchemaClassifications": [
+    "docs/CREATIVE_APPLICATION_RETURN_CLASSIFICATION.json",
+    "docs/DELEGATED_THIRTY_APPLICATION_RETURNS.json",
+    "meta/OPERATIONAL_APPLICATION_VALUES_V14.json"
+  ],
+  "note": "Unchanged alias names can have intentionally smaller application schemas; their field classifications are recorded separately. This manifest records exact public execution-binding changes, without replacing archived catalogs."
+}

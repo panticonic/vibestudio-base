@@ -9,84 +9,94 @@
   "testTasks": 579,
   "changes": [
     {
-      "entry": "skills/open-user-goal/prepareContentProject.nl",
+      "entry": "skills/open-user-goal/prepareContentProject.ts",
       "oldReturn": "PreparedContentProjectReport",
       "newReturn": "ContentProjectResult",
       "parametersChanged": false,
       "oldSourceSha256": "ff53b86967ffbd4d534ac3e3c9e67e0064f44d92225387ae6e071c7274c2d6c2",
-      "newSourceSha256": "f0aa7f76988fb85e707c406be69506f271fa9902aa13cc01773b949ea675fcca"
+      "newSourceSha256": "ccc369d20446a844d8baeada72152c38f112014b76f05d7932103a3787edfd35",
+      "originalEntry": "skills/open-user-goal/prepareContentProject.nl"
     },
     {
-      "entry": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+      "entry": "skills/open-user-goal/reconcileGoogleRunbook.ts",
       "oldReturn": "GoogleRunbookReport",
       "newReturn": "GoogleRunbookResult",
       "parametersChanged": false,
       "oldSourceSha256": "3325dc17d267e90b5c3cdd32783d2ad41cf8d96eb5266579eaa6931f18ff85af",
-      "newSourceSha256": "6b76816cdcd3eae5e2aa1f3bccb4bd37b06648db155c1d830d14bf0812755db7"
+      "newSourceSha256": "6697602edd5fa8b3e327b2b6bab3d8de8140129e5bb681295be48ebd4e197db6",
+      "originalEntry": "skills/open-user-goal/reconcileGoogleRunbook.nl"
     },
     {
-      "entry": "skills/open-user-goal/prepareNewsEditionReview.nl",
+      "entry": "skills/open-user-goal/prepareNewsEditionReview.ts",
       "oldReturn": "NewsEditionReviewReport",
       "newReturn": "NewsEditionReviewResult",
       "parametersChanged": false,
       "oldSourceSha256": "03b52b5496e674ca2e901c438e8b620ddb7ae5668203f573906c8b61cdb024b3",
-      "newSourceSha256": "cdeaaeea84aa033b476855440ff5cab741870e73d868b47b9fa116aff8ef63af"
+      "newSourceSha256": "fa0037abbd84c71b369c87fe8dbce8e01469c67c2cf5a0b77c7ae4324dd74fff",
+      "originalEntry": "skills/open-user-goal/prepareNewsEditionReview.nl"
     },
     {
-      "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+      "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.ts",
       "oldReturn": "NewsEvidenceReport",
       "newReturn": "NewsEvidenceResult",
       "parametersChanged": false,
       "oldSourceSha256": "661900ab011b85ad43817948837a881d32a25e505fe85ce11177075fa3df5fe4",
-      "newSourceSha256": "b76121fbdc29e6deb29eda6d1b31f86fa740c54717c16a3f2f37e45396950a5d"
+      "newSourceSha256": "c9d85e252fd3bdf70ba586cc944996ce56aa54c9695dd8ec718591e3683610e0",
+      "originalEntry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl"
     },
     {
-      "entry": "skills/open-user-goal/workOnEditorialPacket.nl",
+      "entry": "skills/open-user-goal/workOnEditorialPacket.ts",
       "oldReturn": "PacketReport",
       "newReturn": "EditorialPacketResult",
       "parametersChanged": false,
       "oldSourceSha256": "07d33200e10bec077c3215160f69d8a02dc0762a26d9ae277840bafa144a1159",
-      "newSourceSha256": "f18262b6f4dcabc5867a7c7d66f89adf6957dd0338839e1ca395da80ea999490"
+      "newSourceSha256": "bb11efabe1961990fb05511fa52c92c11a9d783e17123d9d9431c34cf664f9b8",
+      "originalEntry": "skills/open-user-goal/workOnEditorialPacket.nl"
     },
     {
-      "entry": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+      "entry": "skills/open-user-goal/workOnImageCandidateGoal.ts",
       "oldReturn": "ImageReport",
       "newReturn": "ImageCandidateResult",
       "parametersChanged": false,
       "oldSourceSha256": "8879e4cc952f69987bbd1cd2a8c60002abc837521b29dfd2be5413e0c4de8e49",
-      "newSourceSha256": "062f98031e61a5353a7e7596ad3a63f1b2f0ea60a4e39d7826f1c538416bf682"
+      "newSourceSha256": "09066c21578c94f356572f2b3dea9ea69b3bbfbe55ff2ead694f880885f3ce20",
+      "originalEntry": "skills/open-user-goal/workOnImageCandidateGoal.nl"
     },
     {
-      "entry": "skills/open-user-goal/correctVaultFromPdf.nl",
+      "entry": "skills/open-user-goal/correctVaultFromPdf.ts",
       "oldReturn": "PdfVaultCorrection",
       "newReturn": "PdfVaultCorrectionResult",
       "parametersChanged": false,
       "oldSourceSha256": "6a0feb09a13d9d41fdece5f2f8b725ebb87429a91a2d51c6dba8657d6a962cca",
-      "newSourceSha256": "3bb42e4a8f12f65b226d63f77cf022fcdc005682a0b07b56d384d2d476cceac7"
+      "newSourceSha256": "02e8519666cf82d2d985c51e1c8de9a23080abf94184f1f08f988b5d04885894",
+      "originalEntry": "skills/open-user-goal/correctVaultFromPdf.nl"
     },
     {
-      "entry": "skills/open-user-goal/generateOwnedIllustration.nl",
+      "entry": "skills/open-user-goal/generateOwnedIllustration.ts",
       "oldReturn": "OwnedIllustrationReport",
       "newReturn": "OwnedIllustrationResult",
       "parametersChanged": false,
       "oldSourceSha256": "6a630b99624c8b992512ec379288156d5022bf57747bd14e724135e3fc72faa8",
-      "newSourceSha256": "6a297614dfb4189d3fda3d4da21a4380e97dd5999f328bcafdfb943db0748d4a"
+      "newSourceSha256": "57b2e1431cad83a82dad3aebdef55f59636d549ea9adff86a450257b4e2a0eec",
+      "originalEntry": "skills/open-user-goal/generateOwnedIllustration.nl"
     },
     {
-      "entry": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+      "entry": "skills/open-user-goal/reviewDevelopmentAudit.ts",
       "oldReturn": "DevelopmentAuditOutcome",
       "newReturn": "DevelopmentAuditFindings",
       "parametersChanged": false,
       "oldSourceSha256": "e38cc2156ca3a6cf9646e4f9cded3bcc76d4d39449f346e4f0333ba98f3fc8b6",
-      "newSourceSha256": "5e3b48b9c974eac0d07b7dece9a7dc4339b3e6ce2b932f082e2945d95d588e7f"
+      "newSourceSha256": "225a011386575ed16232cb65f7a0e076bdff8c88c47608fb848b7e8608e92eb6",
+      "originalEntry": "skills/open-user-goal/reviewDevelopmentAudit.nl"
     },
     {
-      "entry": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+      "entry": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
       "oldReturn": "CoordinatedRevisionReport",
       "newReturn": "CoordinatedRevisionResult",
       "parametersChanged": false,
       "oldSourceSha256": "13678fba56902b2642d8cf9dc64262ad86715aec4f2beb7ba7327aa132904a44",
-      "newSourceSha256": "d7087c6c36b7f0c201e5238c3314a64eca58c65ea55ce75e3d1a0be835862979"
+      "newSourceSha256": "9570f5f8ee70f3ce5355175eb71667da086a655e7558cba840cae26fa92226bd",
+      "originalEntry": "skills/open-user-goal/reviseCoordinatedDocuments.nl"
     }
   ]
 }

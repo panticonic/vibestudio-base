@@ -165,7 +165,7 @@
         "attribution": "application value"
       },
       "result": "GoogleRunbookResult",
-      "reason": "Actual runbook decision, working-copy receipt and attribution; requires Calendar native observedEvidence API from non-Base strand"
+      "reason": "Actual runbook decision, working-copy receipt and attribution; Root Calendar verifyObserved independently verifies actual native catalog, windows, current readback, authority and artifact."
     },
     {
       "entry": "skills/open-user-goal/correctVaultFromPdf.nl",
@@ -182,5 +182,5 @@
   "migrated": 10,
   "retainedApplicationValues": 5,
   "pending": 0,
-  "validation": "Not yet run; Calendar observedEvidence() required from non-Base strand"
+  "validation": "Actual integrated116 signatures passed on Base431ff9f under Corea87 (unit vibe-v14-integrated-signatures-20261123a); Calendar native verifyObserved implemented by root. Latest typed compositions await independent ledgered signature and native qualification; no paid model calls used."
 }

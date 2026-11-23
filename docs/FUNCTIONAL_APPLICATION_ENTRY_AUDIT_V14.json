@@ -1,0 +1,993 @@
+{
+  "schema": "functional-application-entry-audit/1",
+  "scope": {
+    "ownedBaseEntries": 45,
+    "publicWorkspaceEntryBindings": 118,
+    "uniqueTemplateEntries": 114,
+    "qualifiedSignatures": 116
+  },
+  "entries": [
+    {
+      "callable": "prepareContentProject",
+      "originalEntry": "skills/open-user-goal/prepareContentProject.nl",
+      "entry": "skills/open-user-goal/prepareContentProject.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "ccc369d20446a844d8baeada72152c38f112014b76f05d7932103a3787edfd35",
+      "semanticImports": [
+        {
+          "line": 3,
+          "import": "import authorProjectDocuments from \"./prepareContentProject/authorProjectDocuments.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Prepare a new private workspace content project based on exact owned source and approval evidence.\nargs:\n  goal: string\nreturns: PreparedContentProjectReport\nbudget: {maxTurns: 25}\n---\n1. Call reviewProjectEvidence with the original goal. Keep the exact returned evidence and decision.\n2. When the decision is hold, return a held final outcome with null scope, draft, candidate and event. Otherwise call confirmProjectScope with the exact evidence and decision. Return held if it holds and held-moved if the original source revision moved.\n3. With an admitted scope, call authorProjectDocuments. If the author cannot produce a grounded review, carry its current result and stop with review-needed.\n4. Call finishPrivateProject with the decision, exact scope and actual reviewed draft when ready. Preserve the real local event or working candidate. A draft remains private. No action publishes or notifies anyone.\n\nCarry the actual admitted scope and each returned candidate/review/finish value forward. A successful own write advances the workspace head; it does not invalidate its earlier authorization or mean another actor moved the original evidence. After finishing, describe the actual resulting project state rather than attempting a new creation against the old baseline.\n",
+        "returns": "PreparedContentProjectReport"
+      }
+    },
+    {
+      "callable": "generateOwnedIllustration",
+      "originalEntry": "skills/open-user-goal/generateOwnedIllustration.nl",
+      "entry": "skills/open-user-goal/generateOwnedIllustration.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "57b2e1431cad83a82dad3aebdef55f59636d549ea9adff86a450257b4e2a0eec",
+      "semanticImports": [
+        {
+          "line": 3,
+          "import": "import chooseIllustrationAction from \"./generateOwnedIllustration/chooseIllustrationAction.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Generate or reuse a durable owned illustration and preserve its exact original when authorized.\nargs:\n  goal: string\nreturns: OwnedIllustrationReport\nbudget: { maxTurns: 50 }\n---\n1. Call discoverIllustration(), then inspectIllustrationBasis(assignment) for destination, retained attempt, and current approvals.\n2. Use chooseIllustrationAction(assignment, basis) to decide whether new generation, a retry, a known terminal original, or a hold serves this goal.\n3. For a chosen action other than hold, call runIllustrationJob(assignment, basis, decision). Keep the exact native result, including failed or canceled status.\n4. Only with save authority and a verified original result call retainIllustrationOriginal(assignment, basis, outcome). Keep its exact saved or stale report. Otherwise saved is null.\nReturn assignment, basis, decision, outcome and saved. No output bytes, unrelated jobs or public publishing.\n",
+        "returns": "OwnedIllustrationReport"
+      }
+    },
+    {
+      "callable": "reviewDevelopmentAudit",
+      "originalEntry": "skills/open-user-goal/reviewDevelopmentAudit.nl",
+      "entry": "skills/open-user-goal/reviewDevelopmentAudit.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "225a011386575ed16232cb65f7a0e076bdff8c88c47608fb848b7e8608e92eb6",
+      "semanticImports": [
+        {
+          "line": 3,
+          "import": "import chooseDevelopmentRun from \"./reviewDevelopmentAudit/chooseDevelopmentRun.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import assessDevelopmentRepair from \"./reviewDevelopmentAudit/assessDevelopmentRepair.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Review the exact retained development run and stage only an approved repair hold.\nargs:\n  goal: string\nreturns: DevelopmentAuditOutcome\nbudget: { maxTurns: 30 }\n---\n\nReview the exact retained development build addressed by the user's goal.\n1. Call discoverDevelopmentAudit() to obtain the assigned run and review scope.\n2. Call inspectDevelopmentRuns(assignment) for independent exact branch evidence.\n3. Call chooseDevelopmentRun(assignment, observed) to match run, session and approval.\n4. Call assessDevelopmentRepair(assignment, observed, choice) for the settled disposition.\n5. For keep-repair only, call keepDevelopmentRepair on the observation whose id is choice.runId and retain its actual receipt. For all other dispositions report a null receipt.\nReturn assignment, observed, choice, assessment and receipt verbatim.\n",
+        "returns": "DevelopmentAuditOutcome"
+      }
+    },
+    {
+      "callable": "reviseCoordinatedDocuments",
+      "originalEntry": "skills/open-user-goal/reviseCoordinatedDocuments.nl",
+      "entry": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "9570f5f8ee70f3ce5355175eb71667da086a655e7558cba840cae26fa92226bd",
+      "semanticImports": [
+        {
+          "line": 4,
+          "import": "import assessRevisionAuthority from \"./reviseCoordinatedDocuments/assessRevisionAuthority.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import planCoordinatedRevision from \"./reviseCoordinatedDocuments/planCoordinatedRevision.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import reconcileCoordinatedRevision from \"./reviseCoordinatedDocuments/reconcileCoordinatedRevision.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile a linked set of workspace documents with current authority and exact working-state evidence.\nbudget: { maxTurns: 42 }\nargs:\n  goal: string\nreturns: CoordinatedRevisionReport\n---\n1. Call workspace.discoverRevisionDocuments and assessRevisionAuthority with the unchanged goal and that scope. Then call planCoordinatedRevision with the original goal, exact scope and authority result.\n2. If the plan is ready, call workspace.applyRevisionBatch with the exact initial head and plan destinations. Otherwise first is null.\n3. If first has status changed, call workspace.discoverRevisionDocuments again, reassess authority on the new scope, then call reconcileCoordinatedRevision with both scopes, the original plan and refreshed authority. Apply the new complete batch only when the reconciled plan is ready. Otherwise final is null. Never reuse the old head or perform a partial edit.\n4. Call workspace.readCoordinatedRevision once and return the actual initial scope, authority, plan, write receipts, optional updated scope and reconciliation, and exact readback. Keep all optional fields null if those steps did not run.\n",
+        "returns": "CoordinatedRevisionReport"
+      }
+    },
+    {
+      "callable": "workOnNewsEvidenceGoal",
+      "originalEntry": "skills/open-user-goal/workOnNewsEvidenceGoal.nl",
+      "entry": "skills/open-user-goal/workOnNewsEvidenceGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "c9d85e252fd3bdf70ba586cc944996ce56aa54c9695dd8ec718591e3683610e0",
+      "semanticImports": [
+        {
+          "line": 1,
+          "import": "import reviewNewsEvidence from \"./reviewNewsEvidence.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile exact retained News articles and authority and stage an authorized private evidence handoff.\nbudget: { maxTurns: 36 }\nargs:\n  goal: string\nreturns: NewsEvidenceReport\n---\n1. Discover the owned reader and topics. Call chooseNewsCoverage with the unchanged goal and index. Read the exact native conversation twice. Check current reader authority with checkNewsReaderBoundary.\n2. Separately call reviewNewsOwnerCadence with the current snapshot. When reader authority verifies, read the selected views in order through workspace.readNewsEvidenceView and call reviewNewsReaderWindow on each exact input. Call groundNewsEdition for the exact topic. Otherwise keep readers and sources empty and briefing null.\n3. Call decideNewsEvidenceHandoff with all exact evidence. Form the report with plan, readers, schedule, briefing, sources and null handoff. If stage is supported, call workspace.stageNewsEvidenceNote with that report and include its unchanged receipt. Otherwise return the unchanged no-handoff report.\n",
+        "returns": "NewsEvidenceReport"
+      }
+    },
+    {
+      "callable": "prepareNewsEditionReview",
+      "originalEntry": "skills/open-user-goal/prepareNewsEditionReview.nl",
+      "entry": "skills/open-user-goal/prepareNewsEditionReview.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "fa0037abbd84c71b369c87fe8dbce8e01469c67c2cf5a0b77c7ae4324dd74fff",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import readonlyEditionQuestion from \"./prepareNewsEditionReview/readonlyEditionQuestion.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import reviewNewsEvidence from \"./reviewNewsEvidence.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import reviewBriefing from \"./prepareNewsEditionReview/reviewBriefing.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import choosePacket from \"./prepareNewsEditionReview/choosePacket.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import attributeBasis from \"./prepareNewsEditionReview/attributeBasis.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import designEditorPacket from \"./prepareNewsEditionReview/designEditorPacket.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Prepare a private visual editorial packet from the exact current retained News edition.\nargs:\n  goal: string\nreturns: NewsEditionReviewReport\nuses: [workOnNewsEvidenceGoal]\nbudget: { maxTurns: 26 }\n---\n1. Call newsEditionReview.readDesk to get the local editor brief for this audience.\n2. Form a read-only editorial evidence question using the original goal and the desk brief. Call workOnNewsEvidenceGoal for the assigned topic and reader. Leave its private evidence-note handoff null because this outer task owns the review packet.\n3. Call reviewBriefing before designing anything. Ask choosePacket with the goal, desk brief and exact News evidence. A blocked reader, unsupported claim, superseded desk authority or request for a public effect means hold. Call attributeBasis and retain its exact result. Return the exact report and no artifact for a hold or a requested review-only answer.\n4. For an authorized packet with a verified briefing, call designEditorPacket, then pass those exact results to newsEditionReview.stage. Return the actual private artifact receipt. Keep source article IDs and revision; no publication, reader edits or live cadence changes.\n",
+        "returns": "NewsEditionReviewReport"
+      }
+    },
+    {
+      "callable": "workOnImageCandidateGoal",
+      "originalEntry": "skills/open-user-goal/workOnImageCandidateGoal.nl",
+      "entry": "skills/open-user-goal/workOnImageCandidateGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "09066c21578c94f356572f2b3dea9ea69b3bbfbe55ff2ead694f880885f3ce20",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import chooseImageBrief from \"./workOnImageCandidateGoal/chooseImageBrief.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import assessImageAttempts from \"./workOnImageCandidateGoal/assessImageAttempts.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import decideImageHandoff from \"./workOnImageCandidateGoal/decideImageHandoff.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile retained image attempts, inspect original output and complete an authorized private handoff.\nbudget: { maxTurns: 34 }\nargs:\n  goal: string\nreturns: ImageReport\n---\n1. Discover the owned image briefs through workspace.discoverImageBriefs. Call chooseImageBrief with the exact goal and index.\n2. Call workspace.readImageJournal twice for the exact owned channel. If either frontier is absent, return a hold with no reads or handoff. Otherwise call assessImageAttempts with the goal, index, plan and both receipts. Retain any differences between the two frontiers.\n3. In assessment queue order, call workspace.readImageOriginal once for each candidate with plan.briefId. Preserve each result exactly. Call decideImageHandoff with the unchanged goal, plan, assessment and all native original reads.\n4. Build the ImageReport with the original plan, assessment, reads and decision and handoff null. If the decision is stage, call workspace.stageImageHandoff with that report and include the unchanged receipt. Return the report.\n",
+        "returns": "ImageReport"
+      }
+    },
+    {
+      "callable": "workOnEditorialPacket",
+      "originalEntry": "skills/open-user-goal/workOnEditorialPacket.nl",
+      "entry": "skills/open-user-goal/workOnEditorialPacket.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "bb11efabe1961990fb05511fa52c92c11a9d783e17123d9d9431c34cf664f9b8",
+      "semanticImports": [
+        {
+          "line": 6,
+          "import": "import chooseEditorialMission from \"./workOnEditorialPacket/chooseEditorialMission.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import reviewPacketSource from \"./workOnEditorialPacket/reviewPacketSource.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import proposeEditorialRevision from \"./workOnEditorialPacket/proposeEditorialRevision.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import reconcileEditorialRevision from \"./workOnEditorialPacket/reconcileEditorialRevision.nl\";"
+        },
+        {
+          "line": 10,
+          "import": "import decideEditorialHandoff from \"./workOnEditorialPacket/decideEditorialHandoff.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Resolve a local publication candidate against current approved mission and PDF evidence.\nbudget: { maxTurns: 52 }\nargs:\n  goal: string\nreturns: PacketReport\n---\n1. Call packet.listPacketMissions. Call chooseEditorialMission with actual cards and the unchanged goal. Read the exact opening through packet.readPacketSnapshot.\n2. Call reviewPacketSource on opening and plan. Preserve every exact evidence receipt. When the plan calls for a revision and the evidence is grounded, call proposeEditorialRevision on the exact candidate and supporting documents. Keep the returned proposal. If proposed text already matches the workspace, skip the write.\n3. For a differing valid proposal, call packet.applyPacketRevision once. If it reports changed, read the same mission and target again, call reviewPacketSource again with the fresh snapshot, and call reconcileEditorialRevision with both snapshots, the original proposal, and refreshed evidence. If its text differs from the fresh snapshot, call packet.applyPacketRevision at the fresh version once. Keep all exact outcomes. A revoked grant, changed citation basis, or competing change to the same claim holds the edit.\n4. Call packet.readStoredPacket on the exact mission. Call decideEditorialHandoff with the unchanged goal, exact plan, both snapshots, ordered sources and actual edit including stored version. When it requests a private local note, call packet.writePacketHandoff with the report and include its receipt. Return the complete report.\n",
+        "returns": "PacketReport"
+      }
+    },
+    {
+      "callable": "answerWorkspaceQuestion",
+      "originalEntry": "skills/open-user-goal/answerWorkspaceQuestion.nl",
+      "entry": "skills/open-user-goal/answerWorkspaceQuestion.nl",
+      "classification": "semantic-root",
+      "reason": "The root selects relevant current documents, resolves conflicting dated and superseded statements, and authors the requested cited answer. There is no fixed next-call list that determines which evidence answers this question.",
+      "sourceSha256": "9821f91afeb7d7113005ee573d327923fbc23aee6582b884892f48847be2d44e",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Answer a factual question using current workspace documents.\nargs:\n  goal: string\nreturns: WorkspaceAnswer\nbudget: { maxTurns: 36 }\n---\n1. Read the available document names through goalWorkspace.list. Read the relevant current source documents through goalWorkspace.read. Resolve conflicting claims by their dates, explicit approvals and supersession evidence.\n2. Return the requested answer with citations containing the actual source path, observed version and a verbatim excerpt supporting each factual claim. Explain any unresolved part of the question using the available evidence. The question authorizes document reads.\n",
+        "returns": "WorkspaceAnswer"
+      }
+    },
+    {
+      "callable": "investigatePublicQuestion",
+      "originalEntry": "skills/open-user-goal/investigatePublicQuestion.nl",
+      "entry": "skills/open-user-goal/investigatePublicQuestion.nl",
+      "classification": "semantic-root",
+      "reason": "The root judges whether the current research answers every material part of the original question and chooses further source investigation for actual unresolved claims.",
+      "sourceSha256": "b0e8c121d68eca450e332469481864d8f97faf02b821d3df50e2bb2c18db8f7d",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Discover and read public sources to answer a question the user asked.\nbudget: { maxTurns: 32 }\nargs:\n  goal: string\nreturns: ResearchGoalReport\n---\nDetermine what public evidence would answer the user's question. Read goalDiscovery.snapshotTime once and pass the original goal, an empty source list and that timestamp to sources.researchBrief. Its hierarchy chooses search or direct authority reading, checks quotations and reconsiders incomplete evidence.\n\nInspect the answer against every material part of the goal. If more investigation is needed, use the available public discovery service or another invocation of the research hierarchy to pursue the missing evidence. Search success is not a prerequisite for reading a public source. Preserve the original question, the same timestamp, exact citations and actual unanswered parts. Return the grounded result; never replace unavailable evidence with a remembered answer or an unsupported claim. Only use the public session.\n",
+        "returns": "ResearchGoalReport"
+      }
+    },
+    {
+      "callable": "answerFromAssignedPublicSources",
+      "originalEntry": "skills/open-user-goal/answerFromAssignedPublicSources.nl",
+      "entry": "skills/open-user-goal/answerFromAssignedPublicSources.nl",
+      "classification": "semantic-root",
+      "reason": "The root judges whether the installed cited brief substantiates the original requested decision or must remain held; the brief is the requested application document.",
+      "sourceSha256": "055c50b583ead6fe5b08c9c43b47408fae05f282ce4abeac98bfdea9a543eb3c",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Resolve a user's decision from the public URLs they actually supplied and preserve the installed brief's evidence.\nargs:\n  goal: string\nreturns: AssignedPublicGoalReport\nbudget: { maxTurns: 12 }\n---\n1. Call selectAssignedSources with the original goal. Keep the exact public URLs in their supplied order.\n2. Call publicBrief.bind with that list and pass its exact request to webResearch.writeAssignedBrief. A refused assignment is held without a brief. This route uses the user's source list.\n3. If the installed brief substantiates the question, return decision supported with that exact brief. Otherwise return held and preserve the brief's unsupported finding. Do not add any claims, mutate an artifact, or use other sources.\n",
+        "returns": "AssignedPublicGoalReport"
+      }
+    },
+    {
+      "callable": "reviseWorkspaceDocument",
+      "originalEntry": "skills/open-user-goal/reviseWorkspaceDocument.nl",
+      "entry": "skills/open-user-goal/reviseWorkspaceDocument.nl",
+      "classification": "semantic-root",
+      "reason": "The root identifies the intended target and authoritative documents, evaluates the smallest justified revision and reconsiders actual source changes after a CAS conflict.",
+      "sourceSha256": "b9e7f993ee0cd86118f9786c09e6522ecb29ffac4311ad5dc968492c50a7487d",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Find and revise a workspace document using the authoritative evidence already present.\nbudget: { maxTurns: 32 }\nargs:\n  goal: string\n  research: 'ResearchGoalReport | null'\nreturns: WorkspaceEditReport\n---\n1. List the available documents. Read the plausible target and evidence documents. Use policy.chooseRevision with these observations and any verified public research to decide which document the user asked to change and prepare the smallest justified revision.\n2. Keep the original target observation and the proposed text. Apply a justified revision using the original target's version.\n3. When the workspace reports a changed version, read that same target and the authoritative source documents again. Call policy.reconcileRevision with the user's goal, the original target, the proposed text, the latest target, and the freshly observed evidence. If it returns new text, write it once against the latest target's version. If its text is already stored, verify the latest version directly.\n4. Read back a successful edit and verify that the stored document is the version and text that were just written. Return its actual path and version. If the edit cannot be safely finished or verified, return blocked with the reason.\n",
+        "returns": "WorkspaceEditReport"
+      }
+    },
+    {
+      "callable": "reviseFromPublicResearch",
+      "originalEntry": "skills/open-user-goal/reviseFromPublicResearch.nl",
+      "entry": "skills/open-user-goal/reviseFromPublicResearch.nl",
+      "classification": "semantic-root",
+      "reason": "The root separates a factual research question from the requested revision and decides whether unresolved essential facts prevent that particular document change.",
+      "sourceSha256": "c61f579f29103c27b8999af784991933846bd906c203c7111633f54d13267b65",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Ground a requested document revision in discovered public source evidence.\nargs:\n  goal: string\nreturns: ResearchRevision\nbudget: { maxTurns: 36 }\nuses: [investigatePublicQuestion, reviseWorkspaceDocument]\n---\n1. Inspect the actual target and supporting workspace documents with inspectRevisionContext before choosing the public question. Keep those original observations. Use identifyResearchQuestion with the goal and those documents to separate the public factual question from the original revision goal. Call investigatePublicQuestion with that research question. This child owns research, not access to or edits of the workspace draft. Preserve its citations, unanswered questions and retrieval evidence.\n2. Determine whether the evidence supports the requested document change. If essential facts are unresolved, return the research with a null revision.\n3. Otherwise pass the original goal and the actual research result to reviseWorkspaceDocument. Return the research and the revision's actual application result. Its reconciliation stage owns conflicts with current workspace state.\n",
+        "returns": "ResearchRevision"
+      }
+    },
+    {
+      "callable": "reconcileGoogleRunbook",
+      "originalEntry": "skills/open-user-goal/reconcileGoogleRunbook.nl",
+      "entry": "skills/open-user-goal/reconcileGoogleRunbook.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "6697602edd5fa8b3e327b2b6bab3d8de8140129e5bb681295be48ebd4e197db6",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import reviewCalendar from \"./reconcileGoogleRunbook/reviewCalendar.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import reconcileApproval from \"./reconcileGoogleRunbook/reconcileApproval.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import attributeBasis from \"./reconcileGoogleRunbook/attributeBasis.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import reviseRunbook from \"./reconcileGoogleRunbook/reviseRunbook.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile a Google Workspace Calendar decision and apply a minimal change to the private local runbook when the current records agree.\nargs:\n  goal: string\nreturns: GoogleRunbookReport\nbudget: { maxTurns: 26 }\n---\n1. Call googleRunbook.read to retrieve the current local runbook and approval documents. Read the selected Calendar through reviewCalendar with the actual user goal and local records.\n2. Call reconcileApproval with the goal, records and exact Calendar report. Resolve the target and terms from the visible evidence. A stale event, withdrawn owner decision, ambiguous runbook or conflicting approved instructions means hold.\n3. Call attributeBasis with the local observation, Calendar and decision. Preserve its exact attribution in the outcome. When the local draft is authorized and its conditions are satisfied, call reviseRunbook with the goal, exact Calendar report, original records and decision. Return the actual working-copy receipt and preserved Calendar evidence.\n4. Otherwise return held or review-only as appropriate, with the exact reason and no artifact. Never change the event or send anything.\n",
+        "returns": "GoogleRunbookReport"
+      }
+    },
+    {
+      "callable": "correctVaultFromPdf",
+      "originalEntry": "skills/open-user-goal/correctVaultFromPdf.nl",
+      "entry": "skills/open-user-goal/correctVaultFromPdf.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "02e8519666cf82d2d985c51e1c8de9a23080abf94184f1f08f988b5d04885894",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import authorizePdfVaultHandoff from \"./authorizePdfVaultHandoff.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import workTowardVaultGoal from \"./correctVaultFromPdf/vault/workTowardVaultGoal.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Use original PDF evidence to make an authorized working-vault correction.\nargs:\n  goal: string\nreturns: PdfVaultCorrection\nbudget: { maxTurns: 36 }\nuses: [authorizePdfVaultHandoff]\n---\n1. Ask pdf.workOnPdfGoal to inspect the requested source and pages. Preserve its typed document observations, extracted quotations and missing-page evidence.\n2. Pass that observation and the goal to authorizePdfVaultHandoff. A held handoff is a complete result with a null vault, because the source has not authorized a change.\n3. For a bound handoff, pass its directive to vault.workTowardVaultGoal. Return the original PDF observation, the bound authority and the actual vault result. The vault owns navigation, reconciliation with concurrent edits and independent editor readback.\n",
+        "returns": "PdfVaultCorrection"
+      }
+    },
+    {
+      "callable": "reconcileWorkspaceConfig",
+      "originalEntry": "skills/open-user-goal/reconcileWorkspaceConfig.nl",
+      "entry": "skills/open-user-goal/reconcileWorkspaceConfig.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "3b07b2ec7e7e8e76424766eb8cf917f015f23b06a53bd7d383323c7b1ce5ed4e",
+      "semanticImports": [
+        {
+          "line": 3,
+          "import": "import selectConfigLens from \"./reconcileWorkspaceConfig/selectConfigLens.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import reviewConfigDisposition from \"./reconcileWorkspaceConfig/reviewConfigDisposition.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import shouldRetainConfigDisposition from \"./reconcileWorkspaceConfig/shouldRetainConfigDisposition.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Distinguish running workspace settings, retained records and protected manifest evidence.\nbudget: { maxTurns: 32 }\nargs:\n  goal: string\nreturns: ConfigReport | null\n---\n1. Call settings.readConfigBrief. Call selectConfigLens with the unchanged goal and exact brief.\n2. Call collectConfigEvidence with the lens. If active workspace evidence is unavailable, return null. Use the exact returned observations.\n3. Call reviewConfigDisposition with the original goal, brief, lens and evidence. Return the original brief, lens, evidence and exact outcome.\n4. Include handoff null unless the user authorizes a private local record and any condition on that authorization is met. In that case call settings.stageConfigDisposition with the exact brief, lens, evidence and outcome and include its actual receipt.\n",
+        "returns": "ConfigReport | null"
+      }
+    },
+    {
+      "callable": "chooseAudienceResponse",
+      "originalEntry": "skills/open-user-goal/chooseAudienceResponse.nl",
+      "entry": "skills/open-user-goal/chooseAudienceResponse.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "820a3802b6a6e32389420ff814f43d2030b9bc5749dd43203cd117f9ae5b9fed",
+      "semanticImports": [
+        {
+          "line": 3,
+          "import": "import decideAudienceFormat from \"./chooseAudienceResponse/decideAudienceFormat.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import answerFromRecord from \"./chooseAudienceResponse/answerFromRecord.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import prepareAudienceVisual from \"./chooseAudienceResponse/prepareAudienceVisual.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Answer the user's decision in a suitable format and verify any requested interaction.\nargs:\n  goal: string\nreturns: AudienceReport\nbudget: { maxTurns: 24 }\n---\n1. Call workspace.readAudienceRecord. Call decideAudienceFormat with the original goal and record.\n2. Call answerFromRecord with the original goal, exact record and choice.\n3. For plain, return prepared and receipt null. Do not call a renderer.\n4. Otherwise call prepareAudienceVisual with the goal, record and choice. Use its exact response and call workspace.renderAudienceVisual with the original record's id and revision. Return the original record, decision, exact answer, prepare result and actual receipt. Never make up a rendered output.\n",
+        "returns": "AudienceReport"
+      }
+    },
+    {
+      "callable": "reviewRetainedMemory",
+      "originalEntry": "skills/open-user-goal/reviewRetainedMemory.nl",
+      "entry": "skills/open-user-goal/reviewRetainedMemory.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "a24610fb3d9c1f8c2e4d87033954103270216bb69171a9c4a6fa83e0911c1811",
+      "semanticImports": [
+        {
+          "line": 3,
+          "import": "import chooseMemorySearch from \"./reviewRetainedMemory/chooseMemorySearch.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import judgeMemoryClaim from \"./reviewRetainedMemory/judgeMemoryClaim.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import shouldRetainMemoryFinding from \"./reviewRetainedMemory/shouldRetainMemoryFinding.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Recover an earlier workspace decision using recall leads and original scoped evidence.\nbudget: { maxTurns: 38 }\nargs:\n  goal: string\nreturns: RetainedMemoryReport\n---\n1. Call evidence.identifyMemoryScope. Call chooseMemorySearch with the unchanged goal and that scope.\n2. Call resolveMemoryEvidence with the exact scope and search plan. Memory snippets are leads. Use only exact accepted original message and immutable file receipts to establish history.\n3. Call judgeMemoryClaim with the original goal, exact evidence and selected plan. Preserve the returned evidence and claim.\n4. Use handoff null unless the user authorizes a private record. If authorized, call evidence.stageMemoryHandoff and include only its actual receipt. Do not send or revise source records.\n",
+        "returns": "RetainedMemoryReport"
+      }
+    },
+    {
+      "callable": "chooseAuthorizedEvidenceRoute",
+      "originalEntry": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.nl",
+      "entry": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "b24a4a5183ecdaf8a87a5143328de68b3d06ecc6ff8fdd901e97444c0186d093",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import selectEvidenceRoute from \"./chooseAuthorizedEvidenceRoute/selectEvidenceRoute.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import concludeEvidenceRoute from \"./chooseAuthorizedEvidenceRoute/concludeEvidenceRoute.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Choose the complete least-authority evidence route for a local workspace goal, then verify its exact result.\nbudget: { maxTurns: 42 }\nargs:\n  goal: string\nreturns: OwnedRouteReview\n---\n1. Call workspace.discoverEvidenceRoutes. Call inspectExactRouteAuthority with the offer's unchanged preflight request and keep all reviews.\n2. Call selectEvidenceRoute with goal, offer and reviews. Execute only the exact selected local route with workspace.readSelectedEvidenceRoute when choice.execute is true. Keep the independent result or null. There is no external execution path.\n3. Call concludeEvidenceRoute with the original goal, offer, full authority review, choice and readback. Return the entire outcome. If an explicit private note is authorized, call workspace.stageRouteReview with handoff null and include its actual receipt.\n",
+        "returns": "OwnedRouteReview"
+      }
+    },
+    {
+      "callable": "reconcilePanelLaunchState",
+      "originalEntry": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+      "entry": "skills/open-user-goal/reconcilePanelLaunchState.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "9f37394c9f579938fc033f1b714cacf3211ae5024539755d282341e9c0d4766e",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile requested changes with the exact owned panel launch slot and its validated native persistence.\nbudget: { maxTurns: 34 }\nargs:\n  goal: string\nreturns: LaunchReport | null\n---\n1. Call workspace.listLaunchSlots and planLaunchState. Read workspace.readLaunchSlot twice for plan.panelId. If either observation is absent, return null.\n2. Call decideLaunchChange on the goal, plan and both observations. For an authorized attempt, bind workspace.bindLaunchAuthority for the current digest and exact patch. Call reviewLaunchAuthority with the exact request. Only use the original plan against its current basis if the read says it is eligible. Preserve the actual effect or null.\n3. Read workspace.readbackLaunchSlot even if the effect was declined or rejected. Call concludeLaunchState with the plan, both snapshots, decision, effect and independent readback. Return the actual report. Stage a private note only if plan.retain.\n",
+        "returns": "LaunchReport | null"
+      }
+    },
+    {
+      "callable": "reviewWorkspaceClaims",
+      "originalEntry": "skills/open-user-goal/reviewWorkspaceClaims.nl",
+      "entry": "skills/open-user-goal/reviewWorkspaceClaims.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "7fc78f80fce82039da4bb629d7a035d6d9e74589b47d5fd7b9c9a641e98fc477",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import selectClaimPacket from \"./reviewWorkspaceClaims/selectClaimPacket.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import summarizeClaimReview from \"./reviewWorkspaceClaims/summarizeClaimReview.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Decide which specific workspace claims their exact revisions and actual TestKit or authority observations support.\nbudget: { maxTurns: 28 }\nargs:\n  goal: string\nreturns: WorkspaceClaimReview | null\n---\n1. Call workspace.listClaimScopes and selectClaimPacket with that index and the goal. Read the selected packet through workspace.readClaimPacket. Then read workspace.readClaimEvidence for that same id. Stop with null when either is unavailable or scoped to a different packet.\n2. Call verifyClaimSupport with the exact packet and evidence. Call summarizeClaimReview with the original goal, packet, evidence and support.\n3. Return choice, packet, evidence, support, disposition and handoff null. For an explicit private note, call workspace.writeClaimNote with the complete report and set handoff to the actual receipt.\n",
+        "returns": "WorkspaceClaimReview | null"
+      }
+    },
+    {
+      "callable": "workOnBridgeDelivery",
+      "originalEntry": "skills/open-user-goal/workOnBridgeDelivery.nl",
+      "entry": "skills/open-user-goal/workOnBridgeDelivery.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "266e6e614cf2c95a9f9bb86a8b78bfcc8099e2f5d138ae9f260e481e9430a118",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Decide local semantic release delivery from exact file revisions and retained external branch evidence.\nbudget: { maxTurns: 46 }\nargs:\n  goal: string\nreturns: BridgeDeliveryReport | null\n---\n1. Call project.discover and chooseBridgeScope on the unchanged goal and discovery. Call project.inspect on the selected id. If unavailable return null. Keep the exact scope.\n2. Call project.operation with the scope id and an empty path for the local bridge. Call project.operation once per scope file path for its two file review ids. Stop with null if any binding is unavailable. Call inspectCurrentBridge with its exact operation id, goal and scope. Call reviewDeliveryFile twice with each exact operation id and file path, once for the contract and once for the release note.\n3. Call assessRetainedBranch on the scope. Call decideLocalDelivery with the original goal, plan, scope, three reviews and branch assessment.\n4. Return the exact report. If the decision is commit, call project.commit with the selected id and verified working state before filling the commit receipt. If the user authorized a private decision, call project.retain with the report and a null handoff before filling the handoff receipt.\n",
+        "returns": "BridgeDeliveryReport | null"
+      }
+    },
+    {
+      "callable": "workOnChatContinuity",
+      "originalEntry": "skills/open-user-goal/workOnChatContinuity.nl",
+      "entry": "skills/open-user-goal/workOnChatContinuity.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "94e158f3359a0d6e01534c2a8230f5a9cfd83be33bcebe5b1f6a0aa7821c3522",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Verify whether an owned chat can continue using its retained delivery and actual worker identity.\nbudget: { maxTurns: 34 }\nargs:\n  goal: string\nreturns: ChatContinuityReport\n---\n1. Discover owned chat scopes, original receipt, and installed worker with workspace.discoverChatContinuity. Call chooseChatContinuity on the goal and index.\n2. Read two observations of the selected channel through workspace.observeChatContinuity. Call reviewChatContinuity with both observations, index, goal and plan. It calls the installed delivery reviewer with its exact native facts.\n3. Call decideChatContinuity with both observations and exact review. Return the complete report. Call workspace.stageChatContinuityNote only if the user requests the privately authorized handoff the decision allows.\n",
+        "returns": "ChatContinuityReport"
+      }
+    },
+    {
+      "callable": "workOnDemoPortfolio",
+      "originalEntry": "skills/open-user-goal/workOnDemoPortfolio.nl",
+      "entry": "skills/open-user-goal/workOnDemoPortfolio.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "30d078a52406cf34367d50c112574eaead37aeee3e23821b3c3cc85b47e6064e",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import choosePortfolioCriteria from \"./workOnDemoPortfolio/choosePortfolioCriteria.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import reviewPortfolioGarden from \"./workOnDemoPortfolio/reviewPortfolioGarden.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import reviewPortfolioRealm from \"./workOnDemoPortfolio/reviewPortfolioRealm.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import decidePortfolioDelivery from \"./workOnDemoPortfolio/decidePortfolioDelivery.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Judge the readiness of the owned Examples demo portfolio from separate Grimoire and Regency evidence.\nbudget: { maxTurns: 44 }\nargs:\n  goal: string\nreturns: PortfolioReport\n---\n1. Call portfolio.findPortfolio. Use the assigned id to read opening and current native frames separately through portfolio.readPortfolioFrame. Call choosePortfolioCriteria with the goal and both frames.\n2. If plan.months names a horizon, call portfolio.readPortfolioForecast with the exact current frame id and those months. Otherwise projection is null.\n3. Call reviewPortfolioGarden and reviewPortfolioRealm with both exact frames and the corresponding criterion lists. Give the realm child the same projection. Keep both installed results in order.\n4. Call decidePortfolioDelivery with current, plan, both results, and the unchanged goal. Build the exact report with note null. When the decision.write is true, call portfolio.stagePortfolioHandoff and preserve the returned receipt. Return the report.\n",
+        "returns": "PortfolioReport"
+      }
+    },
+    {
+      "callable": "workOnRegencyBriefing",
+      "originalEntry": "skills/open-user-goal/workOnRegencyBriefing.nl",
+      "entry": "skills/open-user-goal/workOnRegencyBriefing.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "eb9c34106e1fe8e07868b8c10bb6bcfe9c96772d18f843a7068a7c5488ee6288",
+      "semanticImports": [
+        {
+          "line": 6,
+          "import": "import planRegencyReview from \"./workOnRegencyBriefing/planRegencyReview.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import qualifyRegencyClaim from \"./workOnRegencyBriefing/qualifyRegencyClaim.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import decideRegencyAction from \"./workOnRegencyBriefing/decideRegencyAction.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Resolve an open Regency council decision with the current native accounts and installed reviewers.\nbudget: { maxTurns: 44 }\nargs:\n  goal: string\nreturns: RegencyReport\n---\n1. Call realm.findRegencyRealm. Read the opening and current saved accounts separately through realm.readRegencyAccounts with its exact realm. Call planRegencyReview with the unchanged goal, installed index and both saved snapshots.\n2. For each horizon in the plan, call realm.previewRegencySettlement on the exact current saved revision. Collect available projections in order. For each claim call qualifyRegencyClaim with the exact source records. Keep each finding.\n3. Call decideRegencyAction with goal, plan, current accounts, forecasts, the realm index and findings. If it chooses advance call realm.advanceOwnedRegency once and keep the exact committed receipt. Otherwise set advance to null.\n4. Assemble the full report with note initially null. Call realm.stageRegencyNote only for stage, or for an actual committed advance when the plan grants a private note. Return the complete report unchanged.\n",
+        "returns": "RegencyReport"
+      }
+    },
+    {
+      "callable": "workOnApiReadinessGoal",
+      "originalEntry": "skills/open-user-goal/workOnApiReadinessGoal.nl",
+      "entry": "skills/open-user-goal/workOnApiReadinessGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "50f4a5ef757148a9cd104b6ab44bb2effc437dfadbdf8d8c28129b0d95f70e0f",
+      "semanticImports": [
+        {
+          "line": 6,
+          "import": "import chooseIntegrationProfile from \"./workOnApiReadinessGoal/chooseIntegrationProfile.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import checkIntegrationSelection from \"./workOnApiReadinessGoal/checkIntegrationSelection.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import reviewQuietCredentials from \"./workOnApiReadinessGoal/reviewQuietCredentials.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import decideApiReadiness from \"./workOnApiReadinessGoal/decideApiReadiness.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile current trusted API integration selection and authorized quiet binding readiness.\nbudget: { maxTurns: 34 }\nargs:\n  goal: string\nreturns: ApiReadinessReport\n---\n1. Discover current profiles. Choose the exact intended integration and read the owned selection frontier twice. Call checkIntegrationSelection with both views.\n2. Only if its current trusted selection is selected, call workspace.openQuietIntegrationPlan using the exact profile and message. Call reviewQuietCredentials with its request. Then read workspace.readQuietIntegrationAudit with the same operation ID. Otherwise use null review and audit.\n3. Call decideApiReadiness with unchanged goal and all observed evidence. Form the exact report with plan, review, audit and null handoff. If stage is allowed, put the exact returned receipt in the handoff field and return the same report. Otherwise return the report with null handoff.\n",
+        "returns": "ApiReadinessReport"
+      }
+    },
+    {
+      "callable": "workOnPersonalWelcomeGoal",
+      "originalEntry": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+      "entry": "skills/open-user-goal/workOnPersonalWelcomeGoal.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "cf3d5e37941c309706e4c616c0b84b3703d3aa16411a18029113a121ba475014",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile an owned Personal welcome, setup, tour or Explorer next step.\nbudget: { maxTurns: 32 }\nargs:\n  goal: string\nreturns: WelcomeGoalReport\n---\n1. Discover the current Personal resources. Choose the intended resource. Read the exact retained channel twice, keeping both native frontiers. Resolve the chosen resource if there is one.\n2. Call reconcileWelcomeEvidence with the exact index, choice, both views and actual resolution.\n3. For setup or chooser call reviewWelcomeSetup with goal and the assigned intent. For a valid verified-current tour record call reviewWelcomeTour with its exact native row, canonical scene and deck count. For retry-ready call retryWelcomeProbe with the authorized exact request. Leave other reviews null.\n4. Call decideWelcomeNextStep with the exact evidence, current resolution and reviews. If it says stage, use workspace.stageWelcomeNextStep once. Return its exact plan, reviews containing setup, tour and probe, and the local receipt or null.\n",
+        "returns": "WelcomeGoalReport"
+      }
+    },
+    {
+      "callable": "reviewUnitHandoffGoal",
+      "originalEntry": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+      "entry": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "64c90e41c050c92f3816e0074b89ab09d3f622f270ee4bc12e55ba2cdf5ae4e0",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Review an installed workspace unit's manifest and visual identity for one private handoff, with a local icon draft only when authorized.\nargs:\n  goal: string\nreturns: UnitHandoffReport\nbudget: { maxTurns: 26 }\n---\n1. Call unitHandoff.discover. Pass the exact goal and visible units to chooseUnit. If there is no single match, return an unassigned report with no observations or effects and explain the distinction the user must supply.\n2. Call unitHandoff.begin with the selected path. Check that the returned unit is the selected one. Pass the goal, plan, and exact observation to reviewDesign for a requested manifest or joined review.\n3. Pass the goal, plan, observation, and design finding to reviewIdentity for a requested identity or joined review. A proposal can be read-only. A joined review cannot draft an icon on a missing or invalid manifest.\n4. Call completeHandoff with the goal and every scoped result. Preserve actual receipts and give the user one grounded next step. Runtime lifecycle, protected main, and working draft are separate facts. Do not publish, activate, restart or build a unit in this review.\n",
+        "returns": "UnitHandoffReport"
+      }
+    },
+    {
+      "callable": "workOnSpecialistHandoffGoal",
+      "originalEntry": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+      "entry": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "69b460d4f51af98a9c51d6fd798c36fecd2443700a716a841164d515f718d617",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Verify the exact retained specialist result and decide an authorized local integration handoff.\nbudget: { maxTurns: 30 }\nargs:\n  goal: string\nreturns: SpecialistGoalReport\n---\n1. Discover the current specialist index and chooseCurrentSpecialist for the user's goal. If it names a handle, call agents.manageChannelAgent with the exact goal, channel, context, handle, action inspect and null options. Keep the exact request and returned membership report. Otherwise keep null membership.\n2. Read the owned retained frontier twice. Call checkSpecialistReceipt with the choice, current frontier and exact membership. If verified, use workspace.readOriginalSpecialistArtifact with its exact result message. If the original is present call reviewSpecialistHistory with that result record and original bytes.\n3. Call decideSpecialistHandoff with the exact evidence and unchanged goal. If the plan says stage and the history review exists, call workspace.stageSpecialistHandoff once. Return the actual plan, membership with the exact request and report or null, unchanged history witness or null, and actual local receipt or null.\n",
+        "returns": "SpecialistGoalReport"
+      }
+    },
+    {
+      "callable": "workOnDictationHandoffGoal",
+      "originalEntry": "skills/open-user-goal/workOnDictationHandoffGoal.nl",
+      "entry": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "1ff2d123c4cac992554b477832af52ba4278cf8c38d15f6d963703db5ea14ce2",
+      "semanticImports": [
+        {
+          "line": 4,
+          "import": "import identifyDictationThread from \"./workOnDictationHandoffGoal/identifyDictationThread.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import reconcileDictationSegments from \"./workOnDictationHandoffGoal/reconcileDictationSegments.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import reviewRetainedDictation from \"./workOnDictationHandoffGoal/reviewRetainedDictation.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import decideDictationHandoff from \"./workOnDictationHandoffGoal/decideDictationHandoff.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Recover retained offline dictation and verify an owned local draft handoff.\nbudget: { maxTurns: 30 }\nargs:\n  goal: string\nreturns: DictationGoalReport\n---\n1. Discover owned threads once. Use identifyDictationThread to choose the requested draft conversation. Read its retained snapshot twice, preserving the earlier and current frontiers.\n2. Call reconcileDictationSegments with the exact thread, both snapshots and unchanged goal. For a retained transcript, call reviewRetainedDictation with that original text and goal. Otherwise use null review.\n3. Call decideDictationHandoff. Stage the exact plan and installed review result only for stage-correction or stage-alternative. Return the plan, unchanged review and exact artifact receipt or null.\n",
+        "returns": "DictationGoalReport"
+      }
+    },
+    {
+      "callable": "workOnProviderHandoffGoal",
+      "originalEntry": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+      "entry": "skills/open-user-goal/workOnProviderHandoffGoal.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "efd8f1f008b3a9a10b6d789223edc599c57988484c4951c5730a60007cd5aca5",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Recover a retained provider approval and original conversation result for an authorized handoff.\nbudget: { maxTurns: 30 }\nargs:\n  goal: string\nreturns: ProviderGoalReport\n---\n1. Call workspace.discoverRetainedConversations. Select the intended conversation with chooseProviderConversation. Inspect its exact retained state with workspace.readProviderConversation. Re-read it once for its current frontier. Keep both actual views.\n2. Call reviewRetainedApproval with the goal, selected card, and both views. It compares the caller-visible queue observations through the installed approval review. Call chooseRetainedResult with the goal, card, latest view and approval.result. Read exact cached output using workspace.readProviderOutput only if that selection requests it.\n3. Call reviewRetainedDelivery with the actual card, current view, selection and returned cached output. Call decideProviderHandoff with the goal and exact receipts, using approval.result and delivery.result for the two reviews. If the resulting plan is ready and the user requested an explicitly permitted local handoff, call workspace.stageProviderHandoff once. Otherwise retain no artifact. Return the actual plan, handoff receipt or null, and reviews containing the unchanged approval and delivery evidence.\n",
+        "returns": "ProviderGoalReport"
+      }
+    },
+    {
+      "callable": "recoverOperatingHandoff",
+      "originalEntry": "skills/open-user-goal/recoverOperatingHandoff.nl",
+      "entry": "skills/open-user-goal/recoverOperatingHandoff.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "e5eb710e34d6d1f9aa57a7063ff4bce88609f662652ed943afdd98ac3e059deb",
+      "semanticImports": [
+        {
+          "line": 1,
+          "import": "import workOnEvalHandoffGoal from \"./workOnEvalHandoffGoal.nl\";"
+        },
+        {
+          "line": 2,
+          "import": "import workOnRecoveryHandoff from \"./workOnRecoveryHandoff.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Recover native execution evidence and use it to resolve an operating handoff.\nargs:\n  goal: string\nreturns: RecoveryHandoffOutcome\nbudget: { maxTurns: 36 }\nuses: [workOnEvalHandoffGoal, workOnRecoveryHandoff]\n---\n1. Call workOnEvalHandoffGoal with the operating goal to resolve the original attempt and any authorized recovery. Keep the returned evidence and its actual disposition.\n2. Call workOnRecoveryHandoff with the goal and that recovery. Return its application result, including the actual source observations and any local artifact.\n",
+        "returns": "RecoveryHandoffOutcome"
+      }
+    },
+    {
+      "callable": "workOnTerminalGoal",
+      "originalEntry": "skills/open-user-goal/workOnTerminalGoal.nl",
+      "entry": "skills/open-user-goal/workOnTerminalGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "bbb2d5eb56b91e0b40d62a4579d2e74af3d4c4730ab056cc927efe677762ea71",
+      "semanticImports": [
+        {
+          "line": 4,
+          "import": "import discoverTerminalOptions from \"./workOnTerminalGoal/terminal/discoverTerminalOptions.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import runTerminalChecks from \"./workOnTerminalGoal/checks/runTerminalChecks.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import chooseTerminalAction from \"./workOnTerminalGoal/chooseTerminalAction.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import reviewTransition from \"./workOnTerminalGoal/reviewTransition.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import composeTerminalOutcome from \"./workOnTerminalGoal/composeTerminalOutcome.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Complete an owned project outcome with observed release checklist state, native checks, and authorized terminal actions.\nbudget: { maxTurns: 36 }\nargs:\n  goal: string\nreturns: TerminalGoalReport\n---\n1. Call terminal.openTerminal. Keep its exact response with the first live checklist screen. Start with an empty event list, no terminal check report, no discovery result, and no handoff.\n2. Call chooseTerminalAction with the user's goal, opening information and all actual progress. Perform the chosen action. For change call terminal.applyChecklistChange. For transition call terminal.advanceTerminal. Preserve each actual event. For a reattach, restart or resume event with both screens, call reviewTransition using the unchanged event. Require its verified result before dependent work. For check call checks.runTerminalChecks with the user's goal and the opening checkOperationId. Use its actual report and do not rerun it. For discover call terminal.discoverTerminalOptions once with the goal and exact initial screen. Keep its actual result. For stage call terminal.stageTerminalHandoff. A null result is a refusal and cannot become a success. Finish when chooseTerminalAction returns finish or after at most twelve selected actions. Do not add actions to satisfy a guessed expectation.\n3. Call composeTerminalOutcome with the goal and recorded progress. Return the opening screen, the exact ordered events, the actual check report or null, the actual discovery result or null, the actual handoff or null, and the returned summary.\n",
+        "returns": "TerminalGoalReport"
+      }
+    },
+    {
+      "callable": "workOnLocalReconciliationGoal",
+      "originalEntry": "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
+      "entry": "skills/open-user-goal/workOnLocalReconciliationGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "66b33a5221155b11618d65e1202a1d2c0a6dae3d64e6986496dc92639a9b8c0c",
+      "semanticImports": [
+        {
+          "line": 1,
+          "import": "import reconcileLocalGoal from \"./workOnLocalReconciliationGoal/project/reconcileLocalGoal.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import assembleHandoff from \"./workOnLocalReconciliationGoal/scratch/assembleHandoff.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Reconcile the user's local project and retain authorized evidence in the installed scratch skill.\nargs:\n  goal: string\nreturns: LocalReconciliationGoalReport\nbudget: { maxTurns: 14 }\n---\n1. Call project.reconcileLocalGoal with the unchanged goal. Keep the actual integration result and any released evidence request.\n2. When an evidence request is present, call scratch.assembleHandoff with it unchanged. Use status staged and the actual receipt only if the scratch skill reports staged. Otherwise use held and a null receipt. If no evidence request was released, use held for a requested handoff and none if no handoff was requested.\n3. Call project.reconcileLocalGoal.discoverWindow.readWindow to obtain the final actual window. Return integration, window, handoff and the actual prior comparison or null. A later window closure can hold a handoff after successful integration.\n",
+        "returns": "LocalReconciliationGoalReport"
+      }
+    },
+    {
+      "callable": "workOnCapabilityGoal",
+      "originalEntry": "skills/open-user-goal/workOnCapabilityGoal.nl",
+      "entry": "skills/open-user-goal/workOnCapabilityGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "71eee183b65cb1bdf695e40710049145e971f86ab21c9eca82bce5b8a9409200",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import keywords from \"./workOnCapabilityGoal/help/docHelp/keywords.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import chooseDocRequests from \"./workOnCapabilityGoal/chooseDocRequests.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import collectCapabilityEvidence from \"./workOnCapabilityGoal/workspace/collectCapabilityEvidence.nl\";"
+        },
+        {
+          "line": 5,
+          "import": "import synthesizeCapabilityPlan from \"./workOnCapabilityGoal/workspace/synthesizeCapabilityPlan.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import shouldStageCapabilityPlan from \"./workOnCapabilityGoal/shouldStageCapabilityPlan.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Plan with the currently visible capability catalog, exact installed knowledge and owned workspace notes.\nbudget: { maxTurns: 20 }\nargs:\n  goal: string\nreturns: CapabilityGoalReport\n---\n1. Call workspace.readPlanningState. Call help.docHelp.keywords on the user's goal to identify focused documentation terms. Call chooseDocRequests with the goal, terms and actual memo. Use exact method spellings from the user's request when they help discover authoritative documentation.\n2. Call workspace.collectCapabilityEvidence with the goal and bounded requests. Receive the actual opened catalog descriptions and any live inventory.\n3. Call workspace.synthesizeCapabilityPlan with the goal, the actual planning state and those exact entries. It can load the installed skills it needs directly in its own context. Return its actual typed plan.\n4. Call shouldStageCapabilityPlan with the goal, authority and plan. If it returns true, call workspace.stageCapabilityPlan with the exact plan. Return the actual plan and its actual scratch receipt or null. Do not execute any planned action.\n",
+        "returns": "CapabilityGoalReport"
+      }
+    },
+    {
+      "callable": "recoverOwnedTask",
+      "originalEntry": "skills/open-owned-task-recovery/recoverOwnedTask.nl",
+      "entry": "skills/open-owned-task-recovery/recoverOwnedTask.nl",
+      "classification": "semantic-root",
+      "reason": "The root interprets current task identity, changed-attempt evidence and conditional local delivery after native races. It chooses whether the original attempt remains applicable rather than replaying a predetermined mutation.",
+      "sourceSha256": "1e79e690b7a53977b661d7b23e72ad35e1364ce690eb7b5808766a3d05a2ff67",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Recover a current owned task from durable participant evidence and verify an authorized local handoff.\nargs:\n  goal: string\nreturns: RecoveryReport\nbudget: { maxTurns: 22 }\n---\n1. Call findTask with the unchanged goal. If the specific task cannot be distinguished, return task null and the reason.\n2. Call reviewAttempts with the goal and actual task. Keep the exact current terminal receipt, if established, and the observed local recipients.\n3. Call advanceTask to choose the authorized change. Use advanceTask.moveTask for a change. Reread via findTask.readTask and re-evaluate the earlier attempts against the newer task after a changed result. Use reviewAttempts.matchCurrent with the current task and earlier lane observations; they are receipts, not a license to change a new attempt. Never repeat a stale action. Read the actual task after any accepted effect.\n4. If the user requests a local handoff and its evidence and permission are established, call deliverHandoff with the actual current task and the previously observed lane. Report the original attempt and actual readback. A lost acknowledgment is a reason to read back the original attempt.\n5. Return the exact current task ID, revision, and status, the original verified terminal receipt or null, the actual delivery or null, and the grounded reason.\n",
+        "returns": "RecoveryReport"
+      }
+    },
+    {
+      "callable": "reviewDurableQuestion",
+      "originalEntry": "skills/gad-context/natlang/reviewDurableQuestion.nl",
+      "entry": "skills/gad-context/natlang/reviewDurableQuestion.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "6c1266fa0e944beec3029bf933715dc4440d7b52ef1537950f2d381cd0aff546",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import interpretQuestion from \"./reviewDurableQuestion/reviewQuestion/interpretQuestion.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import evaluateRoster from \"./reviewDurableQuestion/reviewParticipant/evaluateRoster.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Review an individual durable question and its current participant in the assigned conversation.\nargs:\n  goal: string\nreturns: DurableQuestionReport\nbudget: { maxTurns: 11 }\n---\n1. Call reviewQuestion with the original goal. Keep its exact history receipt, channel and question judgment.\n2. Call reviewParticipant with the original goal, the history receipt, and the exact question judgment. Keep its roster receipt and participant judgment.\n3. Mark ready only when the question is current and the requested participant identity is confirmed. Otherwise hold. Explain which exact evidence established the current question and participant or which boundary keeps the handoff on hold. Return the original receipts, channel, and judgments. This is a private read-only review.\n",
+        "returns": "DurableQuestionReport"
+      }
+    },
+    {
+      "callable": "workOnClientDiagnostics",
+      "originalEntry": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
+      "entry": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
+      "classification": "semantic-root",
+      "reason": "The root determines when cross-client evidence is sufficient, routes native renderer and durable-channel investigation, and interprets the requested audience for a conditional diagnosis handoff.",
+      "sourceSha256": "d9bf60913cdc8007ec3e42ff61cfc5276615303761e2a357ca0173ace433e4a4",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Complete an owned cross-client diagnosis using current CDP and durable GAD evidence.\nuses: [reviewChannel]\nargs:\n  goal: string\nreturns: ClientDiagnosticsReport\nbudget: { maxTurns: 48 }\n---\n1. Discover the owned client surfaces with clientDiagnostics.discover. Keep exact views, action receipts and the channel review as you work.\n2. Call chooseClientCheck with the unchanged goal, catalog and actual evidence so far. Inspect the selected surface with clientDiagnostics.observe. For a view action, use its actual view ID and keep the returned receipt. Always inspect that surface again after an action, including changed or denied, before deciding how to proceed.\n3. For a channel check, call clientDiagnostics.channel with the requested review kind. If an assignment is available, call reviewChannel with it unchanged and keep the actual result.\n4. After the goal has enough evidence, call concludeClientCheck. For an explicitly requested local handoff call stageClientHandoff with the audience from the goal and the actual conclusion. If staged, return handoff-staged as the final decision outcome and keep its other fields unchanged. Otherwise return the original conclusion. Return all exact views, effects and channel review.\n",
+        "returns": "ClientDiagnosticsReport"
+      }
+    },
+    {
+      "callable": "workOnAssemblyGoal",
+      "originalEntry": "skills/open-user-goal/workOnAssemblyGoal.nl",
+      "entry": "skills/open-user-goal/workOnAssemblyGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "91706d14ebc6372217c5342098f3fa2dcf173cd31c8806e28e6d1b66e5ce9a26",
+      "semanticImports": [
+        {
+          "line": 5,
+          "import": "import chooseAssemblyCandidate from \"./workOnAssemblyGoal/chooseAssemblyCandidate.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import completeAssemblyScope from \"./workOnAssemblyGoal/completeAssemblyScope.nl\";"
+        },
+        {
+          "line": 7,
+          "import": "import interpretDependencies from \"./workOnAssemblyGoal/interpretDependencies.nl\";"
+        },
+        {
+          "line": 8,
+          "import": "import chooseAssemblyVerification from \"./workOnAssemblyGoal/chooseAssemblyVerification.nl\";"
+        },
+        {
+          "line": 9,
+          "import": "import decideAssemblyOutcome from \"./workOnAssemblyGoal/decideAssemblyOutcome.nl\";"
+        },
+        {
+          "line": 10,
+          "import": "import shouldStageAssemblyDraft from \"./workOnAssemblyGoal/shouldStageAssemblyDraft.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Resolve an owned workspace package selection against exact source, build and revision evidence, then optionally stage a local draft.\nbudget: { maxTurns: 30 }\nargs:\n  goal: string\nreturns: AssemblyReport\n---\n1. Call workspace.readAssemblyInventory. Call chooseAssemblyCandidate with the exact goal and inventory. It selects one candidate or holds and chooses owned units to inspect.\n2. Call workspace.readAssemblyUnits on the selected roots and dependency candidates. Call completeAssemblyScope with the goal, inventory, scope and actual sources. If it returns more package IDs, read those exact units at the same head. Call interpretDependencies with the complete observed evidence.\n3. Call chooseAssemblyVerification with the goal, inventory, scope and dependencies. Call workspace.verifyAssemblyBuild for each actual choice and keep every returned receipt in order. A compile skipped or without retained output is not certified.\n4. Call decideAssemblyOutcome with the actual goal, inventory, scope, dependencies and receipts. Call shouldStageAssemblyDraft with the goal, grant and plan. If true, call workspace.stageAssemblyDraft with that exact plan. Return the actual plan and actual local receipt or null.\n",
+        "returns": "AssemblyReport"
+      }
+    },
+    {
+      "callable": "recoverScheduledAutomation",
+      "originalEntry": "skills/open-owned-scheduled-recovery/recoverScheduledAutomation.nl",
+      "entry": "skills/open-owned-scheduled-recovery/recoverScheduledAutomation.nl",
+      "classification": "semantic-root",
+      "reason": "The root reconciles retained owner decisions with changed schedule revisions and prerequisites, and determines whether the actual destination remains authorized after reread.",
+      "sourceSha256": "0ab014a1abfe19f409d38e39c8afe12372a565d7cd931661aaf70b66cca81a30",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Resolve an owned scheduled automation goal against current schedules and retained user decisions.\nargs:\n  goal: string\nreturns: ScheduledOutcome\nbudget: { maxTurns: 24 }\n---\n1. Call discoverSchedules with the goal. Keep the exact schedule and the other current schedule options.\n2. Call reviewRetainedInput with the goal and chosen schedule. A proposal or an archive is evidence rather than current authorization. Use the current owner, revision, requested operation and prerequisite to evaluate any apparent decision.\n3. Call applyChange on the result. It may return a changed revision or dependency. Call discoverSchedules.readSchedule again and re-evaluate retained authorization against the newer state before drawing conclusions. Never apply stale authorization to a new revision.\n4. Call confirmEffects and return the most recent schedule it actually observed. Keep the exact relevant authorized receipt, if established.\n5. When the user asked for an owned handoff and the accepted decision includes that destination, call recoverHandoff. If the submit answer is interrupted, recover the original receipt. Return the independently observed schedule and any actual receipt, with a concise reason grounded in the result.\n",
+        "returns": "ScheduledOutcome"
+      }
+    },
+    {
+      "callable": "workOnEvalHandoffGoal",
+      "originalEntry": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+      "entry": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
+      "classification": "parallel-conversion-in-progress",
+      "reason": "Assigned to the corpus strand for typed composition; not counted complete before its ordinary merge.",
+      "sourceSha256": "e57b64171b6a2ff451b09d83f56247a029eb0fc7196920f0fb440e36e1edd5dd",
+      "semanticImports": [],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Recover the user's owned native eval work and carry verified output into a scratch handoff.\nbudget: { maxTurns: 24 }\nargs:\n  goal: string\nreturns: EvalHandoffGoalReport\n---\n1. Call journal.discoverEvalJobs. Call chooseEvalJob with the user's goal and actual catalog. If no job resolves, return {status:\"unresolved\", reason:\"job-unavailable\"}.\n2. Call chooseEvalAttempts to select the original attempts needed for the request. For each selected ID in order, call journal.openEvalAttempt with the exact job and run IDs. For each opened attempt call reviewer.reviewEvalRecovery with its request unchanged. Keep each actual observation and its returned review as a trial.\n3. Ask decideEvalHandoff to select a usable result, an authorized exact retry or a hold. If it chooses retry, call journal.retryOpenEval with the original chosen run ID. When a new observation returns, call reviewer.reviewEvalRecovery on that new request and append its trial. Ask decideEvalHandoff again with retrySpent true. If the retry did not open, hold based on the retained attempts. Never repeat the retry.\n4. Join the final decision to the actual trials with confirmedEvalResult. If there is a confirmed result, pass that result and the unchanged goal to shouldStageEvalResult to decide the requested local handoff. Stage only when requested, using the exact job and run IDs carried by that confirmed observation. The writer independently checks its current authority and original receipts. With no confirmed result, preserve the hold and leave no artifact. Return status \"reviewed\", the actual job ID, all trials in order, the final decision and the actual artifact or null.\n",
+        "returns": "EvalHandoffGoalReport"
+      }
+    },
+    {
+      "callable": "recoverPanelGoal",
+      "originalEntry": "skills/panel-health/recoverPanelGoal.nl",
+      "entry": "skills/panel-health/recoverPanelGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "7b6ee096f35cf1f50ee741ba91f82ad6882992908f50d7745d9a94967899bcd6",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import chooseRecoverySurface from \"./recoverPanelGoal/chooseRecoverySurface.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import recoverSurface from \"./recoverPanelGoal/recoverSurface.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Find and independently confirm recovery of a requested owned visual surface.\nargs:\n  goal: string\nreturns: RecoveryReport\nbudget: { maxTurns: 16 }\n---\n1. Call panelRecovery.discover and chooseRecoverySurface(goal, actual catalog). Bind the selected surface and catalog revision. When unresolved, explain why.\n2. Call recoverSurface with the full goal and the bound owned surface. Return its actual disposition.\n",
+        "returns": "RecoveryReport"
+      }
+    },
+    {
+      "callable": "publishOwnedPreviewGoal",
+      "originalEntry": "skills/publish-preflight/publishOwnedPreviewGoal.nl",
+      "entry": "skills/publish-preflight/publishOwnedPreviewGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "36a344a519e346a1a2dccc8d157f5e973534e060aa9e5add1b3b56ca6fb3634b",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import choosePreviewDestination from \"./publishOwnedPreviewGoal/choosePreviewDestination.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import preflightPublication from \"./preflightPublication.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import deliverPreview from \"./publishOwnedPreviewGoal/deliverPreview.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Publish or recover an authorized disposable preview and verify exactly what it serves.\nargs:\n  goal: string\nreturns: OwnedPreviewReport\nuses: [preflightPublication]\nbudget: { maxTurns: 20 }\n---\n1. Read ownedPreviewPublication.discover. Call choosePreviewDestination with the user's goal and the actual launch record. Bind its exact destination to the observed revision. If the goal or binding is unresolved, return unresolved.\n2. If the binding holds, report its actual hold reason, selected target, and null preflight, receipt and hosted result. Otherwise call preflightPublication with the actual request. If it is blocked, hold with its first blocker as reason and retain the real preflight. Leave receipt and hosted result null.\n3. After an exact ready-for-review preflight, call deliverPreview with the bound target and operation ID, the actual preflight, and the user's goal. Return its actual outcome.\n",
+        "returns": "OwnedPreviewReport"
+      }
+    },
+    {
+      "callable": "workOnPdfGoal",
+      "originalEntry": "skills/pdf-intake/workOnPdfGoal.nl",
+      "entry": "skills/pdf-intake/workOnPdfGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "423eb547120f6f369ba212615ce189027564319d851e8d4ba1de90a7db540988",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import choosePdfScope from \"./workOnPdfGoal/choosePdfScope.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import extractPdfEvidence from \"./extractPdfEvidence.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import reviewPdfLayout from \"./reviewPdfLayout.nl\";"
+        },
+        {
+          "line": 6,
+          "import": "import recommendPdfAction from \"./workOnPdfGoal/recommendPdfAction.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Inspect a local PDF for a user goal and recommend a grounded reading or accessibility action.\nargs:\n  goal: string\nreturns: PdfGoalReport\nuses: [extractPdfEvidence, reviewPdfLayout]\nbudget: { maxTurns: 30 }\n---\n1. Read pdfGoalDocuments.discover. Call choosePdfScope with the user's goal and actual document observations. Bind the chosen document and page scope to the observed revision with pdfGoalDocuments.bind. If the scope cannot be justified or bound, return blocked with the observed reason.\n2. Call extractPdfEvidence for the bound text request, if any. Call reviewPdfLayout for each bound layout request, preserving page order and allowing different reading structures within one PDF. For a visual request, call readRenderedPages.\n3. Call recommendPdfAction with the actual missing pages, text result, layout and render receipts. Return the selected scope, exact results and recommendation.\n",
+        "returns": "PdfGoalReport"
+      }
+    },
+    {
+      "callable": "workTowardPublicationGoal",
+      "originalEntry": "skills/publish-preflight/workTowardPublicationGoal.nl",
+      "entry": "skills/publish-preflight/workTowardPublicationGoal.ts",
+      "classification": "typed-functional-composition",
+      "reason": "Deterministic native I/O, branching, ordered collection and exact application projection execute in TypeScript; domain semantic choices remain in typed Natlang lambdas.",
+      "sourceSha256": "b4dd19732204a57d975a516f34d9416364cc7b8b06cb5db600e2ae23316e8ae4",
+      "semanticImports": [
+        {
+          "line": 2,
+          "import": "import choosePublicationScope from \"./workTowardPublicationGoal/choosePublicationScope.nl\";"
+        },
+        {
+          "line": 3,
+          "import": "import reviewPublicationRevision from \"./reviewPublicationRevision.nl\";"
+        },
+        {
+          "line": 4,
+          "import": "import preflightPublication from \"./preflightPublication.nl\";"
+        }
+      ],
+      "originalSourceEvidence": {
+        "source": "---\ndescription: Resolve a website publication review, lost-operation check, or prior review decision in the current workspace.\nargs:\n  goal: string\nreturns: PublicationGoalReport\nuses: [preflightPublication, reviewPublicationRevision]\nbudget: { maxTurns: 24 }\n---\n1. Read publicationGoal.discover. Ask choosePublicationScope to select the exact destination and work needed for the goal from the current observation.\n2. If no scope is justified, return blocked and explain the missing target or evidence. Otherwise pass the observed revision and choice to publicationGoal.bind. If binding fails, rediscover once and reconsider on the fresh evidence.\n3. For a bound revision request call reviewPublicationRevision. For a bound preflight request call preflightPublication. Preserve both when the user needs the package review and the prior decision. Return the exact chosen scope and actual results, using null for an unrequested check. Treat a local review and journal state as their observed dispositions.\n",
+        "returns": "PublicationGoalReport"
+      }
+    }
+  ],
+  "validation": {
+    "actualIntegratedSignatures": {
+      "base": "431ff9f",
+      "passed": 116,
+      "unit": "vibe-v14-integrated-signatures-20261123a"
+    },
+    "latestCompositionSignatures": "pending independent ledgered qualification; no model calls run by this strand"
+  }
+}
