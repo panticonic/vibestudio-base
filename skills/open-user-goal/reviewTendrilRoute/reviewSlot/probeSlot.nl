@@ -1,9 +1,8 @@
 ---
 description: Ask the installed local matcher to project the retained instruction at this exact owned slot.
 args:
-  id: string
-  slot: string
-  revision: string
+  board: TendrilRouteSnapshot
+  slot: TendrilRouteSlot
 returns: TendrilRouteProbe
 ---
-Return tendrilRouteRead.probe(id, slot, revision).
+Return project(board, slot). It forwards the board identity, chosen slot identity and observed board revision without reconstructing opaque IDs.

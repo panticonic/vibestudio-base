@@ -9,3 +9,5 @@
 | Admit captures | Host verifier | Bind completed skill, per-tool arguments and effects, exact current revision, and any evidence to complete captured value references. |
 
 Native inventory includes the Tendril agent SDK, TendrilDO identity and state, the slot/function registration RPCs, and the local control phrase matcher. The owned channel initialization creates the local context for state signals, and the audit reads its identity and exact durable log without sending instructions. Prior scripted Tendril presentation/build tests remain separate. These goals review retained slot registrations and audience state and never infer that a device is connected from its retained slot alone.
+
+The slot-selection lambda passes the complete observed board snapshot and selected slot record to `probeSlot`. Its `project.ts` helper verifies membership and forwards `board.id`, the selected `slot.id`, and `board.revision` to the native matcher. Opaque board/slot IDs are not reinterpreted or reconstructed by a semantic leaf. Slot, audience and route selection remain Natlang decisions; a foreign slot is rejected mechanically.
