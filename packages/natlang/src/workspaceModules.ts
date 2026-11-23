@@ -168,7 +168,8 @@ export type { ${branch.types.join(", ")} } from "./${path.slice(slash + 1)}/type
     const selected=candidates[0]!;
     if(candidates[1]&&common(path,selected.mount)===common(path,candidates[1].mount))reject(`Type package ${packageName} is ambiguous from ${path}; declare a unique nearest mount.`);
     const subpath=specifier===packageName?".":"./"+specifier.slice(packageName.length+1);
-    const exports=typeof selected.pkg.exports==="string"?{".":selected.pkg.exports}:selected.pkg.exports;
+    const rawExports=selected.pkg.exports;
+    const exports=typeof rawExports==="string"?{".":rawExports}:rawExports&&typeof rawExports==="object"&&!Array.isArray(rawExports)&&!Object.keys(rawExports).some(key=>key.startsWith("."))?{".":rawExports}:rawExports;
     const mapped=exports&&typeof exports==="object"&&!Array.isArray(exports)?packageExportTarget(exports,subpath,["types","natlang","import","default"]):undefined;
     if(!mapped)reject(`Package ${packageName} does not export ${subpath} for ${path}.`);
     if(!mapped!.startsWith("./"))reject(`Package ${packageName} has a non-relative public type target.`);

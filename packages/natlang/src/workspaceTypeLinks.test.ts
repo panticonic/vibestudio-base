@@ -20,7 +20,7 @@ it("does not reach undeclared, unexported, excluded or escaping private type fil
   const projects=packages(),files=projects.get("skills/reviewer")!;
   if(mode==="private")projects.get("skills/discovery")!["types.ts"]='export type {Native} from "@workspace-skills/reviewer/private";';
   if(mode==="excluded")files["natlang.json"]=JSON.stringify({include:["package.json"]});
-  if(mode==="escape")files["package.json"]=JSON.stringify({name:"@workspace-skills/reviewer",exports:{"./types":"../private.ts"}});
+  if(mode==="escape")files["package.json"]=JSON.stringify({name:"@workspace-skills/reviewer",exports:{"./types":"./../private.ts"}});
   const source=local();if(mode==="ambiguous")source["natlang.json"]=JSON.stringify({workspaceModules:{"discovery":"skills/discovery","a":"skills/reviewer","b":"skills/reviewer"}});
   await expect(linkWorkspaceModules("skills/app",source,async()=>projects)).rejects.toThrow(/does not export|not included|escapes|non-relative|ambiguous/);
  }
