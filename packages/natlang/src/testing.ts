@@ -24,18 +24,21 @@ const PROGRAM_SOURCE_DIRECTORIES = [
 
 const NOT_PROGRAM_DIRECTORIES = new Set(["node_modules", "dist", "vendor", "vendor-dashboard"]);
 
-/** Directories that directly hold a `.nl` file and sit below no other such directory: each is one program. */
+/** Outermost authored package manifests or folders of NL functions define program roots.
+ * A TS coordinator can own NL descendants and their shared types without containing a root NL file. */
 export function discoverProgramRoots(workspace: string): string[] {
   const roots: string[] = [];
   const walk = (directory: string, insideProgram: boolean): void => {
     const entries = fs.readdirSync(path.join(workspace, directory), { withFileTypes: true });
     const holdsNl = entries.some((entry) => entry.isFile() && entry.name.endsWith(".nl"));
-    if (holdsNl && !insideProgram) roots.push(directory);
+    const ownsPackage = entries.some((entry) => entry.isFile() && entry.name === "natlang.json");
+    const holdsProgram = ownsPackage || holdsNl;
+    if (holdsProgram && !insideProgram) roots.push(directory);
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith(".") || NOT_PROGRAM_DIRECTORIES.has(entry.name)) {
         continue;
       }
-      walk(path.posix.join(directory, entry.name), insideProgram || holdsNl);
+      walk(path.posix.join(directory, entry.name), insideProgram || holdsProgram);
     }
   };
   for (const source of PROGRAM_SOURCE_DIRECTORIES) {
