@@ -13,8 +13,7 @@ export default async function workOnDemoPortfolio(goal:string):Promise<Portfolio
  if(!opening||!current)throw new Error("The assigned portfolio checkpoint is unavailable");
  const plan=await choosePortfolioCriteria(goal,opening,current);
  const projection=plan.months===null?null:await readPortfolioForecast(index.id,current.id,plan.months);
- const garden=await reviewPortfolioGarden(plan.garden,opening,current);
- const realm=await reviewPortfolioRealm(plan.realm,opening,current,projection);
+ const [garden,realm]=await Promise.all([reviewPortfolioGarden(plan.garden,opening,current),reviewPortfolioRealm(plan.realm,opening,current,projection)]);
  const decision=await decidePortfolioDelivery(goal,current,plan,garden,realm);
  const report:PortfolioReport={plan,opening,current,projection,garden,realm,decision,note:null};
  const note=decision.write?await stagePortfolioHandoff(report):null;

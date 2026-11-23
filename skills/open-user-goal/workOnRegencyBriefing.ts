@@ -14,8 +14,7 @@ export default async function workOnRegencyBriefing(goal:string):Promise<Regency
  const plan=await planRegencyReview(goal,index,opening,current);
  const forecasts:RegencyForecast[]=[];
  for(const horizon of plan.horizons){const forecast=await previewRegencySettlement(index.realm,current.revision,horizon);if(forecast)forecasts.push(forecast);}
- const findings:RegencyFinding[]=[];
- for(const claim of plan.claims)findings.push(await qualifyRegencyClaim(claim,opening,current,forecasts));
+ const findings:RegencyFinding[]=await Promise.all(plan.claims.map(claim=>qualifyRegencyClaim(claim,opening,current,forecasts)));
  const decision=await decideRegencyAction(goal,plan,current,forecasts,index,findings);
  const advance=decision.action==="advance"&&plan.advance!==null?await advanceOwnedRegency(index.realm,current.revision,plan.advance):null;
  const report:RegencyReport={plan,opening,current,forecasts,findings,decision,advance,note:null};
