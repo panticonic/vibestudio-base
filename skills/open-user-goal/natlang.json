@@ -383,12 +383,8 @@
     ],
     "contentProjectSources": [],
     "contentProjectScope": [],
-    "contentProjectDraft": [
-      "prepareContentProject/authorProjectDocuments/writeInitialProject.nl"
-    ],
-    "contentProjectCommit": [
-      "prepareContentProject/finishPrivateProject/commitReviewedProject.nl"
-    ],
+    "contentProjectDraft": [],
+    "contentProjectCommit": [],
     "localInventoryDocket": [
       "compareLiveLocalInventory/findLocalInventoryDocket.nl"
     ],

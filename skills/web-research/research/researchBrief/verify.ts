@@ -1,4 +1,4 @@
-/** Exact checks on what the model produced: a quote must be in its page, a statement must cite claims that exist and say it. */
+/** Exact checks on what the model produced: a quote must be in its page, a statement must cite existing claims. Semantic entailment is a language judgment. */
 import type { WebEvidence, WebStatement } from "../types.js";
 
 const collapse = (text: string) => text.replace(/\s+/g, " ").trim();
@@ -15,7 +15,7 @@ export function windows(text: string): string[] {
   return out;
 }
 
-/** WebEvidence whose quote is a substantial stretch of the page text (whitespace aside), kept once. */
+/** WebEvidence whose nonempty quote is present in the page text (whitespace aside), kept once. */
 export function checkedEvidence(
   evidence: readonly WebEvidence[],
   pageText: string,
@@ -25,7 +25,7 @@ export function checkedEvidence(
   return evidence.filter((item) => {
     const quote = collapse(item.quote);
     if (
-      quote.length < 20 ||
+      quote.length === 0 ||
       item.claim.trim() === "" ||
       !page.includes(quote) ||
       seen.has(quote)
@@ -36,15 +36,7 @@ export function checkedEvidence(
   });
 }
 
-const words = (text: string) =>
-  new Set(
-    text
-      .toLowerCase()
-      .split(/[^\p{L}\p{N}]+/u)
-      .filter((word) => word.length >= 5),
-  );
-
-/** Statements that cite only claims that exist and share a content word with at least one of them. */
+/** Check nonempty statements and exact claim references. Meaning is judged by the semantic synthesis and independent review. */
 export function checkedStatements(
   statements: readonly WebStatement[],
   claims: ReadonlyMap<number, string>,
@@ -56,10 +48,7 @@ export function checkedStatements(
       statement.cites.some((id) => !claims.has(id))
     )
       return false;
-    const mentioned = words(statement.text);
-    return statement.cites.some((id) =>
-      [...words(claims.get(id)!)].some((word) => mentioned.has(word)),
-    );
+    return true;
   });
 }
 

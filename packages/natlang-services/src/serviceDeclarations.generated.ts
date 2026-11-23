@@ -136,7 +136,7 @@ type ProjectScopeLease = {
 /** Attest the exact fact selection and current local consent. */
 export function confirm(revision: string, decision: ProjectEvidenceDecision):
       Promise<ProjectScopeLease>;`,
-  contentProjectDraft: `/** Prepare and write one explicitly scoped private content project. */
+  contentProjectDraft: `/** Read, prepare and revise the explicitly scoped private content project before its local commit. */
 
 type PreparedContentSnapshot = {
   contextId: string;
@@ -149,10 +149,13 @@ type PreparedContentSnapshot = {
   files: {path:string; text:string}[];
 };
 
-/** Prepare and write one explicitly scoped private content project. */
+/** Read, prepare and revise the explicitly scoped private content project before its local commit. */
+export function observe(receipt: string | null): Promise<PreparedContentSnapshot | null>;
+
+/** Read, prepare and revise the explicitly scoped private content project before its local commit. */
 export function prepare(receipt: string | null, head: string): Promise<PreparedContentSnapshot | null>;
 
-/** Prepare and write one explicitly scoped private content project. */
+/** Read, prepare and revise the explicitly scoped private content project before its local commit. */
 export function write(receipt: string | null, head: string, documents: {path: string; text: string}[]):
       Promise<PreparedContentSnapshot | null>;`,
   contentProjectCommit: `/** Locally commit the exact reviewed project with current owner approval. */
@@ -357,12 +360,39 @@ export function submit(schedule: Schedule, authorization: Receipt, lane: Lane): 
 export function read(submission: Submission): Promise<Receipt | null>;`,
   androidRuntimeAudit: `/** Read an assigned Android device and its current internal application. */
 
+type AndroidDeviceState = "device" | "unauthorized" | "offline";
+
+type AndroidTargetObservation = { target: string; state: AndroidDeviceState | null };
+
+type AndroidRuntimeObservation = {
+  target: string;
+  packageName: string;
+  installed: boolean;
+  processObserved: boolean;
+  screenshotCaptured: boolean;
+  screenshotBytes: number;
+  issues: string[];
+};
+
 /** Read an assigned Android device and its current internal application. */
 export function observeTarget(operationId: string): Promise<AndroidTargetObservation>;
 
 /** Read an assigned Android device and its current internal application. */
 export function observeApplication(operationId: string): Promise<AndroidRuntimeObservation>;`,
   deliveryHistory: `/** Inspect durable and consumer views of one assigned conversation receipt. */
+
+type DeliveryReceipt = { channelId: string; messageId: string; senderId: string };
+
+type DeliveryMessage = { messageId: string; senderId: string; text: string };
+
+type DurableDeliveryRow = DeliveryMessage & { envelopeId: string; sequence: number };
+
+type DeliveryHistoryObservation = {
+  channelId: string;
+  receipt: DeliveryReceipt;
+  retained: DurableDeliveryRow[];
+  rendered: DeliveryMessage[];
+};
 
 /** Inspect durable and consumer views of one assigned conversation receipt. */
 export function inspect(operationId: string): Promise<DeliveryHistoryObservation>;`,
@@ -451,6 +481,62 @@ type ResearchIntakeRequest = {
 /** Read back the public sources assigned to this research review. */
 export function read(operationId: string): Promise<ResearchIntakeRequest>;`,
   retainedTestFailure: `/** Read and identify the assigned durable system-test failure after its run has settled. */
+
+type Failure = {
+  name: string;
+  /** What the validator said was missing or wrong. */
+  validationReason: string | null;
+  /** The error the session itself ended with. */
+  sessionError: string | null;
+  /** The primary structured failure: the phase it happened in and the error. */
+  failure: {
+    phase: string;
+    error: { name: string; message: string; code?: string };
+  } | null;
+  /** Present when the validator itself threw; \`validator\` says whose validator. */
+  validationFailure: { validator: "harness" | "agent-outcome" } | null;
+  /** The agent's last message to the user. */
+  finalAgentMessage: string | null;
+  invocations: {
+    name: string;
+    status: string;
+    terminalOutcome?: string;
+    terminalReasonCode?: string;
+    error?: string;
+    isError?: boolean;
+  }[];
+  /** Failed tool invocations the scenario did not declare. */
+  toolFailures: {
+    name: string;
+    terminalReasonCode?: string;
+    /** user-code: the agent's own code failed; infrastructure: the platform failed; cancelled. */
+    failureKind?: "user-code" | "infrastructure" | "cancelled";
+    classification?:
+      | "argument-rejection"
+      | "domain-rejection"
+      | "guest-code-failure";
+    failureCode?: string;
+    error?: string;
+  }[];
+  cleanupErrors: string[];
+  cleanupFailures: {
+    phase: string;
+    error: { name: string; message: string };
+  }[];
+  /** Delivery-latency violations of the run, when it recorded any. */
+  channelDeliveryLatency: { violations: string[] } | null;
+  /** The fixture's repository-delivery assessment. */
+  workspaceRepoFixture: { creationScopeError: string | null } | null;
+  /** Evidence the scenario recorded for itself. */
+  orchestration: Record<string, string> | null;
+  /** A heuristic label the diagnostics assign from the same fields. */
+  likelyIssue: string;
+};
+
+type RetainedFailurePacket = {
+  runId: string;
+  failure: Failure;
+};
 
 /** Read and identify the assigned durable system-test failure after its run has settled. */
 export function inspect(operationId: string): Promise<RetainedFailurePacket | null>;`,
@@ -588,6 +674,12 @@ export function stage(
       decision: GitHubOpenDecision,
     ): Promise<GitHubOpenHandoff | null>;`,
   githubSetupRead: `/** Read the assigned local GitHub connection stage without verification. */
+
+type GitHubSetupStatus = {
+  stage: "needs-token" | "connected" | "verified" | "error";
+  connected: boolean;
+  verified: boolean;
+};
 
 /** Read the assigned local GitHub connection stage without verification. */
 export function inspect(operationId: string): Promise<GitHubSetupStatus>;`,
@@ -754,9 +846,42 @@ type TerminalOperationEvidence = {
 export function inspect(operationId: string): Promise<TerminalOperationEvidence>;`,
   githubDiagnosisRead: `/** Check the assigned GitHub remote syntax or local credential preflight. */
 
+type GitHubSetupRequest = {
+  goal: string;
+  operationId: string;
+  interactive: boolean;
+};
+
+type GitHubDiagnosisObservation = {
+  operationId: string;
+  failure: string | null;
+  setup: GitHubSetupRequest | null;
+};
+
 /** Check the assigned GitHub remote syntax or local credential preflight. */
 export function inspect(operationId: string): Promise<GitHubDiagnosisObservation>;`,
   githubSetupRoute: `/** Resolve the native GitHub setup route from the observed connection stage. */
+
+type GitHubAccessLevel =
+  /** Look: read repositories, issues and pull requests; clone and pull. Nothing is changed. */
+  | "read-only"
+  /** Work with code in existing repositories: push, issues, pull requests. The default for repository work. */
+  | "collaborate"
+  /** Create repositories (adds Administration: write), push, issues and pull requests. */
+  | "publish"
+  /** Publish a website: create a repository, push source, configure GitHub Pages. */
+  | "publish-pages"
+  /** Collaborate, and also change GitHub Actions workflow files. */
+  | "code-workflows"
+  /** The broadest supported permissions. Only when the user explicitly asks for full access. */
+  | "broad";
+
+type GitHubSetupReceipt = {
+  action: "render-setup" | "verify" | "proceed" | "repair";
+  accessLevel?: GitHubAccessLevel;
+  next: string;
+  reason: string;
+};
 
 /** Resolve the native GitHub setup route from the observed connection stage. */
 export function resolve(
@@ -765,13 +890,49 @@ export function resolve(
     ): Promise<GitHubSetupReceipt>;`,
   templateAuthoringRead: `/** Inspect the caller-assigned protected-main template authoring plan. */
 
+type TemplateAuthoringPlan = {
+  mainEventId: string;
+  name: string;
+  requestedParts: string[];
+  includedParts: string[];
+  requiredParts: string[];
+  manifestDigest: string;
+  fingerprint: string;
+};
+
 /** Inspect the caller-assigned protected-main template authoring plan. */
 export function inspect(operationId: string): Promise<TemplateAuthoringPlan>;`,
   automationPlanning: `/** Read the assigned roster of automation definitions and latest run records. */
 
+type MissionState = "active" | "paused" | "retired";
+
+type MissionRun = {
+  id: string;
+  phase: "queued" | "executing" | "finished";
+  outcome: "succeeded" | "failed" | "completed-with-errors" | "skipped" | null;
+  errors: { operation: string; description: string }[];
+};
+
+type VisibleAutomation = { id: string; name: string; state: MissionState; latestRun: MissionRun | null };
+
+type AssignedAutomation = VisibleAutomation & { revisionDigest: string };
+
+type AutomationPlanningSnapshot = { visible: AssignedAutomation[] };
+
 /** Read the assigned roster of automation definitions and latest run records. */
 export function inspect(operationId: string): Promise<AutomationPlanningSnapshot>;`,
   chatDeliveryPanel: `/** Read the exact assigned chat panel and its visible delivery evidence. */
+
+type ChatDeliveryMessage = { messageId: string; text: string };
+
+type ChatDeliveryPanel = {
+  contextId: string | null;
+  panelId: string;
+  channelId: string | null;
+  source: string;
+  phase: string;
+  messages: ChatDeliveryMessage[];
+};
 
 /** Read the exact assigned chat panel and its visible delivery evidence. */
 export function inspect(panelId: string): Promise<ChatDeliveryPanel>;`,
@@ -2159,11 +2320,9 @@ export function inspect(methodId:string,scope:string):Promise<IntentObservation|
 
 type IntentNotice={title:string;contextId:string;notePath:string;skillName:string;workerKey:string};
 
-type IntentHit={id:string;name:string;description:string};
+type IntentCapabilitySelection={methodIds:string[]};
 
 type IntentDescription={id:string;name:string;description:string;digest:string};
-
-type IntentSearch={queries:string[];hits:IntentHit[][];described:IntentDescription[]};
 
 type IntentAction={methodId:string;scope:string};
 
@@ -2176,7 +2335,7 @@ type IntentOutcome={status:"observed"|"partial"|"unavailable";summary:string};
 
 type IntentNote={path:string;digest:string};
 
-type IntentReport={notice:IntentNotice;search:IntentSearch;plan:IntentPlan;
+type IntentReport={notice:IntentNotice;selection:IntentCapabilitySelection;capabilities:IntentDescription[];plan:IntentPlan;
   evidence:IntentObservation[];outcome:IntentOutcome;handoff:IntentNote|null};
 
 /** Retain the expressly authorized private intent discovery result. */
@@ -6114,6 +6273,7 @@ export function declaration(routeReceipt: string): Promise<ArchitectureDeclarati
   clientAdmissionRead: `/** Read the assigned System client, published trust and selected host contract. */
 
 type ClientContract = {
+  /** Digest of contract manifest bytes, not the installed unit version. */
   hash: string;
   id: string;
   runtime: string;
@@ -6140,6 +6300,7 @@ type ClientAdmissionObservation = {
   catalog: {
     status: "available" | "building" | "ready" | "approval-required" | "error";
     source: string;
+    /** Installed unit version identity; unrelated to ClientContract.hash. */
     effectiveVersion: string | null;
     activeBuildKey: string | null;
   } | null;
@@ -7926,6 +8087,12 @@ export function provision(
       deviceId: string,
     ): Promise<PhonePairing>;`,
   remoteGatewayIdentity: `/** Read the current authenticated gateway for the assigned workspace route. */
+
+type RemoteGatewayIdentity = {
+  serverId: string;
+  bootId: string;
+  workspaceId: string;
+};
 
 /** Read the current authenticated gateway for the assigned workspace route. */
 export function observe(operationId: string): Promise<RemoteGatewayIdentity>;`,

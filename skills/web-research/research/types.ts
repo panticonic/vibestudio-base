@@ -18,6 +18,10 @@ export type WebClaim = {
   /** Identifies the claim in `WebStatement.cites`. */
   id: number;
   claim: string;
+  /** Exact native source attribution and verified quotation for synthesis. */
+  url: string;
+  title: string;
+  quote: string;
 };
 
 /** One sentence of the brief and the claims it rests on. */

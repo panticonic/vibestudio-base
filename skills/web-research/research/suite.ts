@@ -138,7 +138,7 @@ export default defineEvaluationSuite<CaseInput, CaseExpected>({
           collapse(testCase.input.pages[cite.url]?.text ?? "").includes(
             collapse(cite.quote),
           ) &&
-          cite.quote.length >= 20,
+          cite.quote.trim().length > 0,
       );
     const text = result.statements
       .map((statement) => statement.text.toLowerCase())

@@ -57,6 +57,9 @@ export default async function researchBrief(
   const claims: WebClaim[] = evidence.map((item, index) => ({
     id: index + 1,
     claim: item.claim,
+    url: item.citation.url,
+    title: item.citation.title,
+    quote: item.citation.quote,
   }));
   const written = await writeBrief(question, claims);
   const statements = checkedStatements(

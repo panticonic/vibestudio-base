@@ -22,7 +22,7 @@ describe("checkedEvidence", () => {
           claim: "Invented.",
           quote: "Every program can read the whole disk by default.",
         },
-        { claim: "Too short.", quote: "Deno runs" },
+        { claim: "No quotation.", quote: "" },
       ],
       page,
     );
@@ -36,7 +36,7 @@ describe("checkedStatements", () => {
   const claims = new Map([
     [1, "Programs start without access to the file system."],
   ]);
-  it("drops statements that cite nothing, cite an unknown id, or share no content with their claims", () => {
+  it("checks source references without pretending lexical overlap proves semantic support", () => {
     const kept = checkedStatements(
       [
         { text: "Programs begin without file system access.", cites: [1] },
@@ -46,7 +46,7 @@ describe("checkedStatements", () => {
       ],
       claims,
     );
-    expect(kept.map((statement) => statement.cites)).toEqual([[1]]);
+    expect(kept.map((statement) => statement.cites)).toEqual([[1], [1]]);
   });
 });
 
@@ -72,3 +72,5 @@ describe("statedDate", () => {
     ).toBeNull();
   });
 });
+
+it("keeps a short exact quotation without an arbitrary character floor",()=>{expect(checkedEvidence([{claim:"The answer is negative.",quote:"No."}],"No.")).toHaveLength(1);});

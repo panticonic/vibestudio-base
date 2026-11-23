@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const root = vi.hoisted(() => vi.fn());
 vi.mock("./researchBrief.nl", () => ({ default: root }));
 import { brief } from "./natlang.js";
+import assignedBrief from "./writeAssignedBrief.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -31,4 +32,10 @@ describe("research invocation snapshot", () => {
     await brief("What changed?", []);
     expect(root).toHaveBeenCalledWith("What changed?", [], started);
   });
+});
+
+it("passes the exact assigned scope and retrieval date through its native bridge",async()=>{
+ const returned={question:"Question",status:"insufficient",statements:[],notRead:[],rejected:0};root.mockResolvedValue(returned);
+ const request={goal:"Question",sources:["https://first.test/","https://second.test/"],retrievedAt:1795392000000};
+ expect(await assignedBrief(request)).toBe(returned);expect(root).toHaveBeenCalledWith(request.goal,request.sources,request.retrievedAt);
 });

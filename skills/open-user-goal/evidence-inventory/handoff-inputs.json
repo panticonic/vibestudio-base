@@ -123,9 +123,9 @@
       "role": "native effect/readback adapter; does not re-judge unavailable facts"
     },
     {
-      "path": "skills/open-user-goal/prepareContentProject/finishPrivateProject.nl",
+      "path": "skills/open-user-goal/prepareContentProject/finishPrivateProject.ts",
       "line": 3,
-      "sha256": "622497e84656c6a1a9b0251fe44992c40706a98d404767a082c5e5b8018535d4",
+      "sha256": "5c1ff7d305fd24ddd46a746dd1d7d0aa51bae0f1c78cfd6d1699f49a42f3b944",
       "arguments": [
         {
           "name": "decision",

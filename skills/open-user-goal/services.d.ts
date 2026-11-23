@@ -30,6 +30,7 @@ declare module "natlang:services" {
       Promise<import("./prepareContentProject/types.js").ProjectScopeLease>;
   };
   export const contentProjectDraft: {
+    observe(receipt: string | null): Promise<import("./prepareContentProject/types.js").PreparedContentSnapshot | null>;
     prepare(receipt: string | null, head: string): Promise<import("./prepareContentProject/types.js").PreparedContentSnapshot | null>;
     write(receipt: string | null, head: string, documents: {path: string; text: string}[]):
       Promise<import("./prepareContentProject/types.js").PreparedContentSnapshot | null>;

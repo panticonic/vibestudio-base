@@ -5,7 +5,7 @@ args:
   claims: WebClaim[]
 returns: WebStatement[]
 ---
-Answer question with 1 to 4 statements, built only from claims:
-1. Each statement is one plain sentence that restates what one or more claims say.
+Answer the factual question with enough concise statements to cover what the verified claims establish:
+1. Each statement is one plain sentence supported by one or more claims and their exact quotations. Preserve source attribution and distinctions when the question calls for comparison. The supplied URL/title identify where each claim was read.
 2. In cites, put the id of every claim the statement rests on. Every statement cites at least one id.
-3. Say nothing that no claim says. When claims is empty, return an empty list.
+3. Say nothing the quoted evidence does not support. A source-local claim does not establish what other sources contain or whether they were available. When claims is empty, return an empty list.
