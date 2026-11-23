@@ -30,6 +30,8 @@ export type Frame = Readonly<{
     typeAliases?: Readonly<Record<string, string>>;
     /** Call identities of the natural-language definitions that are currently active above this point. */
     chain: readonly string[];
+    /** Actual NL/TS source ancestry for explicitly authored service scopes; not the NL recursion/budget stack. */
+    serviceChain?: readonly string[];
     /** The authored TypeScript functions currently active above this point, innermost first. */
     active?: ActiveCall;
     /** The recursive `.nl` definitions (`recursive: structural` or `measure:`) active above this point, innermost first. */

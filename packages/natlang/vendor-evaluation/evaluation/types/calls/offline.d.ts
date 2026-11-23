@@ -16,6 +16,7 @@ export declare const signatureOf: (definition: {
         name: string;
         type: string;
         optional?: boolean;
+        rest?: boolean;
     }[];
     returns: string;
 }) => string;

@@ -1,8 +1,8 @@
 {
   "schema": "native-compiler-product-vendors/1",
-  "core": "a87d41d495270a4271c7e548a45ad2083dd8bb7f",
+  "core": "85b4f70169fb95ae8f7489e1dae9c43998847887",
   "includesNativeRootFix": "1f1e152df5fa07b8ba154415d3b6deb5045f8237",
-  "reproductionLedger": "vibe-v13-a87-vendors-20261123a + vibe-v13-evaluation-reproduction-20261123a",
+  "reproductionLedger": "vibe-v14-core-vendor-build-20261123a",
   "vendors": [
     {
       "label": "base-workerd",
@@ -11,8 +11,8 @@
         "workerd"
       ],
       "files": 89,
-      "bytes": 15183708,
-      "pinSha256": "4c93d98de066e6789c1b835ff7eed0f146ab8d7420490babf58f7920351ba701"
+      "bytes": 15201865,
+      "pinSha256": "ce54d5bd868681829c75ec3747cae48d58481aae8039655f78ebfb4f95223c4e"
     },
     {
       "label": "base-evaluation",
@@ -21,8 +21,8 @@
         "evaluation"
       ],
       "files": 152,
-      "bytes": 630162,
-      "pinSha256": "76fe87aae15887fcbf93d38e7c883d08fa1806072a84239249179f81c9ad47df"
+      "bytes": 632233,
+      "pinSha256": "3cc918ce1732b37fb037d4393e2d8b290ee2c60de4b864d9d9c1f326c178e324"
     },
     {
       "label": "base-dashboard",
@@ -32,7 +32,7 @@
       ],
       "files": 18,
       "bytes": 259619,
-      "pinSha256": "3f80a91f866109c62644face973b6d922386c852c6a1b6cd28b101d2ee56495b"
+      "pinSha256": "3a8cd0ad7a124dd2eb1f3b845ffb612ddf7e9adc284d46251b0eb329b871d11f"
     },
     {
       "label": "base-pi",
@@ -42,7 +42,7 @@
       ],
       "files": 7,
       "bytes": 46778,
-      "pinSha256": "d211cf2053fb141ea21f3b51a6acd83837744b531776e9ee5bf8947b820913ef"
+      "pinSha256": "ff114e506747442c4a1074cbf5327f4fbe6393985e6ce4126731c0f3eb086dfd"
     },
     {
       "label": "system-llama",
@@ -52,9 +52,14 @@
       ],
       "files": 17,
       "bytes": 112553,
-      "pinSha256": "7b117b91eb2376f5a27b02e9cbf9e1a9b39b9b365527a42fc1acf9b0e517fd0d"
+      "pinSha256": "1deea0a83732458aee62698eaef9f82f431b2ea8e223831c0be82db9017dcec0"
     }
   ],
   "includesTupleParserFix": "b7d0647e3",
-  "compilerABI": 4
+  "compilerABI": 4,
+  "includesSemanticEntryFixes": [
+    "optional/rest native input snapshots",
+    "nested imported package closure retaining manifest and lexical types",
+    "TS service lexical ancestry without NL budget changes"
+  ]
 }

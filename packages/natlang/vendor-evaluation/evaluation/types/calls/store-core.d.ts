@@ -255,6 +255,15 @@ export declare class CallStore {
         tokens_out: number;
         wall_ms: number;
     }[];
+    /** Annotations of one kind across calls, newest first, with the call they are attached to (for example `escalation`). */
+    annotationsOf(kind: string, options?: {
+        limit?: number;
+    }): {
+        call_id: string;
+        value: unknown;
+        definition_id: string | null;
+        created_at: string;
+    }[];
     annotations(callId: string): {
         kind: string;
         value: unknown;

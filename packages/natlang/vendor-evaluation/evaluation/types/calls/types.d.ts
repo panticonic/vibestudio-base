@@ -47,6 +47,7 @@ export type DefinitionIdentity = {
         name: string;
         type: string;
         optional?: boolean;
+        rest?: boolean;
     }[];
     returns: string;
     declaredParameters?: true;

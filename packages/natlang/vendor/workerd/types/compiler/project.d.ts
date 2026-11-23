@@ -3,7 +3,7 @@ import { RewriteGate, type RewriteRecord } from './rewrites.js';
 import type { ProgramDescriptor } from '../adaptation/types.js';
 import { spanOf, type NatlangDiagnostic } from './inline.js';
 import { NATLANG_COMPILE_VERSION } from './intrinsics.js';
-import { type NatlangRecord } from '../runtime/loader.js';
+import { type ItemRecord, type NatlangRecord } from '../runtime/loader.js';
 import { NEUTRAL_RUNTIME_SPECIFIER } from './runtime-specifier.js';
 /** File access for the project compiler: the real filesystem on Node, virtual files in browsers. */
 export interface ProjectFiles {
@@ -43,6 +43,11 @@ export type BuildOptions = {
     emit?: boolean;
     /** Write generated `.d.nl.ts` files beside their sources (default true; read-only installed packages use false). */
     writeDeclarations?: boolean;
+    /**
+     * Inline each `uses:` function into the declarations that use it instead of an `import type` of its own declaration
+     * (the form before WS1 L6). Default false; `NATLANG_INLINE_USES_DECLARATIONS=1` also sets it.
+     */
+    inlineUses?: boolean;
     /**
      * Bind the project to a specific runtime module: these specifiers type-check against `types` and are
      * emitted as `url`, so the compiled app shares one runtime instance with its launcher. The neutral specifier
@@ -103,8 +108,17 @@ export type BuildResult = {
     /** Every `Is<T, "predicate">` slot of the named and inline functions and the predicate the runtime will check there. */
     refinedSlots?: RefinedSlot[];
 };
-/** Generated declaration for `foo.nl`, read by TypeScript as `foo.d.nl.ts`. */
-export declare function natlangDeclaration(record: NatlangRecord, runtimeSpecifier: string): string;
+/** A used function that has its own generated declaration: the declaration refers to it instead of inlining it. */
+export type DeclarationReference = {
+    name: string;
+    specifier: string;
+};
+/**
+ * Generated declaration for `foo.nl`, read by TypeScript as `foo.d.nl.ts`. A `uses:` item in `references` (a function
+ * of the same build with its own declaration) is an `import type` of that declaration rather than an inlined copy, so
+ * its aliases stay its own and each function is declared once (WS1 L6).
+ */
+export declare function natlangDeclaration(record: NatlangRecord, runtimeSpecifier: string, references?: ReadonlyMap<ItemRecord, DeclarationReference>): string;
 /**
  * Build a `RewriteGate` from `natlang.json`'s optional `"rewrites": { "measurements": PATH }` entry (WS2 R5).
  * Rules remain off by default whenever the key or measurements file is absent, malformed, or lacks a certified

@@ -21,6 +21,7 @@ export type ExportRecord = {
     returns: string;
     async: boolean;
     doc?: string;
+    rest?: string;
 } | {
     kind: 'value';
     type?: string;
@@ -111,6 +112,8 @@ export declare class NatlangSourceError extends Error {
     constructor(path: string, reason: string, line?: number | undefined, hint?: string | undefined);
 }
 export declare function moduleResolvedImports(record: ModuleRecord): Record<string, ItemRecord> | undefined;
+/** Text of each package `.ts` file the module imports for types only, by its path from the package root. */
+export declare function moduleTypeSources(record: ModuleRecord): Readonly<Record<string, string>> | undefined;
 export declare const nodeKey: (record: NatlangRecord | ModuleRecord) => string;
 export declare function registerFileRecords(codebase: Record<string, ItemRecord> | ItemRecord): void;
 /** Whether an executable node and all its children come from files. */
@@ -144,6 +147,11 @@ export declare function isProtectedSource(source: string, protectedList: readonl
 export declare function recordProtectedSources(record: Pick<NatlangRecord, 'source' | 'protect' | 'ensures' | 'args' | 'codebase'>): string[];
 /** Every source a record tree protects: its natural-language functions' `protect:` lists and `ensures:` checks, resolved. */
 export declare function treeProtectedSources(codebase: Record<string, ItemRecord>): string[];
+/** The package root above `dir`: the nearest directory with `natlang.json` or `package.json`. */
+export declare function packageRoot(dir: string, files: SourceFiles): string;
+export declare function usesTargetsOf(record: NatlangRecord): Readonly<Record<string, string>> | undefined;
+/** Shared source resolution for runtime module loading and explicit compiler import closure. */
+export declare function resolveImportedSource(specifier: string, from: string, files: SourceFiles): string | undefined;
 /** Parse a TypeScript (or constrained JavaScript) module in a callable folder: its exports, imports, and type aliases. */
 export declare function parseModule(path: string, text: string, inherited: Record<string, string>, files: SourceFiles, options?: {
     allowUntypedExports?: boolean;
