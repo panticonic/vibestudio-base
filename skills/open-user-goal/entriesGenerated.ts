@@ -263,7 +263,7 @@ export default {
   "demo-portfolio": {
     "program": "skills/open-user-goal/workOnDemoPortfolio.nl",
     "callable": "workOnDemoPortfolio",
-    "resultType": "PortfolioReport",
+    "resultType": "PortfolioResult",
     "skill": "demoPortfolio",
     "parameterNames": [
       "goal"
@@ -273,7 +273,7 @@ export default {
   "regency-briefing": {
     "program": "skills/open-user-goal/workOnRegencyBriefing.nl",
     "callable": "workOnRegencyBriefing",
-    "resultType": "RegencyReport",
+    "resultType": "RegencyResult",
     "skill": "regencyBriefing",
     "parameterNames": [
       "goal"
@@ -613,7 +613,7 @@ export default {
   "unit-handoff": {
     "program": "skills/open-user-goal/reviewUnitHandoffGoal.nl",
     "callable": "reviewUnitHandoffGoal",
-    "resultType": "UnitHandoffReport",
+    "resultType": "UnitHandoffResult",
     "skill": "unitHandoff",
     "parameterNames": [
       "goal"
@@ -723,7 +723,7 @@ export default {
   "terminal-handoff": {
     "program": "skills/open-user-goal/workOnTerminalGoal.nl",
     "callable": "workOnTerminalGoal",
-    "resultType": "TerminalGoalReport",
+    "resultType": "TerminalResult",
     "skill": "terminalHandoff",
     "parameterNames": [
       "goal"
@@ -823,7 +823,7 @@ export default {
   "clientDiagnostics": {
     "program": "skills/gad-context/natlang/workOnClientDiagnostics.nl",
     "callable": "workOnClientDiagnostics",
-    "resultType": "ClientDiagnosticsReport",
+    "resultType": "ClientDiagnosticResult",
     "skill": "clientDiagnostics",
     "parameterNames": [
       "goal"
@@ -883,7 +883,7 @@ export default {
   "visualRecovery": {
     "program": "skills/panel-health/recoverPanelGoal.nl",
     "callable": "recoverPanelGoal",
-    "resultType": "RecoveryReport",
+    "resultType": "PanelRecoveryResult",
     "skill": "visualRecovery",
     "parameterNames": [
       "goal"

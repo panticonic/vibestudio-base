@@ -61,3 +61,5 @@ export type RecoveryReport =
     effects: RecoveryEffect[];
     reason: string;
   };
+
+export type PanelRecoveryResult={status:"unresolved";reason:string}|{status:"healthy"|"recovered"|"attention"|"inconclusive"|"held";surfaceId:string;initial:PanelHealthAssessment;final:PanelHealthAssessment;reason:string};

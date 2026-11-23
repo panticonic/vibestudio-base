@@ -51,7 +51,7 @@
         "reviewUnitHandoffGoal/reviewIdentity/installed"
       ],
       "types": [
-        "UnitHandoffReport"
+        "UnitHandoffReport", "UnitHandoffResult"
       ]
     },
     "chooseAudienceResponse": {
@@ -154,7 +154,7 @@
         "workOnDemoPortfolio/reviewPortfolioRealm/reviewer"
       ],
       "types": [
-        "PortfolioReport"
+        "PortfolioReport", "PortfolioResult"
       ]
     },
     "workOnRegencyBriefing": {
@@ -163,7 +163,7 @@
         "workOnRegencyBriefing/qualifyRegencyClaim/reviewer"
       ],
       "types": [
-        "RegencyReport"
+        "RegencyReport", "RegencyResult"
       ]
     },
     "workOnEditorialPacket": {

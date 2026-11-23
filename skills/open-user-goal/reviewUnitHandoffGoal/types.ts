@@ -23,3 +23,5 @@ export type UnitHandoffReport = {
   identity: UnitIdentityReport | null;
   reason: string;
 };
+
+export type UnitHandoffResult={decision:UnitHandoffReport["decision"];path:string|null;design:UnitDesignHandoff|null;identity:UnitIdentityReport|null;reason:string};

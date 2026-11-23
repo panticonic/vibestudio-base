@@ -167,3 +167,5 @@ export type DurableQuestionReport = {
   disposition: "ready" | "hold";
   explanation: string;
 };
+
+export type ClientDiagnosticResult = {channel:ClientDiagnosticsReport["channel"];decision:ClientDiagnosticsReport["decision"];handoff:ClientDiagnosticsReport["handoff"]};

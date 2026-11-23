@@ -167,14 +167,36 @@
     "function": "workOnDemoPortfolio",
     "originalResultType": "PortfolioReport",
     "definition": null,
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "plan": "internal acceptance criteria selection",
+      "opening": "internal initial world snapshot",
+      "current": "internal current world snapshot",
+      "projection": "requested forecast query data",
+      "garden": "requested supported/contradicted/not-observed findings",
+      "realm": "requested supported/contradicted/not-observed findings",
+      "decision": "actual portfolio readiness finding",
+      "note": "actual retained private receipt"
+    },
+    "nativeEvidence": "Independent native frame/read/transition/authority records, actual stage bytes, actual committed/local state and original private boundary"
   },
   {
     "entry": "skills/open-user-goal/workOnRegencyBriefing.nl",
     "function": "workOnRegencyBriefing",
     "originalResultType": "RegencyReport",
     "definition": null,
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "plan": "internal source/claim/horizon plan",
+      "opening": "internal original accounts snapshot",
+      "current": "internal current account snapshot",
+      "forecasts": "requested forecast query data",
+      "findings": "actual reviewed financial/realm claim findings",
+      "decision": "actual disposition finding",
+      "advance": "actual committed settlement result",
+      "note": "actual retained private receipt"
+    },
+    "nativeEvidence": "Independent native frame/read/transition/authority records, actual stage bytes, actual committed/local state and original private boundary"
   },
   {
     "entry": "skills/open-user-goal/workOnApiReadinessGoal.nl",
@@ -220,7 +242,16 @@
       "line": 17,
       "text": "export type UnitHandoffReport = {\n  decision: \"reviewed\" | \"staged\" | \"held\";\n  plan: UnitHandoffPlan;\n  observation: UnitHandoffObservation | null;\n  design: UnitDesignHandoff | null;\n  identity: UnitIdentityReport | null;\n  reason: string;\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "decision": "actual disposition",
+      "plan": "only actual unit path projected; request focus/authority options internal",
+      "observation": "internal manifest/lifecycle/identity request evidence",
+      "design": "requested actual manifest/lifecycle findings",
+      "identity": "requested actual identity/design result and artifact handles",
+      "reason": "actual grounded finding"
+    },
+    "nativeEvidence": "Independent native frame/read/transition/authority records, actual stage bytes, actual committed/local state and original private boundary"
   },
   {
     "entry": "skills/open-user-goal/workOnSpecialistHandoffGoal.nl",
@@ -294,7 +325,16 @@
       "line": 6,
       "text": "export type TerminalGoalReport = {\n  initial: Screen;\n  events: TerminalEvent[];\n  checkReport: TerminalCheckReport | null;\n  discovery: TerminalDiscovery | null;\n  handoff: TerminalHandoff | null;\n  summary: TerminalSummary;\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "initial": "internal original terminal screen",
+      "events": "internal native event journal; actual final terminal/exit/retirement projected",
+      "checkReport": "actual requested check findings",
+      "discovery": "actual requested CLI recovery capabilities/citations",
+      "handoff": "actual private receipt",
+      "summary": "requested domain disposition and explanation"
+    },
+    "nativeEvidence": "Independent native frame/read/transition/authority records, actual stage bytes, actual committed/local state and original private boundary"
   },
   {
     "entry": "skills/open-user-goal/workOnLocalReconciliationGoal.nl",
@@ -413,7 +453,15 @@
       "line": 108,
       "text": "export type ClientDiagnosticsReport = {\n  views: ClientView[];\n  effects: ClientActionReceipt[];\n  channel: ChannelReview | null;\n  decision: ClientDecision;\n  handoff: ClientHandoff | null;\n};"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "views": "internal client observation history",
+      "effects": "internal native action receipts",
+      "channel": "requested durable health/conversation findings",
+      "decision": "actual diagnosis/answer/citation handles",
+      "handoff": "actual private retained result"
+    },
+    "nativeEvidence": "Independent native frame/read/transition/authority records, actual stage bytes, actual committed/local state and original private boundary"
   },
   {
     "entry": "skills/open-user-goal/workOnAssemblyGoal.nl",
@@ -486,7 +534,16 @@
       "line": 53,
       "text": "export type RecoveryReport =\n  | { status: \"unresolved\"; reason: string }\n  | {\n    status: \"healthy\" | \"recovered\" | \"attention\" | \"inconclusive\" | \"held\";\n    surfaceId: string;\n    initial: PanelHealthAssessment;\n    final: PanelHealthAssessment;\n    effects: RecoveryEffect[];\n    reason: string;\n  };"
     },
-    "classification": "pending"
+    "classification": "migrated",
+    "fields": {
+      "status": "actual recovery disposition",
+      "surfaceId": "actual surface handle",
+      "initial": "requested original diagnostic findings",
+      "final": "requested independent current diagnostic findings",
+      "effects": "internal native action journal omitted",
+      "reason": "actual grounded diagnostic finding"
+    },
+    "nativeEvidence": "Independent native frame/read/transition/authority records, actual stage bytes, actual committed/local state and original private boundary"
   },
   {
     "entry": "skills/publish-preflight/publishOwnedPreviewGoal.nl",
