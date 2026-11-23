@@ -1,4 +1,4 @@
-import type {NewsEvidenceReport,NewsEvidenceResult} from "../reviewNewsEvidence/workspace/types.js";
+import type {NewsEvidenceReport,NewsEvidenceResult} from "./workspace/types.js";
 export default function result(report:NewsEvidenceReport):NewsEvidenceResult {
  return {topic:report.plan.topic,action:report.plan.action,explanation:report.plan.explanation,
   readers:report.readers.map(reader=>reader.result),schedule:report.schedule.result,
