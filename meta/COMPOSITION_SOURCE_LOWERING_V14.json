@@ -1,0 +1,1295 @@
+{
+  "schema": "natlang.actual-composition-source-policy/1",
+  "corePolicy": "/home/werg/vibe-core-type-links-v14/ts-host/dist/compiler/policy.js",
+  "files": 252,
+  "errors": [],
+  "checked": [
+    {
+      "template": "base",
+      "path": "skills/gad-context/natlang/reviewDurableQuestion.ts",
+      "sha256": "6c1266fa0e944beec3029bf933715dc4440d7b52ef1537950f2d381cd0aff546"
+    },
+    {
+      "template": "base",
+      "path": "skills/gad-context/natlang/types.ts",
+      "sha256": "2d9f568bde79d54adc6344a73091daea30ec00cdcd2e4c934bd45154dd73c8ba"
+    },
+    {
+      "template": "base",
+      "path": "skills/gad-context/natlang/workOnClientDiagnostics/applicationResult.ts",
+      "sha256": "e0a0c62c11b877ac9fd1ecc815db0e324e8a2d061c208d924436b81dfa65f0c2"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-api-readiness/types.ts",
+      "sha256": "6c922771dc950f51b56ae9c8a4048e30e24fd6ebda6e442892c7a4e2d0c0e338"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-audience-response/types.ts",
+      "sha256": "4c37728be449042dc73600c9abd1c593926ab15e2f7b032edf71dffcd2ae833b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-authoring-goal/types.ts",
+      "sha256": "06bce3d24da4b3330bf23fffe3e14710381353ee37c65212f938fb6e67276ec3"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-bridge-delivery/types.ts",
+      "sha256": "40a5133cc33ca1f25919243f877d7e07117c3a0b0e516e42e01c02a82e5c1157"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-chat-continuity/types.ts",
+      "sha256": "b3f3a2bc244b946dc64d27fc16eaf4eb588f9430e58b4125499b6b6e00644133"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-coordinated-revision/types.ts",
+      "sha256": "db23b15a7cb4602b4796104419ff246ba532c4c720231eba377afc27b53e044c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-dictation-handoff/types.ts",
+      "sha256": "1b16bc4997401775d5c60e4bcc678a63f46b281937fe5df504e3de1490d5c648"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-editorial-packet/types.ts",
+      "sha256": "cc97f4d9d0e3d876af81818df7b5fde3ef887bdf8675aec0b48fdbf3b0cef588"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-eval-handoff/types.ts",
+      "sha256": "1fcaffa93ecc18210053c96bc35ab447856beb5aa607378467baa969155e899e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-image-candidate/types.ts",
+      "sha256": "3e5f07ffcb529ced640e53acfbdca6a80c46de4d89f9c828456825a6439e8588"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-intent-discovery/stageIntentNote.ts",
+      "sha256": "2439dba274675fbe5664bfab6b0ba2292e41cf09eb4f6b54b2fb5839bc8cc5fc"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-intent-discovery/types.ts",
+      "sha256": "abde4be2809d10fc92b93a1be7b24fc4539ba78ee8ab4cd9534a1279389a9587"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-local-delivery/types.ts",
+      "sha256": "278945254862f1603da4db77488228c541f7479aef057c1d4b930c45842637ed"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-local-delivery/workTowardLocalDelivery.ts",
+      "sha256": "d04b6b9dbc807616bb9f13cfd54fd186f3e82aa2cf1ce94dbc58084a510b8ad9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-local-delivery/workTowardLocalDelivery/bindReport.ts",
+      "sha256": "7d6c6969742b6eecedc530e54ef355e04df8d40303c13c7b84799b1dbb0929e9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-news-evidence/types.ts",
+      "sha256": "ef6093282fc4ccc8b1077cf83d9ccf12d601b36a2ff73b56a10c3c416bb1be8d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-panel-launch-state/types.ts",
+      "sha256": "b3a8773b698e9027c8cd0d098a0ef65268d528645e99be69061e722c6d2115ec"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-personal-welcome/types.ts",
+      "sha256": "234c3165d7ae084b5598f6781148d965a5288c35772342f9805ce83d28c69bc6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-program-run/types.ts",
+      "sha256": "5f0a7e26fe3ac5025baa5a64e85ba61f2be3f0d876b08701ce26818f3f7e1ee6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-retained-memory/types.ts",
+      "sha256": "948e3a106eb97162b74372e8988e86b70ae0737e9fbe0dda9d0ea7754cbcd9eb"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-route-authority/types.ts",
+      "sha256": "339db6a94fcd637f1f360b285dddbea5169588b1efcfe90c36d9212c73c40eff"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-session-recovery/program/recoverSessionGoal.ts",
+      "sha256": "15d60b05de00ca79cb57ac186fba7a1f88447257ce2204179c239b855112b782"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-specialist-handoff/types.ts",
+      "sha256": "a94f2fbfa284d22e8f4063f01b8fa9f802ab94a242eae8afc5f762ee10decbd8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-terminal-operator/applyChecklistChange.ts",
+      "sha256": "3d37f1ad26c9482f4236ec49e28d8f6a981deae216434f2c737d0976728bdd53"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-terminal-operator/openTerminal.ts",
+      "sha256": "3312ed236f178bdfb89ce483fa52d5d54d3749ed7997bd38cb3a4e78e34691e7"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-unit-rollout/repairWorkspaceUnit.ts",
+      "sha256": "11a4095f8d6820939871f5283dcb2876380c27d25a194dc46aefbe22a4c9677e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-unit-rollout/types.ts",
+      "sha256": "5cc74c6bf14fc91bdc7a61990367647481d98979bb71114e10306359bdd4da04"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/activateOwnedAutomation.ts",
+      "sha256": "7d07ecd0dea46adf0a3b30524e45f8416930bf98edb8ab8c353cf833f3590103"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/activateOwnedAutomation/types.ts",
+      "sha256": "0b15bd9f7264efd59aff28b9f68e4d619918bf1e3956b77a4af6602faf723753"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/auditAndroidGoal.ts",
+      "sha256": "60de355ef6446b6932855ba0f6ea129edb743a5630bee0c20ba19c1dd3dd3db6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/auditAndroidGoal/types.ts",
+      "sha256": "4abe6829c97b6e99410ef4a15cc6b619ec58a0f80345d5db94fc963045c7b924"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/careForGrimoireScene.ts",
+      "sha256": "6c6465a5da862ccce38bd8e23e3756683a919219c15dfc39a3af3b31cd0de24c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/careForGrimoireScene/finishSceneHandoff.ts",
+      "sha256": "82c0a139907204c84560d9053bc23050f04c31a2ba34504419bdf4ac756ba6bc"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/chooseAudienceResponse.ts",
+      "sha256": "820a3802b6a6e32389420ff814f43d2030b9bc5749dd43203cd117f9ae5b9fed"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/chooseAudienceResponse/applicationResult.ts",
+      "sha256": "f2820b27284f68b6f0fadc99fec079cc8a03e348d812df3f837ca96357a45fc5"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/chooseAuthorizedEvidenceRoute.ts",
+      "sha256": "b24a4a5183ecdaf8a87a5143328de68b3d06ecc6ff8fdd901e97444c0186d093"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/chooseAuthorizedEvidenceRoute/applicationResult.ts",
+      "sha256": "3c19e40519d4cd845ba855f471aef813357419a43d642003d5efcaf82073ff39"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/chooseAuthorizedEvidenceRoute/inspectExactRouteAuthority.ts",
+      "sha256": "ac06383d5aa1ca9b21db0fe22e7666f73dee9c28967f03b856b3dcdf6f4e055d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/compareLiveLocalInventory.ts",
+      "sha256": "7d1a3681fb60e05e5039989a1adea17e224975607a3dff474c523f28fed38f9c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/compareLiveLocalInventory/types.ts",
+      "sha256": "da6b0e26a73adb9b69cbe88598c678dec20c5be18af307897d91b5bc2af6597b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/compareTestkitCloseouts.ts",
+      "sha256": "598a55243e99308f37a007c0b86c7738c5a2783ca678d5b2fd338ea350ab4de4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/compareTestkitCloseouts/stageCloseoutEvidence.ts",
+      "sha256": "320b8669ab33462f13540a5c9920196d8e45966e27588c29b9b7efe106b9a9be"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/compareTestkitCloseouts/types.ts",
+      "sha256": "9e9106007311ac589686b44d253f28f42300f7c6e3d69b2ee510be5c9dda5365"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/coordinateOwnedOperations.ts",
+      "sha256": "0cb77887fa2483e68eae069029876138725555640ef0cb4596573e498f101407"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/coordinateOwnedOperations/retainOperationsDossier.ts",
+      "sha256": "b4efd38cf7790d8202758101a2c47b87667f951834de91c3f9b283b30e5fa5dc"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/coordinateOwnedOperations/types.ts",
+      "sha256": "89b0c11d760729032e3e3ab250a04e141e9c7d61757f4c65a7f8061d9a394c9a"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/correctVaultFromPdf.ts",
+      "sha256": "3542b39232193b3bcc58b9c5d93e980f9180f5ca804017a6a7fdbf1027d7dd35"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/correctVaultFromPdf/correctionResult.ts",
+      "sha256": "579c863f4b20cc032b2f18b01cad176facfbcf097fab5d510679b4234e0dc6b2"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/correctVaultFromPdf/types.ts",
+      "sha256": "ad33b809db2a03746737d8edf9f825471ad5451e7e202c55e948edecc1df9e95"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/discoverScopedIntent.ts",
+      "sha256": "771bf324fd6b477e001faecb1a2cb7706bcc4f724a3ed9a264b1ea111bcbe2ef"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/entriesGenerated.ts",
+      "sha256": "9a1806358557947431aea313062a2ce1e64c30eae70a1af9716605379591f2e0"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/generateOwnedIllustration.ts",
+      "sha256": "57b2e1431cad83a82dad3aebdef55f59636d549ea9adff86a450257b4e2a0eec"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/generateOwnedIllustration/contract.ts",
+      "sha256": "54d648a9e2118d48861135bffddb43d1f055db89361ad836f10dd311dac645db"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/generateOwnedIllustration/inspectIllustrationBasis.ts",
+      "sha256": "fa3dbff39d05447d13ee92274740fe9c449bfb4ffc6b11be015c274ae0c4465d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/generateOwnedIllustration/retainIllustrationOriginal.ts",
+      "sha256": "08ebe4756ecb1c1be80d8d29b3c5c1bc0832e0f72bd46c52d983c823ca9049ff"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/generateOwnedIllustration/retainIllustrationOriginal/writeVerifiedOriginal.ts",
+      "sha256": "47b143e478dfd56eb60f6249418bd199dffd6c9ce478cedfd7ffd5b44ccb27bc"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/generateOwnedIllustration/runIllustrationJob.ts",
+      "sha256": "cac29db23e52504c4ddd6fb000b1a95a810e4859e46245dafa7aefb01bd66e31"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/maintainWorkspaceSkill.ts",
+      "sha256": "acd8f69cc0880341b91239df6e311013bbc5bd2ca4b20154bbfc787d4c09bf9d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/maintainWorkspaceSkill/finishSkillMaintenance.ts",
+      "sha256": "e721aa2c39ce5f6293ac665464e6b2151baa1d7ee04dad6f8b0877c9b33f1cb0"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/migratePanelSource.ts",
+      "sha256": "1381852db23f6ac4a37291bfd3bb525395fb1f1cc3dd1199560fcdc1f9189dae"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/migratePanelSource/types.ts",
+      "sha256": "a8bc4019c812d60889d06b0e46eafea5be1a39a5c45752e8faa74e5a2842b19a"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/planPhoneFirstRun.ts",
+      "sha256": "f8415f5c6b8eba130a4c00009c0c9dd1b631060d0be0d951e8011ce7af4ff743"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareContentProject.ts",
+      "sha256": "ccc369d20446a844d8baeada72152c38f112014b76f05d7932103a3787edfd35"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareContentProject/projectResult.ts",
+      "sha256": "c7a7bced7c5e69d771483b7777d0ec019a36903953e350057b4a3777cf6fbf9e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareContentProject/types.ts",
+      "sha256": "b50a023d451c04f6c7696486f676aefd0098bef782308297302b328f0c20a640"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareNewsEditionReview.ts",
+      "sha256": "961054450cd1d2cb52aefc38cf5d13c7bfad1f488c56a13e0a0e5a64b8cfe942"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareNewsEditionReview/types.ts",
+      "sha256": "59fd250739b565485b78c186d15f17e328bbdf3f3bf06a748c4c80290c6b47c4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareOwnedScaffold.ts",
+      "sha256": "91e938d1ee5c567278300dad1f3cb331798331b3b35c8223e3da3c1cd44f1e91"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/prepareOwnedScaffold/finishScaffoldDraft.ts",
+      "sha256": "162cbd2b24d549eeeb39362873f061aa2879723e9a33f6fe257e754258aec49c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileGoogleRunbook.ts",
+      "sha256": "6697602edd5fa8b3e327b2b6bab3d8de8140129e5bb681295be48ebd4e197db6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileGoogleRunbook/types.ts",
+      "sha256": "c19637eebd1a8210108fc247bec36403f3646ced82328ea155cc49ab4870cda1"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileOwnedMethodCall.ts",
+      "sha256": "0e106fdb33380bb2a27495bd278b9c3f00aaa32bd32d4daa0e6e67c412701f66"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileOwnedMethodCall/finishMethodExchange.ts",
+      "sha256": "f5678835f52215f660c42cf7264300d4e314b4983d65164f2ad9cbdd727ea0c2"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcilePanelLaunchState.ts",
+      "sha256": "4dab76ade28741cda935cea85df5fb3071e6aff4a4c2c36ff9dce09992d4941b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcilePanelLaunchState/applicationResult.ts",
+      "sha256": "ff43aa86a76bdeb06a05b913db3b3227ef3b24c002ce41e1c63c3605dee73f19"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcilePanelLaunchState/reviewLaunchAuthority.ts",
+      "sha256": "a45b99178da1b7bb31f794b930648a796eef16e0c94282da51967a6c9806f842"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileWorkspaceConfig.ts",
+      "sha256": "3b07b2ec7e7e8e76424766eb8cf917f015f23b06a53bd7d383323c7b1ce5ed4e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileWorkspaceConfig/applicationResult.ts",
+      "sha256": "f336cca1961370c1b691fa2eeb1c06ae29a2f79a46007a3c47984d3a30c5340c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reconcileWorkspaceConfig/collectConfigEvidence.ts",
+      "sha256": "2f5d921ca4726b90f3ce4c8376bba7323ed2f99992f7f525b1516d7d1d6897fb"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverAgentCapability.ts",
+      "sha256": "71eeac553bf5e00343870d5974ef0d7277aacbdf5e8221e925a67dddbf53b595"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverAgentCapability/types.ts",
+      "sha256": "cd6add7b878d00a896e2811b042a708410fd93216ff12f8a91364b93a6dd5e2a"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverCliRoute.ts",
+      "sha256": "ce2a22a3c31f5be21c152a14fd65ef27e8bafff38e789ce5eda8aa9ac938c96c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverCliRoute/types.ts",
+      "sha256": "c672c9c6cdd141a3b425ae26a3efddf4603579a9c0d2e5a1b961f8d7e567ccf4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverContentArchive.ts",
+      "sha256": "3ac26fd42e02a7f9db1590a1dc9023a6478e19934a155299e3ccb74df6bccac3"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverContentArchive/contract.ts",
+      "sha256": "d5a576d9f873ca7f513fcc514cf19af62f25b9b1bb44d9046e9243089dd080a4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverOperatingHandoff.ts",
+      "sha256": "f004c6dfac5dc77d63ac94788d3fa0b743000a03dcfe0d8ecb4551fb098f98d1"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverSameTurnEval.ts",
+      "sha256": "209b38131ec3ac06c7528a19c67686a78940b05360041dcf492c5723728b3bf2"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/recoverSameTurnEval/contract.ts",
+      "sha256": "86ff1562ca907849e0facbf58e1f98e35247aa2536f6df63a8c22ad84264059b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewAssetIntegrity.ts",
+      "sha256": "e45deb24b92692f1d083f3d2d499df14d775b487b10e2d3010c3210cc1d30514"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewBoardMigration.ts",
+      "sha256": "e2ace21ae0ed02675d72c069e1e7b76a312f808861bc3eb8902e12408ca9350e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewBoardMigration/types.ts",
+      "sha256": "8a4a11d7261ee20c960d0b6d0806ffe6dd20d4655fa24f08ac8368645c08bfb4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDeliveryWake.ts",
+      "sha256": "52f627fa7e940a1fde1f576a1778fce1e238cbb9d6b79cfe51f54b1c63edfd40"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDeliveryWake/applyDeliveryWake.ts",
+      "sha256": "5593da66130629952631f203108161d7aa91d6a91802979d4310d6a97944e2ec"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDeliveryWake/contract.ts",
+      "sha256": "c80f4871c9eb236c9f2be14ae5268c190dae9b73c5bbb15209294a6255abbe4d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDeliveryWake/inspectDeliveryWake.ts",
+      "sha256": "e3e1ef32c359fed6c464367e2c34de49053c46e38d8e7a44e4ce8ce124bc4db6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDeployedInterface.ts",
+      "sha256": "240b7356317196be4b65bb044b1da7f73db7ab44e577a626d03a12e3e036bf35"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDeployedInterface/types.ts",
+      "sha256": "dff074886b19c4e45ccb44170d72775ee826d80d8d5b39366d88c0da01790c28"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDesktopReadiness.ts",
+      "sha256": "db62b4f84187a6aedbc688f348c4186d2a18e4dd6777ec8cbb73850e016d168e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDevelopmentAudit.ts",
+      "sha256": "225a011386575ed16232cb65f7a0e076bdff8c88c47608fb848b7e8608e92eb6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDevelopmentAudit/contract.ts",
+      "sha256": "87087ece5e3d5d4cfc2d7e6f042a6adf429b660c6dc5f5b6490f73009e20ff2b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewDevelopmentAudit/inspectDevelopmentRuns.ts",
+      "sha256": "cf6ec0f6673b6742716a18ebded4b302e3d46c18bb3fd4986e34cd5501eb2db3"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewExamplesAdoption.ts",
+      "sha256": "0db1db338d4914e92634600658b5c81cdf58c515251715fb79faaedbdcdaf0a8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewExamplesAdoption/finishAdoptionHandoff.ts",
+      "sha256": "86e305077711bdac6dd7a4f654c8f4d6c9e2e9bcba450f2e7d371805d7ea647a"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewExtensionDossier.ts",
+      "sha256": "3696217e39949009080a0187680674ea9f721c8a113310b48bbb916865b58762"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewExtensionDossier/types.ts",
+      "sha256": "9c5d7320797168eca349dfa0587e322590cfed733153effbc2ef6a1d451a9e26"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewInstalledPackage.ts",
+      "sha256": "fbe9179fe2d97ccb35eccf5df7938bbccfca1b916e7e5114562f7b1b6b98daee"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewInstalledPackage/types.ts",
+      "sha256": "38fedc755c674be4128be33c8a59bc84172c4f777d06345dd6eac8dda7a3ef99"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewLocalExecutionWidth.ts",
+      "sha256": "0a7721481f3fb32244b922650c3f694b2486801c758eb499b456d040e64a40d9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewLocalExecutionWidth/types.ts",
+      "sha256": "afb3449438488673c9dffd8d07250c1766e69e2c16a7314c0e3373d0f535499d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewLocalPresentation.ts",
+      "sha256": "234c43f02f08a7defe9d04f231b9e9a6d867294febc0b871e1802b6a4e9f4c81"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewLogFollower.ts",
+      "sha256": "af91f96577d4ad2eadd1d5104b3b6f89fa9e5c5aa9716969361e0a1a57d2607e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewLogFollower/contract.ts",
+      "sha256": "4750d697cdd23a722cf4f3a38031233718cde450ac69553a3d4021b1b4602279"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewMobileContinuity.ts",
+      "sha256": "61242e6715e3859643e23f60f9810f0a8d63065b6ebba006ee206578356e52a8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence.ts",
+      "sha256": "44a8f6ef86fae07b9492cc613434e9926e9de626d91efde882d32fe840ab90d9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence/checkNewsReaderBoundary.ts",
+      "sha256": "d3be90d3d753c60a3b9c7c8b9a148c697ad5a721e68669a06e8e7d14630c9b83"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence/groundNewsEdition.ts",
+      "sha256": "66840a893526ee2c4852ddfe0766c68f39cc5bc30e74cd64c9b5a3f186f70c88"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence/groundNewsEdition/selectNewsSources.ts",
+      "sha256": "b06c57cb76e5d3aa4f77b891459c0e0e276932da643ae0849a97fccdf2225d5c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence/reviewNewsOwnerCadence.ts",
+      "sha256": "8de4c43279d10ef26005ef82cc0242fdc08ca65dc717195db97ecaa240248a9e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence/reviewNewsReaderWindow.ts",
+      "sha256": "f160fcab272e1457788f20d7e90172b34fbcf54c7505ac112355dfe3032dc81a"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNewsEvidence/types.ts",
+      "sha256": "e4b0b6c82d00638435912c622f99129fd684024405eac05e6213c1790e0c6472"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNotificationState.ts",
+      "sha256": "c22ef72aba90b1694f36a8ba6cd1235089c30258d9aef2aa96212015671c1d5f"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewNotificationState/finishNotificationReview.ts",
+      "sha256": "cea76665af9f9a0499a48337ab49e220accc0198a2138d90e695a812d3fcc74b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewPtyContinuity.ts",
+      "sha256": "1a46990f3c50394dca24e48d1e39de5cddec4362b5b03612bac4e6818fd2b710"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewPtyContinuity/contract.ts",
+      "sha256": "808896f4b15fa357d9e7e111298f4ea6f8bfc4225ab4ea8ffbf94301a6809e64"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRecordedQuestion.ts",
+      "sha256": "a9e3d84113af48d7374deeec3856b0341fdd63d425c0be7ece36b4eef195fada"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRecordedQuestion/contract.ts",
+      "sha256": "6fddb26fcc74371e61bee1163db71ed0e02451c7cbeffa73ddad02387ca20428"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRetainedBuildIncident.ts",
+      "sha256": "62274889dea67e94ee7a0db1e7493bc6d19baf4a9ea6b8a12f9ca256ddfb29ad"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRetainedBuildIncident/types.ts",
+      "sha256": "80ce8327b97ccc2951418866453adb084a318c8b45b1c3b6ced1924513ac9879"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRetainedMemory.ts",
+      "sha256": "a24610fb3d9c1f8c2e4d87033954103270216bb69171a9c4a6fa83e0911c1811"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRetainedMemory/applicationResult.ts",
+      "sha256": "d54f3037dfc2d4b4e4eaaba1a6675c587ac97a20f10d10918099b4e7653a7125"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewRetainedMemory/resolveMemoryEvidence.ts",
+      "sha256": "3cc366873bb190fa4f958f6c4c741c00c79cbde5d5247e6a0aeb8ad37132a4c2"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewSourceAttribution.ts",
+      "sha256": "c6716dd1f60cd067e30214697bce269550809adf81195dd08bb7c219533d60ad"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewSourceAttribution/contract.ts",
+      "sha256": "c776fdb2578e44fbd3700bb7efb040be8394ec0191edbed69054ae2f1890397b"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewSystemRelease.ts",
+      "sha256": "490f2d67db378e22b74c2102acadb62fdd1079a3d161d091ee26e72db136a1e5"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewSystemRelease/contract.ts",
+      "sha256": "bf82e095a149e78b6e724f43e95beeca1dbb6ead3eb6dc9801e9c744b320583d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewTendrilRoute.ts",
+      "sha256": "23a22fd6869f10a4f99c5ed6eead36f133a5f409fcb0246ea46c01fac7460995"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewTranscriptSurface.ts",
+      "sha256": "66e7e62540cbd1fc77a2d12f81b5b37df32383c2f5f3f13475ff0f0212fe373d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewTranscriptSurface/contract.ts",
+      "sha256": "e39f34bad6653e45ac4ef96635be18df651e93cc6fb9a1310b2a7f4cdcdf2783"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewUnitHandoffGoal.ts",
+      "sha256": "90758ef9cac3cb59cf5798509350f9c4232d1b4284a7b9e67251c6eaeb0bb878"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewUnitHandoffGoal/applicationResult.ts",
+      "sha256": "dfaef5e1cb70de7a78caf14ecfe24b1a05b1538a2f523840a2b3defedf4b4959"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewUnitHandoffGoal/types.ts",
+      "sha256": "f7e340b85114e9e902430c41120bb248390229ea0aee06801227167ec44f727c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWebhookAdmission.ts",
+      "sha256": "0b7bd5661a560af40341feee78f726a1a4b14062b0cc9068603504ec699bb755"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWebhookAdmission/contract.ts",
+      "sha256": "903d12a59941b4e89065bf0c1a2b10a90a199d81709dcefc90c3d01b35db80a4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceClaims.ts",
+      "sha256": "7fc78f80fce82039da4bb629d7a035d6d9e74589b47d5fd7b9c9a641e98fc477"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceClaims/applicationResult.ts",
+      "sha256": "7c2f40219e34a1f2c85cc55d81df19beb928ff5215827e28fd992815d9d85ec8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceClaims/verifyClaimSupport.ts",
+      "sha256": "1a32073a01638c87a6ae6a27b7eb3b1eb5776ecddd8d1e0b4b8607e3364d8688"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceShare.ts",
+      "sha256": "ba30f824577786d3bad3257e9fc9c5c0cb9f046be6198e098b6080186345841d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceShare/types.ts",
+      "sha256": "78462cf96fe47c644b69777ed010a8139c24b1017b3bf64964da7741d008afaa"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceSmoke.ts",
+      "sha256": "688cf1bb09c922261f2a7987351b4f8b8d10037f7a2176468e03ccffea62203c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceSmoke/contract.ts",
+      "sha256": "f17a7b28bc950b92969b806e886488349193af78ac40f459fc7a09f6916cc6b3"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviewWorkspaceSmoke/stageWorkspaceSmoke.ts",
+      "sha256": "8cc9bd24be5931da27592dff90f445127b0281fffed3657c13497fbf1d9c748f"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviseCoordinatedDocuments.ts",
+      "sha256": "9570f5f8ee70f3ce5355175eb71667da086a655e7558cba840cae26fa92226bd"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/reviseCoordinatedDocuments/result.ts",
+      "sha256": "f28985167cb7e5a273f330c9a40e2e91289ff719c8e4387b6ab9a1449e107195"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/triageSystemTemplate.ts",
+      "sha256": "b9c978d8b964fff29c95e837161be3fff1772b10ecca82c0e7bd6e93764e29c9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/triageSystemTemplate/finishCandidateHandoff.ts",
+      "sha256": "7f2bd9f0a9208ebd225f318d7e0aa37cc3339fdda2a3c4daa3a675e2dceb482a"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/types.ts",
+      "sha256": "afc728e3cdca12819f523984d1d7be27cf35d53eaa01a072b29ed0100a4ac26c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/verifyAndroidDelivery.ts",
+      "sha256": "a901bce0f46be19268dc5e48a62996ee271a64ecb20c7a8d0e724343a1e0f828"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/verifyAndroidDelivery/types.ts",
+      "sha256": "d55b8e3bb700b8edb8b6be164380654f0a896de64aa7875133dc75f9c3bea172"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/verifyWorkspaceSuite.ts",
+      "sha256": "28df57874bf6ec8a347a4bd7ea87f2dae4d41f06bab4cbb12cbfac8763737963"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workInBrowser.ts",
+      "sha256": "305a9f02fc59154fd9b0c4099c08aea3e8defe22a99345032aea7bb2c5b24d1c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnApiReadinessGoal.ts",
+      "sha256": "50f4a5ef757148a9cd104b6ab44bb2effc437dfadbdf8d8c28129b0d95f70e0f"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnApiReadinessGoal/applicationResult.ts",
+      "sha256": "ec7cc7d3dbe59675af0c87b695dc1eddc0f62c694f1477dcb0b99c15dbedf6a1"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnAssemblyGoal.ts",
+      "sha256": "91706d14ebc6372217c5342098f3fa2dcf173cd31c8806e28e6d1b66e5ce9a26"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnAuthoringGoal.ts",
+      "sha256": "f735f716a87ad2ca8594813b5c7b90dfd1a4426d1efab6e35eb691c042ffc418"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnBridgeDelivery.ts",
+      "sha256": "db9647ec39f044342fa8305abce6ec514b68ce03b1c4556f8751714f1b4d28d7"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnBridgeDelivery/applicationResult.ts",
+      "sha256": "e9c05b3297ca80684d5d65ab6306a61a6d4270fa312319e5814e0a19fb7895bb"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnBridgeDelivery/inspectCurrentBridge.ts",
+      "sha256": "a088aba4b09731c4e7fd46ad30f41c79ee095951d8a93cc0b7b0cb4c998ba09f"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnBridgeDelivery/reviewDeliveryFile.ts",
+      "sha256": "42abc5c0559f1094c5d237bbfc2e17dea8cfcda17f271385264a4da3c5c45836"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnCapabilityGoal.ts",
+      "sha256": "22fead3d1a50b2f107cd3912b53211f0b7464cc555bc3a7a335e2c8fb1d6185d"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnChatContinuity.ts",
+      "sha256": "88591bc4c84cd872f38e2fcdb73f4e46d2e91b91dc218ef8d69589125384e1a6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnChatContinuity/applicationResult.ts",
+      "sha256": "10ce498a41a5e492a3ec4bbd722c947845fbc3a6258f089f405481d4c9d1e8f6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnChatContinuity/reviewChatContinuity.ts",
+      "sha256": "38986e3904bd9ba1d6493369a148161cba5976cf067f06fc62972fe12b3cdc66"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnDemoPortfolio.ts",
+      "sha256": "2a65ad069e92d8fdd295c13011acdcdb09e089e844c7f46bc702233cc691a7a3"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnDemoPortfolio/applicationResult.ts",
+      "sha256": "429603bb5b6bef5a90c22b23824d2ed5e2832b6d34d01afa96ae9fdf3793a481"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnDemoPortfolio/types.ts",
+      "sha256": "232c93fdf491745294ff458b502c9d3a67746c0ad15dda5c65547454923d020c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnDictationHandoffGoal.ts",
+      "sha256": "fef888b8338bbccd0d870c8062626d9e2b76ee0c22ba8ac60cbafae44b98a7bf"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnDictationHandoffGoal/applicationResult.ts",
+      "sha256": "8c190a9ca4c7d8d970c7739130658d0519b290b81a2d6eda9b139bc134c45022"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnDictationHandoffGoal/reviewRetainedDictation.ts",
+      "sha256": "46cec2ba810392cb115eb03a6fc52d3c2fadb901e3291e50be0d52fdd671b721"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnEditorialPacket.ts",
+      "sha256": "bb11efabe1961990fb05511fa52c92c11a9d783e17123d9d9431c34cf664f9b8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnEditorialPacket/result.ts",
+      "sha256": "f4aa5982324caa048d8b503f41e1c57e6c42c76f9cbff5c01d54bb3e3555a970"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnEvalHandoffGoal.ts",
+      "sha256": "c7239b3c554bf1bc55cf9f8e6ee7d38edb4c34e0426e3e2ad17ea553c1551aaf"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnEvalHandoffGoal/applicationResult.ts",
+      "sha256": "46035257a8dfb78ad812e118df1aa5cfd288d19fe6f1c7a009d1105684cc3798"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnImageCandidateGoal.ts",
+      "sha256": "09066c21578c94f356572f2b3dea9ea69b3bbfbe55ff2ead694f880885f3ce20"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnImageCandidateGoal/result.ts",
+      "sha256": "5056241460ab38296026eb2a5365cd1c076ba343565a1923b3dc7662fdafd150"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnLiveTendrilBoard.ts",
+      "sha256": "1634fd44829480063e812f7dfe5e53bf4c4b7990f44863ba5197b1e569163aa2"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnLiveTendrilBoard/types.ts",
+      "sha256": "164eb3e5b9be799151f41fbda572f40c8e2139dfd2a209df65641c849e560328"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnLocalReconciliationGoal.ts",
+      "sha256": "66b33a5221155b11618d65e1202a1d2c0a6dae3d64e6986496dc92639a9b8c0c"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnNewsEvidenceGoal.ts",
+      "sha256": "c981924b5678df5b3702d3625894bd8315e15d93c5d837a0691a19b76be8f224"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnNewsEvidenceGoal/result.ts",
+      "sha256": "c2d36e4e2b054cce1f3fb148f00a9b218597691b3e0ccc58cf788913b97e07b3"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnNewsEvidenceGoal/types.ts",
+      "sha256": "6bac7da01b28281da02579dc3d90d10f0c5a7cb81402a3ebc7bb0ec8791bac40"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnPersonalWelcomeGoal.ts",
+      "sha256": "bd36fbece0a0e6e0a3d218efd1bac3612b1e56c7135ca59b4102eeaf48f8bc28"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnPersonalWelcomeGoal/applicationResult.ts",
+      "sha256": "7cfcaa8a30a148c604d5adf20af19ddc06b52bd3d4e39b18e14614c451e1eb92"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnPersonalWelcomeGoal/retryWelcomeProbe.ts",
+      "sha256": "677acb8cc02745c36130176debf3b6e995726f501fec5cc30dd367e1fab782b9"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnPersonalWelcomeGoal/reviewWelcomeSetup.ts",
+      "sha256": "0504427873c4686861e5cf5e122e1d2c818b4f0b1d44ee11a905e9abf9714762"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnPersonalWelcomeGoal/reviewWelcomeTour.ts",
+      "sha256": "4c897397a7f67b68daa4ebdcfcdbee9423cea4350d53a0b06fa2790fb8e0fbb8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnProblemReportGoal.ts",
+      "sha256": "59e10a64d105c060a88e163735b75c3deb81a3c69333c2d83c371df67f351603"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnProblemReportGoal/types.ts",
+      "sha256": "87ff921390b56c7df3a451d9eaee32ab4e204319fc96a9f666d16f602ef6302e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnProgramRunGoal.ts",
+      "sha256": "e0cfda3be0a672c03a6c7f497d9fe54c6e7b51d1b12c44b71639ee59653a6249"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal.ts",
+      "sha256": "b0d8e3b7eaabace1c8f3c5ef8b8953871b0f50462f4bb99c6e43bace449469d0"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal/applicationResult.ts",
+      "sha256": "6a510854023d7cdf216e456746d124787114618d57f97d8435912825f841fbc6"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnProviderHandoffGoal/types.ts",
+      "sha256": "5a6949ded860631500ec487a8857569c96f393039688fad706643dca1bb8f13f"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnRecoveryHandoff/types.ts",
+      "sha256": "3f07b86c9c9e67f24be34bd909207378fe0a80aebcdb207b39c963edda4ded34"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnRegencyBriefing.ts",
+      "sha256": "c5b844a8861ef67e14e8db25b49b62749d51f157ec486f6d2c6d15c2536a7e69"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnRegencyBriefing/applicationResult.ts",
+      "sha256": "5744fa2e7e3da1083f384c33f0f2509fc4c515e5b5e27a4aa4f8a9f843404ba5"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnRegencyBriefing/types.ts",
+      "sha256": "9842bedd98e6d068481111897fa15108b71415a569f9988f9b2cd85735582675"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnSpecialistHandoffGoal.ts",
+      "sha256": "2bc5a0acdfdebfb5c5855423f096cc32d1131c842fa3fe1f8e2b4da0884eca90"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnSpecialistHandoffGoal/applicationResult.ts",
+      "sha256": "ea9162d62ccd730eabae49d28215036fad3dd106035175c4df1fbebd3abdce4e"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnSpecialistHandoffGoal/reviewSpecialistHistory.ts",
+      "sha256": "c3cf4b3cdac42b9cdd513228a4e69f835d764bad795ed29575997b1f4ea534d4"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnTerminalApp.ts",
+      "sha256": "48eadf76c73a88f38128105c3de00a9ba4451ef1758e980b0687ce6439007eae"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnTerminalGoal.ts",
+      "sha256": "bbb2d5eb56b91e0b40d62a4579d2e74af3d4c4730ab056cc927efe677762ea71"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnTerminalGoal/applicationResult.ts",
+      "sha256": "a2837792433c9b984f13692f28bd88f9b72c83ead5edb83df5bace47c5168038"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-user-goal/workOnTerminalGoal/types.ts",
+      "sha256": "c7cb45e7b1c479429fd012b10e2f8e9e8b330ad6d8cdb02493bce725da917190"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-workspace-assembly/readAssemblyUnits.ts",
+      "sha256": "21514ac0e1d2be9d1362e96748f80934eaa9599ad0053157840b0270df55d1d8"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-workspace-claims/types.ts",
+      "sha256": "4c3a1c6b199461c26717ef42eaec63869d82bc9f6121424250d797d9c6c36b47"
+    },
+    {
+      "template": "base",
+      "path": "skills/open-workspace-config/types.ts",
+      "sha256": "64da2eff29fab026db274156da2e326afc37c318800233afe3b34329764626dc"
+    },
+    {
+      "template": "base",
+      "path": "skills/panel-health/recoverPanelGoal.ts",
+      "sha256": "7b6ee096f35cf1f50ee741ba91f82ad6882992908f50d7745d9a94967899bcd6"
+    },
+    {
+      "template": "base",
+      "path": "skills/panel-health/recoverPanelGoal/applicationResult.ts",
+      "sha256": "bd2f6ef74d42d33872700cf19168e4e04362738fa60be3c8b493fb1280e06f62"
+    },
+    {
+      "template": "base",
+      "path": "skills/panel-health/types.ts",
+      "sha256": "7f06d22c3f7eb344f913da6085a8dccdc530f683f2ea54e38b78f3fdba0213e8"
+    },
+    {
+      "template": "base",
+      "path": "skills/pdf-intake/workOnPdfGoal.ts",
+      "sha256": "423eb547120f6f369ba212615ce189027564319d851e8d4ba1de90a7db540988"
+    },
+    {
+      "template": "base",
+      "path": "skills/pdf-intake/workOnPdfGoal/readRenderedPages.ts",
+      "sha256": "253401efb35429f8a7696561c1077fe3d8042461599672cc92d9641c40b073fd"
+    },
+    {
+      "template": "base",
+      "path": "skills/publish-preflight/publishOwnedPreviewGoal.ts",
+      "sha256": "36a344a519e346a1a2dccc8d157f5e973534e060aa9e5add1b3b56ca6fb3634b"
+    },
+    {
+      "template": "base",
+      "path": "skills/publish-preflight/workTowardPublicationGoal.ts",
+      "sha256": "b4dd19732204a57d975a516f34d9416364cc7b8b06cb5db600e2ae23316e8ae4"
+    },
+    {
+      "template": "base",
+      "path": "skills/template-candidate/reviewTemplateMigration.ts",
+      "sha256": "975d44edb8c85549b8125d6f1fd1f6da07cc07f29ae26c11b11b38885036d9af"
+    },
+    {
+      "template": "base",
+      "path": "skills/template-candidate/types.ts",
+      "sha256": "6d57442865ae0e27e7970a6c73cc3b64b16f3d162d36a2c3a2a6445137eb9591"
+    },
+    {
+      "template": "examples",
+      "path": "skills/open-adventure-journey-runtime/index.ts",
+      "excluded": "Native fixture factory exported by skills/open-adventure-journey-runtime/package.json:6 and used by SST workers/system-test-runner/index.ts:4014. compiler/policy.ts:8 explicitly excludes ordinary application TypeScript.",
+      "sha256": "bdbcb5fb8920ce8777551ed2fe11f00554ab5cfaa131eb47407268d1f04bb852"
+    },
+    {
+      "template": "google-workspace",
+      "path": "skills/google-drive/driveWorkflow/workOnDriveGoal.ts",
+      "sha256": "27cc446e6d2104ae7ab517d012bd93e8270a6f833438be36788df7c730565d18"
+    },
+    {
+      "template": "google-workspace",
+      "path": "skills/google-drive/open-goal-drive.ts",
+      "excluded": "Ordinary native oracle exported by skills/google-drive/package.json:12. compiler/policy.ts:8 explicitly excludes ordinary application TypeScript.",
+      "sha256": "2f6956d96376bb49c2492065adb6439c31ee02b67bbb4f7d8bfe084f0b83a0bf"
+    },
+    {
+      "template": "google-workspace",
+      "path": "skills/google-drive/setupGoal/types.ts",
+      "sha256": "3286e86c86e244e680a15a4d803a8446f33dcf2be22703ef6d69ca9364f292e7"
+    },
+    {
+      "template": "google-workspace",
+      "path": "skills/open-calendar-goal/program/workOnCalendarGoal.ts",
+      "sha256": "8d06a4e0f87f612f50ef8830373447067481ccc87db388a3488e2714c5474841"
+    },
+    {
+      "template": "google-workspace",
+      "path": "skills/open-google-handoff-goal/program/reconcileGoogleHandoff.ts",
+      "sha256": "71526841a08bbadc1dc9799fc56c747549f8bae7c47fbdca885b12827df32069"
+    },
+    {
+      "template": "google-workspace",
+      "path": "skills/open-google-handoff-goal/program/reconcileGoogleHandoff/reviewLinkedAssets.ts",
+      "sha256": "ff19c3c0377c9994d9d20193a184966f291dc10f8a6954e79c980c0e6c208b0c"
+    },
+    {
+      "template": "news",
+      "path": "skills/news-workflows/reviewUserNewsGoal.ts",
+      "sha256": "2e8525455f0d98a5ee1db4a57addb4c229425cbd6094f23829d3166e07b6368c"
+    },
+    {
+      "template": "news",
+      "path": "skills/news-workflows/reviewUserNewsGoal/reconcileNewsGoal.ts",
+      "sha256": "4a216eabc27fa526e58bb88191ba51357decca2deb2f7d93f2978111980491c7"
+    },
+    {
+      "template": "personal",
+      "path": "skills/browser-import-review/types.ts",
+      "sha256": "0de24c00435853ff9b5facb4dadf88eed241cb3c377d0a6872804b95e5960f78"
+    },
+    {
+      "template": "personal",
+      "path": "skills/browser-import-review/workOnBrowserMigrationGoal/migrationResult.ts",
+      "sha256": "8a3f170c4a50428ec1b395a24800517cf76a30a26365cdb23381672abf66490e"
+    },
+    {
+      "template": "personal",
+      "path": "skills/github/natlang/types.ts",
+      "sha256": "01ca0c548e15380b2ba5e8a83d73e0b97593efcd74bb334b9eb2947fd1a06b00"
+    },
+    {
+      "template": "personal",
+      "path": "skills/open-personal-artifacts-runtime/artifact-result.ts",
+      "excluded": "Native independent verifier imported only by open-personal-artifacts-runtime/managed.ts:5 (native package export), not a callable module. compiler/policy.ts:8 explicitly excludes ordinary application TypeScript.",
+      "sha256": "8aee3a57807c4d8112ac47e7f70a26faca9150a38dfa2120a315689fc9f90dcf"
+    },
+    {
+      "template": "personal",
+      "path": "skills/open-personal-artifacts/types.ts",
+      "sha256": "7437ca51aff9a3bcc65271a6f5a5335894e8c1088a94e70887f8efa98b4d9c79"
+    },
+    {
+      "template": "personal",
+      "path": "skills/open-personal-automation/coordinatePersonalAutomation.ts",
+      "sha256": "86b2c98ca5cd58668d5ec227960f53bc15b870d449cabd306fd942c6b9fd945a"
+    },
+    {
+      "template": "personal",
+      "path": "skills/open-personal-automation/coordinatePersonalAutomation/operateMonitor.ts",
+      "sha256": "13c1c3e7f2a909a71d3d0b72c26b9b42ab6a8317e985177ec02dcb53949d6c9f"
+    },
+    {
+      "template": "personal",
+      "path": "skills/open-personal-goal/program/workOnMissionGoal.ts",
+      "sha256": "a4bfb5dcc1f521ceb1a829d5cf17ae9c5c1e773a0bf30116ff5d5baf1f71899f"
+    },
+    {
+      "template": "personal",
+      "path": "skills/open-personal-history/reviewPersonalHistory.ts",
+      "sha256": "e8eec75db16e1c63efaf0b6d7b6615bbf55305ca513e78de1a726c711270b827"
+    },
+    {
+      "template": "spectrolite",
+      "path": "skills/spectrolite-review/types.ts",
+      "sha256": "4bd13b2a9c8a4f6357535a5c4ffba14e5617c0173c17e9efe30b274e9b9cccaf"
+    },
+    {
+      "template": "spectrolite",
+      "path": "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
+      "sha256": "3d1551d8d72ab76bef5a84d0b3a4f8b0dc92cf22479426fc43a08cab1f8312de"
+    },
+    {
+      "template": "spectrolite",
+      "path": "skills/spectrolite-review/workOnVaultKnowledgeGoal/knowledgeResult.ts",
+      "sha256": "52797377e5253045f6df7bd8cc5710b3bea94869276024015ef02605b108b13f"
+    },
+    {
+      "template": "spectrolite",
+      "path": "skills/spectrolite-review/workTowardVaultGoal.ts",
+      "sha256": "14305cd137c38ff5247ad12f3c20394c42227aa3e3fbdbc3428d1996e94f542e"
+    },
+    {
+      "template": "system",
+      "path": "skills/open-system-diagnostics/workTowardDiagnosticGoal.ts",
+      "sha256": "da008b0f446a25750b12755144fa61902b2054caa4eb91e90f1b8fe618ebb1b7"
+    },
+    {
+      "template": "system",
+      "path": "skills/open-system-diagnostics/workTowardDiagnosticGoal/readWindow.ts",
+      "sha256": "0679b045def0354fe16157d6d9e7a512b10e927dcbd555ee075a6e2ee26d08fe"
+    },
+    {
+      "template": "system",
+      "path": "skills/open-system-operations/workOnSystemGoal.ts",
+      "sha256": "6331151fdbe481a591302b54c367354a079ff77ec6cdcabfd45631ed48d132c3"
+    }
+  ],
+  "validation": {
+    "sourcePolicyUnit": "vibe-v14-composition-lowering-20261123c",
+    "errors": 0,
+    "scannedSkillTypescriptFiles": 252,
+    "ordinaryNativeExclusions": 3,
+    "typeDeclarationModules": 61,
+    "actualCallableModuleParses": 188,
+    "policyPeakMiB": 121.4,
+    "policyWallSeconds": 1.144,
+    "browserRuntimeUnit": "vibe-v14-browser-iteration-20261123e",
+    "compositionTestsPassed": 4,
+    "runtimePeakMiB": 228.7,
+    "runtimeSeconds": 0.772,
+    "publicTypedBindings": 100,
+    "paidModelCalls": 0
+  },
+  "mechanism": {
+    "policy": "Core checkConstrainedSource invoked on actual TypeScript ASTs.",
+    "lowering": "Core parseModule invoked on every executable composition/helper module, with compiled bypass disabled and normal explicit-export checks.",
+    "browser": "Recorded iterateOn state transitions use native current readback and unchanged scoped NL action choice;40 semantic policy steps form an explicit budget.",
+    "remaining": "Full linked all116 compilation/loading is independently owned by Root."
+  },
+  "policyApiSha256": "fa6c97f80d1f197327f3456e6440701276215c28f945edaac9bfd6f807a567d3",
+  "moduleLoaderApiSha256": "001e14386a15ed06d4c3e333590b340033623afc32a9f948f20715caf62a5362"
+}
