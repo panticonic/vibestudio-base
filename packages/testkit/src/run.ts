@@ -13,6 +13,12 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export interface TestContext {
   /** Aborted when the test times out; helpers use this for cooperative stop. */
   signal: AbortSignal;
+  /** Acquire an owned resource. Teardown joins its creation and release even
+   * when the test is cancelled before creation returns. */
+  acquire<T>(
+    create: () => Promise<T>,
+    release: (resource: T) => Promise<void> | void,
+  ): Promise<T>;
   /** Register LIFO cleanup that always runs, pass or fail. */
   defer(fn: () => Promise<void> | void): void;
   /** Auto-created supervisor; panels opened via testkit helpers are auto-watched. */
@@ -22,7 +28,8 @@ export interface TestContext {
 }
 
 export interface TestOptions {
-  timeoutMs?: number;
+  /** null leaves readiness/resource lifetime to the enclosing owned operation. */
+  timeoutMs?: number | null;
   skip?: boolean;
   only?: boolean;
 }
@@ -34,7 +41,8 @@ interface TestEntry {
 }
 
 export interface SuiteOptions {
-  timeoutMs?: number;
+  /** null leaves readiness/resource lifetime to the enclosing owned operation. */
+  timeoutMs?: number | null;
   /** Fail tests when supervision observes error-level findings (default true). */
   failOnSupervision?: boolean;
   /** This suite opens or drives a workspace panel through the panel runtime. */
@@ -48,10 +56,14 @@ export class Suite {
 
   constructor(
     readonly name: string,
-    readonly options: SuiteOptions = {}
+    readonly options: SuiteOptions = {},
   ) {}
 
-  test(name: string, fn: (t: TestContext) => Promise<void> | void, options: TestOptions = {}): this {
+  test(
+    name: string,
+    fn: (t: TestContext) => Promise<void> | void,
+    options: TestOptions = {},
+  ): this {
     this.tests.push({ name, fn, options });
     return this;
   }
@@ -76,7 +88,12 @@ export interface TestCaseResult {
   name: string;
   status: "passed" | "failed" | "errored" | "skipped" | "timeout";
   durationMs: number;
-  error?: { message: string; stack?: string; expected?: unknown; actual?: unknown };
+  error?: {
+    message: string;
+    stack?: string;
+    expected?: unknown;
+    actual?: unknown;
+  };
   logs: string[];
   supervision?: SupervisionReport;
 }
@@ -108,7 +125,9 @@ export function activeTestContext(): TestContext | null {
 
 function matches(filter: string | RegExp | undefined, value: string): boolean {
   if (filter === undefined) return true;
-  return typeof filter === "string" ? value.includes(filter) : filter.test(value);
+  return typeof filter === "string"
+    ? value.includes(filter)
+    : filter.test(value);
 }
 
 function toErrorInfo(error: unknown): NonNullable<TestCaseResult["error"]> {
@@ -120,7 +139,8 @@ function toErrorInfo(error: unknown): NonNullable<TestCaseResult["error"]> {
       actual: error.actual,
     };
   }
-  if (error instanceof Error) return { message: error.message, stack: error.stack };
+  if (error instanceof Error)
+    return { message: error.message, stack: error.stack };
   return { message: String(error) };
 }
 
@@ -128,7 +148,7 @@ async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   label: string,
-  onTimeout?: (error: TimeoutError) => void
+  onTimeout?: (error: TimeoutError) => void,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -136,7 +156,9 @@ async function withTimeout<T>(
       promise,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          const error = new TimeoutError(`${label} timed out after ${timeoutMs}ms`);
+          const error = new TimeoutError(
+            `${label} timed out after ${timeoutMs}ms`,
+          );
           onTimeout?.(error);
           reject(error);
         }, timeoutMs);
@@ -149,14 +171,44 @@ async function withTimeout<T>(
 
 class TimeoutError extends Error {}
 
-async function runTest(suiteDef: Suite, entry: TestEntry): Promise<TestCaseResult> {
+async function runTest(
+  suiteDef: Suite,
+  entry: TestEntry,
+): Promise<TestCaseResult> {
   const logs: string[] = [];
   const deferred: Array<() => Promise<void> | void> = [];
   const supervisor = new Supervisor();
   const abortController = new AbortController();
   let cleanupStarted = false;
+  const acquisitions = new Set<Promise<unknown>>();
   const context: TestContext = {
     signal: abortController.signal,
+    async acquire<T>(
+      create: () => Promise<T>,
+      release: (resource: T) => Promise<void> | void,
+    ): Promise<T> {
+      if (cleanupStarted || abortController.signal.aborted)
+        throw (
+          abortController.signal.reason ?? new Error("Test execution has ended")
+        );
+      const pending = (async () => {
+        const resource = await create();
+        // Register before exposing the value, including a late native reply.
+        deferred.push(() => release(resource));
+        if (cleanupStarted || abortController.signal.aborted)
+          throw (
+            abortController.signal.reason ??
+            new Error("Test execution has ended")
+          );
+        return resource;
+      })();
+      acquisitions.add(pending);
+      try {
+        return await pending;
+      } finally {
+        acquisitions.delete(pending);
+      }
+    },
     defer: (fn) => {
       if (cleanupStarted || abortController.signal.aborted) {
         void Promise.resolve()
@@ -164,8 +216,10 @@ async function runTest(suiteDef: Suite, entry: TestEntry): Promise<TestCaseResul
           .catch((cleanupError) => {
             logs.push(
               `late cleanup failed: ${
-                cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
-              }`
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : String(cleanupError)
+              }`,
             );
           });
         return;
@@ -175,25 +229,38 @@ async function runTest(suiteDef: Suite, entry: TestEntry): Promise<TestCaseResul
     supervisor,
     log: (message) => logs.push(message),
   };
-  const timeoutMs = entry.options.timeoutMs ?? suiteDef.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const selectedTimeout =
+    entry.options.timeoutMs !== undefined
+      ? entry.options.timeoutMs
+      : suiteDef.options.timeoutMs;
+  const timeoutMs =
+    selectedTimeout === undefined ? DEFAULT_TIMEOUT_MS : selectedTimeout;
   const started = Date.now();
   let status: TestCaseResult["status"] = "passed";
   let error: TestCaseResult["error"];
 
   currentContext = context;
   try {
-    await withTimeout(
-      (async () => {
-        for (const fn of suiteDef.beforeEachFns) await fn(context);
-        await entry.fn(context);
-        for (const fn of suiteDef.afterEachFns) await fn(context);
-      })(),
-      timeoutMs,
-      `${suiteDef.name} > ${entry.name}`,
-      (timeoutError) => abortController.abort(timeoutError)
-    );
+    const body = (async () => {
+      for (const fn of suiteDef.beforeEachFns) await fn(context);
+      await entry.fn(context);
+      for (const fn of suiteDef.afterEachFns) await fn(context);
+    })();
+    if (timeoutMs === null) await body;
+    else
+      await withTimeout(
+        body,
+        timeoutMs,
+        `${suiteDef.name} > ${entry.name}`,
+        (timeoutError) => abortController.abort(timeoutError),
+      );
   } catch (caught) {
-    status = caught instanceof TimeoutError ? "timeout" : caught instanceof TestAssertionError ? "failed" : "errored";
+    status =
+      caught instanceof TimeoutError
+        ? "timeout"
+        : caught instanceof TestAssertionError
+          ? "failed"
+          : "errored";
     error = toErrorInfo(caught);
     if (caught instanceof TimeoutError && !abortController.signal.aborted) {
       abortController.abort(caught);
@@ -201,13 +268,20 @@ async function runTest(suiteDef: Suite, entry: TestEntry): Promise<TestCaseResul
   } finally {
     cleanupStarted = true;
     currentContext = null;
-    for (const fn of deferred.reverse()) {
-      try {
-        await fn();
-      } catch (cleanupError) {
-        logs.push(
-          `cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`
-        );
+    // A timeout may reject the guest body while native creation is still in
+    // flight. Publish no result until those owned acquisitions and their LIFO
+    // releases have settled. No elapsed-time guess can establish release.
+    while (acquisitions.size || deferred.length) {
+      if (acquisitions.size) await Promise.allSettled([...acquisitions]);
+      while (deferred.length) {
+        const fn = deferred.pop()!;
+        try {
+          await fn();
+        } catch (cleanupError) {
+          logs.push(
+            `cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+          );
+        }
       }
     }
     supervisor.stop();
@@ -230,7 +304,9 @@ async function runTest(suiteDef: Suite, entry: TestEntry): Promise<TestCaseResul
       message: `supervision found ${supervision.errors} error finding(s): ${supervision.findings
         .filter((finding) => finding.kind !== "console-warn")
         .slice(0, 3)
-        .map((finding) => `[${finding.target}] ${finding.message.slice(0, 160)}`)
+        .map(
+          (finding) => `[${finding.target}] ${finding.message.slice(0, 160)}`,
+        )
         .join("; ")}`,
     };
   }
@@ -242,19 +318,22 @@ async function runTest(suiteDef: Suite, entry: TestEntry): Promise<TestCaseResul
     durationMs: Date.now() - started,
     error,
     logs,
-    supervision: supervision && supervision.findings.length > 0 ? supervision : undefined,
+    supervision:
+      supervision && supervision.findings.length > 0 ? supervision : undefined,
   };
 }
 
 export async function runSuites(
   suites: Suite | Suite[],
-  options: RunOptions = {}
+  options: RunOptions = {},
 ): Promise<SuiteRunResult> {
   const suiteList = Array.isArray(suites) ? suites : [suites];
   const started = Date.now();
   const results: TestCaseResult[] = [];
 
-  const hasOnly = suiteList.some((suiteDef) => suiteDef.tests.some((test) => test.options.only));
+  const hasOnly = suiteList.some((suiteDef) =>
+    suiteDef.tests.some((test) => test.options.only),
+  );
 
   outer: for (const suiteDef of suiteList) {
     if (!matches(options.filter?.suite, suiteDef.name)) continue;
@@ -279,7 +358,10 @@ export async function runSuites(
       // active context and stop scheduling later tests so a late continuation
       // cannot interfere with another test's panels or workspace state.
       if (result.status === "timeout") break outer;
-      if (options.bail && (result.status === "failed" || result.status === "errored")) {
+      if (
+        options.bail &&
+        (result.status === "failed" || result.status === "errored")
+      ) {
         break outer;
       }
     }
@@ -288,8 +370,9 @@ export async function runSuites(
   return {
     total: results.length,
     passed: results.filter((result) => result.status === "passed").length,
-    failed: results.filter((result) => result.status === "failed" || result.status === "timeout")
-      .length,
+    failed: results.filter(
+      (result) => result.status === "failed" || result.status === "timeout",
+    ).length,
     errored: results.filter((result) => result.status === "errored").length,
     skipped: results.filter((result) => result.status === "skipped").length,
     duration: Date.now() - started,
