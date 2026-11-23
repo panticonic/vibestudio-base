@@ -4,7 +4,7 @@ export { jsonStringRecordCanonical };
 export type OracleLevel = 'exact' | 'normalized' | 'span' | 'agreement' | 'judged' | 'constraints';
 export declare const ORACLE_LEVELS: readonly OracleLevel[];
 /** Baseline answer comparison version; explicit specialized comparators carry their own verdict version. */
-export declare const ANSWER_COMPARISON_VERSION = "normalized-decimal-exact/4";
+export declare const ANSWER_COMPARISON_VERSION: string;
 export type NumericListFieldSpec = {
     key: string;
     separator: '; ';
@@ -62,6 +62,16 @@ export declare function jsonStringRecordWithRadixFieldsCanonical(value: unknown,
 /** Canonicalize explicitly declared measured-count lists only. Grouping commas are accepted
  * only in standard three-digit groups; order and list membership remain exact. */
 export declare function jsonStringRecordWithNumericListFieldsCanonical(value: unknown, numericListFields?: unknown): string | null;
+/**
+ * Answer equivalences that hold for any reader (2026-11-21 teacher-failure audit): a number written as a word ("eight",
+ * "twenty-one"; a whole normalized answer "none" is 0) equals its digits, digit grouping ("1,145") and diacritics
+ * ("Atatürk") do not matter, whitespace next to type and list punctuation ("string | null") does not matter, and in
+ * extractive QA a trailing parenthetical, compound spacing ("weather stripping") and a unit word beside the same number
+ * ("14 surgeries" for "14") do not either. NATLANG_QA_EQUIVALENCE=0 restores the earlier comparison.
+ */
+export declare function answerEquivalenceEnabled(): boolean;
+/** Lower-cased text with number words as digits, digit-grouping commas and diacritics removed. */
+export declare function foldAnswerText(text: string): string;
 /** Canonical map for extractive QA: keys stay exact; answer values use SQuAD token normalization. */
 export declare function qaStringMapCanonical(value: unknown): string | null;
 /**
@@ -78,6 +88,13 @@ export declare function containsQaSpan(actual: unknown, expected: unknown): bool
  * gold: "sex or coffee") is not offered, so a multi-answer reply never passes this way.
  */
 export declare function qaAnswerCores(actual: unknown, expected: unknown, question?: string): string[];
+/**
+ * Extractive QA spellings of the same answer: compound spacing ("weather stripping" / "weatherstripping"), or the same
+ * nonempty numbers where one side adds at most two words around the other that are not hedges. Words the answer adds
+ * must restate the question ("14 surgeries" / "14" for "How many surgeries ...?"; "14 days" is not offered); words only
+ * the gold has are its unit ("22" / "22 provinces"). Off with NATLANG_QA_EQUIVALENCE=0.
+ */
+export declare function qaSameAnswer(actual: unknown, expected: unknown, question?: string): boolean;
 /** Multiset token F1; repeated words count only when they occur on both sides. */
 export declare function spanF1(actual: unknown, expected: unknown, qa?: boolean): number;
 /**

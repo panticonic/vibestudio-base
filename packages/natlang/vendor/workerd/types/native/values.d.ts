@@ -69,6 +69,9 @@ export type LambdaNode = {
     readout?: 'decision' | 'template';
     /** Tools this call is not offered: its definition's `withhold:` frontmatter (runtime/loader.ts WITHHOLDABLE_TOOLS). */
     withheldTools?: string[];
+    /** Sources of the codebase this call can read but not edit: its definition's `protect:` frontmatter, resolved
+     * (runtime/loader.ts protectedSources). */
+    protectedSources?: string[];
 };
 export type Pending = LambdaNode;
 /** `text`, when set, is the whole model-facing line (a sentence without the `path: code` prefix); `code` stays for traces. */

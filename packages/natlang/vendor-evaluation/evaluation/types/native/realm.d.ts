@@ -6,6 +6,8 @@
  */
 import { type EnvironmentMode, type EvalEnvironment, type EvalRequest, type EvalResult, type HostEvent } from './evaluator.js';
 import { type HeapProbe } from './eval-memory.js';
+/** How console output shows a promise: what it is and the fix, never `[object Promise]`. */
+export declare const UNAWAITED_DISPLAY = "[a Promise: not awaited yet; write await before the call to get its value]";
 /** Where compiled eval code runs: a JavaScript realm's global environment. */
 export interface Realm {
     /**
@@ -41,6 +43,11 @@ export type RealmEnvironmentOptions = {
         limitMb: number;
         probe: HeapProbe;
     };
+    /**
+     * The run-time bound in seconds of one synchronous stretch of eval and callable-folder module code (native/eval-memory.ts
+     * `syncGuard`; the realm's own interrupt bounds the first stretch too, builtins included). Absent or 0: unbounded.
+     */
+    syncLimitSeconds?: number;
     scopeCapabilities?: {
         allowModules: boolean;
         allowNetwork: boolean;
@@ -75,6 +82,8 @@ export declare class RealmEnvironment implements EvalEnvironment {
     constructor(options: RealmEnvironmentOptions);
     /** The eval memory bound in MB, or undefined when evals are unbounded. */
     get memoryLimitMb(): number | undefined;
+    /** The run-time bound of one synchronous stretch in seconds, or undefined when unbounded. */
+    get syncLimitSeconds(): number | undefined;
     fork(): EvalEnvironment;
     /** A realm for one evaluation (`fresh`) or for the environment's life (`retained`). */
     protected makeRealm(): Realm;

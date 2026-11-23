@@ -14,13 +14,18 @@ export type LiveEvent = { at: number; taskId: string; callId: string; parentCall
 // ---- runs -----------------------------------------------------------------------------------------------------------
 export type RunKind = 'run' | 'call' | 'ask' | 'test' | 'build' | 'setup' | 'runtime-build' | 'tune' | 'specialize';
 export type RunStatus = 'running' | 'done' | 'failed' | 'stopped' | 'lost';
-/** What to start. Paths are relative to the host's program root. */
+/**
+ * What to start. Paths are relative to the host's program root. `download: true` is the person's confirmation that a run
+ * may install the local model and runtime first; without it, a run whose model is not installed is refused with an
+ * error whose `detail.setup` says what it would install ({ bytes, runtime }), and the page asks.
+ */
+export type ModelRunSpec = { profile?: string; download?: boolean };
 export type RunSpec =
-  | { kind: 'run'; path: string; target?: string; args?: string[]; profile?: string; stdin?: string; interactive?: boolean }
-  | { kind: 'call'; function: string; inputs?: Record<string, unknown>; program?: string; profile?: string }
-  | { kind: 'ask'; instruction: string; input?: string; returns?: string; profile?: string; provider?: string; model?: string; cwd?: string }
-  | { kind: 'test'; path: string; profile?: string }
-  | { kind: 'build'; path: string; warm?: boolean; profile?: string }
+  | { kind: 'run'; path: string; target?: string; args?: string[]; stdin?: string; interactive?: boolean } & ModelRunSpec
+  | { kind: 'call'; function: string; inputs?: Record<string, unknown>; program?: string } & ModelRunSpec
+  | { kind: 'ask'; instruction: string; input?: string; returns?: string; provider?: string; model?: string; cwd?: string } & ModelRunSpec
+  | { kind: 'test'; path: string } & ModelRunSpec
+  | { kind: 'build'; path: string; warm?: boolean } & ModelRunSpec
   | { kind: 'setup'; profile?: string }
   | { kind: 'runtime-build'; cuda?: boolean }
   | { kind: 'tune'; path: string }
@@ -119,13 +124,15 @@ export interface ProgramsApi {
   detail(path: string): Promise<Json>;
   create(spec: { name: string; instruction?: string; input?: string; returns?: string; profile?: string }): Promise<{ directory: string }>;
   /** The model a program would use under `profile` and what its first run needs. */
-  model(path: string, profile?: string): Promise<{ model: string; kind: string; detail: string }>;
+  model(path: string, profile?: string): Promise<{ model: string; kind: string; detail: string; setup: { bytes: number; runtime: boolean } | null }>;
   /** Check a draft of a target's arguments exactly as the CLI reads them. */
   checkArguments(spec: { path: string; target: string; args: string[] }): Promise<{ problems: Json[] }>;
   files(dir: string): Promise<{ dir: string; entries: { name: string; kind: 'folder' | 'file' }[]; missing?: boolean }>;
   source(path: string): Promise<{ path: string; text: string }>;
   saveSource(spec: { path: string; text: string; previous: string }): Promise<{ path: string }>;
   saveExample(spec: { path: string; example: { function: string; inputs: Json; expected: unknown } }): Promise<{ examples: number }>;
+  /** Add `file` (a new .nl path such as classify.nl or answer/lookup.nl) to the program from a template. */
+  createFunction(spec: { path: string; file: string }): Promise<{ path: string }>;
 }
 export interface TracesApi {
   /** Recorded calls; rejects with `status` 409 when recording is off. */

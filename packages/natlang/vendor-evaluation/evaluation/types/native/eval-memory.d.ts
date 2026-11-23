@@ -32,6 +32,26 @@ export declare function memoryGuard(limitMb: number, probe: HeapProbe, message?:
  */
 export declare function segmentGuard(limitMb: number, probe: HeapProbe, message?: string): () => void;
 /**
+ * The run-time bound of one synchronous stretch of model-written code (up to its next `await` or the end of a
+ * callback). Eval code runs on its host's event loop, which a shared collector process shares with up to 8 episodes:
+ * a search that never returns held the loop, so every co-hosted episode got no model reply for the rest of its case
+ * budget (sft-v7 held candidate 2026-11-22: one eval's exponential recursion, 8 episodes scored as timeouts after 3600 s;
+ * loop stalls of 2-67 min in 2026-11-19..21 collector logs). The same guard calls as the memory bound read a monotonic
+ * clock every `CHECK_EVERY` calls; the first call of a stretch starts its clock and a microtask ends it. A stretch over
+ * the bound throws the teaching error, and once tripped every later check of that evaluation throws again (code that
+ * catches it cannot keep spinning). An `await` ends a stretch, so asynchronous work is bounded only by `timeout_ms` and
+ * the case budget; its synchronous parts let other episodes run in between.
+ */
+export declare const DEFAULT_EVAL_SYNC_SECONDS = 60;
+/** The bound in seconds: `NATLANG_EVAL_SYNC_SECONDS` (0 turns it off), else `DEFAULT_EVAL_SYNC_SECONDS`. */
+export declare function evalSyncLimitSeconds(env?: Record<string, string | undefined>): number;
+/** The one-sentence teaching error of a stretch that ran past the bound. */
+export declare function syncLimitMessage(subject: string, limitSeconds: number): string;
+/** The run-time guard of one evaluation (`sticky`) or of one synchronous run of module code (not sticky). */
+export declare function syncGuard(limitSeconds: number, message: string, sticky?: boolean, now?: () => number): () => void;
+/** One guard from the bounds that are on (memory, run time); undefined when none is. */
+export declare function combinedGuard(...guards: (false | 0 | undefined | (() => void))[]): (() => void) | undefined;
+/**
  * `source` with a guard call at the top of every loop iteration and of every function body except constructors
  * (their loops are instrumented). Edits are insertions on the lines they belong to, so line numbers do not move.
  * Source that does not parse is returned as it is: compilation reports its errors.

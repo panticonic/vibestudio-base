@@ -125,6 +125,9 @@ export declare function inferValueType(value: unknown, options?: {
 /** The source of type alias `name` as the program's items declare it (their folders' types.ts), nearest item first. */
 export declare function codebaseTypeAlias(codebase: Record<string, unknown>, name: string): string | undefined;
 /** Find a codebase item by dotted path; module exports resolve to their module's source. */
+/** The edit_code refusal for an item that judges the call (`protect:`; WS4 §8 F7): one sentence that names the fix. */
+export declare const protectedEditError: (source: string) => string;
+export declare const PROTECTED_TYPES_ERROR: string;
 export declare function findCodebaseItem(codebase: Record<string, unknown>, name: string): {
     path: string[];
     record: ItemRecord;
@@ -315,6 +318,8 @@ export declare class NativeSession {
     private readonly scopeLocalMutability;
     private readonly explainedNaturalFunctions;
     private readonly originalSources;
+    /** Sources this call cannot edit (protect: lists), fixed at its first edit (functionTool). */
+    private protectedList?;
     private readonly skillReads;
     private callableCache?;
     /** Output cut off in this call's tool results, readable with read_page. */

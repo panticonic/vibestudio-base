@@ -79,9 +79,15 @@ export type ChatCompletionOptions = {
      * with `continue` is sent that way; other adapters refuse it.
      */
     continuesReplies?: boolean;
+    /**
+     * A reply that closed its reasoning a second time (`secondThinkClose`): 'error' (default) answers it with
+     * `SECOND_THINK_CLOSE` as a malformed turn, nothing run; 'content' reads it as before 2026-11-19 (its calls run, the
+     * close stays in the text). Default from `NATLANG_SECOND_THINK_CLOSE` where the host has an environment.
+     */
+    secondThinkClose?: 'error' | 'content';
 };
 /** Tool-call markup (Qwen-style XML or <tool_call> tags, LFM2's pythonic call markers) left in a reply's text. */
-export { TOOL_MARKUP } from '../native/tool-markup.js';
+export { SECOND_THINK_CLOSE, secondThinkClose, TOOL_MARKUP } from '../native/tool-markup.js';
 /**
  * The one offered tool whose arguments a reply's whole text is: a JSON object (optionally in a code fence) whose keys
  * include every required parameter of exactly one tool and name no parameter it lacks. Some models write a call out

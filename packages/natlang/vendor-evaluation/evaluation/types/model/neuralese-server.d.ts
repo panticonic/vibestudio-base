@@ -82,6 +82,7 @@ export type NativeStateRequestBinding = {
  * Keep every occurrence and a stable request path for graph consumers.
  */
 export declare function requestNativeStateBindings(messages: readonly unknown[]): NativeStateRequestBinding[];
+export declare function materializeNativeStateSentinels(value: unknown, key?: string): unknown;
 /** An engine's native-state store as the restore side sees it: a server's HTTP store or the page's in-page engine. */
 export type NativeStateEngineStore = Pick<NeuraleseStore, 'hasNativeState' | 'putNativeState'> & Required<Pick<NeuraleseStore, 'putNativeStateWire'>> & Partial<NeuraleseStore>;
 export declare function restoreNativeStates(remote: NativeStateEngineStore, archive: NeuraleseStore | undefined, ids: readonly string[], known?: Set<string>, all?: boolean): Promise<void>;

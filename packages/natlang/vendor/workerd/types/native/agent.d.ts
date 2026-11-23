@@ -49,6 +49,20 @@ export declare const withCallNotes: (opening: string, notes: string) => string;
 export declare const OPENING_THOUGHT = "I'll start by reading this call's arguments into the eval scope.";
 export declare const FOLDER_THOUGHT = "Next I'll list the files in this call's folder.";
 export declare const DIFF_CODE_DESCRIPTION = "Show the changes made to functions of the program's codebase in this call.";
+/**
+ * The tool list from stable to variable (plans/semantic-fp/02 R0): LFM3's template writes the tools into the system turn
+ * after the system prompt, so every engine's prefix cache and the learner's prefix tree share a call's tool block only up
+ * to its first tool that differs. The tools every call has come first (STABLE_TOOLS), then the ones a run or a call
+ * shape adds (escalate, the code-editing tools, the file tools), then return_result, whose value schema is the call's
+ * declared result. Before 2026-11-23 (NATLANG_PROMPT_REVISION=2026-11-22) the file and code-editing tools sat between
+ * eval and compact_history, so calls of different shapes parted right after read_page or read_code.
+ */
+export declare const STABLE_TOOLS: readonly ["eval", "read_page", "read_code", "compact_history"];
+export declare function orderedTools<T extends {
+    function: {
+        name: string;
+    };
+}>(tools: T[]): T[];
 /** Assistant turns the model has taken, not counting the runtime's pre-filled scope calls. */
 export declare function modelTurnsSoFar(messages: readonly Record<string, unknown>[]): number;
 export type NativeModelDriver = ((request: ModelTurnRequest, signal?: AbortSignal, options?: ModelTurnOptions) => Promise<ModelTurn> | ModelTurn) & {

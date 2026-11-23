@@ -31,6 +31,12 @@ export type EvaluationModelTurn = {
     request: ModelTurnRequest;
     reply: ModelTurn;
 };
+export type FixtureEntryBinding = {
+    export_path: string[];
+    input_arguments: string[];
+    inputs: Record<string, unknown>;
+    service_inputs: string[];
+};
 export type EvaluationResult = {
     id: string;
     caseId: string;
@@ -56,6 +62,11 @@ export type EvaluationResult = {
     latencyMs: number;
     traces: readonly InvocationTrace[];
     modelTurns?: readonly EvaluationModelTurn[];
+    fixtureEntry?: {
+        calls: number;
+        inputs: Record<string, unknown>;
+        service_inputs: string[];
+    };
 };
 export type EvaluationBatch = {
     results: readonly EvaluationResult[];
@@ -155,6 +166,9 @@ export type EvaluateOptions = {
     capture?: boolean;
     /** Actual executor of this measurement, e.g. a teacher running the student's authored program. */
     executorIdentity?: ExecutorIdentity;
+    /** Canonical IR fixture entry binding: checked at the actual exported function call, before execution. */
+    fixtureEntry?: FixtureEntryBinding;
+    calls?: false;
     judge?: ModelDriver;
     gateway?: import('./usage.js').UsageGateway;
 };

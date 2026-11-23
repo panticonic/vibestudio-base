@@ -16,7 +16,7 @@ export type SpecializationMode = 'off' | 'shadow' | 'on';
 export type ModelDriver = ((request: ModelTurnRequest, signal?: AbortSignal, options?: ModelTurnOptions) => Promise<ModelTurn> | ModelTurn) & {
     /**
      * Optional decision readout (`DecisionScorer`, contracts.ts): score a finite set of replies instead of generating one.
-     * Any driver may carry it; without it, or when it fails with `decision-unsupported`, the call runs the tool loop.
+     * Any driver may carry it; without it, or when it fails with `decision-unsupported`, a finite readout generates one offered JSON value on the same short decision prompt.
      */
     decide?: DecisionScorer;
     /** The backend's complete native store, reader identity and available writer; wrappers retain this binding. */
@@ -45,6 +45,8 @@ export type ModelConfig = {
     /** `finite-returns`: every call with a finite result type uses the decision readout when the driver can score
      * replies; `declared` (default): only functions whose frontmatter says `readout: decision`. */
     decisionReadout?: 'declared' | 'finite-returns';
+    /** Explicit diagnostic opt-out from JSON generation when scoring is unavailable. */
+    decisionGeneration?: 'json' | 'tool-loop';
     /** Guided generation (the `guidance` request field) on natlang's reference server and the llama.cpp fork (managed and in
      * the page). A configured runtime (`natlang run`, natlangRuntime()) turns it on for those backends unless the profile's
      * `runtime.guidance` says otherwise; set directly, it is off unless given. Other backends ignore the field. */
@@ -160,6 +162,15 @@ export type NatlangRuntimeOptions = {
     };
     /** Drive interpreter sessions directly instead of through a model (fixtures, replay, tests). */
     agent?: import('../native/runtime.js').NativeAgent;
+    /**
+     * The model driver behind `agent` (the teacher collector's policy or teacher, a scripted replay). With no `model`,
+     * refinement judges score with its `decide`, else a `holds` call runs through `agent`; without it there is no judge.
+     */
+    agentDriver?: {
+        decide?: DecisionScorer;
+        model?: unknown;
+        name?: string;
+    };
     /** Typed host services, available to callable-folder code via `natlang:services` and to eval as named bindings. */
     services?: Services;
     /**
@@ -228,6 +239,7 @@ export type NatlangRuntimeOptions = {
     /** The program's `recording` settings (`natlang.json`): definitions (`dir/*.nl`) or arguments (`name.arg`) recorded by type only. */
     recording?: {
         exclude?: string[];
+        checkpoints?: boolean;
     };
     /** How far compilations may serve this runtime's calls; the machine setting bounds it (default: the machine setting). */
     specialization?: SpecializationMode;
@@ -345,7 +357,8 @@ export declare class NatlangTask {
     refinementChecker(): RefinementChecker;
     /**
      * The judge and the escalation judge for a call running on `model`: the configured `refinements.judge` model when
-     * there is one, else the call's own. Undefined when the driver cannot score replies.
+     * there is one, else the call's own. A task driven by `agent` with no model judges on the agent's driver
+     * (`agentDriver`): its scorer, else `holds` through the agent. Undefined when there is neither.
      */
     refinementJudges(model: ModelConfig | undefined, frame?: Frame): {
         judge?: RefinementJudge;

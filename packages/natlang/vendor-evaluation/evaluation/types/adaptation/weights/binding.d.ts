@@ -53,8 +53,6 @@ export type WeightBindingOptions = {
     readonly nativeState?: boolean;
 };
 export declare function stackIdentity(base: NativeModelIdentity, stack: readonly StackEntry[], soft?: ResolvedWeightStack['soft']): string;
-/** The same call run untuned (a soft text no longer matches its trained text): base executor, marked degraded. */
-export declare function untunedStack(stack: ResolvedWeightStack, reason: string): ResolvedWeightStack;
 export declare class WeightBinding {
     readonly manifest: WeightManifest;
     readonly options: WeightBindingOptions;

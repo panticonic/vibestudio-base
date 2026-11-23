@@ -117,6 +117,18 @@ export declare class NeuraleseUnsupportedError extends Error {
     readonly code = "neuralese-unsupported-backend";
     constructor(detail: string);
 }
+/** What every no-writer fault says, so it is recognised across the eval boundary (which keeps only an error's message). */
+export declare const NO_NEURALESE_WRITER: string;
+/**
+ * A declared Neuralese<T> boundary needs a writer and the runtime has none: a fault of the runtime's configuration that
+ * no model action can repair. It ends the run instead of becoming a tool result (teacher-gen-20261119/gap-v1: models
+ * fed this error retried the same return until the 40-call budget, in 1,833 of 2,191 failed teacher episodes).
+ */
+export declare class NeuraleseNoWriterError extends NeuraleseUnsupportedError {
+    constructor(detail: string);
+}
+/** Whether `error`, or any error in its cause chain, is a no-writer configuration fault (see NeuraleseNoWriterError). */
+export declare function isNoNeuraleseWriterFault(error: unknown): boolean;
 /** A soft value met a reader or slot of another dialect. Values are never reused across dialects (NEURALESE_DIALECTS.md). */
 export declare class NeuraleseDialectError extends Error {
     readonly code = "neuralese-dialect-mismatch";
@@ -186,10 +198,20 @@ export type NeuraleseRuntimeOptions = {
         budgeted?: true;
     };
     /**
-     * The learned Neuralese operators of the native server (model/native-operator.ts `serverCompactor`): compacted cut-off
-     * values, argument listings and history carry, used when the agent's `compaction` setting selects them.
+     * The in-context capture of a sampled reply (learned operators, OPERATORS_RESTORE_20261117.md §3.1): a server with
+     * `native.capture` captures the exact sampled ids; the managed llama-server and the page force the same ids as a
+     * produce span with a grammar (model/native-operator.ts `grammarCapture`).
      */
-    compactor?: import('./operator-frames.js').Compactor;
+    capture?: import('./operator-frames.js').NativeCapture;
+    /**
+     * Prime a static state from its text at its real position in a call (`native.init-body`): `call` is the call's
+     * request with `placeholder` (a state written from the same text) where the text stands. Program guidance is primed
+     * this way in the first call that uses it (agent.ts `runtimeProgramGuidance`), like every soft state (tune/soft.py).
+     */
+    prime?: (call: {
+        messages: unknown[];
+        tools: unknown[];
+    }, placeholder: string, text: string, type: string) => Promise<import('./neuralese-store.js').NeuraleseBlockMeta>;
     /** The agent's `compaction` setting for hosts that configure the runtime through these options (agent.ts). */
     compaction?: import('../runtime/pluggable.js').PluggableSetting;
 };

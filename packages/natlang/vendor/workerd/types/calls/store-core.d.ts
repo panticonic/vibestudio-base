@@ -182,6 +182,8 @@ export declare class CallStore {
     private keepBound;
     /** Work (blob candidates and call rows) of one eviction pass after a write. */
     static AUTO_EVICTION_WORK: number;
+    /** Save an unfinished call's actual inputs and effects without a fabricated completion. */
+    checkpoint(callId: string, state: Record<string, unknown>, blobs: ReadonlyMap<string, string>, events?: string): void;
     /** A row for a call that has started, so running calls show in listings; `record` replaces it when the call ends. */
     begin(row: {
         callId: string;
@@ -210,6 +212,7 @@ export declare class CallStore {
      * collected at once, and the new blob is linked in the transaction that stores it, so eviction never sees it unlinked.
      */
     progress(callId: string, events: string): void;
+    private progressInWrite;
     /** Blob files the current write transaction created, removed again if it rolls back. */
     private created;
     /**

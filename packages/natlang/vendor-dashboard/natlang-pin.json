@@ -1,33 +1,33 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "5b79c0fda510cb7a4e3adadf1fcb74060bffc014",
+  "commit": "3b30c78820b04d0d4120fb89a2297a5e98023c06",
   "dirty": false,
   "targets": [
     "dashboard"
   ],
   "toolchain": {
-    "node": "v22.22.1",
+    "node": "v24.22.1",
     "esbuild": "0.28.2",
     "typescript": "5.9.3"
   },
   "files": {
-    "dashboard/api.js": "a339272bf791f67ce1a5e82c8dc9b04a32faa628e89831ad897c6329511d4520",
+    "dashboard/api.js": "110c4132ecb327d5eda3ecfc42c01402ee8d8ec960e2e897baa4c89a26480280",
     "dashboard/arguments.js": "1febf32dfb3cb6fd3279343b4d33739dcc1bc75ae604b5cbc3f26402dd92a1ba",
-    "dashboard/common.js": "664b1e3278034b1c9e20e606ce290e0e896d779ab65ffecaa9935f9c606ee1c2",
-    "dashboard/execution.js": "a86b6caa5586abd36acce990f89048ba62f495600bde5bb0165bd55740c9224d",
+    "dashboard/common.js": "0de1f0357cba72a897e80d605436689c792693709c7cbff3ca531cad874fca6a",
+    "dashboard/execution.js": "4a9b43b8d19a9120ac106a72f66b5d20d52a45d3458328fbd97ab38600456bfa",
     "dashboard/pages.js": "a9a917bab79274269df0d0198c2e84697250d93577f661f9ec6b6c1341008574",
     "dashboard/pages/models.js": "f533927f7582cfe5c37e507a447759914a024848953b1c02b2ca1e38e7885070",
     "dashboard/pages/overview.js": "05aa0e28b1c273f388db4b3f5b5d8c79e66fee5bf715a7a9dd915d265a4127b4",
     "dashboard/pages/playground.js": "d06e6fdd279e1fd368a9b8c6c004c560b00d9aef31d840c339f61501c5765df6",
-    "dashboard/pages/programs.js": "0fcc59a193f7fc2a2017fd14feb914a3b54af4c6a0b87a6151d02e04556123d8",
-    "dashboard/pages/runs.js": "ce0d35f46f48a975c769f9f0df7ebd1a8a35e333327b6be568e8b29448251daf",
+    "dashboard/pages/programs.js": "5c6b564eb3cf59c549f79ef3aeb233ede4b097f7d8d39ff3418e49a6b58769e2",
+    "dashboard/pages/runs.js": "37c9de70676859c1a5b790b2eae3cef4dc4cc25fb156186cb2470cb129669d2f",
     "dashboard/pages/system.js": "2931e1e9455959c0c6d01b745453c40f07b121976551c9d68c30d833f97a63ee",
-    "dashboard/pages/traces.js": "fef478d954686fb5abd32b5bc62e4ad84d9a4e1953c00533a9608afe997663dd",
+    "dashboard/pages/traces.js": "06b2a865e859e907d7b2251c6643034f5a4011334eb109d98bb65d8d340df8c6",
     "dashboard/parts.js": "b4d8cac7018f99904bf4a99d37d0e5c8e0b462b3acb7626cf8e51a282ebe64fc",
-    "dashboard/presentation.js": "0d255e6277170adaa099c65f3d580f86af735537680f16bf3107ccd172c31004",
+    "dashboard/presentation.js": "b4a053567e352e06b68ebac394b4afa41108238d32dea66b0c84916e2a9ec7aa",
     "dashboard/providers.js": "f2783ea2c657c11a8072898067bbdb08e3afa5a20bab9eb9d28b6b3bb1a335de",
-    "dashboard/run-host.js": "2d07e8b7e0ba1405f0ee1c8bfc5984587b21a75fd2a59e85ca2cc45210ec097c",
+    "dashboard/run-host.js": "110d293c5f7654e84c10461f50183f7e4d68d86c5e5e6f4b35bdf9c18acd6d39",
     "dashboard/style.css": "f4ac437c95409bc9c87d5f702e285f98554e8d0d19712b6fdea9e935c0eb81b6",
-    "dashboard/types.d.ts": "b69e7bb1478d27f8ec680a597a0d57c35e00ed7cfcf3039faca27c9cc29f42dc"
+    "dashboard/types.d.ts": "9e4ed929b368f82ac2e0f82ef3b87027814bd26b640be4294ac0fbafb1df1ee1"
   }
 }

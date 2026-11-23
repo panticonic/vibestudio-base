@@ -1,4 +1,4 @@
-// Runs: every run the host knows, and the selected one followed live: its lambdas (the runtime's live events), output and log.
+// Runs: every run the host knows, and the selected one followed live: its execution (the runtime's live events), output and log.
 import { createExecutionModel, createExecutionView } from '../execution.js';
 import { createOutputView, problemView } from '../presentation.js';
 import { definePage, runLabel, ago, widgets } from '../common.js';
@@ -22,7 +22,7 @@ export const mount = definePage({ id, requires, runKinds, async render(target, c
   if (selected) runDetail(ctx, selected, detail);
 } });
 
-/** One run, followed until it ends: header and actions, then the Output, Lambdas and Log tabs. */
+/** One run, followed until it ends: header and actions, then the Output, Execution and Log tabs. */
 function runDetail(ctx, id, container) {
   const { h, fill, runs } = ctx, { pill } = widgets(ctx), attempt = ctx.attempt;
   const state = { out: '', err: '', model: createExecutionModel(), tab: 'output', job: null, drained: false };
@@ -32,7 +32,7 @@ function runDetail(ctx, id, container) {
   const failureBox = h('div', { class: 'callout warn', hidden: true }, failureTitle, failureMessage,
     h('p', {}, 'See Output, expand a lambda that needs attention, or open Log for details.'));
   summary.append(failureBox);
-  const outputReader = createOutputView(h, { label: 'Program output', empty: 'Your result will appear here. Follow live execution alongside it.', controls: true, className: 'program-output' });
+  const outputReader = createOutputView(h, { label: 'Program output', empty: 'Your result will appear here. Follow its execution alongside it.', controls: true, className: 'program-output' });
   const output = outputReader.content;
   const logReader = createOutputView(h, { label: 'Program log', empty: 'No log messages.', controls: true }), log = logReader.element;
   const field = h('input', { id: 'job-input', 'aria-label': 'Program input', placeholder: 'Type input for the program and press Enter', style: 'flex: 1' });
@@ -50,7 +50,7 @@ function runDetail(ctx, id, container) {
   const workspace = h('div', { class: 'run-workspace' }, execution.element, outputPane);
   fill(container, h('section', { class: 'panel' }, headLine, summary, tabs), body);
   const buttons = new Map();
-  for (const [key, label] of [['output', 'Output'], ['live', 'Lambdas'], ['log', 'Log']]) {
+  for (const [key, label] of [['output', 'Output'], ['live', 'Execution'], ['log', 'Log']]) {
     const button = h('button', { type: 'button', onclick: () => { state.tab = key; draw(); } }, label); buttons.set(key, button); tabs.append(button);
   }
   const updateText = (node, value, follow = false) => {
@@ -88,7 +88,7 @@ function runDetail(ctx, id, container) {
       else fill(body, log);
     }
     for (const [key, button] of buttons) { button.classList.toggle('active', key === state.tab); button.setAttribute('aria-pressed', String(key === state.tab)); }
-    buttons.get('live').textContent = `Lambdas${state.model.calls.size ? ` (${state.model.calls.size})` : ''}`;
+    buttons.get('live').textContent = `Execution${state.model.calls.size ? ` (${state.model.calls.size})` : ''}`;
     input.hidden = !job.interactive || job.status !== 'running';
     outputPending = true;
     const outputTop = output.scrollTop;

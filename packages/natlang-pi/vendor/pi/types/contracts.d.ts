@@ -148,8 +148,9 @@ export type ModelTurn = {
     execution_plan?: string | null;
     /** The reply stopped at max_tokens. */
     truncated?: boolean;
-    /** The reply held tool-call markup that is no complete call: `text` is the reply as sampled, `calls` is empty and
-     * this is the one sentence that tells the model what was wrong. Nothing ran. */
+    /** The reply held tool-call markup that is no complete call, or closed its reasoning a second time
+     * (`SECOND_THINK_CLOSE`): `text` is the reply as sampled, `calls` is empty (`raw_calls` keeps any call the server read,
+     * for the history) and this is the one sentence that tells the model what was wrong. Nothing ran. */
     malformed_call?: string;
     /** How the model scheduler batched this turn's request (batch id and size, requests in flight, queue wait). */
     scheduling?: {

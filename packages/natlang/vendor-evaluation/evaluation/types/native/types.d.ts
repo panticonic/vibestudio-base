@@ -56,7 +56,7 @@ export type Type = {
     kind: 'intersection';
     members: Type[];
 }
-/** `T['field']`: the type of a field of a record, or the element of a dictionary, found when it is resolved. */
+/** `T['field']`: a record field, a dictionary element, or the union of the selected members. */
  | {
     kind: 'index';
     base: Type;
@@ -106,7 +106,13 @@ export declare class TypeSyntaxError extends Error {
 /** A predicate with its whitespace collapsed: two predicates are the same when their normalized texts are equal. */
 export declare const normalizePredicate: (predicate: string) => string;
 export declare function parseType(text: string): Type;
+/** Parse a static declaration for internal read-only use. The public parser still creates a mutable tree. */
+export declare function parseTypeCached(text: string): Type;
 export declare function formatType(type: Type): string;
+/** A name that can be redefined by the lexical type environment. */
+export declare function typeAliasName(type: Type): string | undefined;
+/** Names whose definitions participate in this portable type. */
+export declare function typeAliasNames(type: Type): string[];
 export declare class TypeEnv {
     readonly names: Record<string, Type>;
     readonly parent?: TypeEnv | undefined;
@@ -119,7 +125,7 @@ export declare class TypeEnv {
      * Reject an alias that reaches itself through a function type (`type-recursive-function`): self-application
      * would make recursion expressible without a recursive definition. Recursive data types stay allowed.
      */
-    private checkRecursiveFunction;
+    private checkRecursiveFunctions;
     child(names: Record<string, Type>): TypeEnv;
     lookup(name: string): Type | undefined;
     /** The dialect a type's dialect name means here: `DefaultDialect` is the bound reader dialect, when there is one. */

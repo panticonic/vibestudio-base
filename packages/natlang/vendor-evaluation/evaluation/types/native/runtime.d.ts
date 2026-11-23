@@ -109,6 +109,10 @@ export type NativeRuntimeOptions = {
         root?: number;
     };
 };
+/** Every tool the runtime can apply; a call's offer is a subset. */
+/** A return_result value that is a single `${...}` placeholder: return_result sends its value as written. */
+export declare const PLACEHOLDER_VALUE: RegExp;
+export declare const PLACEHOLDER_ADVICE: string;
 export declare const BUILT_IN_DOCS: Record<string, string>;
 /**
  * The scope type of a portable value, as a local holding it is declared. A list or record that holds a live value is one
@@ -118,7 +122,12 @@ export declare const BUILT_IN_DOCS: Record<string, string>;
 export declare function inferValueType(value: unknown, options?: {
     liveFields?: boolean;
 }): string;
+/** The source of type alias `name` as the program's items declare it (their folders' types.ts), nearest item first. */
+export declare function codebaseTypeAlias(codebase: Record<string, unknown>, name: string): string | undefined;
 /** Find a codebase item by dotted path; module exports resolve to their module's source. */
+/** The edit_code refusal for an item that judges the call (`protect:`; WS4 §8 F7): one sentence that names the fix. */
+export declare const protectedEditError: (source: string) => string;
+export declare const PROTECTED_TYPES_ERROR: string;
 export declare function findCodebaseItem(codebase: Record<string, unknown>, name: string): {
     path: string[];
     record: ItemRecord;
@@ -286,6 +295,12 @@ export declare class NativeSession {
     readonly runtime: NativeRuntime;
     readonly lam: LambdaNode;
     readonly env: TypeEnv;
+    /** Program guidance written from its text, to be primed in this call once its opening exists (agent.ts). */
+    guidancePrime?: {
+        placeholder: string;
+        text: string;
+        settle: (id: string) => void;
+    };
     completed: boolean;
     /**
      * Judges the refined slots (`Is<T, P>`) of a value before the session accepts it as the result or as a local. Set by
@@ -303,6 +318,8 @@ export declare class NativeSession {
     private readonly scopeLocalMutability;
     private readonly explainedNaturalFunctions;
     private readonly originalSources;
+    /** Sources this call cannot edit (protect: lists), fixed at its first edit (functionTool). */
+    private protectedList?;
     private readonly skillReads;
     private callableCache?;
     /** Output cut off in this call's tool results, readable with read_page. */
@@ -336,12 +353,19 @@ export declare class NativeSession {
     /** Whether the model declared this persistent local with let (true) or const. */
     localMutable(name: string): boolean;
     /** Type aliases from prior evals, made visible to the next eval's inline signature analysis. */
+    private readonly analysisCallableTypes;
+    /** Use the same lexical signature as runtime local inference in the static eval checker. */
+    analysisCallableType(record: Exclude<ItemRecord, {
+        kind: 'namespace';
+    }>, source: string): string;
     analysisTypeAliases(): Record<string, string>;
     private captureScopeFailure;
     /** The runtime or the bound evaluation policy denies code edits. */
     codeEditsDenied(): boolean;
     /** The call can change code: its program has functions of its own and code edits are not denied (edit_code, diff_code). */
     codeEditable(): boolean;
+    /** Whether `name` is a parameter of this call declared Neuralese<T>: its state is in the call's opening message. */
+    neuraleseParameter(name: string): boolean;
     /** Whether this call's result is text (a string or Neuralese<string>, with nothing staged). */
     expectsTextResult(): boolean;
     /** Complete the invocation if an eval has returned a value of the declared type. */

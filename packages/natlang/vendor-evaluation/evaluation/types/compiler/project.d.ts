@@ -25,6 +25,8 @@ export type BuildOptions = {
     programId?: string;
     guidance?: string;
     importedGuidancePrograms?: readonly string[];
+    /** Collect the program descriptor for adaptation. Defaults to true. */
+    adaptation?: boolean;
     /** Project directory or tsconfig path (absolute POSIX path when `files` is supplied). */
     project: string;
     /** File access; defaults to the Node filesystem (see `buildProject` in compiler/node-project.ts). */

@@ -1,4 +1,5 @@
 import { type GenericResult } from '../native/representation.js';
+export { readTypesFile } from './linked-types.js';
 export type SourceFiles = {
     join(...parts: string[]): string;
     dirname(path: string): string;
@@ -56,6 +57,11 @@ export type NatlangRecord = {
     uses?: string[];
     /** `withhold: [delegate]` in the frontmatter: tools this function's own calls are not offered (WITHHOLDABLE_TOOLS). */
     withhold?: string[];
+    /**
+     * `protect: [checks/citations.ts]` in the frontmatter: items of the companion folder that judge this function's calls
+     * (verifiers, checkers, fixtures), by path from that folder. A call can read them but never edit them (edit_code).
+     */
+    protect?: string[];
     /** `budget: { maxTurns: 8 }` in the frontmatter: the model work one call may take, instead of its model's own budget. */
     budget?: CallBudget;
     /**
@@ -112,14 +118,18 @@ export declare const WITHHOLDABLE_TOOLS: readonly string[];
 export declare function readNatlangFrontmatter(source: string): Record<string, unknown>;
 /** Parse a `.nl` file. */
 export declare function parseNatlang(path: string, text: string, inherited: Record<string, string>, files: SourceFiles): NatlangRecord;
+/**
+ * The sources a `protect:` list names, from the source of the function that declares it: each entry is a path from that
+ * function's companion folder (`review.nl` with `protect: [checks/citations.ts]` names `review/checks/citations.ts`).
+ * The extension is dropped, so an entry names a `.nl`, `.ts` or `.js` item, or a whole subfolder.
+ */
+export declare function protectedSources(source: string, entries: readonly string[] | undefined): string[];
+/** Whether an item at `source` is one of `protectedList` (protectedSources) or inside a protected folder. */
+export declare function isProtectedSource(source: string, protectedList: readonly string[]): boolean;
+/** Every source a record tree protects: its natural-language functions' `protect:` lists, resolved. */
+export declare function treeProtectedSources(codebase: Record<string, ItemRecord>): string[];
 /** Parse a TypeScript module in a callable folder: its exports, imports, and type aliases. */
 export declare function parseModule(path: string, text: string, inherited: Record<string, string>, files: SourceFiles): ModuleRecord;
-/**
- * The type aliases of a `types.ts`, including those it re-exports from another types module with
- * `export type { A, B } from "../other/types.js"` or `export * from "./more.js"`. Two applications share one definition
- * that way instead of declaring it twice. Only relative specifiers that name a readable file are followed.
- */
-export declare function readTypesFile(path: string, files: SourceFiles, seen?: string[]): Record<string, string>;
 /** Load a callable folder into a record tree. `inherited` holds type aliases from enclosing folders. */
 export declare function loadCallableFolder(dir: string, files: SourceFiles, inherited?: Record<string, string>): Record<string, ItemRecord>;
 /** Load a named `.nl` function with its companion folder as its callable context. */

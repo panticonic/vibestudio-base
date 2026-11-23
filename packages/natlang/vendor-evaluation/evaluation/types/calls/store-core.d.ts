@@ -14,15 +14,26 @@ export interface SqlDatabase {
 }
 /** Where a store keeps what is not rows, and what it knows of its surroundings. */
 export interface StoreMedium {
-    putBlob(hash: string, text: string): void;
+    /** Store a blob outside the database; true when this call created it (a file a rolled-back transaction must remove). */
+    putBlob(hash: string, text: string): boolean;
     blob(hash: string): string | undefined;
     deleteBlob(hash: string): void;
     readConfig(): Partial<CallStoreSettings>;
     writeConfig(config: Partial<CallStoreSettings>): void;
     /** Free bytes where the store lives; Infinity when unknown. */
     freeBytes(): number;
-    /** Bytes the database itself takes. */
+    /** Bytes the database itself takes on the medium (its files, WAL included). */
     databaseBytes(): number;
+    /**
+     * The allocation unit of a blob kept outside the database (a file takes its bytes rounded up to it), or 0 when blobs
+     * live in the database and its pages already count them.
+     */
+    blobBlockBytes(): number;
+    /**
+     * Room the database's log takes beside its pages (Node: the write-ahead log and its index, at least the size they are
+     * truncated to after a checkpoint, more while a reader holds a longer log); 0 when there is none. The bound leaves it.
+     */
+    logBytes(): number;
     /** A specialization mode set from outside the store (Node: NATLANG_SPECIALIZATION, supplied by the machine-store module). */
     modeOverride(): string | undefined;
     /** This process, for the rows of the calls it runs. */
@@ -135,7 +146,6 @@ export type RefinementVerdictStore = import('../native/refinement.js').VerdictCa
  */
 export declare class CallStore {
     readonly root: string;
-    readonly db: SqlDatabase;
     readonly medium: StoreMedium;
     /** Opens a store at a path; set by the Node store module (store.ts). */
     static opener?: (root: string, options?: {
@@ -146,9 +156,11 @@ export declare class CallStore {
     }): CallStore;
     /** Called when the store closes (the Node module forgets its instance). */
     onClose?: () => void;
-    private writes;
     private settingsCache?;
+    readonly db: SqlDatabase;
     constructor(root: string, db: SqlDatabase, medium: StoreMedium);
+    /** Install the blob byte counters (BLOB_TRIGGERS) once per database, starting them from the blobs already stored. */
+    private countBlobs;
     /** Calls left `running` by a process that is gone (as the medium knows it) become `interrupted`. */
     markInterrupted(): number;
     close(): void;
@@ -162,6 +174,16 @@ export declare class CallStore {
     value(ref: ValueRef | null | undefined): unknown;
     /** Store one call record. `blobs` holds the text of every complete value the record references (by hash). */
     record(record: CallRecord, blobs: ReadonlyMap<string, string>, events?: string): void;
+    /**
+     * After a write: when the store is over its bound, a bounded eviction pass (`AUTO_EVICTION_WORK`). Checked on every
+     * write from the shared counters, so the bound holds whichever process writes and however few calls each records.
+     * An eviction that fails (another writer holds the lock too long) is left to the next write.
+     */
+    private keepBound;
+    /** Work (blob candidates and call rows) of one eviction pass after a write. */
+    static AUTO_EVICTION_WORK: number;
+    /** Save an unfinished call's actual inputs and effects without a fabricated completion. */
+    checkpoint(callId: string, state: Record<string, unknown>, blobs: ReadonlyMap<string, string>, events?: string): void;
     /** A row for a call that has started, so running calls show in listings; `record` replaces it when the call ends. */
     begin(row: {
         callId: string;
@@ -183,10 +205,21 @@ export declare class CallStore {
         auditOf: string | null;
         runLabel?: string;
     }): void;
-    /** Remove the row of a call that started and will not be recorded. */
+    /** Remove the row of a call that started and will not be recorded, with the event streams written while it ran. */
     discard(callId: string): void;
-    /** The trace events so far of a running call (written every so often while it runs). */
+    /**
+     * The trace events so far of a running call (written every so often while it runs). The stream it replaces is
+     * collected at once, and the new blob is linked in the transaction that stores it, so eviction never sees it unlinked.
+     */
     progress(callId: string, events: string): void;
+    private progressInWrite;
+    /** Blob files the current write transaction created, removed again if it rolls back. */
+    private created;
+    /**
+     * Run `body` under the write lock (taken before any read, so SQLite never upgrades a reader). When it fails, the blob
+     * files it created and no committed row names are removed: they would otherwise stay on disk, counted by nothing.
+     */
+    private inWrite;
     call(callId: string): CallRecord | undefined;
     /** The call's trace events (`natlang.trace`), when they have not been evicted. */
     events(callId: string): Record<string, unknown>[] | undefined;
@@ -230,17 +263,43 @@ export declare class CallStore {
     }[];
     /** Keep a call (and its values) when the store evicts. */
     pin(callId: string, pinned?: boolean): void;
+    private counter;
+    /** Bytes of the stored blob texts. */
     totalBytes(): number;
-    /** The store's bound now: its size limit, lowered so the filesystem keeps `minFreeBytes` free. */
+    /** Bytes of database pages not in use (reused by later writes; returned to the medium by `compact` and incremental vacuum). */
+    private freeDatabaseBytes;
+    /**
+     * What the store occupies and eviction can reduce: blob files as allocated (blobs in the database count as its
+     * pages) plus the database pages in use. Eviction cannot shrink the write-ahead log (it writes to it), so `bound`
+     * leaves its room (`StoreMedium.logBytes`) out of `maxStoreBytes` instead.
+     */
+    storeBytes(): number;
+    /**
+     * The store's bound now (on `storeBytes`): its size limit less the room of the database's log, so the files on disk
+     * stay within `maxStoreBytes`; lowered further so the filesystem keeps `minFreeBytes` free.
+     */
     bound(): number;
     /**
-     * Bring the store under its bound: first the event streams of unpinned calls, oldest first; then whole unpinned calls.
-     * A call is pinned when it is marked so, annotated, or linked to a case. Returns the bytes freed.
-     * A finite work limit bounds inspected blob candidates and processed call rows; repeated passes resume the orphan
-     * cursor. Automatic writes use that mode so a large historical store cannot stall the executing model. Explicit
-     * eviction defaults to completing all eligible work needed for the bound.
+     * Bring the store (`storeBytes`) under its bound, to 90% of it: first unlinked blobs, then the event streams of
+     * unpinned calls, oldest first, then whole unpinned calls. A call is pinned when it is marked so, annotated, or linked
+     * to a case. Returns the bytes freed.
+     *
+     * Work happens in short write transactions (one page of blob candidates or `EVICTION_CHUNK` calls), so writers in
+     * other processes wait at most one of them. A finite work limit bounds the inspected blob candidates and processed call
+     * rows; the orphan and event sweeps keep cursors in `meta`, so repeated passes resume instead of rescanning what they
+     * passed. Automatic writes use that mode so a large store cannot stall the executing model; explicit eviction defaults
+     * to all the work needed for the bound. Freed database pages go back to the medium when the database has incremental
+     * auto-vacuum (`compact` converts an older one).
      */
     evict(maxBytes?: number, workLimit?: number): number;
+    /** With incremental auto-vacuum, give free database pages back to the medium, a bounded step per transaction. */
+    private vacuumFreePages;
+    /**
+     * Return the database's free pages to the medium. A database made before incremental auto-vacuum is converted first
+     * (one VACUUM, which rewrites the database under the write lock: run it after `evict` has made the database small).
+     * Returns the bytes the database files shrank by.
+     */
+    compact(): number;
     /** Delete affected blobs only when no call or compilation still references them. */
     private collectHashes;
     /** Bumped whenever compilations or case tiers change, so runtimes know to reload. */
@@ -358,6 +417,6 @@ export declare class CallStore {
      */
     refinementVerdicts(): RefinementVerdictStore;
     private verdicts?;
-    /** Bytes of the database and blobs (for `natlang traces status`). */
+    /** Bytes the store's files take on the medium now: blob files as allocated and the database files, free pages included. */
     diskBytes(): number;
 }

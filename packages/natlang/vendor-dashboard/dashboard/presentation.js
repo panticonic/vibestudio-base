@@ -10,7 +10,8 @@ export function messageSummary(value) {
   return source.split('\n')[0].slice(0, 220);
 }
 const scalar = value => value === null || typeof value !== 'object';
-const structuredPrefix = source => /^\s*\{/.test(source) || /^\s*\[\s*(?:[\[{"\d\]-]|true\b|false\b|null\b)/.test(source);
+// A JSON value's start: `[1/2] PASS ...` (natlang test's progress) is text, `[1, 2` is the start of an array.
+const structuredPrefix = source => /^\s*\{/.test(source) || /^\s*\[\s*(?:[\[{"\]]|-?\d[\d.eE+-]*\s*(?:[,\]]|$)|-$|true\b|false\b|null\b)/.test(source);
 export function valueSummary(value) {
   if (value === null || value === undefined) return 'No value';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -132,7 +133,7 @@ export function interpretOutput(source, running = false) {
     const match = /^(.*?)\s*([\[{].*)$/.exec(line);
     if (!match) return { text: line };
     try { const value = JSON.parse(match[2]); if (value && typeof value === 'object') return { prefix: match[1].trim(), value }; } catch { /* a partial log entry */ }
-    if (/^(?:\{|\[\s*[{"\d\]])/.test(match[2])) return { prefix: match[1].trim(), pending: running };
+    if (structuredPrefix(match[2])) return { prefix: match[1].trim(), pending: running };
     return { text: line };
   });
   if (entries.some(entry => 'value' in entry || 'pending' in entry)) return { kind: 'entries', entries };

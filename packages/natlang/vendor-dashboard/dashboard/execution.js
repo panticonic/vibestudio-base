@@ -119,7 +119,7 @@ export function toolDraft(tool) {
 /** Keyed DOM nodes preserve disclosure, focus and scroll while text and statuses stream into them. */
 /** `traceLinks`: offer each call's recorded trace, at `href('traces-call-ID')` (default `#traces-call-ID`). */
 export function createExecutionView(h, { traceLinks = true, href = route => `#${route}` } = {}) {
-  const title = h('h2', {}, 'Live execution'), status = h('span', { class: 'execution-connection', role: 'status' });
+  const title = h('h2', {}, 'Execution'), status = h('span', { class: 'execution-connection', role: 'status' });
   const headline = h('div', { class: 'execution-headline', role: 'status', 'aria-live': 'polite' });
   const counts = h('div', { class: 'small muted' }), list = h('div', { class: 'lambda-list' });
   const more = h('button', { hidden: true, type: 'button' });
@@ -129,7 +129,7 @@ export function createExecutionView(h, { traceLinks = true, href = route => `#${
     status.textContent = paused ? 'Display paused · the program continues running' : '';
     if (!paused && latest) update(...latest);
   } }, 'Pause updates');
-  const element = h('section', { class: 'panel execution-panel', 'aria-label': 'Live execution' },
+  const element = h('section', { class: 'panel execution-panel', 'aria-label': 'Execution' },
     h('div', { class: 'row', style: 'justify-content: space-between' }, title, pause), status, headline, counts, list, more);
   const views = new Map();
   const set = (node, value) => {
@@ -232,7 +232,6 @@ export function createExecutionView(h, { traceLinks = true, href = route => `#${
       return;
     }
     const stats = executionSummary(model, job), stopping = job.status === 'stopped' && !job.endedAt, isRunning = job.status === 'running' || stopping;
-    title.textContent = isRunning ? 'Live execution' : 'Execution';
     set(status, disconnected ? 'Reconnecting · your program may still be running' : isRunning ? 'Live · updates as your program runs' : job.drained ? 'Recorded execution' : 'Loading recorded execution…');
     pause.hidden = !isRunning && !paused;
     if (stopping) set(headline, 'Stopping the program…');

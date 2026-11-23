@@ -826,11 +826,40 @@ interface Iteration<T> {
   withLimit(limit: { maxSteps?: number; deadlineMs?: number }): Iteration<T>;
 }
 
+/**
+ * An immutable, content-addressed folder value (\`Context\` of the runtime package): executable nodes loaded from files
+ * and data entries. \`fn.in(context)\` rebinds a natural-language function to one. Packages export it as \`Context\`; in eval
+ * and global scope it is \`NatlangContext\`, so a program type named \`Context\` does not collide with it.
+ */
+interface NatlangContext {
+  readonly id: string;
+  /** Executable nodes (\`.nl\` functions and TypeScript modules loaded from files), by name. */
+  readonly items: Readonly<Record<string, unknown>>;
+  /** Data entries, by name or slash-separated path. */
+  readonly data: Readonly<Record<string, unknown>>;
+  /** Executable node and data entry names, sorted. */
+  readonly names: string[];
+  /** Entries added or replaced; an executable node must come from files and keep the signature of the one it replaces. */
+  with(entries: Record<string, unknown>): NatlangContext;
+  /** Data entries removed (executable nodes are removed with \`pick\`). */
+  without(...keys: string[]): NatlangContext;
+  /** An executable node replaced by an edited definition with the same signature. */
+  edit(name: string, text: string): NatlangContext;
+  /** The sub-context of the named entries or data path prefixes. */
+  pick(...names: string[]): NatlangContext;
+  /** The union of two contexts; an entry present in both must be the same. */
+  union(other: NatlangContext): NatlangContext;
+  /** Whether \`other\` is reachable through this context's data entries. */
+  contains(other: NatlangContext): boolean;
+}
+
 /** Methods every compiled natlang callable provides. */
 interface NatlangCallableMethods<A extends unknown[], R> {
   iterateOn(initial: NatlangStepState<A, R>, ...args: NatlangStepArgs<A>): Iteration<NatlangStepState<A, R>>;
   /** The same function on another of the runtime's models (the name \`model:\` frontmatter takes); a new function. */
   on(options: { model: string }): NatlangFunction<A, R>;
+  /** The same function bound to another context, structurally checked against its context interface; a new function. */
+  in(context: NatlangContext): NatlangFunction<A, R>;
 }
 
 /** A compiled natural-language function: asynchronous, typed, and monitored. */
@@ -842,15 +871,20 @@ type NatlangGenericFunction<A extends unknown[], C, T extends C> = (<R extends C
 type InlineNatlangFunction<A extends unknown[] = any[], R = any> = NatlangFunction<A, R> & {
   with<C extends Record<string, unknown>>(captures: C): InlineNatlangFunction<A, R>;
   on(options: { model: string }): InlineNatlangFunction<A, R>;
+  in(context: NatlangContext): InlineNatlangFunction<A, R>;
 };
 
 /** An nl function without a type argument; the compiler infers its signature from its uses. */
 type NatlangUntypedFunction = ((...args: any[]) => Promise<any>) & {
   iterateOn<S>(initial: S, ...args: any[]): Iteration<S>;
   on(options: { model: string }): NatlangUntypedFunction;
+  in(context: NatlangContext): NatlangUntypedFunction;
 };
 type NlResult<F> = [F] extends [NlUnspecified] ? NatlangUntypedFunction :
   [F] extends [(...args: infer A) => infer R] ? InlineNatlangFunction<A, Awaited<R>> : InlineNatlangFunction<any[], F>;
+
+/** A directory reducer: either a \`kind: directory-reducer\` natural-language function or a TypeScript function \`(folder, ...args)\`. */
+type FolderReducer<A extends unknown[], R> = NatlangFunction<[Folder, ...A], R> | ((folder: Folder, ...args: A) => R | Promise<R>);
 
 /** A folder handle with directory-reducer authority. */
 interface FolderSnapshot extends Folder { readonly digest: string; branch(): Folder; }
@@ -868,33 +902,42 @@ interface FolderIteration<S> {
 interface Folder {
   readonly path: string;
   readonly name: string;
+  readonly relativePath: string;
+  readonly parent: Folder | null;
   file(path: string): FileHandle;
   dir(path: string): Folder;
+  entry(path: string): Folder | FileHandle;
   exists(): Promise<boolean>;
+  stat(): Promise<{ path: string; kind: "file" | "folder"; bytes: number; digest: string | null }>;
   entries(pattern?: string): Promise<(Folder | FileHandle)[]>;
   files(pattern?: string): Promise<FileHandle[]>;
   folders(pattern?: string): Promise<Folder[]>;
   diff(): Promise<unknown>;
   remove(): Promise<void>;
-  moveTo(destination: string): Promise<void>;
+  moveTo(destination: string | Folder | FileHandle): Promise<void>;
   snapshot(): FolderSnapshot; at(sourceId:string):FolderSnapshot;
-  propose<A extends unknown[], R>(reducer: NatlangFunction<[Folder, ...A], R>, ...inputs: A): Promise<FolderProposal<R>>;
+  propose<A extends unknown[], R>(reducer: FolderReducer<A, R>, ...inputs: A): Promise<FolderProposal<R>>;
   accept<R>(proposal: FolderProposal<R>): Promise<FolderSnapshot>;
   select(snapshot: FolderSnapshot): Promise<void>;
-  iterateOn<S, A extends unknown[]>(reducer: NatlangFunction<[Folder, S, ...A], S>, initial: S, ...inputs: A): FolderIteration<S>;
-  apply<A extends unknown[], R>(reducer: NatlangFunction<[Folder, ...A], R>, ...inputs: A): Promise<R>;
+  iterateOn<S, A extends unknown[]>(reducer: FolderReducer<[S, ...A], S>, initial: S, ...inputs: A): FolderIteration<S>;
+  apply<A extends unknown[], R>(reducer: FolderReducer<A, R>, ...inputs: A): Promise<R>;
 }
 interface FileHandle {
   readonly path: string;
   readonly name: string;
+  readonly relativePath: string;
+  readonly parent: Folder | null;
   exists(): Promise<boolean>;
+  stat(): Promise<{ path: string; kind: "file" | "folder"; bytes: number; digest: string | null }>;
   readText(startLine?: number, endLine?: number): Promise<string>;
-  readJson(): Promise<unknown>;
+  readBytes(): Promise<Uint8Array>;
+  readJson<T = unknown>(): Promise<T>;
   writeText(content: string): Promise<void>;
+  writeBytes(content: Uint8Array): Promise<void>;
   writeJson(value: unknown): Promise<void>;
   editText(find: string, replaceWith: string, fuzzy?: boolean): Promise<unknown>;
   remove(): Promise<void>;
-  moveTo(destination: string): Promise<void>;
+  moveTo(destination: string | Folder | FileHandle): Promise<void>;
 }
 type Blob = string;
 
@@ -974,6 +1017,9 @@ export type PluggableOptions<R> = { default?: PluggableMode; name?: string; serv
 export declare function pluggable<A extends unknown[], R>(implementations: PluggableImplementations<A, R>, setting: PluggableMode | 'natlang' | 'natural-language' | undefined, options?: PluggableOptions<R>): (...args: A) => Promise<R>;
 `;
     INTRINSICS_MODULE_DTS = `${DECLARATIONS.replace(/\n(interface|type) /g, "\nexport $1 ")}
+/** The runtime package's context value (\`NatlangContext\` in eval scope). */
+export type Context = NatlangContext;
+export declare const Context: { empty(): NatlangContext };
 ` + FUNCTIONS.replace(/\n(function|const) /g, "\nexport declare $1 ") + PLUGGABLE_MODULE_DTS;
     INTRINSICS_FILE = "/__natlang__/intrinsics.d.ts";
     SURFACE_MODULE_FILE = "/__natlang__/surface.d.ts";
@@ -212592,6 +212638,45 @@ function describeTarget(program, checker, type, options = {}) {
     if (methods.length) return { kind: "shape", members: candidate.getProperties().map((property) => property.name) };
     return;
   };
+  const INTERSECTION_RULE = "an intersection is portable only as object types joined with & (Base & { extra: string }), or inside Is<T, P> or Untrusted<T>";
+  const splitBrands = (candidate) => {
+    let untrusted2 = false;
+    const predicates = [], rest = [];
+    for (const part of candidate.types) {
+      const properties = part.getProperties();
+      const only = properties.length === 1 ? properties[0] : void 0;
+      if (only?.name === "__natlangUntrusted") {
+        untrusted2 = true;
+        continue;
+      }
+      if (only?.name !== "__natlangRefinement") {
+        rest.push(part);
+        continue;
+      }
+      const declaration = only.valueDeclaration ?? only.declarations?.[0];
+      const map = declaration ? checker.getTypeOfSymbolAtLocation(only, declaration) : checker.getTypeOfSymbol(only);
+      const names = map.getProperties().map((item) => item.name);
+      if (!names.length || names.some((name) => !name.trim())) throw new TargetError('refinement-predicate-invalid: Is<T, P> takes a nonempty string literal as P, for example Is<string, "one line of at most 60 characters">');
+      for (const predicate of names) if (!predicates.includes(predicate)) predicates.push(predicate);
+    }
+    return { rest, predicates, untrusted: untrusted2 };
+  };
+  const wrapBrands = (inner, predicates, untrusted2) => {
+    for (const predicate of predicates) inner = `Is<${inner}, ${JSON.stringify(predicate)}>`;
+    return untrusted2 ? `Untrusted<${inner}>` : inner;
+  };
+  const unionText = (members, depth2) => {
+    const hasTrue = members.some((t) => t.flags & import_typescript2.default.TypeFlags.BooleanLiteral && checker.typeToString(t) === "true");
+    const hasFalse = members.some((t) => t.flags & import_typescript2.default.TypeFlags.BooleanLiteral && checker.typeToString(t) === "false");
+    const parts = [];
+    if (hasTrue && hasFalse) parts.push("boolean");
+    for (const member of members) {
+      if (member.flags & import_typescript2.default.TypeFlags.BooleanLiteral && hasTrue && hasFalse) continue;
+      const converted = convert(member, depth2 + 1);
+      if (!parts.includes(converted)) parts.push(converted);
+    }
+    return parts.map((part) => part.includes("=>") ? `(${part})` : part).join(" | ");
+  };
   const convert = (candidate, depth2) => {
     if (depth2 > 24) throw new TargetError("the type is nested too deeply to check");
     const flags = candidate.flags;
@@ -212633,23 +212718,25 @@ function describeTarget(program, checker, type, options = {}) {
     if (flags & (import_typescript2.default.TypeFlags.Null | import_typescript2.default.TypeFlags.Undefined | import_typescript2.default.TypeFlags.Void)) return "null";
     if (flags & import_typescript2.default.TypeFlags.EnumLiteral && candidate.isUnion()) return candidate.types.map((t) => convert(t, depth2 + 1)).join(" | ");
     if (candidate.isUnion()) {
-      const members = candidate.types;
-      const hasTrue = members.some((t) => t.flags & import_typescript2.default.TypeFlags.BooleanLiteral && checker.typeToString(t) === "true");
-      const hasFalse = members.some((t) => t.flags & import_typescript2.default.TypeFlags.BooleanLiteral && checker.typeToString(t) === "false");
-      const parts = [];
-      if (hasTrue && hasFalse) parts.push("boolean");
-      for (const member of members) {
-        if (member.flags & import_typescript2.default.TypeFlags.BooleanLiteral && hasTrue && hasFalse) continue;
-        const converted = convert(member, depth2 + 1);
-        if (!parts.includes(converted)) parts.push(converted);
-      }
-      return parts.map((part) => part.includes("=>") ? `(${part})` : part).join(" | ");
+      const split = candidate.types.map((member) => member.isIntersection() ? splitBrands(member) : void 0);
+      const first = split[0];
+      const key = (item) => item && JSON.stringify([[...item.predicates].sort(), item.untrusted]);
+      if (first && (first.predicates.length || first.untrusted) && split.every((item) => item && item.rest.length === 1 && key(item) === key(first)))
+        return wrapBrands(unionText(split.map((item) => item.rest[0]), depth2), first.predicates, first.untrusted);
+      return unionText(candidate.types, depth2);
     }
     if (candidate.isIntersection()) {
-      const isBrand = (part) => part.getProperties().length === 1 && part.getProperties()[0].name === "__natlangUntrusted";
-      const rest = candidate.types.filter((part) => !isBrand(part));
-      if (rest.length === 1 && rest.length < candidate.types.length) return `Untrusted<${convert(rest[0], depth2 + 1)}>`;
-      throw new TargetError("intersection types are not supported as portable targets");
+      const { rest, predicates, untrusted: untrusted2 } = splitBrands(candidate);
+      if (!rest.length) throw new TargetError(INTERSECTION_RULE);
+      let inner;
+      if (rest.length === 1) {
+        inner = convert(rest[0], depth2 + 1);
+      } else {
+        const isRecordMember = (part) => !!(part.flags & import_typescript2.default.TypeFlags.Object) && !checker.isArrayType(part) && !checker.isTupleType(part) && !part.isUnion() && !hostOf(part) && !neuraleseParts(checker, part);
+        if (!rest.every(isRecordMember)) throw new TargetError(INTERSECTION_RULE);
+        inner = rest.map((part) => convert(part, depth2 + 1)).join(" & ");
+      }
+      return wrapBrands(inner, predicates, untrusted2);
     }
     if (checker.isArrayType(candidate) || checker.isTupleType(candidate)) {
       const elements = checker.isArrayType(candidate) ? [checker.getTypeArguments(candidate)[0]] : checker.getTypeArguments(candidate);
@@ -212953,6 +213040,19 @@ function mergeIntersection(members, resolve2) {
   if (parts.every((part) => part.kind === "dict"))
     return { kind: "dict", element: parts.length === 1 ? parts[0].element : { kind: "intersection", members: parts.map((part) => part.element) } };
   if (parts.every((part) => JSON.stringify(part) === JSON.stringify(parts[0]))) return parts[0];
+  const chains = parts.map((part) => {
+    const predicates = [];
+    let base = part;
+    while (base.kind === "refined") {
+      predicates.push(base.predicate);
+      base = resolve2(base.base);
+    }
+    return { base, predicates };
+  });
+  if (chains.some((chain) => chain.predicates.length) && chains.every((chain) => JSON.stringify(chain.base) === JSON.stringify(chains[0].base))) {
+    const predicates = [...new Set(chains.flatMap((chain) => chain.predicates))];
+    return predicates.reduce((type, predicate) => ({ kind: "refined", base: type, predicate }), chains[0].base);
+  }
   throw new TypeSyntaxError(`${members.map(formatType).join(" & ")} intersects types that are not all objects; intersect record types, or write one record with the fields you need`);
 }
 var DEFAULT_DIALECT2, NATIVE_ADAPTER_TYPE, NATIVE_TENSOR_TYPE, BUILTIN_HOST_TAGS, TypeSyntaxError, normalizePredicate, refinementInvalid, TOKEN, PRIMS, Parser, MAX_TYPE_CACHE_ENTRIES, MAX_TYPE_CACHE_CHARACTERS, MAX_CACHEABLE_TYPE_CHARACTERS, typeCacheEnabled, typeCache, typeCacheCharacters, TypeEnv, refinements;
@@ -213138,9 +213238,11 @@ var init_types = __esm({
         if (PRIMS.has(token.value)) return { kind: "prim", name: token.value };
         if (token.value === "Record") {
           const [key, value] = this.args(2);
-          if (key?.kind !== "prim" || key.name !== "string")
-            throw new TypeSyntaxError("Record keys must be string");
-          return { kind: "dict", element: value };
+          const keys3 = key?.kind === "lit" ? [key] : key?.kind === "union" ? key.members : void 0;
+          if (keys3?.length && keys3.every((item) => item.kind === "lit" && typeof item.value === "string"))
+            return { kind: "record", fields: keys3.map((item) => ({ name: String(item.value), type: value, optional: false })) };
+          if (key?.kind === "name" || key?.kind === "prim" && key.name === "string") return { kind: "dict", element: value };
+          throw new TypeSyntaxError("Record keys are strings: write Record<string, T>, a union of string literals, or a type name for one");
         }
         if (token.value === "NativeAdapter") return NATIVE_ADAPTER_TYPE;
         if (token.value === "NativeTensor") return NATIVE_TENSOR_TYPE;
@@ -213632,14 +213734,7 @@ var init_tool_markup = __esm({
   }
 });
 
-// src/native/prompt.ts
-function fileToolNames(surface = "all") {
-  const files2 = ["list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"];
-  return surface === "editor" ? ["editor", "bash", "python", "delegate"] : surface === "files" ? [...files2, "python", "delegate"] : [...files2, "bash", "python", "delegate", "editor"];
-}
-function scopedFileToolNames(surface = "all", writable = true) {
-  return fileToolNames(surface).filter((name) => writable || !MUTATING_FILE_TOOLS.has(name));
-}
+// src/native/prompt-2026-11-22.ts
 function directoryReducerPrompt(surface = "all", allowAdHoc = true, writable = true, withheld = []) {
   const order = ["bash", "python", "delegate", "editor", "list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"];
   const names = new Set(scopedFileToolNames(surface, writable));
@@ -213672,26 +213767,17 @@ For a large file, pass its handle to the child and let it search/read relevant p
 For a table joined to message files, parse the original table in code and join by the identifier. Keep each judgment paired with that identifier; use the original amounts rather than retyping a second amount table.
 `;
 }
-function promptAtNlDepthLimit(prompt) {
-  if (!prompt.includes(TOOLS_PROMPT)) return prompt + "\n\n" + NL_DEPTH_LIMIT_NOTICE;
-  return prompt.replace(TOOLS_PROMPT, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT).replace(GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT).replace(APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT);
-}
-var SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, TOOLS_PROMPT, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, APPROACH_PROMPT, PROMPT_EXAMPLE_TEXTS, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
-var init_prompt = __esm({
-  "src/native/prompt.ts"() {
+var scopedFileToolNames, FILE_TOOL_LINES, SEMANTIC_RESULT_PROMPT, SEMANTIC_CALL_COMPLETION_PROMPT, TOOLS_PROMPT, DIRECTORY_REDUCER_DECLARATION, NL_DEPTH_LIMIT_NOTICE, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT, PROMPT_EXAMPLE_TEXTS, GENERATION_GUIDANCE, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT;
+var init_prompt_2026_11_22 = __esm({
+  "src/native/prompt-2026-11-22.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    SEMANTIC_RESULT_PROMPT = `Answer with the return_result tool: call it with status "success" and a value of the declared type (for a string result, the text itself). That value is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. A reply without a tool call is not an answer. When the declared result is a string and the task asks you to save JSON and return it, return exactly the JSON text saved in the file as that string. Send it as the value of an actual return_result tool call; do not print a pseudo invocation, status envelope, explanation, or code fence instead. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. A successful finish:true eval ends this call immediately; include every required predicate in that final expression and do not send another conflicting final action. Never present code as though it had run. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
-
-At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. Use a Neuralese marker only for a literal body; return a computed string or structured value according to T.
-
-`;
-    SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. This applies to inline nl children: when the child's inputs and captured context are enough to judge its assigned question, return that declared typed answer directly. Nest another nl call only for a genuinely distinct subproblem needed to complete this assignment, not a near-identical re-ask. When the evidence is already available, return the declared value directly.
-
-`;
-    TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without a tool call ends your turn without answering.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows each one's type and value. A value too long to show whole is cut off, or a record shown by its field names, marked <<\u2026>>, and the name still holds all of it. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) already supplies stepFn; never pass the callable again as the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval stages that value; send it with return_result and status \"success\" without a value. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
-    FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code. Use edit_code to fix it when that tool is offered.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
-    FILE_TOOL_SURFACES = ["all", "editor", "files"];
+    scopedFileToolNames = (surface, writable) => {
+      const files2 = ["list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"];
+      const names = surface === "editor" ? ["editor", "bash", "python", "delegate"] : surface === "files" ? [...files2, "python", "delegate"] : [...files2, "bash", "python", "delegate", "editor"];
+      const mutating = /* @__PURE__ */ new Set(["write_file", "edit_file", "editor", "bash", "python"]);
+      return names.filter((name) => writable || !mutating.has(name));
+    };
     FILE_TOOL_LINES = {
       bash: "- bash(command) runs shell pipelines in this folder, including ls, cat, rg, sed, awk, jq and CSV tools.",
       python: "- python(code) runs a Python cell over this folder. It can use pathlib, pandas and sqlite3; import nl, wait and iterate_on from natlang for child calls.",
@@ -213704,16 +213790,153 @@ At a direct parameter declared Neuralese<string>, an ordinary string argument is
       edit_file: "- edit_file(path, find, replace_with, fuzzy?) replaces one exact or uniquely fuzzy span.",
       diff_files: "- diff_files(path?) shows changes made in this trajectory."
     };
-    MUTATING_FILE_TOOLS = /* @__PURE__ */ new Set(["write_file", "edit_file", "editor", "bash", "python"]);
+    SEMANTIC_RESULT_PROMPT = `Answer with the return_result tool: call it with status "success" and a value of the declared type (for a string result, the text itself). That value is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. A reply without a tool call is not an answer. When the declared result is a string and the task asks you to save JSON and return it, return exactly the JSON text saved in the file as that string. Send it as the value of an actual return_result tool call; do not print a pseudo invocation, status envelope, explanation, or code fence instead. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. A successful finish:true eval ends this call immediately; include every required predicate in that final expression and do not send another conflicting final action. Never present code as though it had run. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
+
+At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. Use a Neuralese marker only for a literal body; return a computed string or structured value according to T.
+
+`;
+    SEMANTIC_CALL_COMPLETION_PROMPT = `For a semantic judgment over one supplied item, inspect that item and make the judgment in this call. A child receives the responsibility to answer its assigned question. Do not delegate the same question over the same unchanged input to another child. This applies to inline nl children: when the child's inputs and captured context are enough to judge its assigned question, return that declared typed answer directly. Nest another nl call only for a genuinely distinct subproblem needed to complete this assignment, not a near-identical re-ask. When the evidence is already available, return the declared value directly.
+
+`;
+    TOOLS_PROMPT = SEMANTIC_RESULT_PROMPT + SEMANTIC_CALL_COMPLETION_PROMPT + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval. A reply without a tool call ends your turn without answering.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. When the instruction asks for a decision, extraction, or revised notes, return that value. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows each one's type and value. A value too long to show whole is cut off, or a record shown by its field names, marked <<\u2026>>, and the name still holds all of it. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const policy = 'Refunds are allowed within 30 days of delivery.'; const verdicts = await Promise.all(items.map(item => nl<boolean>`Decide whether item meets policy.`(item))); const kept = items.filter((item, i) => verdicts[i] === true). Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ policy })`Decide whether item meets policy.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. When instructions define ordered repair passes, apply only the current pass's correction and carry the other fields unchanged, even if the packet also contains evidence for later passes. Return the declared draft value itself, rather than wrapping it in another object. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. If you get a question about meaning, don't try to solve it via code, keyword or regular-expression matching; Solve it by looking at the data or map over the data with an nl function if it's too big. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, preserve the parent's criterion and relevant context. Do not add exclusions or require stronger evidence than the parent asks for; a question can express the same intent as a statement.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) already supplies stepFn; never pass the callable again as the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval stages that value; send it with return_result and status \"success\" without a value. When the declared result is exactly Neuralese<string>, return ordinary text as the result; the configured Neuralese writer materializes it as that typed value. If no writer is configured, the runtime reports that capability error. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code; never copy a cut-off value, use the variable that holds it. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code. When separate files pair a question or criterion with a state, evaluate each pair using that file\u2019s state. Do not merge facts across those states, even if they describe the same scenario, unless the task explicitly asks for a join. Bind each output key to its matching file, and check that the evidence for that answer comes from that file before returning. For a conversation state, read the full exchange and reconcile earlier claims with later corrections or clarifications before judging the current state; a proposed remedy does not establish that it succeeded. Verify the resulting file against those fields. A find/replace request applies to the matching span, not necessarily the whole file. Preserve text outside that span, including leading or trailing whitespace and final newlines.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument, have it return the declared child type, and preserve fields outside the current pass. For prose notes, preserve supported facts rather than exact wording, unless the task requires verbatim copying. In iterateOn, build the next state from the step's current state and returned value, never from a captured outer initial draft. An isolated quote can lose the scope established by its containing record or folder. Within one complete record, carry its stated entity or group scope across sentences unless the text changes that scope; do not require the same identifier to be repeated for every fact. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input and service names listed in this call; do not redeclare or shadow those bindings or invent function names. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
     DIRECTORY_REDUCER_DECLARATION = "This call is a directory reducer: folder is a private copy of its input folder, and the changes you have made to it when you call return_result are kept.";
-    DIRECTORY_REDUCER_PROMPT = directoryReducerPrompt();
     NL_DEPTH_LIMIT_NOTICE = "This call is at the fifth and final layer of ad hoc natural-language calls. Make the remaining judgments here using the data and tools available. Existing named functions can still be called. Creating another ad hoc natural-language child is unavailable at this depth.";
     TOOLS_PROMPT_AT_NL_DEPTH_LIMIT = TOOLS_PROMPT.split("\n\n").map((paragraph) => paragraph.startsWith("Eval code can also hand a judgement") ? NL_DEPTH_LIMIT_NOTICE : paragraph.startsWith("To repeat a step") ? "To repeat a step an open-ended number of times (since there is no while), use a code function: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). The step takes the current state and returns the next one; the stopping check receives that state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished. For pagination, start with more: true, accumulate each response page, advance the page number, and stop only when the response says there are no more pages." : paragraph).join("\n\n");
+    PROMPT_EXAMPLE_TEXTS = ["Refunds are allowed within 30 days of delivery.", "Decide whether item meets policy."];
+    GENERATION_GUIDANCE = `
+
+For a large input, use eval to select the fields or subtree relevant to the question before printing it; read more only when needed.
+When dividing work, pass each helper the actual item or extracted slice it should inspect, with the shared criterion and required context.
+For a tree edit, deep-copy the input, change only the requested leaf at its existing path, preserve wrappers and siblings, then inspect that path. Once the path is known, verify that path directly; a recursive tree walker or an open-ended loop is unnecessary.
+For exact numerical answers, identify the requested operands and their units in the source, compute with eval, and check the order of a ratio or difference against the question.
+Before returning, check that each value answers the requested predicate and matches its declared type; for booleans, verify whether true or false expresses your conclusion.
+`;
+    GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT = `
+
+For a large input, use eval to select the fields or subtree relevant to the question before printing it; read more only when needed.
+For a tree edit, deep-copy the input, change only the requested leaf at its existing path, preserve wrappers and siblings, then inspect that path. Once the path is known, verify that path directly; a recursive tree walker or an open-ended loop is unnecessary.
+For exact numerical answers, identify the requested operands and their units in the source, compute with eval, and check the order of a ratio or difference against the question.
+Before returning, check that each value answers the requested predicate and matches its declared type; for booleans, verify whether true or false expresses your conclusion.
+`;
+  }
+});
+
+// src/runtime/model-facing.ts
+function enabled() {
+  const raw = (typeof process === "undefined" ? "" : process.env.NATLANG_MODEL_FACING ?? "").trim();
+  if (!raw) return new Set(ADOPTED);
+  if (raw === "none") return /* @__PURE__ */ new Set();
+  if (raw === "combined") return new Set(MODEL_FACING_VARIANTS);
+  return new Set(raw.split(",").map((name) => name.trim()).filter(Boolean));
+}
+var MODEL_FACING_VARIANTS, ADOPTED, active, modelFacing, PROMPT_REVISIONS, revision, promptRevision;
+var init_model_facing = __esm({
+  "src/runtime/model-facing.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction", "compact-callable-scope"];
+    ADOPTED = ["effect-receipt", "compact-callable-scope"];
+    active = enabled();
+    modelFacing = (name) => active.has(name);
+    PROMPT_REVISIONS = ["current", "2026-11-22"];
+    revision = (() => {
+      if (typeof process === "undefined") return "current";
+      const raw = (process.env.NATLANG_PROMPT_REVISION ?? "").trim();
+      const named2 = raw || ((process.env.NATLANG_MODEL_FACING ?? "").split(",").map((name) => name.trim()).find((name) => name.startsWith("prompt-revision-"))?.slice("prompt-revision-".length) ?? "");
+      if (!named2) return "current";
+      if (!PROMPT_REVISIONS.includes(named2))
+        throw new Error(`NATLANG_PROMPT_REVISION=${named2} is not a prompt revision; use one of ${PROMPT_REVISIONS.join(", ")}`);
+      return named2;
+    })();
+    promptRevision = () => revision;
+  }
+});
+
+// src/native/prompt.ts
+function fileToolNames(surface = "all") {
+  const files2 = ["list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"];
+  return surface === "editor" ? ["editor", "bash", "python", "delegate"] : surface === "files" ? [...files2, "python", "delegate"] : [...files2, "bash", "python", "delegate", "editor"];
+}
+function scopedFileToolNames2(surface = "all", writable = true) {
+  return fileToolNames(surface).filter((name) => writable || !MUTATING_FILE_TOOLS.has(name));
+}
+function directoryReducerPrompt2(surface = "all", allowAdHoc = true, writable = true, withheld = []) {
+  if (PREVIOUS) return directoryReducerPrompt(surface, allowAdHoc, writable, withheld);
+  const order = ["bash", "python", "delegate", "editor", "list_files", "search_files", "read_file", "write_file", "edit_file", "diff_files"];
+  const names = new Set(scopedFileToolNames2(surface, writable));
+  if (!allowAdHoc) names.delete("delegate");
+  for (const name of withheld) names.delete(name);
+  return `
+${DIRECTORY_REDUCER_DECLARATION2}
+Paths are relative POSIX paths such as "notes/todo.md".
+
+File tools:
+${order.filter((name) => names.has(name)).map((name) => !allowAdHoc && name === "python" ? "- python(code) runs a Python cell over this folder. It can use pathlib, pandas and sqlite3." : FILE_TOOL_LINES2[name]).join("\n")}
+
+Code in eval can use the current Folder value named folder:
+- folder.file(path) and folder.dir(path) return file and subfolder handles. Handles expose name (last path component), relativePath/path (scoped path), and parent (folder handle or null). Construct destination folders with folder.dir; use these properties to preserve filenames and groups rather than reparsing paths.
+- A file handle has exists(), stat(), readText(), readBytes(), readJson(), writeText(content), writeBytes(content), writeJson(value), editText(find, replaceWith, fuzzy?), remove(), and moveTo(destination). Read a supplied FileHandle directly through its displayed argument name: for an argument named source, use await source.readText(). A one-file child scope contains that file; sibling files and the parent's earlier reads are not inherited. Use the supplied file and carried arguments for this pass.
+- When a task returns a structured object or array, verify saved JSON with readJson<T>() and return that parsed value directly. Use readText() as the result only when the declared return type is string and the task asks for serialized JSON text; do not wrap JSON text in an object or array to imitate structured data.
+- A folder handle has exists(), stat(), entries(pattern?), files(pattern?), folders(pattern?), diff(), remove(), moveTo(destination), and apply(reducer, ...args). Patterns are relative to that handle: await team.files('items/*.md') lists that team's item files; '**/*.md' searches its descendants. Use the returned handles directly; their paths remain relative to their scoped view.
+Read a supplied FileHandle directly, for example await sourceFile.readText(). Its path is relative to its own scoped view; folder.file(sourceFile.path) may refer to a different view, especially when several handles are passed to a child. A child given one FileHandle can access only that file through its folder; it can write that file only when the scoped folder is writable. Pass an output FileHandle explicitly, pass the containing Folder when broader access is intended, or return the computed value for the parent to persist.
+Move the source handle into the destination: await folder.file("tickets/a.md").moveTo(folder.dir("archive")); then inspect folder.file("archive/a.md") or folder.diff(). Handles keep their original paths after a move; do not read the old source handle to verify its new location. A returned list of filenames alone does not perform the required file changes.
+Use these scoped handles for file computation in eval; Node filesystem modules and require are unavailable. To save a computed JSON object report and finish a string-returning reducer in one eval action: await folder.file("report.json").writeText(JSON.stringify(report)); return "done"; with finish:true. ${names.has("write_file") ? "For literal text, use the ordinary write_file tool, then return_result with the declared result." : "For literal text, use folder.file(path).writeText(text) in eval, then return the declared result."}
+
+${allowAdHoc ? `Use inline nl lambdas for semantic per-file judgments, extraction and transformations, and do the exact bookkeeping in code. Pass each lambda the actual file or selected contents and the shared criterion. Include the record's entity or group context and any shared definitions needed to interpret its evidence; a file path or ID alone may not state those facts. Reuse completed judgments; investigate an individual disagreement without rerunning the whole batch. For example:
+const files = await folder.files('inbox/*.eml');
+const labels = await Promise.all(files.map(file => nl<'keep' | 'archive'>\`Classify the email in file.\`(file)));
+` : "For many files, read or search their contents, make their judgments here, and do exact bookkeeping in code.\n"}
+When an input file supplies an exact edit request, parse it in code and pass its strings directly to the edit operation.
+For subfolders, use a reducer: await Promise.all((await folder.folders('teams/*')).map(dir => dir.apply(summarizeTeam)));
+Each child sees only its selected root. A small file's contents appear in the child's opening; otherwise the child must read or search before answering.
+For a large file, pass its handle to the child and let it search/read relevant portions. Keep the child's instructions short rather than interpolating the entire file into them.
+`;
+}
+function promptAtNlDepthLimit(prompt) {
+  if (!prompt.includes(TOOLS_PROMPT2)) return prompt + "\n\n" + NL_DEPTH_LIMIT_NOTICE2;
+  return prompt.replace(TOOLS_PROMPT2, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT2).replace(GENERATION_GUIDANCE2, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT2).replace(APPROACH_PROMPT, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT);
+}
+var PREVIOUS, SEMANTIC_RESULT_PROMPT2, SEMANTIC_CALL_COMPLETION_PROMPT2, TOOLS_PROMPT2, FUNCTION_TOOLS_PROMPT, FILE_TOOL_SURFACES, FILE_TOOL_LINES2, MUTATING_FILE_TOOLS, DIRECTORY_REDUCER_DECLARATION2, DIRECTORY_REDUCER_PROMPT, NL_DEPTH_LIMIT_NOTICE2, TOOLS_PROMPT_AT_NL_DEPTH_LIMIT2, APPROACH_PROMPT, PROMPT_EXAMPLE_TEXTS2, PROMPT_EXAMPLE_SOURCE, APPROACH_PROMPT_AT_NL_DEPTH_LIMIT, GENERATION_GUIDANCE2, SYSTEM_PROMPT, GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT2, COMPACTION_NOTICE, AUTOMATIC_NOTE, HANDOVER_NOTE_OPEN, HANDOVER_NOTE_CLOSE, LAST_TURN_NOTICE, COMPACTED_RESULT, viewNote, listingViewInstructions;
+var init_prompt = __esm({
+  "src/native/prompt.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_prompt_2026_11_22();
+    init_model_facing();
+    PREVIOUS = promptRevision() === "2026-11-22";
+    SEMANTIC_RESULT_PROMPT2 = PREVIOUS ? SEMANTIC_RESULT_PROMPT : `Answer with the return_result tool: call it with status "success" and a value of the declared type (for a string result, the text itself). That value is the function's return value. Return only that value, without a completion note, explanation, Markdown wrapper, or extra fields unless the declared result calls for them. A reply without a tool call is not an answer. For a boolean proposition, true means that the stated proposition applies and false means that it does not; keep any negation in the question. A declarative proposition in a boolean task is a claim to evaluate against the inputs, not a fact to assume. Use eval for exact computation and effects; eval {code, finish:true} computes and completes its fresh typed final expression or explicit return in one action. To inspect evidence in eval, use console.log(value). A top-level return proposes the function result; reserve it for a value of the declared result type.
+
+At a direct parameter declared Neuralese<string>, an ordinary string argument is written through the configured writer; this applies only to that parameter, not nested fields or other payload types. When this call's declared result is exactly Neuralese<string>, computed ordinary text can be returned directly and the configured writer materializes it as that typed value. For example, compute const text = ...; then return text. When the declared result is Neuralese<T> for a structured JSON type T, build and return the complete typed T value directly (or return its JSON text); the runtime validates it and writes the canonical JSON body through the configured writer. Use a Neuralese marker only for a literal body; return a computed string or structured value according to T.
+
+`;
+    SEMANTIC_CALL_COMPLETION_PROMPT2 = PREVIOUS ? SEMANTIC_CALL_COMPLETION_PROMPT : `Give a child call a distinct sub-question and the inputs it needs; answer the question you were given here.
+
+`;
+    TOOLS_PROMPT2 = PREVIOUS ? TOOLS_PROMPT : SEMANTIC_RESULT_PROMPT2 + SEMANTIC_CALL_COMPLETION_PROMPT2 + "You are running one call of a natural-language function. Execute the function to completion, using host computation and typed NL calls as appropriate; return the actual result.\n\nUse eval for exact computation, transforming data, calling available functions and services, or working with files. Code runs only in eval.\n\nYour tools are eval, return_result and the others listed. Invoke tools such as return_result directly as tool calls. read_code is also available as a visibility-checked eval function when the scope has not declared another binding with that name: pass the source name as read_code(name), or pass the native-tool shape read_code({ name }); the tool call itself takes { name }. Other tools are not functions in eval. Everything else (this call's arguments, the functions and services it may use, and your own variables) lives in the eval scope: a TypeScript scope that only code you run with eval can reach. To look at data or call one of those functions, run eval with code that does it, for example const firstPage = facts.page(1), and read what comes back. Call arguments are recursively read-only. To edit an argument tree or array, work on a mutable copy (for JSON data, JSON.parse(JSON.stringify(value)) makes a deep mutable copy) and return that copy. Use input and captured files as evidence; save or edit a file only when this call asks for that file change. All evals in this call share that scope, like a REPL session: whatever an earlier eval declared stays defined. The first eval was run for you by the runtime: it read this call's arguments from the caller (read_inputs()) and declared those names; its listing shows each one's type and value. A value too long to show whole is cut off, or a record shown by its field names, marked <<\u2026>>, and the name still holds all of it. Use them in your code by name, and declare only new ones. transcript holds this call's earlier tool calls with their full outputs: transcript.search(text or regex, { in, status, tool }) finds matching lines of your earlier reasoning, code and outputs, and transcript.entry(n) gives one call ({ turn, reasoning, tool, code, arguments, status, value, console, output }: status is ok, rejected or error; value is what an eval returned, as data). Search it for something specific instead of reading it through, or instead of repeating work. When the conversation grows long, compact_history({ note }) moves older outputs and code into transcript and keeps your note (at most 2000 characters: what you are doing, what you have found, what is left); call it yourself before a new phase of work if you like, and you will be asked to when the conversation nears its limit. Await natural-language and asynchronous functions. Eval code is ordinary TypeScript with a few limits: use for...of for ordinary collections, for...in for an object\u2019s enumerable string keys (including inherited keys), and a checked counted for or array methods; while and do are refused, functions may not call themselves recursively, and declarations use const or let.\n\nEval code can also hand a judgement, semantic inference, data extraction or transformation to a new natural-language function: nl`instructions` creates one inline, and calling it runs another call like this one on the arguments you pass. Use inline nl lambdas to express semantic judgments, extraction and transformations as callable steps, including judgments about computed values and each item of a collection: const verdicts = await Promise.all(<items>.map(item => nl<boolean>`Decide whether item meets <criterion>.`(item))); const kept = <items>.filter((item, i) => verdicts[i] === true), where <angle brackets> stand for this call's own names and criterion. Use Boolean child results for eligibility checks; objects and strings are not Boolean verdicts. nl lambdas participate in type inference -- in the following the executor will be prompted to produce the right enum type: const risk: 'low' | 'high' = await nl`Rate the risk in note.`(note). When nothing says it, for example when you only read fields of the result, write it: nl<{ level: number; reason: string }>`Assess the risk in note.`(note). Variables in scope that its instructions mention by exact name are visible to it. To list shared context explicitly, use nl.with<boolean>({ <criterion> })`Decide whether item meets <criterion>.`(item). With one type argument, nl.with<ResultType> declares the child result type; its object argument supplies fixed context. For example, const summarize = nl.with<string>({ rubric })`Summarize the supplied record against the rubric.`; const summary = await summarize(record); rubric is captured context, record is a changing child input, and string is the returned value. For a child with both fixed context and changing inputs, declare the callable signature and pass those inputs when calling it: const revise: Neuralese<(source: FileHandle, notes: Neuralese<string>) => Promise<Neuralese<string>>> = nl.with<Neuralese<string>>({ decisionRule })`Update the notes from source and notes.`; const updated: Neuralese<string> = await revise(currentFile, state.notes); Here decisionRule is captured context; source and notes are child arguments. Return updated from the step or carry it into the next state. Keep input FileHandles in the arguments; return the requested result, not the input/context wrapper. The listed values are snapshots taken when the function is created. Pass changing iteration state as an argument so each step sees the latest state. You can keep the instructions focused on the judgment and refer to the bound context by name instead of interpolating its full contents into the instructions. Answer questions about meaning by reading the data, or by mapping an nl function over it when it is large. Prefer a function you can already call that makes the judgment over creating a new one. When delegating, pass the parent's criterion as it stands, with its relevant context; a question can express the same intent as a statement. For a function with a finite result (a boolean or a union of literals), decide(fn, ...args) runs it and returns { value, probabilities, confidence }: use it when how sure the answer is matters to what you do next.\n\nTo repeat a step an open-ended number of times (since there is no while), we have a controlled iteration operator on functions that take the current state and returns the next one: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). For a TypeScript stopping check, choose a step bound or decreasing measure before .until(...), which starts execution; for a known list of edits use its length as maxSteps. For an available callable stepFn, stepFn.iterateOn(initialState, ...fixedArgs) supplies stepFn itself, so its first argument is the initial state. This is equivalent to the free form iterateOn(stepFn, initialState, ...fixedArgs). Natural-language functions have the same operator as a method: const deathStar = await nl`Make plan more evil.`.iterateOn(plan).until(nl`The battle station described by state is more powerful than the Force.`). The step receives the latest state returned by the preceding step, or the initial value on its first call. Build each revision from that current step argument and preserve supported earlier edits; a captured outer initial draft stays the original value. The step's state has the type of the initial value, and the stopping check receives it as state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished.\n\nYou send back a response with return_result and a status. With status \"success\" it takes a value of your intended target type; with status \"blocked\" or \"failed\" it takes a reason instead. A final return statement in an eval stages that value; send it with return_result and status \"success\" without a value. For an ordinary string result, marker-looking characters are literal string content; return them exactly, without wrapping or interpreting them as a block. For other Neuralese<T> positions, pass the existing typed value or one exact Neuralese block marker in the explicitly typed position.\n\nOutput or values too long to show are cut off, marked <<cut off: \u2026>>: the marker says where all of it is in your scope (a variable, or transcript.entry(n).output) and, for tool output, which read_page call shows the next part. The marker is not code: use the variable that holds the value. When exact text is supplied in structured data, parse and use its string fields directly instead of retyping or escaping the payload in code.\n\nUse the information that the instructions point to. Follow any result the task explicitly defines for missing evidence or no match; that result can be a successful negative answer. When required information is missing and the task defines no such result, return with status \"blocked\" instead of substituting something else. Return with status \"failed\" when the instructions cannot be carried out. Check the result against the instructions and observed evidence. Revise your assumptions when evidence contradicts them; do not rewrite the program criterion. When further searching keeps finding nothing new, stop and return the task's specified no-match result, or status \"blocked\" with what is missing if no such result is defined.\n\nWhen an unchanged candidate, child update, or action has already been rejected, use the observed reason to change your approach; repeat it only if new evidence or changed state justifies another attempt. Use the argument names in this call's displayed signature and opening scope; mentioning item or file in an instruction does not create a variable with that name. A delegated call must allow the same successful negative or missing-information result as the parent task. When dividing a criterion into partial checks, give each child the specific condition assigned to its evidence. A child does not inherit the parent conversation or sibling evidence. Pass the entity or group association, applicable time period, and shared definitions needed to interpret that condition, as arguments or named captures. When a child writes a structured answer, pass the applicable output contract (including exact-copy, field-boundary, and formatting rules) as named context. For a state revision, pass the full current carried value as its argument and have it return the declared child type. Keep facts from different records separate unless the task asks for a join. Evaluate each assigned condition independently; another condition failing does not make this one false. Combine those checks in the parent; do not ask each partial record to establish the entire conjunction. When a search or helper returns no matches, re-read the original question and check the entity roles and the helper's documented evidence scope before trying again. Rephrasing a query with the same unsupported premise adds no evidence. In TypeScript, a map callback that uses await must be async: files.map(async file => { const text = await file.readText(); return text; }).\n\nBe brief. Think as much as the next step needs and no more: do not restate the instructions, the data or what you have already found, and keep code comments and replies to what they must say.\n\n\nFor exact array work, calculate directly in eval rather than asking a child to do arithmetic. For example, const sampleValues = [3, 1, 2]; const orderedValues = [...sampleValues].sort((a, b) => a - b); const matchingValues = orderedValues.filter(value => value > 1); const matchingCount = matchingValues.length; the count is 2. For an unknown number of steps, use the bounded iterateOn pattern above and inspect the returned state or resulting effect before claiming completion. For a semantic judgment on each item, await each typed nl call as in the Promise.all example above and aggregate the returned values in code. Use the actual input, function and service names listed in this call. Complete a typed child answer concisely, and use the eval tool with finish:true only when its result and required effects are ready.\n";
+    FUNCTION_TOOLS_PROMPT = "\nIf a function you call is unclear or wrong, read it with read_code. Use edit_code to fix it when that tool is offered.\nSome functions are directory reducers. Call await someFolder.apply(reducer, ...args) to retain their edits and typed result. Call const proposal = await someFolder.propose(reducer, ...args) to try an edit without changing the receiving folder: proposal.folder is an immutable source snapshot, proposal.value its result. Evaluate proposal.folder, then await someFolder.accept(proposal) when justified; stale or foreign proposals fail. Use snapshot() to freeze source, snapshot.branch() for an independent population branch, and await someFolder.select(snapshot) to install the exact selected source from the same target. To improve a program repeatedly, await someFolder.iterateOn(step, initialState, ...fixedArgs).withMeasure(state => state.remaining).until(state => state.done). Here the receiver is a folder, so pass the step explicitly: someFolder.iterateOn(step, initialState, ...fixedArgs). This differs from a callable receiver: step.iterateOn(initialState, ...fixedArgs). The step receives a private folder and current JSON state, and returns the next state. The result is {folder, state}; each step commits source and state together and leaves the original folder unchanged. The nonnegative integer measure must decrease each step; semantic progress reviews remain active and cannot replenish it.\nAn explicit top-level return in eval stages the typed value and, when this reducer was applied to a folder, retains every change.";
+    FILE_TOOL_SURFACES = ["all", "editor", "files"];
+    FILE_TOOL_LINES2 = {
+      bash: "- bash(command) runs shell pipelines in this folder, including ls, cat, rg, sed, awk, jq and CSV tools.",
+      python: "- python(code) runs a Python cell over this folder. It can use pathlib, pandas and sqlite3; import nl, wait and iterate_on from natlang for child calls.",
+      delegate: "- delegate(path, instructions, returns?) gives a subfolder to a directory reducer child with its own context and merges successful changes.",
+      editor: "- editor(command, path, ...) views numbered lines, creates a file, replaces one exact span or inserts text after a line.",
+      list_files: "- list_files(path?, pattern?) lists files recursively.",
+      search_files: "- search_files(query, path?, pattern?, regex?) searches text files.",
+      read_file: "- read_file(path, start_line?, end_line?) reads text. Line numbers are one-based and inclusive.",
+      write_file: "- write_file(path, content) creates or replaces a text file.",
+      edit_file: "- edit_file(path, find, replace_with, fuzzy?) replaces one exact or uniquely fuzzy span.",
+      diff_files: "- diff_files(path?) shows changes made in this trajectory."
+    };
+    MUTATING_FILE_TOOLS = /* @__PURE__ */ new Set(["write_file", "edit_file", "editor", "bash", "python"]);
+    DIRECTORY_REDUCER_DECLARATION2 = "This call is a directory reducer: folder is a private copy of its input folder, and the changes you have made to it when you call return_result are kept.";
+    DIRECTORY_REDUCER_PROMPT = directoryReducerPrompt2();
+    NL_DEPTH_LIMIT_NOTICE2 = "This call is at the fifth and final layer of ad hoc natural-language calls. Make the remaining judgments here using the data and tools available. Existing named functions can still be called. Creating another ad hoc natural-language child is unavailable at this depth.";
+    TOOLS_PROMPT_AT_NL_DEPTH_LIMIT2 = PREVIOUS ? TOOLS_PROMPT_AT_NL_DEPTH_LIMIT : TOOLS_PROMPT2.split("\n\n").map((paragraph) => paragraph.startsWith("Eval code can also hand a judgement") ? NL_DEPTH_LIMIT_NOTICE2 : paragraph.startsWith("To repeat a step") ? "To repeat a step an open-ended number of times (since there is no while), use a code function: const finalState = await iterateOn(step, initialState, ...otherArgs).withLimit({ maxSteps: 20 }).until(state => isFinished(state)). The step takes the current state and returns the next one; the stopping check receives that state. The stopping check runs on the initial state before any step. Initialize completion flags so the initial state is not already finished." : paragraph).join("\n\n");
     APPROACH_PROMPT = `
 
 How a call usually goes (a schematic: <angle brackets> stand for whatever this call has):
 - One step is one tool call. Read its result before you choose the next; calls sent together have not seen each other's results.
-- Getting at data: the names the first eval declared are already in scope. Use them in code and never declare them again. For example, if it lists \`instance: string\`, use \`JSON.parse(instance)\`; do not redeclare \`instance\` or copy it from \`inputs.instance\`. eval({ code: "const firstRows = <store>.page(1); firstRows" }) shows the rows and keeps firstRows for later evals. A name that holds a function is called inside eval code; it is not a tool. Ordinary JavaScript function declarations and function-valued locals are scoped to the eval that creates them; only supported local values carry forward.
+- Getting at data: the names the first eval declared are already in scope. Use them in code and never declare them again. For example, if it lists \`instance: string\`, use \`JSON.parse(instance)\`; do not redeclare \`instance\` or copy it from \`inputs.instance\`. eval({ code: "const firstRows = <store>.page(1); firstRows" }) shows the rows and keeps firstRows for later evals. A name that holds a function is called inside eval code; it is not a tool. Top-level helper functions and supported local values carry forward to later evals; closures over ephemeral or non-portable state stay scoped to the eval that creates them.
 - Judging items: use inline nl lambdas for semantic judgments, extraction and transformations on items or computed values. Pass the actual item, the shared criterion and necessary context, await the typed result, and use code for exact bookkeeping. Named natural-language functions are reusable helpers too.
 - Editing a tree: make a deep mutable copy, change the requested leaf at its existing path, and preserve the surrounding nodes, wrappers and siblings unless the instructions ask to change them. Inspect that path in the result before returning the complete requested structure.
 - Acting on something that changes: call it, read what came back, and decide the next call from that. eval({ code: "const seen = await <world>.<act>(<command>); seen" }). When the next steps are certain, one eval may take several, stopping at the first surprise.
@@ -213723,24 +213946,25 @@ How a call usually goes (a schematic: <angle brackets> stand for whatever this c
 - Asking a helper: a function the instructions name for part of the work is awaited like any function. eval({ code: "const part = await <helper>(<question>); part" }).
 - Returning stored data: if eval already holds the exact answer in a local value, complete with eval({ code: "<storedAnswer>", finish: true }) or an explicit return of that value. This preserves every field, including long descriptions; do not retype an object from an abbreviated preview. console.log inspects a value but does not return it: a finishing eval must also evaluate or explicitly return the actual typed answer.
 - Finishing: answer with return_result({ status: "success", value: <value of the declared type> }). For computation or effects, eval({ code: "<computation>; <value>", finish: true }) completes the fresh typed result. When something the instructions rely on is absent: return_result({ status: "blocked", reason: "<what is missing>" }); when they ask for the impossible, status "failed". Code in a reply does not execute.`;
-    PROMPT_EXAMPLE_TEXTS = ["Refunds are allowed within 30 days of delivery.", "Decide whether item meets policy."];
+    PROMPT_EXAMPLE_TEXTS2 = PREVIOUS ? PROMPT_EXAMPLE_TEXTS : ["Decide whether item meets policy."];
+    PROMPT_EXAMPLE_SOURCE = PREVIOUS ? "the example in your system prompt" : "an example in read_code's documentation";
     APPROACH_PROMPT_AT_NL_DEPTH_LIMIT = APPROACH_PROMPT.replace(
       /^- Judging items:.*$/m,
       "- Judging items: inspect the relevant inputs and make the remaining semantic judgments here. Existing named natural-language functions remain available. Use code for exact bookkeeping."
     );
-    GENERATION_GUIDANCE = `
+    GENERATION_GUIDANCE2 = PREVIOUS ? GENERATION_GUIDANCE : `
 
 For a large input, use eval to select the fields or subtree relevant to the question before printing it; read more only when needed.
 When dividing work, pass each helper the actual item or extracted slice it should inspect, with the shared criterion and required context.
-For a tree edit, deep-copy the input, change only the requested leaf at its existing path, preserve wrappers and siblings, then inspect that path. Once the path is known, verify that path directly; a recursive tree walker or an open-ended loop is unnecessary.
+For a tree edit, change only the requested leaf of the mutable copy at its existing path, preserve wrappers and siblings, then inspect that path.
 For exact numerical answers, identify the requested operands and their units in the source, compute with eval, and check the order of a ratio or difference against the question.
 Before returning, check that each value answers the requested predicate and matches its declared type; for booleans, verify whether true or false expresses your conclusion.
 `;
-    SYSTEM_PROMPT = `${TOOLS_PROMPT}${GENERATION_GUIDANCE}`;
-    GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT = `
+    SYSTEM_PROMPT = `${TOOLS_PROMPT2}${GENERATION_GUIDANCE2}`;
+    GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT2 = PREVIOUS ? GENERATION_GUIDANCE_AT_NL_DEPTH_LIMIT : `
 
 For a large input, use eval to select the fields or subtree relevant to the question before printing it; read more only when needed.
-For a tree edit, deep-copy the input, change only the requested leaf at its existing path, preserve wrappers and siblings, then inspect that path. Once the path is known, verify that path directly; a recursive tree walker or an open-ended loop is unnecessary.
+For a tree edit, change only the requested leaf of the mutable copy at its existing path, preserve wrappers and siblings, then inspect that path.
 For exact numerical answers, identify the requested operands and their units in the source, compute with eval, and check the order of a ratio or difference against the question.
 Before returning, check that each value answers the requested predicate and matches its declared type; for booleans, verify whether true or false expresses your conclusion.
 `;
@@ -214006,8 +214230,8 @@ function recordingServices(services, emit3) {
             if (key !== void 0 && results.has(key)) {
               const earlier = results.get(key);
               if (earlier && typeof earlier.then === "function")
-                return Promise.resolve(earlier).then((resolved) => {
-                  emit3({
+                return Promise.resolve(earlier).then(async (resolved) => {
+                  await emit3({
                     phase: "completed",
                     service: label,
                     method: property,
@@ -214016,8 +214240,8 @@ function recordingServices(services, emit3) {
                     exact: { result: resolved, async: true }
                   });
                   return resolved;
-                }, (error) => {
-                  emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
+                }, async (error) => {
+                  await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
                   throw error;
                 });
               emit3({
@@ -214042,8 +214266,8 @@ function recordingServices(services, emit3) {
               }
               if (result && typeof result.then === "function")
                 return Promise.resolve(result).then(
-                  (resolved) => {
-                    emit3({
+                  async (resolved) => {
+                    await emit3({
                       phase: "completed",
                       service: label,
                       method: property,
@@ -214053,8 +214277,8 @@ function recordingServices(services, emit3) {
                     });
                     return resolved;
                   },
-                  (error) => {
-                    emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
+                  async (error) => {
+                    await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
                     throw error;
                   }
                 );
@@ -216520,15 +216744,30 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   }
   const savedHelpers = [];
   const transientHelpers = [];
-  for (const { statement, helper } of helperCandidates) {
+  const freeOf = new Map(helperCandidates.map(({ helper }) => {
     const found = persistentHelperFreeNames(helper.fn, helperChecker, file);
-    const free = { ...found, names: found.names.filter((name) => name && name !== helper.name) };
+    return [helper.name, { ...found, names: found.names.filter((name) => name && name !== helper.name) }];
+  }));
+  const persisting = new Set(helperCandidates.map(({ helper }) => helper.name));
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const name of [...persisting]) if (freeOf.get(name).names.some((free) => transientNames.has(free) && !persisting.has(free))) {
+      persisting.delete(name);
+      changed = true;
+    }
+  }
+  for (const { statement, helper } of helperCandidates) {
+    const free = freeOf.get(helper.name);
     const spanOfDeclaration = span(statement);
     const hidden = free.names.filter((name) => !knownHelperNames.has(name) && !bindings2.some((binding) => binding.name === name));
-    const ephemeral = free.names.filter((name) => transientNames.has(name));
+    const ephemeral = free.names.filter((name) => transientNames.has(name) && !persisting.has(name));
     const missingTypes = persistentHelperTypeNames(statement).filter((name) => !persistentTypeNames.has(name));
     if (ephemeral.length) {
-      const details = [ephemeral.length ? `it refers to eval-local function${ephemeral.length > 1 ? "s" : ""} ${ephemeral.join(", ")}` : ""].filter(Boolean).join(" and ");
+      const functions = ephemeral.filter((name) => freeOf.has(name)), values = ephemeral.filter((name) => !freeOf.has(name));
+      const details = [
+        functions.length ? `eval-local function${functions.length > 1 ? "s" : ""} ${functions.join(", ")}` : "",
+        values.length ? `eval-local value${values.length > 1 ? "s" : ""} ${values.join(", ")}` : ""
+      ].filter(Boolean).join(" and ").replace(/^/, "it refers to ");
       transientHelpers.push({ name: helper.name, reason: details });
       continue;
     }
@@ -219516,8 +219755,8 @@ function importedNativeArtifacts() {
   return { nativeStates: IMPORTED_NATIVE_STATES, nativeTensors: IMPORTED_NATIVE_TENSORS };
 }
 async function adoptImportedNativeArtifacts(store) {
-  const done = ADOPTED.get(store) ?? /* @__PURE__ */ new Set();
-  ADOPTED.set(store, done);
+  const done = ADOPTED2.get(store) ?? /* @__PURE__ */ new Set();
+  ADOPTED2.set(store, done);
   await importNativeArtifactBundle(store, IMPORTED_NATIVE_STATES, IMPORTED_NATIVE_TENSORS);
   for (const id3 of [...IMPORTED_NATIVE_STATES.keys(), ...IMPORTED_NATIVE_TENSORS.keys()]) done.add(id3);
 }
@@ -219755,7 +219994,7 @@ function fromBase64(text3) {
   for (let index = 0; index < binary.length; index++) out[index] = binary.charCodeAt(index);
   return out;
 }
-var NZ_FORMAT, NzFileError, isSoftFunctionSpec, IMPORTED_NATIVE_STATES, IMPORTED_NATIVE_TENSORS, ADOPTED;
+var NZ_FORMAT, NzFileError, isSoftFunctionSpec, IMPORTED_NATIVE_STATES, IMPORTED_NATIVE_TENSORS, ADOPTED2;
 var init_nz_file = __esm({
   "src/native/nz-file.ts"() {
     "use strict";
@@ -219778,7 +220017,7 @@ var init_nz_file = __esm({
     isSoftFunctionSpec = (value) => !!value && typeof value === "object" && value.kind === "soft-function";
     IMPORTED_NATIVE_STATES = /* @__PURE__ */ new Map();
     IMPORTED_NATIVE_TENSORS = /* @__PURE__ */ new Map();
-    ADOPTED = /* @__PURE__ */ new WeakMap();
+    ADOPTED2 = /* @__PURE__ */ new WeakMap();
   }
 });
 
@@ -220137,6 +220376,12 @@ function parseNatlang(path2, text3, inherited, files2) {
       `withhold lists tools this function's calls are not offered, from: ${WITHHOLDABLE_TOOLS.join(", ")}`,
       frontmatterLine(text3, "withhold")
     );
+  if (meta.protect !== void 0 && (!Array.isArray(meta.protect) || meta.protect.some((item) => typeof item !== "string" || !/^(?:\.\/)?[\w$.-]+(?:\/[\w$.-]+)*\/?$/.test(item) || item.split("/").some((part) => part === ".."))))
+    throw new NatlangSourceError(
+      path2,
+      "protect lists items of this function's folder by path from that folder, such as [checks/citations.ts]",
+      frontmatterLine(text3, "protect")
+    );
   if (meta.readout === "decision") {
     const env = new TypeEnv(Object.fromEntries(Object.entries(types3).map(([name2, text4]) => [name2, parseTypeCached(text4)])));
     if ((finiteValues(parseTypeCached(returns), env)?.length ?? 0) < 2)
@@ -220166,8 +220411,44 @@ function parseNatlang(path2, text3, inherited, files2) {
     ...typeof meta.model === "string" ? { model: meta.model } : {},
     ...Array.isArray(meta.uses) && meta.uses.length ? { uses: meta.uses } : {},
     ...Array.isArray(meta.withhold) && meta.withhold.length ? { withhold: [...new Set(meta.withhold)] } : {},
+    ...Array.isArray(meta.protect) && meta.protect.length ? { protect: [...new Set(meta.protect)] } : {},
     ...budget ? { budget } : {}
   };
+}
+function protectedSources(source2, entries) {
+  if (!entries?.length) return [];
+  const companion = source2.replace(/\.nl$/, "");
+  return entries.map((entry) => `${companion}/${entry.replace(/^\.\//, "").replace(/\/+$/, "")}`.replace(/\.(?:nl|ts|js|mjs|mts)$/, ""));
+}
+function isProtectedSource(source2, protectedList) {
+  const stem = source2.replace(/\.(?:nl|ts|js|mjs|mts)$/, "");
+  return protectedList.some((entry) => stem === entry || stem.startsWith(`${entry}/`));
+}
+function treeProtectedSources(codebase) {
+  const found = [];
+  const visit = (item) => {
+    if (item.kind === "natlang") found.push(...protectedSources(item.source, item.protect));
+    for (const child of Object.values(item.codebase)) visit(child);
+  };
+  for (const item of Object.values(codebase)) visit(item);
+  return found;
+}
+function checkProtect(record3, path2) {
+  if (!record3.protect?.length) return;
+  const sources = [];
+  const visit = (item) => {
+    sources.push(item.source);
+    for (const child of Object.values(item.codebase)) visit(child);
+  };
+  for (const item of Object.values(record3.codebase)) visit(item);
+  record3.protect.forEach((entry) => {
+    if (!sources.some((source2) => isProtectedSource(source2, [protectedSources(record3.source, [entry])[0]])))
+      throw new NatlangSourceError(
+        path2,
+        `protect names ${JSON.stringify(entry)}, which is not an item of ${record3.name}/; list items by path from that folder, such as [checks/citations.ts]`,
+        frontmatterLine(record3.text, "protect")
+      );
+  });
 }
 function packageRoot(dir, files2) {
   for (let current = dir; ; current = files2.dirname(current)) {
@@ -220408,6 +220689,7 @@ function loadCallableFolder(dir, files2, inherited = {}) {
     }
     for (const [name, item] of Object.entries(items))
       if (item.kind === "natlang" && item.uses) attachUses(item, files2.join(dir, `${name}.nl`), files2);
+    for (const item of Object.values(items)) if (item.kind === "natlang") checkProtect(item, item.source);
     if (files2 !== PATH_ONLY) registerFileRecords(items);
     return items;
   } finally {
@@ -220468,6 +220750,7 @@ function loadNamedFunction(path2, files2) {
   const record3 = parseNatlang(path2, files2.read(path2), packageTypes(dir, files2), files2);
   const companion = files2.join(dir, record3.name);
   record3.codebase = loadCallableFolder(companion, files2, record3.types);
+  checkProtect(record3, path2);
   if (files2.isDirectory(companion)) {
     const data = folderNzData(companion, files2, record3.codebase);
     if (Object.keys(data).length) record3.contextData = data;
@@ -220534,7 +220817,7 @@ var init_loader = __esm({
     nodeKey = (record3) => `${record3.kind}:${record3.id}@${record3.revision}`;
     IDENTIFIER4 = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
     FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
-    NL_KEYS = /* @__PURE__ */ new Set(["description", "args", "returns", "generic", "types", "kind", "readout", "model", "uses", "withhold", "budget"]);
+    NL_KEYS = /* @__PURE__ */ new Set(["description", "args", "returns", "generic", "types", "kind", "readout", "model", "uses", "withhold", "protect", "budget"]);
     CALL_BUDGET_KEYS = ["maxTurns", "turnTokens", "maxTokens", "contextTokens"];
     WITHHOLDABLE_TOOLS = [
       "edit_code",
@@ -221799,8 +222082,8 @@ var init_program_view = __esm({
         return text3 && this.program?.id ? nativeProgramGuidance(text3, this.program.id) : void 0;
       }
       source(path2, fallback) {
-        const revision = this.revisions.get(path2);
-        if (revision && revision.kind !== "namespace") return revision.text;
+        const revision2 = this.revisions.get(path2);
+        if (revision2 && revision2.kind !== "namespace") return revision2.text;
         let source2 = this.program?.sources[path2] ?? fallback;
         const edits = [];
         for (const descriptor2 of this.program?.components ?? []) {
@@ -221818,8 +222101,8 @@ var init_program_view = __esm({
       }
       record(record3) {
         if (record3.kind !== "namespace" && record3.programId && record3.programId !== this.program?.id) return record3;
-        const revision = this.revisions.get(record3.source);
-        if (revision) return revision;
+        const revision2 = this.revisions.get(record3.source);
+        if (revision2) return revision2;
         if (!this.binding && !this.revision) return record3;
         if (this.originals.has(record3)) return record3;
         const cached = this.cache.get(record3);
@@ -223043,14 +223326,18 @@ var init_runtime = __esm({
       }
       /**
        * The judge and the escalation judge for a call running on `model`: the configured `refinements.judge` model when
-       * there is one, else the call's own. Undefined when the driver cannot score replies.
+       * there is one, else the call's own. A task driven by `agent` with no model judges on the agent's driver
+       * (`agentDriver`): its scorer, else `holds` through the agent. Undefined when there is neither.
        */
       refinementJudges(model, frame) {
         const settings = this.runtime.options.refinements;
         const judgeOf = (name, config) => {
-          if (!config) return void 0;
-          const id3 = config.id ?? config.driver.model ?? (config.driver.name || "model");
-          const scorer = this.modelBudget.maxRequests === void 0 && this.modelBudget.maxTokens === void 0 ? decisionScorer(config.driver) : void 0;
+          const agentDriver = this.runtime.options.agent ? this.runtime.options.agentDriver : void 0;
+          const driver = config?.driver ?? agentDriver;
+          if (!driver) return void 0;
+          const driverModel = typeof driver.model === "string" && driver.model ? driver.model : void 0;
+          const id3 = config?.id ?? driverModel ?? (driver.name || (config ? "model" : "agent"));
+          const scorer = this.modelBudget.maxRequests === void 0 && this.modelBudget.maxTokens === void 0 ? decisionScorer(driver) : void 0;
           if (scorer) return decisionJudge(scorer, { id: id3 });
           return frame ? callJudge(async (value, predicate, signal) => {
             const { invokeDefinition: invokeDefinition2 } = await Promise.resolve().then(() => (init_kernel(), kernel_exports));
@@ -223326,6 +223613,7 @@ var surface_exports = {};
 __export(surface_exports, {
   Deopt: () => Deopt,
   assume: () => assume,
+  decide: () => decide,
   iterateOn: () => iterateOn2,
   nl: () => nl,
   pluggable: () => pluggable,
@@ -223334,6 +223622,9 @@ __export(surface_exports, {
 });
 function iterateOn2(step, initial, ...args) {
   return iterateOn(step, initial, ...args);
+}
+async function decide(fn, ...args) {
+  return decideInFrame(resolveFrame(), fn, args);
 }
 function untrusted(value, source2 = "outside the program") {
   hostUntrusted.markAll(value, source2);
@@ -223626,7 +223917,8 @@ function moduleInstance(platform, record3, level) {
   const require2 = (specifier) => {
     if (specifier === "natlang:services") return servicesModule;
     if (hasBuiltinModule(platform, specifier)) return builtinModule(platform, specifier);
-    if (specifier === NEUTRAL_RUNTIME_SPECIFIER || /^@natlang\/(node|browser|core)$/.test(specifier)) return { __esModule: true, ...surface_exports };
+    if (specifier === NEUTRAL_RUNTIME_SPECIFIER || /^@natlang\/(node|browser|core)$/.test(specifier))
+      return { __esModule: true, ...surface_exports, Context: globalThis[/* @__PURE__ */ Symbol.for("natlang.context-class")] };
     if (specifier.startsWith("./")) {
       const parts = specifier.slice(2).replace(/\.(ts|js|nl)$/, "").split("/");
       let scope = level, parent = level, item;
@@ -225497,7 +225789,7 @@ function neuraleseServerModelTurn(options) {
       throw Object.assign(new Error("training-guidance-unavailable: this model server does not render training guidance; collect this run through the Python native engine or the SGLang actor"), { code: "training-guidance-unavailable" });
     return item;
   };
-  const decide = async (request2, signal) => {
+  const decide2 = async (request2, signal) => {
     const scope = scopeOf(request2), item = await guidanceServed(privileged(await prepare(request2.messages, request2.options, request2.adapters, scope, request2.native_recording === true), request2));
     return finish(item, scope, await issue(item, signal));
   };
@@ -225532,7 +225824,7 @@ function neuraleseServerModelTurn(options) {
     }));
     return results;
   };
-  const coalesced = coalescingScorer(Object.assign((...args) => decide(...args), { scoreMany }));
+  const coalesced = coalescingScorer(Object.assign((...args) => decide2(...args), { scoreMany }));
   const scoped2 = Object.assign((request2, signal) => {
     scopes.set(request2, here());
     return coalesced(request2, signal);
@@ -226273,18 +226565,25 @@ function rebind(fn, context) {
   const captures = { ...ownCaptures, ...dataCells(context, new Set(Object.keys(ownCaptures))) };
   const render = meta.instructions;
   const skillFiles = skillFilesOf(context.data);
-  const rebound = makeCallable({ ...meta, definition, captures, invoke: (args, frame, at) => invokeDefinition(
-    frame,
+  const rebindInline = meta.rebindInline;
+  const rebound = makeCallable({
+    ...meta,
     definition,
-    args,
-    {
-      ...meta.options ?? {},
-      captures,
-      ...skillFiles ? { skillFiles } : {},
-      ...render !== void 0 ? { instructions: typeof render === "function" ? render(frame) : render } : {},
-      ...at ? { at } : {}
-    }
-  ) });
+    captures,
+    invoke: (args, frame, at) => invokeDefinition(
+      frame,
+      definition,
+      args,
+      {
+        ...meta.options ?? {},
+        captures,
+        ...skillFiles ? { skillFiles } : {},
+        ...render !== void 0 ? { instructions: typeof render === "function" ? render(frame) : render } : {},
+        ...at ? { at } : {}
+      }
+    ),
+    ...rebindInline ? { rebindInline: (...args) => rebind(rebindInline(...args), context) } : {}
+  });
   attachChildren(rebound, context.items, meta.bound);
   if (soft) SOFT.set(rebound, soft);
   CONTEXT_DATA.set(rebound, context.data);
@@ -226543,6 +226842,7 @@ var init_contexts = __esm({
       return { captures: dataEntryCells(entries), skillFiles: skillFilesOf(entries) };
     });
     setRebinder((fn, context) => rebind(fn, context));
+    globalThis[/* @__PURE__ */ Symbol.for("natlang.context-class")] = Context;
   }
 });
 
@@ -227225,26 +227525,6 @@ var init_staged_result = __esm({
   }
 });
 
-// src/runtime/model-facing.ts
-function enabled() {
-  const raw = (typeof process === "undefined" ? "" : process.env.NATLANG_MODEL_FACING ?? "").trim();
-  if (!raw) return new Set(ADOPTED2);
-  if (raw === "none") return /* @__PURE__ */ new Set();
-  if (raw === "combined") return new Set(MODEL_FACING_VARIANTS);
-  return new Set(raw.split(",").map((name) => name.trim()).filter(Boolean));
-}
-var MODEL_FACING_VARIANTS, ADOPTED2, active, modelFacing;
-var init_model_facing = __esm({
-  "src/runtime/model-facing.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    MODEL_FACING_VARIANTS = ["effect-receipt", "learned-compaction", "compact-callable-scope"];
-    ADOPTED2 = ["effect-receipt", "compact-callable-scope"];
-    active = enabled();
-    modelFacing = (name) => active.has(name);
-  }
-});
-
 // src/native/runtime.ts
 function typeAliasesFromEnv(env) {
   const chain = [];
@@ -227876,7 +228156,7 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript19, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, PROTECT_LIST_ERROR, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
@@ -228043,6 +228323,9 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         delete container[key];
       }
     });
+    protectedEditError = (source2) => `${source2} decides whether this call succeeded, so it cannot be edited here; fix the code that produces the value it rejects.`;
+    PROTECTED_TYPES_ERROR = "types.ts declares the types this call's result is checked against, so it cannot be edited here; fix the code that produces the value they reject.";
+    PROTECT_LIST_ERROR = (source2) => `The protect: list of ${source2} names what judges its calls, so an edit cannot change it; fix the code that produces the value they reject.`;
     callableAliases = /* @__PURE__ */ new WeakMap();
     DEFAULT_RUN_LABEL = "native-run";
     runSeedKey = (options) => options.seedId ?? options.runLabel ?? options.runId;
@@ -228111,12 +228394,12 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         this.hooks = options.hooks;
         const services = options.services ?? {};
         const observe = options.observeEffect;
-        this.services = isRecording(services) ? services : recordingServices(services, ({ exact, ...event }) => (observe?.({ ...event, exact }), event.phase === "requested") ? this.trace.emit("effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event }) : graphNode(
-          this.trace,
-          "effect",
-          { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event },
-          [{ node: invocationNodeId(this.options.runId), port: "caller" }]
-        ));
+        this.services = isRecording(services) ? services : recordingServices(services, ({ exact, ...event }) => {
+          const persisted = observe?.({ ...event, exact });
+          if (event.phase === "requested") this.trace.emit("effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event });
+          else graphNode(this.trace, "effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(this.options.runId), port: "caller" }]);
+          return persisted;
+        });
         this.declarations = options.declarations ?? {};
         this.neuralese = options.neuralese;
         this.serviceScopes = options.serviceScopes ?? {};
@@ -228276,7 +228559,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
             }
           })
         ];
-        const definitionId = String(manifest.definition_id ?? node.functionName), revision = String(manifest.source_revision ?? "");
+        const definitionId = String(manifest.definition_id ?? node.functionName), revision2 = String(manifest.source_revision ?? "");
         const context = String(manifest.context_id ?? FILE_CONTEXT), signature = formatType(node.type);
         const argumentBindingSha = hexDigest(stableBinding(dump(node.args, true)));
         const parentOccurrence = manifest.parent_occurrence && typeof manifest.parent_occurrence === "object" ? manifest.parent_occurrence : void 0;
@@ -228284,7 +228567,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         const occurrenceBase = {
           schema: "natlang.execution-occurrence/1",
           definition_id: definitionId,
-          revision,
+          revision: revision2,
           context,
           signature,
           parent_occurrence_sha256: typeof parentOccurrence?.occurrence_sha256 === "string" ? parentOccurrence.occurrence_sha256 : null,
@@ -228295,7 +228578,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
         return {
           node: invocationNodeId(callId),
           inputs,
-          definition: { id: definitionId, revision },
+          definition: { id: definitionId, revision: revision2 },
           native_occurrence: occurrence,
           context,
           signature,
@@ -228536,6 +228819,8 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
       scopeLocalMutability = /* @__PURE__ */ new Map();
       explainedNaturalFunctions = /* @__PURE__ */ new Set();
       originalSources = /* @__PURE__ */ new Map();
+      /** Sources this call cannot edit (protect: lists), fixed at its first edit (functionTool). */
+      protectedList;
       skillReads = /* @__PURE__ */ new Map();
       callableCache;
       /** Output cut off in this call's tool results, readable with read_page. */
@@ -229285,6 +229570,8 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           if (name === "edit_code") throw new Reject([{ path: requested, code: "external", expected: `a function of this program; ${requested} belongs to an imported package, which can be read but not changed` }]);
           return { kind: "ok", text: this.show(packaged), value: packaged };
         }
+        if (!found && name === "edit_code" && /^(?:\.\/)?(?:[\w$-]+\/)*types(?:\.ts)?$/.test(requested))
+          throw new Reject([{ path: requested, code: "protected", text: PROTECTED_TYPES_ERROR }]);
         if (!found && name === "edit_code" && !Object.keys(this.lam.codebase).length) throw new Reject([{
           path: requested,
           code: "no-own-code",
@@ -229369,12 +229656,17 @@ ${paths.join("\n")}`;
         }
         if (this.codeEditsDenied())
           throw new Reject([{ path: requested, code: "bad-action", expected: "code edits are denied by this evaluation policy" }]);
+        this.protectedList ??= [...this.lam.protectedSources ?? [], ...treeProtectedSources(this.lam.codebase)];
+        if (isProtectedSource(record3.source, this.protectedList))
+          throw new Reject([{ path: requested, code: "protected", text: protectedEditError(record3.source) }]);
         if (args.expected_revision !== void 0 && args.expected_revision !== expectedRevision)
           throw new Reject([{ path: requested, code: "bad-action", expected: "current source revision; reread after a concurrent edit" }]);
         const text3 = editTextContent(record3.text, String(args.find ?? ""), String(args.replace_with ?? ""), args.fuzzy === true);
         const updated = record3.kind === "natlang" ? parseNatlang(record3.source, text3, record3.types, PATH_ONLY) : parseModule(record3.source, text3, record3.types, PATH_ONLY);
         updated.programId = record3.programId;
         updated.codebase = record3.codebase;
+        if (record3.kind === "natlang" && updated.kind === "natlang" && JSON.stringify(record3.protect ?? []) !== JSON.stringify(updated.protect ?? []))
+          throw new Reject([{ path: requested, code: "protected", text: PROTECT_LIST_ERROR(record3.source) }]);
         let inlineRevision;
         if (updated.kind === "module" && record3.kind === "module") {
           let siblings = this.lam.codebase;
@@ -229399,7 +229691,7 @@ ${paths.join("\n")}`;
         view?.commit(updated, expectedRevision, inlineRevision);
         if (!this.originalSources.has(record3.source)) this.originalSources.set(record3.source, record3.text);
         this.lam.codebase = replaceCodebaseItem(this.lam.codebase, found.path, updated);
-        const revision = {
+        const revision2 = {
           function: found.path.join("."),
           source: record3.source,
           changed: true,
@@ -229408,7 +229700,12 @@ ${paths.join("\n")}`;
           effectiveHash: hexDigest(record3.text),
           patchedHash: hexDigest(updated.text)
         };
-        return { kind: "ok", text: JSON.stringify(revision), value: revision };
+        this.runtime.trace.emit("code_revision", { ...revision2, patch: {
+          find: String(args.find ?? ""),
+          replace_with: String(args.replace_with ?? ""),
+          ...args.fuzzy === true ? { fuzzy: true } : {}
+        }, text: updated.text });
+        return { kind: "ok", text: JSON.stringify(revision2), value: revision2 };
       }
       /** File tools for directory reducers, over the private folder copy. */
       async fileTool(name, args) {
@@ -229622,10 +229919,10 @@ ${paths.join("\n")}`;
         const hooks = this.runtime.hooks;
         const boundValues = Object.fromEntries([...Object.entries(captureRead), ...inputNames.map((name) => [name, this.lam.args[name]])].filter((entry) => isPlainJson(entry[1])));
         const ownText = this.lam.body + "\n" + JSON.stringify(this.lam.args ?? {}) + "\n" + JSON.stringify(this.lam.let ?? {});
-        const copied = PROMPT_EXAMPLE_TEXTS.find((text3) => code.includes(text3) && !ownText.includes(text3));
+        const copied = PROMPT_EXAMPLE_TEXTS2.find((text3) => code.includes(text3) && !ownText.includes(text3));
         if (copied) {
           const own = inputNames.length ? `this call's own instructions and inputs (${inputNames.join(", ")})` : "this call's own instructions";
-          const text3 = `prompt-example: ${JSON.stringify(copied)} comes from the example in your system prompt, not from this call; work from ${own} instead.`;
+          const text3 = `prompt-example: ${JSON.stringify(copied)} comes from ${PROMPT_EXAMPLE_SOURCE}, not from this call; work from ${own} instead.`;
           return { kind: "rejected", text: text3 + this.captureScopeFailure("compile", code, scopeBefore, text3), codes: ["prompt-example"] };
         }
         const compiled2 = compileScopeSnippet(code, {
@@ -230269,20 +230566,20 @@ function predicatePieces() {
 }
 function promptPieces() {
   const pieces = [
-    { id: "interpreter", text: TOOLS_PROMPT, scope: "generic" },
-    { id: "interpreter/depth-limit", text: promptAtNlDepthLimit(TOOLS_PROMPT), scope: "generic" },
-    { id: "depth-limit-notice", text: NL_DEPTH_LIMIT_NOTICE, scope: "program" },
-    { id: "directory-reducer/declaration", text: DIRECTORY_REDUCER_DECLARATION, scope: "program" },
-    { id: "neuralese/string-boundaries", text: SEMANTIC_RESULT_PROMPT.split("\n\n")[1], scope: "program" },
+    { id: "interpreter", text: TOOLS_PROMPT2, scope: "generic" },
+    { id: "interpreter/depth-limit", text: promptAtNlDepthLimit(TOOLS_PROMPT2), scope: "generic" },
+    { id: "depth-limit-notice", text: NL_DEPTH_LIMIT_NOTICE2, scope: "program" },
+    { id: "directory-reducer/declaration", text: DIRECTORY_REDUCER_DECLARATION2, scope: "program" },
+    { id: "neuralese/string-boundaries", text: SEMANTIC_RESULT_PROMPT2.split("\n\n")[1], scope: "program" },
     { id: "function-tools/edit-capability", text: FUNCTION_TOOLS_PROMPT.split("\n")[1], scope: "program" },
     { id: "function-tools", text: FUNCTION_TOOLS_PROMPT, scope: "generic" },
     ...FILE_TOOL_SURFACES.flatMap((surface) => [
-      { id: `directory-reducer/${surface}`, text: directoryReducerPrompt(surface, true), scope: "generic" },
-      { id: `directory-reducer/${surface}/depth-limit`, text: directoryReducerPrompt(surface, false), scope: "generic" },
-      { id: `directory-reducer/${surface}/read-only`, text: directoryReducerPrompt(surface, true, false), scope: "generic" },
-      { id: `directory-reducer/${surface}/read-only/depth-limit`, text: directoryReducerPrompt(surface, false, false), scope: "generic" }
+      { id: `directory-reducer/${surface}`, text: directoryReducerPrompt2(surface, true), scope: "generic" },
+      { id: `directory-reducer/${surface}/depth-limit`, text: directoryReducerPrompt2(surface, false), scope: "generic" },
+      { id: `directory-reducer/${surface}/read-only`, text: directoryReducerPrompt2(surface, true, false), scope: "generic" },
+      { id: `directory-reducer/${surface}/read-only/depth-limit`, text: directoryReducerPrompt2(surface, false, false), scope: "generic" }
     ]),
-    { id: "generation-guidance", text: GENERATION_GUIDANCE, scope: "generic" },
+    { id: "generation-guidance", text: GENERATION_GUIDANCE2, scope: "generic" },
     { id: "approach", text: APPROACH_PROMPT, scope: "generic" },
     { id: "decision", text: DECISION_SYSTEM_PROMPT, scope: "generic" },
     ...predicatePieces(),
@@ -230400,10 +230697,14 @@ function immediateEmptyEos(response) {
 function callNotes(call) {
   const runtime = [
     call.ownCode ? FUNCTION_TOOLS_PROMPT : "",
-    call.folder ? directoryReducerPrompt(call.folder.fileTools, call.allowAdHoc, call.folder.writable, call.folder.withheld) : "",
-    call.allowAdHoc ? "" : NL_DEPTH_LIMIT_NOTICE
+    call.folder ? directoryReducerPrompt2(call.folder.fileTools, call.allowAdHoc, call.folder.writable, call.folder.withheld) : "",
+    call.allowAdHoc ? "" : NL_DEPTH_LIMIT_NOTICE2
   ].map((text3) => text3.trim()).filter(Boolean).join("\n\n");
   return [call.guidance?.trim() ?? "", renderSystemPrompt(runtime, call.rendering)].filter(Boolean).join("\n\n");
+}
+function orderedTools(tools) {
+  if (promptRevision() === "2026-11-22") return tools;
+  return tools.map((tool2, index) => ({ tool: tool2, index })).sort((a, b) => TOOL_RANK(a.tool.function.name) - TOOL_RANK(b.tool.function.name) || a.index - b.index).map((item) => item.tool);
 }
 function modelTurnsSoFar(messages) {
   return messages.filter((message2) => message2.role === "assistant" && !(message2.tool_calls ?? []).some((call) => String(call.id).startsWith("scope_"))).length;
@@ -230702,7 +231003,7 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     state.depth--;
   }
 }
-var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, STAGED_ANSWER, NativeToolAgent;
+var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, STABLE_TOOLS, TOOL_RANK, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, isAdapterValue, capturedValue, isPlainRecord2, STAGED_ANSWER, NativeToolAgent;
 var init_agent = __esm({
   "src/native/agent.ts"() {
     "use strict";
@@ -230755,6 +231056,11 @@ ${notes}` : opening;
     OPENING_THOUGHT = "I'll start by reading this call's arguments into the eval scope.";
     FOLDER_THOUGHT = "Next I'll list the files in this call's folder.";
     DIFF_CODE_DESCRIPTION = "Show the changes made to functions of the program's codebase in this call.";
+    STABLE_TOOLS = ["eval", "read_page", "read_code", "compact_history"];
+    TOOL_RANK = (name) => {
+      const stable = STABLE_TOOLS.indexOf(name);
+      return stable >= 0 ? stable : name === "escalate" ? 10 : name === "edit_code" || name === "diff_code" ? 11 : name === "return_result" ? 13 : 12;
+    };
     tool = (name, description, properties, required) => ({
       type: "function",
       function: { name, description, parameters: {
@@ -231769,11 +232075,11 @@ ${notes}` : opening;
               ["command", "path"]
             )
           ];
-          const offered = scopedFileToolNames(this.options.fileTools, writableFolder).filter((name) => name !== "delegate" || canGenerateNl(session.runtime.frame));
+          const offered = scopedFileToolNames2(this.options.fileTools, writableFolder).filter((name) => name !== "delegate" || canGenerateNl(session.runtime.frame));
           tools.splice(2, 0, ...fileTools.filter((item) => offered.includes(item.function.name)).sort((a, b) => offered.indexOf(a.function.name) - offered.indexOf(b.function.name)));
         }
         const withheld = session.lam.withheldTools;
-        return withheld?.length ? tools.filter((item) => !withheld.includes(item.function.name)) : tools;
+        return orderedTools(withheld?.length ? tools.filter((item) => !withheld.includes(item.function.name)) : tools);
       }
       tools(session) {
         const tools = this.toolsScope(session);
@@ -232064,12 +232370,12 @@ ${notes}` : opening;
         const values = finiteValues(lam.type.returns, session.env);
         const callId = session.runtime.currentCallId ?? null;
         const bounded = this.options.modelBudget?.maxRequests !== void 0 || this.options.modelBudget?.maxTokens !== void 0;
-        const decide = bounded ? void 0 : decisionScorer(this.driver);
-        if (!values || values.length < 2 || !decide && this.options.decisionGeneration === "tool-loop") {
+        const decide2 = bounded ? void 0 : decisionScorer(this.driver);
+        if (!values || values.length < 2 || !decide2 && this.options.decisionGeneration === "tool-loop") {
           if (lam.readout === "decision") session.runtime.trace.emit("decision_readout", {
             call_id: callId,
             phase: "unavailable",
-            reason: decide ? "result type is not finite" : "model driver cannot score replies"
+            reason: decide2 ? "result type is not finite" : "model driver cannot score replies"
           });
           return false;
         }
@@ -232084,7 +232390,7 @@ ${notes}` : opening;
           throw new NeuraleseUnsupportedError("this model backend cannot carry Neuralese blocks");
         const started = performance.now();
         const generate = () => this.generatedDecision(session, encoded.messages, values, capturedGuidance, guidancePolicy);
-        if (!decide) return generate();
+        if (!decide2) return generate();
         let scores;
         try {
           const adapters = adapterCells(lam);
@@ -232092,7 +232398,7 @@ ${notes}` : opening;
             throw new NeuraleseUnsupportedError("this model backend cannot apply weight adapters");
           const firstValues = encoded.messages.findIndex((message2) => message2.role === "tool");
           const cacheMessages = firstValues >= 0 ? firstValues : encoded.messages.length - 1;
-          scores = await runInFrame(session.runtime.frame, () => decide({
+          scores = await runInFrame(session.runtime.frame, () => decide2({
             messages: encoded.messages,
             options: replies,
             cache_messages: cacheMessages,
@@ -233796,6 +234102,19 @@ function excluded(patterns, definition, argument) {
     return pattern2 === `${definition.name}.${argument}` || definition.source !== null && pattern2 === `${definition.source}:${argument}`;
   });
 }
+function codeRevisions(events, ref) {
+  const revisions2 = events.filter((event) => event.kind === "code_revision" && typeof event.text === "string").map((event) => ({
+    function: String(event.function),
+    source: String(event.source),
+    revision: Number(event.revision),
+    originalHash: String(event.originalHash),
+    effectiveHash: String(event.effectiveHash),
+    patchedHash: String(event.patchedHash),
+    patch: event.patch,
+    after: ref(event.text)
+  }));
+  return revisions2.length ? { code_revisions: revisions2 } : {};
+}
 var reported, CallCapture;
 var init_recorder = __esm({
   "src/calls/recorder.ts"() {
@@ -233856,6 +234175,8 @@ var init_recorder = __esm({
             startedAt: this.startedAt,
             auditOf: this.auditOf
           });
+          this.announced = true;
+          this.backgroundCheckpoint();
         } catch (error) {
           reportStoreFailure(this.store, error);
         }
@@ -233870,8 +234191,58 @@ var init_recorder = __esm({
         }
       }
       watcher;
+      checkpointOrdinal = 0;
+      announced = false;
+      eventSource;
+      /** The last exact observation, explicitly not a completed record. */
+      checkpoint() {
+        if (!this.announced || this.base.checkpoints === false || !this.store.checkpoint) return;
+        const state = {
+          version: "natlang.call-checkpoint/1",
+          ordinal: this.checkpointOrdinal++,
+          call_id: this.base.callId,
+          parent_call_id: this.base.parentCallId,
+          parent_action_index: this.base.parentActionIndex,
+          task_id: this.base.taskId,
+          program_id: this.base.programId,
+          program_root: this.base.programRoot,
+          definition: this.base.definition,
+          executor: { ...this.executor },
+          started_at: this.startedAt,
+          inputs: { ...this.inputs },
+          captures: { ...this.captures },
+          effects: this.completedEffects(),
+          capture_writes: [...this.captureWrites],
+          pending_effects: this.pending.map((row) => ({ ...row }))
+        };
+        const events = this.eventSource?.();
+        try {
+          const persisted = this.store.checkpoint(
+            this.base.callId,
+            state,
+            new Map(this.blobs),
+            events?.length ? events.map((event) => JSON.stringify(event)).join("\n") + "\n" : void 0
+          );
+          if (persisted) return persisted.catch((error) => {
+            if (this.store.checkpointRequired) throw error;
+            reportStoreFailure(this.store, error);
+          });
+        } catch (error) {
+          if (this.store.checkpointRequired) throw error;
+          reportStoreFailure(this.store, error);
+        }
+      }
+      backgroundCheckpoint() {
+        try {
+          const pending = this.checkpoint();
+          if (pending) void pending.catch((error) => reportStoreFailure(this.store, error));
+        } catch (error) {
+          reportStoreFailure(this.store, error);
+        }
+      }
       /** While the call runs, write its trace events so far every `intervalMs`, so a long call can be inspected live. */
       watch(events, intervalMs = 3e4) {
+        this.eventSource = events;
         if (!this.store.progress) return;
         let written = 0;
         this.watcher = setInterval(() => {
@@ -233903,6 +234274,7 @@ var init_recorder = __esm({
         } catch {
           this.features = {};
         }
+        this.backgroundCheckpoint();
       }
       /**
        * A directory reducer's folder as it was when the call started: each file's text by hash, so a replay can rebuild it.
@@ -233944,6 +234316,7 @@ var init_recorder = __esm({
       effect(event, by2 = "agent") {
         if (event.phase === "requested") {
           this.pending.push({ service: event.service, method: event.method, args: this.ref(event.exact?.args ?? []), by: by2, order: this.order++, seq: event.seq, graph_order: event.graph_order });
+          this.backgroundCheckpoint();
           return;
         }
         const index = event.seq !== void 0 ? this.pending.findIndex((item) => item.seq === event.seq) : this.pending.findIndex((item) => item.service === event.service && item.method === event.method);
@@ -233954,6 +234327,8 @@ var init_recorder = __esm({
           ...event.phase === "completed" ? { result: this.ref(event.exact?.result) } : { error: event.error ?? "failed" },
           ...event.exact?.async !== void 0 ? { async: event.exact.async } : {}
         });
+        if (event.exact?.async) return this.checkpoint();
+        this.backgroundCheckpoint();
       }
       /** Effects that completed so far, in the order they started. */
       completedEffects(by2) {
@@ -234004,6 +234379,7 @@ var init_recorder = __esm({
             } } : {},
             effects,
             folder: this.folder,
+            ...result.outcome === "done" ? codeRevisions(events, (text3) => this.ref(text3)) : {},
             approach: { evals, hash: this.executor.kind === "agent" && result.outcome === "done" ? approachHash(actions.filter((action) => action.ok).map((action) => action.code), this.hostInputs) : null },
             cost: {
               model_requests: requests.length,
@@ -235207,6 +235583,7 @@ function definitionNode(definition, inputs, options = {}) {
   node.hostClasses = options.classes;
   if (definition.readout) node.readout = definition.readout;
   if (definition.withhold?.length) node.withheldTools = [...definition.withhold];
+  if (definition.protect?.length && definition.source) node.protectedSources = protectedSources(definition.source, definition.protect);
   const env = new TypeEnv(node.types);
   env.classes = options.classes;
   env.dialects = options.dialects;
@@ -235380,6 +235757,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       types: record3.types,
       codebase: record3.codebase,
       withhold: record3.withhold,
+      protect: record3.protect,
       budget: record3.budget
     };
   } else if (replacement?.kind === "lambda.instructions" && options.instructions === void 0)
@@ -235622,12 +236000,12 @@ async function runDefinitionBody(frame, definition, positional, options, transac
   let runtime;
   const services = recordingServices(checkedServices(task, frame, task.services, model, callId, (kind, data) => {
     runtime?.trace.emit(kind, data);
-  }, frame.signal ?? task.signal), ({ exact, ...event }) => (capture?.effect({ ...event, exact, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "agent"), event.phase === "requested" ? runtime?.trace.emit("effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event }) : graphNode(
-    runtime?.trace,
-    "effect",
-    { call_id: callId, capability: `${event.service}.${event.method}`, ...event },
-    [{ node: invocationNodeId(callId), port: "caller" }]
-  )));
+  }, frame.signal ?? task.signal), ({ exact, ...event }) => {
+    const captured = { ...event, exact, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} };
+    if (event.phase === "requested") runtime?.trace.emit("effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event });
+    else graphNode(runtime?.trace, "effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(callId), port: "caller" }]);
+    return capture?.effect(captured, "agent");
+  });
   const addendum = [frame.systemAddendum, attempt?.guidance].filter(Boolean).join("\n\n") || void 0;
   const nativeReader = !!(task.runtime.options.neuralese?.nativeStateConsumer || task.runtime.options.neuralese?.nativeStateConsumerForCall);
   const guidanceBound = !!owner && programGuidanceProgram(task.nativeProgramGuidance) === owner;
@@ -235904,6 +236282,7 @@ function openCapture(store, task, frame, callId, definition, options, inputs, fo
     const parentTrace = traceFor(frame.parentCallId);
     const view = task.programView;
     const capture = new CallCapture(store, settings, {
+      checkpoints: task.runtime.options.recording?.checkpoints,
       callId,
       parentCallId: frame.parentCallId ?? null,
       parentActionIndex: parentTrace ? parentTrace.events.filter((event) => event.kind === "action").length : null,
@@ -236075,6 +236454,7 @@ var init_kernel = __esm({
     init_context();
     init_runtime();
     init_hooks();
+    init_loader();
     init_fusion();
     init_graph();
     init_recorder();
@@ -236242,6 +236622,7 @@ function natlangDefinition(record3) {
     ...record3.readout ? { readout: record3.readout } : {},
     ...record3.model ? { model: record3.model } : {},
     ...record3.withhold ? { withhold: record3.withhold } : {},
+    ...record3.protect ? { protect: record3.protect } : {},
     ...record3.budget ? { budget: record3.budget } : {},
     description: record3.description,
     source: record3.source,
@@ -237694,10 +238075,10 @@ var init_scoped_fs = __esm({
       async proposeAt(path2, reducer, args) {
         this.checkWrite();
         currentFrame()?.task.runtime.options.onFolderProposal?.();
-        const revision = this.revision(), base = this.snapshot(path2), draft = base.branch();
+        const revision2 = this.revision(), base = this.snapshot(path2), draft = base.branch();
         const value = await draft.apply(reducer, ...args);
-        const proposal = new FolderProposal(draft.snapshot(), value, revision, draft.diffSync());
-        proposals.set(proposal, { parent: this, path: path2, revision, base: base.digest });
+        const proposal = new FolderProposal(draft.snapshot(), value, revision2, draft.diffSync());
+        proposals.set(proposal, { parent: this, path: path2, revision: revision2, base: base.digest });
         return proposal;
       }
       async acceptAt(path2, proposal) {
@@ -237718,10 +238099,10 @@ var init_scoped_fs = __esm({
         this.checkWrite();
         const authority = snapshots.get(snapshot3);
         if (!authority || authority.lineage !== this.lineage || authority.scope !== this.join(this.scope, path2)) throw new FolderConflictError("foreign snapshot");
-        const revision = this.revision(), base = this.snapshot(path2).digest;
+        const revision2 = this.revision(), base = this.snapshot(path2).digest;
         const release = await this.writerLock.acquire(true, path2);
         try {
-          if (this.revision() !== revision || this.snapshot(path2).digest !== base) throw new FolderConflictError("stale selection");
+          if (this.revision() !== revision2 || this.snapshot(path2).digest !== base) throw new FolderConflictError("stale selection");
           this.replaceSnapshot(path2, snapshot3);
         } finally {
           release();
@@ -256890,6 +257271,7 @@ function refinedPredicates(type, env, path2, seen = /* @__PURE__ */ new Set()) {
         for (const field of current.fields) walk(field.type, `${at}.${field.name}`, depth2 + 1);
         return;
       case "union":
+      case "intersection":
         for (const member of current.members) walk(member, at, depth2 + 1);
         return;
       default:
@@ -257766,12 +258148,12 @@ function compileProject(options) {
   for (const file of program.getSourceFiles().filter((file2) => !discovered.has(file2.fileName) && !file2.isDeclarationFile && file2.fileName.startsWith(root2 + sep) && !inFolder(file2.fileName) && !rel(file2.fileName).split(sep).includes("node_modules") && /\.(ts|tsx|mts)$/.test(file2.fileName)).sort((a, b) => a.fileName.localeCompare(b.fileName))) sources.push(file);
   if (options.constrained) for (const file of sources) diagnostics.push(...checkConstrainedSource(file, { checker: program.getTypeChecker(), displayPath: (source2) => rel(source2.fileName) }));
   for (const file of sources) diagnostics.push(...checkSequentialNlLoops(file, (source2) => rel(source2.fileName)));
-  const revision = (file) => `${rel(file.fileName)}@${file.text.length}`;
+  const revision2 = (file) => `${rel(file.fileName)}@${file.text.length}`;
   const plans = /* @__PURE__ */ new Map();
   const readouts = /* @__PURE__ */ new Map();
   const instantiations = /* @__PURE__ */ new Map();
   for (const file of sources) {
-    const analysis = analyzeInlineLambdas(program, [file], { displayPath: (source2) => rel(source2.fileName), sourceRevision: revision(file), authored: true });
+    const analysis = analyzeInlineLambdas(program, [file], { displayPath: (source2) => rel(source2.fileName), sourceRevision: revision2(file), authored: true });
     diagnostics.push(...analysis.diagnostics);
     analysis.plans.forEach((plan) => {
       plan.programId = programId;
@@ -257784,11 +258166,13 @@ function compileProject(options) {
       optimizationComponents.push(...analysis.plans.map((plan) => inlineDescriptor(programId, plan)));
     }
   }
+  const rootIsPackage = fs2.isFile(joinSourcePath(root2, "natlang.json"));
   const collectSources = (dir) => {
     for (const name of fs2.list(dir).sort()) {
       if (SKIPPED_DIRS.has(name) || name.startsWith(".") || name === "adaptations" || name.endsWith(".d.nl.ts")) continue;
       const path2 = joinSourcePath(dir, name);
       if (fs2.isDirectory(path2)) {
+        if (rootIsPackage && fs2.isFile(joinSourcePath(path2, "natlang.json"))) continue;
         const runManifest = joinSourcePath(path2, "manifest.json");
         if (fs2.isFile(runManifest)) {
           try {
@@ -257866,12 +258250,14 @@ function compileProject(options) {
   }
   for (const records3 of contextRecords.values()) collectSlots(records3);
   for (const plan of [...plans.values()].flat()) {
+    const planAliases = { ...plan.returns.aliases };
+    for (const parameter of plan.parameters) Object.assign(planAliases, parameter.type.aliases);
     refinedSlots.push(...refinedSlotsOf(
       plan.sourceSpan.file,
       plan.definitionId,
-      Object.fromEntries(plan.parameters.map((parameter) => [parameter.name, parameter.type.text])),
-      plan.returns.text,
-      {}
+      Object.fromEntries(plan.parameters.map((parameter) => [parameter.name, parameter.type.natlang ?? parameter.type.text])),
+      plan.returns.natlang ?? plan.returns.text,
+      planAliases
     ));
   }
   const emitting = options.emit !== false;
@@ -258030,29 +258416,24 @@ const __nz = ${load};
   };
 }
 function walkNz(fs2, root2) {
-  const out = [];
-  const walk = (dir) => {
-    for (const entry of fs2.list(dir)) {
-      if (SKIPPED_DIRS.has(entry) || entry.startsWith(".")) continue;
-      const path2 = joinSourcePath(dir, entry);
-      if (fs2.isDirectory(path2)) walk(path2);
-      else if (entry.endsWith(".nz")) out.push(path2);
-    }
-  };
-  walk(root2);
-  return out;
+  return walkSources(fs2, root2, (entry) => entry.endsWith(".nz"));
 }
 function walkTs(fs2, root2) {
+  return walkSources(fs2, root2, (entry) => /\.(ts|tsx|mts)$/.test(entry));
+}
+function walkSources(fs2, root2, wanted) {
   const out = [];
-  const walk = (dir) => {
+  const walk = (dir, inPackage) => {
     for (const entry of fs2.list(dir)) {
       if (SKIPPED_DIRS.has(entry) || entry.startsWith(".")) continue;
       const path2 = joinSourcePath(dir, entry);
-      if (fs2.isDirectory(path2)) walk(path2);
-      else if (/\.(ts|tsx|mts)$/.test(entry)) out.push(path2);
+      if (fs2.isDirectory(path2)) {
+        const isPackage = fs2.isFile(joinSourcePath(path2, "natlang.json"));
+        if (!(isPackage && inPackage)) walk(path2, inPackage || isPackage);
+      } else if (wanted(entry)) out.push(path2);
     }
   };
-  walk(root2);
+  walk(root2, fs2.isFile(joinSourcePath(root2, "natlang.json")));
   return out;
 }
 function detectRuntimeSpecifier(fs2, files2) {
@@ -299711,6 +300092,7 @@ export {
   contextInterface,
   createNatlangRuntime,
   currentFrame,
+  decide,
   decisionJudge,
   declarationsForValues,
   decodeNz,

@@ -31,6 +31,7 @@ export type NatlangPackageManifest = {
     /** What the runtime records of this program's calls (plans/TRACE_SPECIALIZATION.md §3.2). */
     recording?: {
         exclude?: string[];
+        checkpoints?: boolean;
     };
     /** How far stored compilations may serve this program's calls; the machine setting still bounds it. */
     specialization?: 'off' | 'shadow' | 'on';
