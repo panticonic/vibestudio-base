@@ -228,7 +228,7 @@ export function compileProgram(options: {
   }
   // Native source entries load their callables from the original files after validation.
   const sourceEntry = !entry || entry.endsWith(".nl");
-  const input=programProductInput({files,entry,label});
+  const input=programProductInput({files,entry,label,root});
   if(options.product && (options.product.schema!=="natlang.virtual-project-product/1" ||
       (options.product.project.root??"/project")!==PROJECT_ROOT ||
       programKey(options.product.project.files,services)!==programKey(files,services)))
@@ -265,10 +265,10 @@ export function compileProgram(options: {
 }
 
 /** All frontend inputs are explicit; runtime services themselves never leave this owner. */
-export function programProductInput({files,entry,label}:{files:Record<string,string>;entry:string;label:string}) {
+export function programProductInput({files,entry,label,root=PROJECT_ROOT}:{files:Record<string,string>;entry:string;label:string;root?:string}) {
   const services=declaredServiceNames(files);
   const scopes=declaredServiceScopes(files,services,label);
-  return {project:{files,root:PROJECT_ROOT},options:{target:"node" as const,emit:!!entry&&!entry.endsWith(".nl"),adaptation:false,programId:label,
+  return {project:{files,root:PROJECT_ROOT},options:{target:"node" as const,emit:!!entry&&!entry.endsWith(".nl"),adaptation:false,programId:root||PROJECT_ROOT,
     ...(services.length?{services:{declarations:declarationsFor(services),scopes}}:{})}};
 }
 
@@ -393,7 +393,7 @@ export class ProgramLoader {
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
       try {
-        const product=await this.options.compileProduct?.(programProductInput({files,entry,label:path}));
+        const product=await this.options.compileProduct?.(programProductInput({files,entry,label:path,root}));
         program = compileProgram({ platform, files, entry, label: path, root,
           ...(product===undefined?{}:{product:product as VirtualProjectProduct}) });
       } catch (error) {

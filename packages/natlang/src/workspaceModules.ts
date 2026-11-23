@@ -1,3 +1,4 @@
+import {rewriteTypeModuleSpecifiers,packageExportTarget} from "../vendor/workerd/natlang-workerd.js";
 import { declaredServiceNames, declaredServiceScopes } from "./services.js";
 import { NatlangProgramError } from "./programError.js";
 
@@ -106,7 +107,7 @@ export async function linkWorkspaceModules(
       ? Object.fromEntries(
           Object.entries(sourceFiles).filter(
             ([path]) =>
-              path === "natlang.json" ||
+              (path === "natlang.json" || path === "package.json") ||
               include.some(
                 (prefix) => path === prefix || path.startsWith(`${prefix}/`),
               ),
@@ -120,7 +121,8 @@ export async function linkWorkspaceModules(
         reject(
           `Scope service ${name} in ${source}/natlang.json before mounting it.`,
         );
-    return { mount, files, scopes };
+    const pkg=JSON.parse(sourceFiles["package.json"]??"{}");
+    return { mount, files, scopes, pkg };
   });
   const present = new Set(modules.map(({ mount }) => mount));
   const unavailable = [...branches].filter(([, branch]) => branch.mounts.some(mount => !present.has(mount)))
@@ -153,6 +155,33 @@ export type { ${branch.types.join(", ")} } from "./${path.slice(slash + 1)}/type
       ];
     }
   }
+  // Resolve explicitly declared installed packages in the importing branch.
+  // Public export metadata stays in the source snapshot; no DTO or module copies
+  // are manufactured under node_modules.
+  const aliases=modules.filter(entry=>typeof entry.pkg.name==="string"&&visible(`${entry.mount}/`));
+  const parts=(path:string)=>path.split("/").filter(Boolean);
+  const common=(a:string,b:string)=>{const left=parts(a),right=parts(b);let i=0;while(i<left.length&&left[i]===right[i])i++;return i;};
+  for(const [path,text]of Object.entries(linked))if(/\.tsx?$/u.test(path))linked[path]=rewriteTypeModuleSpecifiers(text,specifier=>{
+    const packageName=specifier.startsWith("@")?specifier.split("/").slice(0,2).join("/"):specifier.split("/")[0]!;
+    const candidates=aliases.filter(entry=>entry.pkg.name===packageName).sort((a,b)=>common(path,b.mount)-common(path,a.mount));
+    if(!candidates.length)return undefined;
+    const selected=candidates[0]!;
+    if(candidates[1]&&common(path,selected.mount)===common(path,candidates[1].mount))reject(`Type package ${packageName} is ambiguous from ${path}; declare a unique nearest mount.`);
+    const subpath=specifier===packageName?".":"./"+specifier.slice(packageName.length+1);
+    const exports=typeof selected.pkg.exports==="string"?{".":selected.pkg.exports}:selected.pkg.exports;
+    const mapped=exports&&typeof exports==="object"&&!Array.isArray(exports)?packageExportTarget(exports,subpath,["types","natlang","import","default"]):undefined;
+    if(!mapped)reject(`Package ${packageName} does not export ${subpath} for ${path}.`);
+    if(!mapped!.startsWith("./"))reject(`Package ${packageName} has a non-relative public type target.`);
+    const relative:string[]=[];
+    for(const segment of mapped!.split("/")){if(segment==="."||!segment)continue;if(segment===".."){if(!relative.length)reject(`Package ${packageName} type export escapes its root.`);relative.pop();}else relative.push(segment);}
+    const base=relative.join("/");
+    const target=[...(base.endsWith(".js")?[base.slice(0,-3)+".ts"]:[]),base,...(!/\.[A-Za-z]+$/u.test(base)?[base+".ts",base+".d.ts"]:[])].find(candidate=>Object.hasOwn(selected.files,candidate));
+    if(!target)reject(`Public type ${specifier} is not included in its declared mount.`);
+    const from=parts(path).slice(0,-1),to=parts(`${selected.mount}/${target}`);let i=0;while(i<from.length&&from[i]===to[i])i++;
+    let result=[...from.slice(i).map(()=>".."),...to.slice(i)].join("/");
+    if(!result.startsWith("."))result="./"+result;
+    return result.endsWith(".d.ts")?result:result.replace(/\.ts$/u,".js");
+  },path);
   linked["natlang.json"] = JSON.stringify({
     ...configuration,
     serviceScopes,
