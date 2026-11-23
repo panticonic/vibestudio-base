@@ -103,8 +103,8 @@ export function declaredServiceScopes(
       if (!Array.isArray(paths) || paths.some((selector) => {
         if (typeof selector !== "string") return true;
         const file = selector.endsWith("/**") ? selector.slice(0, -3) : selector;
-        return !file.endsWith(".nl") || !Object.hasOwn(files, file);
-      })) throw new Error(`Use existing relative .nl paths in the scope of ${name}.`);
+        return !/\.(?:nl|ts)$/u.test(file) || file.endsWith(".d.ts") || !Object.hasOwn(files, file);
+      })) throw new Error(`Use existing relative .nl paths or .ts callable owners in the scope of ${name}.`);
       return [name, paths as string[]];
     }));
   } catch (error) {
