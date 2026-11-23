@@ -26,6 +26,7 @@ export type CompiledProject = BuildResult & {
     require(path: string): Record<string, unknown>;
 };
 export type VirtualProjectOptions = {
+    inlineRecords?: boolean;
     platform: Platform;
     constrained?: boolean;
     programId?: string;
