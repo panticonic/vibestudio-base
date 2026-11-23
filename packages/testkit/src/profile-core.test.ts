@@ -73,4 +73,10 @@ describe("profile-core", () => {
     const index2 = JSON.parse(files.get("/.testkit/profiles/index.json")!) as ProfileRef[];
     expect(index2).toHaveLength(2);
   });
+  it.each(["é", "😀", "mixed Ελληνικά 😀 text", "\ud800", "\udc00", "\ud800x\udc00"])("records actual UTF-8 bytes for %j", async data => {
+    const fs={mkdir:async()=>{},writeFile:async()=>{},readFile:async()=>"[]"};
+    const ref=cpuProfileRef("test",0,PROFILE);
+    expect((await persistProfile(fs,ref,data)).summary.sizeBytes).toBe(new TextEncoder().encode(data).byteLength);
+  });
+
 });

@@ -131,6 +131,21 @@ export interface ProfileFsLike {
 }
 
 /** Persist a profile artifact + maintain the shared index.json. */
+// Count the UTF-8 representation without allocating a second full-size copy of
+// a potentially large heap snapshot. Unpaired UTF-16 surrogates encode as U+FFFD.
+function utf8Size(text: string): number {
+  let bytes=0;
+  for(let index=0;index<text.length;index++){
+    const code=text.charCodeAt(index);
+    if(code<0x80)bytes++;
+    else if(code<0x800)bytes+=2;
+    else if(code>=0xd800 && code<=0xdbff && index+1<text.length &&
+      text.charCodeAt(index+1)>=0xdc00 && text.charCodeAt(index+1)<=0xdfff){bytes+=4;index++;}
+    else bytes+=3;
+  }
+  return bytes;
+}
+
 export async function persistProfile(
   fs: ProfileFsLike,
   ref: ProfileRef,
@@ -138,7 +153,7 @@ export async function persistProfile(
 ): Promise<ProfileRef> {
   await fs.mkdir(PROFILES_DIR, { recursive: true });
   await fs.writeFile(ref.path, data);
-  const withSize: ProfileRef = { ...ref, summary: { ...ref.summary, sizeBytes: data.length } };
+  const withSize: ProfileRef = { ...ref, summary: { ...ref.summary, sizeBytes: utf8Size(data) } };
   let index: ProfileRef[] = [];
   try {
     index = JSON.parse((await fs.readFile(PROFILES_INDEX_PATH, "utf8")) as string) as ProfileRef[];
