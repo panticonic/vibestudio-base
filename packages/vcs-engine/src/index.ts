@@ -4,7 +4,4 @@ export * from "./semantic/intent.js";
 export * from "./semantic/model.js";
 export * from "./semantic/netEffectMerge.js";
 export { boundedTemplateUpdatePreview } from "./semantic/templateUpdatePreview.js";
-export * from "./semantic/workspaceFactChangeSet.js";
-export * from "./semantic/persistentRadix.js";
-export * from "./semantic/workspaceFactMap.js";
 export * from "./semantic/workspacePlacement.js";
