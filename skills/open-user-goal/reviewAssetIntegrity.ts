@@ -22,7 +22,13 @@ export default async function reviewAssetIntegrity(goal:string):Promise<AssetInt
   if(result.status==="held")return {status:"held",approved:approved.version.id,working:working.version.id,findings,receipt:null,reason:result.reason};
   versions=await Promise.all((await discoverVersions()).map(version=>readVersion(version)));
   const refreshed=versions.find(row=>row.version.edition==="working");
-  if(attempt===1||!await allowRefreshedRevision(goal))return {status:"held",approved:approved.version.id,working:refreshed?.version.id??result.working,findings,receipt:null,reason:"The working revision changed during recovery."};
+  if(attempt===1||!await allowRefreshedRevision(goal)){
+   const currentApproved=versions.find(row=>row.version.edition==="approved");
+   if(!currentApproved||!refreshed)throw new Error("Refreshed asset editions are unavailable");
+   const currentFindings=[];
+   for(const claim of currentApproved.manifest.assets)currentFindings.push(await compareAsset(claim,currentApproved,refreshed));
+   return {status:"held",approved:currentApproved.version.id,working:refreshed.version.id,findings:currentFindings,receipt:null,reason:"The working revision changed during recovery."};
+  }
  }
  throw new Error("Asset recovery exhausted its bounded attempts");
 }
