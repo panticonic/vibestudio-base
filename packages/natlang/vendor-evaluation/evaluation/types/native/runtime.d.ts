@@ -434,6 +434,8 @@ export declare class NativeSession {
     /** What eval code in this call can use, for a model looking for something it does not have. */
     private scopeGuide;
     availableServices(): Record<string, object>;
+    /** Types and symbol lookup expose precisely the ports admitted to this invocation. */
+    availableServiceDeclarations(): Record<string, string>;
     /** read_code, edit_code, diff_code over the codebase record tree. */
     private functionTool;
     /** File tools for directory reducers, over the private folder copy. */

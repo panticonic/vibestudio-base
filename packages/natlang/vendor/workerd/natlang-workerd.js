@@ -224640,6 +224640,11 @@ function checkEvalFields(source2, scope) {
   );
   const comparisons = /* @__PURE__ */ new Set();
   for (const diagnostic of program.getSemanticDiagnostics(snippet)) {
+    if ((diagnostic.code === 2304 || diagnostic.code === 2552) && diagnostic.start !== void 0) {
+      const node = innermostNode(snippet, diagnostic.start);
+      if (node && import_typescript16.default.isIdentifier(node) && scope.unavailableServices?.includes(node.text))
+        at(node, "callable-scope", `${node.text} is a host service unavailable in this call's authored scope. Use the call's admitted inputs and callables instead.`);
+    }
     if ((diagnostic.code === 2367 || diagnostic.code === 2678) && diagnostic.start !== void 0) {
       let node = innermostNode(snippet, diagnostic.start);
       while (node && !import_typescript16.default.isBinaryExpression(node) && !import_typescript16.default.isCaseClause(node)) node = node.parent;
@@ -232802,7 +232807,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
         };
         return searchCodebase(query, this.lam.codebase, {
           types: types3,
-          declarations: this.runtime.declarations,
+          declarations: this.availableServiceDeclarations(),
           services: this.availableServices(),
           resolveItem: view ? (item) => view.record(item) : void 0,
           limit
@@ -232849,6 +232854,11 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           read: { value: (value) => readNeuraleseForCurrentTask(value), enumerable: true, configurable: true, writable: false }
         }) : service2]));
       }
+      /** Types and symbol lookup expose precisely the ports admitted to this invocation. */
+      availableServiceDeclarations() {
+        const services = this.availableServices();
+        return Object.fromEntries(Object.entries(this.runtime.declarations).filter(([name]) => Object.hasOwn(services, name)));
+      }
       /** read_code, edit_code, diff_code over the codebase record tree. */
       functionTool(name, args) {
         if (name === "diff_code") {
@@ -232884,7 +232894,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           if (!findCodebaseItem(this.lam.codebase, requested)) throw new Reject([{ path: requested, code: "no-such-function", expected: `a bound skill or one of its files: ${Object.keys(this.lam.skills.documents).join(", ")}` }]);
         }
         const service2 = requested.split(".")[0];
-        if (Object.hasOwn(this.runtime.declarations, service2) && !findCodebaseItem(this.lam.codebase, requested) && !Object.hasOwn(BUILT_IN_DOCS, requested)) {
+        if (Object.hasOwn(this.availableServiceDeclarations(), service2) && !findCodebaseItem(this.lam.codebase, requested) && !Object.hasOwn(BUILT_IN_DOCS, requested)) {
           if (name === "edit_code") throw new Reject([{ path: requested, code: "external", expected: `a function of this program; ${service2} is an external service: its declaration can be read, but it runs outside this program and cannot be changed` }]);
           const declaration = this.runtime.declarations[service2];
           return { kind: "ok", text: `${declaration}
@@ -235772,7 +235782,7 @@ ${notes}` : opening;
           ...Object.entries(session.availableServices()).map(([name, service2]) => session.runtime.declarations[name] ? `${session.runtime.declarations[name]}  // external service; its calls are recorded as effects` : `declare const ${name}: ${undeclaredServiceType(service2, 0, name)};  // service; its calls are recorded as effects`),
           ...lam.projectTransaction ? [...FOLDER_DECLARATIONS, "declare const folder: Folder;  // your working copy of the input folder"] : [],
           // A service scoped to other functions is named, with who can use it, so the call knows to ask them.
-          ...Object.keys(session.runtime.services).filter((name) => !Object.hasOwn(session.availableServices(), name)).map((name) => `// ${name}: only ${session.runtime.serviceScopes[name].map((path2) => path2.split("/").pop().replace(/\.nl$/, "")).join(", ")} can use it (read_code("${name}") shows its declaration)`)
+          ...Object.keys(session.runtime.services).filter((name) => !Object.hasOwn(session.availableServices(), name)).map((name) => `// ${name}: only ${session.runtime.serviceScopes[name].map((path2) => path2.split("/").pop().replace(/\.nl$/, "")).join(", ")} can use it`)
         ]);
         const params = lam.type.params.fields.map((field) => field.name);
         if (params.length) {
@@ -237314,8 +237324,9 @@ function evalDeclarations(session) {
     locals: Object.entries(lam.letTypes).filter(([name]) => Object.hasOwn(lam.let, name)).map(([name, type]) => ({ name, type: formatType(type), mutable: true })),
     captures: Object.values(lam.captures ?? {}).map((cell) => ({ name: cell.name, type: cell.type, mutable: cell.mutable })),
     imports: Object.entries(codebase).map(([name, record3]) => importOf(name, record3, session)),
-    services: Object.keys(session.runtime.services),
-    serviceDeclarations: session.runtime.declarations,
+    services: Object.keys(session.availableServices()),
+    unavailableServices: Object.keys(session.runtime.services).filter((name) => !Object.hasOwn(session.availableServices(), name)),
+    serviceDeclarations: session.availableServiceDeclarations(),
     returns: lam.type.kind === "lambda" ? formatType(lam.type.returns) : void 0,
     opaque: []
   };

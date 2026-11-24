@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "7dff4fc17fc6bfe587e2700c7671e2e80029cc4b",
+  "commit": "cd0c8358e2cb69bcd0f931d9529b643cedf6b57a",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -118,7 +118,7 @@
     "evaluation/types/native/refinement.d.ts": "612698175d9c8641c692c09f0c387b1f90b3d4a79f50bf27b9d0608cd5464945",
     "evaluation/types/native/representation.d.ts": "c6b0029b95337b4778ed2c9565e3e0006b99de5c8a70840d844fdf284fad7dda",
     "evaluation/types/native/return-errors.d.ts": "784a1c44b1bf20a2270240ecc43abf1e7f0ce3a097b226b8e9a6402698f32172",
-    "evaluation/types/native/runtime.d.ts": "a7e55339d30b1dc3d6fb791b22d6190a1e2fcbd8038447ce384fbc118b532c32",
+    "evaluation/types/native/runtime.d.ts": "e72eb7c6cd94d1a85a35e402e405d4f62eaac4dccf4136369470439cafa35ced",
     "evaluation/types/native/scoped-fs.d.ts": "6cee4a26d38a8de8157ce9bc2a9ed92029ebd7d8ece8b038862870016c8286fc",
     "evaluation/types/native/system-prompts.d.ts": "3e10168d05d1dc331441eb2b5f124b1f483fdb8177fcd280e0c7ca205cc8bd74",
     "evaluation/types/native/tool-markup.d.ts": "f26159333ff435b6cbec0bbfda34a00ddd4b3cd8b8a6f41c54e19e26cfdbb11f",
