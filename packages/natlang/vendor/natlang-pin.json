@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "8e0e1bf820e80740033730e2c9a93b1c18fc94a9",
+  "commit": "7dff4fc17fc6bfe587e2700c7671e2e80029cc4b",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "466e1157ab51c13417a4f02d5ea9c4f5f533337150ed8099009e9d2c4e8e555c",
+    "workerd/natlang-workerd.js": "8126f050ae72fcd3a4d94807d1b84de3781d8505d18581eca06fdf33219ac38a",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",

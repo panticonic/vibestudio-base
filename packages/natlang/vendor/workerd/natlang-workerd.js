@@ -232838,7 +232838,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
         return `This call's eval scope has ${names.length ? names.join(", ") : "no names of its own"}, the built-ins ${builtInList} (read_code shows how to use them), and standard JavaScript; nothing else (no Node modules, no require).`;
       }
       availableServices() {
-        const frame = currentFrame();
+        const frame = this.runtime.frame;
         const chain = frame?.serviceChain ?? frame?.chain ?? [];
         return Object.fromEntries(Object.entries(this.runtime.services).filter(([name]) => {
           const scope = this.runtime.serviceScopes[name];
@@ -239203,7 +239203,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
   const childFrame = {
     task,
     chain: [...frame.chain, callIdentity],
-    serviceChain: [...frame.serviceChain ?? frame.chain, callIdentity],
+    serviceChain: [...frame.serviceChain ?? frame.chain, definition.id],
     parentCallId: callId,
     adHocDepth,
     adHocQuestions,
