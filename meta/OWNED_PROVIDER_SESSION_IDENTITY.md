@@ -15,7 +15,8 @@ Inventory before edits, Base9fffccca (V25frozen, unchanged):
   ModelTurnRequest.invocation_id is stable within one NL call; gatewayDriver
   also owns a per-eval-runtime turnPrefix. Carry their logical key in the typed
   gateway request; derive the actual opaque provider ID from authenticated
-  gateway owner+caller and resolved model. Unidentified calls use unique turnId.
+  gateway owner+caller and resolved model. Unidentified calls mint a fresh server-owned request UUID: cancellation
+  turn IDs are only unique among in-flight calls and may be reused sequentially.
 - Direct AgentVessel helpers already run in the channel's own Pi conversation;
   use that conversation's existing ProviderDoc UUID, including legacy migration.
   No new Pi conversation or persisted per-lambda document/cache is introduced.
@@ -80,3 +81,14 @@ Operational configuration/journals/proof are in
 `/home/werg/vibe-native-oracles-v21/provider-session-*`; all check units joined
 and private Vitest cache retired after completion. Existing V25 source stayed
 unchanged; activation belongs to the next graceful pinned release.
+
+Independent review also caught sequential reuse of a cancellation turnId:
+without an explicit logical session key, each admitted request now gets a fresh
+server UUID before namespacing, so valid turnId reuse cannot join unrelated
+provider state. The gateway regression repeats the same completed turnId and
+requires distinct provider IDs. Explicit logical invocation sessions stay stable.
+The final request-UUID correction passed all19 affected gateway regressions in
+`vibe-provider-session-reused-turn-20261125a` (Vitest11.11s, whole unit17.52s,
+peak714MiB; expected1.2GiB/hard2GiB/reserve7.5GiB/LOW). Other final product paths
+are unchanged from the157-test pass. Both successful units closed with exit0;
+there is no outstanding native check or cache owner for this operation.

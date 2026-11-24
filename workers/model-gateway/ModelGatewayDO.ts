@@ -349,7 +349,7 @@ export class ModelGatewayDO
           ...(input.options?.cacheRetention ? {cacheRetention: input.options.cacheRetention} : {}),
           sessionId: sha256HexSyncText(canonicalJson({
             owner: this.rpcSelfId, caller: attribution.callerId, model: entry.ref,
-            invocation: input.sessionId ?? input.turnId,
+            invocation: input.sessionId ?? crypto.randomUUID(),
           })),
         },
         context,

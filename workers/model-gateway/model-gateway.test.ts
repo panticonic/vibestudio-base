@@ -750,7 +750,7 @@ it("separates authenticated caller/invocation provider identities while admittin
   await reached;expect(requested).toHaveLength(2);release();await Promise.all([first,second]);
   await turn(evalCaller,"three","invocation-a");
   await turn({...evalCaller,callerId:"do:vibestudio/internal:EvalDO:other"},"four","invocation-a");
-  await turn(evalCaller,"five");await turn(evalCaller,"six");
+  await turn(evalCaller,"reused-turn");await turn(evalCaller,"reused-turn");
   const ids=requested.map(request=>request.options.sessionId);
   expect(ids.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/.test(id))).toBe(true);
   expect(ids[0]).not.toBe(ids[1]);expect(ids[2]).toBe(ids[0]);expect(ids[3]).not.toBe(ids[0]);expect(ids[4]).not.toBe(ids[5]);
