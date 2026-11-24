@@ -112,5 +112,76 @@
     "loadAndDescribe": "packages/natlang/src/programs.ts:435 and :463 share readAndCompile and the linked source snapshot",
     "compilerAndModels": "Linking happens before the common Core compiler or offloaded compileProduct at programs.ts:403. All serving engines consume the resulting typed program; no model protocol/engine implementation changes.",
     "qualification": "The prior semantic-library.test.ts unioned all templates and could not detect missing optional backends. It now qualifies eight separate installed views and verifies every explicit campaign binding plus all locally applicable public entries through compiler-enforced result contracts and arity."
+  },
+  "qualification": {
+    "sourceCommit": "29cde4496ba1e2c088f3b4a19de83fdf77dc9ea2",
+    "catalogSha256": "2126ff71bcb1e3a5d459a16b755c6699924adad12fa536b7dc2e46385ab44723",
+    "catalogTasks": 2327,
+    "modelCalls": 0,
+    "targetedTests": 9,
+    "targetedTestUnit": "vibe-installed-closure-links-v18-20261124",
+    "allViewsUnit": "vibe-installed-closure-all8k-v18-20261124",
+    "allViewsExitStatus": 0,
+    "allViewsWallSeconds": 99.228,
+    "allViewsPeakGiB": 2.6,
+    "sourceProjection": "Exact Base + assigned workspace + SST skill roots; ProgramLoader semantic snapshot interface; in-memory TypeScript witnesses assert result type equivalence and arity, no source files modified on disk",
+    "views": [
+      {
+        "workspace": "base",
+        "installedSkills": 112,
+        "compiledCodebases": 11,
+        "assignedTasks": 0,
+        "requiredEntries": 84
+      },
+      {
+        "workspace": "system",
+        "installedSkills": 131,
+        "compiledCodebases": 13,
+        "assignedTasks": 1209,
+        "requiredEntries": 92
+      },
+      {
+        "workspace": "personal",
+        "installedSkills": 139,
+        "compiledCodebases": 17,
+        "assignedTasks": 221,
+        "requiredEntries": 91
+      },
+      {
+        "workspace": "google-workspace",
+        "installedSkills": 120,
+        "compiledCodebases": 16,
+        "assignedTasks": 81,
+        "requiredEntries": 90
+      },
+      {
+        "workspace": "examples",
+        "installedSkills": 118,
+        "compiledCodebases": 12,
+        "assignedTasks": 707,
+        "requiredEntries": 87
+      },
+      {
+        "workspace": "news",
+        "installedSkills": 114,
+        "compiledCodebases": 12,
+        "assignedTasks": 38,
+        "requiredEntries": 87
+      },
+      {
+        "workspace": "spectrolite",
+        "installedSkills": 114,
+        "compiledCodebases": 12,
+        "assignedTasks": 71,
+        "requiredEntries": 87
+      },
+      {
+        "workspace": "system-testing",
+        "installedSkills": 112,
+        "compiledCodebases": 11,
+        "assignedTasks": 0,
+        "requiredEntries": 84
+      }
+    ]
   }
 }
