@@ -7,7 +7,8 @@
   "exports": {
     "./observed-application-outcome": "./observed-application-outcome.ts",
     "./observed-invocation": "./observed-invocation.ts",
-    "./semantic-outcome-contract": "./semantic-outcome-contract.ts"
+    "./semantic-outcome-contract": "./semantic-outcome-contract.ts",
+    "./observed-content-review": "./observed-content-review.ts"
   },
   "dependencies": {
     "@vibestudio/content-addressing": "workspace:*"
