@@ -767,3 +767,17 @@ it("keeps TS workspace branches and portable types conditional on their real mou
   expect(typeof callable.default).toBe("function");
   expect(callable.default.name).toBe("release");
 });
+
+it("keeps runtime programs without retaining caller-facing declaration documents", async () => {
+  const files={"skills/lifetime/main.ts":"let n=0; export function next():number{return ++n;}","skills/lifetime/answer.nl":"---\nargs: {}\nreturns: string\n---\nAnswer."};
+  const loader=new ProgramLoader({platform:platform(),fs:memoryFs(files),bindings:{},runTask:run=>run()});
+  const loaded=await loader.load("skills/lifetime/main.ts") as {next():Promise<number>};
+  expect(await loaded.next()).toBe(1);
+  const cached=(loader as unknown as {compiled:Map<string,object>}).compiled;
+  expect(cached.size).toBe(1);
+  for(const program of cached.values())expect(Object.hasOwn(program,"declarations")).toBe(false);
+  expect((await loader.describe("skills/lifetime/answer.nl")).functions.some(fn=>fn.name==="answer")).toBe(true);
+  expect(await loaded.next()).toBe(2);
+  const direct=compileProgram({platform:platform(),files:{"answer.nl":files["skills/lifetime/answer.nl"]},entry:"answer.nl",label:"answer.nl"});
+  expect(Object.keys(direct.declarations).length).toBeGreaterThan(0);
+});

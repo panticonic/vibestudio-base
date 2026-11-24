@@ -320,13 +320,15 @@ export function bindProgram(value: unknown, task: Parameters<TaskRunner>[1], run
   return bind(value);
 }
 
+type LoadedProgram = Omit<CompiledProgram, "declarations">;
+
 /**
  * `natlang.load`: workspace natlang programs read through the eval `fs` binding,
  * compiled once per content (a cache keyed by the files' hash, so editing a
  * program recompiles it and an unchanged one loads instantly).
  */
 export class ProgramLoader {
-  private readonly compiled = new Map<string, CompiledProgram>();
+  private readonly compiled = new Map<string, LoadedProgram>();
   private sourceReadTail = Promise.resolve();
 
 
@@ -344,7 +346,7 @@ export class ProgramLoader {
   private async compiledProgram(specifier: string): Promise<{
     path: string;
     root: string;
-    program: CompiledProgram;
+    program: LoadedProgram;
   }> {
     // A single Eval can load several programs concurrently. Own one source
     // window for that loader as well as for all mounts within each request.
@@ -356,7 +358,7 @@ export class ProgramLoader {
   private async readAndCompile(specifier: string): Promise<{
     path: string;
     root: string;
-    program: CompiledProgram;
+    program: LoadedProgram;
   }> {
     const { fs, platform } = this.options;
     const path = workspacePath(specifier);
@@ -394,8 +396,12 @@ export class ProgramLoader {
     if (!program) {
       try {
         const product=await this.options.compileProduct?.(programProductInput({files,entry,label:path,root}));
-        program = compileProgram({ platform, files, entry, label: path, root,
+        const compiled = compileProgram({ platform, files, entry, label: path, root,
           ...(product===undefined?{}:{product:product as VirtualProjectProduct}) });
+        // Declaration documents belong to compileProgram callers. Runtime load
+        // and describe consume the callable signatures, not those documents.
+        program = {value: compiled.value, services: compiled.services,
+          serviceScopes: compiled.serviceScopes, explicitServiceBindings: compiled.explicitServiceBindings};
       } catch (error) {
         if (!(error instanceof NatlangSourceError)) throw error;
         const relative = error.path.replace(/^\/?project\//u, "");
