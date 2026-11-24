@@ -307,19 +307,18 @@ describe("createEvalNatlang", () => {
     };
   };
 
-  it("answers a decision-readout call by scoring the replies through the gateway, with no tool loop", async () => {
+  it("conditions each scored decision on its actual reasoning sample without a tool-action loop", async () => {
     const scored: any[] = [];
+    const reasoning="The observed outage requires urgent attention.";
     let turns = 0;
     const { cell } = setup(
       {
-        turn: async () => (
-          (turns += 1),
-          toolCallMessage("return_result", {
-            status: "success",
-            value: "normal",
-          })
-        ),
-        score: async (input) => (scored.push(input), [-0.2, -3]),
+        turn: async input => {
+          turns++;
+          expect(input.context.tools??[]).toEqual([]);
+          return {...toolCallMessage("unused",{}),content:[{type:"thinking",thinking:reasoning}],stopReason:"stop"};
+        },
+        score: async input => (scored.push(input), [-0.2, -3]),
       },
       { fs: decisionProgram() }
     );
@@ -327,8 +326,9 @@ describe("createEvalNatlang", () => {
       "const judge = await natlang.load('skills/triage/judge.nl');\nreturn await judge('The site is down.');"
     );
     expect(value).toBe("urgent");
-    expect(turns).toBe(0);
-    expect(scored).toHaveLength(1);
+    expect(turns).toBeGreaterThan(0);
+    expect(scored).toHaveLength(turns);
+    expect(scored.every(input=>input.reasoning===reasoning)).toBe(true);
     expect(scored[0]).toMatchObject({
       model: EXECUTOR_ENTRY.ref,
       options: [expect.any(String), expect.any(String)],
