@@ -75,6 +75,8 @@ export type LambdaNode = {
     protectedSources?: string[];
     /** The definition's `ensures:` postconditions on a proposed result (runtime/contracts.ts): empty when they hold. */
     ensures?: (value: Value) => Promise<import('./refinement.js').RefinementFailure[]>;
+    /** The definition's `writes:` type (runtime/writes.ts): the files a directory reducer's call writes, and their text. */
+    writes?: string;
 };
 export type Pending = LambdaNode;
 /** `text`, when set, is the whole model-facing line (a sentence without the `path: code` prefix); `code` stays for traces. */

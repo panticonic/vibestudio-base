@@ -14,6 +14,8 @@ export type SourceFiles = {
     sourceGraphReuse?: boolean;
     /** Display path relative to the loaded root. */
     relative?(path: string): string;
+    /** The loaded root (the directory `relative` counts from): where package-root `uses:` paths resolve when no manifest is above. */
+    root?: string;
     /** Binary contents, for `.nz` files. Without it, `.nz` files in callable folders are not loaded. */
     readBytes?(path: string): Uint8Array;
 };
@@ -77,6 +79,8 @@ export type NatlangRecord = {
     measure?: string;
     /** `ensures:` in the frontmatter: postconditions relating the result to the arguments (runtime/ensures.ts). */
     ensures?: EnsuresClause[];
+    /** `writes:` of a directory reducer: the type whose fields are the files its calls write (runtime/writes.ts). */
+    writes?: string;
     /**
      * Data entries of the companion folder bound by default (S0 §7): each `.nz` file's exports under the file's name,
      * as loaded (Neuralese references, data, soft-function specs). Its blocks are registered as imported blocks.
@@ -116,6 +120,8 @@ export declare class NatlangSourceError extends Error {
 export declare function moduleResolvedImports(record: ModuleRecord): Record<string, ItemRecord> | undefined;
 /** Text of each package `.ts` file the module imports for types only, by its path from the package root. */
 export declare function moduleTypeSources(record: ModuleRecord): Readonly<Record<string, string>> | undefined;
+/** Map from type-only import specifier to its source key in `moduleTypeSources(record)`. */
+export declare function moduleTypeSpecifiers(record: ModuleRecord): Readonly<Record<string, string>> | undefined;
 export declare const nodeKey: (record: NatlangRecord | ModuleRecord) => string;
 export declare function registerFileRecords(codebase: Record<string, ItemRecord> | ItemRecord): void;
 /** Whether an executable node and all its children come from files. */
@@ -149,6 +155,8 @@ export declare function isProtectedSource(source: string, protectedList: readonl
 export declare function recordProtectedSources(record: Pick<NatlangRecord, 'source' | 'protect' | 'ensures' | 'args' | 'codebase'>): string[];
 /** Every source a record tree protects: its natural-language functions' `protect:` lists and `ensures:` checks, resolved. */
 export declare function treeProtectedSources(codebase: Record<string, ItemRecord>): string[];
+/** The nearest directory with `natlang.json` or `package.json`, or undefined when none exists. */
+export declare function findPackageRoot(dir: string, files: SourceFiles): string | undefined;
 /** The package root above `dir`: the nearest directory with `natlang.json` or `package.json`. */
 export declare function packageRoot(dir: string, files: SourceFiles): string;
 export declare function packageExportTarget(exportsMap: Record<string, unknown>, key: string, conditions?: readonly string[]): string | undefined;

@@ -6,5 +6,5 @@
 export declare const LLAMA_FORK_SOURCE: Readonly<{
     repository: "werg/llama.cpp-neuralese";
     branch: "neuralese";
-    commit: "cb03daee7b0e8792c714ebdf4d5e9dc714b89208";
+    commit: "1a7f5015ff4c90c9d2f11a9a7003b1487f96129b";
 }>;

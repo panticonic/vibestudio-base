@@ -258,6 +258,7 @@ export declare class CallStore {
     /** Annotations of one kind across calls, newest first, with the call they are attached to (for example `escalation`). */
     annotationsOf(kind: string, options?: {
         limit?: number;
+        functionId?: string;
     }): {
         call_id: string;
         value: unknown;

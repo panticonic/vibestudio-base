@@ -389,6 +389,14 @@ export declare class NativeSession {
     neuraleseParameter(name: string): boolean;
     /** Whether this call's result is text (a string or Neuralese<string>, with nothing staged). */
     expectsTextResult(): boolean;
+    /**
+     * What is wrong with the files this call wrote under its definition's `writes:` type (runtime/writes.ts), in one
+     * sentence; undefined when they fit or nothing is declared.
+     */
+    writesProblem(): string | undefined;
+    /** Asynchronous `writes:` check: enforces both structural file contracts and `Is<string, P>` file refinements. */
+    writesProblemAsync(): Promise<string | undefined>;
+    private writesChecked?;
     /** Complete the invocation if an eval has returned a value of the declared type. */
     finish(): boolean;
     /** A text of the current call's result as it fits in a message; all of it goes to the call's transcript entry. */

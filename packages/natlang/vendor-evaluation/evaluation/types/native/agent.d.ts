@@ -31,6 +31,7 @@ export declare const SEARCH_BUILT_INS_LINE: string;
 /** Inline children have the same delegation tools as named calls. */
 export declare const INLINE_BUILT_INS_LINE: string;
 export declare const NL_DEPTH_LIMIT_BUILT_INS_LINE: string;
+export declare const NL_DEPTH_LIMIT_SEARCH_BUILT_INS_LINE: string;
 /**
  * What one call's opening message adds after its scope: the program's guidance, then the function-tools, folder and
  * nesting-limit paragraphs that apply to this call. The system prompt and tool list are the same for every call, so

@@ -61,6 +61,9 @@ export type NativeStateMetadata = {
     layer_kinds: string[];
     adapter_binding?: NativeAdapterBinding;
     derivation?: NativeStateDerivation;
+    /** 'text': a text write; 'span': a produce span in its producer's call. Such a state (exact, no adapter binding or
+     * derivation) is read as its token ids inline in the reader's context on every engine (`in-context-text`). */
+    producer_kind?: 'text' | 'span';
 } & {
     schema: 'neuralese.native-state/1';
 };

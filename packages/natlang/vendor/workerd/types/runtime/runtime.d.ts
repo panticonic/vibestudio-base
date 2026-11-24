@@ -1,7 +1,7 @@
 import type { WeightBinding } from '../adaptation/weights/binding.js';
 import { ProgramView } from '../adaptation/program-view.js';
 import type { ProgramDescriptor, AdaptationBinding, ExecutorIdentity } from '../adaptation/types.js';
-import type { ProgramGuidance, ProgramGuidanceInput } from '../guidance/program.js';
+import type { AuthoredTextGuidance, ProgramGuidance, ProgramGuidanceInput } from '../guidance/program.js';
 import type { EvalEnvironment } from '../native/evaluator.js';
 import type { DecisionScorer, ModelTurn, ModelTurnDelta, ModelTurnOptions, ModelTurnRequest } from '../contracts.js';
 import { type Frame } from './context.js';
@@ -154,6 +154,12 @@ export type NatlangRuntimeOptions = {
     /** Exact stored native guidance emitted by the memetic guidance exporter: one binding, or a list of scoped bindings
      * of one program (each call imports its function's binding, else the program-wide one). */
     nativeProgramGuidance?: ProgramGuidanceInput;
+    /** Text program guidance (program-wide and/or per-function, e.g. from `guidance.json` in `natlang improve DIR`). */
+    programGuidance?: AuthoredTextGuidance | {
+        program?: string;
+        functions?: Record<string, string>;
+        programId?: string;
+    };
     executorIdentity?: ExecutorIdentity;
     isolateModules?: boolean;
     signal?: AbortSignal;
@@ -278,6 +284,11 @@ export type TaskOptions = {
     services?: Services;
     serviceDeclarations?: Record<string, string>;
     nativeProgramGuidance?: ProgramGuidanceInput;
+    programGuidance?: AuthoredTextGuidance | {
+        program?: string;
+        functions?: Record<string, string>;
+        programId?: string;
+    };
     serviceScopes?: Record<string, string[]>;
     signal?: AbortSignal;
     trace?: TraceSink;
@@ -313,6 +324,11 @@ export declare class NatlangTask {
     /** The weight releases pinned at creation; every call of this task, inner calls included, resolves from these. */
     readonly weights: readonly WeightBinding[];
     readonly nativeProgramGuidance?: ProgramGuidance;
+    readonly authoredProgramGuidance?: AuthoredTextGuidance | {
+        program?: string;
+        functions?: Record<string, string>;
+        programId?: string;
+    };
     readonly specialization?: SpecializationMode;
     readonly auditOf?: string;
     /** The last failed call per caller and definition revision, so a retry can be recorded against it. */

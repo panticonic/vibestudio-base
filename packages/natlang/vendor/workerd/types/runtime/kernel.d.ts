@@ -43,6 +43,8 @@ export type CallableDefinition = {
     measure?: string;
     /** `ensures:` postconditions over the result and the arguments (runtime/ensures.ts), judged before a result is accepted. */
     ensures?: readonly import('./ensures.js').EnsuresClause[];
+    /** `writes:` of a directory reducer: the type of the files its calls write (runtime/writes.ts). */
+    writes?: string;
     /** The record of a recursive definition: bound under its own name in its calls' eval scope. */
     self?: import('./loader.js').NatlangRecord;
     revision?: string;
@@ -132,6 +134,14 @@ export declare function isModelOutcomeFailure(error: unknown): error is NatlangC
 export declare function toHost(value: Value): unknown;
 /** The pending lambda node for one invocation of `definition` with positional inputs (not yet run). */
 export declare function definitionNode(definition: CallableDefinition, inputs: unknown[], options?: InvokeOptions): LambdaNode;
+/**
+ * The `ensures:` check of one call of `definition` on `inputs` (runtime/contracts.ts), one verdict per distinct result:
+ * crisp checks run in `frame` (the call's own), judged predicates on the judges of `judgeFrame` (its caller's). The
+ * kernel binds it to every call it runs; a host that prepares a root node itself (the collector) binds it to the root.
+ */
+export declare function ensuresGate(definition: CallableDefinition, inputs: unknown[], frame: Frame, judgeFrame: Frame, model: Parameters<Frame["task"]["refinementJudges"]>[0], callId: string, trace: {
+    emit(kind: string, data: Record<string, unknown>): unknown;
+}): NonNullable<LambdaNode['ensures']>;
 /** Prepare the same context-bound node for public calls and direct host execution. */
 export declare function prepareDefinitionNode(definition: CallableDefinition, inputs: unknown[], options?: InvokeOptions): Promise<LambdaNode>;
 /** Why an ad hoc nl call that asks its enclosing call's own question on the same inputs is not run (native/runtime.ts

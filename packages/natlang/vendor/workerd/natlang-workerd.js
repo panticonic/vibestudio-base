@@ -58907,12 +58907,12 @@ ${lanes.join("\n")}
           }
           return flags;
         }
-        function markSymbolOfAliasDeclarationIfTypeOnly(aliasDeclaration, immediateTarget, finalTarget, overwriteEmpty, exportStarDeclaration, exportStarName) {
-          if (!aliasDeclaration || isPropertyAccessExpression(aliasDeclaration)) return false;
-          const sourceSymbol = getSymbolOfDeclaration(aliasDeclaration);
-          if (isTypeOnlyImportOrExportDeclaration(aliasDeclaration)) {
+        function markSymbolOfAliasDeclarationIfTypeOnly(aliasDeclaration2, immediateTarget, finalTarget, overwriteEmpty, exportStarDeclaration, exportStarName) {
+          if (!aliasDeclaration2 || isPropertyAccessExpression(aliasDeclaration2)) return false;
+          const sourceSymbol = getSymbolOfDeclaration(aliasDeclaration2);
+          if (isTypeOnlyImportOrExportDeclaration(aliasDeclaration2)) {
             const links2 = getSymbolLinks(sourceSymbol);
-            links2.typeOnlyDeclaration = aliasDeclaration;
+            links2.typeOnlyDeclaration = aliasDeclaration2;
             return true;
           }
           if (exportStarDeclaration) {
@@ -83249,9 +83249,9 @@ ${lanes.join("\n")}
               markAliasSymbolAsReferenced(rootSymbol);
             } else if (forDecoratorMetadata && getIsolatedModules(compilerOptions) && getEmitModuleKind(compilerOptions) >= 5 && !symbolIsValue(rootSymbol) && !some(rootSymbol.declarations, isTypeOnlyImportOrExportDeclaration)) {
               const diag2 = error2(typeName, Diagnostics.A_type_referenced_in_a_decorated_signature_must_be_imported_with_import_type_or_a_namespace_import_when_isolatedModules_and_emitDecoratorMetadata_are_enabled);
-              const aliasDeclaration = find(rootSymbol.declarations || emptyArray, isAliasSymbolDeclaration);
-              if (aliasDeclaration) {
-                addRelatedInfo(diag2, createDiagnosticForNode(aliasDeclaration, Diagnostics._0_was_imported_here, idText(rootName)));
+              const aliasDeclaration2 = find(rootSymbol.declarations || emptyArray, isAliasSymbolDeclaration);
+              if (aliasDeclaration2) {
+                addRelatedInfo(diag2, createDiagnosticForNode(aliasDeclaration2, Diagnostics._0_was_imported_here, idText(rootName)));
               }
             }
           }
@@ -171137,46 +171137,46 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
         var _a3, _b2;
         return promotedDeclaration.kind === 272 ? ((_b2 = tryCast((_a3 = tryCast(promotedDeclaration.moduleReference, isExternalModuleReference)) == null ? void 0 : _a3.expression, isStringLiteralLike)) == null ? void 0 : _b2.text) || promotedDeclaration.moduleReference.getText() : cast(promotedDeclaration.parent.moduleSpecifier, isStringLiteral).text;
       }
-      function promoteFromTypeOnly(changes2, aliasDeclaration, program, sourceFile, preferences) {
+      function promoteFromTypeOnly(changes2, aliasDeclaration2, program, sourceFile, preferences) {
         const compilerOptions = program.getCompilerOptions();
         const convertExistingToTypeOnly = compilerOptions.verbatimModuleSyntax;
-        switch (aliasDeclaration.kind) {
+        switch (aliasDeclaration2.kind) {
           case 277:
-            if (aliasDeclaration.isTypeOnly) {
-              if (aliasDeclaration.parent.elements.length > 1) {
+            if (aliasDeclaration2.isTypeOnly) {
+              if (aliasDeclaration2.parent.elements.length > 1) {
                 const newSpecifier = factory.updateImportSpecifier(
-                  aliasDeclaration,
+                  aliasDeclaration2,
                   /*isTypeOnly*/
                   false,
-                  aliasDeclaration.propertyName,
-                  aliasDeclaration.name
+                  aliasDeclaration2.propertyName,
+                  aliasDeclaration2.name
                 );
-                const { specifierComparer } = ts_OrganizeImports_exports.getNamedImportSpecifierComparerWithDetection(aliasDeclaration.parent.parent.parent, preferences, sourceFile);
-                const insertionIndex = ts_OrganizeImports_exports.getImportSpecifierInsertionIndex(aliasDeclaration.parent.elements, newSpecifier, specifierComparer);
-                if (insertionIndex !== aliasDeclaration.parent.elements.indexOf(aliasDeclaration)) {
-                  changes2.delete(sourceFile, aliasDeclaration);
-                  changes2.insertImportSpecifierAtIndex(sourceFile, newSpecifier, aliasDeclaration.parent, insertionIndex);
-                  return aliasDeclaration;
+                const { specifierComparer } = ts_OrganizeImports_exports.getNamedImportSpecifierComparerWithDetection(aliasDeclaration2.parent.parent.parent, preferences, sourceFile);
+                const insertionIndex = ts_OrganizeImports_exports.getImportSpecifierInsertionIndex(aliasDeclaration2.parent.elements, newSpecifier, specifierComparer);
+                if (insertionIndex !== aliasDeclaration2.parent.elements.indexOf(aliasDeclaration2)) {
+                  changes2.delete(sourceFile, aliasDeclaration2);
+                  changes2.insertImportSpecifierAtIndex(sourceFile, newSpecifier, aliasDeclaration2.parent, insertionIndex);
+                  return aliasDeclaration2;
                 }
               }
-              changes2.deleteRange(sourceFile, { pos: getTokenPosOfNode(aliasDeclaration.getFirstToken()), end: getTokenPosOfNode(aliasDeclaration.propertyName ?? aliasDeclaration.name) });
-              return aliasDeclaration;
+              changes2.deleteRange(sourceFile, { pos: getTokenPosOfNode(aliasDeclaration2.getFirstToken()), end: getTokenPosOfNode(aliasDeclaration2.propertyName ?? aliasDeclaration2.name) });
+              return aliasDeclaration2;
             } else {
-              Debug.assert(aliasDeclaration.parent.parent.isTypeOnly);
-              promoteImportClause(aliasDeclaration.parent.parent);
-              return aliasDeclaration.parent.parent;
+              Debug.assert(aliasDeclaration2.parent.parent.isTypeOnly);
+              promoteImportClause(aliasDeclaration2.parent.parent);
+              return aliasDeclaration2.parent.parent;
             }
           case 274:
-            promoteImportClause(aliasDeclaration);
-            return aliasDeclaration;
+            promoteImportClause(aliasDeclaration2);
+            return aliasDeclaration2;
           case 275:
-            promoteImportClause(aliasDeclaration.parent);
-            return aliasDeclaration.parent;
+            promoteImportClause(aliasDeclaration2.parent);
+            return aliasDeclaration2.parent;
           case 272:
-            changes2.deleteRange(sourceFile, aliasDeclaration.getChildAt(1));
-            return aliasDeclaration;
+            changes2.deleteRange(sourceFile, aliasDeclaration2.getChildAt(1));
+            return aliasDeclaration2;
           default:
-            Debug.failBadSyntaxKind(aliasDeclaration);
+            Debug.failBadSyntaxKind(aliasDeclaration2);
         }
         function promoteImportClause(importClause) {
           var _a3;
@@ -171193,12 +171193,12 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
             const namedImports = tryCast(importClause.namedBindings, isNamedImports);
             if (namedImports && namedImports.elements.length > 1) {
               const sortState = ts_OrganizeImports_exports.getNamedImportSpecifierComparerWithDetection(importClause.parent, preferences, sourceFile);
-              if (sortState.isSorted !== false && aliasDeclaration.kind === 277 && namedImports.elements.indexOf(aliasDeclaration) !== 0) {
-                changes2.delete(sourceFile, aliasDeclaration);
-                changes2.insertImportSpecifierAtIndex(sourceFile, aliasDeclaration, namedImports, 0);
+              if (sortState.isSorted !== false && aliasDeclaration2.kind === 277 && namedImports.elements.indexOf(aliasDeclaration2) !== 0) {
+                changes2.delete(sourceFile, aliasDeclaration2);
+                changes2.insertImportSpecifierAtIndex(sourceFile, aliasDeclaration2, namedImports, 0);
               }
               for (const element of namedImports.elements) {
-                if (element !== aliasDeclaration && !element.isTypeOnly) {
+                if (element !== aliasDeclaration2 && !element.isTypeOnly) {
                   changes2.insertModifierBefore(sourceFile, 156, element);
                 }
               }
@@ -183419,15 +183419,15 @@ ${newComment.split("\n").map((c) => ` * ${c}`).join("\n")}
           const keyWithoutLeadingDotSlash = key.replace(/^\.\//, "") + ((isExports || isImports) && endsWith(key, "/") ? "*" : "");
           const patterns = getPatternsForKey(key);
           if (patterns) {
-            const pathPattern = tryParsePattern(keyWithoutLeadingDotSlash);
-            if (!pathPattern) continue;
-            const isMatch = typeof pathPattern === "object" && isPatternMatch(pathPattern, fragment);
+            const pathPattern2 = tryParsePattern(keyWithoutLeadingDotSlash);
+            if (!pathPattern2) continue;
+            const isMatch = typeof pathPattern2 === "object" && isPatternMatch(pathPattern2, fragment);
             const isLongestMatch = isMatch && (matchedPath === void 0 || comparePaths2(keyWithoutLeadingDotSlash, matchedPath) === -1);
             if (isLongestMatch) {
               matchedPath = keyWithoutLeadingDotSlash;
               pathResults = pathResults.filter((r) => !r.matchedPattern);
             }
-            if (typeof pathPattern === "string" || matchedPath === void 0 || comparePaths2(keyWithoutLeadingDotSlash, matchedPath) !== 1) {
+            if (typeof pathPattern2 === "string" || matchedPath === void 0 || comparePaths2(keyWithoutLeadingDotSlash, matchedPath) !== 1) {
               pathResults.push({
                 matchedPattern: isMatch,
                 results: getCompletionsForPathMapping(keyWithoutLeadingDotSlash, patterns, fragment, baseDirectory, extensionOptions, isExports, isImports, program, host, moduleSpecifierResolutionHost).map(({ name, kind, extension }) => nameAndKind(name, kind, extension))
@@ -215318,6 +215318,121 @@ var init_program = __esm({
   }
 });
 
+// src/runtime/writes.ts
+function pathPattern(pattern2) {
+  let source2 = "";
+  for (let index = 0; index < pattern2.length; index++) {
+    const char = pattern2.charAt(index);
+    if (char !== "*") {
+      source2 += char.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+      continue;
+    }
+    if (pattern2[index + 1] !== "*") {
+      source2 += "[^/]*";
+      continue;
+    }
+    index++;
+    if (pattern2[index + 1] === "/") {
+      source2 += "(?:[^/]+/)*";
+      index++;
+    } else source2 += ".*";
+  }
+  const expression = new RegExp(`^${source2}$`);
+  return (path2) => expression.test(path2);
+}
+function patternSpecificity(pattern2) {
+  if (!pattern2.includes("*")) return 0;
+  if (!pattern2.includes("**")) return 1;
+  return 2;
+}
+function textType(type, env, depth2 = 0) {
+  if (depth2 > 32) return false;
+  const resolved = env.resolve(type);
+  if (resolved.kind === "refined" || resolved.kind === "untrusted") return textType(resolved.base, env, depth2 + 1);
+  if (resolved.kind === "prim") return resolved.name === "string" || resolved.name === "unknown";
+  if (resolved.kind === "lit") return typeof resolved.value === "string";
+  if (resolved.kind === "union") return resolved.members.every((member) => textType(member, env, depth2 + 1));
+  return false;
+}
+function textFits(text3, type, env, depth2 = 0) {
+  if (depth2 > 32) return false;
+  const resolved = env.resolve(type);
+  if (resolved.kind === "refined" || resolved.kind === "untrusted") return textFits(text3, resolved.base, env, depth2 + 1);
+  if (resolved.kind === "prim") return true;
+  if (resolved.kind === "lit") return resolved.value === text3;
+  if (resolved.kind === "union") return resolved.members.some((member) => textFits(text3, member, env, depth2 + 1));
+  return false;
+}
+function writesFields(text3, env) {
+  const shape2 = `writes is one record type whose fields are the files the call writes, each a path or glob from the folder with the type of that file's text, such as writes: { "report.md": string, "done/*.md": string }`;
+  let type;
+  try {
+    type = parseTypeCached(text3);
+  } catch (error) {
+    throw new Error(`${shape2}; ${error.message}`);
+  }
+  let resolved;
+  try {
+    resolved = env.resolve(type);
+  } catch (error) {
+    throw new Error(`${shape2}; ${error.message}`);
+  }
+  if (resolved.kind !== "record" || !resolved.fields.length) throw new Error(shape2);
+  return resolved.fields.map((field) => {
+    if (!field.name.trim() || BAD_PATH.test(field.name))
+      throw new Error(`writes: ${JSON.stringify(field.name)} is not a path in the folder; write it relative to the folder, as "notes/summary.md" or "done/*.md"`);
+    if (!textType(field.type, env))
+      throw new Error(`writes: ${JSON.stringify(field.name)} has type ${formatType(field.type)}, but a file holds text; type it string, a string literal, Is<string, "...">, or a union of them, and say what the file holds in the field's doc comment`);
+    return { pattern: field.name, type: field.type, match: pathPattern(field.name) };
+  });
+}
+function writesContainsRefinement(text3, env) {
+  try {
+    return writesFields(text3, env).some((field) => containsRefinement(field.type, env));
+  } catch {
+    return false;
+  }
+}
+function matchingWritesFields(fields, path2) {
+  return fields.filter((item) => item.match(path2)).sort((a, b) => patternSpecificity(a.pattern) - patternSpecificity(b.pattern) || b.pattern.length - a.pattern.length);
+}
+function writesProblem(fields, env, name, changes2) {
+  const declared = fields.map((field) => field.pattern).join(", ");
+  const decoder = new TextDecoder();
+  for (const change of changes2) {
+    if (change.kind === "deleted") continue;
+    const matched = matchingWritesFields(fields, change.path);
+    if (!matched.length) return `${change.path} is not among the files ${name} writes (${declared}); undo that change (remove the file, or restore its text), and put what the result needs in the files it declares.`;
+    const text3 = decoder.decode(change.after ?? new Uint8Array());
+    for (const field of matched) {
+      if (!textFits(text3, field.type, env))
+        return `${change.path} holds ${JSON.stringify(text3.length > 80 ? text3.slice(0, 77) + "..." : text3)}, which is not a ${formatType(field.type)} (the type ${name} declares for ${field.pattern}); rewrite it as one.`;
+    }
+  }
+  return void 0;
+}
+function writesRefinementChecks(fields, env, changes2) {
+  const decoder = new TextDecoder();
+  const out = [];
+  for (const change of changes2) {
+    if (change.kind === "deleted") continue;
+    const matched = matchingWritesFields(fields, change.path).filter((field) => containsRefinement(field.type, env));
+    if (!matched.length) continue;
+    const text3 = decoder.decode(change.after ?? new Uint8Array());
+    for (const field of matched) out.push({ path: change.path, pattern: field.pattern, type: field.type, text: text3 });
+  }
+  return out;
+}
+var BAD_PATH;
+var init_writes = __esm({
+  "src/runtime/writes.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    init_types();
+    BAD_PATH = /(^\/)|(^|\/)\.\.?(\/|$)|\/\/|\/$|\\/;
+  }
+});
+
 // src/native/native-protocol.ts
 function nativeProtocolFailure(response) {
   if (!record(response)) return void 0;
@@ -215376,6 +215491,35 @@ var init_native_protocol = __esm({
       "max_tokens",
       "stop_token_ids"
     ].sort();
+  }
+});
+
+// src/native/type-aliases.ts
+function readTypeAliases(source2) {
+  const file = import_typescript4.default.createSourceFile("types.ts", source2, import_typescript4.default.ScriptTarget.ES2022, true, import_typescript4.default.ScriptKind.TS);
+  const errors = file.parseDiagnostics ?? [];
+  if (errors.length) throw new Error(`type alias syntax: ${errors.map((item) => import_typescript4.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; ")}`);
+  const result = {};
+  for (const statement of file.statements) {
+    if (!import_typescript4.default.isTypeAliasDeclaration(statement) || statement.typeParameters?.length) continue;
+    const name = statement.name.text;
+    if (Object.hasOwn(result, name)) throw new Error(`duplicate type alias ${name}`);
+    const doc = import_typescript4.default.getJSDocCommentsAndTags(statement).filter(import_typescript4.default.isJSDoc).map((item) => import_typescript4.default.getTextOfJSDocComment(item.comment) ?? "").join(" ").replace(/\s+/g, " ").trim();
+    result[name] = (doc ? `/** ${doc.replace(/\*\//g, "* /")} */ ` : "") + statement.type.getText(file);
+  }
+  return result;
+}
+function aliasDeclaration(name, definition) {
+  const doc = /^(\/\*\*[^]*?\*\/)\s*/.exec(definition);
+  return doc ? `${doc[1]}
+type ${name} = ${definition.slice(doc[0].length)};` : `type ${name} = ${definition};`;
+}
+var import_typescript4;
+var init_type_aliases = __esm({
+  "src/native/type-aliases.ts"() {
+    "use strict";
+    init_define_NATLANG_TS_LIBS();
+    import_typescript4 = __toESM(require_typescript(), 1);
   }
 });
 
@@ -215847,18 +215991,18 @@ var init_pages = __esm({
 
 // src/native/eval-types.ts
 function evalTypeDeclarations(code) {
-  const file = import_typescript4.default.createSourceFile("eval.ts", code, import_typescript4.default.ScriptTarget.ES2022, true);
+  const file = import_typescript5.default.createSourceFile("eval.ts", code, import_typescript5.default.ScriptTarget.ES2022, true);
   const declared = /* @__PURE__ */ Object.create(null);
   const namespaces = /* @__PURE__ */ new Map();
   const walk = (statements, namespace = "") => {
     for (const statement of statements) {
-      if (import_typescript4.default.isModuleDeclaration(statement) && statement.body && import_typescript4.default.isModuleBlock(statement.body)) {
+      if (import_typescript5.default.isModuleDeclaration(statement) && statement.body && import_typescript5.default.isModuleBlock(statement.body)) {
         walk(statement.body.statements, namespace + statement.name.text + ".");
         continue;
       }
       let text3;
-      if (import_typescript4.default.isTypeAliasDeclaration(statement) && !statement.typeParameters) text3 = statement.type.getText(file);
-      else if (import_typescript4.default.isInterfaceDeclaration(statement) && !statement.typeParameters && !statement.heritageClauses)
+      if (import_typescript5.default.isTypeAliasDeclaration(statement) && !statement.typeParameters) text3 = statement.type.getText(file);
+      else if (import_typescript5.default.isInterfaceDeclaration(statement) && !statement.typeParameters && !statement.heritageClauses)
         text3 = `{ ${statement.members.map((member) => member.getText(file).replace(/[;,]\s*$/, "")).join("; ")} }`;
       else continue;
       const name = namespace + statement.name.text;
@@ -215920,12 +216064,12 @@ function inlineDeclaredTypes(type, declared, seen = /* @__PURE__ */ new Set()) {
       return type;
   }
 }
-var import_typescript4;
+var import_typescript5;
 var init_eval_types = __esm({
   "src/native/eval-types.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript4 = __toESM(require_typescript(), 1);
+    import_typescript5 = __toESM(require_typescript(), 1);
     init_types();
   }
 });
@@ -216128,17 +216272,17 @@ var init_file_diff_preview = __esm({
 // src/compiler/nl-call.ts
 function desugarNlCalls(source2) {
   if (!/\bnl\s*(?:<[^()]*>)?\s*\(/.test(source2)) return source2;
-  return applyNlCallEdits(source2, nlCallEdits(import_typescript5.default.createSourceFile("snippet.ts", source2, import_typescript5.default.ScriptTarget.ES2022, true)));
+  return applyNlCallEdits(source2, nlCallEdits(import_typescript6.default.createSourceFile("snippet.ts", source2, import_typescript6.default.ScriptTarget.ES2022, true)));
 }
 function nlCallEdits(file, accept = () => true) {
   const source2 = file.text;
   const edits = [];
   const visit = (node) => {
-    if (import_typescript5.default.isCallExpression(node) && import_typescript5.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length > 1 && accept(node.expression)) {
+    if (import_typescript6.default.isCallExpression(node) && import_typescript6.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length > 1 && accept(node.expression)) {
       const [argument, first] = [node.arguments[0], node.arguments[1]];
       let template;
-      if (import_typescript5.default.isNoSubstitutionTemplateLiteral(argument) || import_typescript5.default.isTemplateExpression(argument)) template = argument.getText(file);
-      else if (import_typescript5.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
+      if (import_typescript6.default.isNoSubstitutionTemplateLiteral(argument) || import_typescript6.default.isTemplateExpression(argument)) template = argument.getText(file);
+      else if (import_typescript6.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
       const open = node.arguments.pos - 1, from = first.getStart(file);
       if (template !== void 0 && template.length === argument.getText(file).length && source2[open] === "(" && from - open >= template.length + 1 && !source2.slice(argument.getEnd(), from).replace(",", "").trim()) {
         edits.push({ start: open, end: from, text: template + "(" + " ".repeat(from - open - template.length - 1) });
@@ -216146,7 +216290,7 @@ function nlCallEdits(file, accept = () => true) {
         return;
       }
     }
-    if (import_typescript5.default.isCallExpression(node) && import_typescript5.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length === 1 && accept(node.expression) && import_typescript5.default.isCallExpression(node.arguments[0]) && (import_typescript5.default.isNoSubstitutionTemplateLiteral(node.arguments[0].expression) || import_typescript5.default.isTemplateExpression(node.arguments[0].expression))) {
+    if (import_typescript6.default.isCallExpression(node) && import_typescript6.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length === 1 && accept(node.expression) && import_typescript6.default.isCallExpression(node.arguments[0]) && (import_typescript6.default.isNoSubstitutionTemplateLiteral(node.arguments[0].expression) || import_typescript6.default.isTemplateExpression(node.arguments[0].expression))) {
       const inner = node.arguments[0], template = inner.expression.getText(file);
       const open = node.arguments.pos - 1, close = node.getEnd() - 1;
       if (source2[open] === "(" && source2[close] === ")" && inner.expression.getStart(file) === open + 1) {
@@ -216156,30 +216300,30 @@ function nlCallEdits(file, accept = () => true) {
         return;
       }
     }
-    if (import_typescript5.default.isCallExpression(node) && import_typescript5.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length === 1 && accept(node.expression)) {
+    if (import_typescript6.default.isCallExpression(node) && import_typescript6.default.isIdentifier(node.expression) && node.expression.text === "nl" && node.arguments.length === 1 && accept(node.expression)) {
       const argument = node.arguments[0];
       let template;
-      if (import_typescript5.default.isNoSubstitutionTemplateLiteral(argument) || import_typescript5.default.isTemplateExpression(argument)) template = argument.getText(file);
-      else if (import_typescript5.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
+      if (import_typescript6.default.isNoSubstitutionTemplateLiteral(argument) || import_typescript6.default.isTemplateExpression(argument)) template = argument.getText(file);
+      else if (import_typescript6.default.isStringLiteral(argument) && !/[`\\]|\$\{/.test(argument.text)) template = `\`${argument.text}\``;
       const open = node.arguments.pos - 1;
       if (template !== void 0 && template.length === argument.getText(file).length && source2[open] === "(") {
-        const applied = import_typescript5.default.isCallExpression(node.parent) && node.parent.expression === node;
+        const applied = import_typescript6.default.isCallExpression(node.parent) && node.parent.expression === node;
         edits.push({ start: open, end: node.getEnd(), text: applied ? `${template}  ` : `${template}()` });
         if (applied) for (const outer of node.parent.arguments) visit(outer);
         return;
       }
     }
-    import_typescript5.default.forEachChild(node, visit);
+    import_typescript6.default.forEachChild(node, visit);
   };
   visit(file);
   return edits;
 }
-var import_typescript5, applyNlCallEdits;
+var import_typescript6, applyNlCallEdits;
 var init_nl_call = __esm({
   "src/compiler/nl-call.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript5 = __toESM(require_typescript(), 1);
+    import_typescript6 = __toESM(require_typescript(), 1);
     applyNlCallEdits = (source2, edits) => [...edits].reverse().reduce((text3, edit) => text3.slice(0, edit.start) + edit.text + text3.slice(edit.end), source2);
   }
 });
@@ -216189,7 +216333,7 @@ function cachedSourceFile(fileName, text3, target) {
   const key = `${target}\0${fileName}`;
   const found = sharedSourceFiles.get(key);
   if (found && found.text === text3) return found.file;
-  const file = import_typescript6.default.createSourceFile(fileName, text3, target, true);
+  const file = import_typescript7.default.createSourceFile(fileName, text3, target, true);
   sharedSourceFiles.set(key, { text: text3, file });
   return file;
 }
@@ -216198,10 +216342,10 @@ function createNatlangCompilerHost(config) {
   virtual.set(INTRINSICS_FILE, INTRINSICS_GLOBAL_DTS);
   virtual.set(SURFACE_MODULE_FILE, INTRINSICS_MODULE_DTS);
   virtual.set(STD_MODULE_FILE, STD_MODULE_DTS);
-  const files2 = config.files ?? import_typescript6.default.sys;
-  const system = import_typescript6.default.sys;
+  const files2 = config.files ?? import_typescript7.default.sys;
+  const system = import_typescript7.default.sys;
   const libs = config.libs ?? embeddedLibs ?? (system ? void 0 : () => void 0);
-  const libDir = libs ? VIRTUAL_LIB_DIR : dirname(import_typescript6.default.getDefaultLibFilePath(config.options));
+  const libDir = libs ? VIRTUAL_LIB_DIR : dirname(import_typescript7.default.getDefaultLibFilePath(config.options));
   const read = (fileName) => {
     const direct = virtual.get(fileName);
     if (direct !== void 0) return direct;
@@ -216225,14 +216369,14 @@ function createNatlangCompilerHost(config) {
       if (read_ === void 0) return void 0;
       const text3 = config.desugarNl === false || /\.d\.[cm]?ts$/.test(fileName) || fileName.startsWith(`${libDir}/`) || /\b(?:function|const|let|var|class)\s+nl\b/.test(read_) ? read_ : desugarNlCalls(read_);
       const target = typeof languageVersion === "number" ? languageVersion : languageVersion.languageVersion;
-      return isShared(fileName) ? cachedSourceFile(fileName, text3, target) : import_typescript6.default.createSourceFile(fileName, text3, languageVersion, true);
+      return isShared(fileName) ? cachedSourceFile(fileName, text3, target) : import_typescript7.default.createSourceFile(fileName, text3, languageVersion, true);
     },
-    getDefaultLibFileName: (options) => `${libDir}/${import_typescript6.default.getDefaultLibFileName(options)}`,
+    getDefaultLibFileName: (options) => `${libDir}/${import_typescript7.default.getDefaultLibFileName(options)}`,
     getDefaultLibLocation: () => libDir,
     writeFile: () => {
       throw new Error("natlang compiler hosts do not write through TypeScript emit");
     },
-    getCurrentDirectory: () => config.currentDirectory ?? (import_typescript6.default.sys && files2 === import_typescript6.default.sys ? import_typescript6.default.sys.getCurrentDirectory() : "/"),
+    getCurrentDirectory: () => config.currentDirectory ?? (import_typescript7.default.sys && files2 === import_typescript7.default.sys ? import_typescript7.default.sys.getCurrentDirectory() : "/"),
     getDirectories: (path2) => files2?.getDirectories?.(path2) ?? [],
     getCanonicalFileName: (name) => name,
     useCaseSensitiveFileNames: () => true,
@@ -216244,15 +216388,15 @@ function createNatlangCompilerHost(config) {
   };
 }
 function createVirtualProgram(files2, options = EVAL_COMPILER_OPTIONS, roots = Object.keys(files2), base) {
-  const host = createNatlangCompilerHost({ options, virtual: new Map(Object.entries(files2)), files: base ?? import_typescript6.default.sys });
-  return import_typescript6.default.createProgram({ rootNames: [INTRINSICS_FILE, ...roots], options, host });
+  const host = createNatlangCompilerHost({ options, virtual: new Map(Object.entries(files2)), files: base ?? import_typescript7.default.sys });
+  return import_typescript7.default.createProgram({ rootNames: [INTRINSICS_FILE, ...roots], options, host });
 }
-var import_typescript6, VIRTUAL_LIB_DIR, dirname, embeddedLibs, sharedSourceFiles, isShared, EVAL_COMPILER_OPTIONS;
+var import_typescript7, VIRTUAL_LIB_DIR, dirname, embeddedLibs, sharedSourceFiles, isShared, EVAL_COMPILER_OPTIONS;
 var init_host = __esm({
   "src/compiler/host.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript6 = __toESM(require_typescript(), 1);
+    import_typescript7 = __toESM(require_typescript(), 1);
     init_intrinsics();
     init_nl_call();
     VIRTUAL_LIB_DIR = "/__natlang__/lib";
@@ -216264,9 +216408,9 @@ var init_host = __esm({
     sharedSourceFiles = /* @__PURE__ */ new Map();
     isShared = (fileName) => fileName.startsWith("/__natlang__/") || /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]*\.d\.ts$/.test(fileName);
     EVAL_COMPILER_OPTIONS = {
-      target: import_typescript6.default.ScriptTarget.ES2022,
-      module: import_typescript6.default.ModuleKind.ESNext,
-      moduleResolution: import_typescript6.default.ModuleResolutionKind.Bundler,
+      target: import_typescript7.default.ScriptTarget.ES2022,
+      module: import_typescript7.default.ModuleKind.ESNext,
+      moduleResolution: import_typescript7.default.ModuleResolutionKind.Bundler,
       lib: ["lib.es2022.d.ts"],
       strict: true,
       noEmit: true,
@@ -216323,7 +216467,7 @@ function solveHoles(program, sites) {
       return position - shifted;
     };
     const require2 = (node, type, strong, why, id3) => {
-      const statement = import_typescript7.default.findAncestor(node, (candidate) => import_typescript7.default.isStatement(candidate) && !import_typescript7.default.isBlock(candidate)) ?? node;
+      const statement = import_typescript8.default.findAncestor(node, (candidate) => import_typescript8.default.isStatement(candidate) && !import_typescript8.default.isBlock(candidate)) ?? node;
       const quoted = statement.getText().split("\n")[0].replace(/\s+/g, " ").trim();
       uses.set(id3, [...uses.get(id3) ?? [], {
         type,
@@ -216335,11 +216479,11 @@ function solveHoles(program, sites) {
       }]);
     };
     const visit = (node) => {
-      if (import_typescript7.default.isExpression(node) && !isBindingName(node) && !isPropertyName(node) && !import_typescript7.default.isTaggedTemplateExpression(node.parent)) {
+      if (import_typescript8.default.isExpression(node) && !isBindingName(node) && !isPropertyName(node) && !import_typescript8.default.isTaggedTemplateExpression(node.parent)) {
         const type = checker.getTypeAtLocation(node);
         if (holesIn(checker, type).size) collect(node, type);
       }
-      import_typescript7.default.forEachChild(node, visit);
+      import_typescript8.default.forEachChild(node, visit);
     };
     const collect = (node, type) => {
       const expected = checker.getContextualType(node);
@@ -216349,48 +216493,48 @@ function solveHoles(program, sites) {
       const outer = skipParentheses(node);
       const parent = outer.parent;
       if (inTruthinessPosition(outer)) require2(node, checker.getBooleanType(), true, "tested as a condition", hole);
-      if (import_typescript7.default.isPrefixUnaryExpression(parent) && [
-        import_typescript7.default.SyntaxKind.MinusToken,
-        import_typescript7.default.SyntaxKind.PlusToken,
-        import_typescript7.default.SyntaxKind.TildeToken,
-        import_typescript7.default.SyntaxKind.PlusPlusToken,
-        import_typescript7.default.SyntaxKind.MinusMinusToken
+      if (import_typescript8.default.isPrefixUnaryExpression(parent) && [
+        import_typescript8.default.SyntaxKind.MinusToken,
+        import_typescript8.default.SyntaxKind.PlusToken,
+        import_typescript8.default.SyntaxKind.TildeToken,
+        import_typescript8.default.SyntaxKind.PlusPlusToken,
+        import_typescript8.default.SyntaxKind.MinusMinusToken
       ].includes(parent.operator))
         require2(node, checker.getNumberType(), true, "used as a number", hole);
-      if (import_typescript7.default.isBinaryExpression(parent)) {
+      if (import_typescript8.default.isBinaryExpression(parent)) {
         const other = parent.left === outer ? parent.right : parent.left;
         const otherType = checker.getTypeAtLocation(other);
         const kind = parent.operatorToken.kind;
         if (ARITHMETIC2.has(kind)) require2(node, checker.getNumberType(), true, "used as a number", hole);
-        else if (kind === import_typescript7.default.SyntaxKind.PlusToken || kind === import_typescript7.default.SyntaxKind.PlusEqualsToken || RELATIONAL.has(kind)) {
-          if (otherType.flags & import_typescript7.default.TypeFlags.NumberLike) require2(node, checker.getNumberType(), true, "used as a number", hole);
-          else if (otherType.flags & import_typescript7.default.TypeFlags.StringLike) require2(node, checker.getStringType(), false, "used as text", hole);
+        else if (kind === import_typescript8.default.SyntaxKind.PlusToken || kind === import_typescript8.default.SyntaxKind.PlusEqualsToken || RELATIONAL.has(kind)) {
+          if (otherType.flags & import_typescript8.default.TypeFlags.NumberLike) require2(node, checker.getNumberType(), true, "used as a number", hole);
+          else if (otherType.flags & import_typescript8.default.TypeFlags.StringLike) require2(node, checker.getStringType(), false, "used as text", hole);
         } else if (EQUALITY.has(kind) && !holesIn(checker, otherType).size) {
           const base = baseType(checker, otherType);
           if (base) require2(node, base, false, "compared with a value", hole);
         }
       }
-      if (import_typescript7.default.isTemplateSpan(parent) && parent.expression === outer || isDisplayed(outer))
+      if (import_typescript8.default.isTemplateSpan(parent) && parent.expression === outer || isDisplayed(outer))
         require2(node, checker.getStringType(), false, "used as text", hole);
-      if (import_typescript7.default.isSwitchStatement(parent) && parent.expression === outer) {
-        for (const clause of parent.caseBlock.clauses) if (import_typescript7.default.isCaseClause(clause)) {
+      if (import_typescript8.default.isSwitchStatement(parent) && parent.expression === outer) {
+        for (const clause of parent.caseBlock.clauses) if (import_typescript8.default.isCaseClause(clause)) {
           const base = baseType(checker, checker.getTypeAtLocation(clause.expression));
           if (base) require2(clause.expression, base, false, "compared with a value", hole);
         }
       }
-      if (import_typescript7.default.isPropertyAccessExpression(parent) && parent.expression === outer) {
+      if (import_typescript8.default.isPropertyAccessExpression(parent) && parent.expression === outer) {
         const name = parent.name.text;
-        const called = import_typescript7.default.isCallExpression(parent.parent) && parent.parent.expression === parent;
+        const called = import_typescript8.default.isCallExpression(parent.parent) && parent.parent.expression === parent;
         if (called && STRING_METHODS.has(name)) require2(node, checker.getStringType(), true, `given .${name}()`, hole);
         else if (called && NUMBER_METHODS.has(name)) require2(node, checker.getNumberType(), true, `given .${name}()`, hole);
         else fields.set(hole, /* @__PURE__ */ new Set([...fields.get(hole) ?? [], name]));
       }
-      if (import_typescript7.default.isVariableDeclaration(parent) && parent.initializer === outer && import_typescript7.default.isObjectBindingPattern(parent.name))
+      if (import_typescript8.default.isVariableDeclaration(parent) && parent.initializer === outer && import_typescript8.default.isObjectBindingPattern(parent.name))
         for (const element of parent.name.elements) {
           const name = element.propertyName ?? element.name;
-          if (import_typescript7.default.isIdentifier(name)) fields.set(hole, /* @__PURE__ */ new Set([...fields.get(hole) ?? [], name.text]));
+          if (import_typescript8.default.isIdentifier(name)) fields.set(hole, /* @__PURE__ */ new Set([...fields.get(hole) ?? [], name.text]));
         }
-      if (import_typescript7.default.isElementAccessExpression(parent) && parent.expression === outer || import_typescript7.default.isForOfStatement(parent) && parent.expression === outer) indexed.add(hole);
+      if (import_typescript8.default.isElementAccessExpression(parent) && parent.expression === outer || import_typescript8.default.isForOfStatement(parent) && parent.expression === outer) indexed.add(hole);
     };
     visit(file);
   }
@@ -216420,8 +216564,8 @@ function rebuild(program, texts) {
   const libDir = defaultLib ? defaultLib.slice(0, defaultLib.lastIndexOf("/")) : "/";
   const known = (fileName) => texts.get(fileName) ?? program.getSourceFile(fileName)?.text;
   const host = {
-    getSourceFile: (fileName, version) => texts.has(fileName) ? import_typescript7.default.createSourceFile(fileName, texts.get(fileName), version, true) : program.getSourceFile(fileName),
-    getDefaultLibFileName: (compilerOptions) => `${libDir}/${import_typescript7.default.getDefaultLibFileName(compilerOptions)}`,
+    getSourceFile: (fileName, version) => texts.has(fileName) ? import_typescript8.default.createSourceFile(fileName, texts.get(fileName), version, true) : program.getSourceFile(fileName),
+    getDefaultLibFileName: (compilerOptions) => `${libDir}/${import_typescript8.default.getDefaultLibFileName(compilerOptions)}`,
     getDefaultLibLocation: () => libDir,
     writeFile: () => void 0,
     getCurrentDirectory: () => program.getCurrentDirectory(),
@@ -216433,7 +216577,7 @@ function rebuild(program, texts) {
     readFile: known
   };
   try {
-    return import_typescript7.default.createProgram({ rootNames: program.getRootFileNames(), options, host, oldProgram: program });
+    return import_typescript8.default.createProgram({ rootNames: program.getRootFileNames(), options, host, oldProgram: program });
   } catch {
     return;
   }
@@ -216450,13 +216594,13 @@ function holesIn(checker, type, depth2 = 0, found = /* @__PURE__ */ new Set()) {
     return found;
   }
   if (type.isUnionOrIntersection()) for (const member of type.types) holesIn(checker, member, depth2 + 1, found);
-  else if (type.flags & import_typescript7.default.TypeFlags.Object) {
+  else if (type.flags & import_typescript8.default.TypeFlags.Object) {
     const object2 = type;
-    if (object2.objectFlags & import_typescript7.default.ObjectFlags.Reference)
+    if (object2.objectFlags & import_typescript8.default.ObjectFlags.Reference)
       for (const argument of checker.getTypeArguments(type)) holesIn(checker, argument, depth2 + 1, found);
-    const index = checker.getIndexInfoOfType(type, import_typescript7.default.IndexKind.String);
+    const index = checker.getIndexInfoOfType(type, import_typescript8.default.IndexKind.String);
     if (index) holesIn(checker, index.type, depth2 + 1, found);
-    if (object2.objectFlags & import_typescript7.default.ObjectFlags.Anonymous) {
+    if (object2.objectFlags & import_typescript8.default.ObjectFlags.Anonymous) {
       for (const property of type.getProperties().slice(0, 32)) holesIn(checker, checker.getTypeOfSymbol(property), depth2 + 1, found);
       for (const signature of type.getCallSignatures()) holesIn(checker, signature.getReturnType(), depth2 + 1, found);
     }
@@ -216475,7 +216619,7 @@ function unify(checker, source2, target, require2, depth2 = 0) {
     unify(checker, awaitedType(checker, source2).type, awaitedType(checker, target).type, require2, depth2 + 1);
     return;
   }
-  const shape2 = (candidate) => checker.isArrayType(candidate) || checker.isTupleType(candidate) ? "array" : candidate.getCallSignatures().length ? "function" : candidate.flags & import_typescript7.default.TypeFlags.Object ? "object" : "other";
+  const shape2 = (candidate) => checker.isArrayType(candidate) || checker.isTupleType(candidate) ? "array" : candidate.getCallSignatures().length ? "function" : candidate.flags & import_typescript8.default.TypeFlags.Object ? "object" : "other";
   const kind = shape2(source2);
   if (target.isUnion()) {
     const matching = target.types.filter((member) => shape2(member) === kind && !isPromiseLike(checker, member));
@@ -216495,8 +216639,8 @@ function unify(checker, source2, target, require2, depth2 = 0) {
     const [from] = source2.getCallSignatures(), [to2] = target.getCallSignatures();
     if (from && to2) unify(checker, from.getReturnType(), to2.getReturnType(), require2, depth2 + 1);
   } else if (kind === "object") {
-    const sourceIndex = checker.getIndexInfoOfType(source2, import_typescript7.default.IndexKind.String);
-    const targetIndex = checker.getIndexInfoOfType(target, import_typescript7.default.IndexKind.String);
+    const sourceIndex = checker.getIndexInfoOfType(source2, import_typescript8.default.IndexKind.String);
+    const targetIndex = checker.getIndexInfoOfType(target, import_typescript8.default.IndexKind.String);
     if (sourceIndex && targetIndex) unify(checker, sourceIndex.type, targetIndex.type, require2, depth2 + 1);
     for (const property of source2.getProperties()) {
       const goal = target.getProperty(property.name);
@@ -216510,55 +216654,55 @@ function withoutPromises(checker, type) {
   return members.length === type.types.length || members.length !== 1 ? type : members[0];
 }
 function baseType(checker, type) {
-  if (!usable(type) || type.flags & (import_typescript7.default.TypeFlags.Null | import_typescript7.default.TypeFlags.Undefined)) return;
-  if (type.flags & import_typescript7.default.TypeFlags.Literal && !type.aliasSymbol) return checker.getBaseTypeOfLiteralType(type);
+  if (!usable(type) || type.flags & (import_typescript8.default.TypeFlags.Null | import_typescript8.default.TypeFlags.Undefined)) return;
+  if (type.flags & import_typescript8.default.TypeFlags.Literal && !type.aliasSymbol) return checker.getBaseTypeOfLiteralType(type);
   return type;
 }
 function skipParentheses(node) {
-  while (node.parent && import_typescript7.default.isParenthesizedExpression(node.parent)) node = node.parent;
+  while (node.parent && import_typescript8.default.isParenthesizedExpression(node.parent)) node = node.parent;
   return node;
 }
 function inTruthinessPosition(node) {
   const parent = node.parent;
   if (!parent) return false;
-  if (import_typescript7.default.isParenthesizedExpression(parent)) return inTruthinessPosition(parent);
-  if ((import_typescript7.default.isIfStatement(parent) || import_typescript7.default.isWhileStatement(parent) || import_typescript7.default.isDoStatement(parent)) && parent.expression === node) return true;
-  if (import_typescript7.default.isForStatement(parent) && parent.condition === node) return true;
-  if (import_typescript7.default.isConditionalExpression(parent) && parent.condition === node) return true;
-  if (import_typescript7.default.isPrefixUnaryExpression(parent) && parent.operator === import_typescript7.default.SyntaxKind.ExclamationToken) return true;
-  if (import_typescript7.default.isBinaryExpression(parent) && [import_typescript7.default.SyntaxKind.AmpersandAmpersandToken, import_typescript7.default.SyntaxKind.BarBarToken].includes(parent.operatorToken.kind))
+  if (import_typescript8.default.isParenthesizedExpression(parent)) return inTruthinessPosition(parent);
+  if ((import_typescript8.default.isIfStatement(parent) || import_typescript8.default.isWhileStatement(parent) || import_typescript8.default.isDoStatement(parent)) && parent.expression === node) return true;
+  if (import_typescript8.default.isForStatement(parent) && parent.condition === node) return true;
+  if (import_typescript8.default.isConditionalExpression(parent) && parent.condition === node) return true;
+  if (import_typescript8.default.isPrefixUnaryExpression(parent) && parent.operator === import_typescript8.default.SyntaxKind.ExclamationToken) return true;
+  if (import_typescript8.default.isBinaryExpression(parent) && [import_typescript8.default.SyntaxKind.AmpersandAmpersandToken, import_typescript8.default.SyntaxKind.BarBarToken].includes(parent.operatorToken.kind))
     return inTruthinessPosition(parent);
-  const callback = import_typescript7.default.isArrowFunction(parent) && parent.body === node ? parent : import_typescript7.default.isReturnStatement(parent) ? import_typescript7.default.findAncestor(parent, import_typescript7.default.isFunctionLike) : void 0;
-  if (callback && callback.parent && import_typescript7.default.isCallExpression(callback.parent) && callback.parent.arguments.includes(callback)) {
+  const callback = import_typescript8.default.isArrowFunction(parent) && parent.body === node ? parent : import_typescript8.default.isReturnStatement(parent) ? import_typescript8.default.findAncestor(parent, import_typescript8.default.isFunctionLike) : void 0;
+  if (callback && callback.parent && import_typescript8.default.isCallExpression(callback.parent) && callback.parent.arguments.includes(callback)) {
     const callee = callback.parent.expression;
-    return import_typescript7.default.isPropertyAccessExpression(callee) && PREDICATE_METHODS.has(callee.name.text);
+    return import_typescript8.default.isPropertyAccessExpression(callee) && PREDICATE_METHODS.has(callee.name.text);
   }
   return false;
 }
 function isDisplayed(node) {
   const parent = node.parent;
-  if (parent && import_typescript7.default.isCallExpression(parent) && parent.arguments.includes(node)) {
+  if (parent && import_typescript8.default.isCallExpression(parent) && parent.arguments.includes(node)) {
     const callee = parent.expression;
-    return import_typescript7.default.isPropertyAccessExpression(callee) && import_typescript7.default.isIdentifier(callee.expression) && callee.expression.text === "console";
+    return import_typescript8.default.isPropertyAccessExpression(callee) && import_typescript8.default.isIdentifier(callee.expression) && callee.expression.text === "console";
   }
-  if (!parent || !import_typescript7.default.isExpressionStatement(parent)) return false;
+  if (!parent || !import_typescript8.default.isExpressionStatement(parent)) return false;
   const body = parent.parent;
-  return import_typescript7.default.isBlock(body) && body.statements.at(-1) === parent && import_typescript7.default.isFunctionDeclaration(body.parent) && body.parent.name?.text === EVAL_WRAPPER;
+  return import_typescript8.default.isBlock(body) && body.statements.at(-1) === parent && import_typescript8.default.isFunctionDeclaration(body.parent) && body.parent.name?.text === EVAL_WRAPPER;
 }
 function isBindingName(node) {
   const parent = node.parent;
-  return !!parent && ((import_typescript7.default.isVariableDeclaration(parent) || import_typescript7.default.isParameter(parent) || import_typescript7.default.isBindingElement(parent) || import_typescript7.default.isFunctionDeclaration(parent) || import_typescript7.default.isPropertyAssignment(parent)) && parent.name === node);
+  return !!parent && ((import_typescript8.default.isVariableDeclaration(parent) || import_typescript8.default.isParameter(parent) || import_typescript8.default.isBindingElement(parent) || import_typescript8.default.isFunctionDeclaration(parent) || import_typescript8.default.isPropertyAssignment(parent)) && parent.name === node);
 }
 function isPropertyName(node) {
   const parent = node.parent;
-  return !!parent && import_typescript7.default.isPropertyAccessExpression(parent) && parent.name === node;
+  return !!parent && import_typescript8.default.isPropertyAccessExpression(parent) && parent.name === node;
 }
-var import_typescript7, HOLE, EVAL_WRAPPER, STRING_METHODS, NUMBER_METHODS, PREDICATE_METHODS, ARITHMETIC2, RELATIONAL, EQUALITY, usable;
+var import_typescript8, HOLE, EVAL_WRAPPER, STRING_METHODS, NUMBER_METHODS, PREDICATE_METHODS, ARITHMETIC2, RELATIONAL, EQUALITY, usable;
 var init_holes = __esm({
   "src/compiler/holes.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript7 = __toESM(require_typescript(), 1);
+    import_typescript8 = __toESM(require_typescript(), 1);
     init_targets();
     HOLE = "__NlHole";
     EVAL_WRAPPER = "__natlang_scope";
@@ -216587,29 +216731,29 @@ var init_holes = __esm({
     NUMBER_METHODS = /* @__PURE__ */ new Set(["toFixed", "toPrecision", "toExponential"]);
     PREDICATE_METHODS = /* @__PURE__ */ new Set(["filter", "some", "every", "find", "findIndex", "findLast", "findLastIndex"]);
     ARITHMETIC2 = /* @__PURE__ */ new Set([
-      import_typescript7.default.SyntaxKind.MinusToken,
-      import_typescript7.default.SyntaxKind.AsteriskToken,
-      import_typescript7.default.SyntaxKind.SlashToken,
-      import_typescript7.default.SyntaxKind.PercentToken,
-      import_typescript7.default.SyntaxKind.AsteriskAsteriskToken,
-      import_typescript7.default.SyntaxKind.MinusEqualsToken,
-      import_typescript7.default.SyntaxKind.AsteriskEqualsToken,
-      import_typescript7.default.SyntaxKind.SlashEqualsToken,
-      import_typescript7.default.SyntaxKind.PercentEqualsToken
+      import_typescript8.default.SyntaxKind.MinusToken,
+      import_typescript8.default.SyntaxKind.AsteriskToken,
+      import_typescript8.default.SyntaxKind.SlashToken,
+      import_typescript8.default.SyntaxKind.PercentToken,
+      import_typescript8.default.SyntaxKind.AsteriskAsteriskToken,
+      import_typescript8.default.SyntaxKind.MinusEqualsToken,
+      import_typescript8.default.SyntaxKind.AsteriskEqualsToken,
+      import_typescript8.default.SyntaxKind.SlashEqualsToken,
+      import_typescript8.default.SyntaxKind.PercentEqualsToken
     ]);
     RELATIONAL = /* @__PURE__ */ new Set([
-      import_typescript7.default.SyntaxKind.LessThanToken,
-      import_typescript7.default.SyntaxKind.GreaterThanToken,
-      import_typescript7.default.SyntaxKind.LessThanEqualsToken,
-      import_typescript7.default.SyntaxKind.GreaterThanEqualsToken
+      import_typescript8.default.SyntaxKind.LessThanToken,
+      import_typescript8.default.SyntaxKind.GreaterThanToken,
+      import_typescript8.default.SyntaxKind.LessThanEqualsToken,
+      import_typescript8.default.SyntaxKind.GreaterThanEqualsToken
     ]);
     EQUALITY = /* @__PURE__ */ new Set([
-      import_typescript7.default.SyntaxKind.EqualsEqualsEqualsToken,
-      import_typescript7.default.SyntaxKind.ExclamationEqualsEqualsToken,
-      import_typescript7.default.SyntaxKind.EqualsEqualsToken,
-      import_typescript7.default.SyntaxKind.ExclamationEqualsToken
+      import_typescript8.default.SyntaxKind.EqualsEqualsEqualsToken,
+      import_typescript8.default.SyntaxKind.ExclamationEqualsEqualsToken,
+      import_typescript8.default.SyntaxKind.EqualsEqualsToken,
+      import_typescript8.default.SyntaxKind.ExclamationEqualsToken
     ]);
-    usable = (type) => !(type.flags & (import_typescript7.default.TypeFlags.Any | import_typescript7.default.TypeFlags.Unknown | import_typescript7.default.TypeFlags.Never | import_typescript7.default.TypeFlags.TypeParameter | import_typescript7.default.TypeFlags.Void));
+    usable = (type) => !(type.flags & (import_typescript8.default.TypeFlags.Any | import_typescript8.default.TypeFlags.Unknown | import_typescript8.default.TypeFlags.Never | import_typescript8.default.TypeFlags.TypeParameter | import_typescript8.default.TypeFlags.Void));
   }
 });
 
@@ -216617,7 +216761,7 @@ var init_holes = __esm({
 function fromTypeScript(diagnostic, file) {
   const start = diagnostic.start ?? 0;
   const position = diagnostic.file && diagnostic.start !== void 0 ? diagnostic.file.getLineAndCharacterOfPosition(start) : { line: 0, character: 0 };
-  const [message2 = "", ...rest] = import_typescript8.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n").split("\n").map((line) => line.trim());
+  const [message2 = "", ...rest] = import_typescript9.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n").split("\n").map((line) => line.trim());
   const detail = rest.filter((line, index) => line && line !== message2 && rest.indexOf(line) === index).join("\n");
   return {
     file,
@@ -216632,61 +216776,112 @@ function fromTypeScript(diagnostic, file) {
   };
 }
 function softBodyOf(template) {
-  if (!import_typescript8.default.isTemplateExpression(template) || template.templateSpans.length !== 1 || template.head.text !== "" || template.templateSpans[0].literal.text !== "") return;
+  if (!import_typescript9.default.isTemplateExpression(template) || template.templateSpans.length !== 1 || template.head.text !== "" || template.templateSpans[0].literal.text !== "") return;
   const expression = template.templateSpans[0].expression;
-  if (!import_typescript8.default.isCallExpression(expression) || !import_typescript8.default.isPropertyAccessExpression(expression.expression)) return;
+  if (!import_typescript9.default.isCallExpression(expression) || !import_typescript9.default.isPropertyAccessExpression(expression.expression)) return;
   const callee = expression.expression;
-  return import_typescript8.default.isIdentifier(callee.expression) && callee.expression.text === "__neuralese" && callee.name.text === "body" ? nativeLiteralUse(expression.arguments)?.id : void 0;
+  return import_typescript9.default.isIdentifier(callee.expression) && callee.expression.text === "__neuralese" && callee.name.text === "body" ? nativeLiteralUse(expression.arguments)?.id : void 0;
 }
 function softBodyUse(template) {
-  if (!softBodyOf(template) || !import_typescript8.default.isTemplateExpression(template)) return;
+  if (!softBodyOf(template) || !import_typescript9.default.isTemplateExpression(template)) return;
   return nativeLiteralUse(template.templateSpans[0].expression.arguments);
 }
 function withCallOf(checker, tag) {
-  if (!import_typescript8.default.isCallExpression(tag) || !import_typescript8.default.isPropertyAccessExpression(tag.expression) || tag.expression.name.text !== "with") return;
+  if (!import_typescript9.default.isCallExpression(tag) || !import_typescript9.default.isPropertyAccessExpression(tag.expression) || tag.expression.name.text !== "with") return;
   if (checker) return resolveIntrinsic(checker, tag.expression) === "nl.with" ? tag : void 0;
-  return import_typescript8.default.isIdentifier(tag.expression.expression) && tag.expression.expression.text === "nl" ? tag : void 0;
+  return import_typescript9.default.isIdentifier(tag.expression.expression) && tag.expression.expression.text === "nl" ? tag : void 0;
 }
 function isUntrustedType(checker, type) {
   if (type.isUnion()) return type.types.some((member) => isUntrustedType(checker, member));
   return checker.getPropertiesOfType(type).some((property) => property.name === "__natlangUntrusted");
 }
+function containsTextType(checker, type, depth2 = 0, seen = /* @__PURE__ */ new Set()) {
+  if (depth2 > 4 || seen.has(type)) return false;
+  if (isTextType(type)) return true;
+  if (type.flags & (import_typescript9.default.TypeFlags.Any | import_typescript9.default.TypeFlags.Unknown)) return true;
+  if (type.flags & (import_typescript9.default.TypeFlags.NumberLike | import_typescript9.default.TypeFlags.BooleanLike | import_typescript9.default.TypeFlags.BigIntLike | import_typescript9.default.TypeFlags.Null | import_typescript9.default.TypeFlags.Undefined | import_typescript9.default.TypeFlags.Void | import_typescript9.default.TypeFlags.Never | import_typescript9.default.TypeFlags.ESSymbolLike)) return false;
+  seen.add(type);
+  if (type.isUnion()) return type.types.some((member) => containsTextType(checker, member, depth2 + 1, seen));
+  if (type.isIntersection()) return type.types.some((member) => containsTextType(checker, member, depth2 + 1, seen));
+  if (checker.isArrayType(type) || checker.isTupleType(type)) {
+    const args = checker.getTypeArguments(type);
+    if (args.length) return args.some((arg) => containsTextType(checker, arg, depth2 + 1, seen));
+    const index = type.getNumberIndexType();
+    return !!index && containsTextType(checker, index, depth2 + 1, seen);
+  }
+  const stringIndex = type.getStringIndexType();
+  if (stringIndex && containsTextType(checker, stringIndex, depth2 + 1, seen)) return true;
+  const numberIndex = type.getNumberIndexType();
+  if (numberIndex && containsTextType(checker, numberIndex, depth2 + 1, seen)) return true;
+  if (type.flags & import_typescript9.default.TypeFlags.Object) {
+    const objectFlags = type.objectFlags;
+    if (objectFlags & (import_typescript9.default.ObjectFlags.Anonymous | import_typescript9.default.ObjectFlags.Interface | import_typescript9.default.ObjectFlags.Reference | import_typescript9.default.ObjectFlags.Mapped)) {
+      const props = checker.getPropertiesOfType(type);
+      if (props.length > 0 && props.length <= 32) {
+        return props.some((prop) => {
+          const decl = prop.valueDeclaration ?? prop.declarations?.[0];
+          if (!decl || import_typescript9.default.isMethodSignature(decl) || import_typescript9.default.isMethodDeclaration(decl)) return false;
+          const propType = checker.getTypeOfSymbolAtLocation(prop, decl);
+          return propType.getCallSignatures().length === 0 && containsTextType(checker, propType, depth2 + 1, seen);
+        });
+      }
+    }
+  }
+  return false;
+}
 function untrustedSplice(checker, expression, tainted = /* @__PURE__ */ new Set()) {
-  const isTainted = (node) => import_typescript8.default.isIdentifier(node) && tainted.size > 0 && (() => {
+  const isTainted = (node) => import_typescript9.default.isIdentifier(node) && tainted.size > 0 && (() => {
     const symbol = checker.getSymbolAtLocation(node);
     return !!symbol && tainted.has(symbol);
   })();
   const type = checker.getTypeAtLocation(expression);
   if (isUntrustedType(checker, type) || isTainted(expression)) return expression;
-  if (!isTextType(type)) return void 0;
+  if (!containsTextType(checker, type)) return void 0;
   let found;
   const visit = (node) => {
-    if (found || import_typescript8.default.isFunctionLike(node)) return;
-    if (import_typescript8.default.isExpression(node) && node !== expression && (isUntrustedType(checker, checker.getTypeAtLocation(node)) || isTainted(node))) {
+    if (found || import_typescript9.default.isFunctionLike(node)) return;
+    if (import_typescript9.default.isExpression(node) && node !== expression && (isUntrustedType(checker, checker.getTypeAtLocation(node)) || isTainted(node))) {
       found = node;
       return;
     }
-    import_typescript8.default.forEachChild(node, visit);
+    import_typescript9.default.forEachChild(node, visit);
   };
   visit(expression);
   return found;
 }
 function untrustedBindings(checker, file) {
   const tainted = /* @__PURE__ */ new Set();
-  const mark = (name) => {
-    if (!import_typescript8.default.isIdentifier(name)) return name.elements.some((element) => !import_typescript8.default.isOmittedExpression(element) && mark(element.name));
+  const mark = (name, checkTextType = false) => {
+    if (!import_typescript9.default.isIdentifier(name)) {
+      let added = false;
+      for (const element of name.elements) {
+        if (!import_typescript9.default.isOmittedExpression(element) && mark(element.name, true)) added = true;
+      }
+      return added;
+    }
     const symbol = checker.getSymbolAtLocation(name);
     if (!symbol || tainted.has(symbol)) return false;
+    if (checkTextType) {
+      const boundType = checker.getTypeAtLocation(name);
+      if (!isUntrustedType(checker, boundType) && !containsTextType(checker, boundType)) return false;
+    }
     tainted.add(symbol);
     return true;
   };
   for (let changed = true; changed; ) {
     changed = false;
     const visit = (node) => {
-      if (import_typescript8.default.isVariableDeclaration(node) && node.initializer) {
-        if (import_typescript8.default.isIdentifier(node.name) ? !!untrustedSplice(checker, node.initializer, tainted) : isUntrustedType(checker, checker.getTypeAtLocation(node.initializer))) changed = mark(node.name) || changed;
-      } else if (import_typescript8.default.isBinaryExpression(node) && import_typescript8.default.isIdentifier(node.left) && (node.operatorToken.kind === import_typescript8.default.SyntaxKind.EqualsToken || node.operatorToken.kind === import_typescript8.default.SyntaxKind.PlusEqualsToken) && untrustedSplice(checker, node.right, tainted)) changed = mark(node.left) || changed;
-      import_typescript8.default.forEachChild(node, visit);
+      if (import_typescript9.default.isVariableDeclaration(node) && node.initializer) {
+        if (untrustedSplice(checker, node.initializer, tainted))
+          changed = mark(node.name, !import_typescript9.default.isIdentifier(node.name)) || changed;
+      } else if (import_typescript9.default.isForOfStatement(node) && untrustedSplice(checker, node.expression, tainted)) {
+        if (import_typescript9.default.isVariableDeclarationList(node.initializer)) {
+          for (const decl of node.initializer.declarations) changed = mark(decl.name, true) || changed;
+        } else if (import_typescript9.default.isIdentifier(node.initializer)) {
+          changed = mark(node.initializer, true) || changed;
+        }
+      } else if (import_typescript9.default.isBinaryExpression(node) && import_typescript9.default.isIdentifier(node.left) && (node.operatorToken.kind === import_typescript9.default.SyntaxKind.EqualsToken || node.operatorToken.kind === import_typescript9.default.SyntaxKind.PlusEqualsToken) && untrustedSplice(checker, node.right, tainted)) changed = mark(node.left) || changed;
+      import_typescript9.default.forEachChild(node, visit);
     };
     visit(file);
   }
@@ -216694,57 +216889,57 @@ function untrustedBindings(checker, file) {
 }
 function suffixWithCallOf(node) {
   const member = node.parent;
-  if (!member || !import_typescript8.default.isPropertyAccessExpression(member) || member.expression !== node || member.name.text !== "with") return;
+  if (!member || !import_typescript9.default.isPropertyAccessExpression(member) || member.expression !== node || member.name.text !== "with") return;
   const call = member.parent;
-  return call && import_typescript8.default.isCallExpression(call) && call.expression === member ? call : void 0;
+  return call && import_typescript9.default.isCallExpression(call) && call.expression === member ? call : void 0;
 }
 function suffixWithInvocation(call) {
   if (!call) return;
   const parent = call.parent;
-  return parent && import_typescript8.default.isCallExpression(parent) && parent.expression === call ? parent : void 0;
+  return parent && import_typescript9.default.isCallExpression(parent) && parent.expression === call ? parent : void 0;
 }
 function liveTargetOf(checker, expression) {
-  while (import_typescript8.default.isParenthesizedExpression(expression)) expression = expression.expression;
-  if (!import_typescript8.default.isCallExpression(expression)) return;
-  const isLive2 = checker ? resolveIntrinsic(checker, expression.expression) === "live" : import_typescript8.default.isIdentifier(expression.expression) && expression.expression.text === "live";
+  while (import_typescript9.default.isParenthesizedExpression(expression)) expression = expression.expression;
+  if (!import_typescript9.default.isCallExpression(expression)) return;
+  const isLive2 = checker ? resolveIntrinsic(checker, expression.expression) === "live" : import_typescript9.default.isIdentifier(expression.expression) && expression.expression.text === "live";
   return isLive2 ? expression.arguments[0] ?? expression : void 0;
 }
 function intrinsicOf(declaration) {
   if (!declaration) return;
-  for (const tag of import_typescript8.default.getJSDocTags(declaration)) {
+  for (const tag of import_typescript9.default.getJSDocTags(declaration)) {
     if (tag.tagName.text !== "natlangIntrinsic") continue;
-    const comment = typeof tag.comment === "string" ? tag.comment : import_typescript8.default.getTextOfJSDocComment(tag.comment);
+    const comment = typeof tag.comment === "string" ? tag.comment : import_typescript9.default.getTextOfJSDocComment(tag.comment);
     return comment?.trim().split(/\s+/)[0];
   }
   return;
 }
 function ambientNlDeclaration(declaration, checker) {
-  if (!import_typescript8.default.isVariableDeclaration(declaration) && !import_typescript8.default.isFunctionDeclaration(declaration)) return false;
-  if (!declaration.name || !import_typescript8.default.isIdentifier(declaration.name) || declaration.name.text !== "nl") return false;
-  if (import_typescript8.default.isVariableDeclaration(declaration) && declaration.initializer || import_typescript8.default.isFunctionDeclaration(declaration) && declaration.body) return false;
-  const statement = import_typescript8.default.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration;
-  const ambient = declaration.getSourceFile().isDeclarationFile || !!(import_typescript8.default.getCombinedModifierFlags(statement) & import_typescript8.default.ModifierFlags.Ambient);
+  if (!import_typescript9.default.isVariableDeclaration(declaration) && !import_typescript9.default.isFunctionDeclaration(declaration)) return false;
+  if (!declaration.name || !import_typescript9.default.isIdentifier(declaration.name) || declaration.name.text !== "nl") return false;
+  if (import_typescript9.default.isVariableDeclaration(declaration) && declaration.initializer || import_typescript9.default.isFunctionDeclaration(declaration) && declaration.body) return false;
+  const statement = import_typescript9.default.isVariableDeclaration(declaration) ? declaration.parent.parent : declaration;
+  const ambient = declaration.getSourceFile().isDeclarationFile || !!(import_typescript9.default.getCombinedModifierFlags(statement) & import_typescript9.default.ModifierFlags.Ambient);
   if (!ambient) return false;
   const type = checker.getTypeAtLocation(declaration.name);
   const withMember = type.getProperty("with");
   return type.getCallSignatures().length > 0 || !!(withMember && checker.getTypeOfSymbolAtLocation(withMember, declaration.name).getCallSignatures().length > 0);
 }
 function ambientNlBinding(checker, expression) {
-  if (!import_typescript8.default.isIdentifier(expression) || expression.text !== "nl") return false;
+  if (!import_typescript9.default.isIdentifier(expression) || expression.text !== "nl") return false;
   const symbol = checker.getSymbolAtLocation(expression);
-  if (!symbol || symbol.flags & import_typescript8.default.SymbolFlags.Alias) return false;
+  if (!symbol || symbol.flags & import_typescript9.default.SymbolFlags.Alias) return false;
   const declarations = symbol.declarations ?? [];
   return declarations.length > 0 && declarations.every((declaration) => ambientNlDeclaration(declaration, checker));
 }
 function resolveIntrinsic(checker, expression) {
-  let symbol = checker.getSymbolAtLocation(import_typescript8.default.isPropertyAccessExpression(expression) ? expression.name : expression);
-  if (symbol && symbol.flags & import_typescript8.default.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  let symbol = checker.getSymbolAtLocation(import_typescript9.default.isPropertyAccessExpression(expression) ? expression.name : expression);
+  if (symbol && symbol.flags & import_typescript9.default.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   for (const declaration of symbol?.declarations ?? []) {
     const name = intrinsicOf(declaration);
     if (name) return name;
   }
   if (ambientNlBinding(checker, expression)) return "nl";
-  if (import_typescript8.default.isPropertyAccessExpression(expression) && expression.name.text === "with" && ambientNlBinding(checker, expression.expression)) return "nl.with";
+  if (import_typescript9.default.isPropertyAccessExpression(expression) && expression.name.text === "with" && ambientNlBinding(checker, expression.expression)) return "nl.with";
   return;
 }
 function spanOf(node, displayPath = (file) => file.fileName, start = node.getStart(), end = node.getEnd()) {
@@ -216764,42 +216959,42 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   const taintedIn = (file) => taintCache.get(file) ?? taintCache.set(file, untrustedBindings(checker, file)).get(file);
   const report = (node, code, message2, severity = "error") => diagnostics.push({ ...spanOf(node, displayPath), code, message: message2, severity });
   const target = (type, node, what, allowHost = true, within = { program, location: node }) => {
-    if (type.flags & (import_typescript8.default.TypeFlags.Any | import_typescript8.default.TypeFlags.Unknown)) return { text: "any", natlang: "unknown", aliases: {} };
+    if (type.flags & (import_typescript9.default.TypeFlags.Any | import_typescript9.default.TypeFlags.Unknown)) return { text: "any", natlang: "unknown", aliases: {} };
     try {
       return describeTarget(within.program, within.program.getTypeChecker(), type, { allowHost, location: within.location });
     } catch (error) {
       if (!(error instanceof TargetError)) throw error;
-      const annotation2 = checker.getSignaturesOfType(type, import_typescript8.default.SignatureKind.Call).length ? "Use an explicit Neuralese callable type, such as `Neuralese<(input: Input) => Promise<Result>>`, with your declared parameter and result types, rather than the inferred callable/intersection type." : "Annotate it.";
+      const annotation2 = checker.getSignaturesOfType(type, import_typescript9.default.SignatureKind.Call).length ? "Use an explicit Neuralese callable type, such as `Neuralese<(input: Input) => Promise<Result>>`, with your declared parameter and result types, rather than the inferred callable/intersection type." : "Annotate it.";
       report(node, what === "return" ? "nl-unknown-return" : "nl-unknown-parameter", what === "return" ? `Return type of this \`nl\` expression is unknown (${error.message}); annotate the target or write \`nl<Verdict>\`.` : `Type of ${what} for this \`nl\` expression cannot be used (${error.message}); ${annotation2}`);
       return;
     }
   };
-  const widen = (type) => type.flags & import_typescript8.default.TypeFlags.Literal && !(type.flags & import_typescript8.default.TypeFlags.EnumLiteral) ? checker.getBaseTypeOfLiteralType(type) : type;
+  const widen = (type) => type.flags & import_typescript9.default.TypeFlags.Literal && !(type.flags & import_typescript9.default.TypeFlags.EnumLiteral) ? checker.getBaseTypeOfLiteralType(type) : type;
   const resultContext = (outer, awaited) => {
-    if (outer.parent && import_typescript8.default.isReturnStatement(outer.parent)) {
+    if (outer.parent && import_typescript9.default.isReturnStatement(outer.parent)) {
       let fn = outer.parent;
-      while (fn && !import_typescript8.default.isFunctionLike(fn)) fn = fn.parent;
-      if (fn && import_typescript8.default.isFunctionLike(fn) && import_typescript8.default.getCombinedModifierFlags(fn) & import_typescript8.default.ModifierFlags.Async) {
-        const contextual2 = !fn.type && (import_typescript8.default.isArrowFunction(fn) || import_typescript8.default.isFunctionExpression(fn)) ? checker.getContextualType(fn)?.getCallSignatures() : void 0;
+      while (fn && !import_typescript9.default.isFunctionLike(fn)) fn = fn.parent;
+      if (fn && import_typescript9.default.isFunctionLike(fn) && import_typescript9.default.getCombinedModifierFlags(fn) & import_typescript9.default.ModifierFlags.Async) {
+        const contextual2 = !fn.type && (import_typescript9.default.isArrowFunction(fn) || import_typescript9.default.isFunctionExpression(fn)) ? checker.getContextualType(fn)?.getCallSignatures() : void 0;
         const signature = fn.type ? checker.getSignatureFromDeclaration(fn) : contextual2?.length === 1 ? contextual2[0] : void 0;
         const declared = signature && awaitedType(checker, checker.getReturnTypeOfSignature(signature)).type;
-        if (declared && !(declared.flags & import_typescript8.default.TypeFlags.Any)) return declared;
+        if (declared && !(declared.flags & import_typescript9.default.TypeFlags.Any)) return declared;
       }
     }
     const contextual = checker.getContextualType(outer);
-    if (!contextual || contextual.flags & import_typescript8.default.TypeFlags.Any) return;
+    if (!contextual || contextual.flags & import_typescript9.default.TypeFlags.Any) return;
     const result = awaited ? contextual : awaitedType(checker, contextual).type;
-    const open = (type) => !!(type.flags & (import_typescript8.default.TypeFlags.TypeParameter | import_typescript8.default.TypeFlags.Unknown | import_typescript8.default.TypeFlags.Any)) || type.isUnion() && type.types.some(open);
+    const open = (type) => !!(type.flags & (import_typescript9.default.TypeFlags.TypeParameter | import_typescript9.default.TypeFlags.Unknown | import_typescript9.default.TypeFlags.Any)) || type.isUnion() && type.types.some(open);
     return open(result) ? void 0 : result;
   };
   const laterUses = (declaration) => {
     const declared = declaration.name;
-    if (!declared || !import_typescript8.default.isIdentifier(declared)) return [];
+    if (!declared || !import_typescript9.default.isIdentifier(declared)) return [];
     const symbol = checker.getSymbolAtLocation(declared);
     const found = [];
     const visit = (node) => {
-      if (import_typescript8.default.isIdentifier(node) && node !== declared && node.text === declared.text && checker.getSymbolAtLocation(node) === symbol) found.push(node);
-      import_typescript8.default.forEachChild(node, visit);
+      if (import_typescript9.default.isIdentifier(node) && node !== declared && node.text === declared.text && checker.getSymbolAtLocation(node) === symbol) found.push(node);
+      import_typescript9.default.forEachChild(node, visit);
     };
     visit(declaration.getSourceFile());
     return found;
@@ -216816,26 +217011,26 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   };
   const factoryInvocations = (tag) => {
     let fn;
-    if (tag.parent && import_typescript8.default.isReturnStatement(tag.parent)) {
+    if (tag.parent && import_typescript9.default.isReturnStatement(tag.parent)) {
       fn = tag.parent;
-      while (fn && !import_typescript8.default.isFunctionLike(fn)) fn = fn.parent;
-    } else if (tag.parent && import_typescript8.default.isArrowFunction(tag.parent) && tag.parent.body === tag) fn = tag.parent;
-    if (!fn || !(import_typescript8.default.isFunctionDeclaration(fn) || import_typescript8.default.isArrowFunction(fn) || import_typescript8.default.isFunctionExpression(fn)) || fn.type) return;
-    const holder = import_typescript8.default.isFunctionDeclaration(fn) ? fn : fn.parent && import_typescript8.default.isVariableDeclaration(fn.parent) && fn.parent.initializer === fn ? fn.parent : void 0;
+      while (fn && !import_typescript9.default.isFunctionLike(fn)) fn = fn.parent;
+    } else if (tag.parent && import_typescript9.default.isArrowFunction(tag.parent) && tag.parent.body === tag) fn = tag.parent;
+    if (!fn || !(import_typescript9.default.isFunctionDeclaration(fn) || import_typescript9.default.isArrowFunction(fn) || import_typescript9.default.isFunctionExpression(fn)) || fn.type) return;
+    const holder = import_typescript9.default.isFunctionDeclaration(fn) ? fn : fn.parent && import_typescript9.default.isVariableDeclaration(fn.parent) && fn.parent.initializer === fn ? fn.parent : void 0;
     if (!holder) return;
     const invocations = [];
     for (const use of laterUses(holder)) {
       const made = unwrapParentheses(use).parent;
-      if (!made || !import_typescript8.default.isCallExpression(made) || made.expression !== unwrapParentheses(use)) continue;
+      if (!made || !import_typescript9.default.isCallExpression(made) || made.expression !== unwrapParentheses(use)) continue;
       const outer = unwrapParentheses(made), direct = outer.parent;
-      if (direct && import_typescript8.default.isCallExpression(direct) && direct.expression === outer) {
+      if (direct && import_typescript9.default.isCallExpression(direct) && direct.expression === outer) {
         invocations.push(direct);
         continue;
       }
-      if (direct && import_typescript8.default.isVariableDeclaration(direct) && direct.initializer === outer && !direct.type)
+      if (direct && import_typescript9.default.isVariableDeclaration(direct) && direct.initializer === outer && !direct.type)
         for (const saved of laterUses(direct)) {
           const invocation = unwrapParentheses(saved).parent;
-          if (invocation && import_typescript8.default.isCallExpression(invocation) && invocation.expression === unwrapParentheses(saved)) invocations.push(invocation);
+          if (invocation && import_typescript9.default.isCallExpression(invocation) && invocation.expression === unwrapParentheses(saved)) invocations.push(invocation);
         }
     }
     return invocations;
@@ -216844,40 +217039,40 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     const outerTag = unwrapParentheses(node);
     const suffixCall = suffixWithCallOf(node);
     const suffixInvocation = suffixWithInvocation(suffixCall);
-    let call = suffixCall ? suffixInvocation : outerTag.parent && import_typescript8.default.isCallExpression(outerTag.parent) && outerTag.parent.expression === outerTag ? outerTag.parent : void 0;
+    let call = suffixCall ? suffixInvocation : outerTag.parent && import_typescript9.default.isCallExpression(outerTag.parent) && outerTag.parent.expression === outerTag ? outerTag.parent : void 0;
     withCall ??= suffixCall;
     const signature = { origin: "none" };
     const arrow = outerTag.parent;
-    const mappedNl = arrow && import_typescript8.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript8.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow) && import_typescript8.default.isPropertyAccessExpression(arrow.parent.expression) && arrow.parent.expression.name.text === "map" && arrow.parent.parent && import_typescript8.default.isVariableDeclaration(arrow.parent.parent) && arrow.parent.parent.initializer === arrow.parent ? arrow.parent.parent : void 0;
+    const mappedNl = arrow && import_typescript9.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript9.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow) && import_typescript9.default.isPropertyAccessExpression(arrow.parent.expression) && arrow.parent.expression.name.text === "map" && arrow.parent.parent && import_typescript9.default.isVariableDeclaration(arrow.parent.parent) && arrow.parent.parent.initializer === arrow.parent ? arrow.parent.parent : void 0;
     const indexedCalls = mappedNl ? laterUses(mappedNl).flatMap((use) => {
       const indexed = use.parent;
-      if (!indexed || !import_typescript8.default.isElementAccessExpression(indexed) || indexed.expression !== use) return [];
+      if (!indexed || !import_typescript9.default.isElementAccessExpression(indexed) || indexed.expression !== use) return [];
       const invocation = indexed.parent;
-      return invocation && import_typescript8.default.isCallExpression(invocation) && invocation.expression === indexed ? [invocation] : [];
+      return invocation && import_typescript9.default.isCallExpression(invocation) && invocation.expression === indexed ? [invocation] : [];
     }) : [];
     const slotReturnsFunction = () => {
-      if (!arrow || !import_typescript8.default.isArrowFunction(arrow) || !arrow.parent || !import_typescript8.default.isCallExpression(arrow.parent)) return false;
+      if (!arrow || !import_typescript9.default.isArrowFunction(arrow) || !arrow.parent || !import_typescript9.default.isCallExpression(arrow.parent)) return false;
       const declaration = checker.getResolvedSignature(arrow.parent)?.getDeclaration();
-      if (!declaration || !import_typescript8.default.isFunctionLike(declaration) || !declaration.parameters.length) return false;
+      if (!declaration || !import_typescript9.default.isFunctionLike(declaration) || !declaration.parameters.length) return false;
       const index = Math.min(arrow.parent.arguments.indexOf(arrow), declaration.parameters.length - 1);
       const parameterType = declaration.parameters[index].type;
       if (!parameterType) return false;
       return checker.getTypeFromTypeNode(parameterType).getCallSignatures().some((signature2) => {
         const returned = signature2.getReturnType();
-        if (returned.flags & (import_typescript8.default.TypeFlags.TypeParameter | import_typescript8.default.TypeFlags.Any | import_typescript8.default.TypeFlags.Unknown)) return false;
+        if (returned.flags & (import_typescript9.default.TypeFlags.TypeParameter | import_typescript9.default.TypeFlags.Any | import_typescript9.default.TypeFlags.Unknown)) return false;
         return (returned.isUnion() ? returned.types : [returned]).some((type) => (neuraleseParts(checker, type)?.element ?? type).getCallSignatures().length > 0);
       });
     };
-    if (arrow && import_typescript8.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript8.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow) && !slotReturnsFunction()) {
+    if (arrow && import_typescript9.default.isArrowFunction(arrow) && arrow.body === outerTag && arrow.parent && import_typescript9.default.isCallExpression(arrow.parent) && arrow.parent.arguments.includes(arrow) && !slotReturnsFunction()) {
       if (indexedCalls.length) call = indexedCalls[0];
       else {
         report(node, "nl-not-called", "This arrow returns the `nl` function itself, never called: nl`...` creates a function. Call it, and await the results: `await Promise.all(items.map(item => nl`Does item \u2026?`(item)))`, or save the callables and invoke them later.");
         return;
       }
     }
-    if (outerTag.parent && import_typescript8.default.isAwaitExpression(outerTag.parent)) {
+    if (outerTag.parent && import_typescript9.default.isAwaitExpression(outerTag.parent)) {
       const awaited = outerTag.parent;
-      const declaration = awaited.parent && import_typescript8.default.isVariableDeclaration(awaited.parent) && awaited.parent.initializer === awaited ? awaited.parent : void 0;
+      const declaration = awaited.parent && import_typescript9.default.isVariableDeclaration(awaited.parent) && awaited.parent.initializer === awaited ? awaited.parent : void 0;
       const contextual = checker.getContextualType(awaited);
       const savedCallable = !!declaration && (!contextual || contextual.getCallSignatures().length > 0);
       if (!savedCallable) {
@@ -216895,11 +217090,11 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       let unresolved;
       const findUnresolved = (typeNode) => {
         if (unresolved) return;
-        if (import_typescript8.default.isTypeReferenceNode(typeNode) && !checker.getSymbolAtLocation(typeNode.typeName)) {
+        if (import_typescript9.default.isTypeReferenceNode(typeNode) && !checker.getSymbolAtLocation(typeNode.typeName)) {
           unresolved = typeNode;
           return;
         }
-        import_typescript8.default.forEachChild(typeNode, findUnresolved);
+        import_typescript9.default.forEachChild(typeNode, findUnresolved);
       };
       findUnresolved(annotation2);
       if (unresolved) {
@@ -216907,11 +217102,11 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         report(unresolved, "nl-undeclared-type", `Type name ${JSON.stringify(name)} is not declared in this eval scope, so the inline result is untyped; declare it in scope or use a type written in this annotation.`);
         return;
       }
-      if (import_typescript8.default.isFunctionTypeNode(annotation2)) {
+      if (import_typescript9.default.isFunctionTypeNode(annotation2)) {
         signature.parameters = [];
         signature.declaredParameters = true;
         for (const parameter of annotation2.parameters) {
-          if (!import_typescript8.default.isIdentifier(parameter.name) || parameter.dotDotDotToken) {
+          if (!import_typescript9.default.isIdentifier(parameter.name) || parameter.dotDotDotToken) {
             report(parameter, "nl-spread", "Annotated `nl` parameters must be named identifiers without rest syntax.");
             return;
           }
@@ -216927,11 +217122,11 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     const iteration = signature.origin === "none" ? iterationArguments(checker, outerTag) : void 0;
     if (iteration) {
       const [initial, ...rest] = iteration;
-      if (!initial || rest.some(import_typescript8.default.isSpreadElement) || import_typescript8.default.isSpreadElement(initial)) {
+      if (!initial || rest.some(import_typescript9.default.isSpreadElement) || import_typescript9.default.isSpreadElement(initial)) {
         report(node, "nl-spread", "An `nl` iteration step needs an initial state and plainly listed arguments, or an explicit signature.");
         return;
       }
-      const name = (argument, index) => import_typescript8.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "state";
+      const name = (argument, index) => import_typescript9.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "state";
       signature.parameters = [initial, ...rest].map((argument, index) => ({ name: name(argument, index), type: widen(checker.getTypeAtLocation(argument)) }));
       signature.returns = signature.parameters[0].type;
       signature.origin = "iteration";
@@ -216949,14 +217144,14 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       if (only) {
         const returnType = only.getReturnType();
         const members = returnType.isUnion() ? returnType.types : [returnType];
-        if (!softSlot && !(returnType.flags & import_typescript8.default.TypeFlags.Any) && !members.some((member) => isPromiseLike(checker, member))) {
+        if (!softSlot && !(returnType.flags & import_typescript9.default.TypeFlags.Any) && !members.some((member) => isPromiseLike(checker, member))) {
           report(node, "nl-sync-callback", "This callback slot expects a synchronous result, but an `nl` function returns a Promise. Use an async map and then an ordinary filter or loop.");
           return;
         }
         signature.declaredParameters = true;
         signature.parameters = only.getParameters().map((parameter) => {
           const declaration = parameter.valueDeclaration;
-          if (declaration && import_typescript8.default.isParameter(declaration) && declaration.dotDotDotToken)
+          if (declaration && import_typescript9.default.isParameter(declaration) && declaration.dotDotDotToken)
             report(node, "nl-spread", "A rest-parameter callback slot needs an explicit `nl<(...) => R>` signature.");
           return { name: parameter.name, type: checker.getTypeOfSymbolAtLocation(parameter, node) };
         });
@@ -216976,7 +217171,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       const types3 = [];
       let generated = 0;
       for (const argument of call.arguments) {
-        if (import_typescript8.default.isSpreadElement(argument)) {
+        if (import_typescript9.default.isSpreadElement(argument)) {
           const spread = checker.getTypeAtLocation(argument.expression);
           if (!checker.isTupleType(spread)) {
             report(argument, "nl-spread", "A spread argument to an `nl` call needs a statically known tuple or an explicit signature.");
@@ -216988,7 +217183,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
           continue;
         }
-        names.push(import_typescript8.default.isIdentifier(argument) ? argument.text : generated++ ? `input${generated}` : "input");
+        names.push(import_typescript9.default.isIdentifier(argument) ? argument.text : generated++ ? `input${generated}` : "input");
         types3.push(widen(checker.getTypeAtLocation(argument)));
       }
       if (!signature.parameters) signature.parameters = names.map((name, index) => ({ name, type: types3[index] }));
@@ -216998,7 +217193,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       }
       if (!signature.returns) {
         const outer = unwrapParentheses(call);
-        const awaitNode = outer.parent && import_typescript8.default.isAwaitExpression(outer.parent) ? unwrapParentheses(outer.parent) : void 0;
+        const awaitNode = outer.parent && import_typescript9.default.isAwaitExpression(outer.parent) ? unwrapParentheses(outer.parent) : void 0;
         signature.returns = resultContext(awaitNode ?? outer, !!awaitNode);
       }
     } else if (!signature.parameters) {
@@ -217013,7 +217208,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
           const first = factory[0];
           signature.parameters = first.arguments.map((argument, index) => ({
-            name: import_typescript8.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "input",
+            name: import_typescript9.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "input",
             type: uniqueType(
               factory.map((item) => widen(checker.getTypeAtLocation(item.arguments[index]))),
               node,
@@ -217021,8 +217216,8 @@ function analyzeInlineLambdas(program, files2, options = {}) {
             ) ?? checker.getAnyType()
           }));
         } else signature.open = true;
-      } else if (holder && import_typescript8.default.isVariableDeclaration(holder) && !holder.type) {
-        const calls = laterUses(holder).map((use) => unwrapParentheses(use)).map((use) => use.parent).filter((parent) => !!parent && import_typescript8.default.isCallExpression(parent));
+      } else if (holder && import_typescript9.default.isVariableDeclaration(holder) && !holder.type) {
+        const calls = laterUses(holder).map((use) => unwrapParentheses(use)).map((use) => use.parent).filter((parent) => !!parent && import_typescript9.default.isCallExpression(parent));
         if (!signature.parameters && calls.length) {
           const arity = new Set(calls.map((item) => item.arguments.length));
           if (arity.size > 1) {
@@ -217031,7 +217226,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
           const first = calls[0];
           signature.parameters = first.arguments.map((argument, index) => ({
-            name: import_typescript8.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "input",
+            name: import_typescript9.default.isIdentifier(argument) ? argument.text : index ? `input${index + 1}` : "input",
             type: uniqueType(
               calls.map((item) => widen(checker.getTypeAtLocation(item.arguments[index]))),
               node,
@@ -217040,13 +217235,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }));
         }
         if (!signature.parameters && !calls.length) {
-          const returned = laterUses(holder).map((use) => unwrapParentheses(use)).find((use) => !!use.parent && import_typescript8.default.isReturnStatement(use.parent));
+          const returned = laterUses(holder).map((use) => unwrapParentheses(use)).find((use) => !!use.parent && import_typescript9.default.isReturnStatement(use.parent));
           const context = returned ? checker.getContextualType(returned) : void 0;
           const callable = (context?.isUnion() ? context.types : context ? [context] : []).filter((member) => member.getCallSignatures().length === 1);
           const only = callable.length === 1 ? callable[0].getCallSignatures()[0] : void 0;
           if (only && returned && only.getParameters().every((parameter) => {
             const declaration = parameter.valueDeclaration;
-            return !(declaration && import_typescript8.default.isParameter(declaration) && declaration.dotDotDotToken);
+            return !(declaration && import_typescript9.default.isParameter(declaration) && declaration.dotDotDotToken);
           })) {
             signature.declaredParameters = true;
             signature.parameters = only.getParameters().map((parameter) => ({
@@ -217075,14 +217270,14 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       return;
     }
     const captureSchemaNode = withCall === node.tag && withCall.typeArguments?.length === 2 ? withCall.typeArguments[0] : void 0;
-    const fromRecord = !import_typescript8.default.isObjectLiteralExpression(argument);
+    const fromRecord = !import_typescript9.default.isObjectLiteralExpression(argument);
     const properties = [];
     const actualTypes = /* @__PURE__ */ new Map();
     if (fromRecord) {
       const recordType = checker.getTypeAtLocation(argument);
-      const finite2 = !!(recordType.flags & import_typescript8.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript8.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript8.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript8.default.IndexKind.Number);
+      const finite2 = !!(recordType.flags & import_typescript9.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript9.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript9.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript9.default.IndexKind.Number);
       const members = checker.getPropertiesOfType(recordType);
-      if (!finite2 || !members.length || members.some((member) => !(member.declarations ?? []).some((declaration) => import_typescript8.default.isPropertySignature(declaration) || import_typescript8.default.isPropertyDeclaration(declaration) || import_typescript8.default.isPropertyAssignment(declaration)))) {
+      if (!finite2 || !members.length || members.some((member) => !(member.declarations ?? []).some((declaration) => import_typescript9.default.isPropertySignature(declaration) || import_typescript9.default.isPropertyDeclaration(declaration) || import_typescript9.default.isPropertyAssignment(declaration)))) {
         report(argument, "nl-explicit-captures", "nl.with needs a record expression with a finite set of known fields; use an object literal or give the record a type with named data fields.");
         return;
       }
@@ -217110,20 +217305,20 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           described2 = { text: checker.typeToString(type2, node), aliases: {}, host: { kind: "shape", members: [] } };
         }
         let recordRoot = argument;
-        while (import_typescript8.default.isParenthesizedExpression(recordRoot) || import_typescript8.default.isAsExpression(recordRoot) || import_typescript8.default.isNonNullExpression(recordRoot) || import_typescript8.default.isSatisfiesExpression(recordRoot)) recordRoot = recordRoot.expression;
-        while (import_typescript8.default.isPropertyAccessExpression(recordRoot)) recordRoot = recordRoot.expression;
-        const recordSymbol = import_typescript8.default.isIdentifier(recordRoot) ? checker.getSymbolAtLocation(recordRoot) : void 0;
+        while (import_typescript9.default.isParenthesizedExpression(recordRoot) || import_typescript9.default.isAsExpression(recordRoot) || import_typescript9.default.isNonNullExpression(recordRoot) || import_typescript9.default.isSatisfiesExpression(recordRoot)) recordRoot = recordRoot.expression;
+        while (import_typescript9.default.isPropertyAccessExpression(recordRoot)) recordRoot = recordRoot.expression;
+        const recordSymbol = import_typescript9.default.isIdentifier(recordRoot) ? checker.getSymbolAtLocation(recordRoot) : void 0;
         const recordDeclaration = recordSymbol?.valueDeclaration ?? recordSymbol?.declarations?.[0];
-        const source3 = (recordDeclaration && options.classify?.(recordDeclaration)) ?? (described2.host ? "handle" : recordDeclaration && import_typescript8.default.isParameter(recordDeclaration) ? "input" : recordDeclaration && isTopLevel(recordDeclaration) ? "local" : "block");
+        const source3 = (recordDeclaration && options.classify?.(recordDeclaration)) ?? (described2.host ? "handle" : recordDeclaration && import_typescript9.default.isParameter(recordDeclaration) ? "input" : recordDeclaration && isTopLevel(recordDeclaration) ? "local" : "block");
         captures.push({ name: name2, type: described2, mutable: false, source: source3, mentionSpan: argument.getStart(), mode: "snapshot" });
         continue;
       }
       const property = entry.property;
       let name, expression;
-      if (import_typescript8.default.isShorthandPropertyAssignment(property)) {
+      if (import_typescript9.default.isShorthandPropertyAssignment(property)) {
         name = property.name.text;
         expression = property.name;
-      } else if (import_typescript8.default.isPropertyAssignment(property) && (import_typescript8.default.isIdentifier(property.name) || import_typescript8.default.isStringLiteral(property.name))) {
+      } else if (import_typescript9.default.isPropertyAssignment(property) && (import_typescript9.default.isIdentifier(property.name) || import_typescript9.default.isStringLiteral(property.name))) {
         name = property.name.text;
         expression = property.initializer;
       } else {
@@ -217138,9 +217333,9 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       let declaration;
       const liveTarget = liveTargetOf(checker, expression);
       if (liveTarget) {
-        const symbol = import_typescript8.default.isIdentifier(liveTarget) ? checker.getSymbolAtLocation(liveTarget) : void 0;
+        const symbol = import_typescript9.default.isIdentifier(liveTarget) ? checker.getSymbolAtLocation(liveTarget) : void 0;
         declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
-        if (!import_typescript8.default.isIdentifier(liveTarget) || liveTarget.text !== name) {
+        if (!import_typescript9.default.isIdentifier(liveTarget) || liveTarget.text !== name) {
           report(property, "nl-explicit-captures", `A live capture names its own binding: write \`${name}: live(${name})\`.`);
           return;
         }
@@ -217151,7 +217346,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         mode = "live";
         mutable = true;
         expression = liveTarget;
-      } else if (import_typescript8.default.isIdentifier(expression)) {
+      } else if (import_typescript9.default.isIdentifier(expression)) {
         const symbol = checker.getSymbolAtLocation(expression);
         declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
       }
@@ -217164,13 +217359,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         if (!(error instanceof TargetError)) throw error;
         described = { text: checker.typeToString(type, node), aliases: {}, host: { kind: "shape", members: [] } };
       }
-      const source2 = (declaration && options.classify?.(declaration)) ?? (described.host ? "handle" : declaration && import_typescript8.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
+      const source2 = (declaration && options.classify?.(declaration)) ?? (described.host ? "handle" : declaration && import_typescript9.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
       captures.push({ name, type: described, mutable, source: source2, mentionSpan: property.getStart(), mode });
     }
     if (captureSchemaNode) {
       const schema = checker.getTypeFromTypeNode(captureSchemaNode);
       const schemaMembers = checker.getPropertiesOfType(schema);
-      const schemaFinite = !schema.isUnion() && !!(schema.flags & import_typescript8.default.TypeFlags.Object) && !checker.getIndexTypeOfType(schema, import_typescript8.default.IndexKind.String) && !checker.getIndexTypeOfType(schema, import_typescript8.default.IndexKind.Number) && schemaMembers.every((member) => (member.declarations ?? []).some((declaration) => import_typescript8.default.isPropertySignature(declaration) || import_typescript8.default.isPropertyDeclaration(declaration) || import_typescript8.default.isPropertyAssignment(declaration)));
+      const schemaFinite = !schema.isUnion() && !!(schema.flags & import_typescript9.default.TypeFlags.Object) && !checker.getIndexTypeOfType(schema, import_typescript9.default.IndexKind.String) && !checker.getIndexTypeOfType(schema, import_typescript9.default.IndexKind.Number) && schemaMembers.every((member) => (member.declarations ?? []).some((declaration) => import_typescript9.default.isPropertySignature(declaration) || import_typescript9.default.isPropertyDeclaration(declaration) || import_typescript9.default.isPropertyAssignment(declaration)));
       if (!schemaFinite) {
         report(captureSchemaNode, "nl-explicit-captures", "The first `nl.with` type argument must be a finite record schema with named data fields.");
         return;
@@ -217181,7 +217376,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         report(withCall, "nl-explicit-captures", `Capture ${JSON.stringify(unknown)} is not declared by the \`nl.with\` capture schema.`);
         return;
       }
-      const missing = schemaMembers.find((member) => !(member.flags & import_typescript8.default.SymbolFlags.Optional) && !actualTypes.has(member.getName()));
+      const missing = schemaMembers.find((member) => !(member.flags & import_typescript9.default.SymbolFlags.Optional) && !actualTypes.has(member.getName()));
       if (missing) {
         report(withCall, "nl-explicit-captures", `Required capture ${JSON.stringify(missing.getName())} is missing from the \`nl.with\` capture record.`);
         return;
@@ -217219,7 +217414,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     const literalParts = [];
     const strings2 = [];
     const template = node.template;
-    if (import_typescript8.default.isNoSubstitutionTemplateLiteral(template)) {
+    if (import_typescript9.default.isNoSubstitutionTemplateLiteral(template)) {
       literalParts.push({ text: template.rawText ?? template.text, offset: template.getStart() + 1 });
       strings2.push(template.text);
     } else {
@@ -217231,7 +217426,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       }
     }
     const templateSpan = spanOf(template, displayPath);
-    const interpolations = import_typescript8.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map(({ expression }) => {
+    const interpolations = import_typescript9.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map(({ expression }) => {
       const provenance = { expression: expression.getText(file), sourceSpan: spanOf(expression, displayPath) };
       try {
         return { ...provenance, type: describeTarget(
@@ -217245,7 +217440,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         return { ...provenance, type: null, unsupported: error.message };
       }
     });
-    if (!import_typescript8.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
+    if (!import_typescript9.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
       const culprit = untrustedSplice(checker, span.expression, taintedIn(file));
       if (culprit) report(culprit, "untrusted-instruction", `\`${culprit.getText(file)}\` is untrusted data (Untrusted<T>) and cannot be interpolated into the text of an \`nl\` call; pass it as an argument instead, as in nl\`Summarize the message.\`(message), so the model reads it as quoted data.`);
     }
@@ -217294,7 +217489,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       return;
     }
     const candidates = /* @__PURE__ */ new Map();
-    for (const symbol of checker.getSymbolsInScope(node, import_typescript8.default.SymbolFlags.Value | import_typescript8.default.SymbolFlags.Alias)) {
+    for (const symbol of checker.getSymbolsInScope(node, import_typescript9.default.SymbolFlags.Value | import_typescript9.default.SymbolFlags.Alias)) {
       const name = symbol.name;
       if (excluded2.has(name) || name.startsWith("__natlang") || explicit.has(name) || candidates.has(name)) continue;
       const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
@@ -217302,9 +217497,9 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       const declarationFile = declaration.getSourceFile();
       if (declarationFile !== file && !scopeFiles.has(declarationFile)) continue;
       if (declarationFile === file && declaration.getEnd() > node.getStart() && !isEnclosingParameter(declaration, node)) continue;
-      if (symbol.flags & import_typescript8.default.SymbolFlags.Alias) {
+      if (symbol.flags & import_typescript9.default.SymbolFlags.Alias) {
         const aliased = checker.getAliasedSymbol(symbol);
-        if (!(aliased.flags & import_typescript8.default.SymbolFlags.Value)) continue;
+        if (!(aliased.flags & import_typescript9.default.SymbolFlags.Value)) continue;
       }
       candidates.set(name, symbol);
     }
@@ -217325,16 +217520,16 @@ function analyzeInlineLambdas(program, files2, options = {}) {
       }
     }
     const slotCaptures = /* @__PURE__ */ new Set();
-    if (!import_typescript8.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
+    if (!import_typescript9.default.isNoSubstitutionTemplateLiteral(template)) for (const span of template.templateSpans) {
       const visit = (child) => {
-        if (import_typescript8.default.isIdentifier(child) && !(import_typescript8.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
+        if (import_typescript9.default.isIdentifier(child) && !(import_typescript9.default.isPropertyAccessExpression(child.parent) && child.parent.name === child)) {
           const symbol = checker.getSymbolAtLocation(child);
           if (symbol && candidates.get(child.text) === symbol) {
             slotCaptures.add(child.text);
             if (!mentions2.has(child.text)) mentions2.set(child.text, child.getStart());
           }
         }
-        import_typescript8.default.forEachChild(child, visit);
+        import_typescript9.default.forEachChild(child, visit);
       };
       visit(span.expression);
     }
@@ -217351,7 +217546,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         described = { text: checker.typeToString(type, node), aliases: {}, host: { kind: "shape", members: [] } };
       }
       const mutable = isMutableBinding(declaration);
-      const source2 = options.classify?.(declaration) ?? (described.host ? "handle" : import_typescript8.default.isParameter(declaration) ? "input" : isTopLevel(declaration) ? "local" : "block");
+      const source2 = options.classify?.(declaration) ?? (described.host ? "handle" : import_typescript9.default.isParameter(declaration) ? "input" : isTopLevel(declaration) ? "local" : "block");
       captures.push({ name, type: described, mutable, source: source2, mentionSpan: offset });
     }
     let adaptation;
@@ -217369,7 +217564,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
         return;
       }
       if (label) labels.add(labelKey);
-      const expressions = import_typescript8.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map((span) => span.expression.getText(file));
+      const expressions = import_typescript9.default.isNoSubstitutionTemplateLiteral(template) ? [] : template.templateSpans.map((span) => span.expression.getText(file));
       const slotBindings = [...slotCaptures].sort();
       adaptation = {
         ...label ? { label } : {},
@@ -217401,35 +217596,35 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   const TAG_FORM = 'write the instructions as a template, nl`...`, and pass the values as arguments, for example await nl<{ amount: number }>`Read the amount paid on receipt.`(receipt). read_code("nl") shows more.';
   const misuse = (node) => {
     const parent = node.parent;
-    if (import_typescript8.default.isCallExpression(parent) && parent.expression === node) {
+    if (import_typescript9.default.isCallExpression(parent) && parent.expression === node) {
       const file = node.getSourceFile();
       const typeArgs = parent.typeArguments ? `<${parent.typeArguments.map((arg) => arg.getText(file)).join(", ")}>` : "";
       const only = parent.arguments.length === 1 ? parent.arguments[0] : void 0;
-      const isTemplate = (expr) => import_typescript8.default.isNoSubstitutionTemplateLiteral(expr) || import_typescript8.default.isTemplateExpression(expr);
-      const rewritten = only && import_typescript8.default.isCallExpression(only) && isTemplate(only.expression) ? `nl${typeArgs}${only.expression.getText(file)}(${only.arguments.map((arg) => arg.getText(file)).join(", ")})` : only && isTemplate(only) ? `nl${typeArgs}${only.getText(file)}(...)` : void 0;
-      const built = parent.arguments.length > 0 && !isTemplate(parent.arguments[0]) && !import_typescript8.default.isStringLiteral(parent.arguments[0]) && !import_typescript8.default.isCallExpression(parent.arguments[0]);
+      const isTemplate = (expr) => import_typescript9.default.isNoSubstitutionTemplateLiteral(expr) || import_typescript9.default.isTemplateExpression(expr);
+      const rewritten = only && import_typescript9.default.isCallExpression(only) && isTemplate(only.expression) ? `nl${typeArgs}${only.expression.getText(file)}(${only.arguments.map((arg) => arg.getText(file)).join(", ")})` : only && isTemplate(only) ? `nl${typeArgs}${only.getText(file)}(...)` : void 0;
+      const built = parent.arguments.length > 0 && !isTemplate(parent.arguments[0]) && !import_typescript9.default.isStringLiteral(parent.arguments[0]) && !import_typescript9.default.isCallExpression(parent.arguments[0]);
       report(parent, "nl-not-tag", rewritten && rewritten.length <= 240 ? `nl is a template tag, not a function taking a string: put the template right after nl and the arguments after it, as in ${rewritten}. read_code("nl") shows more.` : built ? "nl takes its instructions written in place, not as text built at run time: write them as a template right after nl, with the changing values in ${...} or passed as arguments, for example await nl<{ amount: number }>`Read the amount paid on receipt.`(receipt)." : `nl is a template tag, not a function taking a string: ${TAG_FORM}`);
     } else report(node, "nl-not-tag", `nl is a template tag with no value of its own to inspect or pass around: ${TAG_FORM}`);
   };
   for (const file of files2) {
     const visit = (node) => {
-      if (import_typescript8.default.isTaggedTemplateExpression(node) && resolveIntrinsic(checker, node.tag) === "nl") analyze(node);
-      else if (import_typescript8.default.isTaggedTemplateExpression(node) && withCallOf(checker, node.tag)) analyze(node, withCallOf(checker, node.tag));
-      else if (import_typescript8.default.isTaggedTemplateExpression(node) && suffixWithCallOf(node) && resolveIntrinsic(checker, node.tag) === "nl")
+      if (import_typescript9.default.isTaggedTemplateExpression(node) && resolveIntrinsic(checker, node.tag) === "nl") analyze(node);
+      else if (import_typescript9.default.isTaggedTemplateExpression(node) && withCallOf(checker, node.tag)) analyze(node, withCallOf(checker, node.tag));
+      else if (import_typescript9.default.isTaggedTemplateExpression(node) && suffixWithCallOf(node) && resolveIntrinsic(checker, node.tag) === "nl")
         analyze(node, suffixWithCallOf(node));
-      else if (import_typescript8.default.isIdentifier(node) && node.text === "nl") {
+      else if (import_typescript9.default.isIdentifier(node) && node.text === "nl") {
         const parent = node.parent;
-        const declared = (import_typescript8.default.isVariableDeclaration(parent) || import_typescript8.default.isFunctionDeclaration(parent) || import_typescript8.default.isParameter(parent) || import_typescript8.default.isClassDeclaration(parent)) && parent.name === node;
-        if (import_typescript8.default.isImportSpecifier(parent) || import_typescript8.default.isExportSpecifier(parent) || import_typescript8.default.isImportClause(parent) || import_typescript8.default.isNamespaceImport(parent)) {
+        const declared = (import_typescript9.default.isVariableDeclaration(parent) || import_typescript9.default.isFunctionDeclaration(parent) || import_typescript9.default.isParameter(parent) || import_typescript9.default.isClassDeclaration(parent)) && parent.name === node;
+        if (import_typescript9.default.isImportSpecifier(parent) || import_typescript9.default.isExportSpecifier(parent) || import_typescript9.default.isImportClause(parent) || import_typescript9.default.isNamespaceImport(parent)) {
         } else if (declared && ambientNlDeclaration(parent, checker)) {
         } else if (declared) {
           if (!options.allowShadowing) report(node, "nl-shadowed", `nl is built in; declaring your own nl hides it. ${TAG_FORM}`);
-        } else if (import_typescript8.default.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "with" && import_typescript8.default.isCallExpression(parent.parent) && parent.parent.expression === parent && import_typescript8.default.isTaggedTemplateExpression(parent.parent.parent) && parent.parent.parent.tag === parent.parent) {
-        } else if (!(import_typescript8.default.isTaggedTemplateExpression(parent) && parent.tag === node) && !import_typescript8.default.isPropertyAccessExpression(parent) || import_typescript8.default.isPropertyAccessExpression(parent) && parent.expression === node && !import_typescript8.default.isTaggedTemplateExpression(parent.parent)) {
+        } else if (import_typescript9.default.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "with" && import_typescript9.default.isCallExpression(parent.parent) && parent.parent.expression === parent && import_typescript9.default.isTaggedTemplateExpression(parent.parent.parent) && parent.parent.parent.tag === parent.parent) {
+        } else if (!(import_typescript9.default.isTaggedTemplateExpression(parent) && parent.tag === node) && !import_typescript9.default.isPropertyAccessExpression(parent) || import_typescript9.default.isPropertyAccessExpression(parent) && parent.expression === node && !import_typescript9.default.isTaggedTemplateExpression(parent.parent)) {
           if (resolveIntrinsic(checker, node) === "nl") misuse(node);
         }
       }
-      import_typescript8.default.forEachChild(node, visit);
+      import_typescript9.default.forEachChild(node, visit);
     };
     visit(file);
   }
@@ -217471,10 +217666,10 @@ function analyzeInlineLambdas(program, files2, options = {}) {
   const planAt = (tag) => plans.find((plan) => plan.sourceSpan.file === displayPath(tag.getSourceFile()) && plan.sourceSpan.start === tag.getStart());
   const captureSource = (expression) => {
     let root2 = expression;
-    while (import_typescript8.default.isParenthesizedExpression(root2) || import_typescript8.default.isAsExpression(root2) || import_typescript8.default.isNonNullExpression(root2) || import_typescript8.default.isSatisfiesExpression(root2))
+    while (import_typescript9.default.isParenthesizedExpression(root2) || import_typescript9.default.isAsExpression(root2) || import_typescript9.default.isNonNullExpression(root2) || import_typescript9.default.isSatisfiesExpression(root2))
       root2 = root2.expression;
-    while (import_typescript8.default.isPropertyAccessExpression(root2) || import_typescript8.default.isElementAccessExpression(root2)) root2 = root2.expression;
-    const symbol = import_typescript8.default.isIdentifier(root2) ? checker.getSymbolAtLocation(root2) : void 0;
+    while (import_typescript9.default.isPropertyAccessExpression(root2) || import_typescript9.default.isElementAccessExpression(root2)) root2 = root2.expression;
+    const symbol = import_typescript9.default.isIdentifier(root2) ? checker.getSymbolAtLocation(root2) : void 0;
     const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
     let host = false;
     try {
@@ -217482,38 +217677,38 @@ function analyzeInlineLambdas(program, files2, options = {}) {
     } catch (error) {
       if (!(error instanceof TargetError)) throw error;
     }
-    return (declaration && options.classify?.(declaration)) ?? (host ? "handle" : declaration && import_typescript8.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
+    return (declaration && options.classify?.(declaration)) ?? (host ? "handle" : declaration && import_typescript9.default.isParameter(declaration) ? "input" : declaration && isTopLevel(declaration) ? "local" : "block");
   };
   for (const file of files2) {
     const findTags = (node) => {
-      if (import_typescript8.default.isVariableDeclaration(node) && import_typescript8.default.isIdentifier(node.name) && node.initializer) {
+      if (import_typescript9.default.isVariableDeclaration(node) && import_typescript9.default.isIdentifier(node.name) && node.initializer) {
         let initializer = node.initializer;
-        while (import_typescript8.default.isParenthesizedExpression(initializer) || import_typescript8.default.isAsExpression(initializer) || import_typescript8.default.isNonNullExpression(initializer))
+        while (import_typescript9.default.isParenthesizedExpression(initializer) || import_typescript9.default.isAsExpression(initializer) || import_typescript9.default.isNonNullExpression(initializer))
           initializer = initializer.expression;
         const symbol = checker.getSymbolAtLocation(node.name);
-        if (symbol && import_typescript8.default.isTaggedTemplateExpression(initializer) && resolveIntrinsic(checker, initializer.tag) === "nl") {
+        if (symbol && import_typescript9.default.isTaggedTemplateExpression(initializer) && resolveIntrinsic(checker, initializer.tag) === "nl") {
           const plan = planAt(initializer);
           if (plan) tagPlans.set(symbol, { tag: initializer, plan });
-        } else if (symbol && import_typescript8.default.isIdentifier(initializer) && import_typescript8.default.isVariableDeclarationList(node.parent) && node.parent.flags & import_typescript8.default.NodeFlags.Const) {
+        } else if (symbol && import_typescript9.default.isIdentifier(initializer) && import_typescript9.default.isVariableDeclarationList(node.parent) && node.parent.flags & import_typescript9.default.NodeFlags.Const) {
           const original = tagPlans.get(checker.getSymbolAtLocation(initializer));
           if (original) tagPlans.set(symbol, original);
         }
       }
-      import_typescript8.default.forEachChild(node, findTags);
+      import_typescript9.default.forEachChild(node, findTags);
     };
     findTags(file);
   }
   const tagBindingFor = (expression) => {
-    while (import_typescript8.default.isParenthesizedExpression(expression) || import_typescript8.default.isAsExpression(expression) || import_typescript8.default.isNonNullExpression(expression))
+    while (import_typescript9.default.isParenthesizedExpression(expression) || import_typescript9.default.isAsExpression(expression) || import_typescript9.default.isNonNullExpression(expression))
       expression = expression.expression;
-    if (import_typescript8.default.isIdentifier(expression)) return tagPlans.get(checker.getSymbolAtLocation(expression));
-    if (import_typescript8.default.isCallExpression(expression) && import_typescript8.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "with")
+    if (import_typescript9.default.isIdentifier(expression)) return tagPlans.get(checker.getSymbolAtLocation(expression));
+    if (import_typescript9.default.isCallExpression(expression) && import_typescript9.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "with")
       return tagBindingFor(expression.expression.expression);
     return void 0;
   };
   for (const file of files2) {
     const findRebinds = (node) => {
-      if (import_typescript8.default.isCallExpression(node) && import_typescript8.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
+      if (import_typescript9.default.isCallExpression(node) && import_typescript9.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
         const binding = tagBindingFor(node.expression.expression);
         if (binding) {
           const argument = node.arguments[0];
@@ -217521,13 +217716,13 @@ function analyzeInlineLambdas(program, files2, options = {}) {
             report(node, "nl-explicit-captures", "Saved inline .with(...) takes one finite record of capture values.");
           } else {
             let valid2 = true;
-            if (import_typescript8.default.isObjectLiteralExpression(argument) && argument.properties.some((property) => !import_typescript8.default.isPropertyAssignment(property) && !import_typescript8.default.isShorthandPropertyAssignment(property))) {
+            if (import_typescript9.default.isObjectLiteralExpression(argument) && argument.properties.some((property) => !import_typescript9.default.isPropertyAssignment(property) && !import_typescript9.default.isShorthandPropertyAssignment(property))) {
               report(argument, "nl-explicit-captures", "Saved inline .with(record) uses named data fields; spreads, methods and computed names are not captures.");
               valid2 = false;
             }
             const recordType = checker.getTypeAtLocation(argument);
             const fields = checker.getPropertiesOfType(recordType);
-            const finite2 = !!(recordType.flags & import_typescript8.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript8.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript8.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript8.default.IndexKind.Number) && fields.every((field) => (field.declarations ?? []).some((declaration) => import_typescript8.default.isPropertySignature(declaration) || import_typescript8.default.isPropertyDeclaration(declaration) || import_typescript8.default.isPropertyAssignment(declaration) || import_typescript8.default.isShorthandPropertyAssignment(declaration)));
+            const finite2 = !!(recordType.flags & import_typescript9.default.TypeFlags.Object) && !checker.getSignaturesOfType(recordType, import_typescript9.default.SignatureKind.Call).length && !checker.getIndexTypeOfType(recordType, import_typescript9.default.IndexKind.String) && !checker.getIndexTypeOfType(recordType, import_typescript9.default.IndexKind.Number) && fields.every((field) => (field.declarations ?? []).some((declaration) => import_typescript9.default.isPropertySignature(declaration) || import_typescript9.default.isPropertyDeclaration(declaration) || import_typescript9.default.isPropertyAssignment(declaration) || import_typescript9.default.isShorthandPropertyAssignment(declaration)));
             if (!finite2) {
               report(argument, "nl-explicit-captures", "Saved inline .with(record) needs a finite record with named data fields.");
               valid2 = false;
@@ -217539,15 +217734,15 @@ function analyzeInlineLambdas(program, files2, options = {}) {
               valid2 = false;
             }
             const incompatible = binding.plan.captures.find((capture) => {
-              const original = checker.getSymbolsInScope(binding.tag, import_typescript8.default.SymbolFlags.Value | import_typescript8.default.SymbolFlags.Alias).find((candidate) => candidate.name === capture.name);
+              const original = checker.getSymbolsInScope(binding.tag, import_typescript9.default.SymbolFlags.Value | import_typescript9.default.SymbolFlags.Alias).find((candidate) => candidate.name === capture.name);
               const originalDeclaration = original?.valueDeclaration ?? original?.declarations?.[0];
               const wanted = original && originalDeclaration ? checker.getTypeOfSymbolAtLocation(original, originalDeclaration) : void 0;
               const property = checker.getPropertyOfType(recordType, capture.name);
               const propertyDeclaration = property?.valueDeclaration ?? property?.declarations?.[0];
               const actualType = property && propertyDeclaration ? checker.getTypeOfSymbolAtLocation(property, propertyDeclaration) : void 0;
-              if (import_typescript8.default.isObjectLiteralExpression(argument)) {
-                const entry = argument.properties.find((item) => (import_typescript8.default.isPropertyAssignment(item) || import_typescript8.default.isShorthandPropertyAssignment(item)) && (import_typescript8.default.isIdentifier(item.name) || import_typescript8.default.isStringLiteral(item.name)) && item.name.text === capture.name);
-                if (entry) return !wanted || !checker.isTypeAssignableTo(import_typescript8.default.isPropertyAssignment(entry) ? checker.getTypeAtLocation(entry.initializer) : checker.getTypeAtLocation(entry.name ?? entry), wanted);
+              if (import_typescript9.default.isObjectLiteralExpression(argument)) {
+                const entry = argument.properties.find((item) => (import_typescript9.default.isPropertyAssignment(item) || import_typescript9.default.isShorthandPropertyAssignment(item)) && (import_typescript9.default.isIdentifier(item.name) || import_typescript9.default.isStringLiteral(item.name)) && item.name.text === capture.name);
+                if (entry) return !wanted || !checker.isTypeAssignableTo(import_typescript9.default.isPropertyAssignment(entry) ? checker.getTypeAtLocation(entry.initializer) : checker.getTypeAtLocation(entry.name ?? entry), wanted);
               }
               return !wanted || !actualType || !checker.isTypeAssignableTo(actualType, wanted);
             });
@@ -217558,10 +217753,10 @@ function analyzeInlineLambdas(program, files2, options = {}) {
             if (valid2) {
               const captureSources = Object.fromEntries(binding.plan.captures.map((capture) => {
                 let expression;
-                if (import_typescript8.default.isObjectLiteralExpression(argument)) {
-                  const entry = argument.properties.find((item) => (import_typescript8.default.isPropertyAssignment(item) || import_typescript8.default.isShorthandPropertyAssignment(item)) && (import_typescript8.default.isIdentifier(item.name) || import_typescript8.default.isStringLiteral(item.name)) && item.name.text === capture.name);
-                  if (entry && import_typescript8.default.isPropertyAssignment(entry)) expression = entry.initializer;
-                  else if (entry && import_typescript8.default.isShorthandPropertyAssignment(entry)) expression = entry.name;
+                if (import_typescript9.default.isObjectLiteralExpression(argument)) {
+                  const entry = argument.properties.find((item) => (import_typescript9.default.isPropertyAssignment(item) || import_typescript9.default.isShorthandPropertyAssignment(item)) && (import_typescript9.default.isIdentifier(item.name) || import_typescript9.default.isStringLiteral(item.name)) && item.name.text === capture.name);
+                  if (entry && import_typescript9.default.isPropertyAssignment(entry)) expression = entry.initializer;
+                  else if (entry && import_typescript9.default.isShorthandPropertyAssignment(entry)) expression = entry.name;
                 }
                 return [capture.name, captureSource(expression ?? argument)];
               }));
@@ -217576,7 +217771,7 @@ function analyzeInlineLambdas(program, files2, options = {}) {
           }
         }
       }
-      import_typescript8.default.forEachChild(node, findRebinds);
+      import_typescript9.default.forEachChild(node, findRebinds);
     };
     findRebinds(file);
   }
@@ -217584,45 +217779,45 @@ function analyzeInlineLambdas(program, files2, options = {}) {
 }
 function iterationArguments(checker, expression) {
   const parent = expression.parent;
-  if (parent && import_typescript8.default.isPropertyAccessExpression(parent) && parent.expression === expression && parent.name.text === "iterateOn" && import_typescript8.default.isCallExpression(parent.parent) && parent.parent.expression === parent) return parent.parent.arguments;
-  if (parent && import_typescript8.default.isCallExpression(parent) && parent.arguments[0] === expression && resolveIntrinsic(checker, parent.expression) === "iterateOn")
+  if (parent && import_typescript9.default.isPropertyAccessExpression(parent) && parent.expression === expression && parent.name.text === "iterateOn" && import_typescript9.default.isCallExpression(parent.parent) && parent.parent.expression === parent) return parent.parent.arguments;
+  if (parent && import_typescript9.default.isCallExpression(parent) && parent.arguments[0] === expression && resolveIntrinsic(checker, parent.expression) === "iterateOn")
     return parent.arguments.slice(1);
   return;
 }
 function isEnclosingParameter(declaration, node) {
-  if (!import_typescript8.default.isParameter(declaration)) return false;
+  if (!import_typescript9.default.isParameter(declaration)) return false;
   for (let current = node.parent; current; current = current.parent)
     if (current === declaration.parent) return true;
   return false;
 }
 function isMutableBinding(declaration) {
-  if (import_typescript8.default.isParameter(declaration)) return true;
-  if (import_typescript8.default.isBindingElement(declaration)) {
+  if (import_typescript9.default.isParameter(declaration)) return true;
+  if (import_typescript9.default.isBindingElement(declaration)) {
     let current = declaration;
-    while (import_typescript8.default.isBindingElement(current) || import_typescript8.default.isObjectBindingPattern(current) || import_typescript8.default.isArrayBindingPattern(current)) current = current.parent;
-    return import_typescript8.default.isParameter(current) || import_typescript8.default.isVariableDeclaration(current) && isMutableBinding(current);
+    while (import_typescript9.default.isBindingElement(current) || import_typescript9.default.isObjectBindingPattern(current) || import_typescript9.default.isArrayBindingPattern(current)) current = current.parent;
+    return import_typescript9.default.isParameter(current) || import_typescript9.default.isVariableDeclaration(current) && isMutableBinding(current);
   }
-  if (import_typescript8.default.isVariableDeclaration(declaration)) {
+  if (import_typescript9.default.isVariableDeclaration(declaration)) {
     const list = declaration.parent;
-    return import_typescript8.default.isVariableDeclarationList(list) && !(list.flags & (import_typescript8.default.NodeFlags.Const | import_typescript8.default.NodeFlags.Using));
+    return import_typescript9.default.isVariableDeclarationList(list) && !(list.flags & (import_typescript9.default.NodeFlags.Const | import_typescript9.default.NodeFlags.Using));
   }
   return false;
 }
 function isTopLevel(declaration) {
   let current = declaration;
-  while (current.parent && !import_typescript8.default.isSourceFile(current.parent)) {
+  while (current.parent && !import_typescript9.default.isSourceFile(current.parent)) {
     current = current.parent;
-    if (import_typescript8.default.isBlock(current) || import_typescript8.default.isFunctionLike(current) || import_typescript8.default.isForStatement(current) || import_typescript8.default.isForOfStatement(current))
+    if (import_typescript9.default.isBlock(current) || import_typescript9.default.isFunctionLike(current) || import_typescript9.default.isForStatement(current) || import_typescript9.default.isForOfStatement(current))
       return false;
   }
   return true;
 }
-var import_typescript8, IDENTIFIER_TOKEN, BACKTICK_MENTION, IDENTIFIER_NAME, isTextType, unwrapParentheses;
+var import_typescript9, IDENTIFIER_TOKEN, BACKTICK_MENTION, IDENTIFIER_NAME, isTextType, unwrapParentheses;
 var init_inline = __esm({
   "src/compiler/inline.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript8 = __toESM(require_typescript(), 1);
+    import_typescript9 = __toESM(require_typescript(), 1);
     init_hash();
     init_holes();
     init_targets();
@@ -217630,9 +217825,9 @@ var init_inline = __esm({
     IDENTIFIER_TOKEN = /(?<![A-Za-z0-9_$])[A-Za-z_$][A-Za-z0-9_$]*(?![A-Za-z0-9_$])/g;
     BACKTICK_MENTION = /\\`([A-Za-z_$][A-Za-z0-9_$]*)\\`/g;
     IDENTIFIER_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-    isTextType = (type) => type.isUnion() ? type.types.every(isTextType) : !!(type.flags & (import_typescript8.default.TypeFlags.StringLike | import_typescript8.default.TypeFlags.TemplateLiteral)) || type.isIntersection() && type.types.some(isTextType);
+    isTextType = (type) => type.isUnion() ? type.types.every(isTextType) : !!(type.flags & (import_typescript9.default.TypeFlags.StringLike | import_typescript9.default.TypeFlags.TemplateLiteral)) || type.isIntersection() && type.types.some(isTextType);
     unwrapParentheses = (node) => {
-      while (node.parent && (import_typescript8.default.isParenthesizedExpression(node.parent) || import_typescript8.default.isAsExpression(node.parent) || import_typescript8.default.isNonNullExpression(node.parent) || import_typescript8.default.isSatisfiesExpression(node.parent))) node = node.parent;
+      while (node.parent && (import_typescript9.default.isParenthesizedExpression(node.parent) || import_typescript9.default.isAsExpression(node.parent) || import_typescript9.default.isNonNullExpression(node.parent) || import_typescript9.default.isSatisfiesExpression(node.parent))) node = node.parent;
       return node;
     };
   }
@@ -217641,32 +217836,32 @@ var init_inline = __esm({
 // src/compiler/policy.ts
 function isNameOnly(node) {
   const parent = node.parent;
-  return (import_typescript9.default.isPropertyAccessExpression(parent) || import_typescript9.default.isPropertyAssignment(parent) || import_typescript9.default.isMethodDeclaration(parent) || import_typescript9.default.isPropertyDeclaration(parent) || import_typescript9.default.isPropertySignature(parent) || import_typescript9.default.isMethodSignature(parent)) && parent.name === node || (import_typescript9.default.isVariableDeclaration(parent) || import_typescript9.default.isParameter(parent) || import_typescript9.default.isFunctionDeclaration(parent)) && parent.name === node;
+  return (import_typescript10.default.isPropertyAccessExpression(parent) || import_typescript10.default.isPropertyAssignment(parent) || import_typescript10.default.isMethodDeclaration(parent) || import_typescript10.default.isPropertyDeclaration(parent) || import_typescript10.default.isPropertySignature(parent) || import_typescript10.default.isMethodSignature(parent)) && parent.name === node || (import_typescript10.default.isVariableDeclaration(parent) || import_typescript10.default.isParameter(parent) || import_typescript10.default.isFunctionDeclaration(parent)) && parent.name === node;
 }
 function guardArguments(node) {
   const names = [];
   const bind = (name) => {
-    if (import_typescript9.default.isIdentifier(name)) names.push(name.text);
-    else for (const element of name.elements) if (!import_typescript9.default.isOmittedExpression(element)) bind(element.name);
+    if (import_typescript10.default.isIdentifier(name)) names.push(name.text);
+    else for (const element of name.elements) if (!import_typescript10.default.isOmittedExpression(element)) bind(element.name);
   };
-  if (import_typescript9.default.isMethodDeclaration(node) || import_typescript9.default.isGetAccessorDeclaration(node) || import_typescript9.default.isSetAccessorDeclaration(node) || import_typescript9.default.isFunctionExpression(node)) names.push("this");
-  for (const parameter of node.parameters) if (!(import_typescript9.default.isIdentifier(parameter.name) && parameter.name.text === "this")) bind(parameter.name);
+  if (import_typescript10.default.isMethodDeclaration(node) || import_typescript10.default.isGetAccessorDeclaration(node) || import_typescript10.default.isSetAccessorDeclaration(node) || import_typescript10.default.isFunctionExpression(node)) names.push("this");
+  for (const parameter of node.parameters) if (!(import_typescript10.default.isIdentifier(parameter.name) && parameter.name.text === "this")) bind(parameter.name);
   return names;
 }
 function makesCalls(node) {
   let found = false;
   const visit = (child) => {
     if (found) return;
-    if (import_typescript9.default.isCallExpression(child) || import_typescript9.default.isNewExpression(child) || import_typescript9.default.isTaggedTemplateExpression(child) || import_typescript9.default.isAwaitExpression(child) || import_typescript9.default.isYieldExpression(child) || import_typescript9.default.isDecorator(child) || import_typescript9.default.isForOfStatement(child) && child.awaitModifier) {
+    if (import_typescript10.default.isCallExpression(child) || import_typescript10.default.isNewExpression(child) || import_typescript10.default.isTaggedTemplateExpression(child) || import_typescript10.default.isAwaitExpression(child) || import_typescript10.default.isYieldExpression(child) || import_typescript10.default.isDecorator(child) || import_typescript10.default.isForOfStatement(child) && child.awaitModifier) {
       found = true;
       return;
     }
-    if (import_typescript9.default.isFunctionLike(child)) {
+    if (import_typescript10.default.isFunctionLike(child)) {
       for (const parameter of child.parameters) if (parameter.initializer) visit(parameter.initializer);
-      if (child.name && import_typescript9.default.isComputedPropertyName(child.name)) visit(child.name);
+      if (child.name && import_typescript10.default.isComputedPropertyName(child.name)) visit(child.name);
       return;
     }
-    import_typescript9.default.forEachChild(child, visit);
+    import_typescript10.default.forEachChild(child, visit);
   };
   for (const parameter of node.parameters) if (parameter.initializer) visit(parameter.initializer);
   const body = node.body;
@@ -217676,17 +217871,17 @@ function makesCalls(node) {
 function ownDeclarations(node) {
   const names = [];
   const bind = (name) => {
-    if (import_typescript9.default.isIdentifier(name)) names.push(name.text);
-    else for (const element of name.elements) if (!import_typescript9.default.isOmittedExpression(element)) bind(element.name);
+    if (import_typescript10.default.isIdentifier(name)) names.push(name.text);
+    else for (const element of name.elements) if (!import_typescript10.default.isOmittedExpression(element)) bind(element.name);
   };
   const list = (declarations) => {
-    if (declarations && import_typescript9.default.isVariableDeclarationList(declarations)) for (const declaration of declarations.declarations) bind(declaration.name);
+    if (declarations && import_typescript10.default.isVariableDeclarationList(declarations)) for (const declaration of declarations.declarations) bind(declaration.name);
   };
-  if (import_typescript9.default.isForStatement(node) || import_typescript9.default.isForOfStatement(node) || import_typescript9.default.isForInStatement(node)) list(node.initializer);
-  else if (import_typescript9.default.isBlock(node)) {
-    for (const statement of node.statements) if (import_typescript9.default.isVariableStatement(statement)) list(statement.declarationList);
-  } else if (import_typescript9.default.isFunctionLike(node)) for (const parameter of node.parameters) bind(parameter.name);
-  else if (import_typescript9.default.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
+  if (import_typescript10.default.isForStatement(node) || import_typescript10.default.isForOfStatement(node) || import_typescript10.default.isForInStatement(node)) list(node.initializer);
+  else if (import_typescript10.default.isBlock(node)) {
+    for (const statement of node.statements) if (import_typescript10.default.isVariableStatement(statement)) list(statement.declarationList);
+  } else if (import_typescript10.default.isFunctionLike(node)) for (const parameter of node.parameters) bind(parameter.name);
+  else if (import_typescript10.default.isCatchClause(node) && node.variableDeclaration) bind(node.variableDeclaration.name);
   return names;
 }
 function assignedIdentifiers(node) {
@@ -217695,10 +217890,10 @@ function assignedIdentifiers(node) {
     const own = ownDeclarations(child);
     if (own.length) shadowed = /* @__PURE__ */ new Set([...shadowed, ...own]);
     let target;
-    if (import_typescript9.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript9.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript9.default.SyntaxKind.LastAssignment) target = child.left;
-    if ((import_typescript9.default.isPrefixUnaryExpression(child) || import_typescript9.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript9.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript9.default.SyntaxKind.MinusMinusToken)) target = child.operand;
-    if (target && import_typescript9.default.isIdentifier(target) && !shadowed.has(target.text)) names.add(target.text);
-    import_typescript9.default.forEachChild(child, (next2) => visit(next2, shadowed));
+    if (import_typescript10.default.isBinaryExpression(child) && child.operatorToken.kind >= import_typescript10.default.SyntaxKind.FirstAssignment && child.operatorToken.kind <= import_typescript10.default.SyntaxKind.LastAssignment) target = child.left;
+    if ((import_typescript10.default.isPrefixUnaryExpression(child) || import_typescript10.default.isPostfixUnaryExpression(child)) && (child.operator === import_typescript10.default.SyntaxKind.PlusPlusToken || child.operator === import_typescript10.default.SyntaxKind.MinusMinusToken)) target = child.operand;
+    if (target && import_typescript10.default.isIdentifier(target) && !shadowed.has(target.text)) names.add(target.text);
+    import_typescript10.default.forEachChild(child, (next2) => visit(next2, shadowed));
   };
   visit(node, /* @__PURE__ */ new Set());
   return names;
@@ -217706,33 +217901,33 @@ function assignedIdentifiers(node) {
 function grownReceivers(node) {
   const names = /* @__PURE__ */ new Set();
   const visit = (child) => {
-    if (import_typescript9.default.isCallExpression(child) && import_typescript9.default.isPropertyAccessExpression(child.expression) && GROWING_METHODS.has(child.expression.name.text)) {
+    if (import_typescript10.default.isCallExpression(child) && import_typescript10.default.isPropertyAccessExpression(child.expression) && GROWING_METHODS.has(child.expression.name.text)) {
       let root2 = child.expression.expression;
-      while (import_typescript9.default.isPropertyAccessExpression(root2) || import_typescript9.default.isElementAccessExpression(root2)) root2 = root2.expression;
-      if (import_typescript9.default.isIdentifier(root2)) names.add(root2.text);
+      while (import_typescript10.default.isPropertyAccessExpression(root2) || import_typescript10.default.isElementAccessExpression(root2)) root2 = root2.expression;
+      if (import_typescript10.default.isIdentifier(root2)) names.add(root2.text);
     }
-    import_typescript9.default.forEachChild(child, visit);
+    import_typescript10.default.forEachChild(child, visit);
   };
   visit(node);
   return names;
 }
 function rootIdentifier(expression) {
   let root2 = expression;
-  while (import_typescript9.default.isPropertyAccessExpression(root2) || import_typescript9.default.isElementAccessExpression(root2) || import_typescript9.default.isParenthesizedExpression(root2))
+  while (import_typescript10.default.isPropertyAccessExpression(root2) || import_typescript10.default.isElementAccessExpression(root2) || import_typescript10.default.isParenthesizedExpression(root2))
     root2 = root2.expression;
-  return import_typescript9.default.isIdentifier(root2) ? root2.text : void 0;
+  return import_typescript10.default.isIdentifier(root2) ? root2.text : void 0;
 }
 function constNumericLiteralBefore(node, name) {
   const list = node.parent;
-  if (!import_typescript9.default.isBlock(list) && !import_typescript9.default.isSourceFile(list)) return;
+  if (!import_typescript10.default.isBlock(list) && !import_typescript10.default.isSourceFile(list)) return;
   const loopIndex = list.statements.indexOf(node);
   if (loopIndex < 0) return;
   for (let i = loopIndex - 1; i >= 0; i--) {
     const statement = list.statements[i];
-    if (!import_typescript9.default.isVariableStatement(statement)) continue;
+    if (!import_typescript10.default.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (!import_typescript9.default.isIdentifier(declaration.name) || declaration.name.text !== name) continue;
-      if (!(statement.declarationList.flags & import_typescript9.default.NodeFlags.Const) || !declaration.initializer || !import_typescript9.default.isNumericLiteral(declaration.initializer)) return;
+      if (!import_typescript10.default.isIdentifier(declaration.name) || declaration.name.text !== name) continue;
+      if (!(statement.declarationList.flags & import_typescript10.default.NodeFlags.Const) || !declaration.initializer || !import_typescript10.default.isNumericLiteral(declaration.initializer)) return;
       const value = Number(declaration.initializer.text.replaceAll("_", ""));
       return Number.isFinite(value) && value > 0 ? value : void 0;
     }
@@ -217741,17 +217936,17 @@ function constNumericLiteralBefore(node, name) {
 }
 function finiteCounterComparison(condition, counter) {
   const unwrapped = (expression) => {
-    while (import_typescript9.default.isParenthesizedExpression(expression)) expression = expression.expression;
+    while (import_typescript10.default.isParenthesizedExpression(expression)) expression = expression.expression;
     return expression;
   };
   const isCounterComparison = (expression) => {
     const candidate = unwrapped(expression);
-    return import_typescript9.default.isBinaryExpression(candidate) && COMPARATORS.has(candidate.operatorToken.kind) && (import_typescript9.default.isIdentifier(candidate.left) && candidate.left.text === counter) !== (import_typescript9.default.isIdentifier(candidate.right) && candidate.right.text === counter);
+    return import_typescript10.default.isBinaryExpression(candidate) && COMPARATORS.has(candidate.operatorToken.kind) && (import_typescript10.default.isIdentifier(candidate.left) && candidate.left.text === counter) !== (import_typescript10.default.isIdentifier(candidate.right) && candidate.right.text === counter);
   };
   if (!condition) return;
   const root2 = unwrapped(condition);
   if (isCounterComparison(root2)) return { comparison: unwrapped(root2) };
-  if (!import_typescript9.default.isBinaryExpression(root2) || root2.operatorToken.kind !== import_typescript9.default.SyntaxKind.AmpersandAmpersandToken) return;
+  if (!import_typescript10.default.isBinaryExpression(root2) || root2.operatorToken.kind !== import_typescript10.default.SyntaxKind.AmpersandAmpersandToken) return;
   const left = isCounterComparison(root2.left);
   const right = isCounterComparison(root2.right);
   if (!left && !right) return;
@@ -217760,26 +217955,26 @@ function finiteCounterComparison(condition, counter) {
 }
 function canonicalFor(node) {
   const initializer = node.initializer;
-  if (!initializer || !import_typescript9.default.isVariableDeclarationList(initializer) || initializer.declarations.length !== 1 || !(initializer.flags & import_typescript9.default.NodeFlags.Let))
+  if (!initializer || !import_typescript10.default.isVariableDeclarationList(initializer) || initializer.declarations.length !== 1 || !(initializer.flags & import_typescript10.default.NodeFlags.Let))
     return "declare exactly one `let` counter in the loop initializer";
   const declaration = initializer.declarations[0];
-  if (!import_typescript9.default.isIdentifier(declaration.name) || !declaration.initializer) return "initialize a single named counter";
+  if (!import_typescript10.default.isIdentifier(declaration.name) || !declaration.initializer) return "initialize a single named counter";
   const counter = declaration.name.text;
   const condition = node.condition;
   const boundedCondition = finiteCounterComparison(condition, counter);
   if (!boundedCondition)
     return "compare the counter with one bound using <, <=, > or >=, optionally joined by && to an early-exit condition such as `i < n && !found`";
   const comparison = boundedCondition.comparison;
-  const counterLeft = import_typescript9.default.isIdentifier(comparison.left) && comparison.left.text === counter;
+  const counterLeft = import_typescript10.default.isIdentifier(comparison.left) && comparison.left.text === counter;
   const bound = counterLeft ? comparison.right : comparison.left;
   const kind = comparison.operatorToken.kind;
-  const upward = counterLeft ? kind === import_typescript9.default.SyntaxKind.LessThanToken || kind === import_typescript9.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript9.default.SyntaxKind.GreaterThanToken || kind === import_typescript9.default.SyntaxKind.GreaterThanEqualsToken;
+  const upward = counterLeft ? kind === import_typescript10.default.SyntaxKind.LessThanToken || kind === import_typescript10.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript10.default.SyntaxKind.GreaterThanToken || kind === import_typescript10.default.SyntaxKind.GreaterThanEqualsToken;
   const step = node.incrementor;
   let direction;
-  if (step && (import_typescript9.default.isPostfixUnaryExpression(step) || import_typescript9.default.isPrefixUnaryExpression(step)) && import_typescript9.default.isIdentifier(step.operand) && step.operand.text === counter)
-    direction = step.operator === import_typescript9.default.SyntaxKind.PlusPlusToken ? "up" : step.operator === import_typescript9.default.SyntaxKind.MinusMinusToken ? "down" : void 0;
-  else if (step && import_typescript9.default.isBinaryExpression(step) && import_typescript9.default.isIdentifier(step.left) && step.left.text === counter && (step.operatorToken.kind === import_typescript9.default.SyntaxKind.PlusEqualsToken || step.operatorToken.kind === import_typescript9.default.SyntaxKind.MinusEqualsToken) && (import_typescript9.default.isNumericLiteral(step.right) && Number(step.right.text.replaceAll("_", "")) > 0 || import_typescript9.default.isIdentifier(step.right) && step.right.text !== counter && constNumericLiteralBefore(node, step.right.text) !== void 0))
-    direction = step.operatorToken.kind === import_typescript9.default.SyntaxKind.PlusEqualsToken ? "up" : "down";
+  if (step && (import_typescript10.default.isPostfixUnaryExpression(step) || import_typescript10.default.isPrefixUnaryExpression(step)) && import_typescript10.default.isIdentifier(step.operand) && step.operand.text === counter)
+    direction = step.operator === import_typescript10.default.SyntaxKind.PlusPlusToken ? "up" : step.operator === import_typescript10.default.SyntaxKind.MinusMinusToken ? "down" : void 0;
+  else if (step && import_typescript10.default.isBinaryExpression(step) && import_typescript10.default.isIdentifier(step.left) && step.left.text === counter && (step.operatorToken.kind === import_typescript10.default.SyntaxKind.PlusEqualsToken || step.operatorToken.kind === import_typescript10.default.SyntaxKind.MinusEqualsToken) && (import_typescript10.default.isNumericLiteral(step.right) && Number(step.right.text.replaceAll("_", "")) > 0 || import_typescript10.default.isIdentifier(step.right) && step.right.text !== counter && constNumericLiteralBefore(node, step.right.text) !== void 0))
+    direction = step.operatorToken.kind === import_typescript10.default.SyntaxKind.PlusEqualsToken ? "up" : "down";
   if (!direction) return "step the counter with ++, --, += n or -= n for a positive numeric literal or a same-scope const numeric literal";
   if (direction === "up" !== upward) return "step the counter toward its bound";
   const assigned = assignedIdentifiers(node.statement);
@@ -217803,32 +217998,32 @@ function loopLabel(source2) {
 function isNlStoppingPredicate(expression, checker) {
   let current = expression;
   for (; ; ) {
-    while (import_typescript9.default.isParenthesizedExpression(current) || import_typescript9.default.isAsExpression(current) || import_typescript9.default.isTypeAssertionExpression(current) || import_typescript9.default.isNonNullExpression(current) || import_typescript9.default.isSatisfiesExpression(current))
+    while (import_typescript10.default.isParenthesizedExpression(current) || import_typescript10.default.isAsExpression(current) || import_typescript10.default.isTypeAssertionExpression(current) || import_typescript10.default.isNonNullExpression(current) || import_typescript10.default.isSatisfiesExpression(current))
       current = current.expression;
-    if (import_typescript9.default.isCallExpression(current) && import_typescript9.default.isPropertyAccessExpression(current.expression) && ["with", "in", "on", "partial"].includes(current.expression.name.text)) {
+    if (import_typescript10.default.isCallExpression(current) && import_typescript10.default.isPropertyAccessExpression(current.expression) && ["with", "in", "on", "partial"].includes(current.expression.name.text)) {
       current = current.expression.expression;
       continue;
     }
     break;
   }
-  if (import_typescript9.default.isTaggedTemplateExpression(current)) {
+  if (import_typescript10.default.isTaggedTemplateExpression(current)) {
     const tag = current.tag;
-    if (import_typescript9.default.isIdentifier(tag) && tag.text === "nl") return true;
-    if (import_typescript9.default.isCallExpression(tag) && import_typescript9.default.isPropertyAccessExpression(tag.expression) && import_typescript9.default.isIdentifier(tag.expression.expression) && tag.expression.expression.text === "nl" && tag.expression.name.text === "with")
+    if (import_typescript10.default.isIdentifier(tag) && tag.text === "nl") return true;
+    if (import_typescript10.default.isCallExpression(tag) && import_typescript10.default.isPropertyAccessExpression(tag.expression) && import_typescript10.default.isIdentifier(tag.expression.expression) && tag.expression.expression.text === "nl" && tag.expression.name.text === "with")
       return true;
   }
   if (checker) {
     const type = checker.getTypeAtLocation(expression);
     if (type.getProperty("iterateOn") && type.getProperty("in") && type.getProperty("on")) return true;
-  } else if (import_typescript9.default.isIdentifier(current)) {
+  } else if (import_typescript10.default.isIdentifier(current)) {
     const name = current.text;
     let scope = current.parent;
     while (scope) {
-      if (import_typescript9.default.isBlock(scope) || import_typescript9.default.isSourceFile(scope)) {
+      if (import_typescript10.default.isBlock(scope) || import_typescript10.default.isSourceFile(scope)) {
         for (const statement of scope.statements) {
-          if (!import_typescript9.default.isVariableStatement(statement)) continue;
+          if (!import_typescript10.default.isVariableStatement(statement)) continue;
           for (const decl of statement.declarationList.declarations) {
-            if (import_typescript9.default.isIdentifier(decl.name) && decl.name.text === name && decl.initializer && decl.getEnd() <= current.getStart())
+            if (import_typescript10.default.isIdentifier(decl.name) && decl.name.text === name && decl.initializer && decl.getEnd() <= current.getStart())
               return isNlStoppingPredicate(decl.initializer);
           }
         }
@@ -217839,21 +218034,21 @@ function isNlStoppingPredicate(expression, checker) {
   return false;
 }
 function isUnboundedUntil(node, checker) {
-  if (!import_typescript9.default.isPropertyAccessExpression(node.expression) || node.expression.name.text !== "until") return false;
+  if (!import_typescript10.default.isPropertyAccessExpression(node.expression) || node.expression.name.text !== "until") return false;
   const predicate = node.arguments[0];
   if (!predicate || isNlStoppingPredicate(predicate, checker)) return false;
   let current = node.expression.expression;
   let hasBound = false;
   let foundIterateOn = false;
   for (; ; ) {
-    while (import_typescript9.default.isParenthesizedExpression(current) || import_typescript9.default.isAsExpression(current) || import_typescript9.default.isTypeAssertionExpression(current) || import_typescript9.default.isNonNullExpression(current))
+    while (import_typescript10.default.isParenthesizedExpression(current) || import_typescript10.default.isAsExpression(current) || import_typescript10.default.isTypeAssertionExpression(current) || import_typescript10.default.isNonNullExpression(current))
       current = current.expression;
-    if (!import_typescript9.default.isCallExpression(current)) break;
-    if (import_typescript9.default.isIdentifier(current.expression) && current.expression.text === "iterateOn") {
+    if (!import_typescript10.default.isCallExpression(current)) break;
+    if (import_typescript10.default.isIdentifier(current.expression) && current.expression.text === "iterateOn") {
       foundIterateOn = true;
       break;
     }
-    if (import_typescript9.default.isPropertyAccessExpression(current.expression)) {
+    if (import_typescript10.default.isPropertyAccessExpression(current.expression)) {
       const method = current.expression.name.text;
       if (method === "iterateOn") {
         foundIterateOn = true;
@@ -217875,49 +218070,49 @@ function checkConstrainedSource(file, options = {}) {
   const report = (node, code, message2) => diagnostics.push({ ...spanOf(node, displayPath), code, message: message2, severity: "error" });
   const loopHint = " Use `for (const item of array)` or `for (const [index, item] of array.entries())` (also `keys()` and `values()` of an array, Map or Set, and `string.matchAll(regex)`) for bounded collections, `for (const key in record)` for enumerable string keys, a counter `for (let i = 0; i < n; i++)`, an array method, or `step.iterateOn(initial).until(done)` for open-ended iteration.";
   const visit = (node) => {
-    if (import_typescript9.default.isWhileStatement(node)) report(node, "forbidden-loop", "`while` loops are not allowed here." + loopHint);
-    else if (import_typescript9.default.isDoStatement(node)) report(node, "forbidden-loop", "`do ... while` loops are not allowed here." + loopHint);
-    else if (import_typescript9.default.isForStatement(node)) {
+    if (import_typescript10.default.isWhileStatement(node)) report(node, "forbidden-loop", "`while` loops are not allowed here." + loopHint);
+    else if (import_typescript10.default.isDoStatement(node)) report(node, "forbidden-loop", "`do ... while` loops are not allowed here." + loopHint);
+    else if (import_typescript10.default.isForStatement(node)) {
       const problem = canonicalFor(node);
       if (problem) report(node, "forbidden-loop", `This \`for\` loop is not a checked finite counter loop: ${problem}.` + loopHint);
-    } else if ((import_typescript9.default.isFunctionDeclaration(node) || import_typescript9.default.isFunctionExpression(node) || import_typescript9.default.isMethodDeclaration(node)) && node.asteriskToken)
+    } else if ((import_typescript10.default.isFunctionDeclaration(node) || import_typescript10.default.isFunctionExpression(node) || import_typescript10.default.isMethodDeclaration(node)) && node.asteriskToken)
       report(node, "forbidden-loop", "Generator functions are not allowed here." + loopHint);
-    else if (import_typescript9.default.isYieldExpression(node)) report(node, "forbidden-loop", "`yield` is not allowed here.");
-    else if (import_typescript9.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !(import_typescript9.default.isPropertyAccessExpression(node.parent) && node.parent.name === node) && !((import_typescript9.default.isVariableDeclaration(node.parent) || import_typescript9.default.isParameter(node.parent) || import_typescript9.default.isFunctionDeclaration(node.parent)) && node.parent.name === node))
+    else if (import_typescript10.default.isYieldExpression(node)) report(node, "forbidden-loop", "`yield` is not allowed here.");
+    else if (import_typescript10.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !(import_typescript10.default.isPropertyAccessExpression(node.parent) && node.parent.name === node) && !((import_typescript10.default.isVariableDeclaration(node.parent) || import_typescript10.default.isParameter(node.parent) || import_typescript10.default.isFunctionDeclaration(node.parent)) && node.parent.name === node))
       report(node, "forbidden-dynamic-code", `\`${node.text}\` is not allowed here.`);
-    else if (import_typescript9.default.isIdentifier(node) && node.text === "setInterval" && (!isNameOnly(node) || import_typescript9.default.isPropertyAccessExpression(node.parent) && import_typescript9.default.isIdentifier(node.parent.expression) && GLOBALS.has(node.parent.expression.text)))
+    else if (import_typescript10.default.isIdentifier(node) && node.text === "setInterval" && (!isNameOnly(node) || import_typescript10.default.isPropertyAccessExpression(node.parent) && import_typescript10.default.isIdentifier(node.parent.expression) && GLOBALS.has(node.parent.expression.text)))
       report(node, "forbidden-loop", "`setInterval` is not available here; repeat with `iterateOn(step, initial).withLimit({ maxSteps })` and wait inside the step with `await new Promise(r => setTimeout(r, ms))`.");
-    else if (import_typescript9.default.isPropertyAccessExpression(node) && import_typescript9.default.isIdentifier(node.expression) && (node.expression.text === "Symbol" && ITERATOR_SYMBOLS.has(node.name.text) || node.expression.text === "Iterator" && node.name.text === "from"))
+    else if (import_typescript10.default.isPropertyAccessExpression(node) && import_typescript10.default.isIdentifier(node.expression) && (node.expression.text === "Symbol" && ITERATOR_SYMBOLS.has(node.name.text) || node.expression.text === "Iterator" && node.name.text === "from"))
       report(node, "forbidden-loop", ITERATOR_REFUSAL);
-    else if (import_typescript9.default.isHeritageClause(node) && node.token === import_typescript9.default.SyntaxKind.ExtendsKeyword && node.types.some((type) => import_typescript9.default.isIdentifier(type.expression) && ["Iterator", "AsyncIterator"].includes(type.expression.text)))
+    else if (import_typescript10.default.isHeritageClause(node) && node.token === import_typescript10.default.SyntaxKind.ExtendsKeyword && node.types.some((type) => import_typescript10.default.isIdentifier(type.expression) && ["Iterator", "AsyncIterator"].includes(type.expression.text)))
       report(node, "forbidden-loop", ITERATOR_REFUSAL);
-    else if (import_typescript9.default.isCallExpression(node) && node.expression.kind === import_typescript9.default.SyntaxKind.ImportKeyword && !options.allowDynamicImport)
+    else if (import_typescript10.default.isCallExpression(node) && node.expression.kind === import_typescript10.default.SyntaxKind.ImportKeyword && !options.allowDynamicImport)
       report(node, "forbidden-dynamic-code", "Dynamic `import()` is not allowed here; use a static import.");
-    else if (import_typescript9.default.isCallExpression(node) && isUnboundedUntil(node, options.checker))
+    else if (import_typescript10.default.isCallExpression(node) && isUnboundedUntil(node, options.checker))
       report(
         node,
         "iteration-unbounded",
         "An iteration with a TypeScript stopping predicate needs a bound: chain `.withMeasure(state => remaining)` or `.withLimit({ maxSteps })` before `.until(...)`, or use a natural-language predicate `until(nl`...`)`."
       );
-    else if (import_typescript9.default.isForOfStatement(node) && options.checker) {
+    else if (import_typescript10.default.isForOfStatement(node) && options.checker) {
       const type = options.checker.getTypeAtLocation(node.expression);
       const collectionIteratorCall = (expression) => {
-        while (import_typescript9.default.isParenthesizedExpression(expression) || import_typescript9.default.isAsExpression(expression) || import_typescript9.default.isTypeAssertionExpression(expression) || import_typescript9.default.isNonNullExpression(expression)) expression = expression.expression;
-        if (!import_typescript9.default.isCallExpression(expression) || !import_typescript9.default.isPropertyAccessExpression(expression.expression)) return false;
+        while (import_typescript10.default.isParenthesizedExpression(expression) || import_typescript10.default.isAsExpression(expression) || import_typescript10.default.isTypeAssertionExpression(expression) || import_typescript10.default.isNonNullExpression(expression)) expression = expression.expression;
+        if (!import_typescript10.default.isCallExpression(expression) || !import_typescript10.default.isPropertyAccessExpression(expression.expression)) return false;
         const method = expression.expression.name.text;
         const receiver = options.checker.getTypeAtLocation(expression.expression.expression);
         const every = (candidate, test) => candidate.isUnion() ? candidate.types.every((item) => every(item, test)) : test(candidate);
         if (expression.arguments.length === 0 && ["entries", "keys", "values"].includes(method))
           return every(receiver, (candidate) => options.checker.isArrayType(candidate) || options.checker.isTupleType(candidate) || ["Map", "Set", "ReadonlyMap", "ReadonlySet"].includes(candidate.getSymbol()?.name ?? ""));
         if (method === "matchAll" && expression.arguments.length === 1)
-          return every(receiver, (candidate) => !!(candidate.flags & import_typescript9.default.TypeFlags.StringLike));
+          return every(receiver, (candidate) => !!(candidate.flags & import_typescript10.default.TypeFlags.StringLike));
         return false;
       };
-      const acceptable = (candidate) => candidate.isUnion() ? candidate.types.every(acceptable) : !!(candidate.flags & (import_typescript9.default.TypeFlags.Any | import_typescript9.default.TypeFlags.StringLike)) || options.checker.isArrayType(candidate) || options.checker.isTupleType(candidate) || ["Map", "Set", "ReadonlyMap", "ReadonlySet"].includes(candidate.getSymbol()?.name ?? "");
+      const acceptable = (candidate) => candidate.isUnion() ? candidate.types.every(acceptable) : !!(candidate.flags & (import_typescript10.default.TypeFlags.Any | import_typescript10.default.TypeFlags.StringLike)) || options.checker.isArrayType(candidate) || options.checker.isTupleType(candidate) || ["Map", "Set", "ReadonlyMap", "ReadonlySet"].includes(candidate.getSymbol()?.name ?? "");
       if (!acceptable(type) && !collectionIteratorCall(node.expression))
         report(node.expression, "forbidden-loop", "`for ... of` here must iterate an array, string, Map or Set." + loopHint);
     }
-    import_typescript9.default.forEachChild(node, visit);
+    import_typescript10.default.forEachChild(node, visit);
   };
   visit(file);
   return diagnostics;
@@ -217925,32 +218120,32 @@ function checkConstrainedSource(file, options = {}) {
 function authoredCallables(file, idPrefix) {
   const found = [];
   const nameOf = (node) => {
-    if ((import_typescript9.default.isFunctionDeclaration(node) || import_typescript9.default.isFunctionExpression(node) || import_typescript9.default.isMethodDeclaration(node) || import_typescript9.default.isGetAccessorDeclaration(node) || import_typescript9.default.isSetAccessorDeclaration(node)) && node.name) return node.name.getText();
-    if (import_typescript9.default.isConstructorDeclaration(node)) return "constructor";
+    if ((import_typescript10.default.isFunctionDeclaration(node) || import_typescript10.default.isFunctionExpression(node) || import_typescript10.default.isMethodDeclaration(node) || import_typescript10.default.isGetAccessorDeclaration(node) || import_typescript10.default.isSetAccessorDeclaration(node)) && node.name) return node.name.getText();
+    if (import_typescript10.default.isConstructorDeclaration(node)) return "constructor";
     const parent = node.parent;
-    if (parent && (import_typescript9.default.isVariableDeclaration(parent) || import_typescript9.default.isPropertyAssignment(parent) || import_typescript9.default.isPropertyDeclaration(parent)) && parent.name) return parent.name.getText();
+    if (parent && (import_typescript10.default.isVariableDeclaration(parent) || import_typescript10.default.isPropertyAssignment(parent) || import_typescript10.default.isPropertyDeclaration(parent)) && parent.name) return parent.name.getText();
     return "anonymous";
   };
   const visit = (node) => {
-    if ((import_typescript9.default.isFunctionDeclaration(node) || import_typescript9.default.isFunctionExpression(node) || import_typescript9.default.isArrowFunction(node) || import_typescript9.default.isMethodDeclaration(node) || import_typescript9.default.isGetAccessorDeclaration(node) || import_typescript9.default.isSetAccessorDeclaration(node) || import_typescript9.default.isConstructorDeclaration(node)) && node.body)
+    if ((import_typescript10.default.isFunctionDeclaration(node) || import_typescript10.default.isFunctionExpression(node) || import_typescript10.default.isArrowFunction(node) || import_typescript10.default.isMethodDeclaration(node) || import_typescript10.default.isGetAccessorDeclaration(node) || import_typescript10.default.isSetAccessorDeclaration(node) || import_typescript10.default.isConstructorDeclaration(node)) && node.body)
       found.push({ id: `${idPrefix}#${nameOf(node)}@${node.getStart()}`, name: nameOf(node), node, file });
-    import_typescript9.default.forEachChild(node, visit);
+    import_typescript10.default.forEachChild(node, visit);
   };
   visit(file);
   return found;
 }
-var import_typescript9, COMPARATORS, GROWING_METHODS, ITERATOR_SYMBOLS, GLOBALS, ITERATOR_REFUSAL, parsedFile;
+var import_typescript10, COMPARATORS, GROWING_METHODS, ITERATOR_SYMBOLS, GLOBALS, ITERATOR_REFUSAL, parsedFile;
 var init_policy = __esm({
   "src/compiler/policy.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript9 = __toESM(require_typescript(), 1);
+    import_typescript10 = __toESM(require_typescript(), 1);
     init_inline();
     COMPARATORS = /* @__PURE__ */ new Set([
-      import_typescript9.default.SyntaxKind.LessThanToken,
-      import_typescript9.default.SyntaxKind.LessThanEqualsToken,
-      import_typescript9.default.SyntaxKind.GreaterThanToken,
-      import_typescript9.default.SyntaxKind.GreaterThanEqualsToken
+      import_typescript10.default.SyntaxKind.LessThanToken,
+      import_typescript10.default.SyntaxKind.LessThanEqualsToken,
+      import_typescript10.default.SyntaxKind.GreaterThanToken,
+      import_typescript10.default.SyntaxKind.GreaterThanEqualsToken
     ]);
     GROWING_METHODS = /* @__PURE__ */ new Set(["push", "unshift", "splice", "concat"]);
     ITERATOR_SYMBOLS = /* @__PURE__ */ new Set(["iterator", "asyncIterator"]);
@@ -217959,7 +218154,7 @@ var init_policy = __esm({
     parsedFile = (node) => {
       if (node.pos < 0) return void 0;
       let at = node;
-      while (at && !import_typescript9.default.isSourceFile(at)) at = at.parent;
+      while (at && !import_typescript10.default.isSourceFile(at)) at = at.parent;
       return at;
     };
   }
@@ -217967,17 +218162,17 @@ var init_policy = __esm({
 
 // src/scope-compiler.ts
 function namesOf(name) {
-  if (import_typescript10.default.isIdentifier(name)) return [name];
-  return name.elements.flatMap((element) => import_typescript10.default.isOmittedExpression(element) ? [] : namesOf(element.name));
+  if (import_typescript11.default.isIdentifier(name)) return [name];
+  return name.elements.flatMap((element) => import_typescript11.default.isOmittedExpression(element) ? [] : namesOf(element.name));
 }
 function bindingInitializerProjections(name, initializer) {
   const projections = /* @__PURE__ */ new Map();
-  const file = import_typescript10.default.createSourceFile("initializer.ts", initializer, import_typescript10.default.ScriptTarget.Latest, true, import_typescript10.default.ScriptKind.TS);
-  const root2 = file.statements.find(import_typescript10.default.isExpressionStatement)?.expression;
+  const file = import_typescript11.default.createSourceFile("initializer.ts", initializer, import_typescript11.default.ScriptTarget.Latest, true, import_typescript11.default.ScriptKind.TS);
+  const root2 = file.statements.find(import_typescript11.default.isExpressionStatement)?.expression;
   const staticScopePath = (node) => {
-    if (import_typescript10.default.isIdentifier(node)) return true;
-    if (import_typescript10.default.isPropertyAccessExpression(node)) return staticScopePath(node.expression);
-    if (import_typescript10.default.isElementAccessExpression(node)) return !!node.argumentExpression && (import_typescript10.default.isStringLiteral(node.argumentExpression) || import_typescript10.default.isNumericLiteral(node.argumentExpression)) && staticScopePath(node.expression);
+    if (import_typescript11.default.isIdentifier(node)) return true;
+    if (import_typescript11.default.isPropertyAccessExpression(node)) return staticScopePath(node.expression);
+    if (import_typescript11.default.isElementAccessExpression(node)) return !!node.argumentExpression && (import_typescript11.default.isStringLiteral(node.argumentExpression) || import_typescript11.default.isNumericLiteral(node.argumentExpression)) && staticScopePath(node.expression);
     return false;
   };
   if (!root2 || !staticScopePath(root2)) return projections;
@@ -217988,18 +218183,18 @@ function bindingInitializerProjections(name, initializer) {
   };
   const propertyKey = (element) => {
     const property = element.propertyName;
-    if (!property) return import_typescript10.default.isIdentifier(element.name) ? element.name.text : void 0;
-    if (import_typescript10.default.isIdentifier(property) || import_typescript10.default.isStringLiteral(property) || import_typescript10.default.isNumericLiteral(property)) return property.text;
-    if (import_typescript10.default.isComputedPropertyName(property) && (import_typescript10.default.isStringLiteral(property.expression) || import_typescript10.default.isNumericLiteral(property.expression)))
+    if (!property) return import_typescript11.default.isIdentifier(element.name) ? element.name.text : void 0;
+    if (import_typescript11.default.isIdentifier(property) || import_typescript11.default.isStringLiteral(property) || import_typescript11.default.isNumericLiteral(property)) return property.text;
+    if (import_typescript11.default.isComputedPropertyName(property) && (import_typescript11.default.isStringLiteral(property.expression) || import_typescript11.default.isNumericLiteral(property.expression)))
       return property.expression.text;
     return;
   };
   const visit = (pattern2, base) => {
-    if (import_typescript10.default.isIdentifier(pattern2)) {
+    if (import_typescript11.default.isIdentifier(pattern2)) {
       projections.set(pattern2.text, base);
       return;
     }
-    if (import_typescript10.default.isObjectBindingPattern(pattern2)) {
+    if (import_typescript11.default.isObjectBindingPattern(pattern2)) {
       for (const element of pattern2.elements) {
         if (element.dotDotDotToken) continue;
         if (element.initializer) continue;
@@ -218010,12 +218205,12 @@ function bindingInitializerProjections(name, initializer) {
     }
     let index = 0;
     for (const element of pattern2.elements) {
-      if (import_typescript10.default.isOmittedExpression(element)) {
+      if (import_typescript11.default.isOmittedExpression(element)) {
         index++;
         continue;
       }
       if (element.dotDotDotToken) {
-        if (import_typescript10.default.isIdentifier(element.name)) projections.set(element.name.text, `${base}.slice(${index})`);
+        if (import_typescript11.default.isIdentifier(element.name)) projections.set(element.name.text, `${base}.slice(${index})`);
         continue;
       }
       if (element.initializer) {
@@ -218031,49 +218226,49 @@ function bindingInitializerProjections(name, initializer) {
 }
 function portableAnnotation(node, file) {
   const primitive = /* @__PURE__ */ new Map([
-    [import_typescript10.default.SyntaxKind.StringKeyword, "string"],
-    [import_typescript10.default.SyntaxKind.NumberKeyword, "number"],
-    [import_typescript10.default.SyntaxKind.BooleanKeyword, "boolean"],
-    [import_typescript10.default.SyntaxKind.NullKeyword, "null"]
+    [import_typescript11.default.SyntaxKind.StringKeyword, "string"],
+    [import_typescript11.default.SyntaxKind.NumberKeyword, "number"],
+    [import_typescript11.default.SyntaxKind.BooleanKeyword, "boolean"],
+    [import_typescript11.default.SyntaxKind.NullKeyword, "null"]
   ]);
   const direct = primitive.get(node.kind);
   if (direct) return direct;
-  if (import_typescript10.default.isLiteralTypeNode(node)) return node.literal.getText(file);
-  if (import_typescript10.default.isParenthesizedTypeNode(node)) {
+  if (import_typescript11.default.isLiteralTypeNode(node)) return node.literal.getText(file);
+  if (import_typescript11.default.isParenthesizedTypeNode(node)) {
     const inner = portableAnnotation(node.type, file);
     return inner ? `(${inner})` : void 0;
   }
-  if (import_typescript10.default.isArrayTypeNode(node)) {
+  if (import_typescript11.default.isArrayTypeNode(node)) {
     const element = portableAnnotation(node.elementType, file);
     return element ? `(${element})[]` : void 0;
   }
-  if (import_typescript10.default.isUnionTypeNode(node)) {
+  if (import_typescript11.default.isUnionTypeNode(node)) {
     const members = node.types.map((type) => portableAnnotation(type, file));
     return members.every(Boolean) ? members.join(" | ") : void 0;
   }
-  if (import_typescript10.default.isTypeLiteralNode(node)) {
+  if (import_typescript11.default.isTypeLiteralNode(node)) {
     const fields = [];
     for (const member of node.members) {
-      if (!import_typescript10.default.isPropertySignature(member) || !member.type || !member.name) return;
+      if (!import_typescript11.default.isPropertySignature(member) || !member.type || !member.name) return;
       const type = portableAnnotation(member.type, file);
       if (!type) return;
       fields.push(`${member.name.getText(file)}${member.questionToken ? "?" : ""}: ${type}`);
     }
     return `{ ${fields.join(", ")} }`;
   }
-  if (import_typescript10.default.isTypeOperatorNode(node) && node.operator === import_typescript10.default.SyntaxKind.ReadonlyKeyword)
+  if (import_typescript11.default.isTypeOperatorNode(node) && node.operator === import_typescript11.default.SyntaxKind.ReadonlyKeyword)
     return portableAnnotation(node.type, file);
-  if (import_typescript10.default.isTypeReferenceNode(node)) {
+  if (import_typescript11.default.isTypeReferenceNode(node)) {
     const name = node.typeName.getText(file), args = node.typeArguments ?? [];
     if ((name === "Array" || name === "ReadonlyArray") && args.length === 1) {
       const element = portableAnnotation(args[0], file);
       return element ? `(${element})[]` : void 0;
     }
-    if (name === "Is" && args.length === 2 && import_typescript10.default.isLiteralTypeNode(args[1]) && import_typescript10.default.isStringLiteral(args[1].literal)) {
+    if (name === "Is" && args.length === 2 && import_typescript11.default.isLiteralTypeNode(args[1]) && import_typescript11.default.isStringLiteral(args[1].literal)) {
       const base = portableAnnotation(args[0], file);
       return base ? `Is<${base}, ${args[1].literal.getText(file)}>` : void 0;
     }
-    if (name === "Neuralese" && (args.length === 1 || args.length === 2 && import_typescript10.default.isLiteralTypeNode(args[1]) && import_typescript10.default.isStringLiteral(args[1].literal))) {
+    if (name === "Neuralese" && (args.length === 1 || args.length === 2 && import_typescript11.default.isLiteralTypeNode(args[1]) && import_typescript11.default.isStringLiteral(args[1].literal))) {
       const element = portableAnnotation(args[0], file);
       return element ? `Neuralese<${element}${args.length === 2 ? `, ${args[1].getText(file)}` : ""}>` : void 0;
     }
@@ -218081,7 +218276,7 @@ function portableAnnotation(node, file) {
       const base = portableAnnotation(args[0], file);
       return base ? `Untrusted<${base}>` : void 0;
     }
-    if (name === "Record" && args.length === 2 && args[0].kind === import_typescript10.default.SyntaxKind.StringKeyword) {
+    if (name === "Record" && args.length === 2 && args[0].kind === import_typescript11.default.SyntaxKind.StringKeyword) {
       const value = portableAnnotation(args[1], file);
       return value ? `Record<string, ${value}>` : void 0;
     }
@@ -218108,23 +218303,23 @@ function unsupportedUtilityAnnotation(node, file) {
   let unsupported;
   const visit = (current) => {
     if (unsupported) return;
-    if (import_typescript10.default.isTypeReferenceNode(current) && import_typescript10.default.isIdentifier(current.typeName) && names.has(current.typeName.text) && (current.typeArguments?.length ?? 0) > 0) {
+    if (import_typescript11.default.isTypeReferenceNode(current) && import_typescript11.default.isIdentifier(current.typeName) && names.has(current.typeName.text) && (current.typeArguments?.length ?? 0) > 0) {
       unsupported = current;
       return;
     }
-    import_typescript10.default.forEachChild(current, visit);
+    import_typescript11.default.forEachChild(current, visit);
   };
   visit(node);
   return unsupported?.getText(file);
 }
 function isPropertyName2(node) {
   const parent = node.parent;
-  return import_typescript10.default.isPropertyAccessExpression(parent) && parent.name === node || // `typeof task.passes`: the right side of a qualified name in a type query is a property, not a variable.
-  import_typescript10.default.isQualifiedName(parent) && parent.right === node || (import_typescript10.default.isPropertyAssignment(parent) || import_typescript10.default.isMethodDeclaration(parent) || import_typescript10.default.isPropertyDeclaration(parent) || import_typescript10.default.isPropertySignature(parent) || import_typescript10.default.isMethodSignature(parent) || import_typescript10.default.isBindingElement(parent)) && parent.name === node || import_typescript10.default.isLabeledStatement(parent) && parent.label === node || (import_typescript10.default.isBreakStatement(parent) || import_typescript10.default.isContinueStatement(parent)) && parent.label === node;
+  return import_typescript11.default.isPropertyAccessExpression(parent) && parent.name === node || // `typeof task.passes`: the right side of a qualified name in a type query is a property, not a variable.
+  import_typescript11.default.isQualifiedName(parent) && parent.right === node || (import_typescript11.default.isPropertyAssignment(parent) || import_typescript11.default.isMethodDeclaration(parent) || import_typescript11.default.isPropertyDeclaration(parent) || import_typescript11.default.isPropertySignature(parent) || import_typescript11.default.isMethodSignature(parent) || import_typescript11.default.isBindingElement(parent)) && parent.name === node || import_typescript11.default.isLabeledStatement(parent) && parent.label === node || (import_typescript11.default.isBreakStatement(parent) || import_typescript11.default.isContinueStatement(parent)) && parent.label === node;
 }
 function isDeclarationName(node) {
   const parent = node.parent;
-  return (import_typescript10.default.isVariableDeclaration(parent) || import_typescript10.default.isParameter(parent) || import_typescript10.default.isFunctionDeclaration(parent) || import_typescript10.default.isFunctionExpression(parent) || import_typescript10.default.isArrowFunction(parent) || import_typescript10.default.isClassDeclaration(parent) || import_typescript10.default.isClassExpression(parent) || import_typescript10.default.isTypeAliasDeclaration(parent) || import_typescript10.default.isInterfaceDeclaration(parent) || import_typescript10.default.isEnumDeclaration(parent) || import_typescript10.default.isImportClause(parent) || import_typescript10.default.isImportSpecifier(parent) || import_typescript10.default.isNamespaceImport(parent) || import_typescript10.default.isBindingElement(parent)) && parent.name === node;
+  return (import_typescript11.default.isVariableDeclaration(parent) || import_typescript11.default.isParameter(parent) || import_typescript11.default.isFunctionDeclaration(parent) || import_typescript11.default.isFunctionExpression(parent) || import_typescript11.default.isArrowFunction(parent) || import_typescript11.default.isClassDeclaration(parent) || import_typescript11.default.isClassExpression(parent) || import_typescript11.default.isTypeAliasDeclaration(parent) || import_typescript11.default.isInterfaceDeclaration(parent) || import_typescript11.default.isEnumDeclaration(parent) || import_typescript11.default.isImportClause(parent) || import_typescript11.default.isImportSpecifier(parent) || import_typescript11.default.isNamespaceImport(parent) || import_typescript11.default.isBindingElement(parent)) && parent.name === node;
 }
 function persistentHelperFreeNames(fn, checker, sourceFile) {
   const names = /* @__PURE__ */ new Set();
@@ -218135,17 +218330,17 @@ function persistentHelperFreeNames(fn, checker, sourceFile) {
   };
   const typePosition = (node) => {
     for (let parent = node.parent; parent; parent = parent.parent) {
-      if (import_typescript10.default.isTypeQueryNode(parent)) return false;
-      if (import_typescript10.default.isTypeNode(parent)) return true;
-      if (import_typescript10.default.isExpression(parent) || import_typescript10.default.isStatement(parent)) return false;
+      if (import_typescript11.default.isTypeQueryNode(parent)) return false;
+      if (import_typescript11.default.isTypeNode(parent)) return true;
+      if (import_typescript11.default.isExpression(parent) || import_typescript11.default.isStatement(parent)) return false;
     }
     return false;
   };
   const visit = (node) => {
-    if (import_typescript10.default.isArrowFunction(node) || import_typescript10.default.isFunctionExpression(node) || import_typescript10.default.isFunctionDeclaration(node)) {
+    if (import_typescript11.default.isArrowFunction(node) || import_typescript11.default.isFunctionExpression(node) || import_typescript11.default.isFunctionDeclaration(node)) {
       if (node !== fn) nested = true;
     }
-    if (import_typescript10.default.isIdentifier(node) && !isDeclarationName(node) && !isPropertyName2(node) && !typePosition(node)) {
+    if (import_typescript11.default.isIdentifier(node) && !isDeclarationName(node) && !isPropertyName2(node) && !typePosition(node)) {
       const symbol = checker.getSymbolAtLocation(node);
       const declarations = symbol?.declarations ?? [];
       const lexical = declarations.some((declaration) => declaration.getSourceFile() === sourceFile && insideHelper(declaration));
@@ -218153,95 +218348,95 @@ function persistentHelperFreeNames(fn, checker, sourceFile) {
       const global2 = symbol !== void 0 && declarations.every((declaration) => declaration.getSourceFile() !== sourceFile);
       if (!lexical && !global2 || sameFileOuter) names.add(node.text);
     }
-    import_typescript10.default.forEachChild(node, visit);
+    import_typescript11.default.forEachChild(node, visit);
   };
   visit(fn);
   return { names: [...names].sort(), nested };
 }
 function checkerFor(sourceFile) {
-  const compilerOptions = { target: import_typescript10.default.ScriptTarget.ES2022, noEmit: true, skipLibCheck: true };
+  const compilerOptions = { target: import_typescript11.default.ScriptTarget.ES2022, noEmit: true, skipLibCheck: true };
   const path2 = `/__natlang__/eval/${sourceFile.fileName.replace(/\\/g, "/").replace(/^\.?\//, "")}`;
   const host = createNatlangCompilerHost({ options: compilerOptions, virtual: /* @__PURE__ */ new Map([[path2, sourceFile.text]]), currentDirectory: "/" });
   const getSourceFile = host.getSourceFile.bind(host);
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => fileName === path2 ? sourceFile : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-  return import_typescript10.default.createProgram([path2], compilerOptions, host).getTypeChecker();
+  return import_typescript11.default.createProgram([path2], compilerOptions, host).getTypeChecker();
 }
 function persistentHelperTypeNames(node) {
   const names = /* @__PURE__ */ new Set();
   const typeParameters = /* @__PURE__ */ new Set();
   const visit = (item) => {
-    if (import_typescript10.default.isTypeParameterDeclaration(item)) typeParameters.add(item.name.text);
-    const constAssertion = import_typescript10.default.isTypeReferenceNode(item) && import_typescript10.default.isIdentifier(item.typeName) && item.typeName.text === "const" && !item.typeArguments?.length && item.parent !== void 0 && (import_typescript10.default.isAsExpression(item.parent) || import_typescript10.default.isTypeAssertionExpression(item.parent)) && item.parent.type === item;
-    if (import_typescript10.default.isTypeReferenceNode(item) && import_typescript10.default.isIdentifier(item.typeName) && !constAssertion && !typeParameters.has(item.typeName.text) && !PERSISTENT_HELPER_TYPES.has(item.typeName.text)) names.add(item.typeName.text);
-    import_typescript10.default.forEachChild(item, visit);
+    if (import_typescript11.default.isTypeParameterDeclaration(item)) typeParameters.add(item.name.text);
+    const constAssertion = import_typescript11.default.isTypeReferenceNode(item) && import_typescript11.default.isIdentifier(item.typeName) && item.typeName.text === "const" && !item.typeArguments?.length && item.parent !== void 0 && (import_typescript11.default.isAsExpression(item.parent) || import_typescript11.default.isTypeAssertionExpression(item.parent)) && item.parent.type === item;
+    if (import_typescript11.default.isTypeReferenceNode(item) && import_typescript11.default.isIdentifier(item.typeName) && !constAssertion && !typeParameters.has(item.typeName.text) && !PERSISTENT_HELPER_TYPES.has(item.typeName.text)) names.add(item.typeName.text);
+    import_typescript11.default.forEachChild(item, visit);
   };
   visit(node);
   return [...names].sort();
 }
 function helperFunction(statement) {
-  if (import_typescript10.default.isFunctionDeclaration(statement) && statement.name)
+  if (import_typescript11.default.isFunctionDeclaration(statement) && statement.name)
     return { name: statement.name.text, fn: statement };
-  if (!import_typescript10.default.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) return;
+  if (!import_typescript11.default.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) return;
   const declaration = statement.declarationList.declarations[0];
-  if (!import_typescript10.default.isIdentifier(declaration.name) || !declaration.initializer) return;
+  if (!import_typescript11.default.isIdentifier(declaration.name) || !declaration.initializer) return;
   let initializer = declaration.initializer;
-  while (import_typescript10.default.isAwaitExpression(initializer) || import_typescript10.default.isParenthesizedExpression(initializer) || import_typescript10.default.isAsExpression(initializer) || import_typescript10.default.isSatisfiesExpression(initializer)) initializer = initializer.expression;
-  return import_typescript10.default.isArrowFunction(initializer) || import_typescript10.default.isFunctionExpression(initializer) ? { name: declaration.name.text, fn: initializer } : void 0;
+  while (import_typescript11.default.isAwaitExpression(initializer) || import_typescript11.default.isParenthesizedExpression(initializer) || import_typescript11.default.isAsExpression(initializer) || import_typescript11.default.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+  return import_typescript11.default.isArrowFunction(initializer) || import_typescript11.default.isFunctionExpression(initializer) ? { name: declaration.name.text, fn: initializer } : void 0;
 }
 function propertyText(expression) {
-  if (import_typescript10.default.isPropertyAccessExpression(expression)) return expression.name.text;
-  if (import_typescript10.default.isElementAccessExpression(expression) && expression.argumentExpression && (import_typescript10.default.isStringLiteral(expression.argumentExpression) || import_typescript10.default.isNoSubstitutionTemplateLiteral(expression.argumentExpression)))
+  if (import_typescript11.default.isPropertyAccessExpression(expression)) return expression.name.text;
+  if (import_typescript11.default.isElementAccessExpression(expression) && expression.argumentExpression && (import_typescript11.default.isStringLiteral(expression.argumentExpression) || import_typescript11.default.isNoSubstitutionTemplateLiteral(expression.argumentExpression)))
     return expression.argumentExpression.text;
   return void 0;
 }
 function assignmentTarget(node) {
-  if (import_typescript10.default.isBinaryExpression(node) && node.operatorToken.kind >= import_typescript10.default.SyntaxKind.FirstAssignment && node.operatorToken.kind <= import_typescript10.default.SyntaxKind.LastAssignment) return node.left;
-  if (import_typescript10.default.isDeleteExpression(node)) return node.expression;
-  if ((import_typescript10.default.isPrefixUnaryExpression(node) || import_typescript10.default.isPostfixUnaryExpression(node)) && (node.operator === import_typescript10.default.SyntaxKind.PlusPlusToken || node.operator === import_typescript10.default.SyntaxKind.MinusMinusToken))
+  if (import_typescript11.default.isBinaryExpression(node) && node.operatorToken.kind >= import_typescript11.default.SyntaxKind.FirstAssignment && node.operatorToken.kind <= import_typescript11.default.SyntaxKind.LastAssignment) return node.left;
+  if (import_typescript11.default.isDeleteExpression(node)) return node.expression;
+  if ((import_typescript11.default.isPrefixUnaryExpression(node) || import_typescript11.default.isPostfixUnaryExpression(node)) && (node.operator === import_typescript11.default.SyntaxKind.PlusPlusToken || node.operator === import_typescript11.default.SyntaxKind.MinusMinusToken))
     return node.operand;
   return void 0;
 }
 function uncalledInlineFunctions(file) {
   const ends = [];
   const visit = (node) => {
-    if (import_typescript10.default.isTaggedTemplateExpression(node) && import_typescript10.default.isIdentifier(node.tag) && node.tag.text === "nl") {
+    if (import_typescript11.default.isTaggedTemplateExpression(node) && import_typescript11.default.isIdentifier(node.tag) && node.tag.text === "nl") {
       let outer = node;
-      while (outer.parent && import_typescript10.default.isParenthesizedExpression(outer.parent)) outer = outer.parent;
-      if (outer.parent && import_typescript10.default.isAwaitExpression(outer.parent)) ends.push(node.getEnd());
+      while (outer.parent && import_typescript11.default.isParenthesizedExpression(outer.parent)) outer = outer.parent;
+      if (outer.parent && import_typescript11.default.isAwaitExpression(outer.parent)) ends.push(node.getEnd());
     }
-    import_typescript10.default.forEachChild(node, visit);
+    import_typescript11.default.forEachChild(node, visit);
   };
   visit(file);
   return ends;
 }
 function literalValue(node) {
-  if (import_typescript10.default.isStringLiteral(node) || import_typescript10.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (import_typescript10.default.isNumericLiteral(node)) return Number(node.text);
-  if (import_typescript10.default.isPrefixUnaryExpression(node) && node.operator === import_typescript10.default.SyntaxKind.MinusToken && import_typescript10.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
-  if (node.kind === import_typescript10.default.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === import_typescript10.default.SyntaxKind.FalseKeyword) return false;
-  if (import_typescript10.default.isParenthesizedExpression(node)) return literalValue(node.expression);
+  if (import_typescript11.default.isStringLiteral(node) || import_typescript11.default.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (import_typescript11.default.isNumericLiteral(node)) return Number(node.text);
+  if (import_typescript11.default.isPrefixUnaryExpression(node) && node.operator === import_typescript11.default.SyntaxKind.MinusToken && import_typescript11.default.isNumericLiteral(node.operand)) return -Number(node.operand.text);
+  if (node.kind === import_typescript11.default.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === import_typescript11.default.SyntaxKind.FalseKeyword) return false;
+  if (import_typescript11.default.isParenthesizedExpression(node)) return literalValue(node.expression);
   return void 0;
 }
 function jsonLiteral(node) {
   const primitive = literalValue(node);
   if (primitive !== void 0) return primitive;
-  if (node.kind === import_typescript10.default.SyntaxKind.NullKeyword) return null;
-  if (import_typescript10.default.isParenthesizedExpression(node) || import_typescript10.default.isAsExpression(node) || import_typescript10.default.isSatisfiesExpression(node)) return jsonLiteral(node.expression);
-  if (import_typescript10.default.isArrayLiteralExpression(node)) {
+  if (node.kind === import_typescript11.default.SyntaxKind.NullKeyword) return null;
+  if (import_typescript11.default.isParenthesizedExpression(node) || import_typescript11.default.isAsExpression(node) || import_typescript11.default.isSatisfiesExpression(node)) return jsonLiteral(node.expression);
+  if (import_typescript11.default.isArrayLiteralExpression(node)) {
     const items = [];
     for (const element of node.elements) {
-      const value = import_typescript10.default.isSpreadElement(element) || import_typescript10.default.isOmittedExpression(element) ? NOT_LITERAL : jsonLiteral(element);
+      const value = import_typescript11.default.isSpreadElement(element) || import_typescript11.default.isOmittedExpression(element) ? NOT_LITERAL : jsonLiteral(element);
       if (value === NOT_LITERAL) return NOT_LITERAL;
       items.push(value);
     }
     return items;
   }
-  if (import_typescript10.default.isObjectLiteralExpression(node)) {
+  if (import_typescript11.default.isObjectLiteralExpression(node)) {
     const record3 = {};
     for (const property of node.properties) {
-      if (!import_typescript10.default.isPropertyAssignment(property)) return NOT_LITERAL;
-      const key = import_typescript10.default.isIdentifier(property.name) || import_typescript10.default.isStringLiteral(property.name) || import_typescript10.default.isNumericLiteral(property.name) ? property.name.text : void 0;
+      if (!import_typescript11.default.isPropertyAssignment(property)) return NOT_LITERAL;
+      const key = import_typescript11.default.isIdentifier(property.name) || import_typescript11.default.isStringLiteral(property.name) || import_typescript11.default.isNumericLiteral(property.name) ? property.name.text : void 0;
       const value = key === void 0 ? NOT_LITERAL : jsonLiteral(property.initializer);
       if (value === NOT_LITERAL) return NOT_LITERAL;
       record3[key] = value;
@@ -218257,6 +218452,21 @@ function sameJson(a, b) {
   if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
   const keys3 = Object.keys(a);
   return keys3.length === Object.keys(b).length && keys3.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]));
+}
+function leakedMarkupHint(source2) {
+  if (!TOOL_MARKUP.test(source2) && !THINK_MARKUP.test(source2)) return void 0;
+  const lines = source2.split("\n");
+  const index = lines.findIndex((line) => TOOL_MARKUP.test(line) || THINK_MARKUP.test(line));
+  const at = index >= 0 ? index : 0;
+  const start = lines.slice(0, at).reduce((sum, line) => sum + line.length + 1, 0);
+  return {
+    code: "typescript-syntax",
+    message: TYPESCRIPT_ONLY + "Tool-call or <think> markup leaked into eval.code; send only valid TypeScript statements in code and close reasoning before making a tool call.",
+    start,
+    end: start + (lines[at]?.length ?? 0),
+    line: at + 1,
+    column: 1
+  };
 }
 function foreignCodeHint(source2) {
   const lines = source2.split("\n");
@@ -218281,10 +218491,15 @@ function foreignCodeHint(source2) {
 function compileScopeSnippet(source2, options = {}) {
   const result = compileScopeSnippetUnhinted(source2, options);
   if (!result.ok && typeof source2 === "string") {
-    const parsed = import_typescript10.default.createSourceFile("eval-source.ts", source2, import_typescript10.default.ScriptTarget.ES2022, true, import_typescript10.default.ScriptKind.TS);
+    const parsed = import_typescript11.default.createSourceFile("eval-source.ts", source2, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
     if ((parsed.parseDiagnostics ?? []).length) {
-      const hint = foreignCodeHint(source2);
-      if (hint) result.diagnostics.splice(0, result.diagnostics.length, hint, ...result.diagnostics.slice(0, 4));
+      const markup = leakedMarkupHint(source2);
+      if (markup) {
+        result.diagnostics.splice(0, result.diagnostics.length, markup);
+      } else {
+        const hint = foreignCodeHint(source2);
+        if (hint) result.diagnostics.splice(0, result.diagnostics.length, hint, ...result.diagnostics.slice(0, 4));
+      }
     }
   }
   return result;
@@ -218292,23 +218507,23 @@ function compileScopeSnippet(source2, options = {}) {
 function compileScopeSnippetUnhinted(source2, options = {}) {
   if (typeof source2 !== "string") throw new TypeError("scope source must be a string");
   if (options.allowModules) {
-    const module = import_typescript10.default.createSourceFile("imports.ts", source2, import_typescript10.default.ScriptTarget.ES2022, true, import_typescript10.default.ScriptKind.TS);
-    const imports = module.statements.filter(import_typescript10.default.isImportDeclaration);
+    const module = import_typescript11.default.createSourceFile("imports.ts", source2, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
+    const imports = module.statements.filter(import_typescript11.default.isImportDeclaration);
     if (imports.length) {
       let lowered = source2;
       for (const statement of [...imports].reverse()) {
         const clause = statement.importClause;
         let text3 = "";
-        const typeOnlyBindings = clause?.namedBindings && import_typescript10.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
+        const typeOnlyBindings = clause?.namedBindings && import_typescript11.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((binding) => binding.isTypeOnly);
         if (!clause?.isTypeOnly && !(typeOnlyBindings && !clause?.name)) {
           const call = `await import(${statement.moduleSpecifier.getText(module)})`;
           const fields = [];
           if (clause?.name) fields.push(`default: ${clause.name.text}`);
           const bindings3 = clause?.namedBindings;
-          if (bindings3 && import_typescript10.default.isNamedImports(bindings3)) for (const binding of bindings3.elements) {
+          if (bindings3 && import_typescript11.default.isNamedImports(bindings3)) for (const binding of bindings3.elements) {
             if (!binding.isTypeOnly) fields.push(`${binding.propertyName?.text ?? binding.name.text}: ${binding.name.text}`);
           }
-          if (bindings3 && import_typescript10.default.isNamespaceImport(bindings3)) {
+          if (bindings3 && import_typescript11.default.isNamespaceImport(bindings3)) {
             text3 = `const ${bindings3.name.text} = ${call};`;
             if (clause?.name) text3 += ` const {default: ${clause.name.text}} = ${call};`;
           } else text3 = fields.length ? `const { ${fields.join(", ")} } = ${call};` : `${call};`;
@@ -218323,7 +218538,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   const helperPrefix = persistentHelpers.map((helper) => helper.source).join("\n") + (persistentHelpers.length ? "\n" : "");
   const analysisSource = helperPrefix + snippetSource;
   const wrapped = PREFIX + analysisSource + SUFFIX;
-  const file = import_typescript10.default.createSourceFile("natlang-scope.ts", wrapped, import_typescript10.default.ScriptTarget.ES2022, true, import_typescript10.default.ScriptKind.TS);
+  const file = import_typescript11.default.createSourceFile("natlang-scope.ts", wrapped, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
   const userStart = PREFIX.length + helperPrefix.length;
   const uncalled = uncalledInlineFunctions(file).filter((end) => end >= userStart);
   if (uncalled.length) {
@@ -218331,11 +218546,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     for (const end of uncalled.sort((a, b) => b - a)) called = called.slice(0, end - userStart) + "()" + called.slice(end - userStart);
     return compileScopeSnippetUnhinted(called, options);
   }
-  const fn = file.statements.find(import_typescript10.default.isFunctionDeclaration);
+  const fn = file.statements.find(import_typescript11.default.isFunctionDeclaration);
   if (!fn?.body) throw new Error("internal scope compiler wrapper failure");
   const diagnostics = [];
   const repairs = [];
-  const sourceFile = import_typescript10.default.createSourceFile("eval-source.ts", snippetSource, import_typescript10.default.ScriptTarget.ES2022, true, import_typescript10.default.ScriptKind.TS);
+  const sourceFile = import_typescript11.default.createSourceFile("eval-source.ts", snippetSource, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
   const span = (nodeOrStart, length) => {
     const absolute = typeof nodeOrStart === "number" ? nodeOrStart : nodeOrStart.getStart(file);
     if (absolute < userStart) {
@@ -218364,11 +218579,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   };
   const parseDiagnostics = file.parseDiagnostics ?? [];
   if (parseDiagnostics.length) {
-    const scanner = import_typescript10.default.createScanner(import_typescript10.default.ScriptTarget.Latest, true, import_typescript10.default.LanguageVariant.Standard, file.text);
+    const scanner = import_typescript11.default.createScanner(import_typescript11.default.ScriptTarget.Latest, true, import_typescript11.default.LanguageVariant.Standard, file.text);
     const errorStarts = new Set(parseDiagnostics.map((diagnostic) => diagnostic.start));
-    let previous = import_typescript10.default.SyntaxKind.Unknown;
-    for (let token = scanner.scan(); token !== import_typescript10.default.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-      if ((previous === import_typescript10.default.SyntaxKind.ConstKeyword || previous === import_typescript10.default.SyntaxKind.LetKeyword || previous === import_typescript10.default.SyntaxKind.VarKeyword) && token >= import_typescript10.default.SyntaxKind.FirstKeyword && token <= import_typescript10.default.SyntaxKind.LastReservedWord && errorStarts.has(scanner.getTokenPos())) {
+    let previous = import_typescript11.default.SyntaxKind.Unknown;
+    for (let token = scanner.scan(); token !== import_typescript11.default.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+      if ((previous === import_typescript11.default.SyntaxKind.ConstKeyword || previous === import_typescript11.default.SyntaxKind.LetKeyword || previous === import_typescript11.default.SyntaxKind.VarKeyword) && token >= import_typescript11.default.SyntaxKind.FirstKeyword && token <= import_typescript11.default.SyntaxKind.LastReservedWord && errorStarts.has(scanner.getTokenPos())) {
         diagnostics.push({
           code: "typescript-syntax",
           message: `Reserved word ${JSON.stringify(scanner.getTokenText())} cannot be a variable name. Choose a different name and use it consistently in this eval.`,
@@ -218382,7 +218597,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     if (diagnostic.start === void 0) continue;
     diagnostics.push({
       code: "typescript-syntax",
-      message: import_typescript10.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+      message: import_typescript11.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
       ...span(diagnostic.start, diagnostic.length)
     });
   }
@@ -218401,11 +218616,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   const helperCandidates = [];
   for (const statement of fn.body.statements) {
     if (statement.getStart(file) < userStart) continue;
-    if (import_typescript10.default.isVariableStatement(statement)) {
+    if (import_typescript11.default.isVariableStatement(statement)) {
       const declarations = statement.declarationList.declarations;
       if (declarations.length === 1) {
         const declaration = declarations[0];
-        if (import_typescript10.default.isIdentifier(declaration.name) && declaration.initializer && import_typescript10.default.isIdentifier(declaration.initializer) && declaration.name.text === declaration.initializer.text && injectedNames.has(declaration.name.text)) {
+        if (import_typescript11.default.isIdentifier(declaration.name) && declaration.initializer && import_typescript11.default.isIdentifier(declaration.initializer) && declaration.name.text === declaration.initializer.text && injectedNames.has(declaration.name.text)) {
           const location = span(statement);
           redundantAliases.push(location);
           repairs.push({
@@ -218415,7 +218630,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
           });
           continue;
         }
-        const bound = import_typescript10.default.isIdentifier(declaration.name) ? declaration.name.text : "";
+        const bound = import_typescript11.default.isIdentifier(declaration.name) ? declaration.name.text : "";
         const role = options.inputBindings?.includes(bound) ? "input" : captureNames.includes(bound) ? "captured value" : void 0;
         if (role && declaration.initializer && options.boundValues && Object.hasOwn(options.boundValues, bound) && sameJson(jsonLiteral(declaration.initializer), options.boundValues[bound])) {
           const location = span(statement);
@@ -218429,21 +218644,21 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         }
       }
       const flags = statement.declarationList.flags;
-      const kind = flags & import_typescript10.default.NodeFlags.Const ? "const" : flags & import_typescript10.default.NodeFlags.Let ? "let" : "var";
+      const kind = flags & import_typescript11.default.NodeFlags.Const ? "const" : flags & import_typescript11.default.NodeFlags.Let ? "let" : "var";
       for (const declaration of statement.declarationList.declarations) for (const name of namesOf(declaration.name)) {
-        const annotation2 = import_typescript10.default.isIdentifier(declaration.name) && declaration.type ? portableAnnotation(declaration.type, file) : void 0;
-        const unsupportedAnnotation = import_typescript10.default.isIdentifier(declaration.name) && declaration.type && !annotation2 ? unsupportedUtilityAnnotation(declaration.type, file) : void 0;
+        const annotation2 = import_typescript11.default.isIdentifier(declaration.name) && declaration.type ? portableAnnotation(declaration.type, file) : void 0;
+        const unsupportedAnnotation = import_typescript11.default.isIdentifier(declaration.name) && declaration.type && !annotation2 ? unsupportedUtilityAnnotation(declaration.type, file) : void 0;
         if (unsupportedAnnotation) diagnostics.push({
           ...span(declaration.type),
           code: "unsupported-type-annotation",
           message: `Eval cannot type-check the TypeScript utility annotation ${JSON.stringify(unsupportedAnnotation)}. Remove this local annotation and let the value expression infer its type, for example \`const rows = await service.getRows()\`. Use a structural record or array type only when an explicit local annotation is needed; ordinary \`const\` inference usually makes \`as const\` unnecessary.`
         });
         const initializerText = declaration.initializer?.getText(file);
-        const bindingInitializer = declaration.initializer && initializerText ? import_typescript10.default.isIdentifier(declaration.name) ? initializerText : bindingInitializerProjections(declaration.name, initializerText).get(name.text) : void 0;
+        const bindingInitializer = declaration.initializer && initializerText ? import_typescript11.default.isIdentifier(declaration.name) ? initializerText : bindingInitializerProjections(declaration.name, initializerText).get(name.text) : void 0;
         let initial = declaration.initializer;
-        while (initial && (import_typescript10.default.isAwaitExpression(initial) || import_typescript10.default.isParenthesizedExpression(initial) || import_typescript10.default.isPropertyAccessExpression(initial))) initial = initial.expression;
-        const transient = !!(initial && (import_typescript10.default.isArrowFunction(initial) || import_typescript10.default.isFunctionExpression(initial) || import_typescript10.default.isCallExpression(initial) && (options.allowModules && initial.expression.kind === import_typescript10.default.SyntaxKind.ImportKeyword || options.allowNetwork && import_typescript10.default.isIdentifier(initial.expression) && initial.expression.text === "fetch") || false));
-        if (initial && import_typescript10.default.isCallExpression(initial) && initial.expression.kind === import_typescript10.default.SyntaxKind.ImportKeyword) importedNames.add(name.text);
+        while (initial && (import_typescript11.default.isAwaitExpression(initial) || import_typescript11.default.isParenthesizedExpression(initial) || import_typescript11.default.isPropertyAccessExpression(initial))) initial = initial.expression;
+        const transient = !!(initial && (import_typescript11.default.isArrowFunction(initial) || import_typescript11.default.isFunctionExpression(initial) || import_typescript11.default.isCallExpression(initial) && (options.allowModules && initial.expression.kind === import_typescript11.default.SyntaxKind.ImportKeyword || options.allowNetwork && import_typescript11.default.isIdentifier(initial.expression) && initial.expression.text === "fetch") || false));
+        if (initial && import_typescript11.default.isCallExpression(initial) && initial.expression.kind === import_typescript11.default.SyntaxKind.ImportKeyword) importedNames.add(name.text);
         bindings2.push({
           name: name.text,
           kind,
@@ -218455,7 +218670,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
           end: span(name).end
         });
       }
-    } else if (import_typescript10.default.isFunctionDeclaration(statement) && statement.name) {
+    } else if (import_typescript11.default.isFunctionDeclaration(statement) && statement.name) {
       bindings2.push({
         name: statement.name.text,
         kind: "function",
@@ -218484,6 +218699,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     "iterateOn",
     "transcript",
     "decide",
+    "refine",
+    "assume",
+    "search_code",
+    "NatlangContext",
+    "read",
     "__neuralese"
   ]);
   const transientNames = new Set(bindings2.filter((binding) => binding.transient).map((binding) => binding.name));
@@ -218554,6 +218774,10 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       message: `Saved helper ${JSON.stringify(helper.name)} cannot persist because it refers to unavailable ${unknown.join(", ")}; declare those names in the call scope first.`
     });
   }
+  const constLocals = /* @__PURE__ */ new Set([
+    ...localOptions.filter((binding) => !binding.mutable && !shadowedLocals.has(binding.name)).map((binding) => binding.name),
+    ...bindings2.filter((binding) => binding.kind === "const").map((binding) => binding.name)
+  ]);
   const immutable2 = /* @__PURE__ */ new Set([
     ...inputNames,
     ...helperNames,
@@ -218581,40 +218805,40 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       });
   }
   const visit = (node) => {
-    if (import_typescript10.default.isImportDeclaration(node) || import_typescript10.default.isImportEqualsDeclaration(node) || import_typescript10.default.isExportDeclaration(node) || import_typescript10.default.isExportAssignment(node) || import_typescript10.default.isMetaProperty(node))
+    if (import_typescript11.default.isImportDeclaration(node) || import_typescript11.default.isImportEqualsDeclaration(node) || import_typescript11.default.isExportDeclaration(node) || import_typescript11.default.isExportAssignment(node) || import_typescript11.default.isMetaProperty(node))
       add("forbidden-dynamic-code", "Modules are resolved by the codebase loader; imports and exports are unavailable in eval.", node);
-    else if (import_typescript10.default.isCallExpression(node) && node.expression.kind === import_typescript10.default.SyntaxKind.ImportKeyword && !options.allowModules)
+    else if (import_typescript11.default.isCallExpression(node) && node.expression.kind === import_typescript11.default.SyntaxKind.ImportKeyword && !options.allowModules)
       add("forbidden-dynamic-code", "Dynamic import is unavailable in eval.", node);
-    else if (import_typescript10.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !isPropertyName2(node) && !isDeclarationName(node))
+    else if (import_typescript11.default.isIdentifier(node) && (node.text === "eval" || node.text === "Function") && !isPropertyName2(node) && !isDeclarationName(node))
       add("forbidden-dynamic-code", `${node.text} is unavailable in eval.`, node);
-    else if (import_typescript10.default.isIdentifier(node) && (MODULE_AMBIENTS.has(node.text) || node.text === "fetch" && !options.allowNetwork) && !topLevelNames.has(node.text) && !isPropertyName2(node) && !isDeclarationName(node))
+    else if (import_typescript11.default.isIdentifier(node) && (MODULE_AMBIENTS.has(node.text) || node.text === "fetch" && !options.allowNetwork) && !topLevelNames.has(node.text) && !isPropertyName2(node) && !isDeclarationName(node))
       add("forbidden-ambient", node.text === "fetch" ? "Network access is turned off for this runtime, so fetch is unavailable." : `${node.text} is unavailable in eval: eval code works with this call's scope, not the host's files, processes or system (npm packages of the project can be imported; Node's own modules cannot).`, node);
     const target = assignmentTarget(node);
     const targetProperty = target && propertyText(target);
     if (targetProperty === "prototype" || targetProperty === "__proto__")
       add("forbidden-prototype-mutation", `Mutation of ${targetProperty} is unavailable in eval.`, node);
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && ((node.expression.expression.getText(file) === "Object" || node.expression.expression.getText(file) === "Reflect") && ["setPrototypeOf", "defineProperty", "defineProperties"].includes(node.expression.name.text)))
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && ((node.expression.expression.getText(file) === "Object" || node.expression.expression.getText(file) === "Reflect") && ["setPrototypeOf", "defineProperty", "defineProperties"].includes(node.expression.name.text)))
       add("forbidden-prototype-mutation", "Prototype and property-descriptor mutation is unavailable in eval.", node);
     if (target) {
       let root2 = target;
-      while (import_typescript10.default.isPropertyAccessExpression(root2) || import_typescript10.default.isElementAccessExpression(root2)) root2 = root2.expression;
-      if (import_typescript10.default.isIdentifier(root2) && (deeplyReadonly.has(root2.text) || root2 === target && immutable2.has(root2.text)))
-        add("invalid-binding", inputNames.includes(root2.text) ? `${root2.text} is a parameter and cannot be changed; declare a new variable for a changed value.` : `Binding ${JSON.stringify(root2.text)} is immutable in eval.`, target);
+      while (import_typescript11.default.isPropertyAccessExpression(root2) || import_typescript11.default.isElementAccessExpression(root2)) root2 = root2.expression;
+      if (import_typescript11.default.isIdentifier(root2) && (deeplyReadonly.has(root2.text) || root2 === target && immutable2.has(root2.text)))
+        add("invalid-binding", inputNames.includes(root2.text) ? `${root2.text} is a parameter and cannot be changed; declare a new variable for a changed value.` : constLocals.has(root2.text) ? `${JSON.stringify(root2.text)} was declared with \`const\` and cannot be reassigned; use \`let\` or a new variable name.` : `Binding ${JSON.stringify(root2.text)} is immutable in eval.`, target);
     }
-    import_typescript10.default.forEachChild(node, visit);
+    import_typescript11.default.forEachChild(node, visit);
   };
   for (const statement of fn.body.statements) visit(statement);
   const awaitOutsideAsync = /* @__PURE__ */ new Set();
   const findAwait = (node) => {
-    if (import_typescript10.default.isAwaitExpression(node)) {
+    if (import_typescript11.default.isAwaitExpression(node)) {
       let owner = node.parent;
-      while (owner && owner !== fn && !import_typescript10.default.isFunctionLike(owner)) owner = owner.parent;
-      if (owner && owner !== fn && !awaitOutsideAsync.has(owner) && !import_typescript10.default.getModifiers(owner)?.some((modifier) => modifier.kind === import_typescript10.default.SyntaxKind.AsyncKeyword)) {
+      while (owner && owner !== fn && !import_typescript11.default.isFunctionLike(owner)) owner = owner.parent;
+      if (owner && owner !== fn && !awaitOutsideAsync.has(owner) && !import_typescript11.default.getModifiers(owner)?.some((modifier) => modifier.kind === import_typescript11.default.SyntaxKind.AsyncKeyword)) {
         awaitOutsideAsync.add(owner);
         add("typescript-syntax", "`await` is used inside a function that is not async. Await in the eval code itself, as in `for (const file of files) { const text = await file.readText(); }`, or mark the function async and await all its results: `await Promise.all(files.map(async file => await file.readText()))`.", owner);
       }
     }
-    import_typescript10.default.forEachChild(node, findAwait);
+    import_typescript11.default.forEachChild(node, findAwait);
   };
   for (const statement of fn.body.statements) if (statement.getStart(file) >= userStart) findAwait(statement);
   const toRaw = (item, wrappedOffsets = false) => {
@@ -218678,10 +218902,96 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     );
     diagnostics.push({ code: "invalid-binding", message: message2, ...rawSpan(binding.start, binding.end) });
   }
+  const referencesNameEagerly = (expression, targetName) => {
+    let found = false;
+    const scan = (node) => {
+      if (found || import_typescript11.default.isFunctionLike(node) || import_typescript11.default.isTypeNode(node)) return;
+      if (import_typescript11.default.isIdentifier(node) && node.text === targetName && !isPropertyName2(node) && !isDeclarationName(node)) {
+        const parent = node.parent;
+        if (!(import_typescript11.default.isPropertyAssignment(parent) && parent.name === node)) {
+          found = true;
+          return;
+        }
+      }
+      import_typescript11.default.forEachChild(node, scan);
+    };
+    scan(expression);
+    return found;
+  };
+  const walkTdz = (node, outerNames) => {
+    if (import_typescript11.default.isBlock(node) || import_typescript11.default.isCaseClause(node) || import_typescript11.default.isDefaultClause(node)) {
+      const scopeNames = new Set(outerNames);
+      for (const stmt of node.statements) {
+        if (stmt.getStart(file) < userStart) continue;
+        walkTdz(stmt, scopeNames);
+        if (import_typescript11.default.isVariableStatement(stmt)) {
+          for (const decl of stmt.declarationList.declarations) for (const id3 of namesOf(decl.name)) scopeNames.add(id3.text);
+        } else if (import_typescript11.default.isFunctionDeclaration(stmt) && stmt.name) {
+          scopeNames.add(stmt.name.text);
+        }
+      }
+      return;
+    }
+    if (import_typescript11.default.isFunctionLike(node)) {
+      const scopeNames = new Set(outerNames);
+      for (const param of node.parameters) for (const id3 of namesOf(param.name)) scopeNames.add(id3.text);
+      const body2 = node.body;
+      if (body2) walkTdz(body2, scopeNames);
+      return;
+    }
+    if (import_typescript11.default.isForStatement(node) || import_typescript11.default.isForInStatement(node) || import_typescript11.default.isForOfStatement(node)) {
+      const scopeNames = new Set(outerNames);
+      if (node.initializer) {
+        walkTdz(node.initializer, outerNames);
+        if (import_typescript11.default.isVariableDeclarationList(node.initializer)) {
+          for (const decl of node.initializer.declarations) for (const id3 of namesOf(decl.name)) scopeNames.add(id3.text);
+        }
+      }
+      if (import_typescript11.default.isForStatement(node)) {
+        if (node.condition) walkTdz(node.condition, scopeNames);
+        if (node.incrementor) walkTdz(node.incrementor, scopeNames);
+      } else {
+        walkTdz(node.expression, outerNames);
+      }
+      walkTdz(node.statement, scopeNames);
+      return;
+    }
+    if (import_typescript11.default.isCatchClause(node)) {
+      const scopeNames = new Set(outerNames);
+      if (node.variableDeclaration) for (const id3 of namesOf(node.variableDeclaration.name)) scopeNames.add(id3.text);
+      walkTdz(node.block, scopeNames);
+      return;
+    }
+    if (import_typescript11.default.isVariableDeclaration(node) && node.initializer && node.getStart(file) >= userStart) {
+      const list = node.parent;
+      const isLexical = import_typescript11.default.isVariableDeclarationList(list) && !!(list.flags & (import_typescript11.default.NodeFlags.Const | import_typescript11.default.NodeFlags.Let));
+      const isTopLevelStmt = import_typescript11.default.isVariableDeclarationList(list) && import_typescript11.default.isVariableStatement(list.parent) && list.parent.parent === fn.body;
+      const stmtSpan = isTopLevelStmt ? span(list.parent) : void 0;
+      const wasRemovedAlias = !!stmtSpan && redundantAliases.some((alias) => alias.start === stmtSpan.start && alias.end === stmtSpan.end);
+      if (isLexical && !wasRemovedAlias) {
+        const keyword = list.flags & import_typescript11.default.NodeFlags.Const ? "const" : "let";
+        for (const id3 of namesOf(node.name)) {
+          const name = id3.text;
+          const alreadyReportedTopLevel = isTopLevelStmt && declared.has(name) && injectedNames.has(name) && !shadowedLocals.has(name);
+          if (!alreadyReportedTopLevel && outerNames.has(name) && referencesNameEagerly(node.initializer, name)) {
+            add(
+              "invalid-binding",
+              `Cannot reference outer ${JSON.stringify(name)} inside its own ${keyword} declaration (temporal dead zone); give the new variable another name, such as \`${keyword} ${name}Result = ...\`.`,
+              id3
+            );
+          }
+        }
+      }
+      walkTdz(node.initializer, outerNames);
+      return;
+    }
+    import_typescript11.default.forEachChild(node, (child) => walkTdz(child, outerNames));
+  };
+  walkTdz(fn.body, injectedNames);
   const statements = [...fn.body.statements];
   let finalExpression;
   const last = statements.at(-1);
-  if (last && import_typescript10.default.isExpressionStatement(last)) finalExpression = span(last.expression);
+  if (last && import_typescript11.default.isExpressionStatement(last)) finalExpression = span(last.expression);
   let plans = [];
   const planCoordinates = /* @__PURE__ */ new Map();
   const literalCalls = /(?<![.\w$])__neuralese\(/.test(analysisSource);
@@ -218700,7 +219010,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     for (const plan of plans) planCoordinates.set(plan, { start: plan.sourceSpan.start, end: plan.sourceSpan.end });
     let helperOffset = 0;
     for (const helper of persistentHelpers) {
-      const sourceFile2 = import_typescript10.default.createSourceFile(`saved-helper-${helper.name}.ts`, helper.source, import_typescript10.default.ScriptTarget.ES2022, true, import_typescript10.default.ScriptKind.TS);
+      const sourceFile2 = import_typescript11.default.createSourceFile(`saved-helper-${helper.name}.ts`, helper.source, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
       const fileName = `saved-helper:${helper.name}@${helper.sourceHash}`;
       const localSpan = (item) => {
         if (!Number.isSafeInteger(item.start) || !Number.isSafeInteger(item.end) || item.start < helperOffset || item.end <= item.start || item.end > helperOffset + helper.source.length) return item;
@@ -218727,12 +219037,12 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       }
       helperOffset += helper.source.length + 1;
     }
-    const snippetFile = import_typescript10.default.createSourceFile(
+    const snippetFile = import_typescript11.default.createSourceFile(
       "natlang-eval-action.ts",
       snippetSource,
-      import_typescript10.default.ScriptTarget.ES2022,
+      import_typescript11.default.ScriptTarget.ES2022,
       true,
-      import_typescript10.default.ScriptKind.TS
+      import_typescript11.default.ScriptKind.TS
     );
     const snippetSpan = (item) => {
       const start = item.start - helperOffset, end = item.end - helperOffset;
@@ -218794,7 +219104,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && arrayMapReadouts.has(`${rel(node).start}:${rel(node).end}`) && node.arguments[0]) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && arrayMapReadouts.has(`${rel(node).start}:${rel(node).end}`) && node.arguments[0]) {
       const readout = arrayMapReadouts.get(`${rel(node).start}:${rel(node).end}`);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -218815,7 +219125,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && stringReplaces.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && stringReplaces.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = stringReplaces.get(`${rel(node).start}:${rel(node).end}`);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -218829,7 +219139,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await (async (${receiverName}: any) => { const ${textName} = await __live.${reader}(${receiverName}); const ${methodName} = ${textName}.replace; const ${argsName} = [${args}]; return { value: __live.invokeWithReceiver(${methodName}, ${textName}, ${argsName}) }; })(${receiver})).value` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && scalarConversions.has(`${rel(node).start}:${rel(node).end}`) && node.arguments.length) {
+    if (import_typescript11.default.isCallExpression(node) && scalarConversions.has(`${rel(node).start}:${rel(node).end}`) && node.arguments.length) {
       const readout = scalarConversions.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       lowerNodes(node.expression);
@@ -218842,7 +219152,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${calleeName}(...${argsName}); })([${args}]))(${callee}))` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with") {
       const site2 = rebindAt.get(`${rel(node).start}:${rel(node).end}`);
       if (site2 && node.arguments[0]) {
         lowerNodes(node.expression.expression);
@@ -218851,7 +219161,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         return;
       }
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && stringArguments.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && stringArguments.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = stringArguments.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       lowerNodes(node.expression.expression);
@@ -218865,7 +219175,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => ((${methodName}: any) => (async (${argsName}: any[]) => { ${argsName}[${index}] = await __live.${reader}(${argsName}[${index}]); return ${methodName}.call(${receiverName}, ...${argsName}); })([${args}]))(${receiverName}.${node.expression.name.text}))(${receiver}))` });
       return;
     }
-    if ((import_typescript10.default.isCallExpression(node) || import_typescript10.default.isNewExpression(node)) && node.arguments?.length && errorReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
+    if ((import_typescript11.default.isCallExpression(node) || import_typescript11.default.isNewExpression(node)) && node.arguments?.length && errorReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = errorReadouts.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       const callee = lowerSpan(rel(node.expression).start, rel(node.expression).end);
@@ -218873,11 +219183,11 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       const calleeName = `__natlang_error_constructor_${rel(node).start}`;
       const argsName = `__natlang_error_args_${rel(node).start}`;
       const reader = readout.conditional ? "readNeuraleseIfReference" : "readNeuralese";
-      const invoke = import_typescript10.default.isNewExpression(node) ? `new ${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))` : `${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))`;
+      const invoke = import_typescript11.default.isNewExpression(node) ? `new ${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))` : `${calleeName}(await __live.${reader}(${argsName}[0]), ...${argsName}.slice(1))`;
       primitive.push({ ...rel(node), composed: true, text: `(await ((${calleeName}: any) => (async (${argsName}: any[]) => ${invoke})([${args}]))(${callee}))` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && jsonReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && jsonReadouts.has(`${rel(node).start}:${rel(node).end}`)) {
       const readout = jsonReadouts.get(`${rel(node).start}:${rel(node).end}`);
       for (const argument of node.arguments) lowerNodes(argument);
       const receiver = lowerSpan(rel(node.expression.expression).start, rel(node.expression.expression).end);
@@ -218894,14 +219204,14 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${callName}: [any, any], ${argsName}: any[]) => ${callName}[1].call(${callName}[0], await __live.${reader}(${argsName}[0])${args.slice(1).map((_arg, index) => `, ${argsName}[${index + 1}]`).join("")}))([${receiverName}, ${receiverName}.stringify], [${args.join(", ")}]))(${receiver}))` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && concats.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && concats.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = lowerSpan(rel(node.expression.expression).start, rel(node.expression.expression).end);
       const values = node.arguments.map((argument) => lowerSpan(rel(argument).start, rel(argument).end)).join(", ");
       const temp = `__natlang_concat_receiver_${rel(node).start}`;
       primitive.push({ ...rel(node), composed: true, text: `await ((${temp}: any) => { const __method = ${temp}.concat; const __values = [${values}]; return __live.concatNeuralese(${temp}, __method, __values, async (__value: any) => await __live.readNeuralese(__value)); })(${receiver})` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && arrayStrings.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && arrayStrings.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = rel(node.expression.expression);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -218912,7 +219222,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.arrayToStringNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_array_string_value: any) => await __live.readNeuralese(__natlang_array_string_value))).value)(${receiverName}.toString, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && joins.has(`${rel(node).start}:${rel(node).end}`)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && joins.has(`${rel(node).start}:${rel(node).end}`)) {
       const receiver = rel(node.expression.expression);
       lowerNodes(node.expression.expression);
       for (const argument of node.arguments) lowerNodes(argument);
@@ -218923,40 +219233,40 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       primitive.push({ ...rel(node), composed: true, text: `(await ((${receiverName}: any) => (async (${methodName}: any, ${argsName}: any[]) => (await __live.joinNeuralese(${receiverName}, ${methodName}, ${argsName}, async (__natlang_join_value: any) => await __live.readNeuralese(__natlang_join_value))).value)(${receiverName}.join, [${args}]))(${lowerSpan(receiver.start, receiver.end)}))` });
       return;
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with" && import_typescript10.default.isTaggedTemplateExpression(node.expression.expression)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "with" && import_typescript11.default.isTaggedTemplateExpression(node.expression.expression)) {
       const tagged = node.expression.expression, at = rel(tagged), index = planAt.get(`${at.start}:${at.end}`);
       if (index !== void 0 && plans[index].explicitCaptures) {
         const plan = plans[index], listing = node.arguments[0];
-        const properties = listing && import_typescript10.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
-        const recordTemp = listing && !import_typescript10.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
+        const properties = listing && import_typescript11.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
+        const recordTemp = listing && !import_typescript11.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
         const accessors = plan.captures.map((capture2) => {
-          const property = properties.find((item) => (import_typescript10.default.isShorthandPropertyAssignment(item) || import_typescript10.default.isPropertyAssignment(item)) && (import_typescript10.default.isIdentifier(item.name) || import_typescript10.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
+          const property = properties.find((item) => (import_typescript11.default.isShorthandPropertyAssignment(item) || import_typescript11.default.isPropertyAssignment(item)) && (import_typescript11.default.isIdentifier(item.name) || import_typescript11.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
           if (capture2.mode === "live") return immutable2.has(capture2.name) ? `${capture2.name}: [() => ${capture2.name}]` : `${capture2.name}: [() => ${capture2.name}, (__v: any) => { ${capture2.name} = __v; }]`;
-          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript10.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
+          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript11.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
           return `${capture2.name}: [() => (${value})]`;
         });
-        const values = !plan.softBody && import_typescript10.default.isTemplateExpression(tagged.template) ? tagged.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
+        const values = !plan.softBody && import_typescript11.default.isTemplateExpression(tagged.template) ? tagged.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
         const accessorObject = recordTemp && listing ? `((${recordTemp}: any) => ({ ${accessors.join(", ")} }))(${lowerSpan(rel(listing).start, rel(listing).end)})` : `{ ${accessors.join(", ")} }`;
         const text3 = `__natlang_inline(${index}, [${values.join(", ")}], ${accessorObject})`;
         primitive.push({ start: at.start, end: rel(node).end, text: text3 });
         return;
       }
     }
-    if (import_typescript10.default.isTaggedTemplateExpression(node)) {
+    if (import_typescript11.default.isTaggedTemplateExpression(node)) {
       const at = rel(node), index = planAt.get(`${at.start}:${at.end}`);
       if (index !== void 0 && plans[index].explicitCaptures) {
         const plan = plans[index];
-        const withCall = import_typescript10.default.isCallExpression(node.tag) ? node.tag : void 0;
+        const withCall = import_typescript11.default.isCallExpression(node.tag) ? node.tag : void 0;
         const listing = withCall?.arguments[0];
-        const properties = listing && import_typescript10.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
-        const recordTemp = listing && !import_typescript10.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
+        const properties = listing && import_typescript11.default.isObjectLiteralExpression(listing) ? [...listing.properties] : [];
+        const recordTemp = listing && !import_typescript11.default.isObjectLiteralExpression(listing) ? `__natlang_capture_record_${index}_${at.start}` : void 0;
         const accessors = plan.captures.map((capture2) => {
-          const property = properties.find((item) => (import_typescript10.default.isShorthandPropertyAssignment(item) || import_typescript10.default.isPropertyAssignment(item)) && (import_typescript10.default.isIdentifier(item.name) || import_typescript10.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
+          const property = properties.find((item) => (import_typescript11.default.isShorthandPropertyAssignment(item) || import_typescript11.default.isPropertyAssignment(item)) && (import_typescript11.default.isIdentifier(item.name) || import_typescript11.default.isStringLiteral(item.name)) && item.name.text === capture2.name);
           if (capture2.mode === "live") return immutable2.has(capture2.name) ? `${capture2.name}: [() => ${capture2.name}]` : `${capture2.name}: [() => ${capture2.name}, (__v: any) => { ${capture2.name} = __v; }]`;
-          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript10.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
+          const value = recordTemp ? `${recordTemp}[${JSON.stringify(capture2.name)}]` : !property ? "undefined" : import_typescript11.default.isShorthandPropertyAssignment(property) ? capture2.name : lowerSpan(rel(property.initializer).start, rel(property.initializer).end);
           return `${capture2.name}: [() => (${value})]`;
         });
-        const values = !plan.softBody && import_typescript10.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
+        const values = !plan.softBody && import_typescript11.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
         const accessorObject = recordTemp && listing ? `((${recordTemp}: any) => ({ ${accessors.join(", ")} }))(${lowerSpan(rel(listing).start, rel(listing).end)})` : `{ ${accessors.join(", ")} }`;
         const text3 = `__natlang_inline(${index}, [${values.join(", ")}], ${accessorObject})`;
         primitive.push({ ...rel(node), text: text3 });
@@ -218964,41 +219274,41 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       }
       if (index !== void 0) {
         const plan = plans[index];
-        const values = import_typescript10.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
+        const values = import_typescript11.default.isTemplateExpression(node.template) ? node.template.templateSpans.map((item) => lowerSpan(rel(item.expression).start, rel(item.expression).end)) : [];
         const accessors = plan.captures.map((capture2) => capture2.mutable && !immutable2.has(capture2.name) ? `${capture2.name}: [() => ${capture2.name}, (__v: any) => { ${capture2.name} = __v; }]` : `${capture2.name}: [() => ${capture2.name}]`);
         primitive.push({ ...at, text: `__natlang_inline(${index}, [${values.join(", ")}], { ${accessors.join(", ")} })` });
         return;
       }
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isIdentifier(node.expression) && node.expression.text === "__neuralese") {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isIdentifier(node.expression) && node.expression.text === "__neuralese") {
       const at = rel(node), literal3 = literals.find((item) => item.start === at.start && item.end === at.end);
       if (literal3) {
         primitive.push({ ...at, text: `({ $neuralese: { type: ${JSON.stringify(literal3.type)}, id: ${JSON.stringify(literal3.id)}${literal3.stopGradient ? ", stop_gradient: true" : ""}${literal3.sourceOccurrence ? ", source_occurrence: " + JSON.stringify(literal3.sourceOccurrence) : ""} } })` });
         return;
       }
     }
-    const chainedMethodCall = import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.parent) && node.parent.expression === node && import_typescript10.default.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent;
-    const iterateOnCall = import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn";
-    const instance = import_typescript10.default.isCallExpression(node) ? instantiationAt.get(`${rel(node).start}:${rel(node).end}`) : void 0;
+    const chainedMethodCall = import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.parent) && node.parent.expression === node && import_typescript11.default.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent;
+    const iterateOnCall = import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn";
+    const instance = import_typescript11.default.isCallExpression(node) ? instantiationAt.get(`${rel(node).start}:${rel(node).end}`) : void 0;
     const inIterateOnChain = (call) => {
       let expression = call.expression;
       while (true) {
-        if (import_typescript10.default.isPropertyAccessExpression(expression)) expression = expression.expression;
-        else if (import_typescript10.default.isCallExpression(expression)) {
-          if (import_typescript10.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "iterateOn") return true;
+        if (import_typescript11.default.isPropertyAccessExpression(expression)) expression = expression.expression;
+        else if (import_typescript11.default.isCallExpression(expression)) {
+          if (import_typescript11.default.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "iterateOn") return true;
           expression = expression.expression;
         } else return false;
       }
     };
-    const promiseConstruction = import_typescript10.default.isNewExpression(node) && import_typescript10.default.isIdentifier(node.expression) && node.expression.text === "Promise";
-    if (import_typescript10.default.isCallExpression(node) && !instance && !chainedMethodCall && !iterateOnCall && !inIterateOnChain(node) || promiseConstruction) {
+    const promiseConstruction = import_typescript11.default.isNewExpression(node) && import_typescript11.default.isIdentifier(node.expression) && node.expression.text === "Promise";
+    if (import_typescript11.default.isCallExpression(node) && !instance && !chainedMethodCall && !iterateOnCall && !inIterateOnChain(node) || promiseConstruction) {
       const at = rel(node);
       primitive.push(
         { start: at.start, end: at.start, text: "__natlang_own((", owner: at },
         { start: at.end, end: at.end, text: "))", owner: at }
       );
     }
-    if (instance && import_typescript10.default.isCallExpression(node)) {
+    if (instance && import_typescript11.default.isCallExpression(node)) {
       const callee = rel(node.expression);
       primitive.push(
         { start: callee.start, end: callee.start, text: "__live.instantiate(", owner: callee },
@@ -219010,19 +219320,19 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         { start: at.end, end: at.end, text: "))", owner: at }
       );
     }
-    if (import_typescript10.default.isCallExpression(node) && import_typescript10.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript10.default.isTaggedTemplateExpression(node.expression.expression)) {
+    if (import_typescript11.default.isCallExpression(node) && import_typescript11.default.isPropertyAccessExpression(node.expression) && node.expression.name.text === "iterateOn" && !import_typescript11.default.isTaggedTemplateExpression(node.expression.expression)) {
       const receiver = rel(node.expression.expression), argumentsStart = node.arguments.pos - PREFIX.length;
       primitive.push(
         { start: receiver.start, end: receiver.start, text: "__natlang_iterate(" },
         { start: receiver.end, end: argumentsStart, text: node.arguments.length ? ", " : "" }
       );
     }
-    if (import_typescript10.default.isForOfStatement(node)) {
+    if (import_typescript11.default.isForOfStatement(node)) {
       const at = rel(node.expression);
       let iterableExpression = node.expression;
-      while (import_typescript10.default.isParenthesizedExpression(iterableExpression) || import_typescript10.default.isAsExpression(iterableExpression) || import_typescript10.default.isTypeAssertionExpression(iterableExpression) || import_typescript10.default.isNonNullExpression(iterableExpression))
+      while (import_typescript11.default.isParenthesizedExpression(iterableExpression) || import_typescript11.default.isAsExpression(iterableExpression) || import_typescript11.default.isTypeAssertionExpression(iterableExpression) || import_typescript11.default.isNonNullExpression(iterableExpression))
         iterableExpression = iterableExpression.expression;
-      if (!node.awaitModifier && import_typescript10.default.isCallExpression(iterableExpression) && iterableExpression.arguments.length === 0 && import_typescript10.default.isPropertyAccessExpression(iterableExpression.expression) && ["entries", "keys", "values"].includes(iterableExpression.expression.name.text)) {
+      if (!node.awaitModifier && import_typescript11.default.isCallExpression(iterableExpression) && iterableExpression.arguments.length === 0 && import_typescript11.default.isPropertyAccessExpression(iterableExpression.expression) && ["entries", "keys", "values"].includes(iterableExpression.expression.name.text)) {
         const method = iterableExpression.expression.name.text;
         const receiver = iterableExpression.expression.expression;
         lowerNodes(receiver);
@@ -219039,15 +219349,15 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
       lowerNodes(node.statement);
       return;
     }
-    if (import_typescript10.default.isForStatement(node) && node.initializer && import_typescript10.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
+    if (import_typescript11.default.isForStatement(node) && node.initializer && import_typescript11.default.isVariableDeclarationList(node.initializer) && node.initializer.declarations.length === 1 && node.condition) {
       const declaration = node.initializer.declarations[0];
-      const boundedCondition = import_typescript10.default.isIdentifier(declaration.name) ? finiteCounterComparison(node.condition, declaration.name.text) : void 0;
-      if (import_typescript10.default.isIdentifier(declaration.name) && boundedCondition) {
+      const boundedCondition = import_typescript11.default.isIdentifier(declaration.name) ? finiteCounterComparison(node.condition, declaration.name.text) : void 0;
+      if (import_typescript11.default.isIdentifier(declaration.name) && boundedCondition) {
         const counter = declaration.name.text;
         const comparison = boundedCondition.comparison;
-        const left = import_typescript10.default.isIdentifier(comparison.left) && comparison.left.text === counter;
+        const left = import_typescript11.default.isIdentifier(comparison.left) && comparison.left.text === counter;
         const kind = comparison.operatorToken.kind;
-        const upward = left ? kind === import_typescript10.default.SyntaxKind.LessThanToken || kind === import_typescript10.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript10.default.SyntaxKind.GreaterThanToken || kind === import_typescript10.default.SyntaxKind.GreaterThanEqualsToken;
+        const upward = left ? kind === import_typescript11.default.SyntaxKind.LessThanToken || kind === import_typescript11.default.SyntaxKind.LessThanEqualsToken : kind === import_typescript11.default.SyntaxKind.GreaterThanToken || kind === import_typescript11.default.SyntaxKind.GreaterThanEqualsToken;
         const loop = `__natlang_loop_${++loops}`, bound = rel(left ? comparison.right : comparison.left);
         primitive.push(
           { start: rel(declaration).end, end: rel(declaration).end, text: `, ${loop} = __natlang_counted(${upward})` },
@@ -219056,13 +219366,13 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         );
       }
     }
-    if ((import_typescript10.default.isFunctionDeclaration(node) || import_typescript10.default.isFunctionExpression(node) || import_typescript10.default.isArrowFunction(node) || import_typescript10.default.isMethodDeclaration(node) || import_typescript10.default.isGetAccessorDeclaration(node) || import_typescript10.default.isSetAccessorDeclaration(node)) && node.body && node !== fn && makesCalls(node)) {
+    if ((import_typescript11.default.isFunctionDeclaration(node) || import_typescript11.default.isFunctionExpression(node) || import_typescript11.default.isArrowFunction(node) || import_typescript11.default.isMethodDeclaration(node) || import_typescript11.default.isGetAccessorDeclaration(node) || import_typescript11.default.isSetAccessorDeclaration(node)) && node.body && node !== fn && makesCalls(node)) {
       const callable = authored.find((item) => item.node === node);
       if (callable) {
         const id3 = JSON.stringify(callable.id);
-        const isAsync = !!node.modifiers?.some((modifier) => modifier.kind === import_typescript10.default.SyntaxKind.AsyncKeyword) || asyncMapCallbacks.has(`${rel(node).start}:${rel(node).end}`);
+        const isAsync = !!node.modifiers?.some((modifier) => modifier.kind === import_typescript11.default.SyntaxKind.AsyncKeyword) || asyncMapCallbacks.has(`${rel(node).start}:${rel(node).end}`);
         const body2 = rel(node.body), args = `[${guardArguments(node).join(", ")}]`;
-        if (import_typescript10.default.isBlock(node.body)) {
+        if (import_typescript11.default.isBlock(node.body)) {
           primitive.push(
             { start: body2.start, end: body2.start + 1, text: `{ return __natlang_guard(${id3}, ${isAsync ? "async " : ""}() => {` },
             { start: body2.end - 1, end: body2.end, text: `}, ${args}); }` }
@@ -219076,7 +219386,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
         }
       }
     }
-    import_typescript10.default.forEachChild(node, lowerNodes);
+    import_typescript11.default.forEachChild(node, lowerNodes);
   };
   const lowerSpan = (start, end) => {
     let text3 = analysisSource.slice(start, end);
@@ -219089,12 +219399,12 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
   for (const statement of statements) lowerNodes(statement);
   const returns = [];
   const findReturns = (node) => {
-    if (import_typescript10.default.isFunctionLike(node)) return;
-    if (import_typescript10.default.isReturnStatement(node)) {
+    if (import_typescript11.default.isFunctionLike(node)) return;
+    if (import_typescript11.default.isReturnStatement(node)) {
       returns.push(node);
       return;
     }
-    import_typescript10.default.forEachChild(node, findReturns);
+    import_typescript11.default.forEachChild(node, findReturns);
   };
   for (const statement of statements) findReturns(statement);
   const persisted = [
@@ -219131,7 +219441,7 @@ function compileScopeSnippetUnhinted(source2, options = {}) {
     version: SCOPE_COMPILE_VERSION,
     ok: diagnostics.length === 0,
     producesResult,
-    resultBindings: [...new Set(returns.flatMap((statement) => statement.expression && import_typescript10.default.isIdentifier(statement.expression) ? [statement.expression.text] : []))],
+    resultBindings: [...new Set(returns.flatMap((statement) => statement.expression && import_typescript11.default.isIdentifier(statement.expression) ? [statement.expression.text] : []))],
     entrypoint: ENTRYPOINT,
     bindings: bindings2,
     ...savedHelpers.length ? { persistentHelpers: savedHelpers } : {},
@@ -219160,22 +219470,22 @@ ${body}
 return __natlang_finish(undefined);
 }
 `;
-  const emitted = import_typescript10.default.transpileModule(typescript, {
+  const emitted = import_typescript11.default.transpileModule(typescript, {
     fileName: "natlang-scope.ts",
     reportDiagnostics: true,
     compilerOptions: {
-      target: import_typescript10.default.ScriptTarget.ES2022,
-      module: import_typescript10.default.ModuleKind.None,
+      target: import_typescript11.default.ScriptTarget.ES2022,
+      module: import_typescript11.default.ModuleKind.None,
       isolatedModules: true,
       removeComments: false
     }
   });
-  const emitErrors = (emitted.diagnostics ?? []).filter((item) => item.category === import_typescript10.default.DiagnosticCategory.Error);
+  const emitErrors = (emitted.diagnostics ?? []).filter((item) => item.category === import_typescript11.default.DiagnosticCategory.Error);
   if (emitErrors.length) {
     result.ok = false;
     for (const diagnostic of emitErrors) result.diagnostics.push({
       code: "typescript-syntax",
-      message: import_typescript10.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+      message: import_typescript11.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
       start: 0,
       end: 0,
       line: 1,
@@ -219189,14 +219499,15 @@ return __natlang_finish(undefined);
   result.program = emitted.outputText;
   return result;
 }
-var import_typescript10, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, NOT_LITERAL, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, TYPESCRIPT_ONLY;
+var import_typescript11, SCOPE_COMPILE_VERSION, ENTRYPOINT, PREFIX, SCOPE_RUNTIME_PRELUDE, SUFFIX, IDENTIFIER2, MODULE_AMBIENTS, PERSISTENT_HELPER_TYPES, NOT_LITERAL, JS_KEYWORDS, PYTHON_IMPORT_LINE, PYTHON_SYNTAX_LINES, PROSE_RUN, THINK_MARKUP, TYPESCRIPT_ONLY;
 var init_scope_compiler = __esm({
   "src/scope-compiler.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
-    import_typescript10 = __toESM(require_typescript(), 1);
+    import_typescript11 = __toESM(require_typescript(), 1);
     init_host();
     init_policy();
+    init_tool_markup();
     SCOPE_COMPILE_VERSION = 3;
     ENTRYPOINT = "__natlang_scope";
     PREFIX = `async function ${ENTRYPOINT}(__inputs: Readonly<Record<string, unknown>>, __locals: Readonly<Record<string, unknown>>, __captures: Readonly<Record<string, unknown>>) {
@@ -219366,6 +219677,7 @@ const __natlang_iterate = (step: any, ...rest: any[]) =>
       /(?<![\w.$'"])(?:True|False|None)\b(?!['"])/
     ];
     PROSE_RUN = /^[A-Za-z][A-Za-z'’,;:.!?-]*(?:\s+[A-Za-z'’,;:.!?-]+){3,}\s*$/;
+    THINK_MARKUP = /<\/?think>/;
     TYPESCRIPT_ONLY = "The code argument is run as TypeScript in this call's scope. ";
   }
 });
@@ -219807,29 +220119,6 @@ var init_source_session = __esm({
     init_define_NATLANG_TS_LIBS();
     sessions = /* @__PURE__ */ new WeakMap();
     enabled2 = (files2) => files2.sourceGraphReuse !== false && globalThis.process?.env?.NATLANG_SOURCE_GRAPH_REUSE !== "0";
-  }
-});
-
-// src/native/type-aliases.ts
-function readTypeAliases(source2) {
-  const file = import_typescript11.default.createSourceFile("types.ts", source2, import_typescript11.default.ScriptTarget.ES2022, true, import_typescript11.default.ScriptKind.TS);
-  const errors = file.parseDiagnostics ?? [];
-  if (errors.length) throw new Error(`type alias syntax: ${errors.map((item) => import_typescript11.default.flattenDiagnosticMessageText(item.messageText, "\n")).join("; ")}`);
-  const result = {};
-  for (const statement of file.statements) {
-    if (!import_typescript11.default.isTypeAliasDeclaration(statement) || statement.typeParameters?.length) continue;
-    const name = statement.name.text;
-    if (Object.hasOwn(result, name)) throw new Error(`duplicate type alias ${name}`);
-    result[name] = statement.type.getText(file);
-  }
-  return result;
-}
-var import_typescript11;
-var init_type_aliases = __esm({
-  "src/native/type-aliases.ts"() {
-    "use strict";
-    init_define_NATLANG_TS_LIBS();
-    import_typescript11 = __toESM(require_typescript(), 1);
   }
 });
 
@@ -220878,6 +221167,8 @@ function validateNativeState(metadata, tensors) {
     throw new RangeError("invalid native-state metadata");
   if (metadata.adapter_binding !== void 0) validateNativeAdapterBinding(metadata.adapter_binding, metadata);
   validateNativeStateDerivation(metadata.derivation);
+  if (metadata.producer_kind !== void 0 && (!["text", "span"].includes(metadata.producer_kind) || metadata.derivation !== void 0))
+    throw new RangeError("native state producer_kind is text or span, and a derived state has none");
   const expected = /* @__PURE__ */ new Set(["token_ids", "positions", "embeddings"]);
   const count = (name, rank) => {
     const tensor = tensors[name];
@@ -221312,7 +221603,7 @@ function verifyNativeStateDerivationRecords(artifact, parent, gradient, update, 
   if (parent.id !== value.parent_state_id) throw new RangeError("optimized native state parent binding changed");
   const origin = parent.metadata.derivation?.origin_state_ids ?? [parent.id];
   if (nativeCanonicalJson(origin) !== nativeCanonicalJson(value.origin_state_ids)) throw new RangeError("optimized native state changed its original producer provenance");
-  const { derivation: _10, ...before } = parent.metadata, { derivation: __, ...after } = artifact.metadata;
+  const { derivation: _10, producer_kind: ___, ...before } = parent.metadata, { derivation: __, ...after } = artifact.metadata;
   if (nativeCanonicalJson(before) !== nativeCanonicalJson(after)) throw new RangeError("optimized native state changed text, native basis or adapter provenance");
   const expectedBase = parent.metadata.adapter_binding?.base_native_identity ?? {
     checkpoint_sha256: parent.metadata.checkpoint_sha256,
@@ -221941,6 +222232,9 @@ function moduleResolvedImports(record3) {
 function moduleTypeSources(record3) {
   return MODULE_TYPE_SOURCES.get(record3);
 }
+function moduleTypeSpecifiers(record3) {
+  return MODULE_TYPE_SPECIFIERS.get(record3);
+}
 function registerFileRecords(codebase) {
   const seen = /* @__PURE__ */ new Set();
   const visit = (item) => {
@@ -222013,10 +222307,10 @@ function readNatlangFrontmatter(source2) {
   }
   function readTyped(key, inline2, body) {
     if (key in typed) throw new Error(`frontmatter repeats ${key}`);
-    if (key === "returns") {
-      const text3 = unquoteType([inline2, ...body.map((line) => line.trim())].join(" "));
-      if (!text3) throw new Error("returns needs a type");
-      typed.returns = text3;
+    if (key === "returns" || key === "writes") {
+      const text3 = unquoteType([inline2, ...body.map((line) => line.trim())].filter(Boolean).join("\n"));
+      if (!text3) throw new Error(`${key} needs a type`);
+      typed[key] = text3;
     } else if (inline2 || body[0]?.trim().startsWith("{")) {
       if (/^["']/.test(inline2)) throw new Error(`${key} must map names to types, not be one string`);
       typed[key] = typeLiteralMap(key, [inline2, ...body.map((line) => line.trim())].join(" ").trim());
@@ -222207,6 +222501,21 @@ function parseNatlang(path2, text3, inherited, files2) {
       throw new NatlangSourceError(path2, error.message, frontmatterLine(text3, "ensures"));
     }
   }
+  let writes;
+  if (meta.writes !== void 0) {
+    if (subtype !== "directory-reducer")
+      throw new NatlangSourceError(
+        path2,
+        "writes declares the files a directory reducer writes; add kind: directory-reducer, or remove writes",
+        frontmatterLine(text3, "writes")
+      );
+    writes = String(meta.writes);
+    try {
+      writesFields(writes, new TypeEnv(parseAliases(types3)));
+    } catch (error) {
+      throw new NatlangSourceError(path2, error.message, frontmatterLine(text3, "writes"));
+    }
+  }
   const source2 = files2.relative?.(path2) ?? path2;
   return {
     kind: "natlang",
@@ -222232,7 +222541,8 @@ function parseNatlang(path2, text3, inherited, files2) {
     ...budget ? { budget } : {},
     ...meta.recursive === "structural" ? { recursive: "structural" } : {},
     ...typeof meta.measure === "string" ? { measure: meta.measure.trim() } : {},
-    ...ensures ? { ensures } : {}
+    ...ensures ? { ensures } : {},
+    ...writes ? { writes } : {}
   };
 }
 function protectedSources(source2, entries) {
@@ -222436,10 +222746,66 @@ function resolveUsesTarget(specifier, fromPath, root2, files2) {
 function usesTargetsOf(record3) {
   return USES_TARGETS.get(record3);
 }
+function withLoadScope(run) {
+  loadDepth++;
+  try {
+    return run();
+  } finally {
+    if (--loadDepth === 0) {
+      LOADING.clear();
+      LOADING_EDGES.clear();
+      PENDING_USES.clear();
+    }
+  }
+}
+function loadingDirOf(normTarget) {
+  if (!normTarget.endsWith(".nl")) return void 0;
+  for (let index = LOAD_DIRS.length - 1; index >= 0; index--) {
+    const entry = LOAD_DIRS[index];
+    if (!normTarget.startsWith(`${entry.dir}/`)) continue;
+    const parts = normTarget.slice(entry.dir.length + 1).split("/");
+    return parts.some((part) => part === "node_modules" || part.startsWith(".")) ? void 0 : entry;
+  }
+  return void 0;
+}
+function bindLive(record3, path2, name, item, normTarget, live2, files2) {
+  const normPath = normalizePath(path2);
+  const base0 = (file) => files2.relative?.(file) ?? file;
+  const backPath = findEdgePath(normTarget, normPath);
+  if (backPath) throw new NatlangSourceError(path2, cycleMessage(item, [normPath, ...backPath].map(base0)));
+  addEdge(normPath, normTarget);
+  record3.codebase[name] = live2;
+}
+function bindDeferredUses(deferred, files2) {
+  const done = /* @__PURE__ */ new Set();
+  for (const use of deferred) {
+    const live2 = LOADING.get(use.normTarget);
+    if (live2) bindLive(use.record, use.path, use.name, use.item, use.normTarget, live2, files2);
+    else {
+      const normPath = normalizePath(use.path);
+      addEdge(normPath, use.normTarget);
+      ATTACHING.push(normPath, use.normTarget);
+      try {
+        use.record.codebase[use.name] = loadNamedFunction(use.target, files2);
+      } finally {
+        ATTACHING.pop();
+        ATTACHING.pop();
+      }
+    }
+    const left = (PENDING_USES.get(use.record) ?? 1) - 1;
+    if (left > 0) PENDING_USES.set(use.record, left);
+    else {
+      PENDING_USES.delete(use.record);
+      done.add(use.record);
+    }
+  }
+  for (const record3 of done) checkProtect(record3, record3.source);
+}
 function attachUses(record3, path2, files2) {
   const usesMap = record3.usesMap ?? (record3.uses?.length ? Object.fromEntries(record3.uses.map((item) => [item.slice(item.lastIndexOf("/") + 1).replace(/\.(?:nl|ts|js)$/, ""), item])) : void 0);
   if (!usesMap || !Object.keys(usesMap).length || files2 === PATH_ONLY) return;
-  const root2 = packageRoot(files2.dirname(path2), files2);
+  const dir = files2.dirname(path2);
+  const root2 = findPackageRoot(dir, files2) ?? (files2.root !== void 0 && isWithinRoot(files2.root, dir) ? files2.root : packageRoot(dir, files2));
   const normPath = normalizePath(path2);
   const base0 = (file) => files2.relative?.(file) ?? file;
   const pushedSelf = !ATTACHING.includes(normPath);
@@ -222458,26 +222824,30 @@ function attachUses(record3, path2, files2) {
       }
       const live2 = LOADING.get(normTarget);
       if (live2) {
-        const backPath = findEdgePath(normTarget, normPath);
-        if (backPath) throw new NatlangSourceError(path2, cycleMessage(item, [normPath, ...backPath].map(base0)));
-        LOADING_EDGES.set(normPath, (LOADING_EDGES.get(normPath) ?? /* @__PURE__ */ new Set()).add(normTarget));
-        record3.codebase[name] = live2;
+        bindLive(record3, path2, name, item, normTarget, live2, files2);
         continue;
       }
+      const waiting = loadingDirOf(normTarget);
+      if (waiting) {
+        waiting.deferred.push({ record: record3, path: path2, name, item, target, normTarget });
+        PENDING_USES.set(record3, (PENDING_USES.get(record3) ?? 0) + 1);
+        continue;
+      }
+      addEdge(normPath, normTarget);
       ATTACHING.push(normTarget);
       try {
         if (target.endsWith(".nl")) record3.codebase[name] = loadNamedFunction(target, files2);
         else {
-          const dir = files2.dirname(target);
+          const dir2 = files2.dirname(target);
           const stem = files2.basename(target, files2.extname(target));
           const module = parseModule(
             target,
             files2.read(target),
-            packageTypes(dir, files2),
+            packageTypes(dir2, files2),
             files2,
             { allowUntypedExports: target.endsWith(".js") }
           );
-          if (target.endsWith(".ts")) module.codebase = loadCallableFolder(files2.join(dir, stem), files2, module.types);
+          if (target.endsWith(".ts")) module.codebase = loadCallableFolder(files2.join(dir2, stem), files2, module.types);
           attachModuleImports(module, target, {}, files2);
           record3.codebase[name] = module;
         }
@@ -222511,7 +222881,7 @@ function resolveImportedSource(specifier, from, files2) {
 }
 function attachModuleImports(record3, path2, siblings, files2, seen = /* @__PURE__ */ new Map()) {
   if (files2 === PATH_ONLY) return;
-  attachTypeSources(record3, path2, files2);
+  attachTypeSources(record3, path2, siblings, files2);
   if (!record3.imports.length) return;
   const normSelf = normalizePath(path2);
   seen.set(normSelf, record3);
@@ -222588,26 +222958,82 @@ function attachModuleImports(record3, path2, siblings, files2, seen = /* @__PURE
   }
   if (Object.keys(resolved).length) MODULE_IMPORTS.set(record3, resolved);
 }
-function attachTypeSources(record3, path2, files2) {
+function hasInstalledNodePackage(specifier, root2, files2) {
+  if (specifier.startsWith("node:") || NODE_BUILTINS.has(specifier.split("/")[0])) return true;
+  const parts = specifier.split("/");
+  const pkgName = specifier.startsWith("@") && parts.length >= 2 ? `${parts[0]}/${parts[1]}` : parts[0];
+  for (let current = root2; ; current = files2.dirname(current)) {
+    if (files2.isDirectory(files2.join(current, "node_modules", ...pkgName.split("/")))) return true;
+    if (files2.dirname(current) === current) break;
+  }
+  return false;
+}
+function typeFileSpecifiers(filePath, text3) {
+  const sf2 = import_typescript14.default.createSourceFile(filePath, text3, import_typescript14.default.ScriptTarget.ES2022, false, import_typescript14.default.ScriptKind.TS);
+  const out = [];
+  for (const statement of sf2.statements) {
+    if (import_typescript14.default.isImportDeclaration(statement) && import_typescript14.default.isStringLiteral(statement.moduleSpecifier)) {
+      out.push(statement.moduleSpecifier.text);
+    } else if (import_typescript14.default.isExportDeclaration(statement) && statement.moduleSpecifier && import_typescript14.default.isStringLiteral(statement.moduleSpecifier)) {
+      out.push(statement.moduleSpecifier.text);
+    }
+  }
+  return out;
+}
+function attachTypeSources(record3, path2, siblings, files2) {
   const specifiers = TYPE_ONLY_IMPORTS.get(record3) ?? [];
   if (!specifiers.length) return;
   const root2 = packageRoot(files2.dirname(path2), files2);
+  const normRoot = normalizePath(root2).replace(/\/+$/, "");
   const sources = {};
-  const fromRoot = (file) => normalizePath(file).slice(normalizePath(root2).length).replace(/^\/+/, "");
-  const visit = (from, specifier, depth2) => {
-    if (depth2 > 8 || !(specifier.startsWith("./") || specifier.startsWith("../"))) return;
-    const base = normalizePath(files2.join(files2.dirname(from), ...specifier.replace(/\.js$/, "").split("/")));
-    if (escapesBoundary(path2, base, files2)) return;
-    const target = resolveTargetFile(base, files2, ["ts"]);
-    if (!target || target.endsWith(".d.ts")) return;
-    const source2 = fromRoot(target);
-    if (Object.hasOwn(sources, source2)) return;
-    const text3 = files2.read(target);
-    sources[source2] = text3;
-    for (const match2 of text3.matchAll(/^\s*import\s+type\s[^'"]*['"]([^'"]+)['"]/gm)) visit(target, match2[1], depth2 + 1);
+  const specifierTargets = {};
+  const fromRoot = (file) => {
+    const norm = normalizePath(file);
+    return isWithinRoot(normRoot, norm) ? norm.slice(normRoot.length).replace(/^\/+/, "") : norm.replace(/^\/+/, "");
   };
-  for (const specifier of specifiers) visit(path2, specifier, 0);
+  const resolveTypeFile = (base) => resolveTargetFile(base, files2, ["ts"]) ?? (base.endsWith(".d.ts") && files2.isFile(base) ? base : void 0) ?? (files2.isFile(`${base}.d.ts`) ? `${base}.d.ts` : void 0) ?? (files2.isFile(files2.join(base, "index.ts")) ? files2.join(base, "index.ts") : void 0) ?? (files2.isFile(files2.join(base, "index.d.ts")) ? files2.join(base, "index.d.ts") : void 0);
+  const loadFile = (target, depth2) => {
+    const source2 = fromRoot(target);
+    if (!Object.hasOwn(sources, source2)) {
+      const text3 = files2.read(target);
+      sources[source2] = text3;
+      for (const next2 of typeFileSpecifiers(target, text3)) visit(target, next2, depth2 + 1, false);
+    }
+    return source2;
+  };
+  const visit = (from, specifier, depth2, isRootModule) => {
+    if (depth2 > 8 || RUNTIME_OR_BUILTIN_IMPORT.test(specifier)) return;
+    if (specifier.startsWith("./") || specifier.startsWith("../")) {
+      if (isRootModule && specifier.startsWith("./") && siblingHasSpecifier(specifier, siblings)) return;
+      const base = normalizePath(files2.join(files2.dirname(from), ...specifier.replace(/\.js$/, "").split("/")));
+      if (escapesBoundary(path2, base, files2)) return;
+      const target = resolveTypeFile(base);
+      if (!target) {
+        if (isRootModule && /^\.\/types(?:\.(?:ts|js))?$/.test(specifier) && Object.keys(record3.types).length > 0) return;
+        if (resolveTargetFile(base, files2, ["nl"])) return;
+        throw new NatlangSourceError(from, `cannot import type ${JSON.stringify(specifier)}: no matching .ts file exists`);
+      }
+      const source2 = loadFile(target, depth2);
+      if (isRootModule) specifierTargets[specifier] = source2;
+      return;
+    }
+    if (specifier.startsWith("/")) {
+      throw new NatlangSourceError(from, `cannot import type ${JSON.stringify(specifier)}: absolute type imports are not allowed`);
+    }
+    const exported = resolvePackageExport(specifier, root2, files2, ["ts"]);
+    if (exported.error)
+      throw new NatlangSourceError(from, `cannot import type ${JSON.stringify(specifier)}: ${exported.error}`);
+    if (exported.target) {
+      const source2 = loadFile(exported.target, depth2);
+      specifierTargets[specifier] = source2;
+      return;
+    }
+    if (!hasInstalledNodePackage(specifier, root2, files2))
+      throw new NatlangSourceError(from, `cannot import type ${JSON.stringify(specifier)}: package or export not found`);
+  };
+  for (const specifier of specifiers) visit(path2, specifier, 0, true);
   if (Object.keys(sources).length) MODULE_TYPE_SOURCES.set(record3, sources);
+  if (Object.keys(specifierTargets).length) MODULE_TYPE_SPECIFIERS.set(record3, specifierTargets);
 }
 function functionRecord(path2, node, file, label, allowUntyped = false, compiled2 = false) {
   const args = {};
@@ -222724,8 +223150,14 @@ function parseModule(path2, text3, inherited, files2, options = {}) {
   const isDefault = (node) => !!import_typescript14.default.getModifiers(node)?.some((modifier) => modifier.kind === import_typescript14.default.SyntaxKind.DefaultKeyword);
   for (const statement of file.statements) {
     if (import_typescript14.default.isImportDeclaration(statement) && import_typescript14.default.isStringLiteral(statement.moduleSpecifier)) {
-      if (!statement.importClause?.isTypeOnly) imports.push(statement.moduleSpecifier.text);
-      else typeImports.push(statement.moduleSpecifier.text);
+      const clause = statement.importClause;
+      const allNamedTypeOnly = !clause?.name && !!clause?.namedBindings && import_typescript14.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length > 0 && clause.namedBindings.elements.every((element) => element.isTypeOnly);
+      const hasNamedTypeOnly = !!clause?.namedBindings && import_typescript14.default.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.some((element) => element.isTypeOnly);
+      if (clause?.isTypeOnly || allNamedTypeOnly) typeImports.push(statement.moduleSpecifier.text);
+      else {
+        imports.push(statement.moduleSpecifier.text);
+        if (hasNamedTypeOnly) typeImports.push(statement.moduleSpecifier.text);
+      }
     } else if (import_typescript14.default.isFunctionDeclaration(statement) && isExported(statement)) {
       const name2 = isDefault(statement) ? "default" : statement.name?.text;
       if (!name2) throw new NatlangSourceError(path2, "exported functions need names");
@@ -222742,8 +223174,14 @@ function parseModule(path2, text3, inherited, files2, options = {}) {
         const local = locals.get((element.propertyName ?? element.name).text);
         exports[element.name.text] = local ? describe2(element.name.text, local) : { kind: "value" };
       }
-    } else if (import_typescript14.default.isExportDeclaration(statement) && statement.moduleSpecifier && !options.compiled)
-      throw new NatlangSourceError(path2, "re-exports from other modules are not supported; import and export explicitly");
+    } else if (import_typescript14.default.isExportDeclaration(statement) && statement.moduleSpecifier) {
+      const allExportTypeOnly = statement.isTypeOnly || !!statement.exportClause && import_typescript14.default.isNamedExports(statement.exportClause) && statement.exportClause.elements.length > 0 && statement.exportClause.elements.every((element) => element.isTypeOnly);
+      if (allExportTypeOnly && import_typescript14.default.isStringLiteral(statement.moduleSpecifier)) {
+        typeImports.push(statement.moduleSpecifier.text);
+      } else if (!options.compiled) {
+        throw new NatlangSourceError(path2, "re-exports from other modules are not supported; import and export explicitly");
+      }
+    }
   }
   for (const name2 of Object.keys(exports)) if (!options.compiled && name2 !== "default") checkName(path2, name2);
   const name = files2.basename(path2, files2.extname(path2));
@@ -222770,68 +223208,66 @@ function parseModule(path2, text3, inherited, files2, options = {}) {
     codebase: {},
     ...Object.keys(declared.declarations).length ? { declarations: declared.declarations } : {}
   };
-  const relativeTypeImports = typeImports.filter((specifier) => specifier.startsWith("./") || specifier.startsWith("../"));
-  if (relativeTypeImports.length) TYPE_ONLY_IMPORTS.set(moduleRecord, relativeTypeImports);
+  const externalTypeImports = [...new Set(typeImports.filter((specifier) => !RUNTIME_OR_BUILTIN_IMPORT.test(specifier)))];
+  if (externalTypeImports.length) TYPE_ONLY_IMPORTS.set(moduleRecord, externalTypeImports);
   return moduleRecord;
 }
 function loadCallableFolder(dir, files2, inherited = {}) {
-  return withSourceLoadSession(files2, () => loadCallableFolderInSession(dir, files2, inherited));
+  return withSourceLoadSession(files2, () => withLoadScope(() => loadCallableFolderInSession(dir, files2, inherited)));
 }
 function loadCallableFolderInSession(dir, files2, inherited) {
   if (!files2.isDirectory(dir)) return {};
+  const loading = { dir: normalizePath(dir).replace(/\/+$/, ""), deferred: [] };
+  LOAD_DIRS.push(loading);
+  try {
+    return loadFolderItems(dir, files2, inherited, loading);
+  } finally {
+    LOAD_DIRS.splice(LOAD_DIRS.lastIndexOf(loading), 1);
+  }
+}
+function loadFolderItems(dir, files2, inherited, loading) {
   const typesFile = files2.join(dir, "types.ts");
   const types3 = { ...inherited, ...files2.isFile(typesFile) ? readTypesFile(typesFile, files2) : {} };
   const entries = files2.list(dir).filter((name) => !name.startsWith(".")).sort();
   const items = {};
-  const mine = [];
   const add = (name, record3, path2) => {
     if (Object.hasOwn(items, name)) throw new NatlangSourceError(path2, `two items in ${dir} are named ${JSON.stringify(name)}`);
     items[name] = record3;
-    if (record3.kind === "natlang" && files2 !== PATH_ONLY) {
-      const norm = normalizePath(path2);
-      LOADING.set(norm, record3);
-      mine.push(norm);
-    }
+    if (record3.kind === "natlang" && files2 !== PATH_ONLY) LOADING.set(normalizePath(path2), record3);
   };
-  try {
-    for (const entry of entries) {
-      const path2 = files2.join(dir, entry);
-      if (!files2.isFile(path2) || !isSource(entry) || entry.endsWith(".d.ts") || entry.endsWith(".d.nl.ts")) continue;
-      const text3 = files2.read(path2);
-      const record3 = entry.endsWith(".nl") ? parseNatlang(path2, text3, types3, files2) : parseModule(path2, text3, types3, files2);
-      add(record3.name, record3, path2);
-    }
-    for (const entry of entries) {
-      const path2 = files2.join(dir, entry);
-      if (!files2.isDirectory(path2) || entry === "node_modules") continue;
-      const children2 = loadCallableFolder(path2, files2, items[entry] && "types" in items[entry] ? { ...types3, ...items[entry].types } : types3);
-      const owner = items[entry];
-      if (owner && owner.kind !== "namespace") {
-        if (owner.kind === "module") {
-          for (const child of Object.keys(children2)) if (Object.hasOwn(owner.exports, child))
-            throw new NatlangSourceError(path2, `${JSON.stringify(child)} is both an export of ${entry}.ts and an item in ${entry}/`);
-        }
-        owner.codebase = children2;
-        if (owner.kind === "natlang") {
-          const data = folderNzData(path2, files2, children2);
-          if (Object.keys(data).length) owner.contextData = data;
-        }
-      } else if (Object.keys(children2).length)
-        add(entry, { kind: "namespace", name: entry, source: files2.relative?.(path2) ?? path2, codebase: children2 }, path2);
-    }
-    for (const [name, item] of Object.entries(items)) {
-      if (item.kind === "natlang" && (item.uses || item.usesMap)) attachUses(item, files2.join(dir, `${name}.nl`), files2);
-      else if (item.kind === "module") attachModuleImports(item, files2.join(dir, `${name}.ts`), items, files2);
-    }
-    for (const item of Object.values(items)) if (item.kind === "natlang") checkProtect(item, item.source);
-    if (files2 !== PATH_ONLY) registerFileRecords(items);
-    return items;
-  } finally {
-    for (const path2 of mine) {
-      LOADING.delete(path2);
-      LOADING_EDGES.delete(path2);
-    }
+  for (const entry of entries) {
+    const path2 = files2.join(dir, entry);
+    if (!files2.isFile(path2) || !isSource(entry) || entry.endsWith(".d.ts") || entry.endsWith(".d.nl.ts")) continue;
+    const text3 = files2.read(path2);
+    const record3 = entry.endsWith(".nl") ? parseNatlang(path2, text3, types3, files2) : parseModule(path2, text3, types3, files2);
+    add(record3.name, record3, path2);
   }
+  for (const entry of entries) {
+    const path2 = files2.join(dir, entry);
+    if (!files2.isDirectory(path2) || entry === "node_modules") continue;
+    const children2 = loadCallableFolder(path2, files2, items[entry] && "types" in items[entry] ? { ...types3, ...items[entry].types } : types3);
+    const owner = items[entry];
+    if (owner && owner.kind !== "namespace") {
+      if (owner.kind === "module") {
+        for (const child of Object.keys(children2)) if (Object.hasOwn(owner.exports, child))
+          throw new NatlangSourceError(path2, `${JSON.stringify(child)} is both an export of ${entry}.ts and an item in ${entry}/`);
+      }
+      owner.codebase = children2;
+      if (owner.kind === "natlang") {
+        const data = folderNzData(path2, files2, children2);
+        if (Object.keys(data).length) owner.contextData = data;
+      }
+    } else if (Object.keys(children2).length)
+      add(entry, { kind: "namespace", name: entry, source: files2.relative?.(path2) ?? path2, codebase: children2 }, path2);
+  }
+  for (const [name, item] of Object.entries(items)) {
+    if (item.kind === "natlang" && (item.uses || item.usesMap)) attachUses(item, files2.join(dir, `${name}.nl`), files2);
+    else if (item.kind === "module") attachModuleImports(item, files2.join(dir, `${name}.ts`), items, files2);
+  }
+  for (const item of Object.values(items)) if (item.kind === "natlang" && !PENDING_USES.has(item)) checkProtect(item, item.source);
+  bindDeferredUses(loading.deferred, files2);
+  if (files2 !== PATH_ONLY) registerFileRecords(items);
+  return items;
 }
 function folderNzData(dir, files2, items) {
   const data = {};
@@ -222858,10 +223294,12 @@ function folderNzData(dir, files2, items) {
   return data;
 }
 function loadNamedFunction(path2, files2) {
-  return sourceLoadMemo(files2, "named:" + normalizePath(path2), () => loadNamedFunctionInSession(path2, files2));
+  return sourceLoadMemo(files2, "named:" + normalizePath(path2), () => withLoadScope(() => loadNamedFunctionInSession(path2, files2)));
 }
 function loadNamedFunctionInSession(path2, files2) {
   if (!files2.isFile(path2) || files2.extname(path2) !== ".nl") throw new NatlangSourceError(path2, "expected a .nl file");
+  const live2 = files2 === PATH_ONLY ? void 0 : LOADING.get(normalizePath(path2));
+  if (live2) return live2;
   const dir = files2.dirname(path2);
   const names = [files2.basename(path2, ".nl")];
   let ancestor = dir;
@@ -222892,7 +223330,7 @@ function loadNamedFunctionInSession(path2, files2) {
     if (Object.keys(data).length) record3.contextData = data;
   }
   attachUses(record3, path2, files2);
-  checkProtect(record3, path2);
+  if (!PENDING_USES.has(record3)) checkProtect(record3, path2);
   registerFileRecords(record3);
   return record3;
 }
@@ -222916,7 +223354,7 @@ function findApplicationContext(start, files2) {
     dir = parent;
   }
 }
-var import_typescript14, NatlangSourceError, atLine, lineOf, PLAIN_TYPES, FILE_NODES, MODULE_IMPORTS, TYPE_ONLY_IMPORTS, MODULE_TYPE_SOURCES, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, USES_TARGETS, ATTACHING, LOADING, LOADING_EDGES, findEdgePath, cycleMessage, RUNTIME_OR_BUILTIN_IMPORT, SUPPORTED_RELATIVE_EXT, HAS_EXTENSION, isSource, PATH_ONLY;
+var import_typescript14, NatlangSourceError, atLine, lineOf, PLAIN_TYPES, FILE_NODES, MODULE_IMPORTS, TYPE_ONLY_IMPORTS, MODULE_TYPE_SOURCES, MODULE_TYPE_SPECIFIERS, nodeKey, IDENTIFIER4, FRONTMATTER, NL_KEYS, CALL_BUDGET_KEYS, WITHHOLDABLE_TOOLS, revisionOf, TYPE_KEYS, USES_TARGETS, ATTACHING, LOADING, LOADING_EDGES, loadDepth, LOAD_DIRS, PENDING_USES, addEdge, findEdgePath, cycleMessage, RUNTIME_OR_BUILTIN_IMPORT, SUPPORTED_RELATIVE_EXT, HAS_EXTENSION, NODE_BUILTINS, isSource, PATH_ONLY;
 var init_loader = __esm({
   "src/runtime/loader.ts"() {
     "use strict";
@@ -222934,6 +223372,7 @@ var init_loader = __esm({
     init_nz_file();
     init_representation();
     init_linked_types();
+    init_writes();
     init_linked_types();
     NatlangSourceError = class extends Error {
       constructor(path2, reason, line, hint) {
@@ -222956,6 +223395,7 @@ var init_loader = __esm({
     MODULE_IMPORTS = /* @__PURE__ */ new WeakMap();
     TYPE_ONLY_IMPORTS = /* @__PURE__ */ new WeakMap();
     MODULE_TYPE_SOURCES = /* @__PURE__ */ new WeakMap();
+    MODULE_TYPE_SPECIFIERS = /* @__PURE__ */ new WeakMap();
     nodeKey = (record3) => `${record3.kind}:${record3.id}@${record3.revision}`;
     IDENTIFIER4 = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
     FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -222974,7 +223414,8 @@ var init_loader = __esm({
       "budget",
       "recursive",
       "measure",
-      "ensures"
+      "ensures",
+      "writes"
     ]);
     CALL_BUDGET_KEYS = ["maxTurns", "turnTokens", "maxTokens", "contextTokens"];
     WITHHOLDABLE_TOOLS = [
@@ -222992,11 +223433,17 @@ var init_loader = __esm({
       "editor"
     ];
     revisionOf = (text3) => hexDigest(text3).slice(0, 16);
-    TYPE_KEYS = /^(args|types|generic|returns):(.*)$/;
+    TYPE_KEYS = /^(args|types|generic|returns|writes):(.*)$/;
     USES_TARGETS = /* @__PURE__ */ new WeakMap();
     ATTACHING = [];
     LOADING = /* @__PURE__ */ new Map();
     LOADING_EDGES = /* @__PURE__ */ new Map();
+    loadDepth = 0;
+    LOAD_DIRS = [];
+    PENDING_USES = /* @__PURE__ */ new Map();
+    addEdge = (from, to2) => {
+      LOADING_EDGES.set(from, (LOADING_EDGES.get(from) ?? /* @__PURE__ */ new Set()).add(to2));
+    };
     findEdgePath = (from, to2, seen = /* @__PURE__ */ new Set()) => {
       if (from === to2) return [from];
       if (seen.has(from)) return void 0;
@@ -223011,6 +223458,49 @@ var init_loader = __esm({
     RUNTIME_OR_BUILTIN_IMPORT = /^(?:natlang:|@natlang\/(?:node|browser|core)(?:\/|$)|__natlang__)/;
     SUPPORTED_RELATIVE_EXT = /\.(?:ts|js|nl)$/;
     HAS_EXTENSION = /\/[^/]+\.[A-Za-z0-9]+$/;
+    NODE_BUILTINS = /* @__PURE__ */ new Set([
+      "assert",
+      "async_hooks",
+      "buffer",
+      "child_process",
+      "cluster",
+      "console",
+      "constants",
+      "crypto",
+      "dgram",
+      "diagnostics_channel",
+      "dns",
+      "domain",
+      "events",
+      "fs",
+      "http",
+      "http2",
+      "https",
+      "inspector",
+      "module",
+      "net",
+      "os",
+      "path",
+      "perf_hooks",
+      "process",
+      "punycode",
+      "querystring",
+      "readline",
+      "repl",
+      "stream",
+      "string_decoder",
+      "timers",
+      "tls",
+      "trace_events",
+      "tty",
+      "url",
+      "util",
+      "v8",
+      "vm",
+      "wasi",
+      "worker_threads",
+      "zlib"
+    ]);
     isSource = (name) => (name.endsWith(".nl") || name.endsWith(".ts") && !name.endsWith(".d.ts")) && name !== "types.ts";
     PATH_ONLY = {
       join: (...parts) => parts.filter(Boolean).join("/").replace(/\/+/g, "/"),
@@ -225409,6 +225899,7 @@ var init_runtime = __esm({
         const program = options.program ?? runtime.options.program ?? binding?.program;
         const guidanceBinding = options.nativeProgramGuidance ?? runtime.options.nativeProgramGuidance;
         this.nativeProgramGuidance = guidanceBinding ? programGuidance(guidanceBinding) : void 0;
+        this.authoredProgramGuidance = options.programGuidance ?? runtime.options.programGuidance;
         if (this.nativeProgramGuidance) {
           if (!program) throw new Error("native program guidance requires its exact program descriptor");
           if (programGuidanceProgram(this.nativeProgramGuidance) !== program.id)
@@ -225487,6 +225978,7 @@ var init_runtime = __esm({
       /** The weight releases pinned at creation; every call of this task, inner calls included, resolves from these. */
       weights;
       nativeProgramGuidance;
+      authoredProgramGuidance;
       specialization;
       auditOf;
       /** The last failed call per caller and definition revision, so a retry can be recorded against it. */
@@ -226104,6 +226596,7 @@ function compileModule(record3, level, inventory, target = "default") {
   const extraImports = moduleResolvedImports(record3);
   const relSource = record3.source.replace(/\\/g, "/").replace(/^\/+/, "");
   const typeSources = moduleTypeSources(record3);
+  const typeSpecifiers = moduleTypeSpecifiers(record3);
   const usePkgRoot = (!!extraImports && Object.keys(extraImports).length > 0 || !!typeSources) && !!relSource && !relSource.startsWith("..");
   const path2 = usePkgRoot ? `/__natlang__/pkg/${relSource.endsWith(".js") ? `${relSource.slice(0, -3)}.ts` : relSource}` : `${FOLDER}/${record3.name}.ts`;
   const virtualDir = path2.slice(0, path2.lastIndexOf("/"));
@@ -226113,8 +226606,9 @@ function compileModule(record3, level, inventory, target = "default") {
   const parsed = import_typescript19.default.createSourceFile(path2, text3, import_typescript19.default.ScriptTarget.ES2022, true);
   const typedRefinement = /\b(?:refine|assume)\s*</.test(text3);
   const callsNl = /\bnl\s*(?:<[^()]*>)?\s*\(/.test(text3);
+  const hasTypeImports = parsed.statements.some((statement) => import_typescript19.default.isImportDeclaration(statement) && (!!statement.importClause?.isTypeOnly || !!statement.importClause?.namedBindings && import_typescript19.default.isNamedImports(statement.importClause.namedBindings) && statement.importClause.namedBindings.elements.some((element) => element.isTypeOnly)) || import_typescript19.default.isExportDeclaration(statement) && !!statement.moduleSpecifier && (statement.isTypeOnly || !!statement.exportClause && import_typescript19.default.isNamedExports(statement.exportClause) && statement.exportClause.elements.some((element) => element.isTypeOnly)));
   if (containsTaggedTemplate(parsed) || callsNl || FOR_OF.test(text3) || /\bNeuralese\s*</.test(`${text3}
-${softTypes}`) || generic || typedRefinement) {
+${softTypes}`) || generic || typedRefinement || hasTypeImports && !!typeSources) {
     const files2 = { [path2]: text3 };
     for (const [name, item] of Object.entries(level)) {
       if (name === record3.name) continue;
@@ -226143,7 +226637,22 @@ ${softTypes}`) || generic || typedRefinement) {
         }
       }
     }
-    if (usePkgRoot) for (const [source2, typeText] of Object.entries(typeSources ?? {})) files2[`/__natlang__/pkg/${source2}`] ??= typeText;
+    for (const [source2, typeText] of Object.entries(typeSources ?? {})) {
+      const mapped = `/__natlang__/pkg/${source2}`;
+      files2[mapped] ??= typeText;
+    }
+    for (const [specifier, source2] of Object.entries(typeSpecifiers ?? {})) {
+      const mapped = `/__natlang__/pkg/${source2}`;
+      if (specifier.startsWith(".")) {
+        if (!usePkgRoot) {
+          const resolved = joinSourcePath(virtualDir, specifier);
+          const tsPath = resolved.endsWith(".js") ? `${resolved.slice(0, -3)}.ts` : resolved.endsWith(".ts") ? resolved : `${resolved}.ts`;
+          if (typeSources?.[source2] !== void 0) files2[tsPath] ??= typeSources[source2];
+        }
+      } else {
+        extraPaths[specifier] ??= [mapped];
+      }
+    }
     const known = new Set(Object.keys(record3.types));
     files2[`${virtualDir}/__types.d.ts`] = Object.entries(record3.types).map(([name, text4]) => `type ${name} = ${typeScriptText(text4, known)};`).join("\n") + "\n";
     files2[`${virtualDir}/types.ts`] ??= Object.entries(record3.types).map(([name, text4]) => `export type ${name} = ${typeScriptText(text4, known)};`).join("\n") + "\nexport {};\n";
@@ -226175,6 +226684,28 @@ ${[...names].map((name) => `  export const ${name}: any;`).join("\n")}
       }
     }
     const file = program.getSourceFile(path2);
+    if (hasTypeImports && typeSources && usePkgRoot) {
+      const typeFiles = new Set(Object.keys(typeSources).map((source2) => `/__natlang__/pkg/${source2}`));
+      const checked = [];
+      for (const statement of file.statements) {
+        const specifier = (import_typescript19.default.isImportDeclaration(statement) || import_typescript19.default.isExportDeclaration(statement)) && statement.moduleSpecifier && import_typescript19.default.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : void 0;
+        if (!specifier) continue;
+        let target2;
+        if (specifier.startsWith(".")) {
+          const resolved = joinSourcePath(virtualDir, specifier);
+          target2 = resolved.endsWith(".js") ? `${resolved.slice(0, -3)}.ts` : resolved.endsWith(".ts") ? resolved : `${resolved}.ts`;
+        } else if (typeSpecifiers && Object.hasOwn(typeSpecifiers, specifier)) target2 = `/__natlang__/pkg/${typeSpecifiers[specifier]}`;
+        if (target2 && typeFiles.has(target2)) checked.push([statement.getStart(file), statement.getEnd()]);
+      }
+      const importErrors = checked.length ? program.getSemanticDiagnostics(file).filter((diag) => (diag.code === 2305 || diag.code === 2614 || diag.code === 2724 || diag.code === 2307) && diag.start !== void 0 && checked.some(([start, end]) => diag.start >= start && diag.start < end)) : [];
+      if (importErrors.length) {
+        const formatted = importErrors.map((diag) => {
+          const pos = file.getLineAndCharacterOfPosition(diag.start);
+          return `${pos.line + 1}:${pos.character + 1} TS${diag.code}: ${import_typescript19.default.flattenDiagnosticMessageText(diag.messageText, "\n")}`;
+        }).join("\n");
+        throw new NatlangSourceError(record3.source, formatted);
+      }
+    }
     const analysis = analyzeInlineLambdas(program, [file], {
       displayPath: () => record3.source,
       sourceRevision: record3.revision,
@@ -226245,6 +226776,8 @@ ${[...names].map((name) => `  export const ${name}: any;`).join("\n")}
 }
 function compiledCode(record3, level, target) {
   const extraImports = moduleResolvedImports(record3);
+  const typeSources = moduleTypeSources(record3);
+  const typeSpecifiers = moduleTypeSpecifiers(record3);
   const key = fingerprint({
     target,
     source: record3.source,
@@ -226259,6 +226792,8 @@ function compiledCode(record3, level, target) {
       source: item.source,
       revision: item.kind === "namespace" ? null : item.revision
     })) } : {},
+    ...typeSources ? { typeSources: Object.entries(typeSources).sort(([a], [b]) => a.localeCompare(b)) } : {},
+    ...typeSpecifiers ? { typeSpecifiers: Object.entries(typeSpecifiers).sort(([a], [b]) => a.localeCompare(b)) } : {},
     siblings: Object.entries(level).map(([name, item]) => ({
       name,
       kind: item.kind,
@@ -227083,13 +227618,18 @@ function chatCompletionModelTurn(transport, options = {}) {
         for (const call of message2.tool_calls ?? []) Object.assign(call, structuredClone(hostCallFields));
       delete message2.natlang_host_generated;
     }
+    const historyReasoning = options.request?.x_natlang_history_reasoning ?? "both";
     for (const message2 of messages) {
       if (message2.role !== "assistant") continue;
       const legacy = message2.reasoning_content, current = message2.reasoning;
       if (typeof legacy === "string" && typeof current === "string" && legacy !== current)
         throw new Error("conflicting reasoning history aliases");
       const reasoning = typeof legacy === "string" ? legacy : current;
-      if (typeof reasoning === "string") message2.reasoning = message2.reasoning_content = reasoning;
+      if (typeof reasoning !== "string") continue;
+      delete message2.reasoning;
+      delete message2.reasoning_content;
+      if (historyReasoning === "both" || historyReasoning === "reasoning") message2.reasoning = reasoning;
+      if (historyReasoning === "both" || historyReasoning === "reasoning_content") message2.reasoning_content = reasoning;
     }
     for (const message2 of messages) for (const call of message2.tool_calls ?? [])
       if (call.function?.name && forward[call.function.name]) call.function.name = forward[call.function.name];
@@ -227163,6 +227703,7 @@ function chatCompletionModelTurn(transport, options = {}) {
       const omitSeed = wireRequest.x_natlang_omit_seed === true;
       delete wireRequest.x_natlang_omit_seed;
       delete wireRequest.x_natlang_host_call_fields;
+      delete wireRequest.x_natlang_history_reasoning;
       if (request.seed !== null && !omitSeed) wireRequest.seed = request.seed;
       const configuredMax = options.request?.max_tokens;
       if (configuredMax !== void 0 && (typeof configuredMax !== "number" || !Number.isSafeInteger(configuredMax) || configuredMax < 1))
@@ -227982,7 +228523,8 @@ function neuraleseServerModelTurn(options) {
       const expectedCount = prompt.filter((value) => value && typeof value === "object" && value.kind === "native_state" && value.id === id3).length;
       const receipts = imports.filter((value) => value && typeof value === "object" && value.id === id3);
       const expectedMode = modes?.[id3] ?? "exact-native-state";
-      if (!expectedCount || receipts.length !== expectedCount || receipts.some((receipt) => receipt.mode !== expectedMode || receipt.observed_native_state_id !== id3))
+      const spliced = receipts.filter((receipt) => !(receipt.mode === IN_CONTEXT_TEXT && expectedMode === "exact-native-state"));
+      if (!receipts.length || spliced.length !== expectedCount || receipts.some((receipt) => receipt.mode !== expectedMode && !(receipt.mode === IN_CONTEXT_TEXT && expectedMode === "exact-native-state") || receipt.observed_native_state_id !== id3))
         throw Object.assign(
           new Error(`neuralese-native-state-import: server did not consume ${id3} with declared mode ${expectedMode} (imports=${JSON.stringify(imports).slice(0, 1200)})`),
           { code: "neuralese-native-state-import" }
@@ -228104,8 +228646,9 @@ function neuraleseServerModelTurn(options) {
     for (const [id3, expected] of implicitById) {
       const promptOccurrences = (capture?.prompt ?? []).filter((segment) => segment.kind === "native_state" && segment.id === id3);
       const importReceipts = (capture?.native_state_imports ?? []).filter((receipt) => receipt.id === id3);
-      const sourcesMatch = (actual) => actual.length === expected.length && actual.every((item, index) => item.source_occurrence === expected[index].source_occurrence);
-      if (!sourcesMatch(promptOccurrences) || !sourcesMatch(importReceipts))
+      const sourcesMatch = (actual, wanted) => actual.length === wanted.length && actual.every((item, index) => item.source_occurrence === wanted[index].source_occurrence);
+      const spliced = expected.filter((_10, index) => importReceipts[index]?.mode !== IN_CONTEXT_TEXT);
+      if (!sourcesMatch(promptOccurrences, spliced) || !sourcesMatch(importReceipts, expected))
         throw Object.assign(
           new Error(`neuralese-native-state-import: ${expected.length} prepared occurrence(s) for ${id3} differ from the server prompt and import receipts`),
           { code: "neuralese-native-state-import" }
@@ -228300,7 +228843,7 @@ function neuraleseServerModelTurn(options) {
     )
   });
 }
-var OWNER_HEADER, HttpNeuraleseStore;
+var IN_CONTEXT_TEXT, OWNER_HEADER, HttpNeuraleseStore;
 var init_neuralese_server = __esm({
   "src/model/neuralese-server.ts"() {
     "use strict";
@@ -228313,6 +228856,7 @@ var init_neuralese_server = __esm({
     init_neuralese2();
     init_neuralese2();
     init_neuralese_store();
+    IN_CONTEXT_TEXT = "in-context-text";
     OWNER_HEADER = "x-natlang-owner";
     HttpNeuraleseStore = class {
       constructor(endpoint, headers = {}) {
@@ -229937,13 +230481,13 @@ function literal2(node) {
   return NO_VALUE;
 }
 function literalText(text3) {
+  const unwrapped = text3.trim().replace(/^```(?:[a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)\r?\n?```$/, "$1").trim();
   try {
-    return { value: JSON.parse(text3) };
+    return { value: JSON.parse(unwrapped) };
   } catch {
   }
-  const trimmed = text3.trim();
-  if (!trimmed || trimmed.length > 2e5) return void 0;
-  const source2 = import_typescript20.default.createSourceFile("value.ts", `(${trimmed}
+  if (!unwrapped || unwrapped.length > 2e5) return void 0;
+  const source2 = import_typescript20.default.createSourceFile("value.ts", `(${unwrapped}
 )`, import_typescript20.default.ScriptTarget.ES2022, false, import_typescript20.default.ScriptKind.TS);
   if ((source2.parseDiagnostics ?? []).length) return void 0;
   if (source2.statements.length !== 1) return void 0;
@@ -230097,7 +230641,8 @@ function evalContextValue() {
 }
 function rejected(error) {
   const softMismatch = error.diagnostics.some((diagnostic) => diagnostic.code === "type-mismatch" && /\bNeuralese\s*</.test(diagnostic.expected ?? ""));
-  const hint = softMismatch ? "At a declared Neuralese<string> argument or final-result slot, an ordinary string is written as that typed value through the configured port; argument conversion applies only to the direct parameter, not nested fields. For a final Neuralese<T> result with a concrete JSON-serializable T, return a value of T or its JSON text; the runtime validates it and writes its canonical JSON through the configured port. These conversions do not apply to locals or other payload types: preserve typed values or use one exact block marker in an explicitly typed position. A displayed [[Neuralese text block ...]] label is a preview, not a JavaScript string value or a reference to copy; do not turn it into a string or object." : error.diagnostics.map((diagnostic) => DIAGNOSTIC_HINTS[diagnostic.code]).find(Boolean);
+  const nlWithIssue = error.diagnostics.some((diagnostic) => diagnostic.code === "nl-type-arguments" || diagnostic.code === "nl-explicit-captures" || /\bnl\.with\b/.test(`${diagnostic.path} ${diagnostic.expected ?? ""} ${diagnostic.text ?? ""}`));
+  const hint = softMismatch ? "At a declared Neuralese<string> argument or final-result slot, an ordinary string is written as that typed value through the configured port; argument conversion applies only to the direct parameter, not nested fields. For a final Neuralese<T> result with a concrete JSON-serializable T, return a value of T or its JSON text; the runtime validates it and writes its canonical JSON through the configured port. These conversions do not apply to locals or other payload types: preserve typed values or use one exact block marker in an explicitly typed position. A displayed [[Neuralese text block ...]] label is a preview, not a JavaScript string value or a reference to copy; do not turn it into a string or object." : nlWithIssue ? NL_WITH_HINT : error.diagnostics.map((diagnostic) => DIAGNOSTIC_HINTS[diagnostic.code]).find(Boolean);
   return {
     kind: "rejected",
     text: `rejected
@@ -230110,7 +230655,7 @@ function structuredShape(type, env) {
   const resolved = env.resolve(type);
   if (resolved.kind === "refined" || resolved.kind === "untrusted") return structuredShape(resolved.base, env);
   if (resolved.kind === "record" || resolved.kind === "dict") return "an object";
-  if (resolved.kind === "list") return "an array";
+  if (resolved.kind === "list" || resolved.kind === "tuple") return "an array";
   if (resolved.kind !== "union" || !resolved.members.length) return void 0;
   const shapes = new Set(resolved.members.map((member) => structuredShape(member, env)));
   if (shapes.has(void 0)) return void 0;
@@ -230786,11 +231331,13 @@ function callableTypes(codebase) {
   }
   return types3;
 }
-var import_typescript21, SELF_CALL_ADVICE, oneLine, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, CONTRACT_EDIT_ERROR, PROTECT_LIST_ERROR, formatArgList, firstDocLine, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
+var import_typescript21, SELF_CALL_ADVICE, oneLine, NL_WITH_HINT, DIAGNOSTIC_HINTS, PLACEHOLDER_VALUE, PLACEHOLDER_ADVICE, NATIVE_TOOLS, CODE_TOOLS, ITERATION_STATE_GUIDANCE, BUILT_IN_DOCS, JSON_STRING_TYPE, stagedMessage, isHandle, itemRef, protectedEditError, PROTECTED_TYPES_ERROR, CONTRACT_EDIT_ERROR, PROTECT_LIST_ERROR, formatArgList, firstDocLine, callableAliases, DEFAULT_RUN_LABEL, runSeedKey, NativeRuntime, COMPACTION_NOTE_CHARS, TRANSCRIPT_VALUE_CHARS, deepFreeze, TranscriptView, NativeSession;
 var init_runtime2 = __esm({
   "src/native/runtime.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_type_aliases();
+    init_writes();
     init_prompt();
     init_lowered();
     init_evaluator();
@@ -230827,8 +231374,11 @@ var init_runtime2 = __esm({
     init_hash();
     SELF_CALL_ADVICE = "Do what its instructions ask here. For a judgment, decide it yourself from the inputs and return the answer with return_result; use eval only for exact work the instructions need.";
     oneLine = (value, holder, liveIdentity, untrusted2) => renderValue(value, { holder, budget: 80, liveIdentity, untrusted: untrusted2 });
+    NL_WITH_HINT = "With `nl.with<T>`, T is the child result type; use `nl.with<CaptureRecord, Result>` only when you want to type both the captures and result. The child input is passed separately.";
     DIAGNOSTIC_HINTS = {
-      "type-mismatch": "Pass the value itself with the type shown as expected, not wrapped in another object: for boolean use `true`, for number use `42.5`, for string use text, and for a record use an object with exactly its fields. With `nl.with<T>`, T is the child result type; use `nl.with<CaptureRecord, Result>` only when you want to type both the captures and result. The child input is passed separately.",
+      "type-mismatch": "Pass the value itself with the type shown as expected, not wrapped in another object: for boolean use `true`, for number use `42.5`, for string use text, and for a record use an object with exactly its fields.",
+      "nl-type-arguments": NL_WITH_HINT,
+      "nl-explicit-captures": NL_WITH_HINT,
       "callable-not-invoked": "This is a natlang child function, not its result. Call it with its declared input, then return or store the value it produces.",
       "unknown-field": "Use one of the fields listed as expected.",
       "no-such-path": "Use a variable or field that exists in the scope.",
@@ -230976,7 +231526,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
     });
     protectedEditError = (source2) => `${source2} decides whether this call succeeded, so it cannot be edited here; fix the code that produces the value it rejects.`;
     PROTECTED_TYPES_ERROR = "types.ts declares the types this call's result is checked against, so it cannot be edited here; fix the code that produces the value they reject.";
-    CONTRACT_EDIT_ERROR = (source2) => `The ensures:, measure: and recursive: lines of ${source2} judge its calls, so an edit cannot change them; fix the code that produces the value they reject.`;
+    CONTRACT_EDIT_ERROR = (source2) => `The ensures:, writes:, measure: and recursive: lines of ${source2} judge its calls, so an edit cannot change them; fix the code that produces the value they reject.`;
     PROTECT_LIST_ERROR = (source2) => `The protect: list of ${source2} names what judges its calls, so an edit cannot change it; fix the code that produces the value they reject.`;
     formatArgList = (args, prefixFolder = false) => {
       const parts = Object.entries(args).map(([raw, type]) => `${raw}: ${type}`);
@@ -231619,7 +232169,8 @@ Invoke this as a separate tool action; it is not callable from eval.`;
           diagnostic_count: diagnostics.length
         });
         const effectEvents = traceMark === void 0 ? [] : this.runtime.trace.events.slice(traceMark).filter((event) => event.kind === "effect" || event.kind === "host");
-        const effects = effectEvents.map((event) => String(event.capability ?? event.operation ?? event.kind));
+        const completedEffectEvents = effectEvents.filter((event) => event.kind === "effect" ? event.phase === "completed" : event.phase === void 0 || event.phase === "completed");
+        const effects = completedEffectEvents.map((event) => String(event.capability ?? event.operation ?? event.kind));
         const receipts = effectEvents.filter((event) => event.kind === "effect" && event.phase === "completed").slice(-8).map((event) => `${String(event.capability ?? event.operation ?? "service call")} completed: ${this.show(typeof event.result === "string" ? event.result : JSON.stringify(event.result) ?? "null")}`);
         this.evalDetail = { console: logs.join("\n") };
         const reaching = /is not defined|unavailable in eval|is not a function|Cannot find name/.test(message2 + diagnostics.map((item) => String(item.message ?? "")).join("\n"));
@@ -231664,10 +232215,35 @@ Repair subsequent work without repeating an already completed write.` : "") + //
         const element = resolved.kind === "neuralese" ? this.env.resolve(resolved.element) : resolved;
         return element.kind === "prim" && element.name === "string";
       }
+      /**
+       * What is wrong with the files this call wrote under its definition's `writes:` type (runtime/writes.ts), in one
+       * sentence; undefined when they fit or nothing is declared.
+       */
+      writesProblem() {
+        const tx2 = this.lam.projectTransaction;
+        if (!this.lam.writes || !tx2?.open) return void 0;
+        this.writesChecked ??= writesFields(this.lam.writes, this.env);
+        return writesProblem(this.writesChecked, this.env, this.lam.functionName || "this call", tx2.folder.diffSync().changes);
+      }
+      /** Asynchronous `writes:` check: enforces both structural file contracts and `Is<string, P>` file refinements. */
+      async writesProblemAsync() {
+        const structural = this.writesProblem();
+        if (structural) return structural;
+        const tx2 = this.lam.projectTransaction;
+        if (!this.lam.writes || !tx2?.open || !this.refinementCheck || !this.writesChecked) return void 0;
+        const checks = writesRefinementChecks(this.writesChecked, this.env, tx2.folder.diffSync().changes);
+        for (const check of checks) {
+          const failure2 = await this.refinementCheck(check.text, check.type, `files/${check.path}`);
+          if (failure2) return `${check.path} failed ${check.pattern} (${failure2.code}): ${failure2.message}`;
+        }
+        return void 0;
+      }
+      writesChecked;
       /** Complete the invocation if an eval has returned a value of the declared type. */
       finish() {
         if (this.lam.return === MISSING || this.lam.type.kind !== "lambda") return false;
         if (problems(this.lam.return, this.lam.type.returns, this.env, "return").holes.length) return false;
+        if (this.writesProblem()) return false;
         const tx2 = this.lam.projectTransaction;
         if (tx2?.open) {
           if (this.lam.reducerMode === "apply") {
@@ -231802,8 +232378,9 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           return this.writeNeuraleseResult(value, wanted, source2, "typed-text-result");
         }
         const resultType = this.lam.type.kind === "lambda" ? this.lam.type.returns : parseTypeCached("null");
+        const preserveRecordExtras = source2 === "eval-return";
         try {
-          return coerce(value, resultType, this.env, "return", source2 === "return_result" ? {} : { preserveRecordExtras: true });
+          return coerce(value, resultType, this.env, "return", preserveRecordExtras ? { preserveRecordExtras: true } : {});
         } catch (first) {
           if (!(first instanceof Reject)) throw first;
           if (wanted.kind === "neuralese" && element && !(element.kind === "prim" && element.name === "string") && jsonSerializableType(element, this.env)) {
@@ -231875,11 +232452,18 @@ Repair subsequent work without repeating an already completed write.` : "") + //
               throw new Reject([{ path: "finish", code: "bad-action", expected: "a boolean: true completes this eval's fresh typed result" }]);
             return record3(await this.evaluate(String(args.code ?? ""), timeout, args.finish === true, toolCallId));
           }
-          if (name === "return_result" && (args.status ?? "success") === "success" && Object.hasOwn(args, "value") && this.lam.type.kind === "lambda") {
-            if (typeof args.value === "string" && PLACEHOLDER_VALUE.test(args.value.trim()))
-              throw new Reject([{ path: "value", code: "bad-action", expected: PLACEHOLDER_ADVICE }]);
-            const value = await this.coerceReturn(args.value, "return_result", true);
-            return record3(this.scopeTool(name, { ...args, value }));
+          if (name === "return_result" && (args.status ?? "success") === "success" && this.lam.type.kind === "lambda") {
+            if (Object.hasOwn(args, "value")) {
+              if (typeof args.value === "string" && PLACEHOLDER_VALUE.test(args.value.trim()))
+                throw new Reject([{ path: "value", code: "bad-action", expected: PLACEHOLDER_ADVICE }]);
+              const value = await this.coerceReturn(args.value, "return_result", true);
+              const unwritten2 = await this.writesProblemAsync();
+              if (unwritten2) throw new Reject([{ path: "files", code: "writes-unsatisfied", text: `writes-unsatisfied: ${unwritten2}` }]);
+              return record3(this.scopeTool(name, { ...args, value }));
+            }
+            const unwritten = await this.writesProblemAsync();
+            if (unwritten) throw new Reject([{ path: "files", code: "writes-unsatisfied", text: `writes-unsatisfied: ${unwritten}` }]);
+            return record3(this.scopeTool(name, args));
           }
           if (CODE_TOOLS.includes(name)) return record3(this.functionTool(name, args));
           if (name === "bash") {
@@ -232120,6 +232704,8 @@ Repair subsequent work without repeating an already completed write.` : "") + //
               }
             }
           }
+          const unwritten = this.writesProblem();
+          if (unwritten) throw new Reject([{ path: "files", code: "writes-unsatisfied", text: `writes-unsatisfied: ${unwritten}` }]);
           this.lam.return = value;
           if (!this.finish()) throw new Reject([returnValueRejection(wording, { kind: "incomplete" }, formatType(this.lam.type.returns))]);
           return { kind: "completed", text: `Returned ${oneLine(value, void 0, this.runtime.displayLiveId, this.runtime.untrusted)}.`, value };
@@ -232134,7 +232720,7 @@ Repair subsequent work without repeating an already completed write.` : "") + //
       notATool(name, args) {
         const root2 = name.split(".")[0];
         const hasCodebase = Object.keys(this.lam.codebase).length > 0;
-        const builtins = ["transcript", "nl", "iterateOn", "decide", "read", "NatlangContext", ...hasCodebase ? ["search_code"] : []];
+        const builtins = ["transcript", "nl", "iterateOn", "decide", "read", "refine", "assume", "NatlangContext", ...hasCodebase ? ["search_code"] : []];
         const inputs = this.lam.type.kind === "lambda" ? this.lam.type.params.fields.map((field) => field.name) : [];
         const scope = /* @__PURE__ */ new Set([
           ...builtins,
@@ -232149,8 +232735,8 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           return { path: name, code: "bad-action", expected: "a scope-eval tool" };
         const first = Object.values(args).find((value2) => typeof value2 === "string" || typeof value2 === "number");
         const shown = first === void 0 ? "" : JSON.stringify(first);
-        const awaited = builtins.includes(root2) && root2 !== "transcript" && root2 !== "NatlangContext" && root2 !== "search_code" || Object.hasOwn(this.lam.codebase, root2) || this.persistentScopeHelpers.has(root2);
-        const value = !awaited && root2 !== "transcript" && root2 !== "NatlangContext" && root2 !== "search_code" && !Object.hasOwn(this.availableServices(), root2);
+        const awaited = builtins.includes(root2) && root2 !== "transcript" && root2 !== "NatlangContext" && root2 !== "search_code" && root2 !== "assume" || Object.hasOwn(this.lam.codebase, root2) || this.persistentScopeHelpers.has(root2);
+        const value = !awaited && root2 !== "transcript" && root2 !== "NatlangContext" && root2 !== "search_code" && root2 !== "assume" && !Object.hasOwn(this.availableServices(), root2);
         const example2 = name === "transcript" ? 'transcript.search("\u2026")' : value && name === root2 ? name : `${awaited ? "await " : ""}${name}(${shown})`;
         return { path: name, code: "bad-action", text: `${name}: bad-action, ${name} is not a tool: ${root2} is in this call's eval scope. Use it in code, for example eval with code: ${example2}${builtins.includes(root2) ? `; read_code("${root2}") shows how to use it` : ""}.` };
       }
@@ -232184,7 +232770,19 @@ Repair subsequent work without repeating an already completed write.` : "") + //
           ...Object.keys(this.lam.codebase),
           ...Object.keys(this.availableServices())
         ])];
-        return `This call's eval scope has ${names.length ? names.join(", ") : "no names of its own"}, the built-ins ${canGenerateNl(this.runtime.frame) ? "nl, " : ""}read, iterateOn, transcript and NatlangContext (read_code shows how to use them), and standard JavaScript; nothing else (no Node modules, no require).`;
+        const builtIns = [
+          ...canGenerateNl(this.runtime.frame) ? ["nl"] : [],
+          "read",
+          "iterateOn",
+          "decide",
+          "refine",
+          "assume",
+          "transcript",
+          "NatlangContext",
+          ...Object.keys(this.lam.codebase).length > 0 ? ["search_code"] : []
+        ];
+        const builtInList = `${builtIns.slice(0, -1).join(", ")} and ${builtIns.at(-1)}`;
+        return `This call's eval scope has ${names.length ? names.join(", ") : "no names of its own"}, the built-ins ${builtInList} (read_code shows how to use them), and standard JavaScript; nothing else (no Node modules, no require).`;
       }
       availableServices() {
         const frame = currentFrame();
@@ -232274,7 +232872,7 @@ ${SELF_CALL_ADVICE}`;
             const alias = requested.slice(separator + 1);
             const record4 = parent && (this.runtime.frame?.task.programView?.record(parent) ?? parent);
             if (record4 && record4.kind !== "namespace" && Object.hasOwn(record4.types, alias)) {
-              const declaration = (record4.kind === "module" ? record4.declarations?.[alias] : void 0) ?? `type ${alias} = ${record4.types[alias]};`;
+              const declaration = (record4.kind === "module" ? record4.declarations?.[alias] : void 0) ?? aliasDeclaration(alias, record4.types[alias]);
               return { kind: "ok", text: declaration, value: declaration };
             }
           }
@@ -232287,12 +232885,12 @@ These members are available to this call under its current service scope. Inspec
             return { kind: "ok", text: declaration, value: declaration };
           }
           if (name === "read_code" && Object.hasOwn(this.lam.typesSrc ?? {}, requested)) {
-            const alias = `type ${requested} = ${this.lam.typesSrc[requested]};`;
+            const alias = aliasDeclaration(requested, this.lam.typesSrc[requested]);
             return { kind: "ok", text: alias, value: alias };
           }
           const programAlias = name === "read_code" ? codebaseTypeAlias(this.lam.codebase, requested) : void 0;
           if (programAlias !== void 0) {
-            const alias = `type ${requested} = ${programAlias};`;
+            const alias = aliasDeclaration(requested, programAlias);
             return { kind: "ok", text: alias, value: alias };
           }
           const owner = name === "read_code" && /^[A-Za-z_$][\w$]*$/.test(requested) ? Object.entries(availableServices).find(([service3, value]) => Object.hasOwn(this.runtime.declarations, service3) && value !== null && typeof value === "object" && requested in value)?.[0] : void 0;
@@ -232347,7 +232945,7 @@ ${paths.join("\n")}`;
         updated.codebase = record3.codebase;
         if (record3.kind === "natlang" && updated.kind === "natlang" && JSON.stringify(record3.protect ?? []) !== JSON.stringify(updated.protect ?? []))
           throw new Reject([{ path: requested, code: "protected", text: PROTECT_LIST_ERROR(record3.source) }]);
-        if (record3.kind === "natlang" && updated.kind === "natlang" && JSON.stringify([record3.ensures ?? [], record3.measure ?? null, record3.recursive ?? null]) !== JSON.stringify([updated.ensures ?? [], updated.measure ?? null, updated.recursive ?? null]))
+        if (record3.kind === "natlang" && updated.kind === "natlang" && JSON.stringify([record3.ensures ?? [], record3.measure ?? null, record3.recursive ?? null, record3.writes ?? null]) !== JSON.stringify([updated.ensures ?? [], updated.measure ?? null, updated.recursive ?? null, updated.writes ?? null]))
           throw new Reject([{ path: requested, code: "protected", text: CONTRACT_EDIT_ERROR(record3.source) }]);
         let inlineRevision;
         if (updated.kind === "module" && record3.kind === "module") {
@@ -232963,8 +233561,16 @@ This is not the result: ${refinementFailure.code}: ${refinementFailure.message}`
           this.evalDetail = { value: output.result ?? null, console: (evaluated.logs ?? []).join("\n") };
           const rendered = isLive(output.result) || isHandle(output.result) ? livePreview(output.result, this.runtime.displayLiveId) : raw.valueless === true && !isHandle(output.result) ? "undefined" : this.showValue(output.result ?? null);
           const status = functionResult !== void 0 ? stagedMessage(functionResult, this.runtime.displayLiveId, this.runtime.untrusted) : notResult;
-          const stored = changed.map(([name, , value]) => `local ${name} = ${oneLine(value, name, this.runtime.displayLiveId, this.runtime.untrusted)}` + // A Neuralese value is shown as its state; the words beside it say what it is and how to use it.
-          (isNeuraleseRef(value) ? ` (${value.$neuralese.type}: pass it on as is, or write await read(${name}) for an ordinary copy)` : ""));
+          const shownLogs = evaluated.logs?.length ? this.show(evaluated.logs.join("\n")) : "";
+          const logStatus = shownLogs ? `console:
+${shownLogs}
+` : "";
+          const stored = changed.map(([name, , value]) => {
+            const preview4 = oneLine(value, name, this.runtime.displayLiveId, this.runtime.untrusted);
+            const shown = typeof value === "string" && preview4.includes("<<cut off") && shownLogs && shownLogs.includes(value) ? `(full string printed above, ${value.length} chars)` : preview4;
+            return `local ${name} = ${shown}` + // A Neuralese value is shown as its state; the words beside it say what it is and how to use it.
+            (isNeuraleseRef(value) ? ` (${value.$neuralese.type}: pass it on as is, or write await read(${name}) for an ordinary copy)` : "");
+          });
           const performed = /* @__PURE__ */ new Map();
           if (modelFacing("effect-receipt")) {
             for (const event of this.runtime.trace.events.slice(traceMark))
@@ -232981,9 +233587,6 @@ ${compiled2.transientHelpers.map((helper) => `${helper.name} is available only i
           const unset = compiled2.bindings.filter((binding) => binding.mutable && !binding.initializer).map((binding) => binding.name).filter((name) => output.bindings[name] === void 0 && !Object.hasOwn(this.lam.let, name));
           const unsetStatus = unset.length ? `
 Not kept: ${unset.join(", ")} ${unset.length > 1 ? "have" : "has"} no value, and a local without a value is not kept; declare it with one (let ${unset[0]} = \u2026).` : "";
-          const logStatus = evaluated.logs?.length ? `console:
-${this.show(evaluated.logs.join("\n"))}
-` : "";
           const shaped = requested?.args.value;
           if (requested?.tool === "return_result" && requested.args.status === "success" && requested.args.reason === void 0 && shaped && typeof shaped === "object" && !Array.isArray(shaped) && ["success", "blocked", "failed"].includes(String(shaped.status)) && Object.keys(shaped).every((key) => ["status", "value", "reason"].includes(key)) && this.lam.type.kind === "lambda") {
             let fits = true;
@@ -233010,6 +233613,8 @@ return_result: this is not the result: ${unrefined.code}: ${unrefined.message}`,
             this.lam.return = staged2;
             this.failureDebug = void 0;
             if (complete) {
+              const unwritten = await this.writesProblemAsync();
+              if (unwritten) throw new Reject([{ path: "files", code: "writes-unsatisfied", text: `writes-unsatisfied: ${unwritten}` }]);
               const done = this.scopeTool("return_result", { status: "success", value: staged2 });
               return { ...done, text: `${logStatus}${rendered}${storedStatus}${unsetStatus}
 ${done.text}` };
@@ -233034,6 +233639,8 @@ ${requested.tool}: ${refused.text}` };
               const finishHint = notResult ? "\nCorrect this eval's value to match the declared result type; a previously staged value cannot finish this action." : "\nFor inspection or staging, omit finish or set false; finish:true needs a fresh value of the declared result type from this eval as its final expression or explicit return, and cannot reuse an older staged value.";
               return { kind: "rejected", text: logStatus + rendered + storedStatus + unsetStatus + notResult + finishHint, codes: [refinementFailure?.code ?? "missing-fresh-result"] };
             }
+            const unwritten = await this.writesProblemAsync();
+            if (unwritten) throw new Reject([{ path: "files", code: "writes-unsatisfied", text: `writes-unsatisfied: ${unwritten}` }]);
             const done = this.scopeTool("return_result", { status: "success" });
             return { ...done, text: logStatus + rendered + storedStatus + unsetStatus + "\n" + done.text };
           }
@@ -233559,7 +234166,7 @@ function schemaOf(type, env, depth2 = 0) {
   if (resolved.kind === "tuple") {
     const elements = resolved.elements.map((element) => schemaOf(element, env, depth2 + 1));
     const minItems = resolved.minLength ?? elements.length;
-    const exact = (length) => ({ type: "array", prefixItems: elements.slice(0, length), minItems: length, maxItems: length });
+    const exact = (length) => length === 0 ? { type: "array", minItems: 0, maxItems: 0 } : { type: "array", prefixItems: elements.slice(0, length), minItems: length, maxItems: length };
     if (minItems === elements.length || tupleSchemaPrefixItems())
       return { ...exact(elements.length), minItems };
     return { anyOf: Array.from({ length: elements.length - minItems + 1 }, (_10, index) => exact(minItems + index)) };
@@ -233583,7 +234190,7 @@ function referencedTypeAliases(signatures, definitions, declarations = {}, trans
     }
   };
   for (const signature of signatures) visit(signature);
-  return [...found].map((name) => declarations[name] ?? `type ${name} = ${definitions[name]};`);
+  return [...found].map((name) => declarations[name] ?? aliasDeclaration(name, definitions[name]));
 }
 function largeCallableScope(codebase) {
   const pending = Object.values(codebase);
@@ -233798,12 +234405,13 @@ function recordMarginals(values, probabilities) {
   });
   return out.size ? Object.fromEntries([...out].map(([key, field]) => [key, [...field].map(([value, probability]) => ({ value, probability }))])) : void 0;
 }
-var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, SEARCH_BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, STABLE_TOOLS, TOOL_RANK, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, tupleSchemaPrefixItems, isAdapterValue, capturedValue, isPlainRecord2, STAGED_ANSWER, NativeToolAgent, reasoningRefused;
+var scopeValueChars, nativeProgramGuidanceWrites, nativeProgramGuidancePins, UNRUN_CALL, READ_ONLY_TOOLS, replyText, READ_CODE_DESCRIPTION, EDIT_CODE_DESCRIPTION, thought, RETURN_RESULT_DESCRIPTION, BUILT_INS_LINE, SEARCH_BUILT_INS_LINE, NL_DEPTH_LIMIT_BUILT_INS_LINE, NL_DEPTH_LIMIT_SEARCH_BUILT_INS_LINE, withCallNotes, OPENING_THOUGHT, FOLDER_THOUGHT, DIFF_CODE_DESCRIPTION, STABLE_TOOLS, TOOL_RANK, tool, FOLDER_DECLARATIONS, DEFAULT_CONTEXT_TOKENS, REPLY_MARGIN, tupleSchemaPrefixItems, isAdapterValue, capturedValue, isPlainRecord2, STAGED_ANSWER, NativeToolAgent, reasoningRefused;
 var init_agent = __esm({
   "src/native/agent.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_native_protocol();
+    init_type_aliases();
     init_tool_markup();
     init_program();
     init_identity();
@@ -233847,6 +234455,7 @@ var init_agent = __esm({
     BUILT_INS_LINE = promptRevision() === "2026-11-22" ? "Eval also has the built-ins nl, iterateOn, transcript and decide; read_code shows how to use each." : "Eval also has the built-ins nl, iterateOn, transcript, decide and NatlangContext; read_code shows how to use each.";
     SEARCH_BUILT_INS_LINE = promptRevision() === "2026-11-22" ? BUILT_INS_LINE : "Eval also has the built-ins nl, iterateOn, transcript, decide, NatlangContext and search_code; read_code shows how to use each.";
     NL_DEPTH_LIMIT_BUILT_INS_LINE = (promptRevision() === "2026-11-22" ? "Eval has iterateOn, transcript and decide; read_code shows how to use each. " : "Eval has iterateOn, transcript, decide and NatlangContext; read_code shows how to use each. ") + "This is the fifth ad hoc layer: make further judgments here or call an existing named function from a file.";
+    NL_DEPTH_LIMIT_SEARCH_BUILT_INS_LINE = promptRevision() === "2026-11-22" ? NL_DEPTH_LIMIT_BUILT_INS_LINE : "Eval has iterateOn, transcript, decide, NatlangContext and search_code; read_code shows how to use each. This is the fifth ad hoc layer: make further judgments here or call an existing named function from a file.";
     withCallNotes = (opening, notes) => notes ? `${opening}
 
 ${notes}` : opening;
@@ -234552,6 +235161,21 @@ ${notes}` : opening;
         const scopedReads = response.raw_response?.__natlang_native_read_occurrences;
         const preparedMessageOffset = Array.isArray(scopedReads) ? 1 : 0;
         const reads = [];
+        const rlCapture = response.raw_response?.x_natlang_rl_capture;
+        const importReceipts = rlCapture?.native_state_imports ?? response.raw_response?.native_state?.imports;
+        const inContextText = (Array.isArray(importReceipts) ? importReceipts : []).flatMap((raw) => {
+          const receipt = raw;
+          return receipt?.mode === "in-context-text" && typeof receipt.id === "string" ? [{
+            id: receipt.id,
+            ...typeof receipt.source_occurrence === "string" ? { source: receipt.source_occurrence } : {}
+          }] : [];
+        });
+        const readInContext = (block, declared, source2) => {
+          const index = inContextText.findIndex((receipt) => receipt.id === block && (receipt.source === void 0 || receipt.source === declared || receipt.source === source2));
+          if (index < 0) return false;
+          inContextText.splice(index, 1);
+          return true;
+        };
         const findRefs = (value) => {
           if (typeof value === "string") {
             return runtimeTextToParts(value).flatMap((part) => part.type === "text" ? [] : [{ block: part.id, ...part.type === "native_state" && part.stop_gradient ? { stop: true } : {}, ...part.source_occurrence ? { source: part.source_occurrence } : {} }]);
@@ -234610,12 +235234,13 @@ ${notes}` : opening;
                 const artifact = await this.options.neuralese?.store.getNativeState?.(block);
                 if (!artifact) throw new NeuraleseUnsupportedError(`native-state consumer artifact ${block} is unavailable for provenance`);
                 const source2 = resolveReadSource(block, use.source);
+                const inContext = readInContext(block, use.source, source2);
                 const node = graphNode(trace, "block_read", {
                   call_id: callId,
                   turn: turnId,
                   block,
                   ...use.stop ? { stop_gradient: true } : {},
-                  format: "native-state",
+                  format: inContext ? "in-context-text" : "native-state",
                   native_identity: {
                     architecture: artifact.metadata.architecture,
                     checkpoint_sha256: artifact.metadata.checkpoint_sha256,
@@ -234624,7 +235249,15 @@ ${notes}` : opening;
                   },
                   positions: [index + preparedMessageOffset, part]
                 }, [blockInput(block, "block", source2, producerScopeForTrace(trace))]);
-                if (node) reads.push({ node, port: "read", block, source: source2, ...use.source ? { declared: use.source } : {}, stop: !!use.stop });
+                if (node) reads.push({
+                  node,
+                  port: "read",
+                  block,
+                  source: source2,
+                  ...use.source ? { declared: use.source } : {},
+                  stop: !!use.stop,
+                  ...inContext ? { inContext: true } : {}
+                });
               }
             }
           }
@@ -234637,7 +235270,9 @@ ${notes}` : opening;
           const [messageIndex, partIndex] = item.positions[0];
           const artifact = await this.options.neuralese?.store.getNativeState?.(item.id);
           if (!artifact) throw new NeuraleseUnsupportedError(`native-state consumer artifact ${item.id} is unavailable for provenance`);
-          const source2 = resolveReadSource(item.id, typeof item.source_occurrence === "string" ? item.source_occurrence : void 0);
+          const declared = typeof item.source_occurrence === "string" ? item.source_occurrence : void 0;
+          const source2 = resolveReadSource(item.id, declared);
+          const inContext = readInContext(item.id, declared, source2);
           const node = graphNode(
             trace,
             "block_read",
@@ -234646,7 +235281,7 @@ ${notes}` : opening;
               turn: turnId,
               block: item.id,
               ...item.stop_gradient === true ? { stop_gradient: true } : {},
-              format: "native-state",
+              format: inContext ? "in-context-text" : "native-state",
               native_identity: {
                 architecture: artifact.metadata.architecture,
                 checkpoint_sha256: artifact.metadata.checkpoint_sha256,
@@ -234662,13 +235297,14 @@ ${notes}` : opening;
             port: "read",
             block: item.id,
             source: source2,
-            ...typeof item.source_occurrence === "string" ? { declared: item.source_occurrence } : {},
-            stop: item.stop_gradient === true
+            ...declared !== void 0 ? { declared } : {},
+            stop: item.stop_gradient === true,
+            ...inContext ? { inContext: true } : {}
           });
         }
         const capturedPrompt = response.raw_response?.x_natlang_rl_capture;
         if (Array.isArray(capturedPrompt?.prompt)) {
-          const remaining = [...reads];
+          const remaining = reads.filter((read) => !read.inContext);
           for (const [promptIndex, raw] of capturedPrompt.prompt.entries()) {
             if (!raw || typeof raw !== "object" || raw.kind !== "native_state") continue;
             const segment = raw;
@@ -234897,12 +235533,14 @@ ${notes}` : opening;
         const lam = session.lam;
         if (lam.type.kind !== "lambda") throw new TypeError("callHeading needs a function call");
         const program = (lam.originalBody ?? lam.body).replace(/^\n+|\n+$/g, "");
+        const writes = lam.writes && lam.projectTransaction ? lam.writes : void 0;
         const scopeTypes = referencedTypeAliases([
           ...lam.type.params.fields.map((field) => formatType(field.type)),
-          formatType(lam.type.returns)
+          formatType(lam.type.returns),
+          ...writes ? [writes] : []
         ], lam.typesSrc, {}, !this.compactCallableScope(session));
         const signature = `${lam.functionName || "run"}(` + lam.type.params.fields.map((field) => `${field.name}${field.optional ? "?" : ""}: ${formatType(field.type)}`).join(", ") + `): ${formatType(lam.type.returns)}`;
-        return { signature, scopeTypes, program };
+        return { signature, scopeTypes, program, ...writes ? { writes } : {} };
       }
       compactCallableScope(session) {
         return modelFacing("compact-callable-scope") && largeCallableScope(session.lam.codebase);
@@ -234912,7 +235550,7 @@ ${notes}` : opening;
       scopeOpening(session) {
         const lam = session.lam;
         if (lam.type.kind !== "lambda") return "Scope:";
-        const { signature, scopeTypes, program } = this.callHeading(session);
+        const { signature, scopeTypes, program, writes } = this.callHeading(session);
         const writable = Object.values(lam.captures ?? {}).filter((cell) => cell.mutable).map((cell) => cell.name);
         const services = session.availableServices();
         const noDirectServices = modelFacing("compact-callable-scope") && Object.keys(services).length === 0 && Object.keys(session.runtime.services).length > 0;
@@ -234925,6 +235563,7 @@ ${notes}` : opening;
         ];
         return [
           `You are inside this call: ${signature}`,
+          ...writes ? [`The files it writes: ${writes}`] : [],
           ...delegated.length ? ["", "Host services bound only in the listed callable scopes:", ...delegated] : [],
           ...scopeTypes,
           "",
@@ -234936,7 +235575,7 @@ ${notes}` : opening;
           ...noDirectServices ? ["", "This call has no directly bound host services. Work from its inputs and the callables available here."] : [],
           ...lam.skills?.listing ? ["", lam.skills.listing] : [],
           "",
-          !canGenerateNl(session.runtime.frame) ? NL_DEPTH_LIMIT_BUILT_INS_LINE : largeCallableScope(lam.codebase) ? SEARCH_BUILT_INS_LINE : BUILT_INS_LINE
+          !canGenerateNl(session.runtime.frame) ? largeCallableScope(lam.codebase) ? NL_DEPTH_LIMIT_SEARCH_BUILT_INS_LINE : NL_DEPTH_LIMIT_BUILT_INS_LINE : largeCallableScope(lam.codebase) ? SEARCH_BUILT_INS_LINE : BUILT_INS_LINE
         ].join("\n");
       }
       /** Ambient TypeScript declarations for the functions this call can use, with the aliases they reference. */
@@ -235138,10 +235777,8 @@ ${notes}` : opening;
           };
           value = attempt(args.value);
           if (value === MISSING && typeof args.value === "string") {
-            try {
-              value = attempt(JSON.parse(args.value));
-            } catch {
-            }
+            const parsed = literalText(args.value);
+            if (parsed) value = attempt(parsed.value);
           }
         } else value = lam.return;
         if (value === MISSING) return;
@@ -235243,10 +235880,32 @@ ${notes}` : opening;
             throw new Error("decision readout sampled an option outside its option set");
           return { scores, probabilities: softmax(scores.log_probs) };
         };
+        const logSoftmax = (logProbs) => {
+          const peak = Math.max(...logProbs);
+          const lse = peak + Math.log(logProbs.reduce((sum, lp2) => sum + Math.exp(lp2 - peak), 0));
+          return logProbs.map((lp2) => lp2 - lse);
+        };
+        const tieBreakFirst = typeof process !== "undefined" && (process.env.NATLANG_DECISION_TIEBREAK ?? "").trim() === "first";
+        const chooseOption = (probabilities, sampleLogProbs, options) => {
+          if (tieBreakFirst) return probabilities.indexOf(Math.max(...probabilities));
+          const maxProb = Math.max(...probabilities);
+          let tied = probabilities.map((_10, index) => index).filter((index) => maxProb - probabilities[index] <= 1e-12);
+          if (tied.length <= 1) return tied[0] ?? 0;
+          if (sampleLogProbs.length) {
+            const normalized = sampleLogProbs.map(logSoftmax);
+            const meanLog = new Map(tied.map((index) => [index, normalized.reduce((sum, row) => sum + row[index], 0) / normalized.length]));
+            const maxLog = Math.max(...tied.map((index) => meanLog.get(index)));
+            tied = tied.filter((index) => maxLog - meanLog.get(index) <= 1e-12);
+            if (tied.length === 1) return tied[0];
+          }
+          const key = hexDigest(JSON.stringify({ question, options }));
+          const tieSeed = deriveSeed(session.runtime.seedPolicy.root ?? 0, `${runSeedKey(session.runtime.options)}:${key}`, session.lam.attempts, "decision-tiebreak", 0);
+          return tied[Math.abs(tieSeed) % tied.length];
+        };
         const score = async (options, open) => {
           if (!reasonings.length) {
             const { scores: scores2, probabilities: probabilities2 } = await scoreOne(options, open);
-            return { scores: scores2, probabilities: probabilities2, chosen: scores2.chosen ?? probabilities2.indexOf(Math.max(...probabilities2)) };
+            return { scores: scores2, probabilities: probabilities2, chosen: scores2.chosen ?? chooseOption(probabilities2, [scores2.log_probs], options) };
           }
           const each = await Promise.all(reasonings.map((reasoning) => scoreOne(options, open, reasoning)));
           const probabilities = options.map((_10, index) => each.reduce((sum, item) => sum + item.probabilities[index], 0) / each.length);
@@ -235259,7 +235918,7 @@ ${notes}` : opening;
           return {
             scores,
             probabilities,
-            chosen: sampled ?? probabilities.indexOf(Math.max(...probabilities)),
+            chosen: sampled ?? chooseOption(probabilities, each.map((item) => item.scores.log_probs), options),
             reasoned: {
               samples: each.length,
               action,
@@ -237881,6 +238540,7 @@ __export(kernel_exports, {
   SAME_QUESTION_REFUSAL: () => SAME_QUESTION_REFUSAL,
   callFailureReason: () => callFailureReason,
   definitionNode: () => definitionNode,
+  ensuresGate: () => ensuresGate,
   instantiateDefinition: () => instantiateDefinition,
   invokeDefinition: () => invokeDefinition,
   isModelOutcomeFailure: () => isModelOutcomeFailure,
@@ -238080,6 +238740,7 @@ function definitionNode(definition, inputs, options = {}) {
   node.hostClasses = options.classes;
   if (definition.readout) node.readout = definition.readout;
   if (definition.withhold?.length) node.withheldTools = [...definition.withhold];
+  if (definition.writes) node.writes = definition.writes;
   if ((definition.protect?.length || definition.ensures?.length) && definition.source)
     node.protectedSources = [
       ...protectedSources(definition.source, definition.protect),
@@ -238099,6 +238760,29 @@ function definitionNode(definition, inputs, options = {}) {
   });
   if (options.captures && Object.keys(options.captures).length) node.captures = options.captures;
   return node;
+}
+function ensuresGate(definition, inputs, frame, judgeFrame, model, callId, trace) {
+  const task = frame.task, verdicts = /* @__PURE__ */ new Map();
+  const input = {
+    frame,
+    owner: definition,
+    inputs,
+    checker: task.refinementChecker(),
+    judges: task.refinementJudges(model, judgeFrame),
+    callId,
+    signal: frame.signal ?? task.signal,
+    trace,
+    untrusted: scopedUntrusted(task),
+    emit: (kind, data) => {
+      trace.emit(kind, data);
+    }
+  };
+  return (value) => {
+    const result = toHost(value), key = canonicalValue(result);
+    let verdict = verdicts.get(key);
+    if (!verdict) verdicts.set(key, verdict = checkEnsures(input, result));
+    return verdict;
+  };
 }
 async function bindContextSkills(node, files2) {
   const loaded = await loadSkills(memorySkillSource(files2));
@@ -238263,6 +238947,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       recursive: record3.recursive,
       measure: record3.measure,
       ensures: record3.ensures,
+      writes: record3.writes,
       self: record3.recursive || record3.measure ? record3 : void 0
     };
   } else if (replacement?.kind === "lambda.instructions" && options.instructions === void 0)
@@ -238547,7 +239232,17 @@ async function runDefinitionBody(frame, definition, positional, options, transac
   const nativeReader = !!(task.runtime.options.neuralese?.nativeStateConsumer || task.runtime.options.neuralese?.nativeStateConsumerForCall);
   const guidanceBound = !!owner && programGuidanceProgram(task.nativeProgramGuidance) === owner;
   const selectedNativeGuidance = !eligibleGuidance ? void 0 : guidanceBound ? guidanceForCall(task.nativeProgramGuidance, definition.name) : nativeReader ? view.nativeGuidance() : void 0;
-  const selectedAuthoredGuidance = eligibleGuidance && !guidanceBound && !selectedNativeGuidance && !nativeReader && view.guidance() && view.program?.id ? authoredTextGuidance(view.guidance(), view.program.id) : void 0;
+  const resolveExplicitTextGuidance = () => {
+    const raw = task.authoredProgramGuidance;
+    if (!raw || nativeReader || selectedNativeGuidance) return void 0;
+    if ("kind" in raw && raw.kind === "authored-text-guidance") return raw;
+    const scoped2 = raw;
+    const fnKey = definition.source && scoped2.functions && Object.hasOwn(scoped2.functions, definition.source) ? definition.source : scoped2.functions && Object.hasOwn(scoped2.functions, definition.name) ? definition.name : void 0;
+    const parts = [scoped2.program?.trim(), fnKey ? scoped2.functions[fnKey]?.trim() : void 0].filter((part) => !!part);
+    if (!parts.length) return void 0;
+    return authoredTextGuidance(parts.join("\n\n"), scoped2.programId ?? owner ?? "directory-program");
+  };
+  const selectedAuthoredGuidance = resolveExplicitTextGuidance() ?? (eligibleGuidance && !guidanceBound && !selectedNativeGuidance && !nativeReader && view.guidance() && view.program?.id ? authoredTextGuidance(view.guidance(), view.program.id) : void 0);
   const handoffNames = task.runtime.options.escalation?.enabled === false ? [] : task.runtime.options.escalation?.models ?? [];
   if (new Set(handoffNames).size !== handoffNames.length) throw new Error("escalation model chain contains a cycle");
   const configuredModels = task.runtime.options.models ?? {};
@@ -238610,7 +239305,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       definitionId: definition.id,
       name: definition.name
     }) } : {},
-    ...signature?.refinedReturns || definition.ensures?.length ? { refinement: { checker: task.refinementChecker(), ...task.refinementJudges(model, frame) } } : {}
+    ...signature?.refinedReturns || definition.ensures?.length || definition.writes && writesContainsRefinement(definition.writes, signature?.env ?? new TypeEnv(parseAliases(definition.types, false))) ? { refinement: { checker: task.refinementChecker(), ...task.refinementJudges(model, frame) } } : {}
   }) : void 0;
   runtime = new NativeRuntime({
     environment,
@@ -238704,29 +239399,7 @@ async function runDefinitionBody(frame, definition, positional, options, transac
       });
     }
     if (handoff) node.handoff = handoff;
-    if (definition.ensures?.length) {
-      const verdicts = /* @__PURE__ */ new Map();
-      const input = {
-        frame: childFrame,
-        owner: definition,
-        inputs,
-        checker: task.refinementChecker(),
-        judges: task.refinementJudges(model, frame),
-        callId,
-        signal: frame.signal ?? task.signal,
-        trace: runtime.trace,
-        untrusted: scopedUntrusted(task),
-        emit: (kind, data) => {
-          runtime.trace.emit(kind, data);
-        }
-      };
-      node.ensures = (value) => {
-        const result2 = toHost(value), key = canonicalValue(result2);
-        let verdict = verdicts.get(key);
-        if (!verdict) verdicts.set(key, verdict = checkEnsures(input, result2));
-        return verdict;
-      };
-    }
+    if (definition.ensures?.length) node.ensures = ensuresGate(definition, inputs, childFrame, frame, model, callId, runtime.trace);
     if (folder2) {
       node.projectTransaction = folder2.transaction;
       node.reducerMode = folder2.mode;
@@ -239015,6 +239688,7 @@ var init_kernel = __esm({
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_program();
+    init_writes();
     init_hash();
     init_agent();
     init_runtime2();
@@ -239254,6 +239928,7 @@ function natlangDefinition(record3) {
     ...record3.recursive ? { recursive: record3.recursive } : {},
     ...record3.measure ? { measure: record3.measure } : {},
     ...record3.ensures ? { ensures: record3.ensures } : {},
+    ...record3.writes ? { writes: record3.writes } : {},
     ...record3.recursive || record3.measure ? { self: record3 } : {},
     description: record3.description,
     source: record3.source,
@@ -239474,7 +240149,8 @@ var init_builtin2 = __esm({
         return source2;
       },
       list: (path2) => path2 === ROOT ? builtinNames().map((name) => `${name}.nl`) : [],
-      relative: (path2) => path2.startsWith(`${ROOT}/`) ? `builtin/${path2.slice(ROOT.length + 1)}` : path2
+      relative: (path2) => path2.startsWith(`${ROOT}/`) ? `builtin/${path2.slice(ROOT.length + 1)}` : path2,
+      root: ROOT
     };
     callables = /* @__PURE__ */ new Map();
     RUNTIME_IDENTITY = {
@@ -240151,8 +240827,20 @@ var init_data_layout = __esm({
 
 // src/native/scoped-fs.ts
 import { sha256 as sha2563 } from "@noble/hashes/sha2.js";
+function requireStringPath(path2, method) {
+  if (typeof path2 === "string") return path2;
+  if (path2 && typeof path2 === "object" && typeof path2.path === "string")
+    throw new TypeError(`${method} expects a string path; pass handle.path (${JSON.stringify(path2.path)}) instead of the handle object`);
+  throw new TypeError(`${method} expects a string path, got ${typeof path2}`);
+}
 function cleanPath(path2, allowRoot = true) {
-  if (typeof path2 !== "string") throw new TypeError("path must be a string");
+  if (typeof path2 !== "string") {
+    if (path2 && typeof path2 === "object" && typeof path2.path === "string")
+      throw new TypeError(`path must be a string; pass handle.path (${JSON.stringify(path2.path)}) instead of the handle object`);
+    throw new TypeError("path must be a string");
+  }
+  if (path2.includes("[object Object]"))
+    throw new RangeError(`invalid path ${JSON.stringify(path2)}: pass a string path or handle.path, not an object coerced to string`);
   if (allowRoot && (path2 === "" || path2 === ".")) return "";
   if (!path2 || path2.startsWith("/") || path2.includes("\\") || path2.includes("\0"))
     throw new RangeError(`invalid relative POSIX path: ${JSON.stringify(path2)}`);
@@ -240363,6 +241051,16 @@ var init_scoped_fs = __esm({
       }
       /** Move like `mv`: into a folder handle, into a path ending in "/" or naming an existing folder, else to that path. */
       async moveTo(destination) {
+        if (typeof destination !== "string" && !(destination instanceof FolderHandle) && !(destination instanceof FileHandle)) {
+          if (destination && typeof destination === "object" && typeof destination.path === "string")
+            throw new TypeError(`moveTo expects a FolderHandle, FileHandle, or string path; pass handle.path (${JSON.stringify(destination.path)})`);
+          throw new TypeError(`moveTo expects a FolderHandle, FileHandle, or string path, got ${typeof destination}`);
+        }
+        if (destination instanceof FolderHandle && this.name && (destination.path === this.name || destination.path.endsWith(`/${this.name}`))) {
+          const parent = destination.path.includes("/") ? destination.path.slice(0, destination.path.lastIndexOf("/")) : "";
+          const suggestion = parent ? `moveTo(folder.dir(${JSON.stringify(parent)}))` : `moveTo(${JSON.stringify(destination.path)})`;
+          throw new RangeError(`cannot move ${JSON.stringify(this.path)} into folder ${JSON.stringify(destination.path)}: use rename() or ${suggestion} instead of nesting ${this.name} inside a folder with the same name`);
+        }
         const into = (folderPath) => this.folder.join(folderPath, this.name);
         const target = typeof destination !== "string" ? destination instanceof FolderHandle ? into(destination.path) : destination.path : destination.endsWith("/") || this.folder.isFolder(destination) && !this.folder.isFile(destination) ? into(destination.replace(/\/+$/, "")) : destination;
         this.folder.move(this.path, target);
@@ -240394,17 +241092,20 @@ var init_scoped_fs = __esm({
     };
     FolderHandle = class _FolderHandle extends EntryHandle {
       dir(path2) {
-        const joined = this.folder.join(this.path, path2.replace(/\/+$/, ""));
-        checkedKind(this.folder, joined, path2, "folder");
+        const textPath = requireStringPath(path2, "FolderHandle.dir");
+        const joined = this.folder.join(this.path, textPath.replace(/\/+$/, ""));
+        checkedKind(this.folder, joined, textPath, "folder");
         return new _FolderHandle(this.folder, joined);
       }
       file(path2) {
-        const joined = this.folder.join(this.path, path2.replace(/\/+$/, ""));
-        checkedKind(this.folder, joined, path2, "file");
+        const textPath = requireStringPath(path2, "FolderHandle.file");
+        const joined = this.folder.join(this.path, textPath.replace(/\/+$/, ""));
+        checkedKind(this.folder, joined, textPath, "file");
         return new FileHandle(this.folder, joined);
       }
       entry(path2) {
-        const joined = this.folder.join(this.path, path2);
+        const textPath = requireStringPath(path2, "FolderHandle.entry");
+        const joined = this.folder.join(this.path, textPath);
         return this.folder.isFile(joined) ? new FileHandle(this.folder, joined) : new _FolderHandle(this.folder, joined);
       }
       /** Handle globs are relative to this subtree, as file() and dir() paths are. */
@@ -240646,13 +241347,15 @@ var init_scoped_fs = __esm({
         return this.allPaths();
       }
       dir(path2 = "") {
-        const clean = cleanPath(path2.replace(/\/+$/, ""));
-        checkedKind(this, clean, path2, "folder");
+        const textPath = requireStringPath(path2, "Folder.dir");
+        const clean = cleanPath(textPath.replace(/\/+$/, ""));
+        checkedKind(this, clean, textPath, "folder");
         return new FolderHandle(this, clean);
       }
       file(path2) {
-        const clean = cleanPath(path2.replace(/\/+$/, ""), false);
-        checkedKind(this, clean, path2, "file");
+        const textPath = requireStringPath(path2, "Folder.file");
+        const clean = cleanPath(textPath.replace(/\/+$/, ""), false);
+        checkedKind(this, clean, textPath, "file");
         return new FileHandle(this, clean);
       }
       apply(reducer, ...args) {
@@ -259937,7 +260640,7 @@ function checkNlIdioms(record3, file) {
   const out = [];
   const lines = record3.text.split(/\r?\n/);
   const end = frontmatterEnd(lines);
-  const leaf = record3.subtype === "function" && !record3.generic && Object.keys(record3.codebase).length === 0 && !record3.uses?.length && !Object.values(record3.args).some((type) => /(?<![\w$])Folder(?![\w$])/.test(type));
+  const leaf = record3.subtype === "function" && !record3.generic && Object.keys(record3.codebase).length === 0 && !record3.uses?.length && !Object.keys(record3.usesMap ?? {}).length && !Object.values(record3.args).some((type) => /(?<![\w$])Folder(?![\w$])/.test(type));
   if (leaf && record3.readout === void 0) {
     let size = 0;
     try {
@@ -259990,8 +260693,12 @@ function checkNlIdiomsIn(levels, display) {
         seen.add(item.source);
         out.push(...checkNlIdioms(item, display(item.source)));
       }
-      if (item.kind !== "natlang" || !item.uses?.length) visit(item.codebase);
-      else visit(Object.fromEntries(Object.entries(item.codebase).filter(([name]) => !item.uses.some((path2) => baseName(path2) === name))));
+      const usedAliases = item.kind === "natlang" ? /* @__PURE__ */ new Set([
+        ...Object.keys(item.usesMap ?? {}),
+        ...item.usesMap ? [] : (item.uses ?? []).map((path2) => baseName(path2).replace(/\.(?:nl|ts|js)$/, ""))
+      ]) : void 0;
+      if (!usedAliases?.size) visit(item.codebase);
+      else visit(Object.fromEntries(Object.entries(item.codebase).filter(([name]) => !usedAliases.has(name))));
     }
   };
   for (const level of levels) visit(level);
@@ -260825,7 +261532,8 @@ function sourceFiles(files2, root2) {
     isDirectory: (path2) => files2.isDirectory(path2),
     read: (path2) => files2.read(path2),
     list: (path2) => files2.list(path2),
-    relative: (path2) => relative(root2, path2)
+    relative: (path2) => relative(root2, path2),
+    root: root2
   };
 }
 var SKIPPED_DIRS = /* @__PURE__ */ new Set(["node_modules", "dist", ".git", ".natlang"]);
@@ -261150,7 +261858,7 @@ function compileProjectInSession(options, files2) {
       scannedRecords.add(record3);
       if (record3.kind === "module") enqueue(resolve(root2, record3.source));
       if (record3.kind === "natlang") {
-        const path2 = resolve(root2, record3.source), owner = packageRoot(dirname2(path2), files2) ?? root2;
+        const path2 = resolve(root2, record3.source), owner = findPackageRoot(dirname2(path2), files2) ?? root2;
         let ownedLayout = packageLayouts.get(owner);
         if (!ownedLayout) {
           ownedLayout = callableFolders(fs2, owner);
@@ -261170,7 +261878,7 @@ function compileProjectInSession(options, files2) {
     const source2 = pendingSources[cursor];
     if (visitedSources.has(source2) || !fs2.isFile(source2)) continue;
     visitedSources.add(source2);
-    const owner = packageRoot(dirname2(source2), files2);
+    const owner = findPackageRoot(dirname2(source2), files2) ?? root2;
     if (owner && !declarationPackages.has(owner)) {
       declarationPackages.add(owner);
       for (const declaration of walkTs(fs2, owner)) if (declaration.endsWith(".d.ts")) enqueue(declaration, true);
@@ -261181,7 +261889,7 @@ function compileProjectInSession(options, files2) {
       if (!target || !/\.(?:ts|nl)$/.test(target) || relative(root2, target).startsWith("..")) continue;
       if (target.endsWith(".nl")) {
         if (!compilerSources.has(source2) || namedRecords.has(target)) continue;
-        const packageDirectory = packageRoot(dirname2(target), files2) ?? root2;
+        const packageDirectory = findPackageRoot(dirname2(target), files2) ?? root2;
         let targetLayout = packageLayouts.get(packageDirectory);
         if (!targetLayout) {
           targetLayout = callableFolders(fs2, packageDirectory);
@@ -261805,7 +262513,8 @@ function virtualSourceFiles(files2, root2 = "/project") {
     isDirectory: (path2) => virtual.isDirectory(path2),
     read: (path2) => virtual.read(path2),
     list: (path2) => virtual.list(path2),
-    relative: (path2) => path2.startsWith(`${root2}/`) ? path2.slice(root2.length + 1) : path2
+    relative: (path2) => path2.startsWith(`${root2}/`) ? path2.slice(root2.length + 1) : path2,
+    root: root2
   };
 }
 function loadVirtualNatlang(files2, path2, root2 = "/project", platform) {
@@ -261841,15 +262550,18 @@ function compileVirtualProjectProduct(project, options) {
   return { schema: "natlang.virtual-project-product/1", project: snapshot3, runtimeSpecifiers: specifiers, build };
 }
 function instantiateVirtualProjectProduct(product, runtime, options) {
-  const { project, build: result, runtimeSpecifiers: specifiers } = structuredClone(product);
   if (product.schema !== "natlang.virtual-project-product/1") throw new Error("unsupported virtual project product");
+  const { project, build: result, runtimeSpecifiers: specifiers } = structuredClone(product);
+  return { ...result, require: createVirtualProjectRequire(project, result.outputs, specifiers, runtime, options) };
+}
+function createVirtualProjectRequire(project, outputs, specifiers, runtime, options) {
   const { platform } = options;
   const root2 = project.root ?? "/project";
   const cache = /* @__PURE__ */ new Map();
   const load = (path2) => {
     const found = cache.get(path2);
     if (found) return found.exports;
-    const text3 = result.outputs[path2];
+    const text3 = outputs[path2];
     if (text3 === void 0) throw new Error(`module ${path2} was not emitted by the project build`);
     const module = { exports: {} };
     cache.set(path2, module);
@@ -261861,7 +262573,7 @@ function instantiateVirtualProjectProduct(product, runtime, options) {
       if (!specifier.startsWith(".")) throw new Error(`module ${specifier} is not available in this virtual project`);
       const base = path2.slice(0, path2.lastIndexOf("/"));
       const joined = joinSourcePath(base || "/", specifier);
-      const candidate = ["", ".js", "/index.js"].map((suffix) => `${joined.replace(/\.ts$/, ".js")}${suffix}`).find((item) => item in result.outputs);
+      const candidate = ["", ".js", "/index.js"].map((suffix) => `${joined.replace(/\.ts$/, ".js")}${suffix}`).find((item) => item in outputs);
       if (!candidate) throw new Error(`cannot resolve ${specifier} from ${path2}`);
       return load(candidate);
     };
@@ -261869,7 +262581,7 @@ function instantiateVirtualProjectProduct(product, runtime, options) {
     return module.exports;
   };
   const exported = /* @__PURE__ */ new Map();
-  return { ...result, require: (path2) => {
+  return (path2) => {
     const absolute = path2.startsWith("/") ? path2 : `${root2}/${path2}`;
     const emitted = `${root2}/.natlang/build/${absolute.slice(root2.length + 1)}`.replace(/\.m?ts$/, ".js");
     const prior = exported.get(absolute);
@@ -261909,7 +262621,7 @@ function instantiateVirtualProjectProduct(product, runtime, options) {
     }
     exported.set(absolute, bound);
     return bound;
-  } };
+  };
 }
 function compileVirtualProject(project, runtime, options) {
   const product = compileVirtualProjectProduct(project, {
@@ -303100,14 +303812,24 @@ var FolderFs = class {
   async stat(path2) {
     const kind = this.kind(path2);
     if (!kind) throw new Error(`ENOENT: ${path2}`);
+    const resolved = this.resolvePath(ROOT2, path2);
     const size = kind === "file" && !builtin2(path2) ? (await this.folder.stat(this.relative(path2))).bytes : 0;
+    let hash2 = 2166136261;
+    for (let index = 0; index < resolved.length; index++) {
+      hash2 ^= resolved.charCodeAt(index);
+      hash2 = Math.imul(hash2, 16777619);
+    }
+    const ino = (hash2 >>> 0) + 1;
     return {
       isFile: kind === "file",
       isDirectory: kind === "directory",
       isSymbolicLink: false,
       mode: kind === "file" ? 33188 : 16877,
       size,
-      mtime: PINNED_TIME
+      mtime: PINNED_TIME,
+      dev: 1,
+      ino,
+      identity: resolved
     };
   }
   async lstat(path2) {
