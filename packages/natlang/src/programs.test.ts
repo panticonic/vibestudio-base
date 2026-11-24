@@ -8,6 +8,7 @@ import {
   ProgramLoader,
   bindProgram,
   compileProgram,
+  programProductInput,
   readProjectFiles,
   workspacePath,
   type WorkspaceFs,
@@ -781,3 +782,20 @@ it("keeps runtime programs without retaining caller-facing declaration documents
   const direct=compileProgram({platform:platform(),files:{"answer.nl":files["skills/lifetime/answer.nl"]},entry:"answer.nl",label:"answer.nl"});
   expect(Object.keys(direct.declarations).length).toBeGreaterThan(0);
 });
+
+ it("defaults internal runtime products to no declaration output and keeps the explicit diagnostic opt-in", async()=>{
+  const {compileVirtualProjectProduct}=await import("../vendor/workerd/natlang-workerd.js");
+  const files={"skills/runtime/main.ts":"let n=0;export function next():number{return ++n;}","skills/runtime/answer.nl":"---\nargs: {}\nreturns: string\n---\nAnswer."};
+  const observed:Array<{option:boolean|undefined;documents:number}>=[];
+  const compileProduct=async(input:ReturnType<typeof programProductInput>)=>{
+    const product=compileVirtualProjectProduct(input.project,input.options);
+    observed.push({option:input.options.declarations,documents:Object.keys(product.build.declarations).length});
+    return product;
+  };
+  const make=(declarations?:boolean)=>new ProgramLoader({platform:platform(),fs:memoryFs(files),bindings:{},runTask:run=>run(),compileProduct,...(declarations===undefined?{}:{declarations})});
+  const runtime=await make().load("skills/runtime/main.ts") as {next():Promise<number>};
+  const diagnostic=await make(true).load("skills/runtime/main.ts") as {next():Promise<number>};
+  expect(observed[0]).toEqual({option:false,documents:0});
+  expect(observed[1].option).toBeUndefined();expect(observed[1].documents).toBeGreaterThan(0);
+  expect(await runtime.next()).toBe(1);expect(await runtime.next()).toBe(2);expect(await diagnostic.next()).toBe(1);
+ });

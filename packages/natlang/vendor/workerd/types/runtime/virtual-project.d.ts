@@ -38,6 +38,8 @@ export type VirtualProjectOptions = {
     modules?: Record<string, unknown>;
     /** Validate source and produce declarations without emitting JavaScript. */
     emit?: boolean;
+    /** Return generated declaration documents (default true); type checking is unchanged. */
+    declarations?: boolean;
     /** Collect the program descriptor for adaptation. Defaults to true. */
     adaptation?: boolean;
 };

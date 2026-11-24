@@ -43,6 +43,9 @@ export type BuildOptions = {
     write?: boolean;
     /** Emit JavaScript (build) or only check. */
     emit?: boolean;
+    /** Return/write generated declaration documents (default true). Internal
+     * signatures are still generated and checked when false. */
+    declarations?: boolean;
     /** Write generated `.d.nl.ts` files beside their sources (default true; read-only installed packages use false). */
     writeDeclarations?: boolean;
     /**

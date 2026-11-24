@@ -262004,7 +262004,7 @@ function compileProjectInSession(options, files2) {
   for (const [path2, record3] of namedRecords) {
     const declaration = natlangDeclaration2(record3, declarationSpecifier, referencesOf(path2, record3));
     const target = path2.replace(/\.nl$/, ".d.nl.ts");
-    declarations[target] = declaration;
+    if (options.declarations !== false) declarations[target] = declaration;
     virtual.set(target, declaration);
   }
   const nzFiles = /* @__PURE__ */ new Map();
@@ -262019,7 +262019,7 @@ function compileProjectInSession(options, files2) {
       nzFiles.set(path2, bytes2);
       const declaration = nzDeclaration(loaded.header, basename(path2), typeScriptText);
       const target = path2.replace(/\.nz$/, ".d.nz.ts");
-      declarations[target] = declaration;
+      if (options.declarations !== false) declarations[target] = declaration;
       virtual.set(target, declaration);
     } catch (error) {
       problem(rel(path2), error instanceof Error ? error.message : String(error), "neuralese-file");
@@ -262544,6 +262544,7 @@ function compileVirtualProjectProduct(project, options) {
     runtimeSpecifier: specifiers[0],
     write: true,
     emit: options.emit,
+    declarations: options.declarations,
     adaptation: options.adaptation,
     surfaceSpecifiers: specifiers
   });

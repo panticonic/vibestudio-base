@@ -218,6 +218,8 @@ export function compileProgram(options: {
   /** The workspace folder the files are relative to: diagnostics name workspace paths. */
   root?: string;
   product?: VirtualProjectProduct;
+  /** Return generated declaration documents (default true). Runtime-only callers can omit them. */
+  declarations?: boolean;
 }): CompiledProgram {
   const { platform, files, entry, label, root = "" } = options;
   const services = declaredServiceNames(files);
@@ -228,7 +230,7 @@ export function compileProgram(options: {
   }
   // Native source entries load their callables from the original files after validation.
   const sourceEntry = !entry || entry.endsWith(".nl");
-  const input=programProductInput({files,entry,label,root});
+  const input=programProductInput({files,entry,label,root,declarations:options.declarations});
   if(options.product && (options.product.schema!=="natlang.virtual-project-product/1" ||
       (options.product.project.root??"/project")!==PROJECT_ROOT ||
       programKey(options.product.project.files,services)!==programKey(files,services)))
@@ -265,10 +267,10 @@ export function compileProgram(options: {
 }
 
 /** All frontend inputs are explicit; runtime services themselves never leave this owner. */
-export function programProductInput({files,entry,label,root=PROJECT_ROOT}:{files:Record<string,string>;entry:string;label:string;root?:string}) {
+export function programProductInput({files,entry,label,root=PROJECT_ROOT,declarations=true}:{files:Record<string,string>;entry:string;label:string;root?:string;declarations?:boolean}) {
   const services=declaredServiceNames(files);
   const scopes=declaredServiceScopes(files,services,label);
-  return {project:{files,root:PROJECT_ROOT},options:{target:"node" as const,emit:!!entry&&!entry.endsWith(".nl"),adaptation:false,programId:root||PROJECT_ROOT,
+  return {project:{files,root:PROJECT_ROOT},options:{target:"node" as const,emit:!!entry&&!entry.endsWith(".nl"),adaptation:false,programId:root||PROJECT_ROOT,...(declarations?{}:{declarations:false}),
     ...(services.length?{services:{declarations:declarationsFor(services),scopes}}:{})}};
 }
 
@@ -339,6 +341,8 @@ export class ProgramLoader {
       bindings: Readonly<Record<string, unknown>>;
       runTask: TaskRunner;
       compileProduct?: (input:ReturnType<typeof programProductInput>)=>Promise<unknown | undefined>;
+      /** Diagnostic opt-in: include frontend declaration documents; runtime loads omit them by default. */
+      declarations?: boolean;
     }
   ) {}
 
@@ -395,8 +399,9 @@ export class ProgramLoader {
     let program = this.compiled.get(`${path}\u0000${key}`);
     if (!program) {
       try {
-        const product=await this.options.compileProduct?.(programProductInput({files,entry,label:path,root}));
-        const compiled = compileProgram({ platform, files, entry, label: path, root,
+        const declarations=this.options.declarations ?? false;
+        const product=await this.options.compileProduct?.(programProductInput({files,entry,label:path,root,declarations}));
+        const compiled = compileProgram({ platform, files, entry, label: path, root, declarations,
           ...(product===undefined?{}:{product:product as VirtualProjectProduct}) });
         // Declaration documents belong to compileProgram callers. Runtime load
         // and describe consume the callable signatures, not those documents.

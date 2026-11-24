@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "87e5848c34fc0ea0897d0a25aadec83e157f2c25",
+  "commit": "fedc9504310679b7513b6a5840c2688e386509a7",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "56a2dc1f2b79f11446b0acb9f2c8dd178136f6e909461cdf7a47e7f90af8d489",
+    "workerd/natlang-workerd.js": "f4c7a44c61d152e68e4bf9bc3e29b0e54fe7c760a76e57f586bdc84e4833b9e2",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -32,7 +32,7 @@
     "workerd/types/compiler/inline.d.ts": "445b5fa050c9bfa66fd6c01b2d182515ed1776daa97e0324a4fdecc1726fa4e8",
     "workerd/types/compiler/intrinsics.d.ts": "9161d1d36a44c1d64ceac45ccf5321ab5e3bc689f968e7a880ec50d0fd6105e8",
     "workerd/types/compiler/neuralese.d.ts": "3a85bfacfc8211f77b2333d9622790f2f9f4ed81c8badbbb68987930f2000ba5",
-    "workerd/types/compiler/project.d.ts": "b153e42f22d6b13f255bdd991e3d90d52d1d4f438426d0ade1dbaeb992db4361",
+    "workerd/types/compiler/project.d.ts": "4b5abe213118c37f90a80412a9a7de3fd065f91db7ead38cd1d209edec9c0eb9",
     "workerd/types/compiler/refined-slots.d.ts": "3db0c5f5e9a3a6af7e1c846fb76cbbeef03b3798ee29c162ecaa82bd81042483",
     "workerd/types/compiler/rewrites.d.ts": "4d8f1a091d11e89583cbff7770f9012a477874cfd26761e49493401defcdc50f",
     "workerd/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
@@ -100,6 +100,6 @@
     "workerd/types/runtime/runtime.d.ts": "99e0f497084d11bfe60d3f838cd88553d9f3a1230c21d60dd7ababbd753c51ac",
     "workerd/types/runtime/selected-events.d.ts": "62c88b98e222a8d800d081733246216541b97e787ef467accbbdd47799952780",
     "workerd/types/runtime/surface.d.ts": "f5822e93275d8344dc9f6f80232845dc0c81889895af8390746307662b439094",
-    "workerd/types/runtime/virtual-project.d.ts": "d43bab91f11987a45a5a0d9bc3d20b10f357ee12ce583a51289ec7579ee804fd"
+    "workerd/types/runtime/virtual-project.d.ts": "5805802b7d0c2af2d13732947089193373396012220be046e4d9bbdf28eea954"
   }
 }
