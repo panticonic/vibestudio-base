@@ -461,8 +461,11 @@ export const localModelsExtensionMethods = {
         z
           .object({
             log_probs: z.array(z.number()),
-            tokens: z.array(z.number()),
+            tokens: z.array(z.number()).optional(),
             prompt_tokens: z.number().optional(),
+            open_reply:z.boolean().optional(),reasoning:z.boolean().optional(),split_tokenization:z.boolean().optional(),
+            native_decision_capture:z.record(z.unknown()).optional(),
+            native_state_imports:z.array(z.record(z.unknown())).optional(),
           })
           .passthrough(),
         z.object({ error: z.string() }),

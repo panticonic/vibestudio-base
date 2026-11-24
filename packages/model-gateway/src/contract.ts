@@ -1,3 +1,4 @@
+import type {DecisionRequest,DecisionScores} from "@workspace/natlang-pi";
 import type {
   AssistantMessage,
   Context,
@@ -65,34 +66,25 @@ export type ModelGatewayTurnResult =
     }
   | { status: "cancelled"; turnId: string };
 
-export interface ModelGatewayScoreInput {
-  turnId: string;
-  /** A "provider:id" ref, or a model role such as "executor". */
-  model: string;
-  /** Pi context JSON: `systemPrompt` and `messages`, without tools. */
-  context: Context;
-  /** The finite replies to score, each written as the closed final assistant message. */
-  candidates: string[];
+/** Canonical scoring messages/controls; scoring never round-trips through Pi context. */
+export interface ModelGatewayScoreInput extends DecisionRequest {
+  turnId:string;
+  model:string;
 }
-
 export type ModelGatewayScoreResult =
-  | {
-      status: "completed";
-      turnId: string;
-      model: string;
-      role?: string;
-      /** Summed token log-probability of each candidate after the prefix all candidates share. */
-      logProbs: number[];
-      /** Softmax of `logProbs`: normalized probabilities in candidate order. */
-      probabilities: number[];
-      /** Tokens each candidate spans after the shared prefix, when the backend reports them. */
-      tokens?: number[];
-      /** Tokens the candidates evaluate in full (prompt and reply, for each), what a stateless scorer would process,
-       * when the backend reports it; the decision's input for usage accounting. */
-      promptTokens?: number;
-      attribution: ModelGatewayAttribution;
-    }
-  | { status: "cancelled"; turnId: string };
+  | (DecisionScores & {
+      status:"completed";
+      turnId:string;
+      model:string;
+      role?:string;
+      probabilities:number[];
+      open_reply?:boolean;
+      reasoning?:boolean;
+      split_tokenization?:boolean;
+      native_state_imports?:Record<string,unknown>[];
+      attribution:ModelGatewayAttribution;
+    })
+  | {status:"cancelled";turnId:string};
 
 /** Message prefix of the error a model that cannot score candidates fails with. */
 export const DECISION_UNSUPPORTED = "decision-unsupported";
@@ -140,16 +132,15 @@ export const modelGatewayTurnInputSchema = z
   })
   .strict();
 
-export const modelGatewayScoreInputSchema = z
-  .object({
-    turnId: z.string().min(1).max(256),
-    model: z.string().min(1),
-    context: z
-      .object({
-        systemPrompt: z.string().optional(),
-        messages: z.array(z.record(z.unknown())),
-      })
-      .passthrough(),
-    candidates: z.array(z.string()).min(1).max(256),
-  })
-  .strict();
+export const modelGatewayScoreInputSchema = z.object({
+  turnId:z.string().min(1).max(256),model:z.string().min(1),
+  messages:z.array(z.unknown()),options:z.array(z.string()).min(1).max(256),
+  adapters:z.array(z.object({id:z.string(),scale:z.number().finite()}).strict()).optional(),
+  native_state_modes:z.record(z.enum(["same-base-adapter-state"])).optional(),
+  native_recording:z.boolean().optional(),cache_messages:z.number().int().nonnegative().optional(),
+  open_reply:z.boolean().optional(),split_tokenization:z.boolean().optional(),
+  reasoning:z.string().optional(),reasoning_ids:z.array(z.number().int().nonnegative()).optional(),
+  invocation_id:z.string().optional(),invocation_role:z.enum(["root","child"]).optional(),
+  reasoning_sample:z.object({index:z.number().int().nonnegative(),samples:z.number().int().positive(),action:z.boolean()}).strict().optional(),
+  x_natlang_privileged_context:z.record(z.unknown()).optional(),
+}).strict();

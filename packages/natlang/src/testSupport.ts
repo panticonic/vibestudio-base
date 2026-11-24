@@ -1,3 +1,4 @@
+import type {ModelGatewayScoreInput} from "@workspace/model-gateway/contract";
 import vm from "node:vm";
 import { tameRealmCodegen } from "@vibestudio/shared/evalConfinement";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
@@ -50,7 +51,7 @@ export interface FakeServices {
   /** Answers one gateway turn; a function of the Pi context and the options it was asked with. */
   turn?: (input: { turnId: string; model: string; context: any; options?: any }, signal?: AbortSignal) => Promise<unknown>;
   /** Scores finite replies; absent, the model cannot score. */
-  score?: (input: { turnId: string; model: string; context: any; candidates: string[] }, signal?: AbortSignal) => Promise<number[]>;
+  score?: (input: ModelGatewayScoreInput, signal?: AbortSignal) => Promise<number[]>;
   /** Natlang records calls, by method name. */
   records?: Record<string, (input: any) => unknown>;
   roleResolution?: { model: unknown; reason?: string };
@@ -86,7 +87,7 @@ export function fakeRpc(services: FakeServices) {
             const logProbs = await services.score(input, options?.signal);
             const exp = logProbs.map((value) => Math.exp(value));
             const total = exp.reduce((a, b) => a + b, 0);
-            return { status: "completed", turnId: input.turnId, model: input.model, logProbs, probabilities: exp.map((v) => v / total), attribution: { callerId: "test", callerKind: "do" } };
+            return { status: "completed", turnId: input.turnId, model: input.model, log_probs:logProbs,...(input.open_reply?{open_reply:true}:{}),...(typeof input.reasoning==="string"?{reasoning:true}:{}), probabilities: exp.map((v) => v / total), attribution: { callerId: "test", callerKind: "do" } };
           }
           return { cancelled: false };
         case "do:vibestudio.models.v1":

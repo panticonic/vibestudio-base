@@ -12,7 +12,7 @@ import {
 import { rpc } from "@vibestudio/rpc";
 import { nativeTurnOptions } from "./toolChoice.js";
 import { scoreItem } from "./scoreItem.js";
-import { softmax } from "@workspace/natlang-pi";
+import { scoresFromBatchResult,softmax } from "@workspace/natlang-pi";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { createDurableObjectServiceClient } from "@vibestudio/service-schemas/clients/durableObjectServiceClient";
 import {
@@ -296,23 +296,26 @@ export class ModelGatewayDO
           [
             LOCAL_MODELS_EXTENSION_ID,
             localModelsExtensionMethods.scoreContinuations.method,
-            [entry.ref, [scoreItem(input.context, input.candidates)]],
+            [entry.ref, [scoreItem(input)]],
           ],
           { signal: controller.signal },
         ),
       );
       const scored = results[0];
       if (!scored) throw new Error("The local model returned no scores");
-      if (!("log_probs" in scored)) throw new Error((scored as { error: string }).error);
+      if (!("log_probs" in scored)) throw new Error(scored.error);
+      const validated=scoresFromBatchResult(scored,input);
       return {
         status: "completed",
         turnId: input.turnId,
         model: entry.ref,
         ...(role ? { role } : {}),
-        logProbs: scored.log_probs,
-        probabilities: softmax(scored.log_probs),
-        tokens: scored.tokens,
-        ...(scored.prompt_tokens !== undefined ? { promptTokens: scored.prompt_tokens } : {}),
+        ...validated,
+        probabilities:softmax(validated.log_probs),
+        ...(scored.open_reply!==undefined?{open_reply:scored.open_reply}:{}),
+        ...(scored.reasoning!==undefined?{reasoning:scored.reasoning}:{}),
+        ...(scored.split_tokenization!==undefined?{split_tokenization:scored.split_tokenization}:{}),
+        ...(scored.native_state_imports!==undefined?{native_state_imports:scored.native_state_imports}:{}),
         attribution,
       };
     } catch (error) {

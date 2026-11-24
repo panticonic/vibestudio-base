@@ -331,10 +331,10 @@ describe("createEvalNatlang", () => {
     expect(scored).toHaveLength(1);
     expect(scored[0]).toMatchObject({
       model: EXECUTOR_ENTRY.ref,
-      candidates: [expect.any(String), expect.any(String)],
+      options: [expect.any(String), expect.any(String)],
     });
-    expect(scored[0].context.tools).toBeUndefined();
-    expect(JSON.stringify(scored[0].context)).toContain("The site is down.");
+    expect(scored[0].tools).toBeUndefined();
+    expect(JSON.stringify(scored[0].messages)).toContain("The site is down.");
     expect(calls).toMatchObject([{ name: "judge", outcome: "done" }]);
   });
 

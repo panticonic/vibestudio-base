@@ -651,8 +651,8 @@ describe("score", () => {
   const scored = {
     turnId: "s1",
     model: "local:lfm3-1.7b",
-    context: { systemPrompt: "Decide.", messages: [userMessage("urgent?")] },
-    candidates: ["urgent", "normal"],
+    messages: [{role:"system",content:"Decide."},{role:"user",content:"urgent?"}],
+    options: ["urgent", "normal"],
   };
 
   it("scores candidates on a local model through the local-models extension and normalizes them", async () => {
@@ -665,7 +665,7 @@ describe("score", () => {
     const result = (await callAs(evalCaller, "score", scored)) as {
       status: string;
       model: string;
-      logProbs: number[];
+      log_probs: number[];
       probabilities: number[];
       tokens: number[];
       attribution: { callerId: string };
@@ -683,6 +683,7 @@ describe("score", () => {
                 { role: "user", content: "urgent?" },
               ],
               continuations: ["urgent", "normal"],
+              split_tokenization:true,
             },
           ],
         ],
@@ -692,12 +693,28 @@ describe("score", () => {
       status: "completed",
       model: "local:lfm3-1.7b",
       tokens: [1, 1],
-      promptTokens: 412,
+      prompt_tokens: 412,
     });
-    expect(result.logProbs).toEqual([-0.2, -1.8]);
+    expect(result.log_probs).toEqual([-0.2, -1.8]);
     expect(result.probabilities[0]! + result.probabilities[1]!).toBeCloseTo(1);
     expect(result.probabilities[0]).toBeGreaterThan(0.8);
     expect(result.attribution.callerId).toBe(evalCaller.callerId);
+  });
+
+  it("preserves native reasoning acknowledgments and capture, including responses without token counts",async()=>{
+    const capture={version:1,samples:[0,3]},imports=[{id:"state",observed_native_state_id:"native"}];
+    const request={...scored,reasoning:"Observed facts",reasoning_ids:[0,3],open_reply:true,native_recording:true,cache_messages:1,adapters:[{id:"state",scale:0.4}],native_state_modes:{state:"same-base-adapter-state"}};
+    const invoked:unknown[][]=[];
+    Gateway.extension=args=>{invoked.push(args);return [{log_probs:[-0.2,-1.8],open_reply:true,reasoning:true,split_tokenization:true,native_decision_capture:capture,native_state_imports:imports}];};
+    const {callAs}=await gateway();
+    const result=await callAs(evalCaller,"score",request);
+    expect(result).toMatchObject({status:"completed",log_probs:[-0.2,-1.8],open_reply:true,reasoning:true,split_tokenization:true,native_decision_capture:capture,native_state_imports:imports});
+    expect(invoked[0]?.[2]).toMatchObject(["local:lfm3-1.7b",[{messages:request.messages,continuations:request.options,reasoning:request.reasoning,reasoning_ids:request.reasoning_ids,open_reply:true,native_recording:true,adapters:request.adapters,native_state_modes:request.native_state_modes,cache_messages:1}]]);
+  });
+  it.each([{open_reply:true},{reasoning:"This reasoning must condition every option"}])("rejects an unacknowledged native scoring mode: %j",async control=>{
+    Gateway.extension=()=>[{log_probs:[-0.2,-1.8],tokens:[1,1]}];
+    const {callAs}=await gateway();
+    await expect(callAs(evalCaller,"score",{...scored,...control})).rejects.toThrow(/decision-(?:open|reasoning)-unsupported/);
   });
 
   it("rejects with decision-unsupported for models that cannot score, without asking the extension", async () => {

@@ -5,6 +5,7 @@ import type { ModelGatewayTurnOptions } from "@workspace/model-gateway/contract"
 import { LOCAL_PROVIDER_ID, type ModelCatalogEntry } from "@workspace/model-catalog/catalog";
 import {
   framedDecision,
+  scoresFromBatchResult,
   piAssistantToTurn,
   toPiContext,
   type DecisionRequest,
@@ -126,25 +127,7 @@ export function gatewayDriver(options: {
       readout,
       entry.provider === LOCAL_PROVIDER_ID ? LOCAL_DECISION_REPLY : undefined
     );
-    const { messages } = toPiContext(
-      { messages: request.messages, tools: [], seed: null, max_tokens: null },
-      { api: entry.modelSpec.api, provider: entry.provider, id: entry.id }
-    );
-    // The gateway takes the system prompt beside the messages, as Pi's context does.
-    const system = messages.filter((message) => message.role === "system");
-    const nativeRequest = {
-      turnId: nextTurnId(),
-      model: entry.ref,
-      context: {
-        ...(system.length > 0
-          ? {
-              systemPrompt: system.map((message) => message.content).join("\n\n"),
-            }
-          : {}),
-        messages: messages.filter((message) => message.role !== "system"),
-      } as unknown as Context,
-      candidates: request.options,
-    };
+    const nativeRequest={...request,turnId:nextTurnId(),model:entry.ref};
     const scored = await gateway.score(nativeRequest, signal ? { signal } : undefined);
     if (evidence)
       evidence.value = {
@@ -152,11 +135,7 @@ export function gatewayDriver(options: {
         request: nativeRequest,
         result: scored,
       };
-    return {
-      log_probs: scored.logProbs,
-      ...(scored.tokens ? { tokens: scored.tokens } : {}),
-      ...(scored.promptTokens !== undefined ? { prompt_tokens: scored.promptTokens } : {}),
-    };
+    return scoresFromBatchResult(scored,request);
   };
   const captured = async <T>(
     kind: "generation" | "score",
