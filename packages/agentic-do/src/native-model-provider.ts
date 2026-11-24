@@ -181,7 +181,7 @@ export function createProtectedModelProvider(
         // conversation is the stable Pi provider session across those tasks;
         // taskId changes after a tool result and would reset deterministic
         // test-model turn state on each generation.
-        options: { sessionId: String(request.conversationId) },
+        options: { sessionId: request.options.sessionId || String(request.conversationId) },
         close: async () => {},
       };
     }

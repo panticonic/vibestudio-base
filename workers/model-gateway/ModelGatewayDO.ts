@@ -1,3 +1,5 @@
+import {sha256HexSyncText} from "@vibestudio/content-addressing";
+import {canonicalJson} from "@vibestudio/shared/canonicalJson";
 import type { Api, Model } from "@panticonic/pi-ai";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
@@ -342,7 +344,14 @@ export class ModelGatewayDO
         root,
         model,
         input.context,
-        nativeTurnOptions(model.api, input.options ?? {}),
+        {
+          ...nativeTurnOptions(model.api, input.options ?? {}),
+          ...(input.options?.cacheRetention ? {cacheRetention: input.options.cacheRetention} : {}),
+          sessionId: sha256HexSyncText(canonicalJson({
+            owner: this.rpcSelfId, caller: attribution.callerId, model: entry.ref,
+            invocation: input.sessionId ?? input.turnId,
+          })),
+        },
         context,
         undefined,
         {

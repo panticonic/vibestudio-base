@@ -1,3 +1,5 @@
+import {cleanupSessionResources} from "@panticonic/pi-ai";
+import {dispatchHelperTurn} from "./native-model-helper.js";
 import { describe, expect, it, vi } from "vitest";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@panticonic/pi-chord/context";
 import type { Context } from "@panticonic/pi-chord";
@@ -1785,4 +1787,26 @@ describe("protected upgrade ownership transfer", () => {
     ]);
     await connection.close(BACKGROUND_CONTEXT);
   });
+});
+
+
+it("reuses a failed WebSocket negotiation across separately joined helper turns only for its owned session",async()=>{
+  const models=createProtectedNativeModels(),selected={...codex,id:"gpt-6-luna"};
+  const completed={type:"response.completed",response:{id:"offline-session-response",status:"completed",output:[],usage:{input_tokens:0,output_tokens:0,total_tokens:0}}};
+  const rpc=rpcFixture(async()=>new Response(`data: ${JSON.stringify(completed)}\n\n`,{headers:{"content-type":"text/event-stream"}}));
+  const first=`owned-provider-test:${crypto.randomUUID()}`,other=`other-provider-test:${crypto.randomUUID()}`;let upgrades=0;
+  async function turn(sessionId:string){
+    const connection=createCredentialedModelConnection({model:selected,credential:credential(),rpc,
+      egressFetch:async()=>{upgrades++;return new Response("Forbidden",{status:403});}},BACKGROUND_CONTEXT);
+    try{
+      const response=await dispatchHelperTurn(models,selected,{messages:[]},connection.options,{sessionId},new AbortController().signal);
+      expect(response.stopReason).toBe("stop");
+    }finally{await connection.close(BACKGROUND_CONTEXT);}
+  }
+  try{
+    await turn(first);await turn(first);expect(upgrades).toBe(1);
+    await turn(other);expect(upgrades).toBe(2);
+    cleanupSessionResources(first);await turn(first);expect(upgrades).toBe(3);
+    expect(rpc.wire.stream).toHaveBeenCalledTimes(4);
+  }finally{cleanupSessionResources(first);cleanupSessionResources(other);}
 });

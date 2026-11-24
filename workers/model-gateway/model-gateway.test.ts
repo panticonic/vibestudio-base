@@ -736,3 +736,23 @@ describe("score", () => {
     );
   });
 });
+
+
+it("separates authenticated caller/invocation provider identities while admitting concurrent turns",async()=>{
+  const {callAs}=await gateway();const requested:ModelRequestTarget[]=[];
+  let both!:()=>void,release!:()=>void;
+  const reached=new Promise<void>(resolve=>{both=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
+  Gateway.observed=async request=>{requested.push(request);if(requested.length===2)both();if(requested.length<=2)await held;};
+  const turn=(caller:typeof evalCaller,id:string,sessionId?:string)=>callAs(caller,"turn",{
+    turnId:id,...(sessionId?{sessionId}:{}),model:TEST_MODEL_REF,context:{messages:[userMessage("hello")]},
+  });
+  const first=turn(evalCaller,"one","invocation-a"),second=turn(evalCaller,"two","invocation-b");
+  await reached;expect(requested).toHaveLength(2);release();await Promise.all([first,second]);
+  await turn(evalCaller,"three","invocation-a");
+  await turn({...evalCaller,callerId:"do:vibestudio/internal:EvalDO:other"},"four","invocation-a");
+  await turn(evalCaller,"five");await turn(evalCaller,"six");
+  const ids=requested.map(request=>request.options.sessionId);
+  expect(ids.every(id=>typeof id==="string"&&/^[a-f0-9]{64}$/.test(id))).toBe(true);
+  expect(ids[0]).not.toBe(ids[1]);expect(ids[2]).toBe(ids[0]);expect(ids[3]).not.toBe(ids[0]);expect(ids[4]).not.toBe(ids[5]);
+  expect(requested.every(request=>!JSON.stringify(request.messages).includes("invocation-a"))).toBe(true);
+});

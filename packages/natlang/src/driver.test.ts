@@ -64,3 +64,14 @@ it.each([{open_reply:true}, {reasoning:"Condition on this exact reasoning"}])("r
  await expect(driver.decide!({...READOUT,...control})).rejects.toThrow(/decision-(?:open|reasoning)-unsupported/);
  expect(recorded).toMatchObject([{kind:"score",error:{message:expect.stringMatching(/unsupported/)},provider:{result:{native_decision_capture:{actual:"unconditioned"}}}}]);
 });
+
+it("binds gateway provider reuse to one actual NL invocation without putting identity in model messages",async()=>{
+  const asked:import("@workspace/model-gateway/contract").ModelGatewayTurnInput[]=[];
+  const gateway={turn:async(input:typeof asked[number])=>{asked.push(input);return {status:"completed",turnId:input.turnId,model:input.model,message:{role:"assistant",content:[{type:"text",text:"done"}],stopReason:"stop",usage:{input:1,output:1,totalTokens:2}},attribution:{callerId:"caller",callerKind:"code"}};}};
+  const driver=gatewayDriver({gateway:gateway as never,resolver:{resolve:async()=>EXECUTOR_ENTRY},model:EXECUTOR_ENTRY.ref,turnPrefix:"owned-run"});
+  const request={messages:[{role:"user",content:"Read the assigned source"}],tools:[]};
+  await driver({...request,invocation_id:"root/1"});await driver({...request,invocation_id:"root/1"});await driver({...request,invocation_id:"root/2"});await driver(request);
+  expect(asked.map(r=>r.sessionId)).toEqual(["owned-run:root/1","owned-run:root/1","owned-run:root/2",undefined]);
+  expect(new Set(asked.map(r=>r.turnId)).size).toBe(4);
+  expect(asked.every(r=>!JSON.stringify(r.context).includes("owned-run"))).toBe(true);
+});

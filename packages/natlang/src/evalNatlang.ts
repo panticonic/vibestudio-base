@@ -82,7 +82,7 @@ export function createEvalNatlang(host: NatlangProviderHost): EvalNatlang {
     executorModel: () => store.capturedExecutorModel,
     prepareCapture: (request) => store.prepareModelExchange(request),
     directory,
-    turnPrefix: crypto.randomUUID().slice(0, 8),
+    turnPrefix: crypto.randomUUID(),
   });
   const platform: Platform = {
     ...core.workerdPlatform({

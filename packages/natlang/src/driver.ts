@@ -71,6 +71,7 @@ export function gatewayDriver(options: {
     const result = await gateway.turn(
       {
         turnId,
+        ...(request.invocation_id ? {sessionId: `${turnPrefix}:${request.invocation_id}`} : {}),
         model: entry.ref,
         context: context as unknown as Context,
         options: turnOptions(request, entry),

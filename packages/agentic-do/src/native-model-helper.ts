@@ -17,6 +17,7 @@ import {
 } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
 import {
+  ProviderDoc,
   defineDoc,
   defineDocFamily,
   defineTask,
@@ -43,6 +44,9 @@ export interface NativeModelHelperOptions {
   reasoning?: ThinkingLevel;
   toolChoice?: ToolChoice | "any" | "required";
   samplingParams?: SamplingParams;
+  /** An owner-bound provider identity; absent uses this conversation’s ProviderDoc. */
+  sessionId?: string;
+  cacheRetention?: "none" | "short" | "long";
 }
 /** The task's definition name, also how native model evidence recognizes a one-shot turn. */
 export const NATIVE_MODEL_HELPER_TASK = "vibestudio.model-helper";
@@ -109,6 +113,8 @@ export async function dispatchHelperTurn(
   const codex = model.api === CODEX_RESPONSES;
   const common = {
     ...capabilities,
+    ...(options.sessionId ? {sessionId: options.sessionId} : {}),
+    ...(options.cacheRetention ? {cacheRetention: options.cacheRetention} : {}),
     ...(options.temperature === undefined || codex
       ? {}
       : { temperature: options.temperature }),
@@ -155,7 +161,17 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
   initial: () => ({ phase: "request" }),
   phases: {
     request: async (current, runtime, context) => {
-      const { model, options, cutoff } = current.input;
+      const { model, cutoff } = current.input;
+      let sessionId = current.input.options.sessionId;
+      if (!sessionId) {
+        sessionId = (await runtime.snapshot(ProviderDoc, runtime.conversationId, context))?.sessionId;
+        if (!sessionId) await runtime.commit(async tx => {
+          sessionId = (await tx.doc(ProviderDoc, runtime.conversationId)).sessionId;
+          return undefined;
+        }, context);
+      }
+      if (!sessionId) throw new Error("Model helper has no owned provider session identity");
+      const options = {...current.input.options, sessionId};
       const stored = await runtime.snapshot(
         HelperTranscript,
         runtime.taskId,
@@ -173,6 +189,8 @@ export const NativeModelHelperTask = defineTask<Input, Checkpoint, Result>({
           messages: transcript.messages,
           cutoff,
           options: {
+            sessionId,
+            ...(options.cacheRetention ? {cacheRetention: options.cacheRetention} : {}),
             ...(options.maxTokens === undefined
               ? {}
               : { maxTokens: options.maxTokens }),

@@ -56,6 +56,7 @@ async function fixture(port: ModelRequestPort) {
   return {
     harness,
     conversation,
+    faux,
     transcript,
     registry,
     model: faux.getModel(),
@@ -151,6 +152,8 @@ describe("native one-shot model task", () => {
       original.taskId,
       original.taskId,
     ]);
+    expect(requests[0]!.options.sessionId).toEqual(expect.any(String));
+    expect(requests[1]!.options.sessionId).toBe(requests[0]!.options.sessionId);
   });
 
   it("cancels and joins dispatch plus transport before rejecting the caller", async () => {
@@ -350,5 +353,29 @@ describe("one-shot dispatch options", () => {
     const options = t.calls[0]!.options as { temperature?: number; onPayload: (p: unknown, m: unknown) => Promise<unknown> };
     expect(options.temperature).toBeUndefined();
     await expect(options.onPayload({ input: 1 }, {})).resolves.toEqual({ input: 1, observed: true, max_output_tokens: 16 });
+  });
+});
+
+describe("provider session identity",()=>{
+  it("preserves the actual conversation identity across helper tasks without sharing another conversation",async()=>{
+    const requests:ModelRequestTarget[]=[];
+    const f=await fixture(async request=>{requests.push(request);return {status:"ready",options:{},close:async()=>{}};});
+    f.faux.setResponses([fauxAssistantMessage("one"),fauxAssistantMessage("two")]);
+    for(let i=0;i<2;i++)await completeNativeModelHelper(f.harness,f.conversation,f.model,f.transcript,{},context);
+    const other=await fixture(async request=>{requests.push(request);return {status:"ready",options:{},close:async()=>{}};});
+    await completeNativeModelHelper(other.harness,other.conversation,other.model,other.transcript,{},context);
+    const ids=requests.map(r=>r.options.sessionId);
+    expect(ids.every(id=>typeof id==="string"&&id.length>0)).toBe(true);
+    expect(ids[0]).toBe(ids[1]);expect(ids[2]).not.toBe(ids[0]);
+    expect(f.complete.mock.calls.map(call=>call[2]?.sessionId)).toEqual(ids.slice(0,2));
+    expect(other.complete.mock.calls[0]?.[2]?.sessionId).toBe(ids[2]);
+  });
+
+  it("keeps the owner-bound identity at dispatch and forwards canonical cache opt out",async()=>{
+    const requests:ModelRequestTarget[]=[];
+    const f=await fixture(async request=>{requests.push(request);return {status:"ready",options:{sessionId:"ambient-other-id"},close:async()=>{}};});
+    await completeNativeModelHelper(f.harness,f.conversation,f.model,f.transcript,{sessionId:"attested-owner-call",cacheRetention:"none"},context);
+    expect(requests[0]?.options).toMatchObject({sessionId:"attested-owner-call",cacheRetention:"none"});
+    expect(f.complete.mock.calls[0]?.[2]).toMatchObject({sessionId:"attested-owner-call",cacheRetention:"none"});
   });
 });

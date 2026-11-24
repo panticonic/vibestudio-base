@@ -1,3 +1,4 @@
+import {cleanupSessionResources} from "@panticonic/pi-ai";
 import { createMainRpcCaller } from "@vibestudio/service-schemas/mainRpc";
 import type { Context, JsonValue } from "@panticonic/pi-chord";
 import { BACKGROUND_CONTEXT } from "@panticonic/pi-chord/context";
@@ -220,6 +221,18 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     );
   }
 
+  private readonly modelProviderSessions = new Set<string>();
+
+  /** Cached provider state lasts through helper turns, then retires with its joined native owner. */
+  private releaseModelProviderSessions(): void {
+    const failures: unknown[] = [];
+    for (const id of this.modelProviderSessions) {
+      try { cleanupSessionResources(id); this.modelProviderSessions.delete(id); }
+      catch (error) { failures.push(error); }
+    }
+    if (failures.length) throw new AggregateError(failures, "Provider session state cleanup failed");
+  }
+
   private ownedModelRequests(port: ModelRequestPort): ModelRequestPort {
     return async (request, api, context) => {
       if (this.sealed) {
@@ -241,6 +254,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
             );
         }, context);
       }
+      if (typeof request.options.sessionId === "string" && request.options.sessionId.length > 0) this.modelProviderSessions.add(request.options.sessionId);
       const access = await this.runDetached(async () => {
         try {
           return await port(request, api, context);
@@ -266,6 +280,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         }
       });
       if (access.status === "waiting") return access;
+      if (access.options.sessionId) this.modelProviderSessions.add(access.options.sessionId);
       const retained = { connection: access, request };
       this.modelConnections.add(retained);
       let closing: Promise<void> | undefined;
@@ -641,6 +656,7 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         try {
           await harness.close(BACKGROUND_CONTEXT);
           this.assertModelResourcesReleased();
+          this.releaseModelProviderSessions();
           if (this.harness === harness) this.connectionReleased = true;
         } catch (error) {
           this.cleanupFailure ??= end.reason === "failed" && error !== end.error
@@ -874,6 +890,8 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         try {
           if (input.mode === "retire") await retireBoundAgentSession(this.harness, BACKGROUND_CONTEXT);
           await this.harness.close(BACKGROUND_CONTEXT);
+          this.assertModelResourcesReleased();
+          this.releaseModelProviderSessions();
         } catch (error) {
           this.cleanupFailure = error;
           throw error;

@@ -27,11 +27,15 @@ export interface ModelGatewayTurnOptions {
   reasoning?: ThinkingLevel;
   toolChoice?: ToolChoice | "required";
   samplingParams?: SamplingParams;
+  /** Canonical provider opt out from prompt/session cache reuse. */
+  cacheRetention?: "none" | "short" | "long";
 }
 
 export interface ModelGatewayTurnInput {
   /** Caller-chosen, unique among this caller's in-flight turns. Names the turn for `cancel`. */
   turnId: string;
+  /** Logical call identity; the gateway namespaces it by its authenticated caller. */
+  sessionId?: string;
   /** A "provider:id" ref, or a model role such as "executor". */
   model: string;
   /** Pi context JSON: `systemPrompt`, `messages`, `tools`. */
@@ -114,12 +118,14 @@ const turnOptionsSchema = z
     reasoning: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
     toolChoice: z.enum(["auto", "required", "none"]).optional(),
     samplingParams: z.record(z.unknown()).optional(),
+    cacheRetention: z.enum(["none", "short", "long"]).optional(),
   })
   .strict();
 
 export const modelGatewayTurnInputSchema = z
   .object({
     turnId: z.string().min(1).max(256),
+    sessionId: z.string().min(1).optional(),
     model: z.string().min(1),
     context: z
       .object({

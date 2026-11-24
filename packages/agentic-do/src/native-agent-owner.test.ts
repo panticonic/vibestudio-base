@@ -1,3 +1,5 @@
+import {registerSessionResourceCleanup} from "@panticonic/pi-ai";
+import {completeNativeModelHelper,NativeModelHelperTask} from "./native-model-helper.js";
 import { bindNativeChannelConversation } from "./native-channel-session.js";
 import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 import { retainNativeToolInvocation, retainNativeModelInvocation, readRetainedNativeInvocationSource } from "./native-invocation-source.js";
@@ -17,9 +19,11 @@ import {
   bindReceipt,
   createRegistry,
   defineExtension,
+  defineTask,
   defineTool,
   ReceiptDoc,
   type Harness,
+  type EntryId,
   type ModelRequestApi,
   type ModelRequestPort,
   type ModelRequestTarget,
@@ -3008,4 +3012,47 @@ describe("native canonical authority receipts", () => {
       ).toBeUndefined();
     expect(f.faux.state.callCount).toBe(1);
   });
+});
+
+
+it("retains canonical provider state across helper tasks and cleans only its owner after joined release",async()=>{
+  const h=await host(),fixture=await owner(h),faux=fauxProvider();
+  fixture.instance.models.setProvider(faux.provider);
+  faux.setResponses([fauxAssistantMessage("one"),fauxAssistantMessage("two")]);
+  fixture.instance.registry.install(defineExtension({name:"owned-helper-session-test",tasks:[NativeModelHelperTask]}));
+  const requested:string[]=[];let connectionsClosed=0;
+  fixture.instance.modelRequests=async request=>{
+    requested.push(String(request.options.sessionId));
+    return {status:"ready",options:{},close:async()=>{connectionsClosed++;}};
+  };
+  const cleaned:string[]=[];
+  const unregister=registerSessionResourceCleanup(id=>{
+    if(requested.includes(String(id))){expect(connectionsClosed).toBe(2);cleaned.push(String(id));}
+  });
+  try{
+    const session=await fixture.instance.open(),root=await session.root(BACKGROUND_CONTEXT);
+    for(let i=0;i<2;i++)await completeNativeModelHelper(session,root,faux.getModel(),{messages:[{role:"user",content:"one owned helper",timestamp:1}]},{},BACKGROUND_CONTEXT);
+    expect(requested).toHaveLength(2);expect(requested[0]).toBe(requested[1]);expect(cleaned).toEqual([]);
+    expect(await lifecycleRelease(fixture.instance,releaseInput)).toEqual({status:"ready"});
+    expect(cleaned).toEqual([requested[0]]);
+  }finally{unregister();await lifecycleRelease(fixture.instance,releaseInput);}
+});
+
+
+it("never forwards empty provider metadata to global session cleanup",async()=>{
+  const h=await host(),fixture=await owner(h),faux=fauxProvider();fixture.instance.models.setProvider(faux.provider);
+  const task=defineTask<{cutoff:EntryId},{phase:"request"},null>({name:"empty-provider-identity",version:1,initial:()=>({phase:"request"}),phases:{request:async(current,runtime,context)=>{
+    await runtime.withModelRequest({purpose:"generation",operation:"complete",attempt:0,model:faux.getModel(),messages:[],cutoff:current.input.cutoff,options:{sessionId:""}},async()=>null,context);
+    await runtime.commit(()=>({status:"terminal",outcome:{status:"completed",result:null}}),context);
+  }}});
+  fixture.instance.registry.install(defineExtension({name:"empty-provider-id-test",tasks:[task]}));
+  const cleaned:(string|undefined)[]=[];const unregister=registerSessionResourceCleanup(id=>{cleaned.push(id);});
+  try{
+    const session=await fixture.instance.open(),root=await session.root(BACKGROUND_CONTEXT);
+    const id=await root.commit(async tx=>{
+      const marker=await tx.appendEntry(root.id,{kind:"empty-provider-id"});return tx.createTask(task,{cutoff:marker.id},{ownership:{kind:"conversation"},background:true});
+    },BACKGROUND_CONTEXT);
+    expect((await session.waitForTask(id,BACKGROUND_CONTEXT)).state.outcome.status).toBe("completed");
+    expect(await lifecycleRelease(fixture.instance,releaseInput)).toEqual({status:"ready"});expect(cleaned).toEqual([]);
+  }finally{unregister();await lifecycleRelease(fixture.instance,releaseInput);}
 });

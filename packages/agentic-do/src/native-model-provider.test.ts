@@ -1,3 +1,4 @@
+import {completeNativeModelHelper,NativeModelHelperTask} from "./native-model-helper.js";
 import { schemaRpcMock } from "@vibestudio/rpc/test-utils";
 import type { RpcWireCaller } from "@vibestudio/rpc/internal";
 import { createServer } from "node:http";
@@ -859,4 +860,23 @@ describe("native protected model provider", () => {
       expect(state.waitForAuthority).toHaveBeenCalledTimes(1);
     });
   }
+});
+
+
+it("ordinary generation and native helpers use the same canonical provider identity for their actual conversation",async()=>{
+  const state=setup(TEST_MODEL_PROVIDER_ID,TEST_MODEL_SPEC.baseUrl,TEST_MODEL_PROVIDER_ID,TEST_MODEL_ID);
+  state.registry.install(defineExtension({name:"mixed-provider-session",tasks:[NativeModelHelperTask]}));
+  state.faux.setResponses([fauxAssistantMessage("generation"),fauxAssistantMessage("helper")]);
+  const streamed=vi.spyOn(state.models,"stream"),completed=vi.spyOn(state.models,"complete");
+  const {harness,root}=await state.open();
+  const submitted=await root.submit({type:"input",content:"generation"},context);
+  expect((await submitted.wait(context)).status).toBe("done");
+  await completeNativeModelHelper(harness,root,state.faux.getModel(),{messages:[{role:"user",content:"helper",timestamp:1}]},{},context);
+  const requests=state.rpcForRequest.mock.calls.map(([request])=>request);
+  expect(requests.map(request=>request.taskKind)).toEqual(["pi.generation","vibestudio.model-helper"]);
+  const id=requests[0]!.options.sessionId;
+  expect(id).toEqual(expect.any(String));expect(id).not.toBe(String(root.id));
+  expect(requests[1]!.options.sessionId).toBe(id);
+  expect(streamed.mock.calls[0]?.[2]?.sessionId).toBe(id);
+  expect(completed.mock.calls[0]?.[2]?.sessionId).toBe(id);
 });
