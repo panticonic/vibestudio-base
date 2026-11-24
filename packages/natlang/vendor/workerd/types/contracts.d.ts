@@ -249,6 +249,13 @@ export type DecisionRequest = {
      * scored without the end of message. A scorer that cannot score open replies fails with `decision-open-unsupported`
      * (never by scoring them closed). */
     open_reply?: boolean;
+    /** Transport field set by the scorer (model/decision-scoring.ts `splitTokenization`), never by callers: the engine
+     * sums each option's canonical and split tokenizations. */
+    split_tokenization?: boolean;
+    /** With `reasoning`: the reasoning generation's sampled token ids (its RL capture's samples), which the engine scores
+     * in place of the reasoning text re-encoded (kept up to the template's token after the reasoning). Transport field:
+     * absent when the generation recorded no ids. */
+    reasoning_ids?: number[];
     /** The reply's reasoning, sampled before the options are scored (a reasoned readout, the default of `readout:
      * decision`): every option is scored as the content after it, the template's rendering of an assistant message with
      * this reasoning (LFM3 `<think>R</think>option`). A scorer that cannot condition on it fails with

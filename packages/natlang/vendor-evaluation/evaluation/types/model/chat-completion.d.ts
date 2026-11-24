@@ -117,6 +117,10 @@ export declare function isStream(value: AsyncIterable<Json> | Json): value is As
  * receives each piece as it is folded in (`ModelTurnDelta`, contracts.ts). A throwing observer is ignored.
  */
 export declare function assembleChatCompletion(chunks: AsyncIterable<Json>, onDelta?: (delta: ModelTurnDelta) => void): Promise<Json>;
+/** A reply whose text opens with a <think>...</think> block (Gemini's thought summary under `include_thoughts`; Gemma's
+ * own thinking comes as <thought>...</thought>): the block
+ * becomes `reasoning_content` (after any reasoning the server already split off) and the rest is the reply text. */
+export declare function thoughtsFromContent(message: Json | undefined): Json | undefined;
 /** Tool schemas as the model sees them: the runtime's private annotations (`x-natlang…`, `x-optional`) removed. */
 export declare function publicSchema(value: unknown): unknown;
 /** Tool definitions checked and reduced to what the model sees. */
@@ -143,6 +147,11 @@ export type RequestLimit = {
 };
 export declare function requestLimit(size: number): RequestLimit;
 export declare function limitedTransport(transport: ChatTransport, limit: RequestLimit): ChatTransport;
+/** Collection controls the HTTP chat transport applies itself (chatCompletionModelTurn): never wire fields. Every request
+ * built from a collection's `request` controls leaves them out (a hosted server rejects unknown fields: NIM "Unsupported
+ * parameter", Gemini "Unknown name"). */
+export declare const CLIENT_REQUEST_CONTROLS: readonly ["x_natlang_omit_seed", "x_natlang_host_call_fields", "x_natlang_history_reasoning", "x_natlang_include_thoughts"];
+export declare function withoutClientControls<T extends Json>(request: T): T;
 export declare function promptLogprobDecider(transport: ChatTransport, options?: {
     request?: Json;
     /** Per-decision request fields (a tuned call's weight selection) carried on the decision item itself. */

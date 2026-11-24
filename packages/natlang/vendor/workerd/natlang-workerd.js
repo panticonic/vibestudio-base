@@ -216329,12 +216329,27 @@ var init_nl_call = __esm({
 });
 
 // src/compiler/host.ts
-function cachedSourceFile(fileName, text3, target) {
-  const key = `${target}\0${fileName}`;
-  const found = sharedSourceFiles.get(key);
-  if (found && found.text === text3) return found.file;
-  const file = import_typescript7.default.createSourceFile(fileName, text3, target, true);
-  sharedSourceFiles.set(key, { text: text3, file });
+function cachedLibrary(fileName, text3, options) {
+  let cache;
+  if (typeof options === "number") cache = sharedNumericLibraries;
+  else {
+    const found2 = sharedOptionLibraries.get(options);
+    const previous = found2?.options;
+    const unchanged = previous && previous.languageVersion === options.languageVersion && previous.impliedNodeFormat === options.impliedNodeFormat && previous.jsDocParsingMode === options.jsDocParsingMode && previous.setExternalModuleIndicator === options.setExternalModuleIndicator;
+    cache = unchanged && found2 ? found2.files : /* @__PURE__ */ new Map();
+    if (!unchanged) sharedOptionLibraries.set(options, { options: { ...options }, files: cache });
+  }
+  const key = `${typeof options === "number" ? options : options.languageVersion}\0${fileName}`;
+  const found = cache.get(key);
+  if (found && found.text === text3) {
+    cache.delete(key);
+    cache.set(key, found);
+    return found.file;
+  }
+  const file = import_typescript7.default.createSourceFile(fileName, text3, options, true);
+  cache.delete(key);
+  cache.set(key, { text: text3, file });
+  if (cache.size > MAX_SHARED_LIBRARY_FILES) cache.delete(cache.keys().next().value);
   return file;
 }
 function createNatlangCompilerHost(config) {
@@ -216364,12 +216379,13 @@ function createNatlangCompilerHost(config) {
     }
   }
   return {
-    getSourceFile(fileName, languageVersion) {
+    getSourceFile(fileName, languageVersion, _onError, shouldCreateNewSourceFile) {
       const read_ = read(fileName);
       if (read_ === void 0) return void 0;
       const text3 = config.desugarNl === false || /\.d\.[cm]?ts$/.test(fileName) || fileName.startsWith(`${libDir}/`) || /\b(?:function|const|let|var|class)\s+nl\b/.test(read_) ? read_ : desugarNlCalls(read_);
-      const target = typeof languageVersion === "number" ? languageVersion : languageVersion.languageVersion;
-      return isShared(fileName) ? cachedSourceFile(fileName, text3, target) : import_typescript7.default.createSourceFile(fileName, text3, languageVersion, true);
+      const intrinsic = fileName === INTRINSICS_FILE || fileName === SURFACE_MODULE_FILE || fileName === STD_MODULE_FILE;
+      const library = !virtual.has(fileName) && fileName.startsWith(`${libDir}/`) && /(?:^|\/)lib\.[^/]+\.d\.ts$/.test(fileName);
+      return config.shareLibrarySourceFiles !== false && !shouldCreateNewSourceFile && (intrinsic || library) ? cachedLibrary(fileName, text3, languageVersion) : import_typescript7.default.createSourceFile(fileName, text3, languageVersion, true);
     },
     getDefaultLibFileName: (options) => `${libDir}/${import_typescript7.default.getDefaultLibFileName(options)}`,
     getDefaultLibLocation: () => libDir,
@@ -216391,7 +216407,7 @@ function createVirtualProgram(files2, options = EVAL_COMPILER_OPTIONS, roots = O
   const host = createNatlangCompilerHost({ options, virtual: new Map(Object.entries(files2)), files: base ?? import_typescript7.default.sys });
   return import_typescript7.default.createProgram({ rootNames: [INTRINSICS_FILE, ...roots], options, host });
 }
-var import_typescript7, VIRTUAL_LIB_DIR, dirname, embeddedLibs, sharedSourceFiles, isShared, EVAL_COMPILER_OPTIONS;
+var import_typescript7, VIRTUAL_LIB_DIR, dirname, embeddedLibs, sharedNumericLibraries, sharedOptionLibraries, MAX_SHARED_LIBRARY_FILES, EVAL_COMPILER_OPTIONS;
 var init_host = __esm({
   "src/compiler/host.ts"() {
     "use strict";
@@ -216405,8 +216421,9 @@ var init_host = __esm({
       return at <= 0 ? "/" : path2.slice(0, at);
     };
     embeddedLibs = typeof define_NATLANG_TS_LIBS_default === "undefined" ? void 0 : (name) => define_NATLANG_TS_LIBS_default[name];
-    sharedSourceFiles = /* @__PURE__ */ new Map();
-    isShared = (fileName) => fileName.startsWith("/__natlang__/") || /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]*\.d\.ts$/.test(fileName);
+    sharedNumericLibraries = /* @__PURE__ */ new Map();
+    sharedOptionLibraries = /* @__PURE__ */ new WeakMap();
+    MAX_SHARED_LIBRARY_FILES = 128;
     EVAL_COMPILER_OPTIONS = {
       target: import_typescript7.default.ScriptTarget.ES2022,
       module: import_typescript7.default.ModuleKind.ESNext,
@@ -227378,6 +227395,12 @@ var init_native_xml_calls = __esm({
 });
 
 // src/model/decision-scoring.ts
+function splitTokenization() {
+  return globalThis.process?.env?.NATLANG_DECISION_TOKENIZATIONS !== "canonical";
+}
+function sendReasoningIds() {
+  return globalThis.process?.env?.NATLANG_DECISION_REASONING_IDS !== "rendered";
+}
 function batchScoreItem(item, extra) {
   return {
     ...extra,
@@ -227385,7 +227408,9 @@ function batchScoreItem(item, extra) {
     continuations: item.options,
     ...item.cache_messages ? { cache_messages: item.cache_messages } : {},
     ...item.open_reply ? { open_reply: true } : {},
+    ...item.options.length >= 2 && splitTokenization() ? { split_tokenization: true } : {},
     ...typeof item.reasoning === "string" ? { reasoning: item.reasoning } : {},
+    ...typeof item.reasoning === "string" && item.reasoning && Array.isArray(item.reasoning_ids) && item.reasoning_ids.length && sendReasoningIds() ? { reasoning_ids: [...item.reasoning_ids] } : {},
     ...item.adapters?.length ? { adapters: item.adapters } : {},
     ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
     ...item.native_recording ? { native_recording: true } : {}
@@ -227565,6 +227590,22 @@ async function assembleChatCompletion(chunks, onDelta) {
   };
   return { ...head, object: "chat.completion", choices: [{ index: 0, message: message2, finish_reason: finish }], ...extra };
 }
+function thoughtsFromContent(message2) {
+  const content = message2?.content;
+  if (typeof content !== "string") return message2;
+  const match2 = /^\s*<(think|thought)>([\s\S]*?)<\/\1>\s*/.exec(content);
+  if (!match2) return message2;
+  const earlier = message2.reasoning_content ?? message2.reasoning;
+  const thought2 = (match2[2] ?? "").trim();
+  const { reasoning: _drop, ...rest } = message2;
+  return {
+    ...rest,
+    content: content.slice(match2[0].length),
+    reasoning_content: typeof earlier === "string" && earlier.trim() ? `${earlier}
+
+${thought2}` : thought2
+  };
+}
 function contentText(value) {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && value.every((part) => part && typeof part === "object" && (part.type === "text" && typeof part.text === "string" || part.type === "native_state" && typeof part.id === "string")))
@@ -227704,6 +227745,15 @@ function chatCompletionModelTurn(transport, options = {}) {
       delete wireRequest.x_natlang_omit_seed;
       delete wireRequest.x_natlang_host_call_fields;
       delete wireRequest.x_natlang_history_reasoning;
+      const includeThoughts = wireRequest.x_natlang_include_thoughts === true;
+      delete wireRequest.x_natlang_include_thoughts;
+      if (includeThoughts) wireRequest.extra_body = {
+        ...wireRequest.extra_body,
+        google: {
+          ...wireRequest.extra_body?.google,
+          thinking_config: { include_thoughts: true }
+        }
+      };
       if (request.seed !== null && !omitSeed) wireRequest.seed = request.seed;
       const configuredMax = options.request?.max_tokens;
       if (configuredMax !== void 0 && (typeof configuredMax !== "number" || !Number.isSafeInteger(configuredMax) || configuredMax < 1))
@@ -227727,7 +227777,7 @@ function chatCompletionModelTurn(transport, options = {}) {
       const body = isStream(reply) ? await assembleChatCompletion(reply, onDelta) : reply;
       if (options.onExchange) await options.onExchange(structuredClone({ request: recordedRequest, wireRequest, wireResponse: body }));
       const choice = body.choices?.[0];
-      const message2 = choice?.message;
+      const message2 = options.request?.x_natlang_include_thoughts === true ? thoughtsFromContent(choice?.message) : choice?.message;
       const rawCalls = message2?.tool_calls;
       const usage = body.usage;
       if (typeof usage?.prompt_tokens === "number") {
@@ -228718,7 +228768,9 @@ function neuraleseServerModelTurn(options) {
       ...adapters.length ? { adapters: [...adapters] } : {},
       ...hints?.cache_messages ? { cache_messages: hints.cache_messages } : {},
       ...hints?.open_reply ? { open_reply: true } : {},
+      ...replies.length >= 2 && splitTokenization() ? { split_tokenization: true } : {},
       ...typeof hints?.reasoning === "string" ? { reasoning: hints.reasoning } : {},
+      ...typeof hints?.reasoning === "string" && hints.reasoning && hints.reasoning_ids?.length && sendReasoningIds() ? { reasoning_ids: [...hints.reasoning_ids] } : {},
       ...hints?.reasoning_sample ? { reasoning_sample: { ...hints.reasoning_sample } } : {},
       ...modes ? { native_state_modes: modes } : {},
       ...native?.enabled && (record3 || scope.recorder || scope.nativeStates.length) ? { native_recording: true } : {}
@@ -228850,6 +228902,7 @@ var init_neuralese_server = __esm({
     init_define_NATLANG_TS_LIBS();
     init_chat_completion();
     init_scoring();
+    init_decision_scoring();
     init_model_recording();
     init_neuralese_info();
     init_native_coefficient_policy();
@@ -234385,6 +234438,12 @@ function scopeExpression(value, root2, holder, budget = SHOWN_CHARS, state = { n
     state.depth--;
   }
 }
+function sampledIds(response) {
+  const samples = response.raw_response?.x_natlang_rl_capture?.samples;
+  if (!Array.isArray(samples) || !samples.length) return void 0;
+  const ids = samples.map((sample) => sample?.token_id);
+  return ids.every((id3) => Number.isSafeInteger(id3)) ? ids : void 0;
+}
 function replyReasoning(response) {
   if (typeof response.reasoning === "string") return response.reasoning;
   const text3 = response.text ?? "";
@@ -235861,6 +235920,7 @@ ${notes}` : opening;
             options,
             cache_messages: cacheMessages,
             ...open ? { open_reply: true } : {},
+            ...reasoning?.ids?.length ? { reasoning_ids: reasoning.ids } : {},
             ...reasoning ? { reasoning: reasoning.text, reasoning_sample: { index: reasoning.index, samples: reasonings.length, action: reasoning.index === action } } : {},
             ...callId ? { invocation_id: callId, invocation_role: session.runtime.options.parentCallId ? "child" : "root" } : {},
             ...capturedGuidance ? { x_natlang_privileged_context: capturedGuidance } : {},
@@ -236131,11 +236191,13 @@ ${notes}` : opening;
             decision_reasoning: { index, samples }
           });
           this.recordGeneratedTurn(messages, [], response, turn, void 0, this.driver, actor, { index, samples });
+          const ids = sampledIds(response);
           return {
             index,
             text: replyReasoning(response),
             truncated: response.truncated === true,
-            completionTokens: response.completion_tokens ?? null
+            completionTokens: response.completion_tokens ?? null,
+            ...ids ? { ids } : {}
           };
         };
         const sampled = await Promise.all(Array.from({ length: samples }, (_10, index) => one(index)));

@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "fedc9504310679b7513b6a5840c2688e386509a7",
+  "commit": "8e0e1bf820e80740033730e2c9a93b1c18fc94a9",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "f4c7a44c61d152e68e4bf9bc3e29b0e54fe7c760a76e57f586bdc84e4833b9e2",
+    "workerd/natlang-workerd.js": "466e1157ab51c13417a4f02d5ea9c4f5f533337150ed8099009e9d2c4e8e555c",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -28,7 +28,7 @@
     "workerd/types/calls/tiers.d.ts": "e4e013d6f8bed14c6635b3c1321fc14977ece76f5588d8e1ac0020fc7bd78948",
     "workerd/types/calls/types.d.ts": "b2a61ead35976c838be76bf1bb099321a54312aee22ea28e8b50920746f0272a",
     "workerd/types/compiler/host-cell.d.ts": "50300e2b86d09dd6a4ae3ca2b9dc1032275217a197b3b60e54f8c342544f59d4",
-    "workerd/types/compiler/host.d.ts": "463f265801a2706d3c407edcfea7c89b50e7aca49679c88856d743e7e153ac17",
+    "workerd/types/compiler/host.d.ts": "12e29a8a9c3762c7341436f58ddf189f11ec09f06542b210a3ae38f83ab34a6b",
     "workerd/types/compiler/inline.d.ts": "445b5fa050c9bfa66fd6c01b2d182515ed1776daa97e0324a4fdecc1726fa4e8",
     "workerd/types/compiler/intrinsics.d.ts": "9161d1d36a44c1d64ceac45ccf5321ab5e3bc689f968e7a880ec50d0fd6105e8",
     "workerd/types/compiler/neuralese.d.ts": "3a85bfacfc8211f77b2333d9622790f2f9f4ed81c8badbbb68987930f2000ba5",
@@ -38,7 +38,7 @@
     "workerd/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "workerd/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
     "workerd/types/compiler/type-module-links.d.ts": "66d1be840f6ad695461f510ac4c4859bb8241760e46b7ea05c3b7292a4123284",
-    "workerd/types/contracts.d.ts": "e058c2399e4ec64605545741e86f65a536d87887cc140c8cea260b27f9900db4",
+    "workerd/types/contracts.d.ts": "bc6411e0d5fa6647b3d398626ab06eaa9003c15b9f8f9c1df5e628fc96962706",
     "workerd/types/core/index.d.ts": "8ff56eaf76aae2dbd5a754389427b947a7614e96cbdcbf0f674768d197ff22da",
     "workerd/types/core/workerd-bundle.d.ts": "4a40511caffe0ea52c76599f739f6eb52a8848aec79695aac0184450fb359275",
     "workerd/types/core/workerd.d.ts": "e2f6ed23cfa7e3843720b07d627571e656c727f5e950ef904ad39587c242c896",

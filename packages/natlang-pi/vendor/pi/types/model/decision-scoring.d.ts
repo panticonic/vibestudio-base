@@ -31,8 +31,21 @@ export type PromptLogprobResponse = {
  * log-probabilities after the prefix all replies share. A server that returns no `prompt_logprobs` cannot score.
  */
 export declare function scoresFromPromptLogprobs(responses: readonly PromptLogprobResponse[]): DecisionScores;
+/**
+ * Whether score items ask for both tokenizations of each option (`split_tokenization`): the engine sums the option's
+ * canonical tokenization and its split one (the options' shared leading and trailing characters tokenized apart, so
+ * `"spam"` is also `"`,`spam`,`"` where the canonical BPE writes `"sp`,`am"`), since the model may write either.
+ * Default on; NATLANG_DECISION_TOKENIZATIONS=canonical scores the canonical tokenization alone. An engine that does
+ * not serve the field scores the canonical one (its result has no `split_tokenization` echo).
+ */
+export declare function splitTokenization(): boolean;
+/**
+ * Whether a reasoned item carries its reasoning's sampled ids (`reasoning_ids`), which the engine scores in place of the
+ * reasoning text re-encoded. Default on; NATLANG_DECISION_REASONING_IDS=rendered scores after the re-encoded text.
+ */
+export declare function sendReasoningIds(): boolean;
 /** One item of the explicit-batch endpoint's request: the prompt and its replies as continuations. */
-export declare function batchScoreItem(item: Pick<DecisionRequest, 'messages' | 'options'> & Partial<Pick<DecisionRequest, 'adapters' | 'native_state_modes' | 'native_recording' | 'cache_messages' | 'open_reply' | 'reasoning'>>, extra?: Json): Json;
+export declare function batchScoreItem(item: Pick<DecisionRequest, 'messages' | 'options'> & Partial<Pick<DecisionRequest, 'adapters' | 'native_state_modes' | 'native_recording' | 'cache_messages' | 'open_reply' | 'reasoning' | 'reasoning_ids'>>, extra?: Json): Json;
 /** One result of the explicit-batch endpoint's response, for an item of `replyCount` replies. */
 export type BatchScoreResult = {
     log_probs?: number[];

@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "fedc9504310679b7513b6a5840c2688e386509a7",
+  "commit": "8e0e1bf820e80740033730e2c9a93b1c18fc94a9",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -45,7 +45,7 @@
     "evaluation/types/calls/store.d.ts": "b2f2171f141419d514e8af449aeaae1d011aa99ba68edb8054a93a331afe72c0",
     "evaluation/types/calls/tiers.d.ts": "e4e013d6f8bed14c6635b3c1321fc14977ece76f5588d8e1ac0020fc7bd78948",
     "evaluation/types/calls/types.d.ts": "b2a61ead35976c838be76bf1bb099321a54312aee22ea28e8b50920746f0272a",
-    "evaluation/types/compiler/host.d.ts": "463f265801a2706d3c407edcfea7c89b50e7aca49679c88856d743e7e153ac17",
+    "evaluation/types/compiler/host.d.ts": "12e29a8a9c3762c7341436f58ddf189f11ec09f06542b210a3ae38f83ab34a6b",
     "evaluation/types/compiler/inline.d.ts": "445b5fa050c9bfa66fd6c01b2d182515ed1776daa97e0324a4fdecc1726fa4e8",
     "evaluation/types/compiler/intrinsics.d.ts": "9161d1d36a44c1d64ceac45ccf5321ab5e3bc689f968e7a880ec50d0fd6105e8",
     "evaluation/types/compiler/neuralese.d.ts": "3a85bfacfc8211f77b2333d9622790f2f9f4ed81c8badbbb68987930f2000ba5",
@@ -54,7 +54,7 @@
     "evaluation/types/compiler/rewrites.d.ts": "4d8f1a091d11e89583cbff7770f9012a477874cfd26761e49493401defcdc50f",
     "evaluation/types/compiler/runtime-specifier.d.ts": "92dc2c4b29030b1c171b0f0772137398c1aa2b38e50c8e92f82df17d66c36677",
     "evaluation/types/compiler/targets.d.ts": "52a2a9be358d072157016bda986a286910881c7cf0d76e3d18cb7af010ce6a23",
-    "evaluation/types/contracts.d.ts": "e058c2399e4ec64605545741e86f65a536d87887cc140c8cea260b27f9900db4",
+    "evaluation/types/contracts.d.ts": "bc6411e0d5fa6647b3d398626ab06eaa9003c15b9f8f9c1df5e628fc96962706",
     "evaluation/types/decision-frame.d.ts": "f59d3a406a2884920dffd8ecf7e34cf975072b7fad9cdfdef0b0e189567c92b8",
     "evaluation/types/entry/evaluation.d.ts": "4a6a8c7cab18402730f34ba02ce374a3bb4d660605baa886a43f03cfeb69f151",
     "evaluation/types/evaluation/fixtures.d.ts": "dd736199cf6b2045566c7e26562f43fc8974061c5d019d5d435b2558b115d504",
@@ -78,7 +78,7 @@
     "evaluation/types/llama/slots.d.ts": "3777ed744fa8ad3fa024f2eb39049ce4e352bbdf80bccafe64089aec99542bfa",
     "evaluation/types/machine-store.d.ts": "6210b9cc081a8a6d5ec8095aeccca8a8fb581c9e8d547beff8fbda84212d2a50",
     "evaluation/types/model-catalog.d.ts": "578c0e1559d66f82036fda478b1708f9dc5c51aac5df5d1ab6b1fc05c6ec74a1",
-    "evaluation/types/model/chat-completion.d.ts": "d3a3c78c53cdfe7ac42c036ef0c66038656282ea3516d5693a17a216ce4c00df",
+    "evaluation/types/model/chat-completion.d.ts": "ca0f0756557624ec008651ee76dd269705bb97a232546400924562af0ebf26c3",
     "evaluation/types/model/config.d.ts": "f6c87557953b7efa53a7ac8d1ca69a6873e8cc52148e8ff7e78d0a22a9d9eaf1",
     "evaluation/types/model/driver.d.ts": "9f6f9fc74d52c1857da5ce208fe6c5fe245655101f7f2d9126d3f24d3ee4efb1",
     "evaluation/types/model/index.d.ts": "bbb6399684e183bebc260f630a1c09eac7ac13c6d2bb5b1645864fe699ce89c2",

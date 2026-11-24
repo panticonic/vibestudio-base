@@ -20,6 +20,8 @@ export type NatlangCompilerHostOptions = {
      * compiler/host-cell.ts, rewrites only the built-in `nl` and passes false). */
     desugarNl?: boolean;
     currentDirectory?: string;
+    /** Reuse immutable library ASTs (default true); user and generated program sources are always owned by this host. */
+    shareLibrarySourceFiles?: boolean;
 };
 /** A compiler host over real or virtual files, always including the natlang intrinsics. */
 export declare function createNatlangCompilerHost(config: NatlangCompilerHostOptions): ts.CompilerHost;

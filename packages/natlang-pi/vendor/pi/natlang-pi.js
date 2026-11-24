@@ -57,6 +57,12 @@ function scoresFromPromptLogprobs(responses) {
     ...promptTokens !== void 0 ? { prompt_tokens: promptTokens } : {}
   };
 }
+function splitTokenization() {
+  return globalThis.process?.env?.NATLANG_DECISION_TOKENIZATIONS !== "canonical";
+}
+function sendReasoningIds() {
+  return globalThis.process?.env?.NATLANG_DECISION_REASONING_IDS !== "rendered";
+}
 function batchScoreItem(item, extra) {
   return {
     ...extra,
@@ -64,7 +70,9 @@ function batchScoreItem(item, extra) {
     continuations: item.options,
     ...item.cache_messages ? { cache_messages: item.cache_messages } : {},
     ...item.open_reply ? { open_reply: true } : {},
+    ...item.options.length >= 2 && splitTokenization() ? { split_tokenization: true } : {},
     ...typeof item.reasoning === "string" ? { reasoning: item.reasoning } : {},
+    ...typeof item.reasoning === "string" && item.reasoning && Array.isArray(item.reasoning_ids) && item.reasoning_ids.length && sendReasoningIds() ? { reasoning_ids: [...item.reasoning_ids] } : {},
     ...item.adapters?.length ? { adapters: item.adapters } : {},
     ...item.native_state_modes ? { native_state_modes: item.native_state_modes } : {},
     ...item.native_recording ? { native_recording: true } : {}
@@ -339,6 +347,8 @@ export {
   scoreAll,
   scoresFromBatchResult,
   scoresFromPromptLogprobs,
+  sendReasoningIds,
   softmax,
+  splitTokenization,
   toPiContext
 };
