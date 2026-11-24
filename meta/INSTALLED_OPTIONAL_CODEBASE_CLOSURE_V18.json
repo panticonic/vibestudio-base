@@ -1,0 +1,116 @@
+{
+  "schema": "vibestudio.installed-codebase-closure/1",
+  "movedTypeExports": [
+    {
+      "feature": "workOnNewsEvidenceGoal",
+      "target": "./workOnNewsEvidenceGoal/types.js",
+      "names": [
+        "NewsEvidenceResult"
+      ]
+    },
+    {
+      "feature": "reconcileWorkspaceConfig",
+      "target": "./reconcileWorkspaceConfig/types.js",
+      "names": [
+        "ConfigResult"
+      ]
+    },
+    {
+      "feature": "chooseAudienceResponse",
+      "target": "./chooseAudienceResponse/types.js",
+      "names": [
+        "AudienceResult"
+      ]
+    },
+    {
+      "feature": "reviseCoordinatedDocuments",
+      "target": "./reviseCoordinatedDocuments/types.js",
+      "names": [
+        "CoordinatedRevisionResult"
+      ]
+    },
+    {
+      "feature": "reviewRetainedMemory",
+      "target": "./reviewRetainedMemory/types.js",
+      "names": [
+        "MemoryResult"
+      ]
+    },
+    {
+      "feature": "workOnEditorialPacket",
+      "target": "./workOnEditorialPacket/types.js",
+      "names": [
+        "EditorialPacketResult"
+      ]
+    },
+    {
+      "feature": "workOnDemoPortfolio",
+      "target": "./workOnDemoPortfolio/types.js",
+      "names": [
+        "PortfolioResult"
+      ]
+    },
+    {
+      "feature": "workOnRegencyBriefing",
+      "target": "./workOnRegencyBriefing/types.js",
+      "names": [
+        "RegencyResult"
+      ]
+    },
+    {
+      "feature": "workOnPersonalWelcomeGoal",
+      "target": "./workOnPersonalWelcomeGoal/types.js",
+      "names": [
+        "WelcomeResult"
+      ]
+    },
+    {
+      "feature": "reconcileGoogleRunbook",
+      "target": "./reconcileGoogleRunbook/types.js",
+      "names": [
+        "GoogleRunbookResult"
+      ]
+    },
+    {
+      "feature": "prepareNewsEditionReview",
+      "target": "./prepareNewsEditionReview/types.js",
+      "names": [
+        "NewsEditionReviewResult"
+      ]
+    },
+    {
+      "feature": "reviewUnitHandoffGoal",
+      "target": "./reviewUnitHandoffGoal/types.js",
+      "names": [
+        "UnitHandoffResult"
+      ]
+    },
+    {
+      "feature": "prepareContentProject",
+      "target": "./prepareContentProject/types.js",
+      "names": [
+        "ContentProjectResult"
+      ]
+    },
+    {
+      "feature": "correctVaultFromPdf",
+      "target": "./correctVaultFromPdf/types.js",
+      "names": [
+        "PdfVaultCorrectionResult"
+      ]
+    }
+  ],
+  "featureDependencies": {
+    "workOnNewsEvidenceGoal": [
+      "reviewNewsEvidence"
+    ]
+  },
+  "preserved": "All original type owner modules and application return signatures; conditional exports follow explicit installed feature availability",
+  "mechanismInventory": {
+    "assembly": "packages/natlang/src/workspaceModules.ts:10 is the sole installed-module linker; programs.ts:389 calls it for both crawl and semantic snapshot reads",
+    "contracts": "skills/open-user-goal/natlang.json workspaceBranches controls optional callables and type-barrel export availability; original type definitions are preserved",
+    "loadAndDescribe": "packages/natlang/src/programs.ts:435 and :463 share readAndCompile and the linked source snapshot",
+    "compilerAndModels": "Linking happens before the common Core compiler or offloaded compileProduct at programs.ts:403. All serving engines consume the resulting typed program; no model protocol/engine implementation changes.",
+    "qualification": "The prior semantic-library.test.ts unioned all templates and could not detect missing optional backends. It now qualifies eight separate installed views and verifies every explicit campaign binding plus all locally applicable public entries through compiler-enforced result contracts and arity."
+  }
+}

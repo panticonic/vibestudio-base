@@ -56,7 +56,7 @@ export async function linkWorkspaceModules(
       reject(`The callable mount ${mount} overlaps another item.`);
   }
 
-  type Branch = { mounts: string[]; types?: string[] };
+  type Branch = { mounts: string[]; types?: string[]; dependsOn?: string[] };
   const branches = new Map<string, Branch>();
   if (branchConfiguration !== undefined) {
     if (!branchConfiguration || typeof branchConfiguration !== "object" || Array.isArray(branchConfiguration))
@@ -65,18 +65,34 @@ export async function linkWorkspaceModules(
       if (!path.split("/").every(part => identifier.test(part)) ||
           !(Object.hasOwn(local, `${path}.nl`) || Object.hasOwn(local, `${path}.ts`)) || !entry || typeof entry !== "object" || Array.isArray(entry))
         reject(`Invalid local callable branch ${path}.`);
-      const { mounts, types } = entry as Branch;
-      if (!Array.isArray(mounts) || !mounts.length ||
+      const { mounts = [], types, dependsOn } = entry as Branch;
+      if (!Array.isArray(mounts) || (!mounts.length && !dependsOn?.length) ||
           mounts.some(mount => typeof mount !== "string" || !mount.startsWith(`${path}/`) || !Object.hasOwn(declaration, mount)))
         reject(`List declared mounts under the workspace branch ${path}.`);
+      if (dependsOn !== undefined && (!Array.isArray(dependsOn) || !dependsOn.length ||
+          new Set(dependsOn).size !== dependsOn.length || dependsOn.some(dependency =>
+            typeof dependency !== "string" || dependency === path || !dependency.split("/").every(part => identifier.test(part)))))
+        reject(`List distinct declared feature dependencies for workspace branch ${path}.`);
       if (types !== undefined && (!Array.isArray(types) || !types.length ||
           types.some(name => typeof name !== "string" || !identifier.test(name)) || !Object.hasOwn(local, `${path}/types.ts`)))
         reject(`List exported type names in ${path}/types.ts.`);
-      branches.set(path, { mounts, types });
+      branches.set(path, { mounts, types, dependsOn });
     }
     for (const path of branches.keys()) if ([...branches.keys()].some(other => other !== path && path.startsWith(`${other}/`)))
       reject(`Workspace branch ${path} overlaps another branch.`);
   }
+
+  // Availability follows the declared typed API dependency graph. A caller of
+  // an optional feature cannot remain as a dangling static import when its
+  // backend is absent. This changes availability, never grants service scope.
+  for (const [path, branch] of branches)
+    for (const dependency of branch.dependsOn ?? [])
+      if (!branches.has(dependency)) reject(`Workspace branch ${path} depends on unknown feature ${dependency}.`);
+  const ordered = new Set<string>();
+  for (let pass = 0; pass < branches.size; pass++)
+    for (const [path, branch] of branches)
+      if ((branch.dependsOn ?? []).every(dependency => ordered.has(dependency))) ordered.add(path);
+  if (ordered.size !== branches.size) reject("Workspace feature dependencies contain a cycle.");
 
   const mounts = entries.map(([mount, source]) => ({ mount, source: source as string }));
   const projects = await readInstalledRoots([...new Set(mounts.map(({ source }) => source))]);
@@ -125,9 +141,11 @@ export async function linkWorkspaceModules(
     return { mount, files, scopes, pkg };
   });
   const present = new Set(modules.map(({ mount }) => mount));
-  const unavailable = [...branches].filter(([, branch]) => branch.mounts.some(mount => !present.has(mount)))
-    .map(([path]) => path);
-  const visible = (path: string) => !unavailable.some(branch => path === `${branch}.nl` || path === `${branch}.ts` || path.startsWith(`${branch}/`));
+  const unavailable = new Set([...branches].filter(([, branch]) => branch.mounts.some(mount => !present.has(mount)))
+    .map(([path]) => path));
+  for (const path of ordered)
+    if ((branches.get(path)!.dependsOn ?? []).some(dependency => unavailable.has(dependency))) unavailable.add(path);
+  const visible = (path: string) => ![...unavailable].some(branch => path === `${branch}.nl` || path === `${branch}.ts` || path.startsWith(`${branch}/`));
   const linked = Object.fromEntries(Object.entries(local).filter(([path]) => visible(path)));
   for (const [path, branch] of branches) {
     if (!branch.types?.length || !visible(`${path}.nl`)) continue;
