@@ -1,0 +1,18 @@
+{
+  "name": "@workspace/application-outcomes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Application outcome contracts and verified invocation observations",
+  "exports": {
+    "./observed-application-outcome": "./observed-application-outcome.ts",
+    "./observed-invocation": "./observed-invocation.ts",
+    "./semantic-outcome-contract": "./semantic-outcome-contract.ts"
+  },
+  "dependencies": {
+    "@vibestudio/content-addressing": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}
