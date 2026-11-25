@@ -2,7 +2,7 @@ import {beforeEach, expect, it, vi} from "vitest";
 const service=vi.hoisted(()=>({prepare:vi.fn(),write:vi.fn(),observe:vi.fn(),commit:vi.fn()}));
 vi.mock("natlang:services",()=>({contentProjectDraft:service,contentProjectCommit:{commit:service.commit}}));
 import writeInitial from "./authorProjectDocuments/writeInitialProject.js";
-import finishProject from "./finishPrivateProject.js";
+import commitReviewed from "./finishPrivateProject/commitReviewedProject.js";
 import readCandidate from "./authorProjectDocuments/readProjectCandidate.js";
 import reviseCandidate from "./authorProjectDocuments/reviseProjectCandidate.js";
 const scope={status:"admitted" as const,receipt:"scoped",initialHead:"before",request:null};
@@ -23,11 +23,12 @@ it("reads and repairs the exact candidate under the same scope and preserves nat
  expect(service.write).toHaveBeenCalledWith("scoped","prepared",[]);
 });
 
-it("finishes from the chosen typed disposition and semantic review without reconstructing state",async()=>{
- const decision={action:"draft" as const,basis:"authorized" as const,selected:[],reason:"Local draft requested."};
+it("only submits an actual ready candidate to native current-head commit",async()=>{
  const reviewed={snapshot:prepared,review:{ready:true,coveredRoles:[],unsupportedClaims:[],blockers:[],reason:"Reviewed actual files."}};
- expect(await finishProject(decision,scope,reviewed)).toEqual({outcome:"draft",candidate:prepared,event:null});expect(service.commit).not.toHaveBeenCalled();
- expect((await finishProject({...decision,action:"commit"},scope,{...reviewed,review:{...reviewed.review,ready:false}})).outcome).toBe("review-needed");expect(service.commit).not.toHaveBeenCalled();
- service.commit.mockResolvedValue(null);expect((await finishProject({...decision,action:"commit"},scope,reviewed)).outcome).toBe("held-moved");
- const event={eventId:"local",head:"event-head"};service.commit.mockResolvedValue(event);expect(await finishProject({...decision,action:"commit"},scope,reviewed)).toEqual({outcome:"committed",candidate:prepared,event});
+ expect(await commitReviewed(scope,{...reviewed,review:{...reviewed.review,ready:false}})).toBeNull();
+ expect(service.commit).not.toHaveBeenCalled();
+ service.commit.mockResolvedValue(null);expect(await commitReviewed(scope,reviewed)).toBeNull();
+ expect(service.commit).toHaveBeenCalledWith("scoped","prepared","Prepare private content project");
+ const event={eventId:"local",head:"event-head"};service.commit.mockResolvedValue(event);
+ expect(await commitReviewed(scope,reviewed)).toBe(event);
 });

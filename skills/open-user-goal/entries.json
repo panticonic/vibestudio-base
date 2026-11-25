@@ -800,7 +800,7 @@
     "additionalArguments": {}
   },
   "preparedContentProject": {
-    "program": "skills/open-user-goal/prepareContentProject.ts",
+    "program": "skills/open-user-goal/prepareContentProject.nl",
     "callable": "prepareContentProject",
     "resultType": "ContentProjectResult",
     "skill": "preparedContentProject",

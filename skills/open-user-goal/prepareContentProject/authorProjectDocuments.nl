@@ -1,10 +1,11 @@
 ---
-description: Plan and compose the private project from scoped facts and inspect the actual written candidate.
+description: Compose and review the requested private documents using the admitted source facts and actual candidate readback.
 args:
   scope: ProjectScopeLease
 returns: AuthoredProjectDraft
 ---
-1. Use the admitted scope's request. Call compose.analyzeRequest and compose.planDocuments. If their brief or plan is blocked, return null before prepare.
-2. Call compose.draftDocuments using the request and actual brief and plan. Call compose.completeNavigation with the actual returned drafts and plan.
-3. Call writeInitialProject with the admitted scope and exact complete files. If it returns null, hold without claiming to have written a project.
-4. Call compose.reviewCandidate with the exact written snapshot files, request, brief and plan. If its concrete findings can be repaired from the supplied evidence, use compose.reviseDocuments(request, plan, current documents, review), readProjectCandidate and reviseProjectCandidate to improve the actual current candidate, then review its new readback. Preserve supported work; each revision must resolve a concrete finding rather than repeat an unchanged attempt. Stop with the observed candidate and review when ready, when essential evidence or authority is missing, or when the findings cannot be improved. The private source scope permits revisions before its final local commit; it does not require a perfect first draft. Only the independent verifier attests final artifact quality.
+Work from the admitted request's audience, document roles and supported facts. Use the composition functions to understand the requested material, plan and draft useful documents, and make their navigation complete. Choose the appropriate decomposition from the actual brief, plan and drafts; unavailable essential evidence is a reason to hold rather than invent content.
+
+Retain documents through the scoped write boundary and judge their actual written snapshot with the candidate review functions. If concrete review findings can be repaired from the admitted evidence, use the revision functions and current readback to improve that candidate, then reassess it. Each further edit should resolve an observed finding, not repeat an unchanged attempt. Preserve supported work and stop honestly when the candidate is ready or cannot be improved within the current evidence and authority.
+
+Return the actual retained snapshot and its review, or null when no candidate could be produced. No semantic approval replaces native scope, head comparison or final verification. Successful private writes advance their own working head; this alone does not revoke the source authorization or prove another actor changed it.
