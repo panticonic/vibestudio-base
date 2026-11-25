@@ -126,11 +126,16 @@ hand over with `` nl`...`.with({ name: value }) ``.
 
 ## Design the program
 
-1. **Draw the boundary.** Code does exact work: arithmetic, parsing, sorting, counting, I/O. Natural language does
-   judgment: interpreting, classifying, choosing, explaining. Most programs are ordinary code with a few `nl` decisions
-   where meaning matters.
+1. **Choose the owner of composition.** Code does exact work: arithmetic, parsing, sorting, counting, storage,
+   transport and checked native effects. Natural language owns semantic interpretation, subgoal selection and
+   domain-specific goal composition. Give an open-ended goal to a natural function with the relevant hierarchical
+   callables; let it choose which evidence and helpers are needed, carry actual observations forward and reconsider
+   from feedback. A TS entry may bind application state and delegate to that function, but should not replace its
+   semantic choices with a fixed route of leaf classifications. Keep current-version, identity, scope and effect
+   checks in the exact native boundaries. Pure decision leaves remain useful when their caller needs a plan or value.
 2. **Give each function one responsibility** with a precise signature. Split a stage that asks for several judgments
-   at once into typed children, and give the parent the children's results, not their raw inputs.
+   at once into typed children. Give each child the actual inputs it needs; retain source observations and child
+   results at the parent when they are needed for the next judgment, verification or requested answer.
    Describe each lambda’s own returned value and completion point, rather than restating its caller’s whole goal.
    A planner whose caller owns I/O or effects chooses and returns the next request, step or proposal from its supplied
    observations; it does not need to perform that effect before returning. State who executes the decision and how
@@ -139,8 +144,12 @@ hand over with `` nl`...`.with({ name: value }) ``.
 3. **Put constraints in types, not sentences.** A literal union or a record in `returns` beats "answer with one
    of...". A property a reader can judge from the value goes in `Is<string, "one line of at most 60 characters">`.
    Doc comments on fields in `types.ts` reach the model.
-4. **Write instructions a small model can follow.** Number the steps, name the data each step uses, and say what the
-   result is and when the task is done. Say when "not found" is a valid answer.
+4. **Describe the function's computation.** Name the relevant evidence, returned value, effects it owns and honest
+   completion conditions. For an open-ended coordinator, describe how to choose and delegate subproblems rather than
+   prescribing one helper route or requiring every helper to run. Number a genuinely required native protocol, not
+   an incidental trajectory. Say when "not found" is a valid answer. NativeSkill knowledge can carry shared domain
+   evidence distinctions through the existing context mechanism; it does not add effect authority or replace a
+   reusable semantic lambda hierarchy.
 5. **Loop structurally.** Callable-folder TypeScript and eval code have no `while` or open `for(;;)`: use `for...of`,
    counted loops, array methods, recursion on a smaller argument, or `iterateOn`. Run independent calls together with
    `Promise.all(items.map(f))`.

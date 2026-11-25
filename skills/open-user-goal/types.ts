@@ -599,3 +599,5 @@ export type { EvalRecoveryResult } from "./workOnEvalHandoffGoal/types.js";
 
 export type { ProgramRunReport } from "./workOnProgramRunGoal/types.js";
 export type { AuthoringOpenOutcome } from "./workOnAuthoringGoal/types.js";
+
+export type { AssemblyReport } from "./workOnAssemblyGoal/types.js";

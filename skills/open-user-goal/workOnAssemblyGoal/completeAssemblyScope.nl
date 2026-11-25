@@ -7,4 +7,4 @@ args:
   sources: UnitSource[]
 returns: string[]
 ---
-Compare the observed import paths and manifest package names with the real inventory. Select unread owned dependencies needed to resolve the goal. When a transitive package might refer to another unread unit, include enough of the small owned inventory to resolve it in this one follow-up. Omit unrelated packages and return an empty list when the inputs are complete.
+Compare the observed import paths and manifest package names with the real inventory. Select unread owned dependencies needed to resolve the goal. Select the currently justified next source scope; the caller can invoke this analysis again after new imports or manifest evidence are observed. Do not read unrelated units merely to fit a fixed follow-up count. Omit unrelated packages and return an empty list when the inputs are complete.

@@ -370,7 +370,7 @@
     "additionalArguments": {}
   },
   "localPresentation": {
-    "program": "skills/open-user-goal/reviewLocalPresentation.ts",
+    "program": "skills/open-user-goal/reviewLocalPresentation.nl",
     "callable": "reviewLocalPresentation",
     "resultType": "LocalPresentationOutcome",
     "skill": "localPresentation",
@@ -830,7 +830,7 @@
     "additionalArguments": {}
   },
   "workspace-assembly": {
-    "program": "skills/open-user-goal/workOnAssemblyGoal.ts",
+    "program": "skills/open-user-goal/workOnAssemblyGoal.nl",
     "callable": "workOnAssemblyGoal",
     "resultType": "AssemblyReport",
     "skill": "workspaceAssembly",
@@ -960,7 +960,7 @@
     "additionalArguments": {}
   },
   "personal-history": {
-    "program": "skills/open-personal-history/reviewPersonalHistory.ts",
+    "program": "skills/open-personal-history/reviewPersonalHistory.nl",
     "callable": "reviewPersonalHistory",
     "resultType": "Report",
     "skill": "personalHistory",

@@ -371,7 +371,7 @@ export default {
     "additionalArguments": {}
   },
   "localPresentation": {
-    "program": "skills/open-user-goal/reviewLocalPresentation.ts",
+    "program": "skills/open-user-goal/reviewLocalPresentation.nl",
     "callable": "reviewLocalPresentation",
     "resultType": "LocalPresentationOutcome",
     "skill": "localPresentation",
@@ -831,7 +831,7 @@ export default {
     "additionalArguments": {}
   },
   "workspace-assembly": {
-    "program": "skills/open-user-goal/workOnAssemblyGoal.ts",
+    "program": "skills/open-user-goal/workOnAssemblyGoal.nl",
     "callable": "workOnAssemblyGoal",
     "resultType": "AssemblyReport",
     "skill": "workspaceAssembly",
@@ -961,7 +961,7 @@ export default {
     "additionalArguments": {}
   },
   "personal-history": {
-    "program": "skills/open-personal-history/reviewPersonalHistory.ts",
+    "program": "skills/open-personal-history/reviewPersonalHistory.nl",
     "callable": "reviewPersonalHistory",
     "resultType": "Report",
     "skill": "personalHistory",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"8adb386585e4b222d2da1e8c0747bb8942ed1ef9ed3740fc51e5cb5734af9a0e"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"46d1ecda3123f42c85fd6d112ce3205a09be7b94ba6eefd376117429c9fcef69"};
