@@ -163,6 +163,8 @@ export declare class TypeEnv {
     /** The dialect a type's dialect name means here: `DefaultDialect` is the bound reader dialect, when there is one. */
     dialect(name: string): string;
     resolve(type: Type): Type;
+    /** Resolve scalar aliases in field constraints without recursively expanding object aliases. */
+    private atomicIntersectionOperand;
     /** `Record<Kind, T>`: the record with a field for each string literal `Kind` names, or a dictionary for `string`. */
     private recordOfKeys;
     checkNames(type: Type): void;

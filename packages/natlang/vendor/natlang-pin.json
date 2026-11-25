@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "b3b11e2f344951a0501cf46b7449024f9124490e",
+  "commit": "207112c6b4cc5fff30a4dcdf1303f0c6026ddbd7",
   "dirty": false,
   "targets": [
     "workerd"
@@ -12,7 +12,7 @@
   },
   "files": {
     "workerd/natlang-workerd.d.ts": "4f1c6303f0b0ddb04dcb930ec31afef9c880e6ffbdb98b15be730a154f507f1e",
-    "workerd/natlang-workerd.js": "5c8dd8bda7c6ed8ac450ab592cb69dea3ea25aa2db9e3cf6db666f96c6e7b84d",
+    "workerd/natlang-workerd.js": "ba8e9ff562c6f72cee07997992fcc4ee73b7335b31246ca316b72de510740b58",
     "workerd/types/adaptation/program-view.d.ts": "52becb3a76e54f9d243c33f723cd94cd95111bea0e3de05afe1cfeee07dd2737",
     "workerd/types/adaptation/types.d.ts": "9fdf43f92d877f62aac222791157f853b2268d07b50f99ec12d833bbfe1ce9ad",
     "workerd/types/adaptation/weights/binding.d.ts": "1f708462cef03c1416be1ea4fc4a4e805abfcaca062277fb84a20508b8ad30a7",
@@ -75,7 +75,7 @@
     "workerd/types/native/system-prompts.d.ts": "3e10168d05d1dc331441eb2b5f124b1f483fdb8177fcd280e0c7ca205cc8bd74",
     "workerd/types/native/trace.d.ts": "915a063fb9fdea55a1b68c644ca12724a1c961e0c538aec0ab46977ffd40e3a4",
     "workerd/types/native/training-guidance.d.ts": "e1ba5c1c7d8b89a64ef54c741d9a1650778cc928a4eb09bf4a1ddbf6e8e2a72f",
-    "workerd/types/native/types.d.ts": "a9327d507d96494311f2151a40becbf1c6a55b9597b42ac6161b622a70268ca5",
+    "workerd/types/native/types.d.ts": "a9fa81ae4783fc8a90791cac189614b364c31f09d539317ac5e7d3298bb361f9",
     "workerd/types/native/untrusted.d.ts": "635ac030a38702fb15a114d1aab3ebdb859368a04b0d39224fc4b048a926cc1c",
     "workerd/types/native/values.d.ts": "706ccf1d1c1c690e1c964423aee1943c3658767ecf574dcde70d26855937f3a8",
     "workerd/types/neuralese/combinators.d.ts": "e6f4185384d5e31b8dc2e4ff0e1ed87a4a29eaddd871c87bc22d223a6c59bbce",

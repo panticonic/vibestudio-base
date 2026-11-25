@@ -213338,7 +213338,7 @@ function indexedType(base, key, resolve2, activeUnions = /* @__PURE__ */ new Set
   if (resolved.kind === "dict") return resolved.element;
   throw new TypeSyntaxError(`${formatType(resolved)}[${JSON.stringify(key)}] requires a record, dictionary, or a union of indexable types`);
 }
-function mergeIntersection(members, resolve2, activeUnions = /* @__PURE__ */ new Set()) {
+function mergeIntersection(members, resolve2, activeUnions = /* @__PURE__ */ new Set(), atomicResolve = (type) => type) {
   const parts = members.map(resolve2).filter((part) => !(part.kind === "prim" && part.name === "unknown"));
   if (!parts.length) return { kind: "prim", name: "unknown" };
   const union = parts.find((part) => part.kind === "union");
@@ -213348,7 +213348,7 @@ function mergeIntersection(members, resolve2, activeUnions = /* @__PURE__ */ new
     try {
       const rest = parts.filter((part) => part !== union);
       const alternatives = union.members.flatMap((member) => {
-        const narrowed = mergeIntersection([member, ...rest], resolve2, activeUnions);
+        const narrowed = mergeIntersection([member, ...rest], resolve2, activeUnions, atomicResolve);
         return narrowed.kind === "union" ? narrowed.members : [narrowed];
       });
       const unique = [...new Map(alternatives.map((type) => [JSON.stringify(type), type])).values()];
@@ -213362,7 +213362,7 @@ function mergeIntersection(members, resolve2, activeUnions = /* @__PURE__ */ new
     return { kind: "intersection", members: parts };
   if (parts.some((part) => part.kind === "untrusted")) return {
     kind: "untrusted",
-    base: mergeIntersection(parts.map((part) => part.kind === "untrusted" ? part.base : part), resolve2, activeUnions)
+    base: mergeIntersection(parts.map((part) => part.kind === "untrusted" ? part.base : part), resolve2, activeUnions, atomicResolve)
   };
   if (parts.some((part) => part.kind === "refined")) {
     const predicates = [], bases = [];
@@ -213377,7 +213377,7 @@ function mergeIntersection(members, resolve2, activeUnions = /* @__PURE__ */ new
       }
       bases.push(base2);
     }
-    const base = mergeIntersection(bases, resolve2, activeUnions);
+    const base = mergeIntersection(bases, resolve2, activeUnions, atomicResolve);
     if (base.kind === "union" && !base.members.length) return base;
     return [...new Set(predicates)].reduce((type, predicate) => ({ kind: "refined", base: type, predicate }), base);
   }
@@ -213390,7 +213390,11 @@ function mergeIntersection(members, resolve2, activeUnions = /* @__PURE__ */ new
     return { kind: "union", members: [] };
   }
   const atomic = (type) => type.kind === "prim" || type.kind === "lit" || type.kind === "union" && type.members.every(atomic);
-  const combined = (types3) => types3.every((type) => JSON.stringify(type) === JSON.stringify(types3[0])) ? types3[0] : types3.every(atomic) ? mergeIntersection(types3, (type) => type) : { kind: "intersection", members: types3 };
+  const combined = (types3) => {
+    if (types3.every((type) => JSON.stringify(type) === JSON.stringify(types3[0]))) return types3[0];
+    const resolved = types3.map(atomicResolve);
+    return resolved.every(atomic) ? mergeIntersection(resolved, (type) => type) : { kind: "intersection", members: resolved };
+  };
   if (parts.every((part) => part.kind === "record" || part.kind === "dict") && parts.some((part) => part.kind === "record")) {
     const fields = [];
     const dictionaries = parts.filter((part) => part.kind === "dict");
@@ -213835,11 +213839,43 @@ var init_types = __esm({
             type = { kind: "name", name: type.name };
           } else if (type.kind === "dict" && (type.key || type.keyType))
             type = this.recordOfKeys(type.keyType ?? { kind: "name", name: type.key }, type.element);
-          else if (type.kind === "intersection") type = mergeIntersection(type.members, (member) => this.resolve(member));
+          else if (type.kind === "intersection") type = mergeIntersection(
+            type.members,
+            (member) => this.resolve(member),
+            void 0,
+            (member) => this.atomicIntersectionOperand(member)
+          );
           else if (type.kind === "index") type = indexedType(type.base, type.key, (member) => this.resolve(member));
           else if (type.kind === "utility") type = applyUtility(type, (member) => this.resolve(member));
           else return type;
         }
+      }
+      /** Resolve scalar aliases in field constraints without recursively expanding object aliases. */
+      atomicIntersectionOperand(type) {
+        const seen = /* @__PURE__ */ new Set();
+        const atomic = (current) => {
+          const name = typeAliasName(current);
+          if (name !== void 0) {
+            if (seen.has(name)) return void 0;
+            const found = this.lookup(name);
+            if (!found) return void 0;
+            seen.add(name);
+            try {
+              return atomic(found);
+            } finally {
+              seen.delete(name);
+            }
+          }
+          if (current.kind === "prim" || current.kind === "lit") return current;
+          if (current.kind === "union" || current.kind === "intersection") {
+            const members = current.members.map(atomic);
+            if (members.some((member) => member === void 0)) return void 0;
+            const resolved = members;
+            return current.kind === "union" ? { kind: "union", members: resolved } : mergeIntersection(resolved, (type2) => type2);
+          }
+          return void 0;
+        };
+        return atomic(type) ?? type;
       }
       /** `Record<Kind, T>`: the record with a field for each string literal `Kind` names, or a dictionary for `string`. */
       recordOfKeys(keyType, element) {
