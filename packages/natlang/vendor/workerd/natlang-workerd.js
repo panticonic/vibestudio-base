@@ -226329,8 +226329,9 @@ var init_runtime = __esm({
     taskSequence = 0;
     activeTasks = /* @__PURE__ */ new Set();
     NatlangTask = class {
-      constructor(runtime, options = {}) {
+      constructor(runtime, options = {}, traceParent) {
         this.runtime = runtime;
+        this.traceParent = traceParent;
         let binding = options.adaptation === void 0 ? runtime.options.adaptation : options.adaptation;
         const program = options.program ?? runtime.options.program ?? binding?.program;
         const guidanceBinding = options.nativeProgramGuidance ?? runtime.options.nativeProgramGuidance;
@@ -226401,6 +226402,7 @@ var init_runtime = __esm({
         this.auditOf = options.auditOf;
       }
       runtime;
+      traceParent;
       id;
       services;
       serviceDeclarations;
@@ -226483,11 +226485,13 @@ var init_runtime = __esm({
         const children2 = this.graphChildrenByParent.get(parentId) ?? [];
         children2.push(callId);
         this.graphChildrenByParent.set(parentId, children2);
+        if (parentId === this.traceParent?.parentCallId) this.traceParent.task.registerGraphCall(callId, parentId);
       }
       discardGraphCall(callId, parentId) {
         if (!parentId) return;
         const children2 = this.graphChildrenByParent.get(parentId);
         if (children2) this.graphChildrenByParent.set(parentId, children2.filter((id3) => id3 !== callId));
+        if (parentId === this.traceParent?.parentCallId) this.traceParent.task.discardGraphCall(callId, parentId);
       }
       graphChildren(callId) {
         return [...this.graphChildrenByParent.get(callId) ?? []];
@@ -226520,12 +226524,18 @@ var init_runtime = __esm({
         return mode;
       }
       get frame() {
-        return { task: this, chain: [], signal: this.signal };
+        return {
+          task: this,
+          chain: [],
+          signal: this.signal,
+          ...this.traceParent && !this.traceParent.task.isClosed ? { parentCallId: this.traceParent.parentCallId } : {}
+        };
       }
       nextCallId() {
         return `${this.id}/${++this.callSequence}`;
       }
       reserveExecutionSiblingOrdinal(parentCallId, definitionId) {
+        if (parentCallId && parentCallId === this.traceParent?.parentCallId) return this.traceParent.task.reserveExecutionSiblingOrdinal(parentCallId, definitionId);
         const key = `${parentCallId ?? ""}\0${definitionId}`;
         const ordinal = this.executionOccurrenceCounts.get(key) ?? 0;
         this.executionOccurrenceCounts.set(key, ordinal + 1);
@@ -226712,9 +226722,11 @@ var init_runtime = __esm({
       /** Run `fn` as a natlang task. Natlang functions called anywhere inside it use this runtime. */
       async run(fn, options = {}) {
         if (this.closed) throw new Error("natlang runtime is closed");
-        const task = new NatlangTask(this, options);
-        activeTasks.add(task);
         const caller = currentFrame(), store = this.platform.contextStore;
+        const recorder = this.callStore();
+        const traceParent = options.traceParent !== false && caller?.parentCallId && !caller.task.isClosed && (caller.task.runtime === this || recorder && recorder === caller.task.runtime.callStore()) ? caller : void 0;
+        const task = new NatlangTask(this, options, traceParent);
+        activeTasks.add(task);
         try {
           return await runInFrame(task.frame, fn);
         } finally {

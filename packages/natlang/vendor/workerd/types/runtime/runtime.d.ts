@@ -279,6 +279,8 @@ export type NatlangRuntimeOptions = {
     };
 };
 export type TaskOptions = {
+    /** Set false for an intentionally independent trace. A nested run otherwise links only its causal caller, never its authority or task lifetime. */
+    traceParent?: boolean;
     program?: ProgramDescriptor;
     adaptation?: AdaptationBinding | null;
     /** Pin these weight releases instead of the runtime's current ones. */
@@ -310,6 +312,7 @@ export declare class NatlangPlatformUnavailableError extends Error {
 /** An ordinary TypeScript task in which natlang functions can be called. */
 export declare class NatlangTask {
     readonly runtime: NatlangRuntime;
+    private readonly traceParent?;
     readonly id: string;
     readonly services: Services;
     readonly serviceDeclarations: Record<string, string>;
@@ -365,7 +368,7 @@ export declare class NatlangTask {
     private closed;
     private timer?;
     private appPromptSnapshot?;
-    constructor(runtime: NatlangRuntime, options?: TaskOptions);
+    constructor(runtime: NatlangRuntime, options?: TaskOptions, traceParent?: Frame | undefined);
     private readonly traceSink?;
     /** The task's live subscribers (task and runtime `onLive`), undefined when there are none. */
     readonly live?: LiveSink;
