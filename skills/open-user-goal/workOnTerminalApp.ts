@@ -8,7 +8,7 @@ import type {TerminalRepairReport} from "./types.js";
 export default async function workOnTerminalApp(goal:string):Promise<TerminalRepairReport>{
  const {app,check}=await inspectTerminalApp(goal);
  const plan=await reviewTerminalCandidate(goal,app,check);
- if(plan.status==="hold-edit"||plan.status==="hold-test"||plan.status==="blocked")return {artifact:null,outcome:plan.status,explanation:plan.reason};
+ if(plan.status==="diagnosed"||plan.status==="hold-edit"||plan.status==="hold-test"||plan.status==="blocked")return {artifact:null,outcome:plan.status,explanation:plan.reason};
  let revision=check.observed.revision;
  if(plan.status==="repair"){
   const applied=await terminalRepairApply.edit(app.id,revision,plan.edits);
