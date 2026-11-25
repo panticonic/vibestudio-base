@@ -16,6 +16,7 @@ export type EffectEvent = {
     };
 };
 export declare const isRecording: (services: object) => boolean;
+export declare function unrecordedServices<T extends Record<string, unknown>>(services: T): T;
 /** Only recorder-owned proxies have this declared selected-execution surface. */
 export declare function selectedServiceSurface(value: unknown): unknown;
 /**
@@ -25,8 +26,11 @@ export declare function selectedServiceSurface(value: unknown): unknown;
  * object's lifetime is the scope: hand a fresh one to each unit of work that may repeat the effect deliberately.
  */
 export declare const ONCE_EFFECTS: unique symbol;
+export declare function resultCheckingService<T extends object>(port: T): T;
+/** Invoke the supplied native method with its original receiver and once scope. */
+export declare function invokeServiceMethod(object: object, method: string, value: Function, args: unknown[]): unknown;
 /**
  * Wrap services so each method call is recorded as an effect. Objects are wrapped one level deep
  * per property access; the original receiver is preserved.
  */
-export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown): T;
+export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown, authority?: T): T;
