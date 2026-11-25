@@ -880,3 +880,26 @@ it("ordinary generation and native helpers use the same canonical provider ident
   expect(streamed.mock.calls[0]?.[2]?.sessionId).toBe(id);
   expect(completed.mock.calls[0]?.[2]?.sessionId).toBe(id);
 });
+
+
+it("retains content-free binding phases when ordinary logging is non-verbose",async()=>{
+  const state=setup(TEST_MODEL_PROVIDER_ID,TEST_MODEL_SPEC.baseUrl,TEST_MODEL_PROVIDER_ID,TEST_MODEL_ID);
+  const request:ModelRequestTarget={taskId:1 as ModelRequestTarget["taskId"],conversationId:1 as ModelRequestTarget["conversationId"],taskKind:"pi.generate",taskVersion:1,purpose:"generation",attempt:1,operation:"stream",model:JSON.parse(JSON.stringify(state.faux.getModel())),messages:[],cutoff:1 as ModelRequestTarget["cutoff"],options:{sessionId:"private session secret"}};
+  const api={prepared:undefined,prepare:async()=>undefined,commit:async()=>undefined} as unknown as ModelRequestApi;
+  const warning=vi.spyOn(console,"warn").mockImplementation(()=>{});
+  try{
+    const connection=await state.port(request,api,context);
+    expect(connection.status).toBe("ready");
+    if(connection.status==="ready")await connection.close(context);
+    const lines=warning.mock.calls.map(args=>args[0]).filter((line):line is string=>typeof line==="string"&&line.startsWith("[NativeModelTransport] "));
+    const events=lines.map(line=>JSON.parse(line.slice("[NativeModelTransport] ".length)));
+    expect(events.map(event=>event.lifecyclePhase)).toEqual(["binding","preparing"]);
+    expect(events.every(event=>event.taskId===1&&event.conversationId===1&&event.attempt===1)).toBe(true);
+    expect(JSON.stringify(events)).not.toMatch(/private|secret|provider|model|messages|options/);
+    // A broken logger cannot replace an original admission failure.
+    const original=new Error("original admission failure");
+    state.rpcForRequest.mockImplementationOnce(()=>{throw original;});
+    warning.mockImplementation(()=>{throw Error("logger unavailable");});
+    await expect(state.port(request,api,context)).rejects.toBe(original);
+  }finally{warning.mockRestore();}
+});

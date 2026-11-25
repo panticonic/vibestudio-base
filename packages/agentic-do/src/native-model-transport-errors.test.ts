@@ -90,7 +90,7 @@ describe("request-bound content-free transport failures", () => {
         connection.options.fetch(`${model.baseUrl}/responses`),
       ).rejects.toBe(original);
       expect(rpc.wire.stream).toHaveBeenCalledTimes(1);
-      expect(events).toEqual([
+      expect(events.filter(event=>event.milestone!=="lifecycle")).toEqual([
         expect.objectContaining({
           milestone: "operation_error",
           requestId: 1,
@@ -170,7 +170,7 @@ describe("request-bound content-free transport failures", () => {
       source.error(original);
       await expect(reader.read()).rejects.toBe(original);
       expect(rpc.wire.stream).toHaveBeenCalledTimes(1);
-      expect(events).toEqual([
+      expect(events.filter(event=>event.milestone!=="lifecycle")).toEqual([
         expect.objectContaining({
           milestone: "response_head",
           requestId: 1,
@@ -290,7 +290,7 @@ describe("request-bound content-free transport failures", () => {
       await expect(
         connection.options.fetch(`${model.baseUrl}/responses`),
       ).rejects.toBe(original);
-      expect(events[0]?.error).toMatchObject({
+      expect(events.find(event=>event.milestone==="operation_error")?.error).toMatchObject({
         name: "AggregateError",
         truncated: true,
         errors: [{ name: "Error" }, { name: "Error" }, { name: "Error" }],

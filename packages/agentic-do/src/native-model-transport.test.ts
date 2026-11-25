@@ -757,12 +757,14 @@ describe("credentialed model transport ownership", () => {
   it("preserves an accepted WebSocket scope close failure in connection cleanup", async () => {
     const socket = new Socket();
     const scopeFailure = new Error("WebSocket scope release failed");
+    const events: import("./native-model-transport.js").NativeModelTransportDiagnostic[]=[];
     const connection = createCredentialedModelConnection(
       {
         model: codex,
         credential: credential(),
         rpc: rpcFixture(undefined, { closeScopeFailure: scopeFailure }),
         egressFetch: async () => upgraded(socket),
+        onDiagnostic:event=>events.push(event),
       },
       BACKGROUND_CONTEXT,
     );
@@ -774,6 +776,10 @@ describe("credentialed model transport ownership", () => {
     await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(
       scopeFailure,
     );
+    expect(events.at(-1)).toMatchObject({lifecyclePhase:"cleanup-failed",resourceCounts:{cleanupFailures:1}});
+    expect(events.some(event=>event.lifecyclePhase==="closed")).toBe(false);
+    await expect(connection.close(BACKGROUND_CONTEXT)).rejects.toBe(scopeFailure);
+    expect(events.filter(event=>event.lifecyclePhase==="cleanup-failed")).toHaveLength(1);
   });
 
   it("joins a late socket without sending on it after cancellation", async () => {
@@ -1477,7 +1483,7 @@ describe("content-free model transport lifecycle diagnostics", () => {
     });
     await Promise.resolve();
     expect(joined).toBe(false);
-    expect(events.map((event) => event.milestone)).toEqual([
+    expect(events.filter(event=>event.milestone!=="lifecycle").map((event) => event.milestone)).toEqual([
       "upgrade_requested",
       "upgrade_accepted",
       "socket_accepted",
@@ -1491,7 +1497,7 @@ describe("content-free model transport lifecycle diagnostics", () => {
     ]);
     socket.finish();
     await closing;
-    expect(events.at(-1)).toMatchObject({
+    expect(events.findLast(event=>event.milestone==="close_observed")).toMatchObject({
       milestone: "close_observed",
       sends: 1,
       messages: 2,
@@ -1526,7 +1532,7 @@ describe("content-free model transport lifecycle diagnostics", () => {
         { headers: new Headers() },
       ),
     ).rejects.toBe(original);
-    expect(events).toEqual([
+    expect(events.filter(event=>event.milestone!=="lifecycle")).toEqual([
       { milestone: "upgrade_requested" },
       expect.objectContaining({
         milestone: "operation_error",
@@ -1563,7 +1569,7 @@ describe("content-free model transport lifecycle diagnostics", () => {
     expect(events.map((event) => event.milestone)).toContain("close_requested");
     socket.finish();
     await connection.close(BACKGROUND_CONTEXT);
-    expect(events.at(-1)?.milestone).toBe("close_observed");
+    expect(events.findLast(event=>event.milestone!=="lifecycle")?.milestone).toBe("close_observed");
     expect(JSON.stringify(events)).not.toContain("private");
   });
 });
@@ -1578,16 +1584,23 @@ describe("accepted model socket authoritative cancellation", () => {
       if(method === "credentials.closeWebSocketScope") {hostEntered.resolve();await hostReleased.promise;return null;}
       throw new Error("Unexpected cleanup operation");
     });
-    const connection=createCredentialedModelConnection({model:codex,credential:credential(),rpc:rpcFixture(),cleanupRpc,egressFetch:async()=>upgraded(socket)},BACKGROUND_CONTEXT);
+    const events: import("./native-model-transport.js").NativeModelTransportDiagnostic[]=[];
+    const connection=createCredentialedModelConnection({model:codex,credential:credential(),rpc:rpcFixture(),cleanupRpc,egressFetch:async()=>upgraded(socket),onDiagnostic:event=>events.push(event)},BACKGROUND_CONTEXT);
     await connection.options.connectWebSocket(`${codex.baseUrl}/codex/responses`,{headers:new Headers()});
     let settled=false;
     const closing=connection.close(BACKGROUND_CONTEXT).then(()=>{settled=true;});
     try {
       await hostEntered.promise;
       expect(socket.closeCalls).toBe(1); expect(settled).toBe(false);
+      expect(events.find(event=>event.lifecyclePhase==="close-requested")).toMatchObject({resourceCounts:{resources:1,webSocketScopes:1,acceptedWebSocketScopes:1}});
+      expect(events.some(event=>event.lifecyclePhase==="closed")).toBe(false);
       hostReleased.resolve(); await Promise.resolve();await Promise.resolve();
       expect(settled).toBe(false);expect(socket.readyState).toBe(2);
       socket.finish();await closing;expect(settled).toBe(true);
+      expect(events.filter(event=>event.milestone==="lifecycle").map(event=>event.lifecyclePhase)).toEqual(["ready","close-requested","scope-openings","unaccepted-scopes","pending-invocations","owned-resources","host-scopes","closed"]);
+      expect(events.at(-1)).toMatchObject({lifecyclePhase:"closed",resourceCounts:{pending:0,resources:0,scopeOpenings:0,webSocketScopes:0,acceptedWebSocketScopes:0,cleanupFailures:0}});
+      await connection.close(BACKGROUND_CONTEXT);
+      expect(events.filter(event=>event.lifecyclePhase==="closed")).toHaveLength(1);
     } finally {hostReleased.resolve();socket.finish();await closing;}
   });
   it.each(["caller cancellation", "connection completion"])("closes the accepted host relay before waiting on a nonresponsive peer: %s", async (mode) => {
@@ -1818,7 +1831,7 @@ describe("protected upgrade ownership transfer", () => {
       },
       codex,
     );
-    expect(events).toEqual([
+    expect(events.filter(event=>event.milestone!=="lifecycle")).toEqual([
       {
         milestone: "provider_event",
         providerEvent: "other",

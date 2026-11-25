@@ -654,11 +654,16 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       this.sessionClosure = harness.closed.then(async (end) => {
         if (end.reason === "failed") this.sessionFailure ??= { error: end.error };
         try {
+          this.modelLifecycle("session-close-harness");
           await harness.close(BACKGROUND_CONTEXT);
+          this.modelLifecycle("session-harness-closed");
           this.assertModelResourcesReleased();
+          this.modelLifecycle("release-provider-sessions");
           this.releaseModelProviderSessions();
+          this.modelLifecycle("provider-sessions-released");
           if (this.harness === harness) this.connectionReleased = true;
         } catch (error) {
+          this.modelLifecycle("session-release-failed");
           this.cleanupFailure ??= end.reason === "failed" && error !== end.error
             ? new AggregateError([end.error, error], "Pi session failure and resource release failed")
             : error;
@@ -853,9 +858,16 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
     return flight;
   }
 
+  private modelLifecycle(phase: string): void {
+    try {console.warn("[NativeAgentOwner] lifecycle " + JSON.stringify({ownerId:this.objectKey,phase,observedAt:Date.now(),
+      connections:this.modelConnections.size,providerSessions:this.modelProviderSessions.size,cleanupFailures:this.modelCleanupFailures.size}));}
+    catch { /* Logging cannot change resource settlement or its original error. */ }
+  }
+
   private async releaseAgent(
     input: LifecyclePrepareInput,
   ): Promise<LifecyclePrepareResult> {
+    this.modelLifecycle(`prepare:${input.phase}`);
     try {
       if (this.opening) await this.opening.catch(() => {});
       if (input.phase === "quiesce") {
@@ -885,13 +897,21 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
         return { status: "ready" };
       }
       this.settlementSealed = true;
+      this.modelLifecycle("join-settlement");
       await Promise.all([...this.settlementOperations]);
       if (this.harness && !this.connectionReleased) {
         try {
-          if (input.mode === "retire") await retireBoundAgentSession(this.harness, BACKGROUND_CONTEXT);
+          if (input.mode === "retire") {
+            this.modelLifecycle("retire-session");
+            await retireBoundAgentSession(this.harness, BACKGROUND_CONTEXT);
+          }
+          this.modelLifecycle("close-harness");
           await this.harness.close(BACKGROUND_CONTEXT);
+          this.modelLifecycle("harness-closed");
           this.assertModelResourcesReleased();
+          this.modelLifecycle("release-provider-sessions");
           this.releaseModelProviderSessions();
+          this.modelLifecycle("provider-sessions-released");
         } catch (error) {
           this.cleanupFailure = error;
           throw error;
@@ -909,8 +929,10 @@ export abstract class NativeAgentOwner extends PanelDurableObjectBase {
       // connection was joined; retirement clears the obligation on the host.
       this.harness = null;
       this.opening = null;
+      this.modelLifecycle("released");
       return { status: "ready" };
     } catch (error) {
+      this.modelLifecycle("release-failed");
       return {
         status: "failed",
         failure: serializeRpcFailure(error),

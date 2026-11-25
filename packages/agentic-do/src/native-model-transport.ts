@@ -35,6 +35,7 @@ interface WorkerModelSocket extends ProviderWebSocket {
 /** Content-free milestones from the existing owned transport, never frame/credential data. */
 export type NativeModelTransportDiagnostic = {
   readonly milestone:
+    | "lifecycle"
     | "upgrade_requested"
     | "upgrade_accepted"
     | "socket_accepted"
@@ -49,6 +50,8 @@ export type NativeModelTransportDiagnostic = {
     | "response_head"
     | "provider_event"
     | "provider_terminal";
+  readonly lifecyclePhase?: "binding" | "preparing" | "ready" | "fetch-head" | "cancelled" | "close-requested" | "scope-openings" | "unaccepted-scopes" | "pending-invocations" | "owned-resources" | "host-scopes" | "closed" | "cleanup-failed";
+  readonly resourceCounts?: { readonly pending: number; readonly resources: number; readonly scopeOpenings: number; readonly webSocketScopes: number; readonly acceptedWebSocketScopes: number; readonly cleanupFailures: number };
   readonly observedAt?: number;
   readonly requestId?: number;
   readonly phase?:
@@ -293,6 +296,12 @@ function createModelConnection(
   const webSocketScopes = new Map<string, Promise<void> | null>();
   const acceptedWebSocketScopes = new Set<string>();
   const scopeOpenings = new Set<Promise<unknown>>();
+  function lifecycle(lifecyclePhase: NonNullable<NativeModelTransportDiagnostic["lifecyclePhase"]>): void {
+    report({milestone:"lifecycle", lifecyclePhase, observedAt:Date.now(),
+      aborted:controller.signal.aborted || context.abortSignal?.aborted === true,
+      resourceCounts:{pending:pending.size,resources:resources.size,scopeOpenings:scopeOpenings.size,
+        webSocketScopes:webSocketScopes.size,acceptedWebSocketScopes:acceptedWebSocketScopes.size,cleanupFailures:cleanupFailures.size}});
+  }
   async function closeWebSocketScope(scopeId: string): Promise<void> {
     if (input.kind !== "credential")
       throw new Error("Credentialed WebSocket scope has no originating caller");
@@ -353,6 +362,7 @@ function createModelConnection(
   }
   controller.signal.addEventListener("abort", abortResources, { once: true });
   const abort = () => {
+    lifecycle("cancelled");
     report({ milestone: "cancelled" });
     controller.abort(context.abortSignal?.reason);
   };
@@ -653,6 +663,7 @@ function createModelConnection(
     }
   }
 
+  lifecycle("ready");
   return {
     status: "ready",
     options: {
@@ -687,6 +698,7 @@ function createModelConnection(
           signal.throwIfAborted();
           const audiences = [{ url: base.href, match: "path-prefix" as const }];
           let response: Response;
+          lifecycle("fetch-head");
           try {
             response =
               transport.kind === "credential"
@@ -927,9 +939,12 @@ function createModelConnection(
     close() {
       if (!closing) {
         sealed = true;
+        lifecycle("close-requested");
         controller.abort(new Error("Model invocation closed"));
         closing = (async () => {
+          lifecycle("scope-openings");
           await Promise.allSettled([...scopeOpenings]);
+          lifecycle("unaccepted-scopes");
           await joinWebSocketScopeClosures(
             [...webSocketScopes.keys()].filter(
               (id) => !acceptedWebSocketScopes.has(id),
@@ -938,12 +953,15 @@ function createModelConnection(
           // Late heads/upgrades become resources before their invocation
           // settles. Seal admission, join those invocations, then join every
           // retained resource, including cancellation already in progress.
+          lifecycle("pending-invocations");
           await Promise.allSettled([...pending]);
+          lifecycle("owned-resources");
           await Promise.allSettled(
             [...resources].map((resource) =>
               stop(resource, controller.signal.reason),
             ),
           );
+          lifecycle("host-scopes");
           await joinWebSocketScopeClosures([...webSocketScopes.keys()]);
           context.abortSignal?.removeEventListener("abort", abort);
           if (cleanupFailures.size === 1) throw [...cleanupFailures][0];
@@ -952,7 +970,8 @@ function createModelConnection(
               [...cleanupFailures],
               "Model transport cleanup failed",
             );
-        })();
+          lifecycle("closed");
+        })().catch(error => {lifecycle("cleanup-failed"); throw error;});
       }
       return closing;
     },

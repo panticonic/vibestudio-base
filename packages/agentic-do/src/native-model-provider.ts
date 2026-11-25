@@ -179,6 +179,17 @@ export function createProtectedModelProvider(
         operation: request.operation,
         ...event,
       };
+      // These content-free phase boundaries must survive non-verbose Workerd
+      // logging. No URL, headers, provider payload or arbitrary error text.
+      if(event.milestone === "lifecycle" || event.milestone === "provider_terminal" || event.milestone === "upgrade_requested") {
+        console.warn("[NativeModelTransport] " + JSON.stringify({taskId:request.taskId,conversationId:request.conversationId,
+          attempt:request.attempt,milestone:event.milestone,observedAt:event.observedAt ?? Date.now(),
+          ...(event.lifecyclePhase ? {lifecyclePhase:event.lifecyclePhase}:{}),
+          ...(event.resourceCounts ? {resourceCounts:event.resourceCounts}:{}),
+          ...(event.providerEvents !== undefined ? {providerEvents:event.providerEvents}:{}),
+        }));
+        return;
+      }
       // Workerd stdout is verbose-only; keep request-bound failures as one
       // content-free warning line before an SDK can flatten Error.cause.
       if (
@@ -190,7 +201,13 @@ export function createProtectedModelProvider(
         console.warn("[NativeModelTransport] " + JSON.stringify(diagnostic));
       else console.info("[NativeModelTransport]", diagnostic);
     };
+    const phase = (lifecyclePhase: "binding" | "preparing") => {
+      try {onDiagnostic({milestone:"lifecycle",lifecyclePhase,observedAt:Date.now()});}
+      catch { /* Observation cannot change credential or native admission. */ }
+    };
+    phase("binding");
     const { rpc, cleanupRpc } = await host.rpcForRequest(request, api, context);
+    phase("preparing");
     context.abortSignal?.throwIfAborted();
     if (
       host.deterministicTestProviderId === TEST_MODEL_PROVIDER_ID &&
