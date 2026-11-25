@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { LOCAL_PROVIDER_ID } from "@workspace/model-catalog/catalog";
 import { makeTestCatalogEntry } from "@workspace/model-catalog/testing";
-import { decisionPrompt,type DecisionRequest } from "@workspace/natlang-pi";
+import { decisionPrompt, type DecisionRequest } from "@workspace/natlang-pi";
 import { gatewayDriver } from "./driver.js";
 import { EXECUTOR_ENTRY } from "./testSupport.js";
 
 const OPTIONS = ['"knight"', '"knave"'];
 const READOUT = {
   messages: [
-    { role: "system", content: "You are running one call of a natural-language function." },
+    {
+      role: "system",
+      content: "You are running one call of a natural-language function.",
+    },
     { role: "user", content: decisionPrompt(OPTIONS) },
   ],
   options: OPTIONS,
@@ -16,7 +19,7 @@ const READOUT = {
 
 /** A driver over a gateway that records what it is asked to score. */
 function scored(entry: typeof EXECUTOR_ENTRY) {
-  const asked: (DecisionRequest&{model:string;turnId:string})[] = [];
+  const asked: (DecisionRequest & { model: string; turnId: string })[] = [];
   const gateway = {
     score: async (input: (typeof asked)[number]) => {
       asked.push(input);
@@ -29,49 +32,259 @@ function scored(entry: typeof EXECUTOR_ENTRY) {
     model: entry.ref,
     turnPrefix: "t",
   });
-  return { asked, decide: (driver as unknown as { decide: (request: typeof READOUT) => Promise<{ log_probs: number[] }> }).decide };
+  return {
+    asked,
+    decide: (
+      driver as unknown as {
+        decide: (request: typeof READOUT) => Promise<{ log_probs: number[] }>;
+      }
+    ).decide,
+  };
 }
 
 describe("the decision readout", () => {
   it("asks a local model for, and scores, the object it answers in", async () => {
-    const entry = makeTestCatalogEntry({ ref: "local:lfm3-1.7b", id: "lfm3-1.7b", name: "LFM3 1.7B", provider: LOCAL_PROVIDER_ID, baseUrl: "http://127.0.0.1:1/v1" });
+    const entry = makeTestCatalogEntry({
+      ref: "local:lfm3-1.7b",
+      id: "lfm3-1.7b",
+      name: "LFM3 1.7B",
+      provider: LOCAL_PROVIDER_ID,
+      baseUrl: "http://127.0.0.1:1/v1",
+    });
     const { asked, decide } = scored(entry);
     expect((await decide(READOUT)).log_probs).toEqual([-0.5, -1.5]);
-    expect(asked[0]!.options).toEqual(['{"result": "knight"}', '{"result": "knave"}']);
-    expect(String((asked[0]!.messages.at(-1)! as {content:string}).content)).toBe(decisionPrompt(OPTIONS, "result-object"));
+    expect(asked[0]!.options).toEqual([
+      '{"result": "knight"}',
+      '{"result": "knave"}',
+    ]);
+    expect(
+      String((asked[0]!.messages.at(-1)! as { content: string }).content),
+    ).toBe(decisionPrompt(OPTIONS, "result-object"));
   });
 
   it("leaves a hosted model's readout as natlang wrote it", async () => {
     const { asked, decide } = scored(EXECUTOR_ENTRY);
     await decide(READOUT);
     expect(asked[0]!.options).toEqual(OPTIONS);
-    expect(String((asked[0]!.messages.at(-1)! as {content:string}).content)).toBe(decisionPrompt(OPTIONS));
+    expect(
+      String((asked[0]!.messages.at(-1)! as { content: string }).content),
+    ).toBe(decisionPrompt(OPTIONS));
   });
 });
-it("keeps canonical reasoning/history controls and native capture across the gateway",async()=>{
- const request:DecisionRequest={...READOUT,messages:[{role:"assistant",content:"Earlier",reasoning_content:"Earlier reasoning"},...READOUT.messages],reasoning:"Compare the observed evidence",reasoning_ids:[0,4,7],open_reply:true,adapters:[{id:"one",scale:0.5}],native_state_modes:{one:"same-base-adapter-state"},native_recording:true,cache_messages:1,invocation_id:"invocation",invocation_role:"child",reasoning_sample:{index:0,samples:1,action:true}};
- const capture={turn:"native",tokens:[0,4,7]},asked:DecisionRequest[]=[],recorded:unknown[]=[];
- const driver=gatewayDriver({gateway:{score:async(input:DecisionRequest)=>{asked.push(input);return {log_probs:[-0.3,-1.2],tokens:[1,2],prompt_tokens:100,open_reply:true,reasoning:true,native_decision_capture:capture};}} as never,resolver:{resolve:async()=>EXECUTOR_ENTRY},model:EXECUTOR_ENTRY.ref,turnPrefix:"canonical",captureModelTurns:()=>true,prepareCapture:async()=>({record:async exchange=>{recorded.push(exchange);},finish:()=>{}})});
- const before=structuredClone(request),score=await driver.decide!(request);
- expect(asked[0]).toMatchObject(request);expect(asked[0]).not.toHaveProperty("context");
- expect(asked[0]!.messages[0]).toEqual(before.messages[0]);expect(request).toEqual(before);
- expect(score).toEqual({log_probs:[-0.3,-1.2],tokens:[1,2],prompt_tokens:100,native_decision_capture:capture});
- expect(recorded).toMatchObject([{kind:"score",provider:{request:expect.objectContaining({reasoning:request.reasoning}),result:{native_decision_capture:capture}},reply:{native_decision_capture:capture}}]);
+it("keeps canonical reasoning/history controls and native capture across the gateway", async () => {
+  const request: DecisionRequest = {
+    ...READOUT,
+    messages: [
+      {
+        role: "assistant",
+        content: "Earlier",
+        reasoning_content: "Earlier reasoning",
+      },
+      ...READOUT.messages,
+    ],
+    reasoning: "Compare the observed evidence",
+    reasoning_ids: [0, 4, 7],
+    open_reply: true,
+    adapters: [{ id: "one", scale: 0.5 }],
+    native_state_modes: { one: "same-base-adapter-state" },
+    native_recording: true,
+    cache_messages: 1,
+    invocation_id: "invocation",
+    invocation_role: "child",
+    reasoning_sample: { index: 0, samples: 1, action: true },
+  };
+  const capture = { turn: "native", tokens: [0, 4, 7] },
+    asked: DecisionRequest[] = [],
+    recorded: unknown[] = [];
+  const driver = gatewayDriver({
+    gateway: {
+      score: async (input: DecisionRequest) => {
+        asked.push(input);
+        return {
+          log_probs: [-0.3, -1.2],
+          tokens: [1, 2],
+          prompt_tokens: 100,
+          open_reply: true,
+          reasoning: true,
+          native_decision_capture: capture,
+        };
+      },
+    } as never,
+    resolver: { resolve: async () => EXECUTOR_ENTRY },
+    model: EXECUTOR_ENTRY.ref,
+    turnPrefix: "canonical",
+    captureModelTurns: () => true,
+    prepareCapture: async () => ({
+      record: async (exchange) => {
+        recorded.push(exchange);
+      },
+      finish: () => {},
+    }),
+  });
+  const before = structuredClone(request),
+    score = await driver.decide!(request);
+  expect(asked[0]).toMatchObject(request);
+  expect(asked[0]).not.toHaveProperty("context");
+  expect(asked[0]!.messages[0]).toEqual(before.messages[0]);
+  expect(request).toEqual(before);
+  expect(score).toEqual({
+    log_probs: [-0.3, -1.2],
+    tokens: [1, 2],
+    prompt_tokens: 100,
+    native_decision_capture: capture,
+  });
+  expect(recorded).toMatchObject([
+    {
+      kind: "score",
+      provider: {
+        request: expect.objectContaining({ reasoning: request.reasoning }),
+        result: { native_decision_capture: capture },
+      },
+      reply: { native_decision_capture: capture },
+    },
+  ]);
 });
-it.each([{open_reply:true}, {reasoning:"Condition on this exact reasoning"}])("refuses a gateway that silently omits the requested mode echo: %j",async control=>{
- const recorded:unknown[]=[];
- const driver=gatewayDriver({gateway:{score:async()=>({log_probs:[-0.3,-1.2],native_decision_capture:{actual:"unconditioned"}})} as never,resolver:{resolve:async()=>EXECUTOR_ENTRY},model:EXECUTOR_ENTRY.ref,turnPrefix:"unsupported",captureModelTurns:()=>true,prepareCapture:async()=>({record:async exchange=>{recorded.push(exchange);},finish:()=>{}})});
- await expect(driver.decide!({...READOUT,...control})).rejects.toThrow(/decision-(?:open|reasoning)-unsupported/);
- expect(recorded).toMatchObject([{kind:"score",error:{message:expect.stringMatching(/unsupported/)},provider:{result:{native_decision_capture:{actual:"unconditioned"}}}}]);
+it.each([
+  { open_reply: true },
+  { reasoning: "Condition on this exact reasoning" },
+])(
+  "refuses a gateway that silently omits the requested mode echo: %j",
+  async (control) => {
+    const recorded: unknown[] = [];
+    const driver = gatewayDriver({
+      gateway: {
+        score: async () => ({
+          log_probs: [-0.3, -1.2],
+          native_decision_capture: { actual: "unconditioned" },
+        }),
+      } as never,
+      resolver: { resolve: async () => EXECUTOR_ENTRY },
+      model: EXECUTOR_ENTRY.ref,
+      turnPrefix: "unsupported",
+      captureModelTurns: () => true,
+      prepareCapture: async () => ({
+        record: async (exchange) => {
+          recorded.push(exchange);
+        },
+        finish: () => {},
+      }),
+    });
+    await expect(driver.decide!({ ...READOUT, ...control })).rejects.toThrow(
+      /decision-(?:open|reasoning)-unsupported/,
+    );
+    expect(recorded).toMatchObject([
+      {
+        kind: "score",
+        error: { message: expect.stringMatching(/unsupported/) },
+        provider: {
+          result: { native_decision_capture: { actual: "unconditioned" } },
+        },
+      },
+    ]);
+  },
+);
+
+it("binds gateway provider reuse to one actual NL invocation without putting identity in model messages", async () => {
+  const asked: import("@workspace/model-gateway/contract").ModelGatewayTurnInput[] =
+    [];
+  const gateway = {
+    turn: async (input: (typeof asked)[number]) => {
+      asked.push(input);
+      return {
+        status: "completed",
+        turnId: input.turnId,
+        model: input.model,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          stopReason: "stop",
+          usage: { input: 1, output: 1, totalTokens: 2 },
+        },
+        attribution: { callerId: "caller", callerKind: "code" },
+      };
+    },
+  };
+  const driver = gatewayDriver({
+    gateway: gateway as never,
+    resolver: { resolve: async () => EXECUTOR_ENTRY },
+    model: EXECUTOR_ENTRY.ref,
+    turnPrefix: "owned-run",
+  });
+  const request = {
+    messages: [{ role: "user", content: "Read the assigned source" }],
+    tools: [],
+  };
+  await driver({ ...request, invocation_id: "root/1" });
+  await driver({ ...request, invocation_id: "root/1" });
+  await driver({ ...request, invocation_id: "root/2" });
+  await driver(request);
+  expect(asked.map((r) => r.sessionId)).toEqual([
+    "owned-run:root/1",
+    "owned-run:root/1",
+    "owned-run:root/2",
+    undefined,
+  ]);
+  expect(new Set(asked.map((r) => r.turnId)).size).toBe(4);
+  expect(
+    asked.every((r) => !JSON.stringify(r.context).includes("owned-run")),
+  ).toBe(true);
 });
 
-it("binds gateway provider reuse to one actual NL invocation without putting identity in model messages",async()=>{
-  const asked:import("@workspace/model-gateway/contract").ModelGatewayTurnInput[]=[];
-  const gateway={turn:async(input:typeof asked[number])=>{asked.push(input);return {status:"completed",turnId:input.turnId,model:input.model,message:{role:"assistant",content:[{type:"text",text:"done"}],stopReason:"stop",usage:{input:1,output:1,totalTokens:2}},attribution:{callerId:"caller",callerKind:"code"}};}};
-  const driver=gatewayDriver({gateway:gateway as never,resolver:{resolve:async()=>EXECUTOR_ENTRY},model:EXECUTOR_ENTRY.ref,turnPrefix:"owned-run"});
-  const request={messages:[{role:"user",content:"Read the assigned source"}],tools:[]};
-  await driver({...request,invocation_id:"root/1"});await driver({...request,invocation_id:"root/1"});await driver({...request,invocation_id:"root/2"});await driver(request);
-  expect(asked.map(r=>r.sessionId)).toEqual(["owned-run:root/1","owned-run:root/1","owned-run:root/2",undefined]);
-  expect(new Set(asked.map(r=>r.turnId)).size).toBe(4);
-  expect(asked.every(r=>!JSON.stringify(r.context).includes("owned-run"))).toBe(true);
-});
+it.each(["generation", "score"] as const)(
+  "retains the exact admitted %s request on gateway failure without inventing a result",
+  async (kind) => {
+    const failure = Object.assign(new Error("gateway disconnected"), {
+      code: "ECONNRESET",
+    });
+    const asked: unknown[] = [],
+      captured: any[] = [];
+    const gateway = {
+      turn: async (input: unknown) => {
+        asked.push(structuredClone(input));
+        (input as { turnId: string }).turnId = "mutated-after-dispatch";
+        throw failure;
+      },
+      score: async (input: unknown) => {
+        asked.push(structuredClone(input));
+        (input as { turnId: string }).turnId = "mutated-after-dispatch";
+        throw failure;
+      },
+    };
+    const captureOwner = {
+      captures: captured,
+      async record(exchange: unknown) {
+        this.captures.push(exchange);
+      },
+      finish() {},
+    };
+    const driver = gatewayDriver({
+      gateway: gateway as never,
+      resolver: { resolve: async () => EXECUTOR_ENTRY },
+      model: EXECUTOR_ENTRY.ref,
+      turnPrefix: "owned-failed",
+      captureModelTurns: () => true,
+      prepareCapture: async () => captureOwner,
+    });
+    const run =
+      kind === "generation"
+        ? driver({
+            messages: [{ role: "user", content: "request" }],
+            tools: [],
+            invocation_id: "actual-call",
+          })
+        : driver.decide!({ ...READOUT, invocation_id: "actual-call" });
+    await expect(run).rejects.toBe(failure);
+    expect(asked).toHaveLength(1);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].provider).toEqual({ kind, request: asked[0] });
+    expect(captured[0].provider.request.turnId).toBe("owned-failed:1");
+    expect(captured[0].provider.request.model).toBe(EXECUTOR_ENTRY.ref);
+    if (kind === "generation")
+      expect(captured[0].provider.request.sessionId).toBe(
+        "owned-failed:actual-call",
+      );
+    expect(captured[0].provider).not.toHaveProperty("result");
+    expect(captured[0]).not.toHaveProperty("reply");
+    expect(captured[0].error.diagnostics.code).toBe("ECONNRESET");
+  },
+);
