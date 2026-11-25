@@ -1568,6 +1568,66 @@ describe("content-free model transport lifecycle diagnostics", () => {
   });
 });
 
+describe("accepted model socket authoritative cancellation", () => {
+  it("joins both the host scope and actual socket terminal event before reporting cleanup", async () => {
+    const socket = new Socket(); socket.onClose = () => {};
+    const hostEntered = latch<void>(), hostReleased = latch<void>();
+    const cleanupRpc = rpcFixture();
+    cleanupRpc.wire.call.mockImplementation(async (_target, method) => {
+      if(method === "credentials.openWebSocketScope") return {scopeId:"exact-owned-relay"};
+      if(method === "credentials.closeWebSocketScope") {hostEntered.resolve();await hostReleased.promise;return null;}
+      throw new Error("Unexpected cleanup operation");
+    });
+    const connection=createCredentialedModelConnection({model:codex,credential:credential(),rpc:rpcFixture(),cleanupRpc,egressFetch:async()=>upgraded(socket)},BACKGROUND_CONTEXT);
+    await connection.options.connectWebSocket(`${codex.baseUrl}/codex/responses`,{headers:new Headers()});
+    let settled=false;
+    const closing=connection.close(BACKGROUND_CONTEXT).then(()=>{settled=true;});
+    try {
+      await hostEntered.promise;
+      expect(socket.closeCalls).toBe(1); expect(settled).toBe(false);
+      hostReleased.resolve(); await Promise.resolve();await Promise.resolve();
+      expect(settled).toBe(false);expect(socket.readyState).toBe(2);
+      socket.finish();await closing;expect(settled).toBe(true);
+    } finally {hostReleased.resolve();socket.finish();await closing;}
+  });
+  it.each(["caller cancellation", "connection completion"])("closes the accepted host relay before waiting on a nonresponsive peer: %s", async (mode) => {
+    const socket = new Socket();
+    socket.onClose = () => {}; // The remote peer withholds its Close response.
+    const owner = new AbortController();
+    const relayClosed = latch<void>();
+    const cleanupRpc = rpcFixture();
+    cleanupRpc.wire.call.mockImplementation(async (_target, method) => {
+      if(method === "credentials.openWebSocketScope") return {scopeId:"exact-owned-relay"};
+      if(method === "credentials.closeWebSocketScope") {
+        relayClosed.resolve();
+        await Promise.resolve();
+        // Host scope cancellation destroys this exact relay. Its actual terminal
+        // event, rather than elapsed time, lets the Workers resource retire.
+        socket.finish();
+        return null;
+      }
+      throw new Error("Unexpected cleanup operation");
+    });
+    const connection = createCredentialedModelConnection({model:codex,credential:credential(),rpc:rpcFixture(),cleanupRpc,egressFetch:async()=>upgraded(socket)},withAbortSignal(owner.signal,BACKGROUND_CONTEXT));
+    await connection.options.connectWebSocket(`${codex.baseUrl}/codex/responses`,{headers:new Headers()});
+    try {
+      if(mode === "caller cancellation") owner.abort(new Error("owned invocation cancelled"));
+      const closing = connection.close(BACKGROUND_CONTEXT);
+      await Promise.resolve();
+      expect(cleanupRpc.wire.call.mock.calls.map(call=>call[1])).toContain("credentials.closeWebSocketScope");
+      await relayClosed.promise;
+      await closing;
+      expect(socket.readyState).toBe(3);
+      expect(cleanupRpc.wire.call.mock.calls.filter(call=>call[1]==="credentials.closeWebSocketScope")).toHaveLength(1);
+      expect(socket.listeners.get("close")?.size??0).toBe(0);
+    } finally {
+      // Retire test-owned resources even when the old source fails the order assertion.
+      socket.finish();
+      await connection.close(BACKGROUND_CONTEXT);
+    }
+  });
+});
+
 describe("protected upgrade ownership transfer", () => {
   it("cancels and joins a pending upgrade with the original caller cancellation", async () => {
     const caller = new AbortController();

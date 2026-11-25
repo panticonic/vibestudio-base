@@ -311,8 +311,11 @@ function createModelConnection(
     await closing;
   }
   function closeWebSocketScopes(): void {
+    // An accepted peer may never answer Close. The originating host scope owns
+    // that relay and must receive authoritative cancellation before we join the
+    // Workers socket terminal event. Waiting for that event first is circular.
+    // Scope closure and local close both stay owned and joined by close().
     for (const scopeId of webSocketScopes.keys()) {
-      if (acceptedWebSocketScopes.has(scopeId)) continue;
       void closeWebSocketScope(scopeId).catch((error) => {
         cleanupFailures.add(error);
       });
