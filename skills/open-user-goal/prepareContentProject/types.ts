@@ -24,6 +24,10 @@ export type ProjectEvidenceDecision = {
   selected: ProjectCitation[];
   reason: string;
 };
+export type ReviewedProjectEvidence = {
+  evidence: ProjectEvidenceReview;
+  decision: ProjectEvidenceDecision;
+};
 export type ApprovedProjectRequest = {
   goal: string;
   audience: string;

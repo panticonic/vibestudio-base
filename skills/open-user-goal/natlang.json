@@ -87,7 +87,10 @@
         "PreparedContentSnapshot",
         "AuthoredProjectDraft",
         "PrivateProjectFinish",
-        "ContentProjectResult"
+        "ContentProjectResult",
+        "ProjectDispositionEvidence",
+        "ProjectDispositionChoice",
+        "ReviewedProjectEvidence"
       ]
     },
     "reviewRetainedMemory": {

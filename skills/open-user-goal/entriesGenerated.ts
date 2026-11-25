@@ -801,7 +801,7 @@ export default {
     "additionalArguments": {}
   },
   "preparedContentProject": {
-    "program": "skills/open-user-goal/prepareContentProject.ts",
+    "program": "skills/open-user-goal/prepareContentProject.nl",
     "callable": "prepareContentProject",
     "resultType": "ContentProjectResult",
     "skill": "preparedContentProject",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4bc1e7548c7e95486bd4f0fd907d5dd9e6c36189378c9ec28547a61187e5dda7"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"4adad101d389ea9e0ec32eea135f7fd0365879842d9e3f9cce4a9ce31118d2d3"};
