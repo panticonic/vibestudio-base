@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdir, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { createNatlangRuntime, workerdPlatform } from "../vendor/workerd/natlang-workerd.js";
+import { createNatlangRuntime, workerdPlatform, type CallStoreLike } from "../vendor/workerd/natlang-workerd.js";
 import { confinedRealm } from "./realm.js";
 import {
   NatlangProgramError,
@@ -809,3 +809,41 @@ it("keeps runtime programs without retaining caller-facing declaration documents
   expect(observed[1].option).toBeUndefined();expect(observed[1].documents).toBeGreaterThan(0);
   expect(await runtime.next()).toBe(1);expect(await runtime.next()).toBe(2);expect(await diagnostic.next()).toBe(1);
  });
+
+it("records nested loaded TypeScript entries under the actual authored caller", async () => {
+  const deployed = platform();
+  const calls: Array<Parameters<CallStoreLike["record"]>[0]> = [];
+  const store: CallStoreLike = {
+    settings: () => ({maxValueBytes: 1 << 20, maxStoreBytes: 50 * 2 ** 30,
+      minFreeBytes: 0, specialization: "off", auditRate: 0, acceptanceBound: 0.05,
+      promotionComparisons: 10, promotionLiveComparisons: 3, minCalls: 20,
+      promotionPolicy: "crisp", targetPolicy: "crisp", declinePolicy: "crisp"}),
+    record: call => { calls.push(call); }, version: () => 0,
+    currentCompilation: () => undefined, caseServed() {}, enqueue() {},
+  };
+  const runtime = createNatlangRuntime({ platform: deployed, calls: store });
+  const loader = new ProgramLoader({
+    platform: deployed,
+    bindings: {},
+    fs: memoryFs({
+      "skills/owner/owner.ts": "import { deliveryHistory } from 'natlang:services'; export default async function owner(): Promise<number> { return await deliveryHistory.inspect('2') + await deliveryHistory.inspect('3'); }",
+      "skills/owner/services.d.ts": "declare module 'natlang:services' { export const deliveryHistory: { inspect(value: string): Promise<number> }; }",
+      "skills/owner/natlang.json": JSON.stringify({serviceBinding: "explicit", serviceScopes: {deliveryHistory: ["owner.ts"]}}),
+      "skills/trial/check.ts": "export default function check(value: number): number { return value * 2; }",
+    }),
+    runTask: (run, task) => runtime.run(run, task),
+  });
+  const trial = await loader.load("skills/trial/check.ts") as {default: (value: number) => Promise<number>};
+  const owner = await loader.load("skills/owner/owner.ts", {
+    services: {deliveryHistory: {inspect: (value: string) => trial.default(Number(value))}},
+  }) as {default: () => Promise<number>};
+  await expect(owner.default()).resolves.toBe(10);
+  const roots = calls.filter(call => call.definition.name === "owner");
+  const checks = calls.filter(call => call.definition.name === "check");
+  expect(roots).toHaveLength(1);
+  expect(checks).toHaveLength(2);
+  expect(roots[0]!.parent_call_id).toBeNull();
+  expect(checks.map(call => call.parent_call_id)).toEqual([roots[0]!.call_id, roots[0]!.call_id]);
+  expect(new Set(calls.map(call => call.task_id)).size).toBe(3);
+  runtime.close();
+});
