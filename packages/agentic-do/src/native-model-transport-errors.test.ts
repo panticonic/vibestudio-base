@@ -115,6 +115,34 @@ describe("request-bound content-free transport failures", () => {
     }
   });
 
+  it("never invokes error accessors while retaining inherited data identifiers", async () => {
+    const getter = vi.fn(() => {
+      throw new Error("getter executed");
+    });
+    const original = Object.create({ name: "Error", code: "EAI_AGAIN" });
+    for (const key of ["cause", "error", "errors", "systemError", "syscall"]) {
+      Object.defineProperty(original, key, { get: getter });
+    }
+    const rpc = rpcFixture(async () => {
+      throw original;
+    });
+    const events: Diagnostic[] = [];
+    const connection = open(rpc, events);
+    try {
+      await expect(
+        connection.options.fetch(`${model.baseUrl}/responses`),
+      ).rejects.toBe(original);
+      expect(getter).not.toHaveBeenCalled();
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          error: { name: "Error", code: "EAI_AGAIN" },
+        }),
+      );
+    } finally {
+      await connection.close(BACKGROUND_CONTEXT);
+    }
+  });
+
   it("records response status and delivered bytes when an accepted stream fails without replay", async () => {
     let source!: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({
