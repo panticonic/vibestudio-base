@@ -741,7 +741,7 @@ export default {
     "additionalArguments": {}
   },
   "vaultWork": {
-    "program": "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
+    "program": "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
     "callable": "workOnVaultKnowledgeGoal",
     "resultType": "VaultKnowledgeReport",
     "skill": "vaultWork",
@@ -1071,7 +1071,7 @@ export default {
     "additionalArguments": {}
   },
   "spectrolite": {
-    "program": "skills/spectrolite-review/workTowardVaultGoal.ts",
+    "program": "skills/spectrolite-review/workTowardVaultGoal.nl",
     "callable": "workTowardVaultGoal",
     "resultType": "OpenVaultReport",
     "skill": "spectrolite",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"801f61463a467036f0ef9969f30943a9269503ca6d793e54eca0a4bade1c0d1c"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"b955ef519f2ba8bffcaddeac157013f20eda4badb54ffb7960703029e3e178e8"};

@@ -679,13 +679,13 @@ it("compiles the semantic function library with its installed research skill and
 
 const installedOpenGoalSkills = [
   ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal.ts"],
-  ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal.ts"],
+  ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal.nl", "workTowardVaultGoal/readCurrentVault.ts"],
   ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal.ts"],
   ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal.nl"],
   ["google-workspace", "open-google-handoff-goal", "googleHandoffMail", "googleHandoff", "reconcileGoogleHandoff.ts", "reconcileGoogleHandoff/resolveMailDecision/readMailThreads.nl"],
   ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal.ts"],
   ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal.nl", "workOnPersonalArtifactsGoal/maintainLibrary.nl"],
-  ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory.ts"],
+  ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory.nl", "reviewPersonalHistory/inspectMilestone.nl"],
   ["personal", "open-personal-automation", "operatorQueue", "personalAutomation", "coordinatePersonalAutomation.ts"],
   ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal.ts"],
   ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal.ts"],
