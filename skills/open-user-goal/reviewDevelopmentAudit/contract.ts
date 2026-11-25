@@ -7,8 +7,10 @@ export type DevelopmentJournalEntry = {
 };
 export type DevelopmentObservation = {
   id: string; session: string; sessionState: string; contextEffect: string; snapshot: string;
+  /** state is current liveness; commitPoint proves retained recovery, unlike the proposed snapshot hash. */
   snapshotMatchesSession: boolean; planMatches: boolean; state: string; commitPoint: string;
   updatedAt: number; terminalAt: number | null; attention: string | null; primary: string | null;
+  /** Last execution phase reached; it can remain accepted while state is requires-repair. */
   phase: string | null; artifactDigest: string | null; instanceGeneration: string | null;
   cleanup: string[]; executionRoot: string | null; process: string | null; artifact: string | null;
   journal: DevelopmentJournalEntry[];
