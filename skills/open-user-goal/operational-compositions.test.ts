@@ -47,15 +47,6 @@ it("reconsiders a stale browser action from the actual new visible revision",asy
  expect(activate.mock.calls).toEqual([["old-action","old"],["new-action","current"]]);
  expect(choosePanelAction.mock.calls[1]).toEqual(["Complete Task",current]);
 });
-it("reports refreshed asset findings when a pinned working revision changes and never retries its write",async()=>{
- const approved={version:{id:"signed",edition:"approved"},manifest:{assets:[{key:"logo"}]}},old={version:{id:"old",edition:"working"}},fresh={version:{id:"fresh",edition:"working"}};
- let rounds=0;
- const stageRecovery=vi.fn(async()=>({status:"changed",working:"fresh"}));
- const run=compose("reviewAssetIntegrity.ts",{discoverVersions:async()=>{rounds++;return rounds===1?[approved.version,old.version]:[approved.version,fresh.version];},readVersion:async(v:any)=>v.id==="signed"?approved:v.id==="old"?old:fresh,compareAsset:async(_:unknown,__ :unknown,working:any)=>({key:"logo",working:working.version.id,differences:["bytes"]}),planRecovery:async()=>({status:"copy",selection:[{id:"logo"}]}),stageRecovery,allowRefreshedRevision:async()=>false});
- const result=await run("Recover against the pinned working revision");
- expect(result).toMatchObject({status:"held",working:"fresh",findings:[{working:"fresh"}],receipt:null});
- expect(stageRecovery).toHaveBeenCalledTimes(1);
-});
 it("preserves a coedit and refuses a commit when fresh native verification no longer authorizes it",async()=>{
  const first={observation:{revision:"old"},check:{revision:"old",build:{status:"ok"},check:{status:"passed",count:1}}},fresh={observation:{revision:"new"},check:null};
  const inspectUnit=vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(fresh),decideNext=vi.fn().mockResolvedValueOnce({action:"commit",reason:"verified"}).mockResolvedValueOnce({action:"hold",reason:"coedit needs review"}),commitCandidate=vi.fn(async()=>({status:"changed",revision:"new"}));

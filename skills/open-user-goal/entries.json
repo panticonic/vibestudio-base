@@ -350,9 +350,9 @@
     "additionalArguments": {}
   },
   "assetIntegrity": {
-    "program": "skills/open-user-goal/reviewAssetIntegrity.ts",
+    "program": "skills/open-user-goal/reviewAssetIntegrity.nl",
     "callable": "reviewAssetIntegrity",
-    "resultType": "AssetIntegrityOutcome",
+    "resultType": "AssetIntegrityFinding",
     "skill": "assetIntegrity",
     "parameterNames": [
       "goal"
