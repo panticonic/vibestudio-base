@@ -44,6 +44,6 @@ export function semanticTaskEntry(kind: string, goal: string, assignment?: { tar
     argumentJson,
     parameterNames: [...descriptor.parameterNames],
     inputValues: descriptor.parameterNames.map(name => input[name as keyof typeof input]),
-    ...(Object.keys(descriptor.additionalArguments).length ? {adapterDefaults:{values:structuredClone(descriptor.additionalArguments),source:{...entryAdapterDefaultsSource}}} : {}),
+    ...(Object.keys(descriptor.additionalArguments).length ? {adapterDefaults:{values:JSON.parse(JSON.stringify(descriptor.additionalArguments)),source:{...entryAdapterDefaultsSource}}} : {}),
   };
 }
