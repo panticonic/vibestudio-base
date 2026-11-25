@@ -639,50 +639,56 @@ it("compiles the semantic function library with its installed research skill and
     platform: platform(), fs, bindings: {}, runTask: (run) => run(),
   });
   const result = await loader.describe("skills/open-user-goal");
-  expect(result.serviceScopes).toMatchObject({
-    panelRecovery: ["visualRecovery/recoverPanelGoal.nl", "visualRecovery/recoverPanelGoal/recoverSurface.nl"],
+  const expectedScopes = {
+    panelRecovery: ["visualRecovery/recoverPanelGoal.ts", "visualRecovery/recoverPanelGoal/recoverSurface.nl"],
     panelHealth: ["visualRecovery/reviewPanelHealth.nl", "visualRecovery/reviewPanelHealth/checkHealthChange.nl"],
     goalBrowser: ["workInBrowser.ts"],
     goalDiscovery: ["investigatePublicQuestion.nl"],
     goalWorkspace: ["reviseWorkspaceDocument.nl", "answerWorkspaceQuestion.nl"],
     goalSuite: ["verifyWorkspaceSuite.ts"],
-    recoverySessions: ["recovery/recoverSessionGoal.nl"],
+    recoverySessions: ["recovery/recoverSessionGoal.ts"],
     recoveryReplay: ["recovery/recoverSessionGoal/readRecoveryWindows.nl"],
     recoveryHandoff: ["recovery/recoverSessionGoal/stageRecoveryHandoff.nl"],
     testSuitePlanRead: ["reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     testSuiteVerificationRun: ["reviewInstalledPackage/reviewVerification/nativeSuite/reviewTestSuite.nl", "verifyWorkspaceSuite/suites/reviewTestSuite.nl"],
     pdfVaultBridge: ["authorizePdfVaultHandoff.nl"],
-    pdfGoalDocuments: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.nl", "pdf/workOnPdfGoal.nl"],
-    pdfGoalVisual: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.nl", "pdf/workOnPdfGoal/readRenderedPages.nl"],
+    pdfGoalDocuments: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal.ts", "pdf/workOnPdfGoal.ts"],
+    pdfGoalVisual: ["workOnEditorialPacket/reviewPacketSource/pdf/workOnPdfGoal/readRenderedPages.ts", "pdf/workOnPdfGoal/readRenderedPages.ts"],
     // Exact native passthroughs run through typed TS/service bindings; they grant no model-facing NL authority.
     pdfIntakeProbe: [],
     pdfIntakeRead: [],
     pdfLayoutRead: ["workOnEditorialPacket/reviewPacketSource/pdf/reviewPdfLayout.nl", "pdf/reviewPdfLayout.nl"],
-    ownedPreviewPublication: ["publication/publishOwnedPreviewGoal.nl", "publication/publishOwnedPreviewGoal/deliverPreview.nl"],
-    publicationGoal: ["publication/workTowardPublicationGoal.nl"],
+    ownedPreviewPublication: ["publication/publishOwnedPreviewGoal.ts", "publication/publishOwnedPreviewGoal/deliverPreview.nl"],
+    publicationGoal: ["publication/workTowardPublicationGoal.ts"],
     publicationRevision: ["publication/reviewPublicationRevision.nl"],
     websiteReadback: ["publication/preflightPublication.nl"],
     web: [
       "answerFromAssignedPublicSources/webResearch/researchBrief.nl/**",
       "investigatePublicQuestion/sources/researchBrief.nl/**",
     ],
-  });
-  expect(result.functions.some(fn => fn.source === "publication/workTowardPublicationGoal.nl")).toBe(true);
-  expect(result.functions.some(fn => fn.source === "pdf/workOnPdfGoal.nl")).toBe(true);
+  };
+  for (const [service, selectors] of Object.entries(expectedScopes))
+    expect([...(result.serviceScopes[service] ?? [])].sort(), service).toEqual([...selectors].sort());
+  // describe lists NL definitions; typed TS coordinators are real callable values, not NL definitions.
+  const library = await loader.load("skills/open-user-goal") as Record<string, Record<string, unknown>>;
+  expect(typeof library.publication?.workTowardPublicationGoal).toBe("function");
+  expect(typeof library.pdf?.workOnPdfGoal).toBe("function");
+  expect(result.functions.some(fn => fn.source === "publication/workTowardPublicationGoal/choosePublicationScope.nl")).toBe(true);
+  expect(result.functions.some(fn => fn.source === "pdf/workOnPdfGoal/choosePdfScope.nl")).toBe(true);
 }, OPEN_GOAL_COMPILE_TEST_MS);
 
 const installedOpenGoalSkills = [
-  ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal"],
-  ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal"],
-  ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal"],
-  ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal"],
-  ["google-workspace", "open-google-handoff-goal", "googleHandoffMail", "googleHandoff", "reconcileGoogleHandoff", "reconcileGoogleHandoff/resolveMailDecision/readMailThreads"],
-  ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal"],
-  ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal", "workOnPersonalArtifactsGoal/maintainLibrary"],
-  ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory"],
-  ["personal", "open-personal-automation", "operatorQueue", "personalAutomation", "coordinatePersonalAutomation"],
-  ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal"],
-  ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal"],
+  ["news", "news-workflows", "newsGoal", "news", "reviewUserNewsGoal.ts"],
+  ["spectrolite", "spectrolite-review", "spectroliteGoal", "spectrolite", "workTowardVaultGoal.ts"],
+  ["google-workspace", "google-drive", "googleGoalDiscovery", "google", "workOnDriveGoal.ts"],
+  ["google-workspace", "open-gmail-goal", "gmailGoalCatalog", "gmail", "recoverGmailGoal.nl"],
+  ["google-workspace", "open-google-handoff-goal", "googleHandoffMail", "googleHandoff", "reconcileGoogleHandoff.ts", "reconcileGoogleHandoff/resolveMailDecision/readMailThreads.nl"],
+  ["personal", "open-personal-goal", "missionGoalBoard", "personal", "workOnMissionGoal.ts"],
+  ["personal", "open-personal-artifacts", "artifactLibrary", "personalArtifacts", "workOnPersonalArtifactsGoal.nl", "workOnPersonalArtifactsGoal/maintainLibrary.nl"],
+  ["personal", "open-personal-history", "archiveTimeline", "personalHistory", "reviewPersonalHistory.ts"],
+  ["personal", "open-personal-automation", "operatorQueue", "personalAutomation", "coordinatePersonalAutomation.ts"],
+  ["google-workspace", "open-calendar-goal", "calendarGoalCatalog", "calendar", "workOnCalendarGoal.ts"],
+  ["system", "open-system-operations", "operatorDiscovery", "operator", "workOnSystemGoal.ts"],
 ] as const;
 
 it("mounts installed open-goal skills with their own service scopes", async () => {
@@ -714,6 +720,9 @@ it("mounts installed open-goal skills with their own service scopes", async () =
   };
   const loader = new ProgramLoader({ platform: platform(), fs, bindings: {}, runTask: run => run() });
   const program = await loader.describe("skills/open-user-goal");
+  const library = await loader.load("skills/open-user-goal");
+  const callableAt = (path: string) => path.replace(/\.(nl|ts)$/u, "").split("/")
+    .reduce<unknown>((value, key) => (value as Record<string, unknown>)?.[key], library);
   const functions = program.functions.map(fn => fn.source);
   const manifest = JSON.parse(await fs.readFile("skills/open-user-goal/natlang.json", "utf8")) as {
     workspaceModules: Record<string, string>;
@@ -724,10 +733,11 @@ it("mounts installed open-goal skills with their own service scopes", async () =
       .filter(([, sourcePath]) => sourcePath === skillPath || sourcePath.startsWith(`${skillPath}/`))
       .map(([mount]) => mount);
     const scopes = program.serviceScopes[service] ?? [];
-    expect(functions).toContain(`${namespace}/${callable}.nl`);
-    expect(scopes).toContain(`${namespace}/${owner}.nl`);
+    expect(typeof callableAt(`${namespace}/${callable}`), `${namespace}/${callable}`).toBe("function");
+    if (callable.endsWith(".nl")) expect(functions).toContain(`${namespace}/${callable}`);
+    expect(scopes).toContain(`${namespace}/${owner}`);
     if (template === "news") {
-      const selectors = ["reviewUserNewsGoal.nl", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
+      const selectors = ["reviewUserNewsGoal.ts", "reviewUserNewsGoal/reconcileNewsGoal/reconcileNewsLane.nl"];
       expect([...scopes].sort()).toEqual(mounts.flatMap(mount => selectors.map(selector => `${mount}/${selector}`)).sort());
     } else {
       expect(scopes.every(scope => mounts.some(mount => scope.startsWith(`${mount}/`))), service).toBe(true);
