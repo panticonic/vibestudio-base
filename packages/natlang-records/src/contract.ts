@@ -1,3 +1,7 @@
+import {
+  operationalErrorMetadata,
+  type OperationalErrorMetadata,
+} from "@vibestudio/rpc";
 import { createReceiverRpcMethods } from "@vibestudio/shared/rpcMethods";
 import { z } from "zod";
 
@@ -251,37 +255,109 @@ export const natlangProgressInputSchema = z
   .strict();
 export type NatlangProgressInput = z.infer<typeof natlangProgressInputSchema>;
 
+/** Only bounded operational identifiers may augment captured failures. Never errorData or payloads. */
+function operationalDiagnosticSchema(
+  depth = 0,
+): z.ZodType<OperationalErrorMetadata> {
+  const identifier = z
+    .string()
+    .max(80)
+    .regex(/^[A-Za-z][A-Za-z0-9_]*$/u);
+  return z
+    .object({
+      name: identifier.optional(),
+      code: identifier.optional(),
+      syscall: identifier.optional(),
+      phase: z
+        .enum([
+          "dns",
+          "connect",
+          "fetch-head",
+          "response-body",
+          "websocket-upgrade",
+          "socket",
+        ])
+        .optional(),
+      address: z
+        .string()
+        .max(64)
+        .refine(
+          (value) =>
+            operationalErrorMetadata({ address: value }).address === value,
+        )
+        .optional(),
+      port: z.number().int().min(0).max(65535).optional(),
+      errno: z.number().int().safe().optional(),
+      circular: z.literal(true).optional(),
+      truncated: z.literal(true).optional(),
+      ...(depth < 4
+        ? {
+            cause: operationalDiagnosticSchema(depth + 1).optional(),
+            errors: z
+              .array(operationalDiagnosticSchema(depth + 1))
+              .max(3)
+              .optional(),
+          }
+        : {}),
+    })
+    .strict();
+}
+const operationalDiagnostics = operationalDiagnosticSchema();
+
 /** Append-only model I/O journal. The ordinal binds each exact exchange to one call. */
-export const natlangAppendExchangeInputSchema = z.object({
-  callId: idSchema,
-  ordinal: z.number().int().nonnegative(),
-  exchange: z.object({
-    schema: z.literal("natlang.model-exchange/1"),
-    kind: z.enum(["generation", "score"]),
-    request: z.unknown(),
-    reply: z.unknown().optional(),
-    provider: z.unknown().optional(),
-    error: z.object({name:z.string(),message:z.string()}).strict().optional(),
-  }).strict(),
-}).strict();
-export type NatlangAppendExchangeInput = z.infer<typeof natlangAppendExchangeInputSchema>;
+export const natlangAppendExchangeInputSchema = z
+  .object({
+    callId: idSchema,
+    ordinal: z.number().int().nonnegative(),
+    exchange: z
+      .object({
+        schema: z.literal("natlang.model-exchange/1"),
+        kind: z.enum(["generation", "score"]),
+        request: z.unknown(),
+        reply: z.unknown().optional(),
+        provider: z.unknown().optional(),
+        error: z
+          .object({
+            name: z.string(),
+            message: z.string(),
+            diagnostics: operationalDiagnostics.optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+  })
+  .strict();
+export type NatlangAppendExchangeInput = z.infer<
+  typeof natlangAppendExchangeInputSchema
+>;
 
 /** A native graph snapshot is opaque except for its immutable begin identity. */
-export const natlangCallCheckpointStateSchema = z.object({
-  call_id: idSchema,
-  task_id: z.string(),
-  definition: definitionIdentitySchema.passthrough(),
-}).passthrough();
-export type NatlangCallCheckpointState = z.infer<typeof natlangCallCheckpointStateSchema>;
-export const natlangCheckpointInputSchema = z.object({
-  callId: idSchema,
-  state: natlangCallCheckpointStateSchema,
-  blobs: z.record(z.string()),
-  events: z.string().optional(),
-}).strict();
-export type NatlangCheckpointInput = z.infer<typeof natlangCheckpointInputSchema>;
+export const natlangCallCheckpointStateSchema = z
+  .object({
+    call_id: idSchema,
+    task_id: z.string(),
+    definition: definitionIdentitySchema.passthrough(),
+  })
+  .passthrough();
+export type NatlangCallCheckpointState = z.infer<
+  typeof natlangCallCheckpointStateSchema
+>;
+export const natlangCheckpointInputSchema = z
+  .object({
+    callId: idSchema,
+    state: natlangCallCheckpointStateSchema,
+    blobs: z.record(z.string()),
+    events: z.string().optional(),
+  })
+  .strict();
+export type NatlangCheckpointInput = z.infer<
+  typeof natlangCheckpointInputSchema
+>;
 
-export const natlangDiscardInputSchema = z.object({ callId: idSchema }).strict();
+export const natlangDiscardInputSchema = z
+  .object({ callId: idSchema })
+  .strict();
 export type NatlangDiscardInput = z.infer<typeof natlangDiscardInputSchema>;
 
 export const natlangRecordInputSchema = z
@@ -295,7 +371,10 @@ export const natlangRecordInputSchema = z
     events: z.string().optional(),
   })
   .strict();
-export type NatlangRecordInput = Omit<z.infer<typeof natlangRecordInputSchema>, "record"> & {
+export type NatlangRecordInput = Omit<
+  z.infer<typeof natlangRecordInputSchema>,
+  "record"
+> & {
   record: CallRecordJson;
 };
 
@@ -325,12 +404,18 @@ export const natlangListCallsFilterSchema = z
     after: z.string().optional(),
   })
   .strict();
-export type NatlangListCallsFilter = z.infer<typeof natlangListCallsFilterSchema>;
+export type NatlangListCallsFilter = z.infer<
+  typeof natlangListCallsFilterSchema
+>;
 
-export const natlangGetCallInputSchema = z.object({ callId: idSchema }).strict();
+export const natlangGetCallInputSchema = z
+  .object({ callId: idSchema })
+  .strict();
 export type NatlangGetCallInput = z.infer<typeof natlangGetCallInputSchema>;
 
-export const natlangGetValueInputSchema = z.object({ hash: z.string().min(1) }).strict();
+export const natlangGetValueInputSchema = z
+  .object({ hash: z.string().min(1) })
+  .strict();
 export type NatlangGetValueInput = z.infer<typeof natlangGetValueInputSchema>;
 
 export const natlangAnnotateInputSchema = z
@@ -363,12 +448,16 @@ export interface NatlangFeedbackResult {
 export const natlangImportExamplesInputSchema = z
   .object({ jsonl: z.string(), program: z.string().min(1) })
   .strict();
-export type NatlangImportExamplesInput = z.infer<typeof natlangImportExamplesInputSchema>;
+export type NatlangImportExamplesInput = z.infer<
+  typeof natlangImportExamplesInputSchema
+>;
 
 export const natlangTuneExamplesInputSchema = z
   .object({ program: z.string().min(1).optional() })
   .strict();
-export type NatlangTuneExamplesInput = z.infer<typeof natlangTuneExamplesInputSchema>;
+export type NatlangTuneExamplesInput = z.infer<
+  typeof natlangTuneExamplesInputSchema
+>;
 
 export interface NatlangTuneExamplesResult {
   /** The stored examples as the text of `tune.examples.jsonl`; empty when there are none. */
@@ -381,7 +470,9 @@ export const natlangSubscribeLiveInputSchema = natlangLiveFilterSchema;
 export const natlangUnsubscribeLiveInputSchema = z
   .object({ subscriptionId: z.string().min(1) })
   .strict();
-export type NatlangUnsubscribeLiveInput = z.infer<typeof natlangUnsubscribeLiveInputSchema>;
+export type NatlangUnsubscribeLiveInput = z.infer<
+  typeof natlangUnsubscribeLiveInputSchema
+>;
 
 export const natlangPublishLiveInputSchema = z
   .object({
@@ -451,7 +542,7 @@ export const natlangEvaluationSchema = z
           status: z.string(),
           quality: z.number().nullable(),
         })
-        .strict()
+        .strict(),
     ),
     budget: z.unknown(),
   })
@@ -465,7 +556,9 @@ export const natlangRecordEvaluationInputSchema = z
     ranAt: z.string().optional(),
   })
   .strict();
-export type NatlangRecordEvaluationInput = z.infer<typeof natlangRecordEvaluationInputSchema>;
+export type NatlangRecordEvaluationInput = z.infer<
+  typeof natlangRecordEvaluationInputSchema
+>;
 
 export interface NatlangEvaluationRecord {
   evaluationId: string;
@@ -485,7 +578,9 @@ export const natlangListEvaluationsInputSchema = z
     limit: z.number().int().positive().max(NATLANG_LIST_LIMIT_MAX).optional(),
   })
   .strict();
-export type NatlangListEvaluationsInput = z.infer<typeof natlangListEvaluationsInputSchema>;
+export type NatlangListEvaluationsInput = z.infer<
+  typeof natlangListEvaluationsInputSchema
+>;
 
 // ── Receiver contract ───────────────────────────────────────────────────────
 
@@ -501,8 +596,12 @@ export interface NatlangRecordsRpc {
   getValue(input: NatlangGetValueInput): Promise<string | null>;
   annotate(input: NatlangAnnotateInput): Promise<void>;
   feedback(input: NatlangFeedbackInput): Promise<NatlangFeedbackResult>;
-  importExamples(input: NatlangImportExamplesInput): Promise<{ added: number; updated: number; unchanged: number }>;
-  tuneExamples(input: NatlangTuneExamplesInput): Promise<NatlangTuneExamplesResult>;
+  importExamples(
+    input: NatlangImportExamplesInput,
+  ): Promise<{ added: number; updated: number; unchanged: number }>;
+  tuneExamples(
+    input: NatlangTuneExamplesInput,
+  ): Promise<NatlangTuneExamplesResult>;
   /**
    * The subscription resource is the response body: ndjson records, the first
    * `{kind:"subscribed", result: NatlangLiveSubscribed}`, then one
@@ -514,29 +613,34 @@ export interface NatlangRecordsRpc {
   liveInterest(): Promise<{ subscribed: boolean }>;
   publishLive(input: NatlangPublishLiveInput): Promise<{ delivered: number }>;
   stats(): Promise<NatlangStoreStats>;
-  recordEvaluation(input: NatlangRecordEvaluationInput): Promise<{ evaluationId: string }>;
-  listEvaluations(input: NatlangListEvaluationsInput): Promise<NatlangEvaluationRecord[]>;
+  recordEvaluation(
+    input: NatlangRecordEvaluationInput,
+  ): Promise<{ evaluationId: string }>;
+  listEvaluations(
+    input: NatlangListEvaluationsInput,
+  ): Promise<NatlangEvaluationRecord[]>;
 }
 
-export const natlangRecordsRpcMethods = createReceiverRpcMethods<NatlangRecordsRpc>([
-  "begin",
-  "progress",
-  "appendExchange",
-  "checkpoint",
-  "discard",
-  "record",
-  "listCalls",
-  "getCall",
-  "getValue",
-  "annotate",
-  "feedback",
-  "importExamples",
-  "tuneExamples",
-  "subscribeLive",
-  "unsubscribeLive",
-  "liveInterest",
-  "publishLive",
-  "stats",
-  "recordEvaluation",
-  "listEvaluations",
-]);
+export const natlangRecordsRpcMethods =
+  createReceiverRpcMethods<NatlangRecordsRpc>([
+    "begin",
+    "progress",
+    "appendExchange",
+    "checkpoint",
+    "discard",
+    "record",
+    "listCalls",
+    "getCall",
+    "getValue",
+    "annotate",
+    "feedback",
+    "importExamples",
+    "tuneExamples",
+    "subscribeLive",
+    "unsubscribeLive",
+    "liveInterest",
+    "publishLive",
+    "stats",
+    "recordEvaluation",
+    "listEvaluations",
+  ]);

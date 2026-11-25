@@ -5,7 +5,11 @@ import type {
   ModelRequestCapabilities,
   ModelRequestTarget,
 } from "@panticonic/pi-durable";
-import type { RpcCaller } from "@vibestudio/rpc";
+import {
+  operationalErrorMetadata,
+  type OperationalErrorMetadata,
+  type RpcCaller,
+} from "@vibestudio/rpc";
 import { resolveProviderModelBaseUrl } from "@vibestudio/shared/providerConnect";
 import { EGRESS_CREDENTIAL_HEADER } from "@vibestudio/shared/runtime/egressCredential";
 import { EGRESS_WEBSOCKET_SCOPE_HEADER } from "@vibestudio/shared/runtime/egressCredential";
@@ -26,82 +30,6 @@ interface WorkerModelSocket extends ProviderWebSocket {
   accept(options: { allowHalfOpen: boolean }): void;
   readonly readyState: number;
   binaryType: "blob" | "arraybuffer";
-}
-
-export type NativeTransportErrorMetadata = {
-  readonly name?: string;
-  readonly code?: string;
-  readonly syscall?: string;
-  readonly cause?: NativeTransportErrorMetadata;
-  readonly errors?: readonly NativeTransportErrorMetadata[];
-  readonly circular?: true;
-  readonly truncated?: true;
-};
-
-/** Only protocol error identifiers; error messages/stacks may contain request data. */
-function transportErrorMetadata(error: unknown): NativeTransportErrorMetadata {
-  const seen = new Set<object>();
-  let remaining = 8;
-  const field = (value: object, key: string): unknown => {
-    try {
-      // Error identifiers may be inherited, but observing a failure must never
-      // execute an accessor supplied by the failed operation.
-      let current: object | null = value;
-      for (let depth = 0; current && depth < 6; depth++) {
-        const descriptor = Object.getOwnPropertyDescriptor(current, key);
-        if (descriptor)
-          return "value" in descriptor ? descriptor.value : undefined;
-        current = Object.getPrototypeOf(current);
-      }
-    } catch {
-      // Proxies and foreign errors need not expose descriptors safely.
-    }
-    return undefined;
-  };
-  const identifier = (value: unknown): string | undefined =>
-    typeof value === "string" &&
-    value.length <= 80 &&
-    /^[A-Za-z][A-Za-z0-9_]*$/u.test(value)
-      ? value
-      : undefined;
-  const visit = (
-    value: unknown,
-    depth: number,
-  ): NativeTransportErrorMetadata => {
-    if (!value || typeof value !== "object") return {};
-    if (seen.has(value)) return { circular: true };
-    if (depth >= 4 || remaining-- <= 0) return { truncated: true };
-    seen.add(value);
-    const system = field(value, "systemError");
-    const systemField = (key: string) =>
-      system && typeof system === "object" ? field(system, key) : undefined;
-    const name = identifier(field(value, "name"));
-    const code =
-      identifier(field(value, "code")) ?? identifier(systemField("code"));
-    const syscall =
-      identifier(field(value, "syscall")) ?? identifier(systemField("syscall"));
-    const cause = field(value, "cause") ?? field(value, "error");
-    const errors = field(value, "errors");
-    return {
-      ...(name ? { name } : {}),
-      ...(code ? { code } : {}),
-      ...(syscall ? { syscall } : {}),
-      ...(cause && typeof cause === "object"
-        ? { cause: visit(cause, depth + 1) }
-        : {}),
-      ...(Array.isArray(errors)
-        ? {
-            errors: errors.slice(0, 3).map((item) => visit(item, depth + 1)),
-            ...(errors.length > 3 ? { truncated: true as const } : {}),
-          }
-        : {}),
-    };
-  };
-  try {
-    return visit(error, 0);
-  } catch {
-    return {};
-  }
 }
 
 /** Content-free milestones from the existing owned transport, never frame/credential data. */
@@ -135,7 +63,7 @@ export type NativeModelTransportDiagnostic = {
   readonly bytes?: number;
   readonly chunks?: number;
   readonly aborted?: boolean;
-  readonly error?: NativeTransportErrorMetadata;
+  readonly error?: OperationalErrorMetadata;
   readonly socketId?: number;
   readonly sends?: number;
   readonly messages?: number;
@@ -517,7 +445,7 @@ function createModelConnection(
               bytes,
               chunks,
               aborted: signal.aborted,
-              error: transportErrorMetadata(error),
+              error: operationalErrorMetadata(error),
             });
           finish();
           value.error(error);
@@ -579,7 +507,7 @@ function createModelConnection(
           observedAt: Date.now(),
           phase: "websocket-receive",
           aborted: signal.aborted,
-          error: transportErrorMetadata(event),
+          error: operationalErrorMetadata(event),
         });
       // Workers reports a terminal network failure with ErrorEvent and CLOSED,
       // without a subsequent CloseEvent. A nonterminal error retains ownership.
@@ -635,7 +563,7 @@ function createModelConnection(
           observedAt: Date.now(),
           phase: "websocket-close",
           aborted: signal.aborted,
-          error: transportErrorMetadata(error),
+          error: operationalErrorMetadata(error),
         });
         closedReject(error);
         throw error;
@@ -696,7 +624,7 @@ function createModelConnection(
               observedAt: Date.now(),
               phase: "websocket-send",
               aborted: signal.aborted,
-              error: transportErrorMetadata(error),
+              error: operationalErrorMetadata(error),
             });
             throw error;
           }
@@ -776,7 +704,7 @@ function createModelConnection(
               requestId,
               phase: "fetch-head",
               aborted: signal.aborted,
-              error: transportErrorMetadata(error),
+              error: operationalErrorMetadata(error),
             });
             throw error;
           }
@@ -976,7 +904,7 @@ function createModelConnection(
               observedAt: Date.now(),
               phase: "websocket-upgrade",
               aborted: signal.aborted,
-              error: transportErrorMetadata(error),
+              error: operationalErrorMetadata(error),
             });
             if (webSocketScopeId) {
               try {
