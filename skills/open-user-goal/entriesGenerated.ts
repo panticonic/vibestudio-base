@@ -811,7 +811,7 @@ export default {
     "additionalArguments": {}
   },
   "terminalAppRepair": {
-    "program": "skills/open-user-goal/workOnTerminalApp.ts",
+    "program": "skills/open-user-goal/workOnTerminalApp.nl",
     "callable": "workOnTerminalApp",
     "resultType": "TerminalRepairReport",
     "skill": "terminalAppRepair",
@@ -861,7 +861,7 @@ export default {
     "additionalArguments": {}
   },
   "eval-handoff": {
-    "program": "skills/open-user-goal/workOnEvalHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
     "callable": "workOnEvalHandoffGoal",
     "resultType": "EvalRecoveryResult",
     "skill": "evalHandoff",
@@ -891,7 +891,7 @@ export default {
     "additionalArguments": {}
   },
   "program-run": {
-    "program": "skills/open-user-goal/workOnProgramRunGoal.ts",
+    "program": "skills/open-user-goal/workOnProgramRunGoal.nl",
     "callable": "workOnProgramRunGoal",
     "resultType": "ProgramRunReport",
     "skill": "programRun",
@@ -901,7 +901,7 @@ export default {
     "additionalArguments": {}
   },
   "authoring": {
-    "program": "skills/open-user-goal/workOnAuthoringGoal.ts",
+    "program": "skills/open-user-goal/workOnAuthoringGoal.nl",
     "callable": "workOnAuthoringGoal",
     "resultType": "AuthoringOpenOutcome",
     "skill": "authoring",
@@ -1164,4 +1164,4 @@ export default {
     "additionalArguments": {}
   }
 };
-export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"c26382beb64877bfae5f885b2d140237f21137901bc387c06ca8d74b780df963"};
+export const entryAdapterDefaultsSource = {"path":"skills/open-user-goal/entries.json","sha256":"8adb386585e4b222d2da1e8c0747bb8942ed1ef9ed3740fc51e5cb5734af9a0e"};

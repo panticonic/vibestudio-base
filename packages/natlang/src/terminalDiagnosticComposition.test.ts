@@ -11,6 +11,7 @@ it.each([{name:"no edit grant",mayEdit:false,mayTest:true},{name:"edit grant is 
  const check={observed:{revision:"native-revision",stateHash:"native-state",buildStatus:"ok",diagnostics:[],paths:[app.path+"/index.ts"],sources:[{path:app.path+"/index.ts",text:"export function total(count:number){return count+1;}"}]},tests:scenario.mayTest?{revision:"native-revision",stateHash:"native-state",runtime:"native",status:"failed",suite:"unit",artifactKey:"actual-native-test",executionDigest:"actual-native-digest",passed:0,failed:1,total:1,details:[{file:app.path+"/index.test.ts",status:"fail",errors:["expected 4 to equal 3"]}]}:null};
  let turns=0,reads=0,lists=0,writes=0,finals=0,artifacts=0;
  const codes=[
+  'const {app,check}=await inspectTerminalApp(goal);const plan=await reviewTerminalCandidate(goal,app,check);return {artifact:null,outcome:plan.status,explanation:plan.reason};',
   'const app=await findTerminalApp(goal);const check=await observeTerminalApp(app.id);return {app,check};',
   'const rows=await terminalRepairCatalog.list();return rows[0];',
   'const scope=await judgeRepairScope(app,check);const explanation=await explainTerminalObservation(goal,app,check);return {status:"diagnosed",edits:[],reason:explanation};',
@@ -22,8 +23,8 @@ it.each([{name:"no edit grant",mayEdit:false,mayTest:true},{name:"edit grant is 
  try{
   const result=await runtime.runCell(async()=>{
    const natlang=runtime.ambient.natlang as {load(path:string,options:object):Promise<unknown>};
-   const module=await natlang.load("skills/open-user-goal/workOnTerminalApp.ts",{services:{terminalRepairCatalog:{list:async()=>{lists++;return [app];}},terminalRepairObserve:{read:async(id:string)=>{expect(id).toBe(app.id);reads++;return check;}},terminalRepairApply:{edit:async()=>{writes++;throw Error("No edit was requested");}},terminalRepairFinal:{verify:async()=>{finals++;throw Error("No extra execution was requested");}},terminalRepairArtifact:{read:async()=>{artifacts++;throw Error("No artifact was requested");}}}}) as {default:(goal:string)=>Promise<{outcome:string;artifact:unknown;explanation:string}>};
-   return module.default("Explain the observed count discrepancy from actual source and available native tests. Keep source unchanged.");
+   const program=await natlang.load("skills/open-user-goal/workOnTerminalApp.nl",{services:{terminalRepairCatalog:{list:async()=>{lists++;return [app];}},terminalRepairObserve:{read:async(id:string)=>{expect(id).toBe(app.id);reads++;return check;}},terminalRepairApply:{edit:async()=>{writes++;throw Error("No edit was requested");}},terminalRepairFinal:{verify:async()=>{finals++;throw Error("No extra execution was requested");}},terminalRepairArtifact:{read:async()=>{artifacts++;throw Error("No artifact was requested");}}}}) as (goal:string)=>Promise<{outcome:string;artifact:unknown;explanation:string}>;
+   return program("Explain the observed count discrepancy from actual source and available native tests. Keep source unchanged.");
   },{runId:"terminal-diagnostic-component",signal:new AbortController().signal});
   expect(result.value.outcome).toBe("diagnosed");expect(result.value.artifact).toBeNull();
   expect(JSON.parse(result.value.explanation)).toEqual({source:check.observed.sources[0].text,failures:check.tests?.details??[],mayEdit:scenario.mayEdit});

@@ -596,3 +596,6 @@ export type { ProviderResult } from "./workOnProviderHandoffGoal/types.js";
 export type { TerminalResult } from "./workOnTerminalGoal/types.js";
 
 export type { EvalRecoveryResult } from "./workOnEvalHandoffGoal/types.js";
+
+export type { ProgramRunReport } from "./workOnProgramRunGoal/types.js";
+export type { AuthoringOpenOutcome } from "./workOnAuthoringGoal/types.js";

@@ -810,7 +810,7 @@
     "additionalArguments": {}
   },
   "terminalAppRepair": {
-    "program": "skills/open-user-goal/workOnTerminalApp.ts",
+    "program": "skills/open-user-goal/workOnTerminalApp.nl",
     "callable": "workOnTerminalApp",
     "resultType": "TerminalRepairReport",
     "skill": "terminalAppRepair",
@@ -860,7 +860,7 @@
     "additionalArguments": {}
   },
   "eval-handoff": {
-    "program": "skills/open-user-goal/workOnEvalHandoffGoal.ts",
+    "program": "skills/open-user-goal/workOnEvalHandoffGoal.nl",
     "callable": "workOnEvalHandoffGoal",
     "resultType": "EvalRecoveryResult",
     "skill": "evalHandoff",
@@ -890,7 +890,7 @@
     "additionalArguments": {}
   },
   "program-run": {
-    "program": "skills/open-user-goal/workOnProgramRunGoal.ts",
+    "program": "skills/open-user-goal/workOnProgramRunGoal.nl",
     "callable": "workOnProgramRunGoal",
     "resultType": "ProgramRunReport",
     "skill": "programRun",
@@ -900,7 +900,7 @@
     "additionalArguments": {}
   },
   "authoring": {
-    "program": "skills/open-user-goal/workOnAuthoringGoal.ts",
+    "program": "skills/open-user-goal/workOnAuthoringGoal.nl",
     "callable": "workOnAuthoringGoal",
     "resultType": "AuthoringOpenOutcome",
     "skill": "authoring",

@@ -411,7 +411,7 @@
     ],
     "terminalRepairObserve": [],
     "terminalRepairApply": [
-      "workOnTerminalApp.ts"
+      "workOnTerminalApp/applyReviewedTerminalEdit.ts"
     ],
     "terminalRepairFinal": [],
     "terminalRepairArtifact": [],
