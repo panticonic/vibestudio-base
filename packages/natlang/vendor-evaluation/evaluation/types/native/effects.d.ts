@@ -1,3 +1,4 @@
+import type { NatlangTask } from '../runtime/runtime.js';
 /** One service call, as recorded: requested, then completed or failed. */
 export type EffectEvent = {
     phase: 'requested' | 'completed' | 'failed';
@@ -15,6 +16,13 @@ export type EffectEvent = {
         async?: boolean;
     };
 };
+export type EffectObserver = (event: EffectEvent) => unknown;
+export type EffectScope = {
+    task: NatlangTask;
+    callId?: string;
+};
+/** Only the recorder that created this exact service set can supply its observer. */
+export declare const recordingEffectObserver: (services: object) => EffectObserver | undefined;
 export declare const isRecording: (services: object) => boolean;
 export declare function unrecordedServices<T extends Record<string, unknown>>(services: T): T;
 /** Only recorder-owned proxies have this declared selected-execution surface. */
@@ -33,4 +41,4 @@ export declare function invokeServiceMethod(object: object, method: string, valu
  * Wrap services so each method call is recorded as an effect. Objects are wrapped one level deep
  * per property access; the original receiver is preserved.
  */
-export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown, authority?: T): T;
+export declare function recordingServices<T extends Record<string, unknown>>(services: T, emit: (event: EffectEvent) => unknown, authority?: T, scope?: EffectScope): T;

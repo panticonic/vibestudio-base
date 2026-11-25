@@ -1,3 +1,4 @@
+import type { EffectEvent } from '../native/effects.js';
 import type { WeightBinding } from '../adaptation/weights/binding.js';
 import { ProgramView } from '../adaptation/program-view.js';
 import type { ProgramDescriptor, AdaptationBinding, ExecutorIdentity } from '../adaptation/types.js';
@@ -358,12 +359,16 @@ export declare class NatlangTask {
     private effectSequence;
     private readonly graphChildrenByParent;
     private readonly liveInvocations;
+    private readonly effectObservers;
     /** Invocation liveness is shorter than task lifetime; recorded spans additionally own durable call custody. */
     beginInvocation(callId: string, recorded?: boolean): void;
     markInvocationRecorded(callId: string): void;
     endInvocation(callId: string): void;
     isInvocationActive(callId: string): boolean;
     isInvocationRecorded(callId: string): boolean;
+    /** Observation belongs to the current invocation, independently of lexical service authority. */
+    setInvocationEffectObserver(callId: string, observe: (event: EffectEvent) => unknown): void;
+    invocationEffectObserver(callId: string): ((event: EffectEvent) => unknown) | undefined;
     private readonly closureTraceParents;
     /** Associations are keyed by actual parent identity, never a mutable ambient parent slot. */
     retainClosureTraceParent(parent: Frame): void;

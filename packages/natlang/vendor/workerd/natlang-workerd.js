@@ -215168,6 +215168,22 @@ var init_recorder = __esm({
 });
 
 // src/native/effects.ts
+function currentObserver(scope, fallback) {
+  if (!scope) return fallback;
+  if (scope.task.isClosed || scope.task.signal.aborted)
+    throw new NatlangContextError("The task that owns this native function has closed or been cancelled.");
+  const frame = currentFrame();
+  const recorder = scope.task.runtime.callStore();
+  const authenticated = frame && (frame.task === scope.task || recorder && recorder === frame.task.runtime.callStore());
+  if (frame?.parentCallId && frame.task.isInvocationActive(frame.parentCallId) && !authenticated)
+    throw new NatlangContextError("The native function belongs to a different recorder; invoke its lexical callable context.");
+  if (authenticated) {
+    if (frame.signal?.aborted) throw frame.signal.reason ?? new Error("The invoking call was cancelled.");
+    const observe = frame.parentCallId && frame.task.invocationEffectObserver(frame.parentCallId);
+    if (observe) return observe;
+  }
+  return scope.callId === void 0 || scope.task.isInvocationActive(scope.callId) ? fallback : void 0;
+}
 function unrecordedServices(services) {
   const source2 = recordingSources.get(services);
   if (source2) return source2;
@@ -215206,7 +215222,7 @@ function argumentsKey(method, args) {
   });
   return plain3 ? text3 : void 0;
 }
-function recordingServices(services, emit3, authority) {
+function recordingServices(services, emit3, authority, scope) {
   const source2 = unrecordedServices(authority ?? services);
   if (!authority) services = source2;
   const preview4 = (value) => {
@@ -215217,7 +215233,6 @@ function recordingServices(services, emit3, authority) {
       return String(value);
     }
   };
-  let sequence2 = 0;
   const wrap = (target, label) => {
     const object2 = target;
     const proxy = new Proxy(Object.create(Object.getPrototypeOf(target)), {
@@ -215233,15 +215248,18 @@ function recordingServices(services, emit3, authority) {
         if (typeof property === "symbol") return value;
         if (typeof value === "function") {
           const recorded2 = (...given) => {
+            const observe = currentObserver(scope, emit3);
             const args = given.map((item) => hostCopy(item));
-            const seq = sequence2++;
-            emit3({ phase: "requested", service: label, method: property, args: preview4(args), seq, exact: { args } });
+            const sink = observe ?? emit3;
+            const seq = observerSequences.get(sink) ?? 0;
+            observerSequences.set(sink, seq + 1);
+            observe?.({ phase: "requested", service: label, method: property, args: preview4(args), seq, exact: { args } });
             try {
               const result = invokeServiceMethod(object2, property, value, args);
               if (result && typeof result.then === "function")
                 return Promise.resolve(result).then(
                   async (resolved) => {
-                    await emit3({
+                    await observe?.({
                       phase: "completed",
                       service: label,
                       method: property,
@@ -215252,14 +215270,14 @@ function recordingServices(services, emit3, authority) {
                     return resolved;
                   },
                   async (error) => {
-                    await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
+                    await observe?.({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
                     throw error;
                   }
                 );
-              emit3({ phase: "completed", service: label, method: property, result: preview4(result), seq, exact: { result, async: false } });
+              observe?.({ phase: "completed", service: label, method: property, result: preview4(result), seq, exact: { result, async: false } });
               return result;
             } catch (error) {
-              emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
+              observe?.({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq });
               throw error;
             }
           };
@@ -215287,15 +215305,19 @@ function recordingServices(services, emit3, authority) {
   };
   const wrapped = Object.fromEntries(Object.entries(services).map(([name, service2]) => [name, service2 && typeof service2 === "object" ? wrap(service2, name) : service2]));
   recordingSources.set(wrapped, source2);
+  serviceObservers.set(wrapped, emit3);
   Object.defineProperty(wrapped, RECORDED, { value: true });
   return Object.freeze(wrapped);
 }
-var RECORDED, isRecording, recordingSources, recordingPorts, selectedSurfaces, ONCE_EFFECTS, onceResults, resultCheckedPorts;
+var serviceObservers, observerSequences, RECORDED, isRecording, recordingSources, recordingPorts, selectedSurfaces, ONCE_EFFECTS, onceResults, resultCheckedPorts;
 var init_effects = __esm({
   "src/native/effects.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
     init_values();
+    init_context();
+    serviceObservers = /* @__PURE__ */ new WeakMap();
+    observerSequences = /* @__PURE__ */ new WeakMap();
     RECORDED = /* @__PURE__ */ Symbol("natlang.recorded-services");
     isRecording = (services) => Object.hasOwn(services, RECORDED);
     recordingSources = /* @__PURE__ */ new WeakMap();
@@ -232003,7 +232025,7 @@ Staged ${stagedText(value, liveIdentity, untrusted2)}${STAGED_RESULT_NOTICE}`;
           if (event.phase === "requested") this.trace.emit("effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event });
           else graphNode(this.trace, "effect", { call_id: this.currentCallId ?? null, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(this.options.runId), port: "caller" }]);
           return persisted;
-        });
+        }, void 0, options.frame ? { task: options.frame.task, callId: options.frame.parentCallId } : void 0);
         this.frame = options.frame ? { ...options.frame, services: this.services } : void 0;
         this.declarations = options.declarations ?? {};
         this.neuralese = options.neuralese;
@@ -239057,18 +239079,22 @@ function checkedServices(task, frame, services, model, callId, emit3, signal) {
       throw new TypeError(`refinements.services.${name}: ${error.message}`);
     }
   }
-  const checker = task.refinementChecker(), judges = task.refinementJudges(model, frame);
+  const checker = task.refinementChecker();
   const registry = scopedUntrusted(task);
   return checkServiceResults(services, types3, async (value, type, label) => {
     if (containsUntrusted(type, env)) registry.markTyped(value, type, env, label);
     if (!containsRefinement(type, env)) return;
+    const context = resolveBoundFrame(frame);
+    const currentId = context.parentCallId ?? callId;
+    const trace = traceFor(currentId);
+    const judges = task.refinementJudges(model, context);
     const failures = await checker.checkValue(value, type, env, {
       phase: "service",
       ...judges,
-      callId,
-      signal,
-      emit: emit3,
-      trace: traceFor(callId)
+      callId: currentId,
+      signal: context.signal ?? signal,
+      emit: trace ? (kind, data) => trace.emit(kind, data) : emit3,
+      trace
     }, label);
     if (failures.length) throw failureError(failures[0]);
   });
@@ -239581,14 +239607,16 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     const environment = task.environment();
     let runtime;
     const lexicalServices = unrecordedServices(frame.services ?? task.services);
-    const services = recordingServices(checkedServices(task, frame, lexicalServices, model, callId, (kind, data) => {
-      runtime?.trace.emit(kind, data);
-    }, frame.signal ?? task.signal), ({ exact, ...event }) => {
+    const observeEffect = ({ exact, ...event }) => {
       const captured = { ...event, exact, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} };
       if (event.phase === "requested") runtime?.trace.emit("effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event });
       else graphNode(runtime?.trace, "effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(callId), port: "caller" }]);
       return capture?.effect(captured, "agent");
-    }, lexicalServices);
+    };
+    task.setInvocationEffectObserver(callId, observeEffect);
+    const services = recordingServices(checkedServices(task, childFrame, lexicalServices, model, callId, (kind, data) => {
+      runtime?.trace.emit(kind, data);
+    }, frame.signal ?? task.signal), observeEffect, lexicalServices, { task, callId });
     const addendum = [frame.systemAddendum, attempt?.guidance].filter(Boolean).join("\n\n") || void 0;
     const nativeReader = !!(task.runtime.options.neuralese?.nativeStateConsumer || task.runtime.options.neuralese?.nativeStateConsumerForCall);
     const guidanceBound = !!owner && programGuidanceProgram(task.nativeProgramGuidance) === owner;
@@ -239952,7 +239980,9 @@ async function runCrispCase(input) {
   const { task, frame, childFrame, callId, definition, options, inputs, folder: folder2, capture, store, item } = input;
   const args = caseArguments(capture, folder2);
   const original = { ...args };
-  const services = recordingServices(frame.services ?? task.services, (event) => capture.effect({ ...event, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "crisp"));
+  const observeEffect = (event) => capture.effect({ ...event, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} }, "crisp");
+  task.setInvocationEffectObserver(callId, observeEffect);
+  const services = recordingServices(frame.services ?? task.services, observeEffect, void 0, { task, callId });
   let error;
   let nativeTrace;
   try {
@@ -240403,6 +240433,7 @@ var init_runtime2 = __esm({
       effectSequence = 0;
       graphChildrenByParent = /* @__PURE__ */ new Map();
       liveInvocations = /* @__PURE__ */ new Map();
+      effectObservers = /* @__PURE__ */ new Map();
       /** Invocation liveness is shorter than task lifetime; recorded spans additionally own durable call custody. */
       beginInvocation(callId, recorded2 = false) {
         this.liveInvocations.set(callId, recorded2);
@@ -240412,12 +240443,23 @@ var init_runtime2 = __esm({
       }
       endInvocation(callId) {
         this.liveInvocations.delete(callId);
+        this.effectObservers.delete(callId);
       }
       isInvocationActive(callId) {
         return !this.closed && this.liveInvocations.has(callId);
       }
       isInvocationRecorded(callId) {
         return this.liveInvocations.get(callId) === true;
+      }
+      /** Observation belongs to the current invocation, independently of lexical service authority. */
+      setInvocationEffectObserver(callId, observe) {
+        if (!this.isInvocationActive(callId)) throw new NatlangContextError("Effect observer needs a live invocation.");
+        this.effectObservers.set(callId, observe);
+      }
+      invocationEffectObserver(callId) {
+        if (this.isInvocationActive(callId)) return this.effectObservers.get(callId);
+        const parent = this.activeTraceParent(callId);
+        return parent?.task.invocationEffectObserver(callId);
       }
       closureTraceParents = /* @__PURE__ */ new Map();
       /** Associations are keyed by actual parent identity, never a mutable ambient parent slot. */
@@ -240615,6 +240657,7 @@ var init_runtime2 = __esm({
         if (this.closed) return;
         this.closed = true;
         this.liveInvocations.clear();
+        this.effectObservers.clear();
         this.closureTraceParents.clear();
         this.traceParent = void 0;
         if (this.timer) clearTimeout(this.timer);
@@ -240791,10 +240834,12 @@ function invokeNativeEntry(record3, exportName, args, invoke) {
     arguments: capturedArgumentBindings(capture)
   });
   capture.watch(() => nativeTrace.trace.events);
-  const services = recordingServices(frame.services ?? task.services, (event) => capture.effect({
+  const observeEffect = (event) => capture.effect({
     ...event,
     ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {}
-  }, "crisp"));
+  }, "crisp");
+  task.setInvocationEffectObserver(callId, observeEffect);
+  const services = recordingServices(frame.services ?? task.services, observeEffect, void 0, { task, callId });
   const finish = (outcome, value, error) => {
     try {
       nativeTrace.finish(outcome);
