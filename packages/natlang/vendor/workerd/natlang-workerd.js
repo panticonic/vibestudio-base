@@ -215168,6 +215168,32 @@ var init_recorder = __esm({
 });
 
 // src/native/effects.ts
+function unrecordedServices(services) {
+  const source2 = recordingSources.get(services);
+  if (source2) return source2;
+  return Object.freeze(Object.fromEntries(Object.entries(services).map(([name, port]) => [name, port && typeof port === "object" ? recordingPorts.get(port) ?? port : port])));
+}
+function resultCheckingService(port) {
+  resultCheckedPorts.add(port);
+  return port;
+}
+function invokeServiceMethod(object2, method, value, args) {
+  const once = resultCheckedPorts.has(object2) ? void 0 : object2[ONCE_EFFECTS];
+  const key = Array.isArray(once) && once.includes(method) ? argumentsKey(method, args) : void 0;
+  let results = key === void 0 ? void 0 : onceResults.get(object2);
+  if (key !== void 0 && !results) onceResults.set(object2, results = /* @__PURE__ */ new Map());
+  if (key !== void 0 && results.has(key)) return results.get(key);
+  let result = value.apply(object2, args);
+  if (key !== void 0) {
+    if (result && typeof result.then === "function")
+      result = Promise.resolve(result).catch((error) => {
+        results.delete(key);
+        throw error;
+      });
+    results.set(key, result);
+  }
+  return result;
+}
 function argumentsKey(method, args) {
   let plain3 = true;
   const text3 = JSON.stringify([method, args], (_key, value) => {
@@ -215180,7 +215206,9 @@ function argumentsKey(method, args) {
   });
   return plain3 ? text3 : void 0;
 }
-function recordingServices(services, emit3) {
+function recordingServices(services, emit3, authority) {
+  const source2 = unrecordedServices(authority ?? services);
+  if (!authority) services = source2;
   const preview4 = (value) => {
     try {
       const text3 = JSON.stringify(value);
@@ -215208,47 +215236,8 @@ function recordingServices(services, emit3) {
             const args = given.map((item) => hostCopy(item));
             const seq = sequence2++;
             emit3({ phase: "requested", service: label, method: property, args: preview4(args), seq, exact: { args } });
-            const once = object2[ONCE_EFFECTS];
-            const key = Array.isArray(once) && once.includes(property) ? argumentsKey(property, args) : void 0;
-            let results = key === void 0 ? void 0 : onceResults.get(object2);
-            if (key !== void 0 && !results) onceResults.set(object2, results = /* @__PURE__ */ new Map());
-            if (key !== void 0 && results.has(key)) {
-              const earlier = results.get(key);
-              if (earlier && typeof earlier.then === "function")
-                return Promise.resolve(earlier).then(async (resolved) => {
-                  await emit3({
-                    phase: "completed",
-                    service: label,
-                    method: property,
-                    result: preview4(resolved),
-                    seq,
-                    exact: { result: resolved, async: true }
-                  });
-                  return resolved;
-                }, async (error) => {
-                  await emit3({ phase: "failed", service: label, method: property, error: String(error?.message ?? error), seq, exact: { async: true } });
-                  throw error;
-                });
-              emit3({
-                phase: "completed",
-                service: label,
-                method: property,
-                result: preview4(earlier),
-                seq,
-                exact: { result: earlier, async: false }
-              });
-              return earlier;
-            }
             try {
-              let result = value.apply(object2, args);
-              if (key !== void 0) {
-                if (result && typeof result.then === "function")
-                  result = Promise.resolve(result).catch((error) => {
-                    results.delete(key);
-                    throw error;
-                  });
-                results.set(key, result);
-              }
+              const result = invokeServiceMethod(object2, property, value, args);
               if (result && typeof result.then === "function")
                 return Promise.resolve(result).then(
                   async (resolved) => {
@@ -215292,13 +215281,16 @@ function recordingServices(services, emit3) {
       });
     }
     selectedSurfaces.set(proxy, surface);
+    const origin = source2[label];
+    if (origin && typeof origin === "object") recordingPorts.set(proxy, origin);
     return proxy;
   };
   const wrapped = Object.fromEntries(Object.entries(services).map(([name, service2]) => [name, service2 && typeof service2 === "object" ? wrap(service2, name) : service2]));
+  recordingSources.set(wrapped, source2);
   Object.defineProperty(wrapped, RECORDED, { value: true });
   return Object.freeze(wrapped);
 }
-var RECORDED, isRecording, selectedSurfaces, ONCE_EFFECTS, onceResults;
+var RECORDED, isRecording, recordingSources, recordingPorts, selectedSurfaces, ONCE_EFFECTS, onceResults, resultCheckedPorts;
 var init_effects = __esm({
   "src/native/effects.ts"() {
     "use strict";
@@ -215306,9 +215298,12 @@ var init_effects = __esm({
     init_values();
     RECORDED = /* @__PURE__ */ Symbol("natlang.recorded-services");
     isRecording = (services) => Object.hasOwn(services, RECORDED);
+    recordingSources = /* @__PURE__ */ new WeakMap();
+    recordingPorts = /* @__PURE__ */ new WeakMap();
     selectedSurfaces = /* @__PURE__ */ new WeakMap();
     ONCE_EFFECTS = /* @__PURE__ */ Symbol.for("natlang.once-effects");
     onceResults = /* @__PURE__ */ new WeakMap();
+    resultCheckedPorts = /* @__PURE__ */ new WeakSet();
   }
 });
 
@@ -223402,7 +223397,7 @@ function failureError(failure2) {
 }
 function checkServiceResults(services, declared, check) {
   if (!Object.keys(declared).length) return services;
-  const wrap = (target, service2) => new Proxy({}, {
+  const wrap = (target, service2) => resultCheckingService(new Proxy({}, {
     has: (_shell, property) => Reflect.has(target, property),
     ownKeys: () => Reflect.ownKeys(target),
     getOwnPropertyDescriptor: (_shell, property) => {
@@ -223413,14 +223408,14 @@ function checkServiceResults(services, declared, check) {
       const value = Reflect.get(target, property, target);
       const type = typeof property === "string" ? declared[`${service2}.${property}`] : void 0;
       if (typeof value !== "function") return value;
-      if (!type) return new Proxy(value, { apply: (fn, _receiver, args) => Reflect.apply(fn, target, args) });
+      if (!type) return new Proxy(value, { apply: (fn, _receiver, args) => typeof property === "string" ? invokeServiceMethod(target, property, fn, args) : Reflect.apply(fn, target, args) });
       return async (...args) => {
-        const result = await value.apply(target, args);
+        const result = await invokeServiceMethod(target, String(property), value, args);
         await check(result, type, `${service2}.${String(property)}`);
         return result;
       };
     }
-  });
+  }));
   return Object.freeze(Object.fromEntries(Object.entries(services).map(([name, service2]) => [name, service2 && typeof service2 === "object" ? wrap(service2, name) : service2])));
 }
 var RefinementError, MemoryVerdictCache, verdictKey, JUDGE_SYSTEM_PROMPT, renderForJudge, JUDGE_CALL_INSTRUCTIONS, JUDGE_CALL_CONTEXT_INSTRUCTIONS, structurallyFits, preview2, givenText, unsatisfiedMessage, undecidedMessage, RefinementChecker, failureFeedback, refinementCodeOf;
@@ -223428,6 +223423,7 @@ var init_refinement = __esm({
   "src/native/refinement.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_effects();
     init_graph();
     init_model_recording();
     init_hash();
@@ -239584,14 +239580,15 @@ async function runDefinitionBody(frame, definition, positional, options, transac
     }
     const environment = task.environment();
     let runtime;
-    const services = recordingServices(checkedServices(task, frame, frame.services ?? task.services, model, callId, (kind, data) => {
+    const lexicalServices = unrecordedServices(frame.services ?? task.services);
+    const services = recordingServices(checkedServices(task, frame, lexicalServices, model, callId, (kind, data) => {
       runtime?.trace.emit(kind, data);
     }, frame.signal ?? task.signal), ({ exact, ...event }) => {
       const captured = { ...event, exact, ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {} };
       if (event.phase === "requested") runtime?.trace.emit("effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event });
       else graphNode(runtime?.trace, "effect", { call_id: callId, capability: `${event.service}.${event.method}`, ...event }, [{ node: invocationNodeId(callId), port: "caller" }]);
       return capture?.effect(captured, "agent");
-    });
+    }, lexicalServices);
     const addendum = [frame.systemAddendum, attempt?.guidance].filter(Boolean).join("\n\n") || void 0;
     const nativeReader = !!(task.runtime.options.neuralese?.nativeStateConsumer || task.runtime.options.neuralese?.nativeStateConsumerForCall);
     const guidanceBound = !!owner && programGuidanceProgram(task.nativeProgramGuidance) === owner;
@@ -240067,6 +240064,7 @@ var init_kernel = __esm({
   "src/runtime/kernel.ts"() {
     "use strict";
     init_define_NATLANG_TS_LIBS();
+    init_effects();
     init_crisp_trace();
     init_program();
     init_writes();
@@ -240793,7 +240791,7 @@ function invokeNativeEntry(record3, exportName, args, invoke) {
     arguments: capturedArgumentBindings(capture)
   });
   capture.watch(() => nativeTrace.trace.events);
-  const services = recordingServices(task.services, (event) => capture.effect({
+  const services = recordingServices(frame.services ?? task.services, (event) => capture.effect({
     ...event,
     ...event.phase === "requested" ? { graph_order: task.nextGraphEffectOrder() } : {}
   }, "crisp"));

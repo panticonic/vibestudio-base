@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "513f776de21e63923bc6f5d9fa2fb48c645ea83b",
+  "commit": "5463b038ef4db89609f9038d344a5f30f2382b54",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -96,7 +96,7 @@
     "evaluation/types/native/canonical-data.d.ts": "5e6bf8c8187d4eb132f2f9612b7903e5f04bf83eb79b8a6f09e632bb89b71a80",
     "evaluation/types/native/content-identity.d.ts": "c58be840b203f6820b1afe490b2e0c98dafb89d5e3ad697ac596996cc6b4b2c0",
     "evaluation/types/native/data-layout.d.ts": "15e84a39a1957b702f6671ff0e9cbd189e48bd2d30267125d81d3a0619919dd6",
-    "evaluation/types/native/effects.d.ts": "c09552326fc6383e80f12d8bbd76feeee0e917d78f9b4a9a89e99c61b3613060",
+    "evaluation/types/native/effects.d.ts": "55276787a8750d3e7a1f77d03942bada21dac37600c4bda5b2411cea9ff008d5",
     "evaluation/types/native/eval-memory.d.ts": "9aae76e69002565008800a8aa3e318eca15aba1a364b37231016e366af5561be",
     "evaluation/types/native/evaluator.d.ts": "9a90352990a933a20e9261a76749837baf3bfaf98af7d9a947d6d180ec95047a",
     "evaluation/types/native/expand-type.d.ts": "38361cfe755c1a84a39eb1871e21a39834934d5122f81f872220d994942685af",
