@@ -1,6 +1,6 @@
 {
   "schema": "natlang.vendor-pin/1",
-  "commit": "70ed890baf5ef573639a961fcce68542521a249c",
+  "commit": "b3b11e2f344951a0501cf46b7449024f9124490e",
   "dirty": false,
   "targets": [
     "evaluation"
@@ -124,7 +124,7 @@
     "evaluation/types/native/tool-markup.d.ts": "f26159333ff435b6cbec0bbfda34a00ddd4b3cd8b8a6f41c54e19e26cfdbb11f",
     "evaluation/types/native/trace.d.ts": "915a063fb9fdea55a1b68c644ca12724a1c961e0c538aec0ab46977ffd40e3a4",
     "evaluation/types/native/training-guidance.d.ts": "e1ba5c1c7d8b89a64ef54c741d9a1650778cc928a4eb09bf4a1ddbf6e8e2a72f",
-    "evaluation/types/native/types.d.ts": "dca94b5c32fc52a32cb3e928c89a453fafe7247579534c84c80919aebb7665f9",
+    "evaluation/types/native/types.d.ts": "a9327d507d96494311f2151a40becbf1c6a55b9597b42ac6161b622a70268ca5",
     "evaluation/types/native/untrusted.d.ts": "635ac030a38702fb15a114d1aab3ebdb859368a04b0d39224fc4b048a926cc1c",
     "evaluation/types/native/values.d.ts": "706ccf1d1c1c690e1c964423aee1943c3658767ecf574dcde70d26855937f3a8",
     "evaluation/types/neuralese/combinators.d.ts": "e6f4185384d5e31b8dc2e4ff0e1ed87a4a29eaddd871c87bc22d223a6c59bbce",

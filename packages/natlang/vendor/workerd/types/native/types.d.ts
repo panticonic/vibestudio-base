@@ -64,8 +64,8 @@ export type Type = {
     base: Type;
     predicate: string;
 }
-/** `A & B`: resolves (TypeEnv.resolve) to one merged record, dictionary or the common type. Object types written
- * inline merge when parsed; an alias among the members merges when it is resolved. */
+/** `A & B`: values admitted by both members. Resolution distributes unions and narrows shared fields;
+ * incompatible alternatives are the empty union (`never`). Record fields stay lazy for recursive aliases. */
  | {
     kind: 'intersection';
     members: Type[];
