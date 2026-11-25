@@ -1,4 +1,4 @@
-import entries from "./entriesGenerated.js";
+import entries, {entryAdapterDefaultsSource} from "./entriesGenerated.js";
 
 type Entry = {
   program: string;
@@ -18,6 +18,7 @@ export type SemanticTaskEntry = {
   argumentJson: Record<string, string>;
   parameterNames: string[];
   inputValues: unknown[];
+  adapterDefaults?: {values:Record<string,unknown>;source:{path:string;sha256:string}};
 };
 
 /** Exact application entry metadata. Function bodies retain all semantic decisions. */
@@ -43,5 +44,6 @@ export function semanticTaskEntry(kind: string, goal: string, assignment?: { tar
     argumentJson,
     parameterNames: [...descriptor.parameterNames],
     inputValues: descriptor.parameterNames.map(name => input[name as keyof typeof input]),
+    ...(Object.keys(descriptor.additionalArguments).length ? {adapterDefaults:{values:structuredClone(descriptor.additionalArguments),source:{...entryAdapterDefaultsSource}}} : {}),
   };
 }
