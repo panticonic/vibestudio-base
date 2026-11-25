@@ -791,7 +791,7 @@ export default {
     "additionalArguments": {}
   },
   "gadDurableQuestion": {
-    "program": "skills/gad-context/natlang/reviewDurableQuestion.ts",
+    "program": "skills/gad-context/natlang/reviewDurableQuestion.nl",
     "callable": "reviewDurableQuestion",
     "resultType": "DurableQuestionReport",
     "skill": "gadDurableQuestion",

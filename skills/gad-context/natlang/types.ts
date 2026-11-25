@@ -158,12 +158,20 @@ export type DurableParticipantJudgment = {
   member: DurableRosterMember | null;
 };
 
+export type DurableQuestionReview = {
+  history: DurableQuestionHistory;
+  question: DurableQuestionJudgment;
+};
+export type DurableParticipantReview = {
+  roster: DurableQuestionRoster;
+  participant: DurableParticipantJudgment;
+};
 export type DurableQuestionReport = {
   historyReceipt: string;
-  rosterReceipt: string;
+  rosterReceipt: string | null;
   channelId: string;
   question: DurableQuestionJudgment;
-  participant: DurableParticipantJudgment;
+  participant: DurableParticipantJudgment | {status: "not-requested"; member: null};
   disposition: "ready" | "hold";
   explanation: string;
 };
